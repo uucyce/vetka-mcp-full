@@ -23,8 +23,17 @@ from typing import Any, Dict, List, Optional
 import logging
 import asyncio
 import random
+import json
+from pathlib import Path
 
 from .base_async_tool import BaseAsyncMCPTool
+from .llm_call_reflex import (
+    extend_safe_tool_allowlist,
+    filter_tool_calls,
+    get_effective_allowed_tool_names,
+    is_opted_in_write_tool,
+    maybe_apply_reflex_to_direct_tools,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +126,7 @@ async def resilient_llm_call(
     raise last_exc or RuntimeError("All providers failed")
 
 # MARKER_129.2_START: Security allowlists (same as llm_call_tool.py)
-SAFE_FUNCTION_CALLING_TOOLS = {
+SAFE_FUNCTION_CALLING_TOOLS = extend_safe_tool_allowlist({
     "vetka_search_semantic",
     "vetka_read_file",
     "vetka_list_files",
@@ -126,6 +135,7 @@ SAFE_FUNCTION_CALLING_TOOLS = {
     "vetka_get_metrics",
     "vetka_get_knowledge_graph",
     "vetka_health",
+    "vetka_get_media_window_debug",
     "vetka_get_pinned_files",
     "vetka_get_context_dag",
     "vetka_get_memory_summary",
@@ -144,7 +154,7 @@ SAFE_FUNCTION_CALLING_TOOLS = {
     "vetka_arc_suggest",
     "vetka_web_search",
     "vetka_library_docs",
-}
+})
 
 WRITE_TOOLS_REQUIRING_APPROVAL = {
     "vetka_edit_file",
@@ -266,6 +276,47 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
             'gemini': 'gemini-2.0-flash',
         }
         return aliases.get(model.lower(), model)
+
+    # MARKER_166.FAVKEY.001: Auto-apply favorite key as preferred one-shot before MYCELIUM model call.
+    def _apply_favorite_preferred_key(self, provider_name: str) -> None:
+        """Load persisted favorites and set one-shot preferred key for provider if available."""
+        try:
+            normalized = str(provider_name or "").strip().lower()
+            if not normalized:
+                return
+            if normalized == "google":
+                normalized = "gemini"
+
+            favorites_path = Path(__file__).resolve().parents[3] / "data" / "favorites.json"
+            if not favorites_path.exists():
+                return
+
+            data = json.loads(favorites_path.read_text(encoding="utf-8"))
+            keys = data.get("keys", [])
+            if not isinstance(keys, list) or not keys:
+                return
+
+            favorite_masked = None
+            for item in keys:
+                if not isinstance(item, str) or ":" not in item:
+                    continue
+                prov, masked = item.split(":", 1)
+                prov_norm = prov.strip().lower()
+                if prov_norm == "google":
+                    prov_norm = "gemini"
+                if prov_norm == normalized and masked.strip():
+                    favorite_masked = masked.strip()
+                    break
+
+            if not favorite_masked:
+                return
+
+            from src.utils.unified_key_manager import get_key_manager
+            km = get_key_manager()
+            km.set_preferred_key(normalized, favorite_masked)
+            logger.info(f"[MYCELIUM_FAVORITE_KEY] Preferred key applied for {normalized}/{favorite_masked[:12]}...")
+        except Exception as e:
+            logger.debug(f"[MYCELIUM_FAVORITE_KEY] Failed to apply favorite key: {e}")
 
     def _track_usage_for_balance(self, provider: str, model: str, usage: Optional[Dict] = None):
         """Record usage to BalanceTracker after successful LLM call."""
@@ -509,13 +560,24 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
         tools = arguments.get('tools')
         inject_context = arguments.get('inject_context')
         model_source = arguments.get('model_source')
+        allow_task_board_writes = bool(arguments.get("_allow_task_board_writes"))
+        allow_edit_file_writes = bool(arguments.get("_allow_edit_file_writes"))
+        effective_allowed_tools = get_effective_allowed_tool_names(
+            SAFE_FUNCTION_CALLING_TOOLS,
+            allow_edit_file_writes=allow_edit_file_writes,
+        )
 
         # MARKER_129.2A: Security — filter tools by allowlist
         if tools:
             filtered_tools = []
             for tool_def in tools:
                 tool_func_name = tool_def.get('function', {}).get('name', '') if isinstance(tool_def, dict) else ''
-                if tool_func_name in SAFE_FUNCTION_CALLING_TOOLS:
+                if tool_func_name in effective_allowed_tools:
+                    filtered_tools.append(tool_def)
+                elif is_opted_in_write_tool(
+                    tool_func_name,
+                    allow_edit_file_writes=allow_edit_file_writes,
+                ):
                     filtered_tools.append(tool_def)
                 elif tool_func_name in WRITE_TOOLS_REQUIRING_APPROVAL:
                     logger.warning(f"[SECURITY] Blocked write tool '{tool_func_name}' from function calling")
@@ -583,8 +645,19 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                 logger.warning(f"Unknown provider '{provider_name}', using auto-detect")
                 provider_enum = None
 
+            # MARKER_166.FAVKEY.002: Auto-apply persisted favorite key before provider call.
+            self._apply_favorite_preferred_key(provider_name)
+
             source_info = f" (source: {model_source})" if model_source else ""
             logger.info(f"[MYCELIUM LLM] Calling {model} via {provider_name}{source_info}")
+
+            # MARKER_178.4.8: Universal REFLEX pre-hook for ALL LLM calls (async)
+            messages, tools, _reflex_recs, reflex_meta = maybe_apply_reflex_to_direct_tools(
+                arguments=arguments,
+                messages=messages,
+                tools=tools,
+                provider_name=provider_name,
+            )
 
             # MARKER_133.C33A: Use resilient wrapper with retry + fallback
             response = await resilient_llm_call(
@@ -619,18 +692,41 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
 
             # Security: filter response tool_calls
             if tool_calls:
-                filtered_calls = []
-                for tc in tool_calls:
-                    tc_name = tc.get('function', {}).get('name', '') if isinstance(tc, dict) else ''
-                    if tc_name in SAFE_FUNCTION_CALLING_TOOLS:
-                        filtered_calls.append(tc)
-                    else:
-                        logger.warning(f"[SECURITY] Filtered out tool_call '{tc_name}' from LLM response")
+                filtered_calls = filter_tool_calls(
+                    tool_calls,
+                    allowed_tool_names=effective_allowed_tools,
+                    allow_task_board_writes=allow_task_board_writes,
+                )
+                dropped_calls = len(tool_calls) - len(filtered_calls)
+                if dropped_calls:
+                    logger.warning("[SECURITY] Filtered %d unsafe tool_call(s) from LLM response", dropped_calls)
                 if filtered_calls:
                     result['tool_calls'] = filtered_calls
+            if reflex_meta.get("enabled"):
+                result["reflex"] = reflex_meta
 
             # Track usage
             self._track_usage_for_balance(provider_name, model, result.get('usage'))
+
+            # MARKER_178.4.9: Universal REFLEX post-hook for ALL LLM calls (async)
+            try:
+                from src.services.reflex_integration import reflex_post_fc, _is_enabled
+                if _is_enabled():
+                    _tool_calls = result.get("tool_calls", [])
+                    if _tool_calls:
+                        _tool_execs = []
+                        for tc in _tool_calls:
+                            _fn = tc.get("function", {})
+                            _tool_execs.append({
+                                "name": _fn.get("name", "unknown"),
+                                "success": True,
+                                "result": {"content": "from_llm_response"}
+                            })
+                        _phase = arguments.get("_reflex_phase", "research")
+                        _role = arguments.get("_reflex_role", "coder")
+                        reflex_post_fc(_tool_execs, phase_type=_phase, agent_role=_role, subtask_id="llm_call")
+            except Exception:
+                pass
 
             return {
                 'success': True,

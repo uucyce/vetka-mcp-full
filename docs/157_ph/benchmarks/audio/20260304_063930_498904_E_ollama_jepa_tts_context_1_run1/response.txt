@@ -1,0 +1,5 @@
+Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize hysteresis thresholds**: Reduce the hysteresis threshold values to minimize false positives and reduce latency.
+2. **Use more efficient data structures**: Consider using a more efficient data structure, such as a trie or a suffix tree, for storing context information, which can help reduce memory usage without affecting performance.
+3. **Enable lazy loading of recent stats**: Instead of loading all recent stats at once, enable lazy loading to load only the necessary data, reducing memory consumption and preserving latency.

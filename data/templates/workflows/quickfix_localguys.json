@@ -1,0 +1,26 @@
+{
+  "id": "quickfix_localguys_v1",
+  "name": "Quick Fix localguys",
+  "description": "Local scout-coder-verifier workflow for narrow bugfixes.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "quickfix_localguys", "hotfix_local"],
+    "workflow_family": {
+      "family": "quickfix_localguys",
+      "version": "v1",
+      "roles": ["scout", "coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

@@ -23,6 +23,7 @@ Key changes from Flask-SocketIO:
 - broadcast=True -> omit 'to' parameter
 """
 
+import os
 from socketio import AsyncServer
 
 # Phase 64: Re-export extracted modules for backwards compatibility
@@ -84,7 +85,6 @@ async def register_all_handlers(sio: AsyncServer, app=None):
     from .workflow_socket_handler import register_workflow_socket_handlers  # Phase 60.2
     from .voice_socket_handler import register_voice_socket_handlers  # Phase 60.5
     from .search_handlers import register_search_handlers  # Phase 68
-    from .jarvis_handler import register_jarvis_handlers  # Phase 104 - Jarvis Voice
     from .approval_socket_handler import register_approval_socket_handlers  # Phase 104.4
     from .mcp_socket_handler import register_mcp_socket_handlers  # MARKER_106e_2: MCP socket handlers
     from .layout_socket_handler import register_layout_socket_handlers  # MARKER_110_BACKEND_CONFIG: Layout config handlers
@@ -101,7 +101,20 @@ async def register_all_handlers(sio: AsyncServer, app=None):
     register_workflow_socket_handlers(sio, app)  # Phase 60.2
     register_voice_socket_handlers(sio, app)  # Phase 60.5
     register_search_handlers(sio, app)  # Phase 68
-    register_jarvis_handlers(sio)  # Phase 104 - Jarvis Voice
+    # Phase 104 - Jarvis Voice (guarded: some environments crash on mlx_whisper import)
+    jarvis_enabled = os.getenv("VETKA_JARVIS_ENABLE", "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if jarvis_enabled:
+        from .jarvis_handler import register_jarvis_handlers
+
+        register_jarvis_handlers(sio)
+        print("  [Handlers] ✅ jarvis_handler registered (jarvis_listen_start/stop, jarvis_audio_chunk) - Phase 104")
+    else:
+        print("  [Handlers] ⏭ jarvis_handler skipped (set VETKA_JARVIS_ENABLE=true to enable)")
     register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
     await register_mcp_socket_handlers(sio, app)  # MARKER_106e_2: MCP socket handlers
     register_layout_socket_handlers(sio, app)  # MARKER_110_BACKEND_CONFIG: Layout config handlers
@@ -120,7 +133,6 @@ async def register_all_handlers(sio: AsyncServer, app=None):
     print("  [Handlers]   - Legacy: voice_start, voice_audio, voice_stop, tts_request")
     print("  [Handlers]   - Realtime: voice_stream_start, voice_pcm, voice_utterance_end, voice_interrupt")
     print("  [Handlers] ✅ search_handlers registered (search_query) - Phase 68")
-    print("  [Handlers] ✅ jarvis_handler registered (jarvis_listen_start/stop, jarvis_audio_chunk) - Phase 104")
     print("  [Handlers] ✅ approval_socket_handler registered (approval_response, get_approval_details) - Phase 104.4")
     print("  [Handlers] ✅ mcp_socket_handler registered on /mcp namespace - MARKER_106e_2")
     print("  [Handlers] ✅ layout_socket_handler registered (update_layout_config, get_layout_config) - MARKER_110_BACKEND_CONFIG")

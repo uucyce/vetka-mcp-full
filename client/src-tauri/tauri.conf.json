@@ -27,7 +27,7 @@
       },
       {
         "label": "mycelium",
-        "title": "Mycelium Command Center",
+        "title": "MYCELIUM",
         "url": "/mycelium",
         "width": 960,
         "height": 680,
@@ -41,7 +41,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' http://localhost:5001 ws://localhost:5001; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:5001 ws://127.0.0.1:5001 http://localhost:5001 ws://localhost:5001; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:"
     }
   },
   "bundle": {

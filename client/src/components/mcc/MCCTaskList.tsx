@@ -1,17 +1,22 @@
 /**
- * MARKER_143.P2: MCCTaskList — compact left panel task list.
- * Extracted from DevPanel Board tab into a standalone column component.
- * Tasks are compact (single line) — click to focus, not expand inline.
+ * ⚠️ DEPRECATED: MCCTaskList
+ *
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: forbidden in runtime path.
+ * Replaced by MiniTasks floating window in DAG canvas.
+ *
+ * This file is kept for reference only. Do not use in new code.
+ * All functionality migrated to MiniTasks component.
  *
  * @phase 143
- * @status active
+ * @status deprecated
+ * @replaced_by MiniTasks
  */
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { useStore } from '../../store/useStore';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
-import { ArchitectChat } from './ArchitectChat';
 import { TaskFilterBar } from '../panels/TaskFilterBar';
 import { TaskEditor } from '../panels/TaskEditor';
 import { TaskDrillDown } from '../panels/TaskDrillDown';
@@ -39,16 +44,7 @@ function fmtInterval(s: number): string {
   return `${Math.floor(s / 3600)}h`;
 }
 
-interface MCCTaskListProps {
-  /** MARKER_144.7: Callback when Architect proposes DAG changes user accepts */
-  onAcceptArchitectChanges?: (changes: {
-    addNodes?: Array<{ type: string; label: string }>;
-    removeNodes?: string[];
-    addEdges?: Array<{ source: string; target: string; type: string }>;
-  }) => void;
-}
-
-export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {}) {
+export function MCCTaskList() {
   const {
     tasks, tasksLoading, fetchTasks, addTask, dispatchTask,
     dispatchNext, cancelTask, selectedTaskId, selectTask,
@@ -82,21 +78,16 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
 
   // Heartbeat countdown moved to HeartbeatChip — Phase 149.2
 
-  // Add & optionally run
-  const handleAdd = useCallback(async (andRun: boolean) => {
+  // Add task to queue
+  const handleAdd = useCallback(async () => {
     if (!newTaskTitle.trim()) return;
     const preset = activePreset;
     const phaseType = preset.startsWith('titan') ? 'research' : 'build';
     const tags = [preset.startsWith('titan') ? 'titan' : 'dragon'];
 
-    const taskId = await addTask(newTaskTitle.trim(), preset, phaseType, tags, selectedKey);
+    await addTask(newTaskTitle.trim(), preset, phaseType, tags, selectedKey);
     setNewTaskTitle('');
-
-    if (andRun && taskId) {
-      await dispatchTask(taskId, preset, selectedKey);
-      if (selectedKey) clearSelectedKey();
-    }
-  }, [newTaskTitle, activePreset, addTask, dispatchTask, selectedKey, clearSelectedKey]);
+  }, [newTaskTitle, activePreset, addTask, selectedKey]);
 
   // Dispatch next
   const handleDispatchNext = useCallback(async () => {
@@ -176,8 +167,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
             value={newTaskTitle}
             onChange={e => setNewTaskTitle(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleAdd(false);
-              if (e.key === 'Enter' && e.shiftKey) handleAdd(true);
+              if (e.key === 'Enter') handleAdd();
             }}
             style={{
               flex: 1,
@@ -193,7 +183,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
             }}
           />
           <button
-            onClick={() => handleAdd(false)}
+            onClick={handleAdd}
             disabled={!newTaskTitle.trim()}
             style={{
               background: newTaskTitle.trim() ? 'rgba(255,255,255,0.06)' : 'transparent',
@@ -207,21 +197,6 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
             }}
             title="Add to queue"
           >+</button>
-          <button
-            onClick={() => handleAdd(true)}
-            disabled={!newTaskTitle.trim()}
-            style={{
-              background: newTaskTitle.trim() ? '#2d3d5a' : 'transparent',
-              color: newTaskTitle.trim() ? '#8af' : '#333',
-              border: `1px solid ${newTaskTitle.trim() ? '#3d4d6a' : NOLAN_PALETTE.borderDim}`,
-              borderRadius: 2,
-              padding: '4px 6px',
-              fontSize: 11,
-              cursor: newTaskTitle.trim() ? 'pointer' : 'not-allowed',
-              fontWeight: 600,
-            }}
-            title="Add & Run"
-          >▶</button>
         </div>
       </div>
 
@@ -231,6 +206,7 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
         sources={taskSources}
         presets={taskPresets}
         onChange={setTaskFilters}
+        minimal
       />
 
       {/* Active agents row */}
@@ -419,13 +395,6 @@ export function MCCTaskList({ onAcceptArchitectChanges }: MCCTaskListProps = {})
           );
         })}
       </div>
-
-      {/* MARKER_144.12: Architect Chat — collaborative dialog */}
-      <ArchitectChat
-        selectedNodeId={selectedTaskId}
-        workflowContext={{ nodeCount: tasks.length, edgeCount: 0 }}
-        onAcceptChanges={onAcceptArchitectChanges}
-      />
 
       {/* Footer: dispatch + heartbeat */}
       <div style={{ borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, padding: '6px 8px' }}>

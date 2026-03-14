@@ -1,0 +1,5 @@
+Okay, based on the provided context, here's a response to the user's question:
+
+**File 1: `data/playground_proposals.json`**
+
+*   **Purpose:** This file stores a collection of research prompts and their

@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-03-04T02:59:21.696376+00:00",
+  "dry_run": false,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 4066.61,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": 4066.61,
+      "reaction_audio_ms": null,
+      "e2e_ms": 5313.93,
+      "tokens_out": 18,
+      "audio_chunks": 0,
+      "response_chars": 96,
+      "quality_proxy": 0.8,
+      "quality_notes": "",
+      "response_preview": "Да, я здесь! В контексте есть файлы VETKA и MYCELIUM, но конкретно про \"ты тут?\" нет информации.",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055913_520910_F_mimo_short_short_live_run1",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": true,
+      "grounded_files": 4,
+      "grounded_packing_path": "algorithmic",
+      "grounded_jepa_trigger": false,
+      "grounded_jepa_mode": false,
+      "timestamp": "2026-03-04T02:59:18.788447+00:00"
+    },
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 2,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 2039.87,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": 2039.87,
+      "reaction_audio_ms": null,
+      "e2e_ms": 2907.68,
+      "tokens_out": 17,
+      "audio_chunks": 0,
+      "response_chars": 111,
+      "quality_proxy": 0.8,
+      "quality_notes": "",
+      "response_preview": "Привет! Да, я тут — в контексте проекта VETKA, где описана интеграция Hostess Agent для быстрых ответов в чате.",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055918_797226_F_mimo_short_short_live_run2",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": true,
+      "grounded_files": 4,
+      "grounded_packing_path": "algorithmic",
+      "grounded_jepa_trigger": false,
+      "grounded_jepa_mode": false,
+      "timestamp": "2026-03-04T02:59:21.696261+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 2,
+        "success_runs": 2,
+        "success_rate": 1.0,
+        "ttft_text_ms_p50": 3053.24,
+        "ttfa_audio_ms_p50": null,
+        "reaction_text_ms_p50": 3053.24,
+        "reaction_audio_ms_p50": null,
+        "e2e_ms_p50": 4110.81,
+        "quality_proxy_mean": 0.8
+      }
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "scope_name": "golden_synthetic_small",
+  "records": [
+    { "id": "root_src", "path": "src", "kind": "dir", "label": "src" },
+    { "id": "svc_builder", "path": "src/services/mcc_architect_builder.py", "kind": "file", "label": "builder" },
+    { "id": "svc_compare", "path": "src/services/mcc_dag_compare.py", "kind": "file", "label": "compare" },
+    { "id": "api_routes", "path": "src/api/routes/mcc_routes.py", "kind": "file", "label": "routes" },
+    { "id": "ui_mcc", "path": "client/src/components/mcc/MyceliumCommandCenter.tsx", "kind": "file", "label": "mcc_ui" },
+    { "id": "ui_hook", "path": "client/src/hooks/useRoadmapDAG.ts", "kind": "file", "label": "roadmap_hook" },
+    { "id": "tests_mcc", "path": "tests/mcc", "kind": "dir", "label": "tests_mcc" }
+  ],
+  "relations": [
+    { "source": "svc_builder", "target": "svc_compare", "weight": 0.95 },
+    { "source": "svc_compare", "target": "api_routes", "weight": 0.92 },
+    { "source": "api_routes", "target": "ui_hook", "weight": 0.78 },
+    { "source": "ui_hook", "target": "ui_mcc", "weight": 0.83 },
+    { "source": "svc_builder", "target": "tests_mcc", "weight": 0.64 }
+  ]
+}

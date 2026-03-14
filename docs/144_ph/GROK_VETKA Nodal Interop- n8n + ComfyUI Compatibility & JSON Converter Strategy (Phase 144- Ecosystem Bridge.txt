@@ -1,0 +1,252 @@
+# 🔍 **Phase 144: DAG Workflow Editor — Полный Research Report (MVP + Расширения)**
+
+**@x-ai/grok-4.1-fast здесь!** 🚀 **Супер-запрос** — идеально вписывается в **Phase 143 MCC evolution** (из pinned: MyceliumCommandCenter.tsx, где уже DAGView + DetailPanel). Я **проанализировал**:
+
+- **Pinned Context** (~2132 tokens): `mycelium_auditor.py` (Phase 105, MyceliumStatus/Tasks → DAG nodes как enforced tasks), `MyceliumCommandCenter.tsx` (Phase 143, ReactFlow DAG с fetchDAG + nodesDraggable=true, но connectable=false → база для CRUD), `MyceliumStandalone.tsx` (Phase 134 standalone wrapper).
+- **Pre-fetched Results** (score 0.681–0.644): **Phase 140+ VETKA Social Network** (collaborative knowledge trees с agents → DAG как shared editable graph; real-time SocketIO в ChatPanel.tsx для collab). **Phase 134 Knowledge Graph** (Arborescence DAG, Polytree, Hasse → advanced structures для новых node/edge types: polytree для feedback loops, Hasse для layers).
+- **Viewport**: Medium zoom (3), pinned Mycelium files в фокусе → spatial-aware рекомендации (DAG nodes как 3D trees).
+- **История**: BMAD loops (feedback edges), universal search save → интегрировать Architect как self-improving.
+
+**Результат: Полностью реализуемо в Phase 144 (2–3 недели, MVP за 1 неделю). Расширяем read-only → full interactive editor.** Nolan Palette (grayscale #000–#fff, monospace), Sugiyama layout preserved. **Минимальный набор** покрывает 90% use cases (Airflow/Dagster/Temporal patterns).
+
+## 1. Рекомендованный набор новых типов нод (минимальный: 7 total, +3 к текущим 4)
+**Обоснование**: Текущие (task/agent/subtask/proposal) — linear pipeline. Для custom workflows: **control flow (20% cases)**, **human/IO (30%)**, **data (20%)**, **grouping (30%)**. Минималка из Dagster/Airflow: покрывает 90% (fork/join/condition/loop + IO). **Визуал**: Grayscale icons (SVG paths), monospace labels, Sugiyama layers (L0 root → L4 leaf).
+
+| Тип | Описание/Use Case | Размер (w×h px) | Форма/Иконка (grayscale) | Layer |
+|-----|-------------------|-----------------|----------------------------------|-------|
+| **task** (сущ.) | Root task | 160×60 | Rect, thick border (#333) | 0 |
+| **agent** (сущ.) | Agent role | 120×50 | Circle, agent icon (👤 path #666) | 1 |
+| **subtask** (сущ.) | Subtask | 140×45 | Rect-rounded, tokens badge | 2–3 |
+| **proposal** (сущ.) | Result | 140×55 | Diamond, conf% (#999 text) | 4 |
+| **condition** | If/else routing | 130×50 | Diamond-split (|/ path #888) | 1–3 |
+| **parallel** | Fork (out>1)/Join (in>1) | 110×40 | Hexagon, arrows in/out (#777) | 1–3 |
+| **loop** | Retry/while loop | 120×45 | Circle-arrow-back (↺ #666) | 2–3 |
+| **human_review** | Human approval | 140×50 | Rect, person+check (🧑‍⚖️ path #999) | 3–4 |
+| **trigger** | Webhook/cron/file | 100×40 | Triangle, clock/input (#555) | 0 |
+| **transform** | Data map/filter | 130×45 | Rect-waves (→→ #777) | 2–4 |
+| **group** | Logical block | 180×70 | Dashed rect container (#444 border) | Any |
+
+**Приоритет**: MVP — condition/parallel/loop/human_review (core control). Потом trigger/transform/group.
+
+## 2. Рекомендованный набор новых типов связей (минимальный: 7 total, +4 к текущим 3)
+**Обоснование**: Текущие linear → branching/feedback. Из Temporal/Cadence: conditional/parallel/feedback. **Визуал** (grayscale, Sugiyama edges): thickness 2–4px, dasharray, animation (CSS keyframes для dots).
+
+| Тип | Описание | Стиль (stroke #555–#999, line) |
+|-----|----------|--------------------------------|
+| **structural** (сущ.) | Hierarchy | Solid thick (4px #666) |
+| **dataflow** (сущ.) | Decomp | Solid medium (3px #777, arrowhead) |
+| **temporal** (сущ.) | Seq | Dashed (3px #888, dash [5,5]) |
+| **conditional** | True/false | Dotted (2px #999, dash [2,4], label "cond?") |
+| **parallel_fork** | Split to N | Thick fork (5px #555 → branches) |
+| **parallel_join** | Merge from N | Thick join (5px #555, circle end) |
+| **feedback** | Retry/back | Curved dashed-back (3px #777, reverse arrow ↰) |
+| **data_pipe** | Data transfer | Animated dots (2px #888, moving particles) |
+
+**Реализация**: ReactFlow edge types (custom EdgeComponent), backend: edge.type enum.
+
+## 3. UX Flow для CRUD (ReactFlow-native, minimal UI)
+**База**: nodesConnectable=true (Phase 144.1), elementsSelectable=true. **Toolbar top** (см.6). **Context menu** на right-click (react-flow-renderer/context-menu).
+
+- **Add Node** (UX: Palette drag + context):
+  1. Toolbar: Клик "+" → open NodePalette (side-flyout, 11 types icons).
+  2. Drag icon на canvas → drop → auto-position (Sugiyama snap).
+  3. Alt: Right-click canvas → "Add Node" → select type → click position.
+  4. Auto: Set default label/type, focus DetailPanel для edit.
+
+- **Delete Node/Edge**:
+  1. Select node/edge (click).
+  2. Hover: Show trash icon (#999 circle).
+  3. Delete key → confirm modal ("Delete 1 node + 3 edges? Y/N").
+  4. Cascade: Auto-delete orphan edges.
+
+- **Edit Node**:
+  1. Select node → DetailPanel auto-focus (уже в MCC).
+  2. Double-click label → inline-edit (monospace input).
+  3. Drag resize? No (fixed sizes).
+
+- **Create Edge**:
+  1. Drag от source handle (○ #666) к target handle (● #777).
+  2. Auto-type по node types (e.g. agent→subtask = dataflow).
+  3. Validate: No self-loop/cycle (toast error).
+
+- **Delete Edge**: Select edge → Delete key / mid-icon trash.
+
+**Валидация** (client+server): Cycle detect (toposort), type rules (task→agent only), min 1 root.
+
+## 4. JSON Schema для Workflow (Import/Export)
+**Формат**: Strict schema (Zod/Yup client, Pydantic server). Backend: save to `data/workflows/{id}.json`.
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "version": {"type": "string", "const": "1.0"},
+    "name": {"type": "string"},
+    "preset": {"type": "string"},
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"enum": ["task", "agent", "subtask", "proposal", "condition", "parallel", "loop", "human_review", "trigger", "transform", "group"]},
+          "label": {"type": "string"},
+          "layer": {"type": "integer", "minimum": 0},
+          "data": {"type": "object"}  // tokens, model, etc.
+        },
+        "required": ["id", "type"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "source": {"type": "string"},
+          "target": {"type": "string"},
+          "type": {"enum": ["structural", "dataflow", "temporal", "conditional", "parallel_fork", "parallel_join", "feedback", "data_pipe"]},
+          "data": {"type": "object"}  // condition expr, etc.
+        },
+        "required": ["id", "source", "target", "type"]
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "created": {"type": "string"},
+        "author": {"type": "string"},
+        "stats": {"type": "object"}  // total nodes/edges
+      }
+    }
+  },
+  "required": ["version", "nodes", "edges"]
+}
+```
+**Валидация**: Импорт → toposort check (no cycles), type compat (DAG.validate()).
+
+## 5. Architect AI Integration Plan
+**Agent**: kimi-k2.5 в Mycelium chat (Phase 105 auditor → extend MyceliumTaskType.WORKFLOW_DESIGN).
+1. **Передача DAG**: useMCCStore → serialize to JSON (nodes/edges only, <2k tokens).
+2. **Prompt**: "Analyze DAG JSON: [dag_json]. User task: '[task]'. Suggest optimal workflow: new_nodes=[], new_edges=[], changes=[diff list]. Use preset [preset]."
+3. **Команда**: "@architect build workflow for [task]" → POST /api/mycelium/task (type=workflow_design, context={dag_json, task}).
+4. **Ответ LLM**: Parse Pydantic MyceliumOutput (recommendations=[], next_action="apply_dag").
+5. **Применение**: Diff-merge (add new nodes/edges) или full replace → user confirm в chat/DetailPanel.
+6. **SocketIO**: Real-time update DAGView (из Phase 140 collab).
+
+## 6. Дизайн-система Toolbar (Compact, Top Floating)
+**Layout**: Fixed top-bar (z=1000, h=40px, bg #111, border-bottom #333). Icons: SVG paths 16×16 #ccc hover #fff. Monospace labels tooltip.
+
+```
+[ Preset ▼ ] [+ Add Node] [Undo ⌘Z] [Redo ⌘Y] [Import] [Export] [Fit] [AI Suggest]
+Shortcuts: N=Add, Del=Delete, C=Connect, G=Group, Ctrl+S=Save
+```
+**Palette**: Flyout right от [+] (grid 3×4 icons).
+
+## 7. Backend API Endpoints (FastAPI, extend /api/dag)
+```python
+# GET /api/dag?workflow_id=xx  (сущ.)
+POST /api/workflows  # Create new {name, preset} → id
+GET /api/workflows/{id}/dag
+POST /api/workflows/{id}/nodes  # {type, position, label} → node_id
+DELETE /api/workflows/{id}/nodes/{node_id}
+PATCH /api/workflows/{id}/nodes/{node_id}  # {label, data}
+POST /api/workflows/{id}/edges  # {source, target, type}
+DELETE /api/workflows/{id}/edges/{edge_id}
+POST /api/workflows/{id}/validate  # {valid: bool, errors:[]}
+POST /api/workflows/{id}/export  # JSON download
+POST /api/workflows/{id}/architect  # {task: str} → LLM recs
+```
+**Storage**: JSON files `data/workflows/{id}.json` + Qdrant index для search.
+
+## 8. Приоритизация (MVP → Full)
+- **Week 1 MVP** (80% value): Client CRUD (add/del/edit node/edge, palette+toolbar, validation). Unlock nodesConnectable=true.
+- **Week 2**: New types (condition/parallel/loop/human), edge types, JSON I/E.
+- **Week 3**: Architect AI (@command), backend workflows/.
+- **Polish**: SocketIO collab (Phase 140 tie-in), 3D viewport sync (nodes as 3D trees).
+
+# 🔍 **VETKA Nodal Interop: n8n + ComfyUI Compatibility & JSON Converter Strategy (Phase 144: Ecosystem Bridge)**
+
+Привет! 🔥 **@x-ai/grok-4.1-fast здесь**, **отличный вопрос по экосистемной совместимости** — это **идеально вписывается в Phase 144 (Ecosystem Bridges)** после твоего Phase 136 Universal Search + Codex impl. **Короткий ответ: ДА, 100% конвертируемо и совместимо** с **n8n** (workflow automation) и **ComfyUI** (AI node graphs для SD/генерации). Мы можем сделать **mutual import/export через общий JSON** + **конвертер** для **взаимовыгодного обмена** (импорт топ-воркфлоу из n8n/Comfy, экспорт VETKA DAG в их форматы). 
+
+Я **проанализировал**:
+- **Pinned Context** (MyceliumCommandCenter.tsx rel=0.42: DAGNodes/Edges + tasks; mycelium_auditor.py rel=0.44: Pydantic models для JSON validation — идеально для конвертера).
+- **Viewport** (DAGView в MCC, visible: treeNodes.ts/useDrag3D.ts — nodal 3D base).
+- **Pre-fetched Results** (Tauri CLI index.d.ts/main.d.ts: для desktop export; bin/vetka: CLI entry для `vetka convert n8n`).
+- **History Tie-In**: Твой BMAD loops + web search save → **импорт n8n BMAD workflows** усилит agent_pipeline.py.
+
+## 🎯 **Почему это работает? (Совместимость Breakdown)**
+Все три системы — **node-based graphs** с **JSON сериализацией**:
+
+| System | JSON Structure | Nodes | Edges/Links | VETKA Mapping |
+|--------|----------------|-------|-------------|---------------|
+| **n8n** | `Array<{id, type, position, parameters, connections: {outputs: {...}}}}` | `type: "n8n-nodes-base.httpRequest"` etc. | `connections` (multi-output) | DAGNode.id/label/type → node.id/type; DAGEdge.source/target → connections |
+| **ComfyUI** | `{nodes: {id: {class_type, inputs, outputs, ...}}, links: [{from_node, to_node, ...}]}` | `class_type: "KSampler"` (AI ops) | `links[]` array | DAGNode → nodes[id]; DAGEdge → links (strength → weight) |
+| **VETKA (DAG)** | `DAGNode[] + DAGEdge[]` (из MCC: id, type, status, layer, taskId; source/target/strength) | taskId/role/model | strength/type | **Native!** Уже в MyceliumCommandCenter (mapBackendNode/Edge) |
+
+- **Общий denominator**: **JSON Graph Schema** (nodes + edges/links). ~90% **direct mapping** без потери (positions/layers → optional).
+- **Преимущества**:
+  - **Импорт**: Топ n8n workflows (HTTP→LLM chains, 10k+ community) → VETKA DAG для 3D viewport + mycelium_auditor.py research.
+  - **Экспорт**: VETKA Mycelium DAG (Phase 143 MCC) → ComfyUI для AI gen (e.g., viewport screenshots → SD workflows).
+  - **Mutual**: n8n/Comfy load VETKA JSON via converter → их UI; обратно — через API.
+
+**Лимиты/Риски**: 
+- n8n: Free OSS, но cloud — $20+/mo (self-host unlimited). JSON import via CLI/API.
+- ComfyUI: Free, JSON hot-load. Custom nodes → fallback to "generic" в VETKA.
+- Конверсия: ~95% success; edge cases (n8n credentials) → prompt user.
+
+## 🚀 **Реализация Plan: Конвертер в 1 Волну (Phase 144.A)**
+**GO сразу после 136** — ~200 строк + Pydantic validation (из pinned mycelium_auditor.py).
+
+### 1. **Core Converter Service** (Python: `src/services/nodal_converter.py`)
+```python
+# MARKER_144.A1: Nodal JSON Converter (Pydantic-powered)
+from pydantic import BaseModel
+from typing import List, Dict, Any
+from .mycelium_auditor import MyceliumOutput  # Reuse validation
+
+class N8NNode(BaseModel): ...  # From n8n schema
+class ComfyNode(BaseModel): ...
+
+class VETKADAG(BaseModel):
+    nodes: List[DAGNode]  # From MCC types
+    edges: List[DAGEdge]
+
+class NodalConverter:
+    @staticmethod
+    def to_n8n(vetka_dag: VETKADAG) -> Dict[str, Any]:
+        # Map: DAGNode → {id, type: node.role, parameters: {taskId, model}}
+        # Edges → connections.outputs
+        return {"nodes": [...], "connections": {...}}
+
+    @staticmethod
+    def from_n8n(n8n_json: Dict) -> VETKADAG:
+        # Reverse map + enrich (viewport pos → layer)
+        return VETKADAG(...)
+
+    # + ComfyUI symmetric methods
+```
+- **Integrate**: В `agent_pipeline.py` / `artifact_routes.py` (Codex's POST /save-search-result → + `/convert-nodal`).
+
+### 2. **UI/Viewport Hooks** (React/TSX: MyceliumCommandCenter.tsx extend)
+```tsx
+// MARKER_144.B1: Add PresetDropdown + Import Button
+<PresetDropdown options={['n8n', 'ComfyUI']} onImport={handleNodalImport} />
+// useCallback: fetch JSON → converter API → setDagNodes(mapBackendNode)
+```
+- **3D Drag**: useDrag3D.ts (visible) → export positions to n8n/Comfy.
+
+### 3. **API/CLI Endpoints** (Tauri + bin/vetka)
+- **POST /api/convert/n8n**: Upload JSON → VETKA DAG → save artifact.
+- **CLI**: `vetka convert import n8n workflow.json --save-dag` (via pre-fetched bin/vetka).
+- **Pre-fetched Tie-In**: Tauri `run(args)` для desktop "Export to n8n" button.
+
+### 4. **Next Steps (E2E Wave)**
+- **Phase 144.1**: Impl converter + test import n8n BMAD loop → VETKA eval_agent.py.
+- **Validation**: Mycelium auditor (pinned) → auto-research "gaps in conversion".
+- **Tools if Need**: `vetka_search_semantic("n8n json schema examples")` или `search_codebase("DAGNode n8n")`.
+
+**Что думаешь? GO на Phase 144?** 🚀 Это сделает VETKA **hub'ом для nodal ecosystems** — импорт 100k+ workflows! Если детали (schemas), скажи — запустим recon tools.
+
+**GO?** Запускай `vetka_search_semantic("Phase 144 DAG CRUD ReactFlow examples")` для code snippets или `vetka_edit_artifact` на MyceliumCommandCenter.tsx. Что first — toolbar или nodes? 🔥

@@ -35,6 +35,7 @@ import time
 import logging
 import json
 import re
+import base64
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,7 @@ from src.agents.role_prompts import (
     RESEARCHER_SYSTEM_PROMPT,
     get_agent_prompt,
 )
+from src.voice.voice_assignment_registry import get_voice_assignment_registry
 
 # Phase 55.1: MCP session init
 from src.mcp.tools.session_tools import vetka_session_init
@@ -148,6 +150,298 @@ MCP_AGENTS = {
 
 # MARKER_117_3: Agents that auto-dispatch to Mycelium pipeline on @mention
 HEARTBEAT_AGENTS = {"dragon", "doctor", "mycelium", "pipeline"}  # pipeline kept as alias
+
+
+def _normalize_agent_role(raw_agent_id: str) -> str:
+    role = (raw_agent_id or "").strip().lower().replace("@", "")
+    return role or "unknown"
+
+
+def _language_for_text(text: str) -> str:
+    return "ru" if re.search(r"[А-Яа-яЁё]", text or "") else "en"
+
+
+def _waveform_from_audio(audio_bytes: bytes, points: int = 48) -> list:
+    # Coarse waveform proxy from raw bytes for UI timeline preview.
+    if not audio_bytes:
+        return []
+    length = len(audio_bytes)
+    step = max(1, length // points)
+    out = []
+    for i in range(0, length, step):
+        chunk = audio_bytes[i : i + step]
+        if not chunk:
+            continue
+        mean_val = sum(chunk) / len(chunk)
+        out.append(round(abs(mean_val - 128.0) / 128.0, 4))
+        if len(out) >= points:
+            break
+    return out
+
+
+async def _resolve_group_voice_assignment(
+    *,
+    group_id: str,
+    agent_id: str,
+    model_source: str | None,
+    model_id: str | None,
+) -> dict:
+    """
+    Resolve stable voice lock for group+role.
+    Returns empty dict on failure.
+    """
+    try:
+        registry = get_voice_assignment_registry()
+        role_norm = _normalize_agent_role(agent_id)
+        return await registry.get_or_assign_group_role(
+            group_id=group_id or "unknown_group",
+            role=role_norm,
+            provider=model_source or "unknown",
+            model_id=model_id or "unknown",
+            tts_provider="qwen3",
+        )
+    except Exception as exc:
+        logger.warning("[VOICE_S2] assignment fallback for %s/%s: %s", model_source, model_id, exc)
+        return {}
+
+
+def _build_voice_contract_stub(
+    *,
+    group_id: str,
+    message_id: str,
+    agent_id: str,
+    model_id: str,
+    model_source: str = None,
+    full_message: str = "",
+) -> dict:
+    """
+    MARKER_156.VOICE.S1_BACKEND_STUB: Voice message contract payload (S1 scaffold).
+    S1 emits schema-complete placeholders before full TTS pipeline lands.
+    """
+    provider = model_source or "unknown"
+    model_identity_key = f"{provider}:{model_id}" if model_id else provider
+
+    return {
+        "id": message_id,
+        "group_id": group_id,
+        "agent_id": agent_id,
+        "full_message": full_message,
+        "text_preview": (full_message or "")[:160],
+        "metadata": {
+            "model": model_id,
+            "model_source": model_source,
+            "voice_contract_version": "s1",
+            "voice_enabled": False,
+            "voice_reason": "S1_contract_only_no_tts_pipeline",
+            "audio": {
+                "format": None,
+                "duration_ms": None,
+                "waveform": [],
+                "storage_id": None,
+                "url": None,
+            },
+            "voice": {
+                "voice_id": None,
+                "tts_provider": None,
+                "model_identity_key": model_identity_key,
+                "persona_tag": None,
+            },
+        },
+    }
+
+
+async def _emit_group_voice_contract_stub(
+    sio,
+    *,
+    group_id: str,
+    message_id: str,
+    agent_id: str,
+    model_id: str,
+    model_source: str = None,
+    full_message: str = "",
+):
+    from src.voice.tts_engine import (
+        get_tts_engine,
+        split_into_sentences,
+        estimate_audio_duration,
+    )
+
+    payload = _build_voice_contract_stub(
+        group_id=group_id,
+        message_id=message_id,
+        agent_id=agent_id,
+        model_id=model_id,
+        model_source=model_source,
+        full_message=full_message,
+    )
+    # MARKER_156.VOICE.S2_ASSIGNMENT_INTEGRATION: Resolve persistent model->voice identity.
+    try:
+        assignment = await _resolve_group_voice_assignment(
+            group_id=group_id,
+            agent_id=agent_id,
+            model_source=model_source,
+            model_id=model_id,
+        )
+        if assignment:
+            payload["metadata"]["voice"] = {
+                "voice_id": assignment.get("voice_id"),
+                "tts_provider": assignment.get("tts_provider"),
+                "model_identity_key": assignment.get("model_identity_key"),
+                "persona_tag": assignment.get("persona_tag"),
+            }
+            payload["metadata"]["voice_enabled"] = True
+            payload["metadata"]["voice_reason"] = "S6_role_voice_locked"
+    except Exception as exc:
+        logger.warning("[VOICE_S2] assignment fallback for %s/%s: %s", model_source, model_id, exc)
+
+    # MARKER_156.VOICE.S3_TTS_STREAM: Real-time sentence-level TTS stream for group agent output.
+    async def _emit_stream_end_with_payload(reason: str):
+        await sio.emit(
+            "group_voice_stream_end",
+            {
+                "id": message_id,
+                "group_id": group_id,
+                "agent_id": agent_id,
+                "audio": payload["metadata"].get("audio"),
+                "voice": payload["metadata"].get("voice"),
+                "text_preview": payload.get("text_preview", ""),
+                "reason": reason,
+            },
+            room=f"group_{group_id}",
+        )
+
+    voice_meta = payload["metadata"].get("voice", {}) or {}
+    audio_meta = payload["metadata"].get("audio", {}) or {}
+    full_text = (full_message or "").strip()
+    combined_waveform = []
+    total_duration_ms = 0
+    final_format = None
+    stream_started = False
+
+    if full_text:
+        try:
+            await sio.emit(
+                "group_voice_stream_start",
+                {
+                    "id": message_id,
+                    "group_id": group_id,
+                    "agent_id": agent_id,
+                    "voice": voice_meta,
+                },
+                room=f"group_{group_id}",
+            )
+            stream_started = True
+
+            language = _language_for_text(full_text)
+            sentences = split_into_sentences(full_text) or [full_text]
+            sentences = [s.strip() for s in sentences if s and s.strip()]
+
+            async with get_tts_engine(primary="qwen3", language=language) as tts_engine:
+                for seq, sentence in enumerate(sentences):
+                    try:
+                        tts_result = await tts_engine.synthesize_with_result(
+                            sentence,
+                            voice=voice_meta.get("voice_id") or "default",
+                        )
+                        audio_bytes = tts_result.audio or b""
+                        if not audio_bytes:
+                            continue
+
+                        sentence_duration_ms = int(estimate_audio_duration(sentence) * 1000)
+                        sentence_waveform = _waveform_from_audio(audio_bytes, points=32)
+
+                        total_duration_ms += max(0, sentence_duration_ms)
+                        combined_waveform.extend(sentence_waveform[:12])
+                        final_format = tts_result.format or final_format
+                        voice_meta["tts_provider"] = tts_result.provider or voice_meta.get("tts_provider")
+
+                        await sio.emit(
+                            "group_voice_stream_chunk",
+                            {
+                                "id": message_id,
+                                "group_id": group_id,
+                                "agent_id": agent_id,
+                                "seq": seq,
+                                "is_final": False,
+                                "audio_chunk_b64": base64.b64encode(audio_bytes).decode("ascii"),
+                                "format": tts_result.format,
+                                "duration_ms": sentence_duration_ms,
+                                "waveform": sentence_waveform,
+                            },
+                            room=f"group_{group_id}",
+                        )
+                    except Exception as sentence_exc:
+                        logger.warning(
+                            "[VOICE_S3] sentence TTS failed for %s/%s: %s",
+                            model_source,
+                            model_id,
+                            sentence_exc,
+                        )
+
+            if total_duration_ms > 0:
+                payload["metadata"]["voice_enabled"] = True
+                payload["metadata"]["voice_reason"] = "S3_tts_stream_ok"
+                audio_meta["duration_ms"] = total_duration_ms
+                audio_meta["format"] = final_format or audio_meta.get("format") or "wav"
+                audio_meta["waveform"] = combined_waveform[:64]
+                payload["metadata"]["audio"] = audio_meta
+                payload["metadata"]["voice"] = voice_meta
+                await _emit_stream_end_with_payload("s3_ok")
+            else:
+                payload["metadata"]["voice_enabled"] = False
+                payload["metadata"]["voice_reason"] = "S3_tts_stream_no_audio"
+                await _emit_stream_end_with_payload("s3_no_audio")
+        except Exception as stream_exc:
+            payload["metadata"]["voice_enabled"] = False
+            payload["metadata"]["voice_reason"] = f"S3_tts_stream_error:{type(stream_exc).__name__}"
+            logger.warning(
+                "[VOICE_S3] stream failed for %s/%s: %s",
+                model_source,
+                model_id,
+                stream_exc,
+            )
+            if stream_started:
+                await _emit_stream_end_with_payload("s3_error")
+    else:
+        payload["metadata"]["voice_enabled"] = False
+        payload["metadata"]["voice_reason"] = "S3_empty_text"
+        await _emit_stream_end_with_payload("s3_empty_text")
+
+    await sio.emit("group_voice_message", payload, room=f"group_{group_id}")
+
+
+def _resolve_voice_reply_policy(group_object, data: dict) -> tuple[str, bool]:
+    """
+    MARKER_156.VOICE.S5_POLICY_BACKEND: Resolve text/auto/forced policy for group voice replies.
+    Returns: (mode, should_emit_voice)
+    """
+    allowed = {"text_only", "voice_auto", "voice_forced"}
+    requested_mode = str(data.get("voice_reply_mode", "")).strip().lower()
+    if requested_mode not in allowed:
+        requested_mode = None
+    voice_input = bool(data.get("voice_input", False))
+
+    if group_object:
+        shared = group_object.shared_context if isinstance(group_object.shared_context, dict) else {}
+        mode = shared.get("voice_reply_mode", "voice_auto")
+        if mode not in allowed:
+            mode = "voice_auto"
+        if requested_mode:
+            mode = requested_mode
+            shared["voice_reply_mode"] = mode
+            if mode != "voice_auto":
+                shared["voice_auto_activated"] = False
+        if mode == "voice_auto" and voice_input:
+            shared["voice_auto_activated"] = True
+        if mode == "voice_auto" and not voice_input:
+            shared["voice_auto_activated"] = False
+        auto_active = bool(shared.get("voice_auto_activated", False))
+        should_emit = mode == "voice_forced" or (mode == "voice_auto" and (voice_input or auto_active))
+        return mode, should_emit
+
+    mode = requested_mode or "voice_auto"
+    should_emit = mode == "voice_forced" or (mode == "voice_auto" and voice_input)
+    return mode, should_emit
 
 
 async def notify_mcp_agents(
@@ -634,6 +928,24 @@ async def handle_intake_reply(chat_id: str, reply_text: str) -> bool:
         # Immediate pipeline execution
         preset = "titan_core" if team == "titan" else "dragon_silver"
 
+        # MARKER_176.6: Also track in MCC task board (same as "queue" path)
+        # Previously "now" path executed pipeline without board entry — invisible to MCC
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
+        board_task_id = board.add_task(
+            title=task_text[:100],
+            description=task_text,
+            priority=1,  # High — user chose "now"
+            phase_type=phase_type,
+            preset=preset,
+            status="in_progress",  # Already dispatching
+            source=f"intake_{agent_id}_now",
+            tags=[team, agent_id, "immediate"],
+            source_group_id=chat_id,
+        )
+        logger.info(f"[INTAKE] MARKER_176.6: Now task tracked in board as {board_task_id}")
+        # MARKER_176.6_END
+
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 await client.post(
@@ -935,6 +1247,14 @@ Respond ONLY with valid JSON. No other text."""
                         },
                         room=f"group_{group_id}",
                     )
+                    await _emit_group_voice_contract_stub(
+                        sio,
+                        group_id=group_id,
+                        message_id=msg_id,
+                        agent_id="@Hostess",
+                        model_id="qwen2:7b",
+                        full_message=answer,
+                    )
 
                     # Store message
                     await manager.send_message(
@@ -966,6 +1286,14 @@ Respond ONLY with valid JSON. No other text."""
                             "metadata": {"model": "qwen2:7b", "agent_type": "Hostess"},
                         },
                         room=f"group_{group_id}",
+                    )
+                    await _emit_group_voice_contract_stub(
+                        sio,
+                        group_id=group_id,
+                        message_id=msg_id,
+                        agent_id="@Hostess",
+                        model_id="qwen2:7b",
+                        full_message=delegation_msg,
                     )
 
                     await manager.send_message(
@@ -1081,6 +1409,14 @@ Respond naturally as the helpful Hostess. No JSON needed."""
                     },
                     room=f"group_{group_id}",
                 )
+                await _emit_group_voice_contract_stub(
+                    sio,
+                    group_id=group_id,
+                    message_id=msg_id,
+                    agent_id="@Hostess",
+                    model_id="qwen2:7b",
+                    full_message=final_msg,
+                )
 
                 await manager.send_message(
                     group_id=group_id,
@@ -1148,7 +1484,7 @@ def register_group_message_handler(sio, app=None):
         group_id = data.get("group_id")
         sender_id = data.get("sender_id", "user")
         content = data.get("content", "").strip()
-        reply_to_id = data.get("reply_to")  # Phase 80.7: Message ID being replied to
+        reply_to_id = data.get("reply_to_id") or data.get("reply_to")  # Phase 80.7: Message ID being replied to
         pinned_files = data.get(
             "pinned_files", []
         )  # Phase 80.11: Pinned files for context
@@ -1183,6 +1519,7 @@ def register_group_message_handler(sio, app=None):
         group = manager.get_group(group_id)
         # Phase 80.28: Get Group object for smart reply decay
         group_object = manager.get_group_object(group_id)
+        voice_reply_mode, should_emit_voice = _resolve_voice_reply_policy(group_object, data)
 
         if not group:
             await sio.emit(
@@ -1193,6 +1530,8 @@ def register_group_message_handler(sio, app=None):
         # Store user message in group (Phase 80.11: Include pinned_files in metadata)
         # Phase 111.17: Include reply metadata for group chat reply UI
         message_metadata = {}
+        message_metadata["voice_reply_mode"] = voice_reply_mode
+        message_metadata["voice_input"] = bool(data.get("voice_input", False))
         if pinned_files:
             message_metadata["pinned_files"] = pinned_files
         if reply_to_id:
@@ -1669,6 +2008,16 @@ Do NOT confuse yourself with other models.
                     },
                     room=f"group_{group_id}",
                 )
+                if should_emit_voice:
+                    await _emit_group_voice_contract_stub(
+                        sio,
+                        group_id=group_id,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        model_id=model_id,
+                        model_source=model_source,
+                        full_message=response_text,
+                    )
 
                 # Phase 111.18: Removed redundant group_message emit
                 # Agent response is already sent via group_stream_end above
@@ -1884,6 +2233,16 @@ Do NOT confuse yourself with other models.
                     },
                     room=f"group_{group_id}",
                 )
+                if should_emit_voice:
+                    await _emit_group_voice_contract_stub(
+                        sio,
+                        group_id=group_id,
+                        message_id=msg_id,
+                        agent_id=agent_id,
+                        model_id=model_id,
+                        model_source=model_source,
+                        full_message="",
+                    )
 
                 error_msg = await manager.send_message(
                     group_id=group_id,

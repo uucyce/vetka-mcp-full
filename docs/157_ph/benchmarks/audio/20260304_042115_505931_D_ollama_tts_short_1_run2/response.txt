@@ -1,0 +1,4 @@
+Базовые файлы:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py` - Этот файл необходим для проверки маркеров в watcher_routes.py.
+   Фраза: "Watchdog scan uses QdrantUpdater which writes only

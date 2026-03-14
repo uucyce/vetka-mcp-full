@@ -1,0 +1,13 @@
+Базовый файл `data/playground_proposals.json` уже создан с примером содержимого:
+
+```json
+[
+  {
+    "id": "prop_1740001234",
+    "agent": "dragon_gold",
+    "description": "Add new fractal memory layer using Engram + CAM hybrid",
+    "confidence": 0.96,
+    "status": "pending",
+    "diff_preview": "diff --git a/src/memory/engram.py b/src/memory/engram.py\n...",
+    "tokens_used": 12480,
+    "created_at": 1740001234,

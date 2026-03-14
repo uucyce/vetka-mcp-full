@@ -21,11 +21,13 @@ import { FloatingWindow } from '../artifact/FloatingWindow';
 import { ArtifactPanel } from '../artifact/ArtifactPanel';
 import { ChatSidebar } from './ChatSidebar';
 import { ScanPanel, type ScannerEvent } from '../scanner/ScanPanel';
-import { UnifiedSearchBar } from '../search/UnifiedSearchBar';
+import { UnifiedSearchBar, type SearchContext } from '../search/UnifiedSearchBar';
 import type { ChatMessage, SearchResult } from '../../types/chat';
+import type { MycoModeAHint } from '../myco/mycoModeATypes';
 import { savePinnedFiles, getChatsForFile } from '../../utils/chatApi';
 import { API_BASE } from '../../config/api.config';
 import { isTauri, openLiveWebWindow } from '../../config/tauri';
+import { useVoiceModeStore } from '../../store/useVoiceModeStore';
 
 // Phase 48.3: Reply target type
 // Phase 111.10.2: Added source for multi-provider routing
@@ -36,14 +38,39 @@ interface ReplyTarget {
   source?: string;  // Phase 111.10.2: Provider source (poe, polza, etc.)
 }
 
+interface MessageRouteSnapshot {
+  replyTo: ReplyTarget | null;
+  selectedModel: string | null;
+  selectedModelSource: string | null;
+}
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
   leftPanel: 'none' | 'history' | 'models';
   setLeftPanel: (value: 'none' | 'history' | 'models') => void;
+  onVoiceTrigger?: (role?: 'myco' | 'vetka') => void;
+  onSpeakText?: (text: string, role?: 'myco' | 'vetka', options?: { autoListenAfter?: boolean }) => void;
+  voiceState?: 'idle' | 'listening' | 'thinking' | 'speaking';
+  voiceLevel?: number;
+  mycoHint?: MycoModeAHint | null;
+  mycoStateKey?: string;
 }
 
-export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
+type VoiceReplyMode = 'text_only' | 'voice_auto' | 'voice_forced';
+
+export function ChatPanel({
+  isOpen,
+  onClose,
+  leftPanel,
+  setLeftPanel,
+  onVoiceTrigger,
+  onSpeakText,
+  voiceState,
+  voiceLevel,
+  mycoHint,
+  mycoStateKey,
+}: Props) {
   const chatMessages = useStore((s) => s.chatMessages);
   const currentWorkflow = useStore((s) => s.currentWorkflow);
   const isTyping = useStore((s) => s.isTyping);
@@ -67,11 +94,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 45: Use Socket.IO instead of HTTP
   // Phase 57.3: Added joinGroup, leaveGroup for group creation
-  const { sendMessage, isConnected, joinGroup, leaveGroup, sendGroupMessage } = useSocket();
+  const { sendMessage, isConnected, joinGroup, leaveGroup, sendGroupMessage, transcribeVoiceSample } = useSocket();
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const panelRootRef = useRef<HTMLDivElement>(null);
   // MARKER_137.2: Prevent pinned autosave race while loading/switching chats.
   const isHydratingChatPinsRef = useRef(false);
 
@@ -101,10 +129,31 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     return (saved === 'right') ? 'right' : 'left';
   });
 
+  useEffect(() => {
+    // MARKER_163A.MODE_A.SILENCE.ON_TYPING.V1:
+    // Main-surface MYCO guide should stay silent while the user already has pending chat input.
+    window.dispatchEvent(new CustomEvent('vetka-myco-chat-input-state', {
+      detail: {
+        isOpen,
+        empty: input.trim().length === 0,
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('vetka-myco-chat-input-state', {
+        detail: {
+          isOpen: false,
+          empty: true,
+        },
+      }));
+    };
+  }, [input, isOpen]);
+
   // Phase 50.3: Left panel state now comes from App.tsx as props
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   // Phase 111.9: Source for multi-provider routing (poe, polza, openrouter, etc.)
   const [selectedModelSource, setSelectedModelSource] = useState<string | null>(null);
+  // Phase 48.3: Reply target state (must be declared before memos that read it).
+  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
 
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
 
@@ -138,12 +187,31 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   // Phase 56.6: Added 'group' tab
   // Phase 80.12: Removed 'group-settings' - using GroupCreatorPanel edit mode instead
   const [activeTab, setActiveTab] = useState<'chat' | 'scanner' | 'group'>('chat');
+  const [scannerSource, setScannerSource] = useState<'local' | 'cloud' | 'browser' | 'social'>('local');
+  const [scannerLaneContext, setScannerLaneContext] = useState<SearchContext>('myco');
 
   // Phase 56.6: Model selection for group creation
   const [modelForGroup, setModelForGroup] = useState<string | null>(null);
 
   // Phase 57.3: Active group ID for group chat mode
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('vetka-myco-chat-surface-state', {
+      detail: {
+        activeTab,
+        hasActiveGroup: Boolean(activeGroupId),
+      },
+    }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('vetka-myco-chat-surface-state', {
+        detail: {
+          activeTab: 'chat',
+          hasActiveGroup: false,
+        },
+      }));
+    };
+  }, [activeGroupId, activeTab]);
 
   const normalizeFsPath = useCallback((value: string) => {
     const raw = String(value || '').trim();
@@ -243,13 +311,27 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   const [voiceModels, setVoiceModels] = useState<string[]>([]);
 
   // Phase 60.5: Voice-only mode toggle (Trigger 2)
-  const [voiceOnlyMode, setVoiceOnlyMode] = useState(false);
-
+  // S6.3: Solo chat starts in voice mode by default until user sends plain text.
+  const voiceOnlyMode = useVoiceModeStore((state) => state.voiceOnlyMode);
+  const enableVoiceMode = useVoiceModeStore((state) => state.enableVoiceMode);
+  const disableVoiceMode = useVoiceModeStore((state) => state.disableVoiceMode);
+  const setVoiceOnlyMode = useVoiceModeStore((state) => state.setVoiceOnlyMode);
   // Phase 60.5: Auto-continue voice after response (Trigger 3)
   const [autoContinueVoice, setAutoContinueVoice] = useState(false);
 
   // Phase 60.5.1: Realtime voice mode (PCM streaming + VAD)
-  const [realtimeVoiceEnabled, setRealtimeVoiceEnabled] = useState(false);
+  // S6.3: keep in sync with solo voice default policy.
+  const realtimeVoiceEnabled = useVoiceModeStore((state) => state.realtimeVoiceEnabled);
+  const setRealtimeStore = useVoiceModeStore((state) => state.setRealtimeVoiceEnabled);
+  // MARKER_156.VOICE.S5_UI_POLICY: User-facing voice reply policy switch.
+  const [voiceReplyMode, setVoiceReplyMode] = useState<VoiceReplyMode>(() => {
+    if (typeof window === 'undefined') return 'voice_auto';
+    const saved = localStorage.getItem('vetka_voice_reply_mode');
+    if (saved === 'voice_auto' || saved === 'voice_forced' || saved === 'text_only') {
+      return saved;
+    }
+    return 'voice_auto';
+  });
 
   // Phase I5: Chat drop zone state for file pinning
   const [isDragOver, setIsDragOver] = useState(false);
@@ -275,6 +357,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       })
       .catch(e => console.warn('[ChatPanel] Failed to load voice models:', e));
   }, []);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vetka_voice_reply_mode', voiceReplyMode);
+    }
+  }, [voiceReplyMode]);
 
   // Phase 54.4: Listen for external event to switch to scanner tab
   useEffect(() => {
@@ -437,6 +525,65 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       }));
     };
 
+    // MARKER_156.VOICE.S1_CHAT_VOICE_EVENT: Handle final voice message payload in group timeline.
+    const handleGroupVoiceMessage = (e: CustomEvent) => {
+      const data = e.detail;
+      if (data.group_id !== activeGroupId) return;
+
+      const messageId = data.id || crypto.randomUUID();
+      const agent = String(data.agent_id || '').replace('@', '') as ChatMessage['agent'];
+      const fullMessage = data.full_message || data.text_preview || '';
+      const audioMeta = data.metadata?.audio || {};
+      const voiceMeta = data.metadata?.voice || {};
+
+      useStore.setState((state) => {
+        const existing = state.chatMessages.find((m) => m.id === messageId);
+
+        if (existing) {
+          return {
+            chatMessages: state.chatMessages.map((msg) =>
+              msg.id === messageId
+                ? {
+                    ...msg,
+                    type: 'voice',
+                    content: fullMessage || msg.content,
+                    metadata: {
+                      ...msg.metadata,
+                      ...(data.metadata || {}),
+                      isStreaming: false,
+                      audio: audioMeta,
+                      voice: voiceMeta,
+                    },
+                  }
+                : msg
+            ),
+          };
+        }
+
+        return {
+          chatMessages: [
+            ...state.chatMessages,
+            {
+              id: messageId,
+              role: 'assistant',
+              agent,
+              content: fullMessage,
+              type: 'voice',
+              timestamp: new Date().toISOString(),
+              metadata: {
+                ...(data.metadata || {}),
+                model: data.metadata?.model,
+                model_source: data.metadata?.model_source,
+                audio: audioMeta,
+                voice: voiceMeta,
+                isStreaming: false,
+              },
+            },
+          ],
+        };
+      });
+    };
+
     const handleGroupError = (e: CustomEvent) => {
       const data = e.detail;
       console.error('[ChatPanel] Group error:', data.error);
@@ -453,6 +600,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     window.addEventListener('group-stream-start', handleGroupStreamStart as EventListener);
     window.addEventListener('group-stream-token', handleGroupStreamToken as EventListener);
     window.addEventListener('group-stream-end', handleGroupStreamEnd as EventListener);
+    window.addEventListener('group-voice-message', handleGroupVoiceMessage as EventListener);
     window.addEventListener('group-error', handleGroupError as EventListener);
 
     return () => {
@@ -460,6 +608,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       window.removeEventListener('group-stream-start', handleGroupStreamStart as EventListener);
       window.removeEventListener('group-stream-token', handleGroupStreamToken as EventListener);
       window.removeEventListener('group-stream-end', handleGroupStreamEnd as EventListener);
+      window.removeEventListener('group-voice-message', handleGroupVoiceMessage as EventListener);
       window.removeEventListener('group-error', handleGroupError as EventListener);
       // Phase 111.21: Cleanup RAF on unmount
       if (groupRafIdRef.current) {
@@ -615,7 +764,6 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [activeGroupId, currentGroupParticipants.length]);
 
   // Phase 48.3: Reply-to state
-  const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
 
   // Phase 80.9: Group ID copy state
   const [groupIdCopied, setGroupIdCopied] = useState(false);
@@ -916,8 +1064,22 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     }
   }, [addChatMessage, joinGroup]);
 
-  const handleSend = useCallback(() => {
-    if (!input.trim()) return;
+  const handleSend = useCallback((
+    overrideText?: string,
+    options?: {
+      skipLocalUserMessage?: boolean;
+      userMessageType?: ChatMessage['type'];
+      userMetadata?: ChatMessage['metadata'];
+      routeSnapshot?: MessageRouteSnapshot;
+    }
+  ) => {
+    const textToSend = (overrideText ?? input).trim();
+    if (!textToSend) return;
+    const outboundMessageType = options?.userMessageType || 'text';
+    const routeSnapshot = options?.routeSnapshot;
+    const effectiveReplyTo = routeSnapshot?.replyTo ?? replyTo;
+    const effectiveSelectedModel = routeSnapshot?.selectedModel ?? selectedModel;
+    const effectiveSelectedModelSource = routeSnapshot?.selectedModelSource ?? selectedModelSource;
 
     // Phase 45: Check socket connection
     if (!isConnected) {
@@ -939,7 +1101,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     // Phase 80.35: Pass replyTo.id for reply routing
     if (activeGroupId) {
       // console.log('[Chat] Sending GROUP message to:', activeGroupId);
-      sendGroupMessage(activeGroupId, 'user', input.trim(), replyTo?.id);
+      const inferredVoiceInput = voiceOnlyMode || realtimeVoiceEnabled;
+      sendGroupMessage(activeGroupId, 'user', textToSend, {
+        replyToId: effectiveReplyTo?.id,
+        voiceReplyMode,
+        voiceInput: inferredVoiceInput,
+      });
       // Don't add user message locally - backend will broadcast it back
       setInput('');
       setReplyTo(null);  // Phase 80.35: Clear reply after sending
@@ -947,27 +1114,34 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       return;
     }
 
-    const userMessage: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: 'user',
-      content: input,
-      type: 'text',
-      timestamp: new Date().toISOString(),
-    };
+    if (outboundMessageType !== 'voice') {
+      disableVoiceMode('text_typed');
+      setRealtimeStore(false);
+    }
 
-    addChatMessage(userMessage);
+    if (!options?.skipLocalUserMessage) {
+      const userMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'user',
+        content: textToSend,
+        type: outboundMessageType,
+        timestamp: new Date().toISOString(),
+        metadata: options?.userMetadata,
+      };
+      addChatMessage(userMessage);
+    }
 
     // console.log('[Chat] Sending message via Socket.IO');
 
     // Phase 48.3: Use replyTo model if replying, otherwise selectedModel
     // Phase 57.2: Also try to extract model from @mention in input
-    let modelToUse = replyTo?.model || selectedModel || undefined;
+    let modelToUse = effectiveReplyTo?.model || effectiveSelectedModel || undefined;
 
     // Phase 57.2: If no model selected, try to extract from @mention in input
     // This handles cases like "@nvidia/nemotron-3-nano-30b-a3b:free" typed/pasted directly
     if (!modelToUse) {
       // Match full model IDs including / for provider prefix
-      const mentionMatch = input.match(/@([\w\-.:\/]+)/);
+      const mentionMatch = textToSend.match(/@([\w\-.:\/]+)/);
       if (mentionMatch) {
         const mentionedModel = mentionMatch[1];
         // Check if it looks like a model ID (contains / or :)
@@ -993,7 +1167,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       if (!fileName) {
         // Extract first 4 meaningful words from message (skip common words)
         const skipWords = new Set(['the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'to', 'of', 'in', 'for', 'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'between', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 'when', 'where', 'why', 'how', 'all', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'not', 'only', 'same', 'so', 'than', 'too', 'very', 'just', 'and', 'but', 'or', 'nor', 'yet', 'both', 'either', 'neither', 'i', 'me', 'my', 'you', 'your', 'he', 'she', 'it', 'we', 'they', 'this', 'that', 'what', 'which', 'who', 'whom']);
-        const words = input.trim()
+        const words = textToSend
           .replace(/@[\w\-.:\/]+/g, '')  // Remove @mentions
           .split(/\s+/)
           .filter(w => w.length > 2 && !skipWords.has(w.toLowerCase()))
@@ -1018,22 +1192,207 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       // Phase 111.9: Pass modelSource for multi-provider routing
       // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
       // MARKER_109_14: Pass fileName for chat naming
-      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
-      sendMessage(input.trim(), contextPath, modelToUse, newChatId, sourceToUse, fileName);
+      const sourceToUse = effectiveReplyTo?.source || effectiveSelectedModelSource || undefined;
+      sendMessage(
+        textToSend,
+        contextPath,
+        modelToUse,
+        newChatId,
+        sourceToUse,
+        fileName,
+        {
+          messageType: options?.userMessageType || 'text',
+          messageMetadata: (options?.userMetadata || {}) as Record<string, unknown>,
+        }
+      );
     } else {
       // Existing chat - use currentChatId from state
       // Phase 111.9: Pass modelSource for multi-provider routing
       // Phase 111.10.2: Use replyTo.source if replying, otherwise selectedModelSource
-      const sourceToUse = replyTo?.source || selectedModelSource || undefined;
-      sendMessage(input.trim(), contextPath, modelToUse, currentChatId || undefined, sourceToUse);
+      const sourceToUse = effectiveReplyTo?.source || effectiveSelectedModelSource || undefined;
+      sendMessage(
+        textToSend,
+        contextPath,
+        modelToUse,
+        currentChatId || undefined,
+        sourceToUse,
+        undefined,
+        {
+          messageType: options?.userMessageType || 'text',
+          messageMetadata: (options?.userMetadata || {}) as Record<string, unknown>,
+        }
+      );
     }
 
     setInput('');
-    setSelectedModel(null);
-    setSelectedModelSource(null);  // Phase 111.9: Clear source too
-    setReplyTo(null);  // Clear reply after sending
+    if (!routeSnapshot) {
+      setSelectedModel(null);
+      setSelectedModelSource(null);  // Phase 111.9: Clear source too
+      setReplyTo(null);  // Clear reply after sending
+    }
     setIsTyping(true);
-  }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes]);
+  }, [input, isConnected, selectedNode, selectedModel, replyTo, addChatMessage, sendMessage, setIsTyping, activeTab, lastScannedFolder, activeGroupId, sendGroupMessage, currentChatInfo, pinnedFileIds, nodes, voiceOnlyMode, realtimeVoiceEnabled, voiceReplyMode]);
+
+  const blobToBase64 = useCallback((blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = String(reader.result || '');
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        if (!base64) {
+          reject(new Error('Failed to encode audio'));
+          return;
+        }
+        resolve(base64);
+      };
+      reader.onerror = () => reject(new Error('Failed to read audio blob'));
+      reader.readAsDataURL(blob);
+    });
+  }, []);
+
+  const uploadVoiceSample = useCallback(async (blob: Blob): Promise<{
+    storage_id: string;
+    url: string;
+    format?: string;
+    duration_ms?: number | null;
+  } | null> => {
+    try {
+      const ext = (blob.type || '').includes('wav')
+        ? 'wav'
+        : ((blob.type || '').includes('mp4') ? 'mp4' : 'webm');
+      const form = new FormData();
+      form.append('file', blob, `voice_sample.${ext}`);
+
+      const response = await fetch(`${API_BASE}/voice/storage`, {
+        method: 'POST',
+        body: form,
+      });
+      if (!response.ok) return null;
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const handleVoiceRecorded = useCallback(async (payload: {
+    blob: Blob;
+    waveform: number[];
+    durationMs: number;
+    mimeType: string;
+  }) => {
+    if (!isConnected) {
+      addChatMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Error: Not connected to server',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    if (activeGroupId) {
+      addChatMessage({
+        id: crypto.randomUUID(),
+        role: 'system',
+        content: 'Group voice upload will be connected next. Solo voice is active now.',
+        type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const routeSnapshot: MessageRouteSnapshot = {
+      replyTo,
+      selectedModel,
+      selectedModelSource,
+    };
+    setReplyTo(null);
+    setSelectedModel(null);
+    setSelectedModelSource(null);
+    const messageId = crypto.randomUUID();
+    const audioUrl = URL.createObjectURL(payload.blob);
+
+    addChatMessage({
+      id: messageId,
+      role: 'user',
+      content: 'Распознаю голосовое...',
+      type: 'voice',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        audio: {
+          url: audioUrl,
+          format: payload.mimeType || 'audio/webm',
+          duration_ms: payload.durationMs,
+          waveform: payload.waveform,
+        },
+      },
+    });
+
+    try {
+      const uploadPromise = uploadVoiceSample(payload.blob);
+      const audioBase64 = await blobToBase64(payload.blob);
+      const adaptiveSttTimeoutMs = Math.max(
+        45000,
+        Math.min(180000, Math.floor(payload.durationMs * 2.5 + 30000))
+      );
+      const transcript = (
+        await transcribeVoiceSample(audioBase64, 'whisper', { timeoutMs: adaptiveSttTimeoutMs })
+      ).trim();
+      if (!transcript) throw new Error('STT returned empty');
+      const upload = await uploadPromise;
+
+      useStore.setState((state) => ({
+        chatMessages: state.chatMessages.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                content: transcript,
+                metadata: {
+                  ...msg.metadata,
+                  audio: {
+                    ...(msg.metadata?.audio || {}),
+                    storage_id: upload?.storage_id || null,
+                    format: upload?.format || payload.mimeType || 'audio/webm',
+                    duration_ms: upload?.duration_ms ?? payload.durationMs,
+                  },
+                },
+              }
+            : msg
+        ),
+      }));
+
+      // Voice reply mode ON after successful voice message in solo chat.
+      enableVoiceMode('voice_sent');
+      setRealtimeStore(true);
+
+      handleSend(transcript, {
+        skipLocalUserMessage: true,
+        userMessageType: 'voice',
+        routeSnapshot,
+        userMetadata: {
+          audio: {
+            storage_id: upload?.storage_id || null,
+            format: upload?.format || payload.mimeType || 'audio/webm',
+            duration_ms: upload?.duration_ms ?? payload.durationMs,
+            waveform: payload.waveform,
+          },
+        },
+      });
+    } catch (err) {
+      const errorText = err instanceof Error ? err.message : 'Voice transcription failed';
+      useStore.setState((state) => ({
+        chatMessages: state.chatMessages.map((msg) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                content: `Ошибка STT: ${errorText}`,
+              }
+            : msg
+        ),
+      }));
+    }
+  }, [activeGroupId, addChatMessage, blobToBase64, handleSend, isConnected, replyTo, selectedModel, selectedModelSource, transcribeVoiceSample, uploadVoiceSample]);
 
   // Phase 57.9: Listen for auto-send event (triggered by Ask Hostess button)
   useEffect(() => {
@@ -1049,6 +1408,25 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       window.removeEventListener('vetka-auto-send-message', handleAutoSend);
     };
   }, [input, handleSend]);
+
+  // MARKER_158.P5_3_CHAT_PREFILL: Media-mode guided fallback questions can prefill chat input.
+  useEffect(() => {
+    const handlePrefill = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const msg = String(e.detail?.message || '').trim();
+      const autoSend = Boolean(e.detail?.autoSend);
+      if (!msg) return;
+      setInput(msg);
+      if (autoSend) {
+        window.setTimeout(() => window.dispatchEvent(new CustomEvent('vetka-auto-send-message')), 60);
+      }
+    };
+
+    window.addEventListener('vetka-chat-prefill', handlePrefill);
+    return () => {
+      window.removeEventListener('vetka-chat-prefill', handlePrefill);
+    };
+  }, []);
 
   // Phase 48.3: Handle reply callback
   // Phase 111.10.2: Extract source from model name if present
@@ -1249,7 +1627,15 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [renameValue, currentChatInfo, activeGroupId, currentChatId]);
 
   // Phase 107.2: New Chat button handler
-  const handleNewChat = useCallback(() => {
+  const handleNewChat = useCallback(async () => {
+    // Flush current chat pins before switching context, then start new chat clean.
+    if (currentChatId && !isHydratingChatPinsRef.current) {
+      const pinnedPaths = pinnedFileIds
+        .map((id) => normalizeFsPath(String(nodes[id]?.path || '')))
+        .filter(Boolean);
+      void savePinnedFiles(currentChatId, pinnedFileIds, pinnedPaths);
+    }
+
     // 1. Clear current chat state
     clearChat();
 
@@ -1258,6 +1644,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     setCurrentChatId(null);
     // FIX_109.4: Clear store
     setStoreChatId(null);
+    // New chat must not inherit pinned context from previous chat.
+    clearPinnedFiles();
 
     // 3. Leave group if in group chat
     if (activeGroupId) {
@@ -1265,8 +1653,85 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       setActiveGroupId(null);
     }
 
-    console.log('[ChatPanel] Started new chat');
-  }, [clearChat, activeGroupId, leaveGroup, setStoreChatId]);
+    // Create persisted draft chat immediately so rename works before first message.
+    // Explicit "New Chat" must start clean and must not inherit previous file names.
+    const contextType: 'topic' = 'topic';
+    const draftName = 'New Chat';
+
+    try {
+      const response = await fetch('/api/chats', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          display_name: draftName,
+          context_type: contextType,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const createdId = String(data.chat_id || '');
+        if (createdId) {
+          setCurrentChatId(createdId);
+          setStoreChatId(createdId);
+          setCurrentChatInfo({
+            id: createdId,
+            displayName: draftName,
+            fileName: draftName,
+            contextType,
+            isSaved: true,
+          });
+          setRenameValue(draftName);
+          setIsRenaming(true);
+          window.dispatchEvent(new CustomEvent('chat-created', { detail: { chatId: createdId } }));
+          console.log('[ChatPanel] Started new persisted chat:', createdId);
+          return;
+        }
+      }
+    } catch (error) {
+      console.error('[ChatPanel] Failed to create draft chat:', error);
+    }
+
+    // Fallback (should be rare): keep UI usable and allow first-message creation path.
+    setCurrentChatInfo({
+      id: '',
+      displayName: draftName,
+      fileName: draftName,
+      contextType,
+      isSaved: false,
+    });
+    setRenameValue(draftName);
+    setIsRenaming(true);
+    console.log('[ChatPanel] Started new chat in fallback mode');
+  }, [
+    activeGroupId,
+    clearChat,
+    clearPinnedFiles,
+    currentChatId,
+    leaveGroup,
+    nodes,
+    normalizeFsPath,
+    pinnedFileIds,
+    selectedNode,
+    setStoreChatId,
+  ]);
+
+  // Keep header title in sync when chat is renamed from sidebar/history.
+  useEffect(() => {
+    const handleChatRenamed = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {};
+      const chatId = String(detail.chatId || '');
+      const newName = String(detail.newName || '').trim();
+      if (!chatId || !newName) return;
+      setCurrentChatInfo((prev) => {
+        if (!prev) return prev;
+        if (prev.id !== chatId) return prev;
+        return { ...prev, displayName: newName, fileName: newName };
+      });
+    };
+    window.addEventListener('chat-renamed', handleChatRenamed);
+    return () => window.removeEventListener('chat-renamed', handleChatRenamed);
+  }, []);
 
   // Phase 50.1: Handle selecting a chat from history
   // Phase 52.2: Added camera focus on chat selection
@@ -1374,16 +1839,32 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           setActiveGroupId(null);
 
           // Regular chat - load from chat history
+          // MARKER_152.FIX2: Include model + model_source in loaded messages
           for (const msg of data.messages || []) {
+            const msgType = (msg.message_type || msg.type || (msg.metadata?.audio ? 'voice' : 'text')) as ChatMessage['type'];
             addChatMessage({
               id: msg.id || crypto.randomUUID(),
               role: msg.role,
               content: msg.content,
               agent: msg.agent,
-              type: msg.role === 'user' ? 'text' : 'text',
+              type: msgType,
               timestamp: msg.timestamp || new Date().toISOString(),
+              metadata: {
+                ...(msg.metadata || {}),
+                model: msg.model || undefined,
+                model_source: msg.model_source || undefined,
+                model_provider: msg.model_provider || undefined,
+              },
             });
           }
+        }
+
+        // MARKER_152.FIX2: Restore last used model+source so Reply and new messages
+        // use the same provider (e.g. Grok via Polza) after server restart
+        if (data.last_model) {
+          setSelectedModel(data.last_model);
+          setSelectedModelSource(data.last_model_source || null);
+          console.log(`[ChatPanel] Restored model: ${data.last_model} source: ${data.last_model_source || 'auto'}`);
         }
 
         // Phase 52.2: Focus camera on the file
@@ -1574,37 +2055,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     console.log('[ChatPanel] Scroll button visibility:', !isAtBottom ? 'VISIBLE' : 'HIDDEN', { isAtBottom });
   }, [isAtBottom]);
 
-  // Phase 54.3 Fix: Auto-hide sidebars when SWITCHING to scanner (not continuously)
-  // Phase 92.9 Fix: Removed leftPanel from deps - was causing panels to close immediately
+  // MARKER_163A.P1.SCANNER_UNIFIED_LANE_EXPANSION.V1:
+  // Scanner owns the main content rail while guidance lives in the unified search lane.
   useEffect(() => {
-    if (activeTab === 'scanner') {
-      setLeftPanel('none');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]); // Only trigger on tab change, not on leftPanel change!
-
-  // Phase 54.3 Fix: Hostess greeting when scanner tab opens
-  useEffect(() => {
-    if (activeTab === 'scanner') {
-      // Add Hostess greeting message
-      const greetings = [
-        'Hi! Select a folder to scan. I will add all files to your Vetka!',
-        'Welcome to Scanner! Start with your project root - I will find everything recursively',
-        'Ready to scan? Add a folder and watch your Vetka grow!',
-      ];
-      const greeting = greetings[Math.floor(Math.random() * greetings.length)];
-
-      // Add as Hostess message
-      addChatMessage({
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        agent: 'Hostess',
-        content: greeting,
-        type: 'text',
-        timestamp: new Date().toISOString(),
-      });
-    }
-  }, [activeTab]); // Only trigger on tab change
+    if (activeTab !== 'scanner') return;
+    setLeftPanel('none');
+  }, [activeTab, setLeftPanel]);
 
   // Phase 81: Handle resize mouse events
   useEffect(() => {
@@ -1643,16 +2099,26 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
   }, [isResizing, leftPanel, chatWidth, chatPosition]);
 
   // MARKER_PIN_UI_2: Vertical resize for pinned list area (same behavior family as scanner panel).
+  // MARKER_159.PIN.RESIZE_BIDIRECTIONAL: Fixed to work both UP and DOWN
+  const pinnedResizeStartY = useRef<number>(0);
+  const pinnedResizeStartHeight = useRef<number>(120);
+  
+  const handlePinnedResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    pinnedResizeStartY.current = e.clientY;
+    pinnedResizeStartHeight.current = pinnedPanelHeight;
+    setIsPinnedPanelResizing(true);
+  }, [pinnedPanelHeight]);
+
   useEffect(() => {
     if (!isPinnedPanelResizing) return;
 
     const handleMouseMove = (e: MouseEvent) => {
-      const headerHeight = 56; // approximate fixed height of pinned block header
-      const panelTop = messagesContainerRef.current
-        ? messagesContainerRef.current.getBoundingClientRect().top
-        : 0;
-      const nextHeight = e.clientY - panelTop - headerHeight;
-      const clamped = Math.max(120, Math.min(360, nextHeight));
+      // Calculate delta from start position - INVERTED: drag DOWN = increase height
+      const deltaY = e.clientY - pinnedResizeStartY.current; // positive = drag DOWN
+      const newHeight = pinnedResizeStartHeight.current + deltaY;
+      // Allow 0 (hidden) to 500 (max)
+      const clamped = Math.max(0, Math.min(500, newHeight));
       setPinnedPanelHeight(clamped);
     };
 
@@ -1694,68 +2160,45 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
   // Phase 54.4: Handle scanner events for Hostess with file type summary
   const handleScannerEvent = useCallback((event: ScannerEvent) => {
-    let hostessMessage = '';
-
     switch (event.type) {
       case 'directory_added':
         // Save last scanned folder for context
         if (event.path) {
           setLastScannedFolder(event.path);
         }
-
-        // Build file type summary if available
-        let typeSummary = '';
-        if (event.fileTypes) {
-          const topTypes = Object.entries(event.fileTypes)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3)
-            .map(([ext, count]) => `${count} .${ext}`)
-            .join(', ');
-          typeSummary = topTypes ? ` (${topTypes})` : '';
-        }
-
-        if (event.filesCount && event.filesCount > 1000) {
-          hostessMessage = `Wow! ${event.filesCount} files from "${event.path}"${typeSummary}! This is a serious project!`;
-        } else if (event.filesCount && event.filesCount > 100) {
-          hostessMessage = `Great! ${event.filesCount} files from "${event.path}"${typeSummary} added to your Vetka`;
-        } else if (event.filesCount && event.filesCount > 0) {
-          hostessMessage = `${event.filesCount} files from "${event.path}"${typeSummary}. Drop more folders to grow your tree!`;
-        } else {
-          hostessMessage = `"${event.path}" added! Files will be indexed.`;
-        }
-        break;
-
-      case 'directory_removed':
-        hostessMessage = 'Directory removed.';
-        break;
-
-      case 'scan_complete':
-        hostessMessage = 'Scan complete! Your tree is ready.';
-        break;
-
-      case 'scan_error':
-        hostessMessage = `${event.error || 'Something went wrong'}. Try dropping again?`;
-        break;
-
-      case 'files_dropped':
-        // Phase 54.4: Global drop event
-        if (event.filesCount && event.path) {
-          hostessMessage = `Dropped ${event.filesCount} files from "${event.path}"`;
-        }
         break;
     }
+  }, []);
 
-    if (hostessMessage) {
-      addChatMessage({
-        id: crypto.randomUUID(),
-        role: 'assistant',
-        agent: 'Hostess',
-        content: hostessMessage,
-        type: 'text',
-        timestamp: new Date().toISOString(),
-      });
+  const scannerSourceContext = useMemo<'file' | 'cloud' | 'web' | 'social'>(() => {
+    switch (scannerSource) {
+      case 'local':
+        return 'file';
+      case 'browser':
+        return 'web';
+      case 'cloud':
+        return 'cloud';
+      case 'social':
+        return 'social';
+      default:
+        return 'file';
     }
-  }, [addChatMessage]);
+  }, [scannerSource]);
+
+  const scannerPreferredSource = useMemo<'local' | 'cloud' | 'browser' | 'social' | undefined>(() => {
+    switch (scannerLaneContext) {
+      case 'file':
+        return 'local';
+      case 'web':
+        return 'browser';
+      case 'cloud':
+        return 'cloud';
+      case 'social':
+        return 'social';
+      default:
+        return undefined;
+    }
+  }, [scannerLaneContext]);
 
   // Phase I5: Handle file drop on chat panel - scan and pin file
   const handleFileDrop = useCallback(async (e: React.DragEvent<HTMLDivElement>) => {
@@ -1942,6 +2385,11 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
     </svg>
   );
 
+  const currentChatLabel = String(currentChatInfo?.displayName || currentChatInfo?.fileName || '').trim().toLowerCase();
+  const isFreshNewChatState = !activeGroupId && chatMessages.length === 0 && (
+    !currentChatInfo || currentChatLabel === 'new chat'
+  );
+
   return (
     <>
       {/* Phase 50.1: Left sidebar (mutually exclusive) */}
@@ -2009,6 +2457,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
       {/* Phase 81.1: Position can be left or right */}
       {/* Phase I5: Drop zone for file pinning */}
       <div
+        ref={panelRootRef}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleFileDrop}
@@ -2454,6 +2903,8 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
             </div>
           )}
 
+          {/* S6 UX: hide solo voice lock badge in chat header */}
+
           {activeTab === 'chat' && currentWorkflow && <WorkflowProgress workflow={currentWorkflow} />}
 
           {/* Phase 57.3: Active group indicator */}
@@ -2479,6 +2930,37 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               <span style={{ color: '#aaa' }}>Group Active</span>
               <span style={{ color: '#555' }}>|</span>
               <span style={{ color: '#666', fontSize: 10 }}>Use @role to mention</span>
+              <span style={{ color: '#555' }}>|</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                {([
+                  { id: 'text_only', label: 'Text' },
+                  { id: 'voice_auto', label: 'Auto' },
+                  { id: 'voice_forced', label: 'Voice' },
+                ] as Array<{ id: VoiceReplyMode; label: string }>).map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setVoiceReplyMode(item.id)}
+                    title={
+                      item.id === 'text_only'
+                        ? 'Always text replies'
+                        : item.id === 'voice_auto'
+                          ? 'Voice input activates voice replies'
+                          : 'Always voice replies'
+                    }
+                    style={{
+                      background: voiceReplyMode === item.id ? '#232323' : '#151515',
+                      border: voiceReplyMode === item.id ? '1px solid #4a9eff' : '1px solid #333',
+                      color: voiceReplyMode === item.id ? '#b7d8ff' : '#777',
+                      borderRadius: 4,
+                      fontSize: 10,
+                      padding: '2px 6px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
               <span style={{ color: '#555' }}>|</span>
               {/* Phase 80.9: Group ID badge with copy */}
               <button
@@ -2553,10 +3035,21 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
 
         {/* Phase 68.2: UnifiedSearchBar - always visible in chat/group mode */}
         {/* MARKER_118.3C: UnifiedSearchBar в ChatPanel — альтернативное место для иконки артефакта */}
-        {(activeTab === 'chat' || activeTab === 'group') && (
+        {(activeTab === 'chat' || activeTab === 'group' || activeTab === 'scanner') && (
           <UnifiedSearchBar
             onSelectResult={handleSearchSelect}
             onPinResult={handleSearchPin}
+            onVoiceTrigger={onVoiceTrigger}
+            onSpeakText={onSpeakText}
+            voiceState={voiceState}
+            voiceLevel={voiceLevel}
+            laneSurface="chat"
+            chatPosition={chatPosition}
+            previewAnchorRef={panelRootRef}
+            mycoHint={mycoHint}
+            mycoStateKey={mycoStateKey}
+            preferredSearchContext={activeTab === 'scanner' ? scannerLaneContext : undefined}
+            onSearchContextChange={activeTab === 'scanner' ? setScannerLaneContext : undefined}
             onOpenArtifact={async (result) => {
               // MARKER_142.IMPL_STEP_6_CHAT_PARITY: Keep web artifact behavior aligned with App.tsx
               const source = String((result as any).source || '');
@@ -2588,7 +3081,7 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               });
             }}
             placeholder="Search code/docs..."
-            contextPrefix="vetka/"
+            contextPrefix={activeTab === 'scanner' ? `${scannerLaneContext}/` : 'vetka/'}
             compact={true}
           />
         )}
@@ -2748,40 +3241,82 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               <span style={{ color: '#555', fontSize: 12, flex: 1 }}>New Chat</span>
             )}
 
-            {/* MARKER_CHAT_NEW_BUTTON: New Chat button - SEPARATE from rename area */}
-            <button
-              onClick={handleNewChat}
-              style={{
-                background: '#1a1a1a',
-                border: '1px solid #333',
-                borderRadius: 4,
-                padding: '4px 8px',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                color: '#888',
-                fontSize: 11,
-                transition: 'all 0.15s',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = '#555';
-                e.currentTarget.style.background = '#222';
-                e.currentTarget.style.color = '#fff';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = '#333';
-                e.currentTarget.style.background = '#1a1a1a';
-                e.currentTarget.style.color = '#888';
-              }}
-              title="New Chat"
-            >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="12" y1="5" x2="12" y2="19"/>
-                <line x1="5" y1="12" x2="19" y2="12"/>
-              </svg>
-              New
-            </button>
+            {/* MARKER_CHAT_NEW_BUTTON: when already in fresh New Chat, prioritize rename instead of creating one more chat */}
+            {isFreshNewChatState ? (
+              <button
+                onClick={() => {
+                  if (currentChatInfo) {
+                    startRename();
+                    return;
+                  }
+                  void handleNewChat();
+                }}
+                style={{
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: 4,
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  color: '#888',
+                  fontSize: 11,
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#555';
+                  e.currentTarget.style.background = '#222';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#333';
+                  e.currentTarget.style.background = '#1a1a1a';
+                  e.currentTarget.style.color = '#888';
+                }}
+                title="Edit chat name"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+                Edit name
+              </button>
+            ) : (
+              <button
+                onClick={() => { void handleNewChat(); }}
+                style={{
+                  background: '#1a1a1a',
+                  border: '1px solid #333',
+                  borderRadius: 4,
+                  padding: '4px 8px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  color: '#888',
+                  fontSize: 11,
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = '#555';
+                  e.currentTarget.style.background = '#222';
+                  e.currentTarget.style.color = '#fff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#333';
+                  e.currentTarget.style.background = '#1a1a1a';
+                  e.currentTarget.style.color = '#888';
+                }}
+                title="New Chat"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <line x1="12" y1="5" x2="12" y2="19"/>
+                  <line x1="5" y1="12" x2="19" y2="12"/>
+                </svg>
+                New
+              </button>
+            )}
           </div>
         )}
 
@@ -2839,10 +3374,12 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
               )}
             </div>
 
-            <div style={{
-              height: pinnedPanelHeight,
-              minHeight: 120,
-              maxHeight: 360,
+              <div 
+                data-pinned-section
+                style={{
+                  height: pinnedPanelHeight,
+                  minHeight: 0,  // Allow hidden
+                  maxHeight: 500,
               overflowY: 'auto',
               padding: '0 10px 6px 10px',
               display: 'flex',
@@ -2971,16 +3508,25 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
             </div>
 
             <div
-              onMouseDown={() => setIsPinnedPanelResizing(true)}
+              onMouseDown={handlePinnedResizeStart}
+              // MARKER_159.PIN.RESIZE_FIX: Added hover effect for better UX
+              onMouseEnter={(e) => {
+                if (!isPinnedPanelResizing) e.currentTarget.style.backgroundColor = '#1a1a1a';
+              }}
+              onMouseLeave={(e) => {
+                if (!isPinnedPanelResizing) e.currentTarget.style.backgroundColor = 'transparent';
+              }}
               title="Drag to resize pinned files list"
               style={{
                 height: 10,
-                cursor: 'ns-resize',
-                borderTop: '1px solid #202020',
+                cursor: isPinnedPanelResizing ? 'ns-resize' : 'ns-resize',
+                borderTop: isPinnedPanelResizing ? '2px solid #4a9eff' : '1px solid #202020',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#555',
+                color: isPinnedPanelResizing ? '#4a9eff' : '#555',
+                backgroundColor: isPinnedPanelResizing ? 'rgba(74, 158, 255, 0.1)' : 'transparent',
+                transition: 'all 0.15s ease',
               }}
             >
               <div style={{ width: 34, height: 3, borderRadius: 2, background: '#2c2c2c' }} />
@@ -3023,33 +3569,6 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           </div>
         )}
 
-        {/* Phase 92.4: Unified Scan Panel (replaces ScannerPanel + ScanProgressPanel) */}
-        {activeTab === 'scanner' && (
-          <ScanPanel
-            onFileClick={(path) => {
-              console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
-              const nodeId = resolveNodeIdByPath(path);
-              if (nodeId) {
-                selectNode(nodeId);
-              }
-              setCameraCommand({ target: path, zoom: 'close', highlight: true });
-            }}
-            // Phase 92.5: Pin file to chat context (same as search)
-            onFilePin={(path) => {
-              console.log('[ChatPanel] Phase 92.5: onFilePin triggered for:', path);
-              const nodeId = resolveNodeIdByPath(path);
-              if (nodeId) {
-                togglePinFile(nodeId);
-              } else {
-                console.warn('[ChatPanel] Could not find node for path:', path);
-              }
-            }}
-            pinnedPaths={pinnedFileIds.map(id => nodes[id]?.path).filter(Boolean) as string[]}
-            isVisible={true}
-            onEvent={handleScannerEvent}
-          />
-        )}
-
         {/* Phase 56.6: Group Creator panel when group tab active */}
         {/* Phase 80.12: Added edit mode support */}
         {activeTab === 'group' && (
@@ -3085,32 +3604,61 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           </div>
         )}
 
-        {/* Messages - always visible, takes remaining space */}
+        {/* Main content rail */}
         <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
-          <div
-            ref={messagesContainerRef}
-            style={{
-              height: '100%',
-              overflow: 'auto',
-              padding: 16,
-            }}
-          >
-            <MessageList
-              messages={chatMessages}
-              isTyping={isTyping}
-              onReply={handleReply}
-              onOpenArtifact={handleOpenArtifact}
-              onQuickAction={handleQuickAction}  // MARKER_C23B: Doctor quick-action handler
-            />
-            <div ref={messagesEndRef} />
-          </div>
+          {activeTab === 'scanner' ? (
+            <div style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+              <ScanPanel
+                onFileClick={(path) => {
+                  console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
+                  const nodeId = resolveNodeIdByPath(path);
+                  if (nodeId) {
+                    selectNode(nodeId);
+                  }
+                  setCameraCommand({ target: path, zoom: 'close', highlight: true });
+                }}
+                onFilePin={(path) => {
+                  console.log('[ChatPanel] Phase 92.5: onFilePin triggered for:', path);
+                  const nodeId = resolveNodeIdByPath(path);
+                  if (nodeId) {
+                    togglePinFile(nodeId);
+                  } else {
+                    console.warn('[ChatPanel] Could not find node for path:', path);
+                  }
+                }}
+                pinnedPaths={pinnedFileIds.map(id => nodes[id]?.path).filter(Boolean) as string[]}
+                isVisible={true}
+                onEvent={handleScannerEvent}
+                onSourceChange={setScannerSource}
+                preferredSource={scannerPreferredSource}
+              />
+            </div>
+          ) : (
+            <div
+              ref={messagesContainerRef}
+              style={{
+                height: '100%',
+                overflow: 'auto',
+                padding: 16,
+              }}
+            >
+              <MessageList
+                messages={chatMessages}
+                isTyping={isTyping}
+                onReply={handleReply}
+                onOpenArtifact={handleOpenArtifact}
+                onQuickAction={handleQuickAction}  // MARKER_C23B: Doctor quick-action handler
+              />
+              <div ref={messagesEndRef} />
+            </div>
+          )}
 
           {/* MARKER_SCROLL_BTN_LOCATION: Scroll-to-bottom/top button over message list */}
           {/* Phase 107.3: Scroll-to-bottom button */}
           {/* FIX_109.1b: Hide when content doesn't overflow (canScroll=false) */}
           {/* Shows when: canScroll=true AND (isAtBottom toggles direction) */}
           {/* MARKER_SCROLL_BTN_FIXED: Phase 107.3 - Toggles direction, hidden when no scroll */}
-          {canScroll && <button
+          {activeTab !== 'scanner' && canScroll && <button
             onClick={() => {
               // MARKER_SCROLL_FUNCTION: Toggle scroll direction based on position
               if (isAtBottom) {
@@ -3200,27 +3748,29 @@ export function ChatPanel({ isOpen, onClose, leftPanel, setLeftPanel }: Props) {
           </div>
         )}
 
-        {/* Input - always visible */}
-        {/* Phase 80.22: Pass group participants for dynamic @mention dropdown */}
-        <MessageInput
-          value={input}
-          onChange={setInput}
-          onSend={handleSend}
-          isLoading={isTyping}
-          replyTo={replyTo?.model}
-          replyToModel={replyTo?.model}
-          isGroupMode={!!activeGroupId}
-          groupParticipants={currentGroupParticipants}
-          soloModels={soloModels}  // Phase 80.30: Models used in solo chat
-          voiceModels={voiceModels}
-          selectedModel={selectedModel}
-          voiceOnlyMode={voiceOnlyMode}
-          onVoiceOnlyModeChange={setVoiceOnlyMode}
-          autoContinueVoice={autoContinueVoice}
-          onAutoContinueVoiceChange={setAutoContinueVoice}
-          realtimeVoiceEnabled={realtimeVoiceEnabled}
-          onRealtimeVoiceChange={setRealtimeVoiceEnabled}
-        />
+        {/* Input - chat/group only; scanner uses unified lane as canonical entry */}
+        {activeTab !== 'scanner' && (
+          <MessageInput
+            value={input}
+            onChange={setInput}
+            onSend={handleSend}
+            isLoading={isTyping}
+            replyTo={replyTo?.model}
+            replyToModel={replyTo?.model}
+            isGroupMode={!!activeGroupId}
+            groupParticipants={currentGroupParticipants}
+            soloModels={soloModels}  // Phase 80.30: Models used in solo chat
+            voiceModels={voiceModels}
+            selectedModel={selectedModel}
+            voiceOnlyMode={voiceOnlyMode}
+            onVoiceOnlyModeChange={setVoiceOnlyMode}
+            autoContinueVoice={autoContinueVoice}
+            onAutoContinueVoiceChange={setAutoContinueVoice}
+            realtimeVoiceEnabled={realtimeVoiceEnabled}
+            onRealtimeVoiceChange={setRealtimeStore}
+            onVoiceRecorded={handleVoiceRecorded}
+          />
+        )}
       </div>
 
       {/* Phase 48.5.1: Artifact Panel via FloatingWindow */}

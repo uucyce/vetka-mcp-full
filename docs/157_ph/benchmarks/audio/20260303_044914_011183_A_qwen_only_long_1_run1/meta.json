@@ -1,0 +1,9 @@
+{
+  "mode": "A_qwen_only",
+  "prompt_id": "long_1",
+  "run_index": 1,
+  "audio_chunks": 0,
+  "ttft_text_ms": 12017.839207983343,
+  "ttfa_audio_ms": null,
+  "merged_wav": null
+}

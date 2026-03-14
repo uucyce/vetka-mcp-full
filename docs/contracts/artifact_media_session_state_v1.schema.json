@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact_media_session_state_v1.schema.json",
+  "title": "VETKA Artifact Media Session State V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "path",
+    "current_time",
+    "is_playing",
+    "volume",
+    "is_muted",
+    "quality_scale",
+    "playback_rate"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "artifact_media_session_state_v1"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "window_mode": {
+      "type": "string",
+      "enum": [
+        "embedded",
+        "detached"
+      ],
+      "default": "embedded"
+    },
+    "fullscreen_mode": {
+      "type": "string",
+      "enum": [
+        "off",
+        "native_window",
+        "dom_fallback"
+      ],
+      "default": "off"
+    },
+    "current_time": {
+      "type": "number",
+      "minimum": 0
+    },
+    "is_playing": {
+      "type": "boolean"
+    },
+    "volume": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "is_muted": {
+      "type": "boolean"
+    },
+    "quality_scale": {
+      "type": "string",
+      "enum": [
+        "full",
+        "half",
+        "quarter",
+        "eighth",
+        "sixteenth"
+      ]
+    },
+    "playback_rate": {
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 8.0
+    },
+    "duration_sec": {
+      "type": "number",
+      "minimum": 0
+    },
+    "updated_at_ms": {
+      "type": "integer",
+      "minimum": 0
+    }
+  }
+}

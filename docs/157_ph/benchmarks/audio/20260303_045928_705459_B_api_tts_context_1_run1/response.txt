@@ -1,0 +1,5 @@
+Вот краткий план оптимизации `memory context packing` в VETKA (или аналогичных трансформер-бэконах) без роста latency:
+
+### 1.
+
+[Stream stopped: timeout]

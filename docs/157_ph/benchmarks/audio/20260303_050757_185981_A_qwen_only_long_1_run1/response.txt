@@ -1,0 +1,3 @@
+Interrupt + Restart Stream (IRS) Protocol используется для обеспечения непрерывности потока данных при передаче голосовых вызовов через с
+
+[Stream stopped: timeout]

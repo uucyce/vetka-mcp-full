@@ -8,7 +8,7 @@
  * @used_by ArtifactPanel, CodeViewer
  */
 
-export type ViewerType = 'code' | 'markdown' | 'image' | 'unknown';
+export type ViewerType = 'code' | 'markdown' | 'image' | 'audio' | 'video' | 'pdf' | 'unknown';
 
 const FILE_TYPES: Record<ViewerType, string[]> = {
   code: [
@@ -21,6 +21,9 @@ const FILE_TYPES: Record<ViewerType, string[]> = {
   ],
   markdown: ['.md', '.mdx', '.markdown'],
   image: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg', '.bmp', '.ico', '.avif', '.tiff'],
+  audio: ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'],
+  video: ['.mp4', '.mov', '.mkv', '.avi', '.webm'],
+  pdf: ['.pdf'],
   unknown: []
 };
 

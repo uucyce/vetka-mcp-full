@@ -1,0 +1,1 @@
+Okay, let’s break down the interrupt/restart stream protocol and its impact on voice handoff and tool-loop transparency. This is a complex system, so we'll

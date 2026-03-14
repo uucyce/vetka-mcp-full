@@ -31,6 +31,8 @@ interface DAGContextMenuProps {
   target: ContextMenuTarget | null;
   onClose: () => void;
   onAddNode: (type: DAGNodeType, position: { x: number; y: number }) => void;
+  onCreateTaskHere?: (nodeId: string, position: { x: number; y: number }) => void;
+  onApproveSuggestedAnchor?: (taskOverlayNodeId: string) => void;
   onDeleteNode?: (nodeId: string) => void;
   onDuplicateNode?: (nodeId: string) => void;
   onDeleteEdge?: (edgeId: string) => void;
@@ -77,6 +79,8 @@ function DAGContextMenuComponent({
   target,
   onClose,
   onAddNode,
+  onCreateTaskHere,
+  onApproveSuggestedAnchor,
   onDeleteNode,
   onDuplicateNode,
   onDeleteEdge,
@@ -149,7 +153,37 @@ function DAGContextMenuComponent({
       {/* Node context menu */}
       {target.kind === 'node' && (
         <>
+          {onCreateTaskHere && !target.nodeId.startsWith('task_overlay_') && (
+            <div
+              style={itemStyle}
+              onMouseEnter={handleItemHover}
+              onMouseLeave={handleItemLeave}
+              onClick={() => {
+                onCreateTaskHere(target.nodeId, target.position);
+                onClose();
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>+</span>
+              <span>Create Attached Task</span>
+            </div>
+          )}
+          {onApproveSuggestedAnchor && target.nodeId.startsWith('task_overlay_') && (
+            <div
+              style={itemStyle}
+              onMouseEnter={handleItemHover}
+              onMouseLeave={handleItemLeave}
+              onClick={() => {
+                onApproveSuggestedAnchor(target.nodeId);
+                onClose();
+              }}
+            >
+              <span style={{ width: 14, textAlign: 'center' }}>✓</span>
+              <span>Approve Suggested Anchor</span>
+            </div>
+          )}
           {onDuplicateNode && (
+            <>
+              {(onCreateTaskHere || onApproveSuggestedAnchor) && <div style={separatorStyle} />}
             <div
               style={itemStyle}
               onMouseEnter={handleItemHover}
@@ -162,6 +196,7 @@ function DAGContextMenuComponent({
               <span style={{ width: 14, textAlign: 'center' }}>⧉</span>
               <span>Duplicate</span>
             </div>
+            </>
           )}
           {onDeleteNode && (
             <>

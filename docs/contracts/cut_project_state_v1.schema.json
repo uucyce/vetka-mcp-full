@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_project_state_v1.schema.json",
+  "title": "VETKA CUT Project State V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "success",
+    "schema_version"
+  ],
+  "properties": {
+    "success": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "cut_project_state_v1"
+    },
+    "project": {
+      "type": ["object", "null"]
+    },
+    "bootstrap_state": {
+      "type": ["object", "null"]
+    },
+    "timeline_state": {
+      "type": ["object", "null"]
+    },
+    "scene_graph": {
+      "type": ["object", "null"]
+    },
+    "scene_graph_view": {
+      "type": ["object", "null"]
+    },
+    "waveform_bundle": {
+      "type": ["object", "null"]
+    },
+    "transcript_bundle": {
+      "type": ["object", "null"]
+    },
+    "thumbnail_bundle": {
+      "type": ["object", "null"]
+    },
+    "audio_sync_result": {
+      "type": ["object", "null"]
+    },
+    "music_sync_result": {
+      "type": ["object", "null"]
+    },
+    "music_cue_summary": {
+      "type": ["object", "null"]
+    },
+    "rhythm_surface": {
+      "type": ["object", "null"]
+    },
+    "slice_bundle": {
+      "type": ["object", "null"]
+    },
+    "timecode_sync_result": {
+      "type": ["object", "null"]
+    },
+    "sync_surface": {
+      "type": ["object", "null"]
+    },
+    "time_marker_bundle": {
+      "type": ["object", "null"]
+    },
+    "montage_state": {
+      "type": ["object", "null"]
+    },
+    "recent_jobs": {
+      "type": ["array", "null"]
+    },
+    "active_jobs": {
+      "type": ["array", "null"]
+    },
+    "layout": {
+      "type": ["object", "null"]
+    },
+    "runtime_ready": {
+      "type": "boolean"
+    },
+    "graph_ready": {
+      "type": "boolean"
+    },
+    "waveform_ready": {
+      "type": "boolean"
+    },
+    "transcript_ready": {
+      "type": "boolean"
+    },
+    "thumbnail_ready": {
+      "type": "boolean"
+    },
+    "audio_sync_ready": {
+      "type": "boolean"
+    },
+    "music_cues_ready": {
+      "type": "boolean"
+    },
+    "rhythm_surface_ready": {
+      "type": "boolean"
+    },
+    "slice_ready": {
+      "type": "boolean"
+    },
+    "timecode_sync_ready": {
+      "type": "boolean"
+    },
+    "sync_surface_ready": {
+      "type": "boolean"
+    },
+    "time_markers_ready": {
+      "type": "boolean"
+    },
+    "montage_ready": {
+      "type": "boolean"
+    },
+    "error": {
+      "type": ["object", "null"]
+    }
+  }
+}

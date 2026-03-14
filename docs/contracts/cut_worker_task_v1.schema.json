@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_worker_task_v1.schema.json",
+  "title": "VETKA CUT Worker Task V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "project_id",
+    "task_type",
+    "route_mode",
+    "priority",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_worker_task_v1"
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_type": {
+      "type": "string",
+      "enum": [
+        "waveform_build",
+        "transcript_normalize",
+        "thumbnail_build",
+        "audio_sync",
+        "pause_slice",
+        "timecode_sync",
+        "semantic_links",
+        "cam_overlay",
+        "rhythm_assist",
+        "export_xml"
+      ]
+    },
+    "route_mode": {
+      "type": "string",
+      "enum": ["background"]
+    },
+    "priority": {
+      "type": "string",
+      "enum": ["low", "normal", "high"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "running", "partial", "done", "error", "cancelled"]
+    },
+    "input": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
+    "output_ref": {
+      "type": ["string", "null"]
+    },
+    "degraded_mode": {
+      "type": "boolean"
+    },
+    "degraded_reason": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  }
+}

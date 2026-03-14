@@ -12,9 +12,13 @@ from __future__ import annotations
 
 import os
 import time
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.search.file_search_service import search_files
+
+DESCRIPTIVE_MIN_WORDS = max(4, int(os.getenv("VETKA_DESCRIPTIVE_MIN_WORDS", "4")))
 
 TEXT_EXTENSIONS = {
     ".py", ".js", ".ts", ".tsx", ".jsx", ".md", ".txt", ".json", ".yaml", ".yml",
@@ -22,6 +26,27 @@ TEXT_EXTENSIONS = {
 }
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", "dist", "build"}
 SCAN_ROOTS = ("src", "data")
+
+
+def _provider_available(provider_name: str, env_var: str = "") -> bool:
+    """
+    Provider availability contract for search capabilities.
+
+    Order:
+    1) explicit env var (fast path)
+    2) UnifiedKeyManager provider pool (source of truth for runtime)
+    """
+    if env_var and os.getenv(env_var):
+        return True
+
+    try:
+        from src.utils.unified_key_manager import get_key_manager, ProviderType
+
+        km = get_key_manager()
+        provider_key = getattr(ProviderType, provider_name.upper(), provider_name.lower())
+        return km.get_provider_keys_count(provider_key) > 0
+    except Exception:
+        return False
 
 
 def _normalize_item(
@@ -41,6 +66,28 @@ def _normalize_item(
 
 
 def _file_search(query: str, limit: int) -> List[Dict[str, Any]]:
+    # Prefer Phase 157 file search engine (intent-aware + JEPA-assisted rerank).
+    try:
+        payload = search_files(query=query, limit=limit, mode="keyword")
+        rows = payload.get("results", []) if payload.get("success") else []
+        out: List[Dict[str, Any]] = []
+        for item in rows[:limit]:
+            path = item.get("path") or item.get("title") or ""
+            out.append(
+                _normalize_item(
+                    source="file",
+                    title=str(path),
+                    snippet=str(item.get("snippet", "")),
+                    score=float(item.get("score", 0.0)),
+                    url=f"file://{path}",
+                )
+            )
+        if out:
+            return out
+    except Exception:
+        pass
+
+    # Legacy fallback path.
     query_l = query.lower().strip()
     if not query_l:
         return []
@@ -98,6 +145,14 @@ def _file_search(query: str, limit: int) -> List[Dict[str, Any]]:
     return results
 
 
+def _is_descriptive_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    words = [w for w in re.split(r"[^a-zA-Zа-яА-Я0-9_]+", q) if w]
+    file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
+    markers = ["найди файл где", "не помню", "документ", "где ", "про ", "какой файл"]
+    return (len(words) >= DESCRIPTIVE_MIN_WORDS and not file_like) or any(m in q for m in markers)
+
+
 def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
     try:
         from src.mcp.tools.search_tool import SearchTool
@@ -124,7 +179,7 @@ def _semantic_search(query: str, limit: int) -> List[Dict[str, Any]]:
         return []
 
 
-def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
+def _web_search(query: str, limit: int) -> tuple[List[Dict[str, Any]], Optional[str]]:
     def _normalize_web_score(raw_score: Any, rank: int) -> float:
         try:
             score = float(raw_score)
@@ -143,7 +198,10 @@ def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
         from src.mcp.tools.web_search_tool import WebSearchTool
 
         payload = WebSearchTool().execute({"query": query, "max_results": min(limit, 10)})
-        rows = payload.get("result", {}).get("results", []) if payload.get("success") else []
+        if not payload.get("success"):
+            return [], str(payload.get("error") or "web search unavailable")
+
+        rows = payload.get("result", {}).get("results", [])
 
         results: List[Dict[str, Any]] = []
         seen_urls = set()
@@ -164,9 +222,9 @@ def _web_search(query: str, limit: int) -> List[Dict[str, Any]]:
                     url=url,
                 )
             )
-        return results
-    except Exception:
-        return []
+        return results, None
+    except Exception as e:
+        return [], str(e)
 
 
 def _social_search(query: str, limit: int) -> List[Dict[str, Any]]:  # noqa: ARG001
@@ -178,9 +236,16 @@ def run_unified_search(
     query: str,
     limit: int = 20,
     sources: Optional[List[str]] = None,
+    mode: Optional[str] = None,  # kept for route compatibility
+    viewport_context: Optional[dict] = None,  # kept for route compatibility
 ) -> Dict[str, Any]:
+    _ = mode
+    _ = viewport_context
     selected_sources = sources or ["file", "semantic", "web", "social"]
     selected_sources = [s for s in selected_sources if s in {"file", "semantic", "web", "social"}]
+    # Phase 157: descriptive document queries in vetka context must include file source.
+    if _is_descriptive_query(query) and "file" not in selected_sources:
+        selected_sources.append("file")
 
     started = time.time()
     if not query or len(query.strip()) < 2:
@@ -194,13 +259,17 @@ def run_unified_search(
         }
 
     by_source: Dict[str, List[Dict[str, Any]]] = {}
+    source_errors: Dict[str, str] = {}
 
     if "file" in selected_sources:
         by_source["file"] = _file_search(query, limit)
     if "semantic" in selected_sources:
         by_source["semantic"] = _semantic_search(query, limit)
     if "web" in selected_sources:
-        by_source["web"] = _web_search(query, limit)
+        web_results, web_error = _web_search(query, limit)
+        by_source["web"] = web_results
+        if web_error:
+            source_errors["web"] = web_error
     if "social" in selected_sources:
         by_source["social"] = _social_search(query, limit)
 
@@ -216,7 +285,41 @@ def run_unified_search(
         "query": query,
         "results": merged,
         "by_source": by_source,
+        "source_errors": source_errors,
         "sources": selected_sources,
         "count": len(merged),
         "took_ms": int((time.time() - started) * 1000),
+    }
+
+
+def get_search_capabilities(context: str = "vetka") -> Dict[str, Any]:
+    """
+    Route-level capabilities contract used by UnifiedSearchBar.
+    """
+    ctx = (context or "vetka").strip().lower()
+    if ctx == "web":
+        # MARKER_169.TAVILY_CAPABILITY_ENV_FIX: resolve provider health from env OR UnifiedKeyManager.
+        tavily_ready = _provider_available("tavily", env_var="TAVILY_API_KEY")
+        serper_ready = _provider_available("serper", env_var="SERPER_API_KEY")
+        return {
+            "success": True,
+            "context": "web",
+            "supported_modes": ["hybrid", "keyword"],
+            "provider_health": {
+                "tavily": {"available": tavily_ready},
+                "serper": {"available": serper_ready},
+            },
+        }
+    if ctx == "file":
+        return {
+            "success": True,
+            "context": "file",
+            "supported_modes": ["keyword", "filename"],
+            "provider_health": {},
+        }
+    return {
+        "success": True,
+        "context": "vetka",
+        "supported_modes": ["hybrid", "semantic", "keyword", "filename"],
+        "provider_health": {},
     }

@@ -18,8 +18,9 @@
 import { useCallback, useRef, useState } from 'react';
 import type { Connection } from '@xyflow/react';
 import type { DAGNode, DAGEdge, DAGNodeType, EdgeType, Workflow, WorkflowSummary } from '../types/dag';
+import { BACKEND_ORIGIN } from '../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001';
+const PIPELINE_API = BACKEND_ORIGIN;
 const MAX_HISTORY = 50;
 
 interface DAGSnapshot {
@@ -44,6 +45,7 @@ interface UseDAGEditorReturn {
   addEdge: (source: string, target: string, type?: EdgeType, label?: string) => DAGEdge | null;
   handleConnect: (connection: Connection) => void;
   removeEdge: (edgeId: string) => void;
+  updateEdgeConnection: (edgeId: string, source: string, target: string) => boolean;
 
   // History
   undo: () => void;
@@ -170,6 +172,24 @@ export function useDAGEditor(
   const removeEdge = useCallback((edgeId: string) => {
     pushSnapshot(nodesRef.current, edgesRef.current);
     setEdges((prev: DAGEdge[]) => prev.filter(e => e.id !== edgeId));
+  }, [pushSnapshot, setEdges]);
+
+  const updateEdgeConnection = useCallback((edgeId: string, source: string, target: string): boolean => {
+    const existing = edgesRef.current.find(e => e.id === edgeId);
+    if (!existing) return false;
+
+    const duplicate = edgesRef.current.some(
+      e => e.id !== edgeId && e.source === source && e.target === target
+    );
+    if (duplicate) return false;
+
+    pushSnapshot(nodesRef.current, edgesRef.current);
+    setEdges((prev: DAGEdge[]) => prev.map((e) => (
+      e.id === edgeId
+        ? { ...e, source, target }
+        : e
+    )));
+    return true;
   }, [pushSnapshot, setEdges]);
 
   // --- History ---
@@ -368,6 +388,7 @@ export function useDAGEditor(
     addEdge,
     handleConnect,
     removeEdge,
+    updateEdgeConnection,
     undo,
     redo,
     pushSnapshot,

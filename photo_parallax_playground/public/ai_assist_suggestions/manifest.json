@@ -1,0 +1,52 @@
+{
+  "model": "qwen2.5vl:3b",
+  "suggestions": [
+    {
+      "sample_id": "cassette-closeup",
+      "title": "Cassette close-up",
+      "path": "/ai_assist_suggestions/cassette-closeup.json",
+      "confidence": 0.58,
+      "flags": [
+        "rejected_fg_box",
+        "rejected_mid_box",
+        "fallback_focus_box"
+      ],
+      "error": null
+    },
+    {
+      "sample_id": "keyboard-hands",
+      "title": "Keyboard hands",
+      "path": "/ai_assist_suggestions/keyboard-hands.json",
+      "confidence": 0.64,
+      "flags": [
+        "rejected_fg_box",
+        "rejected_mid_box",
+        "fallback_focus_box",
+        "fallback_midground_box"
+      ],
+      "error": null
+    },
+    {
+      "sample_id": "hover-politsia",
+      "title": "Hover Politsia street",
+      "path": "/ai_assist_suggestions/hover-politsia.json",
+      "confidence": 0.64,
+      "flags": [
+        "rejected_fg_box",
+        "rejected_fg_box",
+        "rejected_mid_box",
+        "fallback_focus_box",
+        "fallback_midground_box"
+      ],
+      "error": null
+    },
+    {
+      "sample_id": "drone-portrait",
+      "title": "Drone portrait",
+      "path": "/ai_assist_suggestions/drone-portrait.json",
+      "confidence": 0.86,
+      "flags": [],
+      "error": null
+    }
+  ]
+}

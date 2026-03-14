@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this question. The user wants a short plan of three points to improve memory context packing in VETKA without causing latency regressions. They want specific answers, no general phrases.
+
+First, I

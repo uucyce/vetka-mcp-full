@@ -11,12 +11,15 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor } from '../../../utils/dagLayout';
 import type { NodeStatus } from '../../../types/dag';
+import { resolveMiniScale, scalePx } from './miniScale';
 
 interface ConditionNodeProps {
   data: {
     label: string;
     status: NodeStatus;
     expression?: string;
+    mini?: boolean;
+    miniScale?: number;
   };
   selected?: boolean;
 }
@@ -24,12 +27,14 @@ interface ConditionNodeProps {
 function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
+  const isMini = Boolean(data.mini);
+  const compactScale = resolveMiniScale(isMini, data.miniScale);
 
   return (
     <div
       style={{
-        width: 80,
-        height: 80,
+        width: isMini ? scalePx(34, compactScale, 24) : 80,
+        height: isMini ? scalePx(34, compactScale, 24) : 80,
         position: 'relative',
       }}
     >
@@ -39,14 +44,14 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width: 56,
-          height: 56,
+          width: isMini ? scalePx(22, compactScale, 16) : 56,
+          height: isMini ? scalePx(22, compactScale, 16) : 56,
           transform: 'translate(-50%, -50%) rotate(45deg)',
           background: NOLAN_PALETTE.bgLight,
-          border: `2px solid ${borderColor}`,
+          border: `${isMini ? 1 : 2}px solid ${borderColor}`,
           borderRadius: 4,
           boxShadow: selected
-            ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+            ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
             : isRunning
               ? `0 0 8px ${borderColor}40`
               : 'none',
@@ -67,12 +72,12 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
           pointerEvents: 'none',
         }}
       >
-        <div style={{ fontSize: 14, color: NOLAN_PALETTE.text }}>◇</div>
+        <div style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 14, color: NOLAN_PALETTE.text }}>◇</div>
         <div
           style={{
-            fontSize: 9,
+            fontSize: isMini ? scalePx(5, compactScale, 4) : 9,
             color: NOLAN_PALETTE.textMuted,
-            maxWidth: 70,
+            maxWidth: isMini ? scalePx(24, compactScale, 18) : 70,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -84,14 +89,27 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
 
       {/* Handles */}
       <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
+      />
+      <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
         style={{
           background: NOLAN_PALETTE.borderLight,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
           top: 2,
         }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
       {/* True branch — left */}
       <Handle
@@ -100,8 +118,8 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
         id="true"
         style={{
           background: NOLAN_PALETTE.borderLight,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
           bottom: 2,
           left: '30%',
         }}
@@ -113,8 +131,8 @@ function ConditionNodeComponent({ data, selected }: ConditionNodeProps) {
         id="false"
         style={{
           background: NOLAN_PALETTE.border,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
           bottom: 2,
           left: '70%',
         }}

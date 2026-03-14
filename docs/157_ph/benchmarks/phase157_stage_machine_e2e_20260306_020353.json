@@ -1,0 +1,55 @@
+{
+  "summary": {
+    "runs": 3,
+    "success_runs": 0,
+    "success_rate": 0.0,
+    "ttfr_filler_ms_p50": null,
+    "ttfr_response_ms_p50": null,
+    "ttfa_audio_ms_p50": null,
+    "t_idle_ms_p50": null
+  },
+  "rows": [
+    {
+      "prompt_id": "short",
+      "run_index": 1,
+      "success": false,
+      "error": "timeout>50.0s",
+      "ttfr_filler_ms": null,
+      "ttfr_response_ms": null,
+      "ttfa_audio_ms": null,
+      "t_idle_ms": null,
+      "response_status": null,
+      "stage_sequence": "",
+      "response_preview": "",
+      "timestamp": "2026-03-05T23:02:12.667753+00:00"
+    },
+    {
+      "prompt_id": "context",
+      "run_index": 1,
+      "success": false,
+      "error": "timeout>50.0s",
+      "ttfr_filler_ms": null,
+      "ttfr_response_ms": null,
+      "ttfa_audio_ms": null,
+      "t_idle_ms": null,
+      "response_status": null,
+      "stage_sequence": "",
+      "response_preview": "",
+      "timestamp": "2026-03-05T23:03:02.879313+00:00"
+    },
+    {
+      "prompt_id": "deep",
+      "run_index": 1,
+      "success": false,
+      "error": "timeout>50.0s",
+      "ttfr_filler_ms": null,
+      "ttfr_response_ms": null,
+      "ttfa_audio_ms": null,
+      "t_idle_ms": null,
+      "response_status": null,
+      "stage_sequence": "",
+      "response_preview": "",
+      "timestamp": "2026-03-05T23:03:53.109430+00:00"
+    }
+  ]
+}

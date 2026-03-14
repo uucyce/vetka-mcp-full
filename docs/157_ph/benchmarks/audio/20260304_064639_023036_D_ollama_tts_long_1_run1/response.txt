@@ -1,0 +1,1 @@
+The provided context does not contain detailed information about the interrupt and restart stream protocols or their impact on voice handoff and tool-loop transparency. The pinned file discusses general capabilities but does not cover these specific points related to stream management and voice handling in agents.

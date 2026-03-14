@@ -9,9 +9,13 @@
 import { useMemo } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { ReflexInsight } from '../chat/ReflexInsight';
+import type { ChatMessage } from '../../types/chat';
+import type { MiniContextPayload } from './MiniContext';
 
 interface StreamPanelProps {
   maxEvents?: number;
+  context?: MiniContextPayload;
 }
 
 export function StreamPanel({ maxEvents = 8 }: StreamPanelProps) {
@@ -50,29 +54,45 @@ export function StreamPanel({ maxEvents = 8 }: StreamPanelProps) {
           <span style={{ color: NOLAN_PALETTE.textDim, fontSize: 9 }}>
             Waiting for pipeline events...
           </span>
-        ) : filteredEvents.map(event => (
-          <div key={event.id} style={{ display: 'flex', gap: 6 }}>
-            <span style={{ color: '#555', minWidth: 48, fontSize: 8 }}>
-              {new Date(event.ts).toLocaleTimeString()}
-            </span>
-            <span style={{ color: '#777', minWidth: 50, textTransform: 'uppercase', fontSize: 8 }}>
-              {event.role}
-            </span>
-            <span
-              style={{
-                color: '#bbb',
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                flex: 1,
-                fontSize: 9,
-              }}
-              title={event.message}
-            >
-              {event.message}
-            </span>
-          </div>
-        ))}
+        ) : filteredEvents.map(event => {
+          // MARKER_174.B: Compact REFLEX pills in stream panel
+          if (event.metadata?.type === 'reflex') {
+            const reflexMsg: ChatMessage = {
+              id: event.id,
+              role: 'system',
+              content: event.message,
+              type: 'reflex',
+              timestamp: new Date(event.ts).toISOString(),
+              metadata: { reflex: event.metadata as any },
+            };
+            return <ReflexInsight key={event.id} message={reflexMsg} />;
+          }
+
+          // Default plain text (existing rendering)
+          return (
+            <div key={event.id} style={{ display: 'flex', gap: 6 }}>
+              <span style={{ color: '#555', minWidth: 48, fontSize: 8 }}>
+                {new Date(event.ts).toLocaleTimeString()}
+              </span>
+              <span style={{ color: '#777', minWidth: 50, textTransform: 'uppercase', fontSize: 8 }}>
+                {event.role}
+              </span>
+              <span
+                style={{
+                  color: '#bbb',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  flex: 1,
+                  fontSize: 9,
+                }}
+                title={event.message}
+              >
+                {event.message}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,0 +1,83 @@
+{
+  "generated_at": "2026-03-04T02:56:10.004587+00:00",
+  "dry_run": false,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": false,
+      "error": "TypeError: ContextPacker.pack() got an unexpected keyword argument 'force_jepa'",
+      "ttft_text_ms": null,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": null,
+      "reaction_audio_ms": null,
+      "e2e_ms": 889.75,
+      "tokens_out": 0,
+      "audio_chunks": 0,
+      "response_chars": 0,
+      "quality_proxy": 0.0,
+      "quality_notes": "low_ru_ratio,weak_greeting,stream_error",
+      "response_preview": "",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055609_152221_F_mimo_short_short_live_run1",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": false,
+      "grounded_files": 0,
+      "grounded_packing_path": null,
+      "grounded_jepa_trigger": null,
+      "grounded_jepa_mode": null,
+      "timestamp": "2026-03-04T02:56:09.994461+00:00"
+    },
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 2,
+      "prompt_chars": 14,
+      "success": false,
+      "error": "TypeError: ContextPacker.pack() got an unexpected keyword argument 'force_jepa'",
+      "ttft_text_ms": null,
+      "ttfa_audio_ms": null,
+      "reaction_text_ms": null,
+      "reaction_audio_ms": null,
+      "e2e_ms": 10.0,
+      "tokens_out": 0,
+      "audio_chunks": 0,
+      "response_chars": 0,
+      "quality_proxy": 0.0,
+      "quality_notes": "low_ru_ratio,weak_greeting,stream_error",
+      "response_preview": "",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260304_055610_004205_F_mimo_short_short_live_run2",
+      "audio_merged_wav": null,
+      "audio_qc_score": null,
+      "audio_pause_count": null,
+      "audio_longest_pause_ms": null,
+      "audio_stretch_events": null,
+      "grounded_context": false,
+      "grounded_files": 0,
+      "grounded_packing_path": null,
+      "grounded_jepa_trigger": null,
+      "grounded_jepa_mode": null,
+      "timestamp": "2026-03-04T02:56:10.004553+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 2,
+        "success_runs": 0,
+        "success_rate": 0.0,
+        "ttft_text_ms_p50": null,
+        "ttfa_audio_ms_p50": null,
+        "reaction_text_ms_p50": null,
+        "reaction_audio_ms_p50": null,
+        "e2e_ms_p50": null,
+        "quality_proxy_mean": 0.0
+      }
+    }
+  }
+}

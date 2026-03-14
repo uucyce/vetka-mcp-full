@@ -4,15 +4,16 @@
  *
  * @status active
  * @phase 98
- * @depends react, lucide-react, ChatMessage type, CompoundMessage, useTTS
+ * @depends react, lucide-react, ChatMessage type, CompoundMessage
  * @used_by MessageList
  */
 
-import { useState, memo } from 'react';
-import { User, Bot, ClipboardList, Code, TestTube, Building, Sparkles, Reply, FileText, SmilePlus, Volume2, VolumeX } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
+import { User, Bot, ClipboardList, Code, TestTube, Building, Sparkles, Reply, FileText, SmilePlus, Volume2, VolumeX, Play, Pause } from 'lucide-react';
 import type { ChatMessage } from '../../types/chat';
 import { CompoundMessage } from './CompoundMessage';
-import { useTTS } from '../voice/useTTS';
+import { ReflexInsight } from './ReflexInsight';
+import { useStore } from '../../store/useStore';
 
 // Phase 48.3: Max chars before showing "read more"
 const MAX_PREVIEW_LENGTH = 500;
@@ -81,13 +82,27 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
   const isUser = message.role === 'user';
   const isSystem = message.role === 'system';
   const isCompound = message.type === 'compound';
+  // MARKER_174.REFLEX_LIVE: Tool selection visibility
+  const isReflex = message.type === 'reflex';
+  // MARKER_174.TOGGLE: Gate REFLEX pills by user preference
+  const showReflexInsight = useStore(s => s.showReflexInsight);
 
   // Phase 48.4: Emoji reactions state
   const [showReactions, setShowReactions] = useState(false);
   const [reactions, setReactions] = useState<string[]>([]);
 
-  // Phase 60.5: TTS hook for speaking messages
-  const { speak, stop, isSpeaking } = useTTS();
+  // MARKER_156.VOICE.S4_UI_BUBBLE: Voice bubble playback state and controls.
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const createdObjectUrlRef = useRef<string | null>(null);
+  const streamObjectUrlRef = useRef<string | null>(null);
+  const synthRequestIdRef = useRef(0);
+  const [voicePlaying, setVoicePlaying] = useState(false);
+  const [voiceLoading, setVoiceLoading] = useState(false);
+  const [voiceRate, setVoiceRate] = useState<1 | 1.5 | 2>(1);
+  const [voiceCurrentMs, setVoiceCurrentMs] = useState(0);
+  const [voiceDurationMs, setVoiceDurationMs] = useState<number>(message.metadata?.audio?.duration_ms || 0);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [streamChunkUrl, setStreamChunkUrl] = useState<string>('');
 
   // Phase 98: Handle reaction with CAM API integration
   const handleReaction = async (emoji: string) => {
@@ -137,6 +152,208 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
     const date = new Date(timestamp);
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
+  const formatDuration = (ms: number) => {
+    const totalSec = Math.max(0, Math.floor((ms || 0) / 1000));
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    return `${min}:${String(sec).padStart(2, '0')}`;
+  };
+
+  const isVoiceMessage = message.type === 'voice';
+  const audioMeta = message.metadata?.audio;
+  const voiceMeta = message.metadata?.voice;
+  const streamMeta = message.metadata?.stream;
+  const audioUrl = useMemo(() => {
+    const direct = audioMeta?.url?.trim();
+    if (direct) return direct;
+    const storageId = audioMeta?.storage_id?.trim();
+    if (storageId) return `/api/voice/storage/${encodeURIComponent(storageId)}`;
+    return '';
+  }, [audioMeta?.url, audioMeta?.storage_id]);
+  const waveform = useMemo(() => {
+    const source = Array.isArray(audioMeta?.waveform) ? audioMeta?.waveform : [];
+    return source.length > 0 ? source.slice(0, 40) : [];
+  }, [audioMeta?.waveform]);
+
+  const streamChunkAudio = useMemo(() => {
+    const chunks = Array.isArray(streamMeta?.chunks) ? streamMeta.chunks : [];
+    const firstPlayable = chunks.find((chunk: any) => typeof chunk?.audio === 'string' && chunk.audio.length > 0);
+    return typeof firstPlayable?.audio === 'string' ? firstPlayable.audio : '';
+  }, [streamMeta?.chunks]);
+
+  const detectAudioMime = (bytes: Uint8Array): string => {
+    if (bytes.length >= 4 && bytes[0] === 0x4f && bytes[1] === 0x67 && bytes[2] === 0x67 && bytes[3] === 0x53) {
+      return 'audio/ogg';
+    }
+    if (bytes.length >= 4 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+      return 'audio/wav';
+    }
+    if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+      return 'audio/mpeg';
+    }
+    return 'audio/wav';
+  };
+
+  useEffect(() => {
+    if (!streamChunkAudio) {
+      if (streamObjectUrlRef.current) {
+        URL.revokeObjectURL(streamObjectUrlRef.current);
+        streamObjectUrlRef.current = null;
+      }
+      setStreamChunkUrl('');
+      return;
+    }
+
+    try {
+      const binary = atob(streamChunkAudio);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+      const mime = detectAudioMime(bytes);
+      const objectUrl = URL.createObjectURL(new Blob([bytes], { type: mime }));
+      if (streamObjectUrlRef.current) {
+        URL.revokeObjectURL(streamObjectUrlRef.current);
+      }
+      streamObjectUrlRef.current = objectUrl;
+      setStreamChunkUrl(objectUrl);
+    } catch {
+      setStreamChunkUrl('');
+    }
+  }, [streamChunkAudio]);
+
+  const attachAudioElement = useCallback((src: string) => {
+    if (audioRef.current && audioRef.current.src !== src) {
+      // Prevent parallel playback from stale synth responses.
+      audioRef.current.pause();
+      audioRef.current.src = '';
+    }
+    if (!audioRef.current || audioRef.current.src !== src) {
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      audio.onloadedmetadata = () => {
+        if (Number.isFinite(audio.duration) && audio.duration > 0) {
+          setVoiceDurationMs(Math.round(audio.duration * 1000));
+        }
+      };
+      audio.ontimeupdate = () => {
+        setVoiceCurrentMs(Math.round((audio.currentTime || 0) * 1000));
+      };
+      audio.onended = () => {
+        setVoicePlaying(false);
+        setVoiceCurrentMs(0);
+      };
+      audio.onerror = () => {
+        setVoicePlaying(false);
+        setVoiceError('Qwen audio playback failed');
+      };
+      audioRef.current = audio;
+    }
+    if (audioRef.current) {
+      audioRef.current.playbackRate = voiceRate;
+    }
+  }, [voiceRate]);
+
+  const synthesizeQwenPreview = useCallback(async (): Promise<string | null> => {
+    const text = String(message.content || '').trim();
+    if (!text) return null;
+    const speaker = String(voiceMeta?.voice_id || 'ryan');
+    const response = await fetch('/api/voice/tts/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        speaker,
+        speed: voiceRate,
+      }),
+    });
+    if (!response.ok) {
+      const details = await response.text().catch(() => '');
+      throw new Error(details || `TTS ${response.status}`);
+    }
+    const data = await response.json();
+    const apiUrl = String(data?.url || '').trim();
+    if (apiUrl) return apiUrl;
+    const audioB64 = String(data?.audio_b64 || '').trim();
+    if (!audioB64) return null;
+    const binary = atob(audioB64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    const objectUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' }));
+    if (createdObjectUrlRef.current) {
+      URL.revokeObjectURL(createdObjectUrlRef.current);
+    }
+    createdObjectUrlRef.current = objectUrl;
+    return objectUrl;
+  }, [message.content, voiceMeta?.voice_id, voiceRate]);
+
+  const toggleVoicePlayback = useCallback(async () => {
+    setVoiceError(null);
+    try {
+      if (voiceLoading) return;
+      let resolvedUrl = audioUrl || streamChunkUrl;
+      if (!resolvedUrl) {
+        setVoiceLoading(true);
+        const reqId = ++synthRequestIdRef.current;
+        resolvedUrl = await synthesizeQwenPreview() || '';
+        // Drop stale synth results (race: multiple async requests for same bubble).
+        if (reqId !== synthRequestIdRef.current) {
+          return;
+        }
+      }
+      if (!resolvedUrl) {
+        setVoiceError('Qwen audio unavailable');
+        return;
+      }
+      attachAudioElement(resolvedUrl);
+      const audio = audioRef.current;
+      if (!audio) {
+        setVoiceError('Qwen audio unavailable');
+        return;
+      }
+      if (audio.paused) {
+        await audio.play();
+        setVoicePlaying(true);
+      } else {
+        audio.pause();
+        setVoicePlaying(false);
+      }
+    } catch (err) {
+      setVoiceError(err instanceof Error ? err.message : 'Qwen TTS failed');
+    } finally {
+      setVoiceLoading(false);
+    }
+  }, [attachAudioElement, audioUrl, streamChunkUrl, synthesizeQwenPreview, voiceLoading]);
+
+  useEffect(() => {
+    if (!audioRef.current?.paused && !audioRef.current?.ended) {
+      return;
+    }
+    if (!audioRef.current || audioRef.current.paused || audioRef.current.ended) {
+      setVoicePlaying(false);
+    }
+  }, [voiceCurrentMs]);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.playbackRate = voiceRate;
+    }
+  }, [voiceRate]);
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+      if (createdObjectUrlRef.current) {
+        URL.revokeObjectURL(createdObjectUrlRef.current);
+        createdObjectUrlRef.current = null;
+      }
+      if (streamObjectUrlRef.current) {
+        URL.revokeObjectURL(streamObjectUrlRef.current);
+        streamObjectUrlRef.current = null;
+      }
+    };
+  }, []);
 
   // Phase 111.17: Get reply preview data
   const getReplyPreview = () => {
@@ -274,10 +491,72 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
         }}>
           {/* Phase 111.17: Reply quote for user messages */}
           <ReplyQuote />
-          {message.content}
+          {isVoiceMessage ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button
+                  onClick={toggleVoicePlayback}
+                  style={{
+                    background: voicePlaying ? '#1f3a2a' : '#20364a',
+                    border: '1px solid #2d4b66',
+                    borderRadius: 999,
+                    color: voicePlaying ? '#7fffb2' : '#cfe8ff',
+                    fontSize: 11,
+                    padding: '4px 10px',
+                    cursor: 'pointer',
+                  }}
+                  title={voicePlaying ? 'Pause voice message' : 'Play voice message'}
+                >
+                  {voicePlaying ? <Pause size={12} color="#cfe8ff" /> : <Play size={12} color="#cfe8ff" />}
+                </button>
+                <span style={{ fontSize: 10, color: '#9db4c9' }}>
+                  {formatDuration(voiceCurrentMs)} / {formatDuration(voiceDurationMs || 0)}
+                </span>
+              </div>
+
+              {waveform.length > 0 && (
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 24 }}>
+                  {waveform.map((amp, idx) => (
+                    <div
+                      key={`${message.id}-wf-user-${idx}`}
+                      style={{
+                        width: 4,
+                        borderRadius: 2,
+                        height: `${Math.max(4, Math.round(amp * 24))}px`,
+                        background: '#7aa6d1',
+                        opacity: 0.9,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              <div style={{ height: 4, background: '#24415d', borderRadius: 999, overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: `${voiceDurationMs > 0 ? Math.min(100, (voiceCurrentMs / voiceDurationMs) * 100) : 0}%`,
+                    background: '#8fc8ff',
+                    transition: 'width 120ms linear',
+                  }}
+                />
+              </div>
+
+              <div style={{ whiteSpace: 'pre-wrap', color: '#d9ebfa', fontSize: 12 }}>
+                {message.content || ''}
+              </div>
+            </div>
+          ) : (
+            message.content
+          )}
         </div>
       </div>
     );
+  }
+
+  // MARKER_174.REFLEX_LIVE: REFLEX tool selection insight (gated by toggle)
+  if (isReflex && showReflexInsight && message.metadata?.reflex) {
+    return <ReflexInsight message={message} />;
   }
 
   // Compound message (workflow result)
@@ -330,10 +609,157 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
 
   // Assistant message
   const isStreaming = message.metadata?.isStreaming;
+  const firstChunkReceived = Boolean(streamMeta?.chunks?.some((chunk) => chunk.seq === 0));
+  const showVoiceTranscript = firstChunkReceived || !isStreaming || Boolean(voiceError);
   // Phase 48.3: Long message handling
   // Phase 74 fix: Guard against null/undefined content
   const isLong = (message.content?.length || 0) > MAX_PREVIEW_LENGTH;
   const modelName = message.metadata?.model || message.agent || 'assistant';
+  const renderAssistantContent = () => {
+    if (isVoiceMessage) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button
+              onClick={toggleVoicePlayback}
+              style={{
+                background: voicePlaying ? '#1f3a2a' : '#202020',
+                border: '1px solid #2d2d2d',
+                borderRadius: 999,
+                color: voicePlaying ? '#7fffb2' : '#cfcfcf',
+                fontSize: 11,
+                padding: '4px 10px',
+                cursor: 'pointer',
+              }}
+              title={voicePlaying ? 'Pause voice message' : 'Play voice message'}
+            >
+              {voicePlaying ? <Pause size={12} color="#cfcfcf" /> : <Play size={12} color="#cfcfcf" />}
+            </button>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[1, 1.5, 2].map((rate) => (
+                <button
+                  key={rate}
+                  onClick={() => setVoiceRate(rate as 1 | 1.5 | 2)}
+                  style={{
+                    background: voiceRate === rate ? '#2a2a2a' : 'transparent',
+                    border: '1px solid #333',
+                    borderRadius: 6,
+                    color: voiceRate === rate ? '#e6e6e6' : '#8b8b8b',
+                    fontSize: 10,
+                    padding: '2px 6px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {rate}x
+                </button>
+              ))}
+            </div>
+            <span style={{ fontSize: 10, color: '#7c7c7c' }}>
+              {formatDuration(voiceCurrentMs)} / {formatDuration(voiceDurationMs || 0)}
+            </span>
+          </div>
+
+          {waveform.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 24 }}>
+              {waveform.map((amp, idx) => (
+                <div
+                  key={`${message.id}-wf-${idx}`}
+                  style={{
+                    width: 4,
+                    borderRadius: 2,
+                    height: `${Math.max(4, Math.round(amp * 24))}px`,
+                    background: '#5f5f5f',
+                    opacity: 0.9,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 4, background: '#242424', borderRadius: 999, overflow: 'hidden' }}>
+            <div
+              style={{
+                height: '100%',
+                width: `${voiceDurationMs > 0 ? Math.min(100, (voiceCurrentMs / voiceDurationMs) * 100) : 0}%`,
+                background: '#4a9eff',
+                transition: 'width 120ms linear',
+              }}
+            />
+          </div>
+
+          {(voiceMeta?.voice_id || voiceMeta?.tts_provider) && (
+            <div style={{ fontSize: 10, color: '#777' }}>
+              {(voiceMeta?.voice_id || 'voice')} · {voiceMeta?.tts_provider || 'tts'}
+            </div>
+          )}
+
+          {voiceError && (
+            <div style={{ fontSize: 10, color: '#b07a7a' }}>
+              {voiceError}
+            </div>
+          )}
+
+          <div
+            style={{ whiteSpace: 'pre-wrap', color: '#bfbfbf', fontSize: 12 }}
+            aria-live={showVoiceTranscript ? 'polite' : 'assertive'}
+            aria-label={
+              showVoiceTranscript
+                ? 'Voice transcript is available'
+                : 'Voice response is being generated'
+            }
+          >
+            {showVoiceTranscript ? message.content || '' : 'Генерирую голосовое сообщение...'}
+          </div>
+        </div>
+      );
+    }
+
+    if (isLong && !isStreaming) {
+      return (
+        <>
+          <div style={{ whiteSpace: 'pre-wrap' }}>
+            {(message.content || '').slice(0, MAX_PREVIEW_LENGTH)}...
+          </div>
+          <button
+            onClick={() => onOpenArtifact?.(message.id, message.content || '', modelName)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              marginTop: 10,
+              padding: '6px 10px',
+              background: '#222',
+              border: '1px solid #333',
+              borderRadius: 6,
+              color: '#888',
+              fontSize: 12,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#2a2a2a';
+              e.currentTarget.style.color = '#aaa';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = '#222';
+              e.currentTarget.style.color = '#888';
+            }}
+          >
+            <FileText size={14} />
+            Read full response ({(message.content || '').length} chars)
+          </button>
+        </>
+      );
+    }
+
+    return (
+      <>
+        <div style={{ whiteSpace: 'pre-wrap' }}>{message.content || ''}</div>
+        {/* Phase 46: Streaming cursor */}
+        {isStreaming && <span style={{ opacity: 0.7, animation: 'blink 0.5s infinite' }}>▊</span>}
+      </>
+    );
+  };
 
   return (
     <div style={{
@@ -524,49 +950,7 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
           );
         })()}
 
-        {/* Phase 48.3: Show preview for long messages */}
-        {/* Phase 74 fix: Guard against null/undefined content */}
-        {isLong && !isStreaming ? (
-          <>
-            <div style={{ whiteSpace: 'pre-wrap' }}>
-              {(message.content || '').slice(0, MAX_PREVIEW_LENGTH)}...
-            </div>
-            <button
-              onClick={() => onOpenArtifact?.(message.id, message.content || '', modelName)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                marginTop: 10,
-                padding: '6px 10px',
-                background: '#222',
-                border: '1px solid #333',
-                borderRadius: 6,
-                color: '#888',
-                fontSize: 12,
-                cursor: 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.background = '#2a2a2a';
-                e.currentTarget.style.color = '#aaa';
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.background = '#222';
-                e.currentTarget.style.color = '#888';
-              }}
-            >
-              <FileText size={14} />
-              Read full response ({(message.content || '').length} chars)
-            </button>
-          </>
-        ) : (
-          <>
-            <div style={{ whiteSpace: 'pre-wrap' }}>{message.content || ''}</div>
-            {/* Phase 46: Streaming cursor */}
-            {isStreaming && <span style={{ opacity: 0.7, animation: 'blink 0.5s infinite' }}>▊</span>}
-          </>
-        )}
+        {renderAssistantContent()}
       </div>
 
       {/* Phase 46: Token metadata display */}
@@ -621,28 +1005,30 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
 
           {/* Action buttons: TTS + emoji + reply */}
           <div style={{ display: 'flex', gap: 4, marginLeft: reactions.length > 0 ? 0 : 0 }}>
-            {/* Phase 60.5: TTS button */}
-            <button
-              onClick={() => isSpeaking ? stop() : speak(message.content)}
-              style={{
-                background: isSpeaking ? '#1a2a3a' : 'transparent',
-                border: 'none',
-                cursor: 'pointer',
-                padding: 2,
-                borderRadius: 4,
-                opacity: isSpeaking ? 1 : 0.4,
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
-              onMouseLeave={e => (e.currentTarget.style.opacity = isSpeaking ? '1' : '0.4')}
-              title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
-            >
-              {isSpeaking ? (
-                <VolumeX size={14} color="#4a9eff" />
-              ) : (
-                <Volume2 size={14} color="#666" />
-              )}
-            </button>
+            {/* Phase 60.5: TTS button (hidden for voice messages with dedicated controls) */}
+            {!isVoiceMessage && (
+              <button
+                onClick={toggleVoicePlayback}
+                style={{
+                  background: voicePlaying ? '#1a2a3a' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 2,
+                  borderRadius: 4,
+                  opacity: voicePlaying ? 1 : 0.4,
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={e => (e.currentTarget.style.opacity = '0.8')}
+                onMouseLeave={e => (e.currentTarget.style.opacity = voicePlaying ? '1' : '0.4')}
+                title={voicePlaying ? 'Stop speaking' : 'Read aloud (Qwen TTS)'}
+              >
+                {voicePlaying ? (
+                  <VolumeX size={14} color="#4a9eff" />
+                ) : (
+                  <Volume2 size={14} color="#666" />
+                )}
+              </button>
+            )}
 
             {/* Add reaction button */}
             <button

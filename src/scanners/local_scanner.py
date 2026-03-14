@@ -48,7 +48,11 @@ class LocalScanner:
         '.json', '.yaml', '.yml', '.html', '.css', '.scss',
         '.sh', '.bash', '.zsh', '.sql', '.graphql',
         '.xml', '.csv', '.ini', '.cfg', '.conf', '.env',
-        '.rst', '.org', '.wiki'
+        '.rst', '.org', '.wiki',
+        # Multimodal ingest support (content may be OCR/transcript summary)
+        '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff',
+        '.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',
+        '.mp4', '.mov', '.mkv', '.avi', '.webm'
     }
 
     SKIP_DIRS = {
@@ -158,6 +162,22 @@ class LocalScanner:
 
     def _read_content(self, file_path: Path) -> Optional[str]:
         """Read file content as text."""
+        ext = file_path.suffix.lower()
+
+        # Binary/media placeholders: keep file in pipeline so downstream OCR/transcript
+        # routing can enrich content and metadata.
+        media_ext = {
+            '.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff',
+            '.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',
+            '.mp4', '.mov', '.mkv', '.avi', '.webm'
+        }
+        if ext in media_ext:
+            try:
+                size = file_path.stat().st_size
+            except Exception:
+                size = 0
+            return f"[Binary media file]\nname={file_path.name}\nextension={ext}\nsize_bytes={size}"
+
         encodings = ['utf-8', 'latin-1', 'cp1252']
 
         for encoding in encodings:

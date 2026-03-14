@@ -1,0 +1,5 @@
+Based on the provided context, here is a 3-point plan to improve memory context packing without latency regression:
+
+1. **Implement Token Budget Allocation**: In `chat_handler.py`, modify the prompt assembly to dynamically allocate token budgets per memory system (e.g., 40% STM, 30% CAM, 30% ENGRAM) before calling the API aggregator, ensuring total context stays under the 8000-token limit from `api_gateway.py`.
+
+2. **Add Lazy Loading for Memory**: In `src/memory/`, update `STMManager`, `CAMMemory`, and `EngramManager` to load

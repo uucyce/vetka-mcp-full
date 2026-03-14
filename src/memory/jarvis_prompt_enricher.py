@@ -310,7 +310,7 @@ class JARVISPromptEnricher:
 
         # Build enriched prompt
         enriched = f"""<system>
-You are JARVIS - personal AI assistant for {user_id}.
+You are VETKA - personal AI assistant for {user_id}.
 
 Response Style:
 - Tone: {formality_desc}

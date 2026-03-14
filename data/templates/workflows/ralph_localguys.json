@@ -1,0 +1,26 @@
+{
+  "id": "ralph_localguys_v1",
+  "name": "Ralph localguys",
+  "description": "Single-agent local loop for narrow playground fixes with verifier gate.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_bronze",
+    "task_types": ["localguys", "ralph_localguys", "solo_patch"],
+    "workflow_family": {
+      "family": "ralph_localguys",
+      "version": "v1",
+      "roles": ["coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": true,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

@@ -23,22 +23,73 @@ import { CameraController } from './components/canvas/CameraController';
 import { ChatPanel } from './components/chat';
 import { ArtifactWindow } from './components/artifact';
 import { UnifiedSearchBar } from './components/search/UnifiedSearchBar';
+import { useMycoModeA } from './components/myco/useMycoModeA';
 import { DevPanel } from './components/panels/DevPanel';
 import { CommandPalette } from './components/search/CommandPalette';  // MARKER_136.W2C
 import { DropZoneRouter, type DropZoneEvent } from './components/DropZoneRouter';
-import JarvisWave from './components/jarvis/JarvisWave';
 import { useJarvis } from './hooks/useJarvis';
 import { useStore, type TreeNode } from './store/useStore';
 import { useTreeData } from './hooks/useTreeData';
 import { useSocket } from './hooks/useSocket';
 import type { SearchResult } from './types/chat';
 import { calculateAdaptiveLODWithFloor } from './utils/lod';
-import { isTauri, onWebArtifactSaved, openLiveWebWindow } from './config/tauri';
+import { isTauri, onWebArtifactSaved, openArtifactMediaWindow, openArtifactWindow, openLiveWebWindow } from './config/tauri';
+import {
+  DETACHED_ARTIFACT_PIN_REQUEST_KEY,
+  normalizeDetachedArtifactPath,
+  parseDetachedArtifactPinRequest,
+  type DetachedArtifactChatStateV1,
+  writeDetachedArtifactChatState,
+} from './utils/detachedArtifactBridge';
 import {
   computeLabelScore,
   selectTopLabels,
   applyHysteresis,
 } from './utils/labelScoring';
+
+interface NodeContextMenuState {
+  visible: boolean;
+  clientX: number;
+  clientY: number;
+  nodeId: string;
+  nodeName: string;
+  nodePath: string;
+  nodeType: string;
+}
+
+interface MediaStartupState {
+  status: 'idle' | 'running' | 'ready' | 'error';
+  scopePath: string;
+  message: string;
+  fallbackQuestions?: Array<{
+    id: string;
+    question: string;
+    prefill?: string;
+    priority?: number;
+  }>;
+  stats?: {
+    media_files?: number;
+    audio_files?: number;
+    video_files?: number;
+  };
+}
+
+interface ArtifactOpenPayload {
+  file?: {
+    path: string;
+    name: string;
+    extension?: string;
+    artifactId?: string;
+    inVetka?: boolean;
+  } | null;
+  content?: {
+    content: string;
+    title: string;
+    type?: 'text' | 'markdown' | 'code' | 'web';
+    sourceUrl?: string;
+  } | null;
+  initialSeekSec?: number;
+}
 
 // ============================================================================
 // MARKER_111.21_FRUSTUM: Phase 112.2 - Frustum Culling Component
@@ -187,6 +238,9 @@ function FrustumCulledNodes({ nodes, selectedId, highlightedId, selectNode }: Fr
           children={node.children}
           depth={node.depth}
           metadata={node.metadata}
+          artifactId={node.type === 'artifact' ? (node.metadata?.artifact_id || node.id) : undefined}
+          artifactType={node.type === 'artifact' ? (node.metadata?.artifact_type || 'code') : undefined}
+          artifactStatus={node.type === 'artifact' ? (node.metadata?.status || 'done') : undefined}
           opacity={node.opacity}
           lodLevel={nodeLodLevels.get(node.id) ?? 4}
           showLabel={currentLabelSet.has(node.id)}
@@ -218,8 +272,21 @@ export default function App() {
     type?: 'text' | 'markdown' | 'code' | 'web';
     sourceUrl?: string;
   } | null>(null);
+  const [artifactSeekSec, setArtifactSeekSec] = useState<number | undefined>(undefined);
+  const [treeViewMode, setTreeViewMode] = useState<'directed' | 'knowledge' | 'media_edit'>('directed');
+  const pendingTreeModeRef = useRef<{ mode: 'directed' | 'knowledge' | 'media_edit'; ts: number } | null>(null);
+  const [nodeContextMenu, setNodeContextMenu] = useState<NodeContextMenuState>({
+    visible: false,
+    clientX: 0,
+    clientY: 0,
+    nodeId: '',
+    nodeName: '',
+    nodePath: '',
+    nodeType: '',
+  });
 
   const nodes = useStore((state) => Object.values(state.nodes));
+  const allNodes = useStore((state) => state.nodes);
   const selectedId = useStore((state) => state.selectedId);
   const selectNode = useStore((state) => state.selectNode);
   const selectedNode = useStore((state) =>
@@ -227,6 +294,9 @@ export default function App() {
   );
   const isDraggingAny = useStore((state) => state.isDraggingAny);
   const highlightedId = useStore((state) => state.highlightedId);
+  const togglePinFile = useStore((state) => state.togglePinFile);
+  const pinnedFileIds = useStore((state) => state.pinnedFileIds);
+  const currentChatId = useStore((state) => state.currentChatId);
 
   // Phase 65: Grab mode for Blender-style node movement
   const grabMode = useStore((state) => state.grabMode);
@@ -238,6 +308,220 @@ export default function App() {
     candidates: string[];
     onSelect: (path: string) => void;
   } | null>(null);
+  const [mediaStartup, setMediaStartup] = useState<MediaStartupState>({
+    status: 'idle',
+    scopePath: '',
+    message: '',
+  });
+  const [isFolderCleanupBusy, setIsFolderCleanupBusy] = useState(false);
+  const [folderCleanupProgress, setFolderCleanupProgress] = useState(0);
+  const [folderCleanupPath, setFolderCleanupPath] = useState('');
+  const [folderCleanupConfirmPath, setFolderCleanupConfirmPath] = useState<string | null>(null);
+
+  const isEmbeddedArtifactFallbackForced = useCallback(() => {
+    if (!isTauri()) return true;
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get('vetka_force_embedded_artifact') === '1') return true;
+    } catch {
+      // Keep guard resilient.
+    }
+    try {
+      return window.localStorage.getItem('vetka_force_embedded_artifact') === '1';
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const openArtifactEmbeddedFallback = useCallback((payload: ArtifactOpenPayload) => {
+    setArtifactFile(payload.file ?? null);
+    setArtifactContent(payload.content ?? null);
+    setArtifactSeekSec(payload.initialSeekSec);
+    setIsArtifactOpen(true);
+    console.info('[MARKER_159.C1_OPEN_PATH] opened_via=embedded_fallback');
+  }, [setArtifactFile, setArtifactContent, setArtifactSeekSec, setIsArtifactOpen]);
+
+  const openArtifact = useCallback(async (payload: ArtifactOpenPayload) => {
+    const file = payload.file ?? null;
+    const path = String(file?.path || '').trim();
+    const forceEmbedded = isEmbeddedArtifactFallbackForced();
+    const mediaExts = new Set(['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi', 'mp3', 'wav', 'flac', 'aac', 'ogg', 'm4a']);
+    const normalizePath = (p: string) => {
+      const raw = String(p || '').trim();
+      if (!raw) return '';
+      const withoutScheme = raw.replace(/^file:\/\//, '');
+      let decoded = withoutScheme;
+      try {
+        decoded = decodeURIComponent(withoutScheme);
+      } catch {
+        // keep as-is
+      }
+      return decoded.replace(/\\/g, '/').replace(/\/+$/, '');
+    };
+    const normalizedTargetPath = normalizePath(path);
+    const computedInVetka = normalizedTargetPath
+      ? nodes.some((node: any) => {
+          const nodePath = normalizePath(String(node?.path || ''));
+          return (
+            nodePath === normalizedTargetPath
+            || nodePath.endsWith(`/${normalizedTargetPath}`)
+            || normalizedTargetPath.endsWith(`/${nodePath}`)
+          );
+        })
+      : false;
+    const inVetka = typeof file?.inVetka === 'boolean' ? file.inVetka : computedInVetka;
+
+    if (!forceEmbedded && isTauri() && path) {
+      // MARKER_159.R7.UNIFIED_NATIVE_WINDOW_AUTHORITY:
+      // desktop file/media artifacts must stay in detached native windows, never the old embedded shell.
+      setIsArtifactOpen(false);
+      setArtifactFile(null);
+      setArtifactContent(null);
+      setArtifactSeekSec(undefined);
+
+      // MARKER_159.C6.MEDIA_OPEN_DETACHED_PRIORITY:
+      // media artifacts must open via dedicated detached media window route (/artifact-media),
+      // otherwise runtime falls back to embedded ArtifactWindow path with divergent fullscreen behavior.
+      const extRaw = String(file?.extension || file?.name?.split('.').pop() || path.split('.').pop() || '').replace(/^\./, '').toLowerCase();
+      const isMediaCandidate = mediaExts.has(extRaw);
+      if (isMediaCandidate) {
+        const okMedia = await openArtifactMediaWindow({
+          path,
+          name: file?.name,
+          extension: file?.extension,
+          artifactId: file?.artifactId,
+          inVetka,
+          initialSeekSec: payload.initialSeekSec,
+        });
+        if (okMedia) {
+          console.info('[MARKER_159.C1_OPEN_PATH] opened_via=detached_media_window');
+          return;
+        }
+      }
+
+      const ok = await openArtifactWindow({
+        path,
+        name: file?.name,
+        extension: file?.extension,
+        artifactId: file?.artifactId,
+        inVetka,
+        initialSeekSec: payload.initialSeekSec,
+        contentMode: 'file',
+        windowLabel: 'artifact-main',
+      });
+      if (ok) {
+        console.info('[MARKER_159.C1_OPEN_PATH] opened_via=native_window');
+        return;
+      }
+
+      console.warn('[MARKER_159.R7.UNIFIED_NATIVE_WINDOW_AUTHORITY] native artifact open failed; embedded fallback suppressed', {
+        path,
+        isMediaCandidate,
+      });
+      return;
+    }
+
+    openArtifactEmbeddedFallback(payload);
+  }, [isEmbeddedArtifactFallbackForced, openArtifactEmbeddedFallback, nodes]);
+
+  useEffect(() => {
+    const pinnedPaths = (pinnedFileIds || [])
+      .map((nodeId) => normalizeDetachedArtifactPath(String(allNodes[nodeId]?.path || '')))
+      .filter(Boolean);
+    const nextState: DetachedArtifactChatStateV1 = {
+      schema_version: 'detached_artifact_chat_state_v1',
+      chat_open: isChatOpen,
+      current_chat_id: currentChatId || null,
+      pinned_paths: pinnedPaths,
+      updated_at_ms: Date.now(),
+    };
+    writeDetachedArtifactChatState(nextState);
+  }, [allNodes, currentChatId, isChatOpen, pinnedFileIds]);
+
+  useEffect(() => {
+    const handleDetachedPinRequest = (event: StorageEvent) => {
+      if (event.key !== DETACHED_ARTIFACT_PIN_REQUEST_KEY || !event.newValue) return;
+      const request = parseDetachedArtifactPinRequest(event.newValue);
+      if (!request || request.action !== 'toggle_pin') return;
+
+      const targetPath = normalizeDetachedArtifactPath(request.path);
+      if (!targetPath) return;
+
+      const nodeId = Object.keys(allNodes).find((id) => {
+        const nodePath = normalizeDetachedArtifactPath(String(allNodes[id]?.path || ''));
+        return (
+          nodePath === targetPath
+          || nodePath.endsWith(`/${targetPath}`)
+          || targetPath.endsWith(`/${nodePath}`)
+        );
+      });
+      if (!nodeId) return;
+
+      if (!isChatOpen) {
+        setIsChatOpen(true);
+      }
+      togglePinFile(nodeId);
+    };
+
+    window.addEventListener('storage', handleDetachedPinRequest);
+    return () => window.removeEventListener('storage', handleDetachedPinRequest);
+  }, [allNodes, isChatOpen, togglePinFile]);
+
+  useEffect(() => {
+    if (!isFolderCleanupBusy) return;
+    const timer = window.setInterval(() => {
+      setFolderCleanupProgress((prev) => (prev >= 92 ? 92 : prev + 4));
+    }, 120);
+    return () => window.clearInterval(timer);
+  }, [isFolderCleanupBusy]);
+
+  const runFolderCleanup = useCallback(async (targetPath: string) => {
+    if (!targetPath || isFolderCleanupBusy) return;
+
+    setFolderCleanupConfirmPath(null);
+    setFolderCleanupPath(targetPath);
+    setFolderCleanupProgress(8);
+    setIsFolderCleanupBusy(true);
+
+    try {
+      const res = await fetch('/api/watcher/cleanup-folder-from-vetka', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: targetPath,
+          dry_run: false,
+          block_watchdog: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.success) {
+        alert(`Cleanup failed: ${data?.detail || data?.error || res.status}`);
+        return;
+      }
+
+      const qd = Number(data?.qdrant_deleted || 0);
+      const wv = Number(data?.weaviate_deleted || 0);
+      setFolderCleanupProgress(100);
+      alert(
+        `Cleaned from VETKA:\n` +
+        `Qdrant: ${qd}\n` +
+        `Weaviate: ${wv}\n\n` +
+        `Watchdog block: ${data?.watchdog_blocked ? 'ON' : 'OFF'}\n` +
+        `Disk files: preserved`
+      );
+
+      window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
+      window.dispatchEvent(new CustomEvent('vetka-switch-to-scanner'));
+    } catch (err) {
+      alert('Cleanup failed. Check backend logs.');
+    } finally {
+      setIsFolderCleanupBusy(false);
+      window.setTimeout(() => {
+        setFolderCleanupProgress(0);
+        setFolderCleanupPath('');
+      }, 180);
+    }
+  }, [isFolderCleanupBusy]);
 
   // Phase 52.4: Handle click on empty space to deselect
   const handleCanvasClick = () => {
@@ -250,8 +534,6 @@ export default function App() {
 
   // Phase 68: Search handlers for standalone search bar
   const setCameraCommand = useStore((state) => state.setCameraCommand);
-  const togglePinFile = useStore((state) => state.togglePinFile);
-  const allNodes = useStore((state) => state.nodes);
 
   const handleSearchSelect = useCallback(async (result: SearchResult) => {
     const source = String((result as any).source || '');
@@ -264,14 +546,16 @@ export default function App() {
         return;
       }
       // Browser fallback: open existing artifact panel web preview.
-      setArtifactFile(null);
-      setArtifactContent({
-        title: result.name || 'Web result',
-        type: 'web',
-        content: result.preview || '',
-        sourceUrl: result.path || '',
+      openArtifactEmbeddedFallback({
+        file: null,
+        content: {
+          title: result.name || 'Web result',
+          type: 'web',
+          content: result.preview || '',
+          sourceUrl: result.path || '',
+        },
+        initialSeekSec: undefined,
       });
-      setIsArtifactOpen(true);
       return;
     }
 
@@ -282,7 +566,7 @@ export default function App() {
     }
     // Fly camera to result
     setCameraCommand({ target: result.path, zoom: 'close', highlight: true });
-  }, [allNodes, selectNode, selectedNode, setCameraCommand, setArtifactFile, setArtifactContent, setIsArtifactOpen]);
+  }, [allNodes, openArtifactEmbeddedFallback, selectNode, selectedNode, setCameraCommand]);
 
   const handleSearchPin = useCallback((result: SearchResult) => {
     // Find node by path and toggle pin
@@ -291,6 +575,104 @@ export default function App() {
       togglePinFile(nodeId);
     }
   }, [allNodes, togglePinFile]);
+
+  const artifactPath = useMemo(() => String(artifactFile?.path || '').trim(), [artifactFile?.path]);
+  const artifactKind = useMemo<'none' | 'file' | 'web' | 'audio' | 'video'>(() => {
+    if (!isArtifactOpen) return 'none';
+    if (artifactContent?.type === 'web' || artifactContent?.sourceUrl) return 'web';
+    const ext = String(artifactFile?.extension || artifactFile?.name?.split('.').pop() || '').toLowerCase();
+    if (['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'].includes(ext)) return 'video';
+    if (['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'].includes(ext)) return 'audio';
+    return artifactPath ? 'file' : 'none';
+  }, [artifactContent?.sourceUrl, artifactContent?.type, artifactFile?.extension, artifactFile?.name, artifactPath, isArtifactOpen]);
+  const artifactLooksLikeCode = useMemo(() => {
+    if (!isArtifactOpen) return false;
+    if (artifactContent?.type === 'code') return true;
+    const ext = `.${String(artifactFile?.extension || artifactFile?.name?.split('.').pop() || '').toLowerCase()}`;
+    return new Set([
+      '.js', '.jsx', '.ts', '.tsx', '.py', '.java', '.cpp', '.c', '.h', '.hpp',
+      '.go', '.rs', '.rb', '.php', '.swift', '.kt', '.scala', '.sh', '.bash', '.zsh',
+      '.sql', '.r', '.m', '.lua', '.perl', '.pl', '.json', '.xml', '.yaml', '.yml',
+      '.toml', '.ini', '.env', '.cfg', '.css', '.scss', '.less', '.html', '.vue',
+      '.svelte', '.dockerfile', '.makefile', '.cmake',
+    ]).has(ext);
+  }, [artifactContent?.type, artifactFile?.extension, artifactFile?.name, isArtifactOpen]);
+  const artifactInVetka = useMemo(() => {
+    const normalizedTarget = artifactPath.replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+    if (!normalizedTarget) return false;
+    return nodes.some((node: any) => {
+      const nodePath = String(node?.path || '').replace(/^file:\/\//, '').replace(/\\/g, '/').replace(/\/+$/, '');
+      return nodePath === normalizedTarget || nodePath.endsWith(`/${normalizedTarget}`) || normalizedTarget.endsWith(`/${nodePath}`);
+    });
+  }, [artifactPath, nodes]);
+
+  const mycoModeA = useMycoModeA({
+    selectedNode: selectedNode ? {
+      id: selectedNode.id,
+      name: selectedNode.name,
+      path: selectedNode.path,
+      type: selectedNode.type,
+    } : null,
+    isChatOpen,
+    leftPanel,
+    isArtifactOpen,
+    artifactPath,
+    artifactInVetka,
+    artifactKind,
+    artifactLooksLikeCode,
+    isDevPanelOpen,
+    isContextMenuOpen: nodeContextMenu.visible,
+    treeViewMode,
+  });
+
+  const startMediaModeStartup = useCallback(async (scopePath: string) => {
+    setMediaStartup({
+      status: 'running',
+      scopePath,
+      message: 'MCP_MEDIA: analyzing scope...',
+    });
+    try {
+      const resp = await fetch('/api/artifacts/media/startup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope_path: scopePath,
+          quick_scan_limit: 5000,
+        }),
+      });
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const payload = await resp.json();
+      const stats = payload?.stats || {};
+      const eta = Number(payload?.estimated_ready_sec || 0);
+      const msg = `MCP_MEDIA ready: media=${stats.media_files || 0} (audio=${stats.audio_files || 0}, video=${stats.video_files || 0}), ETA ${eta.toFixed(1)}s`;
+      const fallbackQuestions = Array.isArray(payload?.fallback_questions) ? payload.fallback_questions : [];
+      setMediaStartup({
+        status: 'ready',
+        scopePath: String(payload?.scope_path || scopePath || ''),
+        message: msg,
+        fallbackQuestions,
+        stats: {
+          media_files: Number(stats.media_files || 0),
+          audio_files: Number(stats.audio_files || 0),
+          video_files: Number(stats.video_files || 0),
+        },
+      });
+      window.setTimeout(() => {
+        setMediaStartup((prev) => (prev.status === 'ready'
+          ? { status: 'idle', scopePath: prev.scopePath, message: '', fallbackQuestions: [] }
+          : prev));
+      }, 5500);
+    } catch {
+      setMediaStartup({
+        status: 'error',
+        scopePath,
+        message: 'MCP_MEDIA startup failed. Using fallback directed pipeline.',
+        fallbackQuestions: [],
+      });
+    }
+  }, []);
 
   useEffect(() => {
     let unlisten: (() => void) | null = null;
@@ -397,9 +779,9 @@ export default function App() {
         }
       }
 
-      if (indexedFiles > 0 || addedFolders > 0) {
-        window.dispatchEvent(new CustomEvent('vetka-tree-refresh-needed'));
-      }
+      // MARKER_136.TREE_REFRESH_DEDUP_APP:
+      // Do not dispatch manual tree refresh here.
+      // Index/add flows already emit socket events consumed by useSocket reload path.
 
       // MARKER_136.CAM_TRIGGER_CONDITIONAL: folder -> folder focus, file -> file focus
       const firstReal = realItems[0];
@@ -527,17 +909,67 @@ export default function App() {
 
   // Phase 118.2: Listen for double-click artifact open requests from FileCard
   useEffect(() => {
-    const handleOpenArtifactFile = (e: CustomEvent) => {
-      const { path, name, extension } = e.detail;
-      setArtifactFile({ path, name, extension });
-      setArtifactContent(null);
-      setIsArtifactOpen(true);
+    const handleOpenArtifactFile = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const { path, name, extension } = e.detail || {};
+      if (!path || !name) return;
+      void openArtifact({
+        file: { path, name, extension, inVetka: true },
+        content: null,
+        initialSeekSec: undefined,
+      });
       console.log('[App] Phase 118.2: Opening artifact via double-click:', name);
     };
 
-    window.addEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
-    return () => window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile as EventListener);
-  }, []);
+    const handleOpenArtifact = async (detail: any) => {
+      const artifactId = detail.artifactId || '';
+      const startSec = typeof detail.startSec === 'number' ? detail.startSec : undefined;
+      let filePath = String(detail.filePath || '').trim();
+      let fileName = String(detail.fileName || '').trim();
+
+      if (!filePath && artifactId) {
+        try {
+          const resp = await fetch('/api/artifacts');
+          if (resp.ok) {
+            const data = await resp.json();
+            const list = Array.isArray(data?.artifacts) ? data.artifacts : [];
+            const match = list.find((a: any) => a.id === artifactId);
+            if (match?.file_path) {
+              filePath = String(match.file_path);
+              if (!fileName) fileName = String(match.name || '');
+            }
+          }
+        } catch {
+          // Keep handler resilient: fallback below if not resolved.
+        }
+      }
+
+      if (!filePath) return;
+      if (!fileName) {
+        const parts = filePath.replace(/\\/g, '/').split('/');
+        fileName = parts[parts.length - 1] || 'artifact';
+      }
+      const extension = fileName.includes('.') ? fileName.split('.').pop() : undefined;
+
+      await openArtifact({
+        file: { path: filePath, name: fileName, extension, artifactId, inVetka: true },
+        content: null,
+        initialSeekSec: startSec,
+      });
+    };
+
+    const handleOpenArtifactEvent = (evt: Event) => {
+      const e = evt as CustomEvent;
+      void handleOpenArtifact(e.detail || {});
+    };
+
+    window.addEventListener('vetka-open-artifact-file', handleOpenArtifactFile);
+    window.addEventListener('vetka-open-artifact', handleOpenArtifactEvent);
+    return () => {
+      window.removeEventListener('vetka-open-artifact-file', handleOpenArtifactFile);
+      window.removeEventListener('vetka-open-artifact', handleOpenArtifactEvent);
+    };
+  }, [openArtifact]);
 
   // Phase 65: G key for grab mode (Blender-style node movement)
   // MARKER_109_DEVPANEL: Cmd+Shift+D for dev panel
@@ -586,6 +1018,74 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [grabMode, setGrabMode]);
 
+  useEffect(() => {
+    const handleNodeContextMenu = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const d = e.detail || {};
+      setNodeContextMenu({
+        visible: true,
+        clientX: Number(d.clientX || 0),
+        clientY: Number(d.clientY || 0),
+        nodeId: String(d.id || ''),
+        nodeName: String(d.name || ''),
+        nodePath: String(d.path || ''),
+        nodeType: String(d.type || ''),
+      });
+    };
+
+    const handleTreeModeSwitchIntent = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const requested = String(e.detail?.mode || '').toLowerCase();
+      if (requested === 'directed' || requested === 'knowledge' || requested === 'media_edit') {
+        pendingTreeModeRef.current = { mode: requested, ts: Date.now() };
+        setTreeViewMode(requested);
+      }
+    };
+
+    const handleTreeModeChanged = (evt: Event) => {
+      const e = evt as CustomEvent;
+      const rawMode = String(e.detail?.mode || '').toLowerCase();
+      const mode = rawMode === 'knowledge' ? 'knowledge' : rawMode === 'media_edit' ? 'media_edit' : 'directed';
+      const pending = pendingTreeModeRef.current;
+      if (pending) {
+        const isFresh = Date.now() - pending.ts < 2000;
+        if (isFresh && pending.mode !== mode) {
+          return;
+        }
+        if (!isFresh || pending.mode === mode) {
+          pendingTreeModeRef.current = null;
+        }
+      }
+      setTreeViewMode(mode);
+      const scopePath = String(e.detail?.scopePath || '');
+      if (mode === 'media_edit') {
+        void startMediaModeStartup(scopePath);
+      } else {
+        setMediaStartup({
+          status: 'idle',
+          scopePath: '',
+          message: '',
+        });
+      }
+    };
+
+    const closeContextMenu = () => {
+      setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+    };
+
+    window.addEventListener('vetka-node-context-menu', handleNodeContextMenu);
+    window.addEventListener('vetka-switch-tree-mode', handleTreeModeSwitchIntent);
+    window.addEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
+    window.addEventListener('click', closeContextMenu);
+
+    return () => {
+      window.removeEventListener('vetka-node-context-menu', handleNodeContextMenu);
+      window.removeEventListener('vetka-switch-tree-mode', handleTreeModeSwitchIntent);
+      window.removeEventListener('vetka-tree-mode-changed', handleTreeModeChanged);
+      window.removeEventListener('click', closeContextMenu);
+    };
+  }, [startMediaModeStartup]);
+
   // Phase 50.2: ChestIcon component
   // MARKER_118.1B: ChestIcon — иконка артефакта (сундук)
   const ChestIcon = ({ isOpen }: { isOpen: boolean }) => (
@@ -615,7 +1115,8 @@ export default function App() {
       onDropToTree={handleDropToTree}
       onDropToChat={handleDropToChat}
     >
-    <div style={{ width: '100vw', height: '100vh', background: '#0a0a0a' }}>
+    <div style={{ position: 'fixed', inset: 0, background: '#0a0a0a' }}>
+      {/* MARKER_159.C2.FULLSCREEN_LAYOUT_FIXED_INSET: avoid 100vh white-gap artifacts in native fullscreen. */}
       <Canvas
         camera={{
           position: [0, 500, 1000],
@@ -677,46 +1178,41 @@ export default function App() {
         onClose={() => setIsChatOpen(false)}
         leftPanel={leftPanel}
         setLeftPanel={setLeftPanel}
-      />
-      <ArtifactWindow
-        isOpen={isArtifactOpen}
-        onClose={() => {
-          setIsArtifactOpen(false);
-          setArtifactFile(null);
-          setArtifactContent(null);
+        onVoiceTrigger={(role) => {
+          void jarvis.toggle({ agentRole: role ?? 'myco' });
         }}
-        file={artifactFile}
-        rawContent={artifactContent}
+        onSpeakText={(text, role, options) => {
+          jarvis.speakText(text, {
+            agentRole: role ?? 'myco',
+            autoListenAfter: options?.autoListenAfter,
+          });
+        }}
+        voiceState={jarvis.state}
+        voiceLevel={jarvis.audioLevel}
+        mycoHint={mycoModeA.hint}
+        mycoStateKey={mycoModeA.stateKey}
       />
+      {(isArtifactOpen && (!isTauri() || !artifactPath || isEmbeddedArtifactFallbackForced())) && (
+        <ArtifactWindow
+          isOpen={isArtifactOpen}
+          onClose={() => {
+            setIsArtifactOpen(false);
+            setArtifactFile(null);
+            setArtifactContent(null);
+            setArtifactSeekSec(undefined);
+          }}
+          isChatOpen={isChatOpen}
+          file={artifactFile}
+          rawContent={artifactContent}
+          initialSeekSec={artifactSeekSec}
+        />
+      )}
 
       {/* MARKER_109_DEVPANEL: Dev Panel */}
       <DevPanel
         isOpen={isDevPanelOpen}
         onClose={() => setIsDevPanelOpen(false)}
       />
-
-      {/* Phase 104: Jarvis Wave in center top */}
-      <div style={{
-        position: 'fixed',
-        top: 16,
-        left: '50%',
-        transform: 'translateX(-50%)',
-        zIndex: 150,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-      }}>
-        <JarvisWave
-          state={jarvis.state}
-          audioLevel={jarvis.audioLevel}
-          onClick={() => jarvis.toggle()}
-          width={200}
-          height={48}
-        />
-        {jarvis.error && (
-          <span style={{ color: '#ef4444', fontSize: 11 }}>{jarvis.error}</span>
-        )}
-      </div>
 
       {/* Phase 68.3: Search bar + icons container (top-left) */}
       {/* MARKER_118.2A: Контейнер когда чат ЗАКРЫТ — SearchBar + иконки справа */}
@@ -735,6 +1231,8 @@ export default function App() {
             <UnifiedSearchBar
               onSelectResult={handleSearchSelect}
               onPinResult={handleSearchPin}
+              laneSurface="main"
+              mycoSurfaceScope="main"
               onOpenArtifact={async (result) => {
                 // MARKER_139.S1_2_UNIFIED_ARTIFACT_FIX: Web/file unified results need different artifact open handling
                 const source = String((result as any).source || '');
@@ -748,14 +1246,16 @@ export default function App() {
                   // Browser fallback (non-Tauri runtime only)
                   const title = result.name || 'Web result';
                   const url = result.path || '';
-                  setArtifactFile(null);
-                  setArtifactContent({
-                    title,
-                    type: 'web',
-                    content: result.preview || '',
-                    sourceUrl: url,
+                  openArtifactEmbeddedFallback({
+                    file: null,
+                    content: {
+                      title,
+                      type: 'web',
+                      content: result.preview || '',
+                      sourceUrl: url,
+                    },
+                    initialSeekSec: undefined,
                   });
-                  setIsArtifactOpen(true);
                   return;
                 }
 
@@ -764,26 +1264,41 @@ export default function App() {
                   ? result.path.replace(/^file:\/\//, '')
                   : result.path;
                 const ext = result.name.includes('.') ? result.name.split('.').pop() : undefined;
-                setArtifactFile({
-                  path: normalizedPath,
-                  name: result.name,
-                  extension: ext
+                await openArtifact({
+                  file: {
+                    path: normalizedPath,
+                    name: result.name,
+                    extension: ext,
+                  },
+                  content: null,
+                  initialSeekSec: undefined,
                 });
-                setArtifactContent(null);
-                setIsArtifactOpen(true);
               }}
               placeholder="Search..."
               contextPrefix="vetka/"
               compact={false}
+              onVoiceTrigger={(role) => {
+                void jarvis.toggle({ agentRole: role ?? 'myco' });
+              }}
+              onSpeakText={(text, role, options) => {
+                jarvis.speakText(text, {
+                  agentRole: role ?? 'myco',
+                  autoListenAfter: options?.autoListenAfter,
+                });
+              }}
+              voiceState={jarvis.state}
+              voiceLevel={jarvis.audioLevel}
+              mycoHint={mycoModeA.hint}
+              mycoStateKey={mycoModeA.stateKey}
             />
           </div>
 
           {/* Icons next to search bar */}
           <div style={{
             display: 'flex',
-            flexDirection: 'column',
+            flexDirection: 'row',
+            alignItems: 'center',
             gap: 8,
-            paddingTop: 4,
           }}>
             {/* Chat toggle button */}
             <button
@@ -823,7 +1338,28 @@ export default function App() {
 
             {/* Artifact/Chest button */}
             <button
-              onClick={() => setIsArtifactOpen(!isArtifactOpen)}
+              onClick={() => {
+                if (isArtifactOpen) {
+                  setIsArtifactOpen(false);
+                  setArtifactFile(null);
+                  setArtifactContent(null);
+                  setArtifactSeekSec(undefined);
+                  return;
+                }
+                if (!selectedNode || selectedNode.type === 'folder') return;
+                const extension = selectedNode.name.includes('.') ? selectedNode.name.split('.').pop() : undefined;
+                void openArtifact({
+                  file: {
+                    path: selectedNode.path,
+                    name: selectedNode.name,
+                    extension,
+                    artifactId: String(selectedNode.metadata?.artifact_id || ''),
+                    inVetka: true,
+                  },
+                  content: null,
+                  initialSeekSec: undefined,
+                });
+              }}
               disabled={!selectedNode}
               style={{
                 width: 36,
@@ -892,6 +1428,388 @@ export default function App() {
 
       {/* MARKER_118.2B: REMOVED - floating icons moved to ChatPanel header */}
 
+      {nodeContextMenu.visible && (
+        <div
+          style={{
+            position: 'fixed',
+            left: nodeContextMenu.clientX,
+            top: nodeContextMenu.clientY,
+            background: 'rgba(18,18,18,0.96)',
+            border: '1px solid #343434',
+            borderRadius: 10,
+            minWidth: 220,
+            zIndex: 2200,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.45)',
+            backdropFilter: 'blur(8px)',
+            overflow: 'hidden',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div style={{ padding: '10px 12px', borderBottom: '1px solid #2a2a2a' }}>
+            <div style={{ color: '#e9e9e9', fontSize: 12, fontWeight: 600 }}>{nodeContextMenu.nodeName || 'Folder'}</div>
+            <div style={{ color: '#7e7e7e', fontSize: 11, marginTop: 2 }}>
+              {nodeContextMenu.nodePath}
+            </div>
+          </div>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'directed', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid transparent',
+              background: treeViewMode === 'directed' ? 'rgba(74,158,255,0.14)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'directed' ? '#9fccff' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Directed Mode
+          </button>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'knowledge', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: treeViewMode === 'knowledge' ? 'rgba(74,158,255,0.14)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'knowledge' ? '#9fccff' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Knowledge Mode
+          </button>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder'}
+            onClick={() => {
+              window.dispatchEvent(
+                new CustomEvent('vetka-switch-tree-mode', {
+                  detail: { mode: 'media_edit', scopePath: nodeContextMenu.nodePath },
+                })
+              );
+              if (nodeContextMenu.nodeType === 'folder' && nodeContextMenu.nodePath) {
+                setCameraCommand({
+                  target: nodeContextMenu.nodePath,
+                  zoom: 'medium',
+                  highlight: true,
+                });
+              }
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: treeViewMode === 'media_edit' ? 'rgba(16,185,129,0.16)' : 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : (treeViewMode === 'media_edit' ? '#6ee7b7' : '#d4d4d4'),
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: nodeContextMenu.nodeType === 'folder' ? 1 : 0.75,
+            }}
+          >
+            Media Edit Mode
+          </button>
+
+          {/* MARKER_159.CLEAN_UI_CONTEXT_MENU: Folder-level selective cleanup action */}
+          <div
+            style={{
+              borderTop: '1px solid #2a2a2a',
+              marginTop: 2,
+            }}
+          />
+
+          <div
+            style={{
+              color: '#7e7e7e',
+              fontSize: 10,
+              padding: '8px 12px 6px',
+              letterSpacing: 0.4,
+              textTransform: 'uppercase',
+            }}
+          >
+            VETKA Cleanup
+          </div>
+
+          <button
+            disabled={nodeContextMenu.nodeType !== 'folder' || isFolderCleanupBusy}
+            onClick={() => {
+              if (isFolderCleanupBusy) {
+                return;
+              }
+              if (nodeContextMenu.nodeType !== 'folder' || !nodeContextMenu.nodePath) {
+                return;
+              }
+
+              const targetPath = String(nodeContextMenu.nodePath || '');
+              if (!targetPath) return;
+
+              // Close menu first to avoid click-through/reentry issues.
+              setNodeContextMenu((prev) => ({ ...prev, visible: false }));
+              setFolderCleanupConfirmPath(targetPath);
+            }}
+            style={{
+              width: '100%',
+              textAlign: 'left',
+              padding: '10px 12px',
+              border: 'none',
+              borderTop: '1px solid #2a2a2a',
+              background: 'transparent',
+              color: nodeContextMenu.nodeType !== 'folder' ? '#6b6b6b' : '#ffb4b4',
+              cursor: nodeContextMenu.nodeType === 'folder' ? 'pointer' : 'not-allowed',
+              fontSize: 13,
+              opacity: (nodeContextMenu.nodeType === 'folder' && !isFolderCleanupBusy) ? 1 : 0.75,
+            }}
+            title="Remove this folder from VETKA index only (files stay on disk)"
+          >
+            {isFolderCleanupBusy ? 'Cleaning Folder...' : 'Clean Folder from VETKA'}
+          </button>
+        </div>
+      )}
+
+      {folderCleanupConfirmPath && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2350,
+            backdropFilter: 'blur(2px)',
+          }}
+          onClick={() => setFolderCleanupConfirmPath(null)}
+        >
+          <div
+            style={{
+              width: 520,
+              maxWidth: 'calc(100vw - 24px)',
+              background: 'rgba(24,24,24,0.95)',
+              border: '1px solid #3a3a3a',
+              borderRadius: 12,
+              padding: 16,
+              color: '#d7d7d7',
+              boxShadow: '0 16px 36px rgba(0,0,0,0.45)',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Clean folder from VETKA index?</div>
+            <div style={{ fontSize: 12, color: '#a1a1a1', marginTop: 8, lineHeight: 1.4 }}>
+              Folder: {folderCleanupConfirmPath}
+            </div>
+            <div style={{ fontSize: 12, color: '#bcbcbc', marginTop: 12, lineHeight: 1.45 }}>
+              This removes data from VETKA only (search/tree/index/watchdog). Files on disk remain untouched.
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <button
+                type="button"
+                onClick={() => setFolderCleanupConfirmPath(null)}
+                style={{
+                  border: '1px solid #3d3d3d',
+                  background: '#2a2a2a',
+                  color: '#d0d0d0',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!folderCleanupConfirmPath) return;
+                  void runFolderCleanup(folderCleanupConfirmPath);
+                }}
+                style={{
+                  border: '1px solid #5a5a5a',
+                  background: '#3f3f3f',
+                  color: '#f1f1f1',
+                  borderRadius: 8,
+                  padding: '8px 14px',
+                  cursor: 'pointer',
+                }}
+              >
+                Clean
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isFolderCleanupBusy && (
+        <div
+          style={{
+            position: 'fixed',
+            left: '50%',
+            bottom: 24,
+            transform: 'translateX(-50%)',
+            width: 360,
+            maxWidth: 'calc(100vw - 32px)',
+            background: 'rgba(20,20,20,0.92)',
+            border: '1px solid #3a3a3a',
+            borderRadius: 10,
+            padding: '10px 12px',
+            zIndex: 2300,
+            boxShadow: '0 12px 28px rgba(0,0,0,0.35)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{ color: '#d7d7d7', fontSize: 12, fontWeight: 600 }}>
+            Cleaning folder from VETKA
+          </div>
+          <div
+            style={{
+              color: '#9a9a9a',
+              fontSize: 11,
+              marginTop: 4,
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+            }}
+            title={folderCleanupPath}
+          >
+            {folderCleanupPath}
+          </div>
+          <div
+            style={{
+              marginTop: 8,
+              height: 6,
+              borderRadius: 999,
+              background: '#2a2a2a',
+              overflow: 'hidden',
+              border: '1px solid #343434',
+            }}
+          >
+            <div
+              style={{
+                width: `${Math.max(0, Math.min(100, folderCleanupProgress))}%`,
+                height: '100%',
+                background: '#9a9a9a',
+                transition: 'width 140ms linear',
+              }}
+            />
+          </div>
+          <div style={{ color: '#a8a8a8', fontSize: 11, marginTop: 6, textAlign: 'right' }}>
+            {Math.round(folderCleanupProgress)}%
+          </div>
+        </div>
+      )}
+
+      {mediaStartup.status !== 'idle' && (
+        <div
+          style={{
+            position: 'fixed',
+            top: 12,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 2100,
+            minWidth: 360,
+            maxWidth: 760,
+            padding: '8px 12px',
+            borderRadius: 8,
+            border: `1px solid ${mediaStartup.status === 'error' ? '#7f1d1d' : mediaStartup.status === 'running' ? '#1e3a8a' : '#14532d'}`,
+            background: mediaStartup.status === 'error'
+              ? 'rgba(127,29,29,0.35)'
+              : mediaStartup.status === 'running'
+                ? 'rgba(30,58,138,0.35)'
+                : 'rgba(20,83,45,0.35)',
+            color: mediaStartup.status === 'error' ? '#fecaca' : mediaStartup.status === 'running' ? '#bfdbfe' : '#bbf7d0',
+            fontSize: 12,
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div>{mediaStartup.message}</div>
+          {mediaStartup.status === 'ready' && (mediaStartup.fallbackQuestions?.length || 0) > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {mediaStartup.fallbackQuestions?.slice(0, 3).map((q) => (
+                <div
+                  key={q.id}
+                  style={{
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: 6,
+                    padding: '6px 8px',
+                    background: 'rgba(0,0,0,0.18)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: '#d1d5db' }}>{q.question}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsChatOpen(true);
+                      window.dispatchEvent(new CustomEvent('vetka-chat-prefill', {
+                        detail: {
+                          message: q.prefill || q.question,
+                          autoSend: false,
+                        },
+                      }));
+                    }}
+                    style={{
+                      border: '1px solid #334155',
+                      background: '#0f172a',
+                      color: '#bfdbfe',
+                      borderRadius: 4,
+                      padding: '2px 8px',
+                      fontSize: 10,
+                      cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Ask Jarvis
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Phase 65: Grab mode indicator */}
       {grabMode && (
         <div style={{
@@ -926,7 +1844,6 @@ export default function App() {
         whiteSpace: 'nowrap'
       }}>
         <span style={{ color: '#999' }}>Nodes: {nodes.length}</span>
-        <span style={{ color: '#666', fontSize: 12 }}>Click=Select • Shift+Click=Pin • Ctrl+Drag/G=Move • Drag=Pan • RightDrag=Rotate</span>
       </div>
 
       {/* Phase 54.6: Path Selector Modal */}

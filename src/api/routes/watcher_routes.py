@@ -18,15 +18,26 @@ Endpoints:
 """
 
 import os
+import base64
+import hashlib
+import mimetypes
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from src.scanners.file_watcher import get_watcher, get_spam_detector, SKIP_PATTERNS
 from src.scanners.qdrant_updater import get_qdrant_updater
+from src.scanners.mime_policy import validate_ingest_target
 
 
 router = APIRouter(prefix="/api/watcher", tags=["watcher"])
+
+
+def _qdrant_base_url() -> str:
+    """Resolve Qdrant base URL from runtime env (no src.config dependency)."""
+    host = os.getenv("QDRANT_HOST", "127.0.0.1")
+    port = os.getenv("QDRANT_PORT", "6333")
+    return f"http://{host}:{port}"
 
 
 # ============================================================
@@ -37,6 +48,7 @@ class AddWatchRequest(BaseModel):
     """Request to add a directory to watch."""
     path: str
     recursive: Optional[bool] = True
+    rescan_existing: Optional[bool] = False
 
 
 class RemoveWatchRequest(BaseModel):
@@ -51,6 +63,8 @@ class BrowserFileInfo(BaseModel):
     size: int
     type: str
     lastModified: int
+    contentBase64: Optional[str] = None
+    contentHash: Optional[str] = None
 
 
 class AddFromBrowserRequest(BaseModel):
@@ -58,12 +72,20 @@ class AddFromBrowserRequest(BaseModel):
     rootName: str
     files: List[BrowserFileInfo]
     timestamp: Optional[int] = None
+    mode: Literal["metadata_only", "content_small"] = "metadata_only"
 
 
 class IndexFileRequest(BaseModel):
     """Request to index a single file by its real path."""
     path: str
     recursive: Optional[bool] = False
+
+
+class CleanupFolderRequest(BaseModel):
+    """Request to remove one folder from VETKA index only (disk files untouched)."""
+    path: str
+    dry_run: Optional[bool] = False
+    block_watchdog: Optional[bool] = True
 
 
 # ============================================================
@@ -90,6 +112,7 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
     """
     path = req.path
     recursive = req.recursive
+    rescan_existing = bool(req.rescan_existing)
 
     if not path:
         raise HTTPException(status_code=400, detail="No path provided")
@@ -149,10 +172,11 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
 
     success = watcher.add_directory(path, recursive=recursive)
 
-    # Phase 54.9: Scan existing files and index to Qdrant
-    # MARKER_90.5.1_FIX: Scan even if already watching (user explicitly requested)
+    # Phase 54.9: Scan existing files and index to Qdrant.
+    # Default behavior: scan only on first add.
+    # Rescan for already watched path requires explicit rescan_existing=true.
     indexed_count = 0
-    should_scan = success or already_watching  # Scan if newly added OR already watching
+    should_scan = bool(success) or (bool(already_watching) and bool(rescan_existing))
     if should_scan:
         try:
             # MARKER_90.6_START: Use unified scan_directory from QdrantUpdater
@@ -250,8 +274,10 @@ async def add_watch_directory(req: AddWatchRequest, request: Request):
     # MARKER_90.5.1_FIX: Improved response message
     if success:
         message = f"Now watching: {path} ({indexed_count} files indexed)"
-    elif already_watching:
+    elif already_watching and rescan_existing:
         message = f"Rescanned (already watching): {path} ({indexed_count} files indexed)"
+    elif already_watching:
+        message = f"Already watching: {path} (rescan skipped)"
     else:
         message = f"Failed to watch: {path}"
 
@@ -394,6 +420,7 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
     """
     root_name = req.rootName
     files = req.files
+    mode = req.mode
 
     if not root_name:
         raise HTTPException(status_code=400, detail="No rootName provided")
@@ -422,6 +449,17 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
 
         for file_info in files:
             try:
+                allowed, policy = validate_ingest_target(
+                    file_info.relativePath or file_info.name,
+                    int(file_info.size or 0),
+                    file_info.type or None,
+                )
+                if not allowed:
+                    errors.append(
+                        f"{file_info.relativePath}: {policy.get('code')} ({policy.get('message')})"
+                    )
+                    continue
+
                 # Phase 54.5: Use 'scanned_file' type so tree_routes can find them
                 # Browser files use virtual paths: browser://root/relative/path
                 virtual_path = f"browser://{root_name}/{file_info.relativePath}"
@@ -438,8 +476,32 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                 ext_parts = file_info.name.rsplit('.', 1)
                 extension = f".{ext_parts[1].lower()}" if len(ext_parts) > 1 else ""
 
-                # Create embedding from filename and path (no content available from browser)
-                embed_text = f"File: {file_info.name}\nPath: {file_info.relativePath}\nType: {file_info.type}"
+                content_preview = f"[Browser file metadata only: {file_info.name}]"
+                if mode == "content_small" and file_info.contentBase64:
+                    try:
+                        raw = base64.b64decode(file_info.contentBase64, validate=True)
+                        if len(raw) > 1_000_000:
+                            raise ValueError("contentBase64 too large (>1MB)")
+                        decoded = raw.decode("utf-8", errors="replace")
+                        if decoded.strip():
+                            content_preview = decoded[:4000]
+                        else:
+                            digest = file_info.contentHash or hashlib.sha256(raw).hexdigest()
+                            content_preview = (
+                                f"[Binary browser content: mime={file_info.type or 'application/octet-stream'} "
+                                f"size={len(raw)} sha256={digest[:16]}]"
+                            )
+                    except Exception as decode_err:
+                        errors.append(f"{file_info.relativePath}: invalid contentBase64 ({decode_err})")
+
+                # Create embedding from filename/path and optional small content payload.
+                embed_text = (
+                    f"File: {file_info.name}\n"
+                    f"Path: {file_info.relativePath}\n"
+                    f"Type: {file_info.type}\n"
+                    f"Mode: {mode}\n\n"
+                    f"{content_preview[:4000]}"
+                )
                 embedding = updater._get_embedding(embed_text)
 
                 if embedding:
@@ -463,7 +525,9 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                             'last_modified': file_info.lastModified,
                             'updated_at': time_module.time(),
                             'deleted': False,
-                            'content': f"[Browser file: {file_info.name}]"  # Placeholder content
+                            'content': content_preview[:500],
+                            'ingest_mode': mode,
+                            'content_hash': file_info.contentHash,
                         }
                     )
 
@@ -473,7 +537,13 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                     try:
                         from src.orchestration.triple_write_manager import get_triple_write_manager
                         tw = get_triple_write_manager()
-                        browser_content = f"[Browser file: {file_info.name}]\nPath: {file_info.relativePath}\nType: {file_info.type}\nSize: {file_info.size} bytes"
+                        browser_content = (
+                            f"{content_preview[:2000]}\n\n"
+                            f"Path: {file_info.relativePath}\n"
+                            f"Type: {file_info.type}\n"
+                            f"Size: {file_info.size} bytes\n"
+                            f"Ingest mode: {mode}"
+                        )
                         tw_result = tw.write_file(
                             file_path=virtual_path,
                             content=browser_content,
@@ -484,7 +554,8 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
                                 'extension': extension,
                                 'depth': virtual_path.count('/'),
                                 'source': 'browser_scanner',
-                                'mime_type': file_info.type
+                                'mime_type': file_info.type,
+                                'ingest_mode': mode,
                             }
                         )
                         if tw_result.get('qdrant'):
@@ -545,6 +616,7 @@ async def add_from_browser(req: AddFromBrowserRequest, request: Request):
         'indexed_count': indexed_count,
         'total_files': len(files),
         'root_name': root_name,
+        'mode': mode,
         'errors': errors[:10] if errors else []  # Return first 10 errors
     }
 
@@ -612,6 +684,25 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         # For directories, use the /add endpoint logic
         raise HTTPException(status_code=400, detail="Use /add endpoint for directories")
 
+    file_stat = os.stat(file_path)
+    allowed, policy = validate_ingest_target(file_path, int(file_stat.st_size))
+    if not allowed:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": {
+                    "code": policy.get("code", "INGEST_POLICY_BLOCK"),
+                    "message": policy.get("message", "Ingest policy blocked file"),
+                    "details": {
+                        "path": file_path,
+                        "extension": policy.get("extension"),
+                        "category": policy.get("category"),
+                        "mime_type": policy.get("mime_type"),
+                    },
+                }
+            },
+        )
+
     # Get Qdrant client from app state
     qdrant_manager = getattr(request.app.state, 'qdrant_manager', None)
     qdrant_client = None
@@ -626,12 +717,68 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         # Use QdrantIncrementalUpdater for proper indexing with embedding
         updater = get_qdrant_updater(qdrant_client=qdrant_client)
 
-        # Read file content
+        # Read file content with binary-aware fallback
         file_obj = Path(file_path)
-        try:
+        mime_type, _ = mimetypes.guess_type(str(file_obj))
+        mime_type = mime_type or "application/octet-stream"
+        is_text_like = mime_type.startswith("text/") or file_obj.suffix.lower() in {
+            ".md", ".txt", ".json", ".yaml", ".yml", ".py", ".js", ".ts", ".tsx", ".html", ".css"
+        }
+        media_chunks = []
+        if is_text_like:
             content = file_obj.read_text(encoding='utf-8', errors='replace')
-        except Exception:
-            content = "[Binary file]"
+        else:
+            # OCR route for image/PDF in drag-drop index path
+            ocr_text = ""
+            if file_obj.suffix.lower() in {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff"}:
+                try:
+                    from src.ocr.ocr_processor import get_ocr_processor
+                    ocr = get_ocr_processor()
+                    ocr_result = ocr.process_pdf(str(file_obj)) if file_obj.suffix.lower() == ".pdf" else ocr.process_image(str(file_obj))
+                    if ocr_result.get("text") and not ocr_result.get("error"):
+                        ocr_text = ocr_result["text"][:8000]
+                except Exception as ocr_err:
+                    print(f"[Watcher] OCR error for {file_obj.name}: {ocr_err}")
+
+            if ocr_text:
+                content = ocr_text
+            else:
+                # AV transcription route for audio/video
+                av_text = ""
+                if file_obj.suffix.lower() in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".mp4", ".mov", ".mkv", ".avi", ".webm"}:
+                    try:
+                        from src.voice.stt_engine import WhisperSTT
+                        stt = WhisperSTT(model_name="base")
+                        tr = stt.transcribe(str(file_obj))
+                        av_text = (tr.get("text") or "").strip()
+                        segments = tr.get("segments", []) or []
+                        for seg in segments[:128]:
+                            try:
+                                media_chunks.append(
+                                    {
+                                        "start_sec": float(seg.get("start", 0.0) or 0.0),
+                                        "end_sec": float(seg.get("end", 0.0) or 0.0),
+                                        "text": str(seg.get("text", "") or ""),
+                                        "confidence": float(tr.get("confidence", 0.0) or 0.0),
+                                    }
+                                )
+                            except Exception:
+                                continue
+                    except Exception as av_err:
+                        print(f"[Watcher] AV transcription error for {file_obj.name}: {av_err}")
+
+                if av_text:
+                    content = av_text[:8000]
+                else:
+                    raw = file_obj.read_bytes()
+                    digest = hashlib.sha256(raw).hexdigest()
+                    content = (
+                        f"[Binary file summary]\n"
+                        f"mime={mime_type}\n"
+                        f"size_bytes={len(raw)}\n"
+                        f"sha256={digest}\n"
+                        f"path={file_path}"
+                    )
 
         # Generate point ID from path
         point_id = uuid.uuid5(uuid.NAMESPACE_DNS, file_path).int & 0x7FFFFFFFFFFFFFFF
@@ -660,10 +807,13 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                 'extension': file_obj.suffix.lower(),
                 'parent_folder': str(file_obj.parent),
                 'size_bytes': stat.st_size,
+                'mime_type': mime_type,
                 'created_time': stat.st_ctime,
                 'modified_time': stat.st_mtime,
                 'content': content[:500],  # Preview
                 'content_hash': updater._get_content_hash(file_obj),
+                'media_chunks': media_chunks[:32],
+                'extraction_version': 'phase153_mm_v1',
                 'updated_at': time_module.time(),
                 'deleted': False
             }
@@ -688,15 +838,25 @@ async def index_single_file(req: IndexFileRequest, request: Request):
                     'mtime': stat.st_mtime,
                     'created_time': stat.st_ctime,
                     'modified_time': stat.st_mtime,
+                    'mime_type': mime_type,
                     'extension': file_obj.suffix.lower(),
                     'depth': file_path.count('/'),
                     'source': 'drag_drop_resolved',
                     'deleted': False,
                     'content': content[:500],
+                    'media_chunks': media_chunks[:32],
+                    'extraction_version': 'phase153_mm_v1',
                     'content_hash': updater._get_content_hash(file_obj),
                     'updated_at': time_module.time(),
                 }
             )
+            if media_chunks:
+                modality = 'audio' if file_obj.suffix.lower() in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"} else 'video'
+                tw.write_media_chunks(
+                    file_path=file_path,
+                    media_chunks=media_chunks,
+                    modality=modality,
+                )
             if tw_result.get('qdrant'):
                 print(f"[Watcher] Indexed via TripleWrite: {file_path}")
             else:
@@ -803,9 +963,8 @@ async def cleanup_browser_files():
     """
     try:
         from qdrant_client import QdrantClient, models
-        from src.config import QDRANT_HOST, QDRANT_PORT
 
-        qdrant_client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
 
         # Delete all points with path starting with "browser://"
         qdrant_client.delete(
@@ -831,6 +990,233 @@ async def cleanup_browser_files():
 
     except Exception as e:
         print(f"[Watcher] Cleanup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/cleanup-playground-files")
+async def cleanup_playground_files(dry_run: bool = False):
+    """
+    Remove indexed playground duplicates from Qdrant.
+
+    Targets paths containing:
+    - /data/playgrounds/
+    - /.playgrounds/
+    """
+    try:
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointIdsList
+
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
+        prefixes = ("/data/playgrounds/", "/.playgrounds/")
+
+        matched_ids = []
+        offset = None
+        while True:
+            points, offset = qdrant_client.scroll(
+                collection_name='vetka_elisya',
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                path = str(payload.get("path", ""))
+                if any(pref in path for pref in prefixes):
+                    matched_ids.append(point.id)
+            if offset is None:
+                break
+
+        if dry_run:
+            return {
+                "success": True,
+                "dry_run": True,
+                "matched_count": len(matched_ids),
+                "message": "Dry run complete; no points deleted",
+            }
+
+        deleted = 0
+        batch_size = 200
+        for i in range(0, len(matched_ids), batch_size):
+            batch = matched_ids[i:i + batch_size]
+            qdrant_client.delete(
+                collection_name='vetka_elisya',
+                points_selector=PointIdsList(points=batch),
+                wait=True,
+            )
+            deleted += len(batch)
+
+        print(f"[Watcher] Cleaned playground files from Qdrant: {deleted}")
+        return {
+            "success": True,
+            "dry_run": False,
+            "matched_count": len(matched_ids),
+            "deleted_count": deleted,
+            "message": "Playground files cleaned up from Qdrant",
+        }
+
+    except Exception as e:
+        print(f"[Watcher] Playground cleanup error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# MARKER_159.CLEAN_API_FOLDER_SCOPE
+# Selective cleanup for one folder from VETKA stores + optional watchdog block.
+@router.post("/cleanup-folder-from-vetka")
+async def cleanup_folder_from_vetka(req: CleanupFolderRequest, request: Request):
+    """
+    Selectively remove one folder from VETKA index/storage.
+
+    IMPORTANT:
+    - Removes from VETKA stores only (Qdrant + Weaviate)
+    - Does NOT delete files from disk
+    - Optionally blocks watchdog updates for this folder
+    """
+    import requests as http_requests
+
+    raw_path = (req.path or "").strip()
+    if not raw_path:
+        raise HTTPException(status_code=400, detail="Path is required")
+
+    target_path = os.path.abspath(os.path.expanduser(raw_path))
+    target_prefix = target_path.replace("\\", "/")
+    if not os.path.isdir(target_path):
+        raise HTTPException(status_code=400, detail=f"Path is not a directory: {target_path}")
+
+    try:
+        from qdrant_client import QdrantClient
+        from qdrant_client.models import PointIdsList
+
+        qdrant_client = QdrantClient(url=_qdrant_base_url())
+
+        matched_ids = []
+        matched_paths = set()
+        offset = None
+
+        while True:
+            points, offset = qdrant_client.scroll(
+                collection_name="vetka_elisya",
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+            for point in points:
+                payload = point.payload or {}
+                p = str(payload.get("path", "")).replace("\\", "/")
+                if p and (p == target_prefix or p.startswith(target_prefix + "/")):
+                    matched_ids.append(point.id)
+                    matched_paths.add(p)
+            if offset is None:
+                break
+
+        # Weaviate match pass (file_path prefix in VetkaLeaf objects)
+        weaviate_url = "http://localhost:8080"
+        weaviate_candidates = []
+        try:
+            resp = http_requests.get(
+                f"{weaviate_url}/v1/objects?class=VetkaLeaf&limit=10000",
+                timeout=15,
+            )
+            if resp.status_code == 200:
+                weaviate_candidates = resp.json().get("objects", []) or []
+        except Exception:
+            weaviate_candidates = []
+
+        weaviate_ids = []
+        for obj in weaviate_candidates:
+            props = obj.get("properties", {}) or {}
+            file_path = str(props.get("file_path", "")).replace("\\", "/")
+            if file_path and (file_path == target_prefix or file_path.startswith(target_prefix + "/")):
+                obj_id = obj.get("id")
+                if obj_id:
+                    weaviate_ids.append(str(obj_id))
+
+        # MARKER_159.CLEAN_API_DRY_RUN: Preview counts without mutating storage.
+        if bool(req.dry_run):
+            return {
+                "success": True,
+                "dry_run": True,
+                "path": target_path,
+                "message": "Dry run complete; no data deleted",
+                "qdrant_matched": len(matched_ids),
+                "weaviate_matched": len(weaviate_ids),
+                "watchdog_will_block": bool(req.block_watchdog),
+            }
+
+        # Delete from Qdrant
+        qdrant_deleted = 0
+        batch_size = 200
+        for i in range(0, len(matched_ids), batch_size):
+            batch = matched_ids[i:i + batch_size]
+            qdrant_client.delete(
+                collection_name="vetka_elisya",
+                points_selector=PointIdsList(points=batch),
+                wait=True,
+            )
+            qdrant_deleted += len(batch)
+
+        # Delete from Weaviate
+        weaviate_deleted = 0
+        for obj_id in weaviate_ids:
+            try:
+                d = http_requests.delete(
+                    f"{weaviate_url}/v1/objects/VetkaLeaf/{obj_id}",
+                    timeout=10,
+                )
+                if d.status_code in (200, 204):
+                    weaviate_deleted += 1
+            except Exception:
+                continue
+
+        # MARKER_159.CLEAN_WATCHDOG_BLOCK: Prevent re-index of cleaned folder.
+        block_added = False
+        removed_watchers = []
+        if bool(req.block_watchdog):
+            socketio = getattr(request.app.state, "socketio", None)
+            qdrant_manager = getattr(request.app.state, "qdrant_manager", None)
+            qdrant_for_watcher = None
+            if qdrant_manager and hasattr(qdrant_manager, "client"):
+                qdrant_for_watcher = qdrant_manager.client
+            watcher = get_watcher(socketio=socketio, qdrant_client=qdrant_for_watcher)
+
+            if hasattr(watcher, "add_user_block_pattern"):
+                block_added = bool(watcher.add_user_block_pattern(target_path, persist=True))
+            else:
+                if target_path not in SKIP_PATTERNS:
+                    SKIP_PATTERNS.append(target_path)
+                    block_added = True
+
+            for watched in list(watcher.watched_dirs):
+                watched_norm = os.path.abspath(str(watched))
+                if watched_norm == target_path or watched_norm.startswith(target_path + os.sep):
+                    if watcher.remove_directory(watched_norm):
+                        removed_watchers.append(watched_norm)
+
+        # Invalidate tree cache immediately if route module is loaded
+        try:
+            from src.api.routes import tree_routes
+            tree_routes._tree_structure_cache["folders"] = None
+            tree_routes._tree_structure_cache["files_by_folder"] = None
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "dry_run": False,
+            "path": target_path,
+            "message": "Folder cleaned from VETKA index (disk files preserved)",
+            "qdrant_deleted": qdrant_deleted,
+            "weaviate_deleted": weaviate_deleted,
+            "watchdog_blocked": bool(req.block_watchdog),
+            "watchdog_block_added": block_added,
+            "watchers_removed": removed_watchers,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Watcher] Folder cleanup error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -1,0 +1,28 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,e2e_ms,tokens_out,audio_chunks,timestamp
+A_qwen_only,short_1,45,True,,244.06,5908.31,5908.67,1,1,2026-03-02T20:26:03.114345
+A_qwen_only,short_1,45,True,,183.98,3054.3,3054.37,1,1,2026-03-02T20:26:06.169090
+A_qwen_only,short_1,45,True,,177.78,3832.14,3832.2,1,1,2026-03-02T20:26:10.001345
+A_qwen_only,context_1,85,True,,165.96,3812.84,3812.9,1,1,2026-03-02T20:26:13.814359
+A_qwen_only,context_1,85,True,,178.76,3795.12,3795.2,1,1,2026-03-02T20:26:17.609607
+A_qwen_only,context_1,85,True,,166.64,3814.86,3814.93,1,1,2026-03-02T20:26:21.424589
+A_qwen_only,long_1,124,True,,167.55,2739.48,2739.56,1,1,2026-03-02T20:26:24.164327
+A_qwen_only,long_1,124,True,,169.09,3828.0,3828.18,1,1,2026-03-02T20:26:27.992569
+A_qwen_only,long_1,124,True,,209.17,2709.01,2709.07,1,1,2026-03-02T20:26:30.701733
+B_api_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:26:55.706202
+B_api_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:27:20.709341
+B_api_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:27:45.711463
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:28:10.713941
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:28:42.341621
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:29:07.343141
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:29:32.345462
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:29:57.347571
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:30:22.349873
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:30:47.351944
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:31:12.361135
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:31:37.366070
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:32:02.368796
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:32:30.287700
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:32:55.291009
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:33:20.293647
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:33:45.295701
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 25.0s,,,,0,0,2026-03-02T20:34:17.318635

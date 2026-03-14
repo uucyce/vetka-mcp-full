@@ -189,6 +189,7 @@ class OrchestratorWithElisya:
 
         # Execution mode
         self.use_parallel = use_parallel
+        self._workflow_reflex_runtime_metadata: Dict[str, Any] = {}
 
         # ============ PHASE 54.1: REFACTORED SERVICES ============
         from src.orchestration.services import (
@@ -1022,13 +1023,62 @@ Please provide a helpful response based on the file content shown above.""",
             {"role": "user", "content": prompt},
         ]
 
-        # Phase 19: Collect all tool execution results for formatting
-        all_tool_executions = []
-
         # Phase 80.10: Detect provider if not explicitly passed
         # Phase 111.9: Use source for multi-provider routing
         if provider is None:
             provider = ProviderRegistry.detect_provider(model, source=source)
+
+        # MARKER_173.P6.P9: Workflow-entry REFLEX preflight parity with direct call path.
+        try:
+            from src.mcp.tools.llm_call_reflex import maybe_apply_reflex_to_direct_tools
+
+            role_map = {
+                "PM": "pm",
+                "Architect": "architect",
+                "Dev": "coder",
+                "QA": "qa",
+                "Researcher": "researcher",
+                "Hostess": "orchestrator",
+            }
+            phase_map = {
+                "PM": "research",
+                "Architect": "build",
+                "Dev": "build",
+                "QA": "test",
+                "Researcher": "research",
+                "Hostess": "research",
+            }
+            runtime_meta = dict(getattr(self, "_workflow_reflex_runtime_metadata", {}) or {})
+            write_opt_ins = dict(runtime_meta.get("write_opt_ins") or {})
+            reflex_args = {
+                "model": model,
+                "messages": messages,
+                "_reflex_phase": phase_map.get(str(agent_type), "build"),
+                "_reflex_role": role_map.get(str(agent_type), "coder"),
+                "_allow_task_board_writes": bool(write_opt_ins.get("task_board", False)),
+                "_allow_edit_file_writes": bool(write_opt_ins.get("edit_file", False)),
+            }
+            messages, tool_schemas, _reflex_recs, reflex_meta = maybe_apply_reflex_to_direct_tools(
+                arguments=reflex_args,
+                messages=messages,
+                tools=tool_schemas,
+                provider_name=provider.value,
+            )
+            if reflex_meta:
+                print(
+                    "      [REFLEX WF PRE] "
+                    f"enabled={reflex_meta.get('enabled')} "
+                    f"phase={reflex_meta.get('phase')} role={reflex_meta.get('role')} "
+                    f"original={reflex_meta.get('tool_count_before')} "
+                    f"filtered={reflex_meta.get('tool_count_after')} "
+                    f"family={runtime_meta.get('workflow_family', '')}"
+                )
+        except Exception as e:
+            print(f"      [REFLEX WF PRE] skipped: {e}")
+
+        # Phase 19: Collect all tool execution results for formatting
+        all_tool_executions = []
+
         print(
             f"      🌐 Using provider: {provider.value} for model: {model} (source={source})"
         )
@@ -1475,6 +1525,8 @@ Please provide a helpful response based on the file content shown above.""",
         feature_request: str,
         workflow_id: str,
         rich_context: Dict[str, Any] = None,
+        workflow_family: str = "",
+        workflow_runtime_metadata: Optional[Dict[str, Any]] = None,
     ) -> dict:
         """
         Parallel execution with Elisya integration and Chain Context Passing.
@@ -1486,6 +1538,10 @@ Please provide a helpful response based on the file content shown above.""",
         """
 
         self._check_semaphore(workflow_id)
+        previous_runtime_metadata = dict(self._workflow_reflex_runtime_metadata or {})
+        self._workflow_reflex_runtime_metadata = dict(workflow_runtime_metadata or {})
+        if workflow_family:
+            self._workflow_reflex_runtime_metadata.setdefault("workflow_family", str(workflow_family))
 
         # Phase 15-3: Log rich context status
         if rich_context:
@@ -2073,6 +2129,7 @@ Please provide a helpful response based on the file content shown above.""",
             self._emit_status(workflow_id, "workflow", "error", error=str(e))
 
         finally:
+            self._workflow_reflex_runtime_metadata = previous_runtime_metadata
             self._release_semaphore(workflow_id)
 
         return result

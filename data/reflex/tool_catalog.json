@@ -1,0 +1,3567 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-03-13T01:43:21.453027+00:00",
+  "generator": "scripts/generate_reflex_catalog.py",
+  "marker": "MARKER_172.P1.CATALOG",
+  "stats": {
+    "total_tools": 92,
+    "by_namespace": {
+      "vetka": 40,
+      "internal": 10,
+      "mycelium": 24,
+      "cut": 18
+    },
+    "by_kind": {
+      "file_op": 4,
+      "search": 12,
+      "media": 20,
+      "reasoning": 2,
+      "keys": 4,
+      "visualization": 1,
+      "orchestration": 17,
+      "system": 5,
+      "other": 15,
+      "context": 4,
+      "memory": 2,
+      "llm": 2,
+      "artifact": 4
+    }
+  },
+  "deprecated_aliases": {
+    "vetka_task_board": "mycelium_task_board",
+    "vetka_task_dispatch": "mycelium_task_dispatch",
+    "vetka_task_import": "mycelium_task_import",
+    "vetka_mycelium_pipeline": "mycelium_pipeline",
+    "vetka_heartbeat_tick": "mycelium_heartbeat_tick",
+    "vetka_heartbeat_status": "mycelium_heartbeat_status",
+    "search_semantic": "vetka_search_semantic",
+    "camera_focus": "vetka_camera_focus",
+    "create_artifact": "vetka_edit_artifact"
+  },
+  "tools": [
+    {
+      "tool_id": "vetka_read_file",
+      "namespace": "vetka",
+      "kind": "file_op",
+      "description": "Read file content from VETKA project. Returns full file content with line numbers.",
+      "intent_tags": [
+        "inspect",
+        "view",
+        "content",
+        "examine"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build",
+          "research"
+        ],
+        "keywords": [
+          "read",
+          "file"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Dev",
+        "coder"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "fc_loop.py:PIPELINE_CODER_TOOLS + vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_search_semantic",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "Semantic search in VETKA knowledge base using Qdrant vector search. ",
+      "intent_tags": [
+        "similar",
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "vector",
+        "meaning",
+        "find",
+        "abstract",
+        "locate",
+        "concept"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build",
+          "research"
+        ],
+        "keywords": [
+          "search",
+          "semantic"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "coder",
+        "Architect",
+        "Hostess",
+        "QA",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "fc_loop.py:PIPELINE_CODER_TOOLS + vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_search_files",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "Search for files by name or content pattern using ripgrep-style search. ",
+      "intent_tags": [
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
+        "locate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build",
+          "research"
+        ],
+        "keywords": [
+          "search",
+          "files"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Dev",
+        "coder"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "fc_loop.py:PIPELINE_CODER_TOOLS + vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_search_code",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "Pipeline coder tool: vetka_search_code",
+      "intent_tags": [
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
+        "locate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build",
+          "research"
+        ],
+        "keywords": [
+          "search",
+          "code"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "fc_loop.py:PIPELINE_CODER_TOOLS"
+    },
+    {
+      "tool_id": "vetka_list_files",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "List files in a directory or matching a pattern. Returns file paths with metadata.",
+      "intent_tags": [
+        "browse",
+        "enumerate",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build",
+          "research"
+        ],
+        "keywords": [
+          "list",
+          "files"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Dev",
+        "coder"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "fc_loop.py:PIPELINE_CODER_TOOLS + vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "search_codebase",
+      "namespace": "internal",
+      "kind": "search",
+      "description": "Search for text/pattern in codebase using grep. Returns matching lines with file paths.",
+      "intent_tags": [
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
+        "locate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "search",
+          "codebase"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "QA",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "execute_code",
+      "namespace": "internal",
+      "kind": "media",
+      "description": "Execute a shell command. Use for running tests, builds, Python scripts, etc. Commands run in sandbox by default for secu",
+      "intent_tags": [
+        "video",
+        "timeline",
+        "montage",
+        "edit"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "execute",
+          "code"
+        ]
+      },
+      "cost": {
+        "latency_ms": 5000,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "Dev",
+        "QA"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "arc_suggest",
+      "namespace": "internal",
+      "kind": "reasoning",
+      "description": "Get creative suggestions for workflow improvements, ",
+      "intent_tags": [
+        "hypothesis",
+        "abstract",
+        "reason"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "arc",
+          "suggest"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "save_api_key",
+      "namespace": "internal",
+      "kind": "keys",
+      "description": "Save an API key with automatic provider detection (OpenAI, Anthropic, Groq, etc.)",
+      "intent_tags": [
+        "auth",
+        "api",
+        "credential"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "save",
+          "api",
+          "key"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "Hostess"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "learn_api_key",
+      "namespace": "internal",
+      "kind": "keys",
+      "description": "Learn a new API key pattern and save the key. Use after user identifies an unknown key's provider.",
+      "intent_tags": [
+        "auth",
+        "api",
+        "credential"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "learn",
+          "api",
+          "key"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "Hostess"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "get_api_key_status",
+      "namespace": "internal",
+      "kind": "keys",
+      "description": "Get status of API keys and configured providers",
+      "intent_tags": [
+        "auth",
+        "api",
+        "credential"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "api",
+          "key",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Hostess"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "analyze_unknown_key",
+      "namespace": "internal",
+      "kind": "keys",
+      "description": "Analyze an unknown API key to identify its pattern (prefix, length, charset)",
+      "intent_tags": [
+        "auth",
+        "api",
+        "credential"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "analyze",
+          "unknown",
+          "key"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Hostess"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "seed_mcc_playwright_fixture",
+      "namespace": "internal",
+      "kind": "visualization",
+      "description": "Seed a deterministic MCC Playwright fixture project and return project_id plus browser_url.",
+      "intent_tags": [
+        "bootstrap",
+        "ui",
+        "replay",
+        "fixture",
+        "visual",
+        "prepare",
+        "regression",
+        "browser"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "seed",
+          "mcc",
+          "playwright",
+          "fixture"
+        ]
+      },
+      "cost": {
+        "latency_ms": 1500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "Dev",
+        "Researcher",
+        "Architect"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "select_best_local_qwen_model",
+      "namespace": "internal",
+      "kind": "search",
+      "description": "Inspect local Ollama models and choose the strongest available Qwen for local tool-capable work.",
+      "intent_tags": [
+        "ollama",
+        "qwen",
+        "local",
+        "model",
+        "select",
+        "strongest",
+        "tooling"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "ollama",
+          "qwen",
+          "local",
+          "model",
+          "select"
+        ]
+      },
+      "cost": {
+        "latency_ms": 150,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "remember_reflex_tool",
+      "namespace": "internal",
+      "kind": "orchestration",
+      "description": "Remember a local script, tool, or skill for REFLEX so it can be suggested later.",
+      "intent_tags": [
+        "catalog",
+        "workflow",
+        "tooling",
+        "recommend",
+        "registry",
+        "utility",
+        "remember"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "remember",
+          "reflex",
+          "tool"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "list_reflex_tool_memory",
+      "namespace": "internal",
+      "kind": "search",
+      "description": "List remembered REFLEX scripts, tools, and skills, optionally filtered by type or query.",
+      "intent_tags": [
+        "workflow",
+        "tooling",
+        "enumerate",
+        "browse",
+        "utility",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "list",
+          "reflex",
+          "tool",
+          "memory"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "agents/tools.py"
+    },
+    {
+      "tool_id": "vetka_get_tree",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "Get VETKA 3D tree structure showing files and folders hierarchy. ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "tree"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_health",
+      "namespace": "vetka",
+      "kind": "system",
+      "description": "Check VETKA server health and component status. Shows which components ",
+      "intent_tags": [
+        "monitor",
+        "diagnostic",
+        "status"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix"
+        ],
+        "keywords": [
+          "health"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_media_window_debug",
+      "namespace": "vetka",
+      "kind": "media",
+      "description": "Get the latest detached media window debug snapshot. ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "media",
+          "window",
+          "debug"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_metrics",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "Get VETKA metrics and analytics. Shows system performance, query stats, and usage data.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "metrics"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_knowledge_graph",
+      "namespace": "vetka",
+      "kind": "context",
+      "description": "Get VETKA knowledge graph structure showing relationships between code entities, ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "knowledge",
+          "graph"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_edit_file",
+      "namespace": "vetka",
+      "kind": "file_op",
+      "description": "Edit or create a file. Creates backup before changes. ",
+      "intent_tags": [
+        "change",
+        "update",
+        "modify",
+        "patch"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "edit",
+          "file"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_git_commit",
+      "namespace": "vetka",
+      "kind": "system",
+      "description": "Create a git commit. Default: dry_run=true (preview only). ",
+      "intent_tags": [
+        "version",
+        "history",
+        "commit",
+        "branch"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "git",
+          "commit"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_run_tests",
+      "namespace": "vetka",
+      "kind": "system",
+      "description": "Run pytest tests with output capture. Returns stdout/stderr/exit code.",
+      "intent_tags": [
+        "verify",
+        "validate",
+        "quality",
+        "check"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix"
+        ],
+        "keywords": [
+          "run",
+          "tests"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_camera_focus",
+      "namespace": "vetka",
+      "kind": "memory",
+      "description": "Move 3D camera to focus on a specific file, branch, or overview. ",
+      "intent_tags": [
+        "focus",
+        "view",
+        "3d",
+        "navigate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "camera",
+          "focus"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "Default",
+        "Dev",
+        "Researcher",
+        "Architect",
+        "Hostess",
+        "QA",
+        "PM"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_git_status",
+      "namespace": "vetka",
+      "kind": "system",
+      "description": "Get git status showing modified, staged, and untracked files. ",
+      "intent_tags": [
+        "version",
+        "history",
+        "commit",
+        "branch"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "git",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_call_model",
+      "namespace": "vetka",
+      "kind": "llm",
+      "description": "Call any LLM model through VETKA infrastructure (Grok, GPT, Claude, Gemini, Ollama). ",
+      "intent_tags": [
+        "ai",
+        "infer",
+        "generate",
+        "llm"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "call",
+          "model"
+        ]
+      },
+      "cost": {
+        "latency_ms": 2000,
+        "tokens": 500,
+        "risk_level": "external"
+      },
+      "permission": "EXTERNAL",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_read_group_messages",
+      "namespace": "vetka",
+      "kind": "file_op",
+      "description": "Read messages from VETKA group chat. Use to see what other agents wrote.",
+      "intent_tags": [
+        "inspect",
+        "view",
+        "content",
+        "examine"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "read",
+          "group",
+          "messages"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_chat_digest",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "Get chat digest for MCP context injection. Returns recent messages, agent logs, ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "chat",
+          "digest"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_send_message",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "Send message from MCP to VETKA chat. Works with both regular chats and group chats. ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "send",
+          "message"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_conversation_context",
+      "namespace": "vetka",
+      "kind": "context",
+      "description": "Get ELISION-compressed conversation context. Use before responding to get ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "conversation",
+          "context"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_user_preferences",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "Get user preferences from Engram memory. Returns hot preferences (frequently ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "user",
+          "preferences"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_get_memory_summary",
+      "namespace": "vetka",
+      "kind": "memory",
+      "description": "Get CAM (Context-Aware Memory) and Elisium compression summary. Returns: ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "get",
+          "memory",
+          "summary"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_arc_suggest",
+      "namespace": "vetka",
+      "kind": "reasoning",
+      "description": "Generate ARC (Adaptive Reasoning Context) suggestions for workflow graphs. ",
+      "intent_tags": [
+        "hypothesis",
+        "abstract",
+        "reason"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "arc",
+          "suggest"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_mycelium_pipeline",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "[DEPRECATED] Use mycelium_pipeline instead. Pipeline tools moved to MCP MYCELIUM.",
+      "intent_tags": [
+        "automate",
+        "orchestrate",
+        "run",
+        "execute"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "pipeline"
+        ]
+      },
+      "cost": {
+        "latency_ms": 5000,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_heartbeat_tick",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "[DEPRECATED] Use mycelium_heartbeat_tick instead. Moved to MCP MYCELIUM.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "heartbeat",
+          "tick"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_heartbeat_status",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "heartbeat",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_task_board",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP ",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "board"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_task_dispatch",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "[DEPRECATED] Use mycelium_task_dispatch instead. Moved to MCP MYCELIUM.",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "dispatch"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "EXECUTE",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_task_import",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "[DEPRECATED] Use mycelium_task_import instead. Moved to MCP MYCELIUM.",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "import"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_edit_artifact",
+      "namespace": "vetka",
+      "kind": "file_op",
+      "description": "Edit artifact content by artifact_id. Updates artifact file on disk. ",
+      "intent_tags": [
+        "output",
+        "patch",
+        "change",
+        "update",
+        "result",
+        "modify",
+        "deliverable"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "edit",
+          "artifact"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "Dev",
+        "PM",
+        "Architect"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_approve_artifact",
+      "namespace": "vetka",
+      "kind": "artifact",
+      "description": "Approve an artifact for deployment/integration. Marks artifact as approved ",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "result"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "approve",
+          "artifact"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_reject_artifact",
+      "namespace": "vetka",
+      "kind": "artifact",
+      "description": "Reject an artifact and provide feedback. Marks artifact as rejected in ",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "result"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "reject",
+          "artifact"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_list_artifacts",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "List artifacts by status (pending, approved, rejected, all). Returns artifact ",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "enumerate",
+        "browse",
+        "result",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "list",
+          "artifacts"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_session_init",
+      "namespace": "vetka",
+      "kind": "context",
+      "description": "VETKA tool: vetka_session_init",
+      "intent_tags": [
+        "state",
+        "connect",
+        "initialize"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "session",
+          "init"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_session_status",
+      "namespace": "vetka",
+      "kind": "context",
+      "description": "VETKA tool: vetka_session_status",
+      "intent_tags": [
+        "state",
+        "connect",
+        "initialize"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "session",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_research",
+      "namespace": "vetka",
+      "kind": "search",
+      "description": "VETKA tool: vetka_research",
+      "intent_tags": [
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
+        "locate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "research",
+          "fix",
+          "build"
+        ],
+        "keywords": [
+          "research"
+        ]
+      },
+      "cost": {
+        "latency_ms": 200,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_implement",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "VETKA tool: vetka_implement",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "implement"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_review",
+      "namespace": "vetka",
+      "kind": "other",
+      "description": "VETKA tool: vetka_review",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "review"
+        ]
+      },
+      "cost": {
+        "latency_ms": 100,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_execute_workflow",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "VETKA tool: vetka_execute_workflow",
+      "intent_tags": [
+        "video",
+        "timeline",
+        "montage",
+        "edit"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "execute",
+          "workflow"
+        ]
+      },
+      "cost": {
+        "latency_ms": 5000,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "vetka_workflow_status",
+      "namespace": "vetka",
+      "kind": "orchestration",
+      "description": "VETKA tool: vetka_workflow_status",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "workflow",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 5000,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "READ",
+      "roles": [],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "vetka_mcp_bridge.py"
+    },
+    {
+      "tool_id": "mycelium_pipeline",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Mycelium agent pipeline for fractal task execution. ",
+      "intent_tags": [
+        "automate",
+        "orchestrate",
+        "run",
+        "execute"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "pipeline"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_call_model",
+      "namespace": "mycelium",
+      "kind": "llm",
+      "description": "Call any LLM model through MYCELIUM async infrastructure ",
+      "intent_tags": [
+        "ai",
+        "infer",
+        "generate",
+        "llm"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "call",
+          "model"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_task_board",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Manage Task Board: add/list/get/update/remove/summary. ",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "board"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_task_dispatch",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Dispatch tasks from Task Board to pipeline. ",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "dispatch"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_task_import",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Import tasks from a todo text file into the Task Board. ",
+      "intent_tags": [
+        "assign",
+        "track",
+        "plan",
+        "manage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "task",
+          "import"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_heartbeat_tick",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Execute one heartbeat tick: read new messages from group chat, ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "heartbeat",
+          "tick"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_heartbeat_status",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Get Heartbeat Engine status: last tick, total ticks, ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "heartbeat",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_track_done",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Mark a task as completed. Updates project digest + tracker. ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "track",
+          "done"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_track_started",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Mark a task as started. Any agent can call this.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "track",
+          "started"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_tracker_status",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Get task tracker status: in-progress tasks, completed count, last completed, digest headline.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "tracker",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_execute_workflow",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Execute full VETKA workflow. Types: pm_to_qa, pm_only, dev_qa.",
+      "intent_tags": [
+        "video",
+        "timeline",
+        "montage",
+        "edit"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "execute",
+          "workflow"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_workflow_status",
+      "namespace": "mycelium",
+      "kind": "orchestration",
+      "description": "Get status of a workflow execution by workflow ID.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "workflow",
+          "status"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_research",
+      "namespace": "mycelium",
+      "kind": "search",
+      "description": "Research a topic: semantic search → read files → summarize.",
+      "intent_tags": [
+        "query",
+        "hypothesis",
+        "reason",
+        "discover",
+        "find",
+        "abstract",
+        "locate"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "research"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_implement",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Plan implementation for a task (use workflow for execution).",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "implement"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_review",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Review a file and suggest improvements.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "review"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_list_artifacts",
+      "namespace": "mycelium",
+      "kind": "search",
+      "description": "List artifacts by status (pending, approved, rejected, all).",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "enumerate",
+        "browse",
+        "result",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "list",
+          "artifacts"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_approve_artifact",
+      "namespace": "mycelium",
+      "kind": "artifact",
+      "description": "Approve an artifact for deployment/integration.",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "result"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "approve",
+          "artifact"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_reject_artifact",
+      "namespace": "mycelium",
+      "kind": "artifact",
+      "description": "Reject an artifact with feedback.",
+      "intent_tags": [
+        "output",
+        "deliverable",
+        "result"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "reject",
+          "artifact"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_playground_create",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Create an isolated playground (git worktree) for safe agent experiments. ",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "playground",
+          "create"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_playground_list",
+      "namespace": "mycelium",
+      "kind": "search",
+      "description": "List active playground instances with status, age, and pipeline run count.",
+      "intent_tags": [
+        "browse",
+        "enumerate",
+        "directory"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "playground",
+          "list"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_playground_destroy",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Destroy a playground and clean up its git worktree.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "playground",
+          "destroy"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_playground_diff",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Get git diff of changes made in a playground vs source branch.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "playground",
+          "diff"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_health",
+      "namespace": "mycelium",
+      "kind": "system",
+      "description": "MYCELIUM health check: uptime, active pipelines, WS clients, VETKA connectivity.",
+      "intent_tags": [
+        "monitor",
+        "diagnostic",
+        "status"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "health"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "mycelium_devpanel_stream",
+      "namespace": "mycelium",
+      "kind": "other",
+      "description": "Get DevPanel WebSocket broadcaster info: connected clients, port, status.",
+      "intent_tags": [
+        "general"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*"
+        ],
+        "phase_types": [
+          "*"
+        ],
+        "keywords": [
+          "devpanel",
+          "stream"
+        ]
+      },
+      "cost": {
+        "latency_ms": 500,
+        "tokens": 0,
+        "risk_level": "execute"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mycelium_mcp_server.py"
+    },
+    {
+      "tool_id": "cut_bootstrap",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /bootstrap",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_bootstrap-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /bootstrap-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_scene-assembly-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /scene-assembly-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_waveform-build-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/waveform-build-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_transcript-normalize-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/transcript-normalize-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_thumbnail-build-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/thumbnail-build-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_audio-sync-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/audio-sync-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_pause-slice-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/pause-slice-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_worker_timecode-sync-async",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /worker/timecode-sync-async",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_job_job_id",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: GET /job/{job_id}",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_job_job_id_cancel",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /job/{job_id}/cancel",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_project-state",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: GET /project-state",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_time-markers",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: GET /time-markers",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_time-markers_apply",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /time-markers/apply",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_timeline_apply-with-markers",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /timeline/apply-with-markers",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_timeline_apply",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /timeline/apply",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_scene-graph_apply",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: POST /scene-graph/apply",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "cut_bootstrap-job_job_id",
+      "namespace": "cut",
+      "kind": "media",
+      "description": "CUT API: GET /bootstrap-job/{job_id}",
+      "intent_tags": [
+        "video",
+        "edit",
+        "timeline",
+        "cut",
+        "media",
+        "montage"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          ".mp4",
+          ".mov",
+          ".avi",
+          ".mkv",
+          ".wav",
+          ".mp3"
+        ],
+        "phase_types": [
+          "build"
+        ],
+        "keywords": [
+          "video",
+          "cut",
+          "timeline",
+          "scene",
+          "edit",
+          "montage"
+        ]
+      },
+      "cost": {
+        "latency_ms": 300,
+        "tokens": 0,
+        "risk_level": "write"
+      },
+      "permission": "WRITE",
+      "roles": [
+        "coder",
+        "Dev"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "cut_routes.py"
+    }
+  ]
+}

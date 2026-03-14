@@ -1,0 +1,1 @@
+from src.{module}.{service} import get_{service}_manager

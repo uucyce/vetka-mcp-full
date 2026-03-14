@@ -51,9 +51,22 @@ export interface TaskData {
   // MARKER_130.C18B: Agent coordination fields
   assigned_to?: string;
   agent_type?: string;
+  closed_by?: string;
   commit_hash?: string;
   commit_message?: string;
   completed_at?: string;
+  // MARKER_155.1A: Task dependencies for DAG edges at tasks level
+  dependencies?: string[];
+  // MARKER_155.2A: Roadmap module assignment for drill-down filtering
+  module?: string;
+  // MARKER_155A.P1.CROSSCUT_TASKS: Unified graph contract for cross-cutting tasks
+  primary_node_id?: string;
+  affected_nodes?: string[];
+  integration_task_of?: string[];
+  // MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: execution metadata
+  workflow_id?: string;
+  team_profile?: string;
+  task_origin?: 'architect' | 'chat' | 'manual' | 'system' | string;
 }
 
 // MARKER_127.0B: Pipeline results data structure
@@ -509,7 +522,7 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
             borderRadius: 2,
             fontFamily: 'monospace',
           }}>
-            {task.assigned_to}
+            {task.assigned_to}{task.agent_type ? `:${task.agent_type}` : ''}
           </span>
         )}
 
@@ -580,6 +593,9 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
           {/* Meta info */}
           <div style={{ fontSize: 10, color: '#555', marginBottom: 6, fontFamily: 'monospace' }}>
             {task.source && `src:${task.source}`}
+            {task.assigned_to && ` · owner:${task.assigned_to}`}
+            {task.agent_type && ` · type:${task.agent_type}`}
+            {task.closed_by && ` · closed:${task.closed_by}`}
             {task.preset && ` · ${task.preset}`}
             {task.created_at && ` · ${new Date(task.created_at).toLocaleTimeString()}`}
           </div>

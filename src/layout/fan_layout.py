@@ -12,6 +12,7 @@ Provides adaptive branch length, file spacing, and repulsion calculations.
 """
 
 import math
+import os
 import re
 from collections import defaultdict
 from typing import Dict, List, Tuple, Optional, Callable
@@ -771,11 +772,38 @@ def calculate_tree_layout(
     Y_PER_DEPTH = 80       # Компактный вертикальный шаг (было 300 - космос)
     X_SPACING = 25         # Компактный горизонтальный шаг
     FILE_Y_STEP = 15       # Маленький шаг между файлами в цепочке
+    # MARKER_155.DIRECTED_Z_PARALLAX_V1:
+    # 2D-first Directed layout + subtle Z parallax.
+    # Rule:
+    # - Folders form the "base" layer at each depth
+    # - Files are slightly closer to camera than their parent folder
+    # - Nested folder acts like next-row element (slightly closer than previous level)
+    FOLDER_Z_STEP = 1.2
+    FILE_Z_OFFSET = 0.7
+    FILE_Z_STACK_STEP = 0.03
 
     positions = {}
     subtree_widths = {}
 
     print(f"[TREE_LAYOUT] Starting classic tree layout for {len(folders)} folders")
+
+    def _time_key(file_data: dict):
+        """
+        Stable numeric time key for Directed Mode:
+        created_time -> modified_time -> 0, then filename for deterministic ties.
+        """
+        created = file_data.get('created_time', 0)
+        modified = file_data.get('modified_time', 0)
+        try:
+            created_f = float(created or 0)
+        except Exception:
+            created_f = 0.0
+        try:
+            modified_f = float(modified or 0)
+        except Exception:
+            modified_f = 0.0
+        primary = created_f if created_f > 0 else modified_f
+        return (primary, modified_f, str(file_data.get('name', '')))
 
     # === ШАГ 1: Подсчитать ширину каждого поддерева ===
     def count_width(folder_path: str) -> int:
@@ -799,7 +827,13 @@ def calculate_tree_layout(
         return max(1, width)
 
     # === ШАГ 2: Рекурсивный layout ===
-    def layout_subtree(folder_path: str, center_x: float, parent_y: float) -> None:
+    def _folder_z(depth: int) -> float:
+        return depth * FOLDER_Z_STEP
+
+    def _file_z(depth: int, index: int) -> float:
+        return _folder_z(depth) + FILE_Z_OFFSET + (index * FILE_Z_STACK_STEP)
+
+    def layout_subtree(folder_path: str, center_x: float, parent_y: float, depth: int) -> None:
         """
         Рекурсивно размещает папку и её детей.
         Папка размещается строго над родителем.
@@ -814,7 +848,7 @@ def calculate_tree_layout(
         positions[folder_path] = {
             'x': center_x,
             'y': folder_y,
-            'z': 0,
+            'z': _folder_z(depth),
             'angle': 0  # Не используется в tree layout
         }
 
@@ -841,7 +875,7 @@ def calculate_tree_layout(
                 child_center = current_x + child_width / 2
 
                 # Рекурсивно разместить ребёнка
-                layout_subtree(child_path, child_center, folder_y)
+                layout_subtree(child_path, child_center, folder_y, depth + 1)
 
                 current_x += child_width
 
@@ -849,10 +883,7 @@ def calculate_tree_layout(
         folder_files = files_by_folder.get(folder_path, [])
         if folder_files:
             # Сортировать по времени создания (старые внизу, новые вверху)
-            folder_files_sorted = sorted(
-                folder_files,
-                key=lambda f: f.get('created_time', 0)
-            )
+            folder_files_sorted = sorted(folder_files, key=_time_key)
 
             for i, file_data in enumerate(folder_files_sorted):
                 file_id = file_data.get('id')
@@ -861,8 +892,9 @@ def calculate_tree_layout(
                     positions[file_id] = {
                         'x': center_x,
                         'y': folder_y + FILE_Y_STEP * (i + 1),
-                        'z': 0
+                        'z': _file_z(depth, i)
                     }
+
 
     # === ШАГ 3: Найти root папки ===
     root_folders = [p for p, f in folders.items() if not f.get('parent_path')]
@@ -880,7 +912,7 @@ def calculate_tree_layout(
     if len(root_folders) == 1:
         # Единственный root - в центре
         root_path = root_folders[0]
-        positions[root_path] = {'x': 0, 'y': 0, 'z': 0, 'angle': 0}
+        positions[root_path] = {'x': 0, 'y': 0, 'z': _folder_z(0), 'angle': 0}
 
         # Разместить детей root'а
         folder = folders.get(root_path)
@@ -894,20 +926,20 @@ def calculate_tree_layout(
             for i, child_path in enumerate(children):
                 child_width = child_widths[i] * X_SPACING
                 child_center = current_x + child_width / 2
-                layout_subtree(child_path, child_center, 0)
+                layout_subtree(child_path, child_center, 0, 1)
                 current_x += child_width
 
         # Файлы в root папке
         root_files = files_by_folder.get(root_path, [])
         if root_files:
-            root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+            root_files_sorted = sorted(root_files, key=_time_key)
             for i, file_data in enumerate(root_files_sorted):
                 file_id = file_data.get('id')
                 if file_id:
                     positions[file_id] = {
                         'x': 0,
                         'y': FILE_Y_STEP * (i + 1),
-                        'z': 0
+                        'z': _file_z(0, i)
                     }
     else:
         # Несколько root деревьев - распределить горизонтально
@@ -919,7 +951,7 @@ def calculate_tree_layout(
             center = current_x + width / 2
 
             # Позиция root
-            positions[root_path] = {'x': center, 'y': 0, 'z': 0, 'angle': 0}
+            positions[root_path] = {'x': center, 'y': 0, 'z': _folder_z(0), 'angle': 0}
 
             # Разместить детей
             folder = folders.get(root_path)
@@ -933,20 +965,20 @@ def calculate_tree_layout(
                 for i, child_path in enumerate(children):
                     child_width = child_widths[i] * X_SPACING
                     child_center = child_x + child_width / 2
-                    layout_subtree(child_path, child_center, 0)
+                    layout_subtree(child_path, child_center, 0, 1)
                     child_x += child_width
 
             # Файлы в root папке
             root_files = files_by_folder.get(root_path, [])
             if root_files:
-                root_files_sorted = sorted(root_files, key=lambda f: f.get('created_time', 0))
+                root_files_sorted = sorted(root_files, key=_time_key)
                 for i, file_data in enumerate(root_files_sorted):
                     file_id = file_data.get('id')
                     if file_id:
                         positions[file_id] = {
                             'x': center,
                             'y': FILE_Y_STEP * (i + 1),
-                            'z': 0
+                            'z': _file_z(0, i)
                         }
 
             current_x += width
@@ -954,4 +986,121 @@ def calculate_tree_layout(
     print(f"[TREE_LAYOUT] Positioned {len(positions)} nodes")
     print(f"[TREE_LAYOUT] Y_PER_DEPTH={Y_PER_DEPTH}, X_SPACING={X_SPACING}")
 
+    # MARKER_155.RECON.DAG_OVERLAP_AUDIT_V1:
+    # Pure diagnostics (no geometry changes). Helps derive stable formula.
+    if os.getenv("TREE_LAYOUT_AUDIT", "1") != "0":
+        try:
+            _run_tree_overlap_audit(
+                folders=folders,
+                files_by_folder=files_by_folder,
+                positions=positions,
+                subtree_widths=subtree_widths,
+                y_per_depth=Y_PER_DEPTH,
+                x_spacing=X_SPACING,
+                file_y_step=FILE_Y_STEP,
+            )
+        except Exception as audit_error:
+            print(f"[TREE_AUDIT] failed: {audit_error}")
+
     return positions, root_folders, 0, 0, Y_PER_DEPTH
+
+
+def _run_tree_overlap_audit(
+    folders: Dict[str, dict],
+    files_by_folder: Dict[str, List[dict]],
+    positions: Dict[str, dict],
+    subtree_widths: Dict[str, int],
+    y_per_depth: float,
+    x_spacing: float,
+    file_y_step: float,
+) -> None:
+    """
+    MARKER_155.RECON.DAG_OVERLAP_AUDIT_V1
+    Audit-only metrics:
+    1) Folder interval overlaps at each depth.
+    2) File stack intrusion into next directory level.
+    3) Parent->single-child exact centerline alignments.
+    """
+    depth_rows: Dict[int, List[Tuple[str, float, float, float]]] = defaultdict(list)
+    single_child_centerline = 0
+    total_single_child = 0
+
+    # Build folder intervals per depth: [x - w/2, x + w/2]
+    for folder_path, folder in folders.items():
+        pos = positions.get(folder_path)
+        if not pos:
+            continue
+        depth = int(folder.get("depth", 0) or 0)
+        width_units = max(1, int(subtree_widths.get(folder_path, 1) or 1))
+        half_w = (width_units * x_spacing) / 2.0
+        center_x = float(pos.get("x", 0.0))
+        depth_rows[depth].append((folder_path, center_x - half_w, center_x + half_w, center_x))
+
+        # Centerline diagnostic for exactly one child
+        children = folder.get("children", []) or []
+        if len(children) == 1:
+            child_pos = positions.get(children[0])
+            if child_pos:
+                total_single_child += 1
+                if abs(float(child_pos.get("x", 0.0)) - center_x) < 1e-6:
+                    single_child_centerline += 1
+
+    # Overlap scan per depth (sweep line on sorted intervals)
+    overlap_count = 0
+    overlap_samples: List[Tuple[int, str, str, float]] = []
+    for depth, intervals in depth_rows.items():
+        intervals = sorted(intervals, key=lambda t: (t[1], t[2]))
+        prev_path = None
+        prev_right = None
+        for path, left, right, _ in intervals:
+            if prev_right is not None and left < prev_right:
+                overlap = prev_right - left
+                overlap_count += 1
+                if len(overlap_samples) < 8 and prev_path is not None:
+                    overlap_samples.append((depth, prev_path, path, overlap))
+            if prev_right is None or right > prev_right:
+                prev_right = right
+                prev_path = path
+
+    # File-stack intrusion: actual file positions exceeding next level Y
+    stack_intrusions = 0
+    intrusion_samples: List[Tuple[str, int, float]] = []
+    max_slots = max(1, int(y_per_depth // file_y_step))
+    for folder_path, folder in folders.items():
+        pos = positions.get(folder_path)
+        if not pos:
+            continue
+        folder_files = files_by_folder.get(folder_path, [])
+        files_count = len(folder_files)
+        if files_count <= 0:
+            continue
+        folder_y = float(pos.get("y", 0.0))
+        top_file_y = folder_y
+        for f in folder_files:
+            file_id = f.get("id")
+            if not file_id:
+                continue
+            fpos = positions.get(file_id)
+            if not fpos:
+                continue
+            fy = float(fpos.get("y", folder_y))
+            if fy > top_file_y:
+                top_file_y = fy
+        next_level_y = folder_y + y_per_depth
+        if top_file_y > next_level_y:
+            stack_intrusions += 1
+            if len(intrusion_samples) < 8:
+                intrusion_samples.append((folder_path, files_count, top_file_y - next_level_y))
+
+    print(
+        "[TREE_AUDIT] "
+        f"folders={len(folders)} depths={len(depth_rows)} "
+        f"x_overlaps={overlap_count} "
+        f"file_intrusions={stack_intrusions} "
+        f"single_child_centerline={single_child_centerline}/{total_single_child} "
+        f"max_files_per_level={max_slots}"
+    )
+    for depth, left_p, right_p, ov in overlap_samples:
+        print(f"[TREE_AUDIT] overlap depth={depth} left={left_p} right={right_p} overlap={ov:.1f}")
+    for path, n, excess in intrusion_samples:
+        print(f"[TREE_AUDIT] intrusion path={path} files={n} exceed_y={excess:.1f}")

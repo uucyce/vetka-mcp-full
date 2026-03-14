@@ -1,0 +1,9 @@
+В предоставленном контексте нет информации о протоколе interrupt + restart stream или его влиянии на voice handoff/tool-loop transparency. 
+
+Контекст содержит детали о:
+- Capability Matrix для unified stream + tools (MARKER_152)
+- Voice pipeline (TTS, STT, realtime) в VETKA Chat (MARKER_156)
+- Проблемы с потоковой генерацией и tool calling
+- Прогрессивный voice pipeline для solo агентов
+
+Но конкретно про interrupt + restart stream protocol и его влияние

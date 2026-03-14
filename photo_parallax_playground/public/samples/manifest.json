@@ -1,0 +1,58 @@
+{
+  "samples": [
+    {
+      "id": "cassette-closeup",
+      "title": "Cassette close-up",
+      "file_name": "cassette-closeup.png",
+      "width": 2560,
+      "height": 1440,
+      "scenario": "large foreground object, soft background lights",
+      "notes": "Good for disocclusion checks around hands and transparent cassette edges."
+    },
+    {
+      "id": "keyboard-hands",
+      "title": "Keyboard hands",
+      "file_name": "keyboard-hands.png",
+      "width": 2560,
+      "height": 1440,
+      "scenario": "multi-depth mid-shot with fingers, keyboard, monitors",
+      "notes": "Useful for layer split and mask edge tests with multiple near surfaces."
+    },
+    {
+      "id": "hover-politsia",
+      "title": "Hover Politsia street",
+      "file_name": "hover-politsia.jpg",
+      "width": 2560,
+      "height": 1440,
+      "scenario": "wide scene with separate foreground actors and deep background",
+      "notes": "Good for background plate and overscan planning."
+    },
+    {
+      "id": "drone-portrait",
+      "title": "Drone portrait",
+      "file_name": "drone-portrait.webp",
+      "width": 1024,
+      "height": 1024,
+      "scenario": "portrait with strong subject isolation and bokeh",
+      "notes": "Good for foreground/background separation and safe camera travel presets."
+    },
+    {
+      "id": "punk-rooftop",
+      "title": "Punk rooftop",
+      "file_name": "punk-rooftop.png",
+      "width": 2560,
+      "height": 1440,
+      "scenario": "single seated figure on rooftop with deep urban background",
+      "notes": "Good for foreground human grouping against a complex wide city backdrop."
+    },
+    {
+      "id": "truck-driver",
+      "title": "Truck driver",
+      "file_name": "truck-driver.png",
+      "width": 2560,
+      "height": 1440,
+      "scenario": "subject inside a vehicle cabin framed by window geometry",
+      "notes": "Good for testing object grouping inside hard frame boundaries."
+    }
+  ]
+}

@@ -274,3 +274,29 @@ export function KnowledgeLevelChart({ knowledgeLevels }: { knowledgeLevels: Reco
 - Или улучшенный вариант визуализации (sparkline + средний KL)
 
 Просто скажи. Мы на очень хорошем ходу.
+
+
+ode Switcher (на папке / правый клик)
+
+Knowledge Graph (3D)
+Directed Mode
+(опционально позже) MCC View как подрежим Core
+Где хранить
+
+folder_mode_overrides в state + backend persistence (mycelium_state.json или отдельный folder_modes.json).
+Приоритет: folder override > global default.
+Как применять
+
+Knowledge Graph: текущий граф + semantic/temporal/relation edges.
+Directed Mode: тот же датасет, но строгая направленность и упор на time/causal/dependency цепочки.
+Важно: данные одни и те же, меняются только layout/filters/edge semantics.
+Инструменты пользователю по режимам (Core)
+
+Общие: поиск, pin, artifact open, timeline jump.
+Knowledge Graph: semantic search, relation highlights, cluster focus.
+Directed: dependency trace, predecessor/successor chain, temporal path.
+MCP-расширения (как ты и зафиксировал)
+
+Core-only: MCC, Knowledge, Directed
+MCP required: 3D Agent (Blender), Video Gen, Audio Gen, Video Editing
+Если ок, следующим шагом сделаю именно Mode Switcher на папках (context menu + сохранение выбора + переключение рендера между Knowledge/Directed).

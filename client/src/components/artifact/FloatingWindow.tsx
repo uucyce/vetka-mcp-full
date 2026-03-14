@@ -19,6 +19,7 @@ interface Props {
   children: React.ReactNode;
   defaultWidth?: number;
   defaultHeight?: number;
+  headerActions?: React.ReactNode;
 }
 
 export function FloatingWindow({
@@ -28,6 +29,7 @@ export function FloatingWindow({
   children,
   defaultWidth = 600,
   defaultHeight = 500,
+  headerActions,
 }: Props) {
   const [isMaximized, setIsMaximized] = useState(false);
   const [size, setSize] = useState({ width: defaultWidth, height: defaultHeight });
@@ -106,7 +108,8 @@ export function FloatingWindow({
             {title}
           </div>
 
-          <div style={{ display: 'flex', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            {headerActions}
             <button
               onClick={toggleMaximize}
               style={{

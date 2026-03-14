@@ -45,9 +45,12 @@ Node Structure:
 import os
 import json
 import hashlib
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+from src.services.chat_artifact_registry import get_chat_artifact_registry
+from src.scanners.mime_policy import validate_ingest_target
 
 
 # ============================================================
@@ -201,6 +204,12 @@ def _generate_artifact_id(filename: str) -> str:
     return f"artifact_{file_hash}"
 
 
+def _generate_media_chunk_id(parent_file_path: str, chunk_index: int, start_sec: float) -> str:
+    key = f"{parent_file_path}|{chunk_index}|{start_sec:.3f}"
+    digest = hashlib.md5(key.encode("utf-8")).hexdigest()[:10]
+    return f"artifact_chunk_{digest}"
+
+
 def _calculate_artifact_position(
     parent_position: Optional[Dict] = None,
     index: int = 0
@@ -264,6 +273,7 @@ def scan_artifacts() -> List[Dict]:
 
     # Load staging.json for chat/message links
     staging_links = _load_staging_links()
+    registry = get_chat_artifact_registry()
     print(f"[ARTIFACT_SCAN] Loaded {len(staging_links)} staging links")
 
     # Scan all files in configured artifact directories
@@ -287,6 +297,17 @@ def scan_artifacts() -> List[Dict]:
             stat = file_path.stat()
         except Exception as e:
             print(f"[ARTIFACT_SCAN] Warning: Could not stat {file_path.name}: {e}")
+            continue
+
+        # MARKER_153.IMPL.G01_ARTIFACT_SCAN_POLICY:
+        # Enforce unified ingest policy in artifact scan path too,
+        # so tree/panel visibility aligns with indexing policy.
+        try:
+            allowed, policy = validate_ingest_target(str(file_path), int(stat.st_size))
+            if not allowed:
+                continue
+        except Exception:
+            # Keep scanner resilient on policy errors.
             continue
 
         # Determine artifact type and language
@@ -342,6 +363,24 @@ def scan_artifacts() -> List[Dict]:
 
         artifacts.append(artifact_node)
 
+        # MARKER_CHAT_HUB_4A: Persist stable chat->artifact links for fast chat-centric lookup.
+        if source_chat_id:
+            try:
+                registry.link(
+                    chat_id=str(source_chat_id),
+                    message_id=source_message_id,
+                    artifact={
+                        "artifact_id": artifact_id,
+                        "file_path": str(file_path),
+                        "name": file_path.name,
+                        "source_agent": staging_info.get("source_agent"),
+                        "source_role": staging_info.get("source_role"),
+                        "status": status,
+                    },
+                )
+            except Exception as e:
+                print(f"[ARTIFACT_SCAN] Warning: failed to link artifact registry for {file_path.name}: {e}")
+
     print(
         f"[ARTIFACT_SCAN] Scanned {len(artifacts)} artifacts "
         f"from {[str(d) for d in scan_dirs]}"
@@ -368,6 +407,36 @@ def build_artifact_edges(
 
     # Build chat_id -> chat_node mapping
     chat_map = {node['id']: node for node in chat_nodes}
+    artifact_by_name = {node.get("name", ""): node for node in artifact_nodes}
+
+    def _extract_reference_names(file_path: Path) -> List[str]:
+        """Extract referenced file names from markdown/text artifacts."""
+        if not file_path.exists() or not file_path.is_file():
+            return []
+        if file_path.suffix.lower() not in {".md", ".txt", ".rst", ".adoc"}:
+            return []
+        try:
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            return []
+
+        refs: List[str] = []
+        # Markdown links: [label](target)
+        refs.extend(re.findall(r"\[[^\]]+\]\(([^)]+)\)", text))
+        # Wiki links: [[target]]
+        refs.extend(re.findall(r"\[\[([^\]]+)\]\]", text))
+        # Bare relative paths with known extensions
+        refs.extend(re.findall(r"([A-Za-z0-9_./-]+\.(?:md|txt|json|csv|py|js|ts|tsx|pdf|png|jpg|jpeg))", text))
+
+        names: List[str] = []
+        for ref in refs:
+            candidate = (ref or "").strip().split("#")[0].split("?")[0]
+            if not candidate:
+                continue
+            name = Path(candidate).name
+            if name:
+                names.append(name)
+        return names
 
     for artifact in artifact_nodes:
         parent_id = artifact.get('parent_id')
@@ -386,9 +455,240 @@ def build_artifact_edges(
             }
             edges.append(edge)
 
+        # MARKER_153.IMPL.G10_ARTIFACT_REF_EDGES:
+        # Add explicit artifact->artifact reference edges from document link parsing.
+        file_path = artifact.get("metadata", {}).get("file_path")
+        if file_path:
+            ref_names = _extract_reference_names(Path(file_path))
+            for ref_name in ref_names:
+                target_artifact = artifact_by_name.get(ref_name)
+                if not target_artifact:
+                    continue
+                if target_artifact["id"] == artifact["id"]:
+                    continue
+                edges.append(
+                    {
+                        "from": artifact["id"],
+                        "to": target_artifact["id"],
+                        "semantics": "reference",
+                        "metadata": {
+                            "type": "reference",
+                            "style": "dashed",
+                            "color": "#3b82f6",
+                            "opacity": 0.45,
+                            "evidence": ref_name,
+                        },
+                    }
+                )
+
+    # MARKER_153.IMPL.G12_TEMPORAL_ARTIFACT_EDGES:
+    # Add temporal chain edges within each parent chat group to encode creation order.
+    grouped: Dict[str, List[Dict]] = {}
+    for artifact in artifact_nodes:
+        group_key = artifact.get("parent_id") or "__global__"
+        grouped.setdefault(group_key, []).append(artifact)
+
+    for group_key, group_items in grouped.items():
+        def _created_ts(node: Dict) -> float:
+            raw = node.get("metadata", {}).get("created_at")
+            if not raw:
+                return 0.0
+            try:
+                return datetime.fromisoformat(str(raw)).timestamp()
+            except Exception:
+                return 0.0
+
+        ordered = sorted(group_items, key=_created_ts)
+        for i in range(1, len(ordered)):
+            src = ordered[i - 1]
+            tgt = ordered[i]
+            src_ts = _created_ts(src)
+            tgt_ts = _created_ts(tgt)
+            if src_ts <= 0 or tgt_ts <= 0:
+                continue
+            delta_sec = max(0, int(tgt_ts - src_ts))
+            # Very large gaps are weak links; keep but lower weight/opacity.
+            weak = delta_sec > 7 * 24 * 3600
+            edges.append(
+                {
+                    "from": src["id"],
+                    "to": tgt["id"],
+                    "semantics": "temporal",
+                    "metadata": {
+                        "type": "temporal",
+                        "style": "dotted",
+                        "color": "#f59e0b",
+                        "opacity": 0.2 if weak else 0.38,
+                        "weight": 0.4 if weak else 0.72,
+                        "timestamp_delta_sec": delta_sec,
+                        "evidence": f"created_at order in group {group_key}",
+                    },
+                }
+            )
+
     print(f"[ARTIFACT_SCAN] Built {len(edges)} artifact edges")
 
     return edges
+
+
+def build_media_chunk_nodes_and_edges(
+    artifact_nodes: List[Dict],
+    max_chunks_per_artifact: int = 8,
+    total_limit: int = 1200,
+) -> Tuple[List[Dict], List[Dict]]:
+    """
+    Build graph nodes/edges for media transcript chunks persisted in Qdrant.
+
+    Returns:
+        (chunk_nodes, chunk_edges)
+    """
+    if not artifact_nodes:
+        return [], []
+
+    # Map artifact by file path (exact + basename fallback)
+    artifact_by_path: Dict[str, Dict] = {}
+    artifact_by_name: Dict[str, Dict] = {}
+    for art in artifact_nodes:
+        fpath = str(art.get("metadata", {}).get("file_path", "") or "")
+        if fpath:
+            artifact_by_path[fpath] = art
+            artifact_by_name[Path(fpath).name] = art
+
+    points = []
+    try:
+        from src.orchestration.triple_write_manager import get_triple_write_manager
+        tw = get_triple_write_manager()
+        if not tw.qdrant_client:
+            return [], []
+
+        from qdrant_client.models import Filter, FieldCondition, MatchValue
+        points, _ = tw.qdrant_client.scroll(
+            collection_name="vetka_elisya",
+            limit=max(1, int(total_limit)),
+            with_payload=True,
+            with_vectors=False,
+            scroll_filter=Filter(
+                must=[FieldCondition(key="point_type", match=MatchValue(value="media_chunk"))]
+            ),
+        )
+    except Exception as e:
+        print(f"[ARTIFACT_SCAN] Warning: media chunk graph build skipped: {e}")
+        return [], []
+
+    grouped: Dict[str, List[Dict]] = {}
+    for p in points or []:
+        payload = getattr(p, "payload", {}) or {}
+        parent_path = str(payload.get("parent_file_path", "") or "")
+        if not parent_path:
+            continue
+        artifact = artifact_by_path.get(parent_path) or artifact_by_name.get(Path(parent_path).name)
+        if not artifact:
+            continue
+        grouped.setdefault(artifact["id"], []).append(payload)
+
+    chunk_nodes: List[Dict] = []
+    chunk_edges: List[Dict] = []
+
+    for artifact in artifact_nodes:
+        artifact_id = artifact.get("id")
+        if not artifact_id:
+            continue
+        items = grouped.get(artifact_id, [])
+        if not items:
+            continue
+
+        def _start_sec(payload: Dict) -> float:
+            try:
+                return float(payload.get("start_sec", 0.0) or 0.0)
+            except Exception:
+                return 0.0
+
+        ordered = sorted(items, key=_start_sec)[:max_chunks_per_artifact]
+        parent_pos = artifact.get("visual_hints", {}).get("layout_hint", {})
+        base_x = float(parent_pos.get("expected_x", 0.0))
+        base_y = float(parent_pos.get("expected_y", 0.0))
+        base_z = float(parent_pos.get("expected_z", 0.0))
+
+        prev_chunk_id: Optional[str] = None
+        for idx, payload in enumerate(ordered):
+            start_sec = _start_sec(payload)
+            end_sec = float(payload.get("end_sec", start_sec) or start_sec)
+            chunk_index = int(payload.get("chunk_index", idx) or idx)
+            text = str(payload.get("text", "") or "")
+            modality = str(payload.get("modality", "media") or "media")
+            conf = float(payload.get("confidence", 0.0) or 0.0)
+            chunk_id = _generate_media_chunk_id(
+                str(payload.get("parent_file_path", "")),
+                chunk_index,
+                start_sec,
+            )
+
+            chunk_nodes.append(
+                {
+                    "id": chunk_id,
+                    "type": "artifact",
+                    "name": f"{artifact.get('name', 'media')} @ {start_sec:.1f}s",
+                    "parent_id": artifact_id,
+                    "metadata": {
+                        "artifact_type": "media_chunk",
+                        "language": modality,
+                        "source_artifact_id": artifact_id,
+                        "parent_file_path": payload.get("parent_file_path"),
+                        "chunk_index": chunk_index,
+                        "start_sec": start_sec,
+                        "end_sec": end_sec,
+                        "confidence": conf,
+                        "chunk_text": text[:1200],
+                        "extension": f".{modality}",
+                    },
+                    "visual_hints": {
+                        "layout_hint": {
+                            "expected_x": base_x + 2.0,
+                            "expected_y": base_y - 0.9 - (idx * 0.75),
+                            "expected_z": base_z,
+                        },
+                        "color": "#f59e0b" if modality in ("audio", "video") else "#60a5fa",
+                        "opacity": 0.82,
+                    },
+                }
+            )
+
+            chunk_edges.append(
+                {
+                    "from": artifact_id,
+                    "to": chunk_id,
+                    "semantics": "media_chunk",
+                    "metadata": {
+                        "type": "media_chunk",
+                        "style": "dotted",
+                        "color": "#f59e0b",
+                        "opacity": 0.42,
+                        "weight": max(0.2, min(1.0, conf if conf > 0 else 0.35)),
+                        "timestamp": {"start_sec": start_sec, "end_sec": end_sec},
+                    },
+                }
+            )
+
+            if prev_chunk_id:
+                chunk_edges.append(
+                    {
+                        "from": prev_chunk_id,
+                        "to": chunk_id,
+                        "semantics": "temporal_chunk",
+                        "metadata": {
+                            "type": "temporal_chunk",
+                            "style": "dashed",
+                            "color": "#fbbf24",
+                            "opacity": 0.28,
+                            "weight": 0.5,
+                        },
+                    }
+                )
+            prev_chunk_id = chunk_id
+
+    if chunk_nodes:
+        print(f"[ARTIFACT_SCAN] Built {len(chunk_nodes)} media chunk nodes, {len(chunk_edges)} chunk edges")
+    return chunk_nodes, chunk_edges
 
 
 def update_artifact_positions(

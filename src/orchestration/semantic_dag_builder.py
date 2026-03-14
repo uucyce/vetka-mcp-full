@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 from collections import defaultdict, deque
 import json
 import logging
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +111,9 @@ class SemanticDAGBuilder:
         6. Return nodes + edges
         """
 
+        logger.info("[SemanticDAG] Step 0: Hydrating multimodal embeddings (JEPA)...")
+        self._hydrate_multimodal_embeddings_from_jepa()
+
         logger.info("[SemanticDAG] Step 1: Clustering embeddings...")
         self._cluster_embeddings()
 
@@ -128,6 +132,55 @@ class SemanticDAGBuilder:
         logger.info(f"[SemanticDAG] Complete: {len(self.semantic_nodes)} nodes, {len(self.semantic_edges)} edges")
 
         return self.semantic_nodes, self.semantic_edges
+
+    def _run_coro_sync(self, coro):
+        try:
+            loop = asyncio.get_running_loop()
+            if loop.is_running():
+                alt = asyncio.new_event_loop()
+                try:
+                    return alt.run_until_complete(coro)
+                finally:
+                    alt.close()
+        except RuntimeError:
+            pass
+        return asyncio.run(coro)
+
+    def _hydrate_multimodal_embeddings_from_jepa(self):
+        """
+        MARKER_2026_JEPA_INTEGRATION_FULL:
+        Fill missing embeddings for audio/video nodes using JEPA integrator.
+        Only runs for metadata entries explicitly marked as media.
+        """
+        try:
+            from src.knowledge_graph.jepa_integrator import jepa
+        except Exception as e:
+            logger.info(f"[SemanticDAG] JEPA integrator unavailable: {e.__class__.__name__}")
+            return
+
+        hydrated = 0
+        for file_id, meta in (self.file_metadata or {}).items():
+            if file_id in self.embeddings and self.embeddings[file_id] is not None:
+                continue
+            mtype = str(meta.get("type") or "").lower()
+            path = str(meta.get("path") or "")
+            if mtype not in {"video", "audio"} or not path:
+                continue
+            try:
+                if mtype == "video":
+                    emb = self._run_coro_sync(jepa.get_video_embedding(path))
+                else:
+                    emb, _info = self._run_coro_sync(jepa.get_audio_embedding(path))
+                if emb is not None:
+                    self.embeddings[file_id] = np.array(emb, dtype=np.float32)
+                    hydrated += 1
+                    meta["jepa_extracted"] = True
+            except Exception as e:
+                logger.warning(f"[SemanticDAG] JEPA hydrate failed for {file_id}: {e.__class__.__name__}")
+                continue
+
+        if hydrated > 0:
+            logger.info(f"[SemanticDAG] Hydrated multimodal embeddings via JEPA: {hydrated}")
 
     def _cluster_embeddings(self):
         """Use HDBSCAN to cluster file embeddings into concepts"""
@@ -580,10 +633,43 @@ def build_semantic_dag_from_qdrant(
         logger.error("[SemanticDAG] No Qdrant client provided")
         return {}, [], {}
 
+    def _safe_float(value: Any) -> float:
+        try:
+            if value is None:
+                return 0.0
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _resolve_times(payload: Dict[str, Any]) -> Tuple[float, float]:
+        created = _safe_float(payload.get('created_time'))
+        modified = _safe_float(payload.get('modified_time'))
+        updated = _safe_float(payload.get('updated_at'))
+        created_resolved = created or modified or updated or 0.0
+        modified_resolved = modified or created_resolved or updated or 0.0
+        return created_resolved, modified_resolved
+
     # Fetch all embeddings AND metadata from Qdrant
     embeddings_dict = {}
     file_metadata = {}
     offset = None
+    metadata_stats = {
+        'total': 0,
+        'with_created_time': 0,
+        'with_modified_time': 0,
+        'with_updated_at': 0,
+        'with_parent_folder': 0,
+        'with_modality': 0,
+        'with_mime_type': 0,
+        'with_size_bytes': 0,
+        'with_content_hash': 0,
+        'with_source': 0,
+        'with_depth': 0,
+        'created_from_created': 0,
+        'created_from_modified': 0,
+        'created_from_updated': 0,
+        'created_missing': 0,
+    }
 
     logger.info("[SemanticDAG] Fetching embeddings from Qdrant...")
 
@@ -604,20 +690,106 @@ def build_semantic_dag_from_qdrant(
             # Extract metadata for multi-criteria inference
             payload = point.payload or {}
             path = payload.get('path', '')
-            depth = path.count('/') if path else 0
+            depth = int(payload.get('depth') or (path.count('/') if path else 0))
+            created_time, modified_time = _resolve_times(payload)
+            parent_folder = payload.get('parent_folder', '')
+            modality = payload.get('modality', '')
 
             file_metadata[file_id] = {
                 'path': path,
                 'depth': depth,
                 'name': payload.get('name', ''),
                 'extension': payload.get('extension', ''),
-                'type': payload.get('type', 'file')
+                'type': payload.get('type', 'file'),
+                'parent_folder': parent_folder,
+                'mime_type': payload.get('mime_type', ''),
+                'modality': modality,
+                'size_bytes': int(payload.get('size_bytes') or 0),
+                'content_hash': payload.get('content_hash', ''),
+                'source': payload.get('source', ''),
+                'created_time': created_time,
+                'modified_time': modified_time,
+                'updated_at': _safe_float(payload.get('updated_at')),
             }
+            raw_created = _safe_float(payload.get('created_time'))
+            raw_modified = _safe_float(payload.get('modified_time'))
+            raw_updated = _safe_float(payload.get('updated_at'))
+
+            metadata_stats['total'] += 1
+            if created_time > 0:
+                metadata_stats['with_created_time'] += 1
+            if modified_time > 0:
+                metadata_stats['with_modified_time'] += 1
+            if raw_updated > 0:
+                metadata_stats['with_updated_at'] += 1
+            if parent_folder:
+                metadata_stats['with_parent_folder'] += 1
+            if modality:
+                metadata_stats['with_modality'] += 1
+            if payload.get('mime_type'):
+                metadata_stats['with_mime_type'] += 1
+            if int(payload.get('size_bytes') or 0) > 0:
+                metadata_stats['with_size_bytes'] += 1
+            if payload.get('content_hash'):
+                metadata_stats['with_content_hash'] += 1
+            if payload.get('source'):
+                metadata_stats['with_source'] += 1
+            if depth > 0 or path:
+                metadata_stats['with_depth'] += 1
+
+            if raw_created > 0:
+                metadata_stats['created_from_created'] += 1
+            elif raw_modified > 0:
+                metadata_stats['created_from_modified'] += 1
+            elif raw_updated > 0:
+                metadata_stats['created_from_updated'] += 1
+            else:
+                metadata_stats['created_missing'] += 1
 
         if offset is None:
             break
 
     logger.info(f"[SemanticDAG] Loaded {len(embeddings_dict)} embeddings with metadata")
+    total = max(1, metadata_stats['total'])
+    metadata_completeness = {
+        'total': metadata_stats['total'],
+        'percent': {
+            'created_time': round(100.0 * metadata_stats['with_created_time'] / total, 1),
+            'modified_time': round(100.0 * metadata_stats['with_modified_time'] / total, 1),
+            'updated_at': round(100.0 * metadata_stats['with_updated_at'] / total, 1),
+            'parent_folder': round(100.0 * metadata_stats['with_parent_folder'] / total, 1),
+            'modality': round(100.0 * metadata_stats['with_modality'] / total, 1),
+            'mime_type': round(100.0 * metadata_stats['with_mime_type'] / total, 1),
+            'size_bytes': round(100.0 * metadata_stats['with_size_bytes'] / total, 1),
+            'content_hash': round(100.0 * metadata_stats['with_content_hash'] / total, 1),
+            'source': round(100.0 * metadata_stats['with_source'] / total, 1),
+            'depth': round(100.0 * metadata_stats['with_depth'] / total, 1),
+        },
+        'time_fallback': {
+            'from_created': metadata_stats['created_from_created'],
+            'from_modified': metadata_stats['created_from_modified'],
+            'from_updated_at': metadata_stats['created_from_updated'],
+            'missing': metadata_stats['created_missing'],
+        },
+    }
+    logger.info(
+        "[SemanticDAG] Metadata completeness: created=%s%% modified=%s%% updated=%s%% parent=%s%% modality=%s%% mime=%s%% source=%s%%",
+        metadata_completeness['percent']['created_time'],
+        metadata_completeness['percent']['modified_time'],
+        metadata_completeness['percent']['updated_at'],
+        metadata_completeness['percent']['parent_folder'],
+        metadata_completeness['percent']['modality'],
+        metadata_completeness['percent']['mime_type'],
+        metadata_completeness['percent']['source'],
+    )
+    if metadata_completeness['percent']['created_time'] < 90.0:
+        logger.warning(
+            "[SemanticDAG] Low created_time completeness: %.1f%% (fallback modified=%d updated=%d missing=%d)",
+            metadata_completeness['percent']['created_time'],
+            metadata_completeness['time_fallback']['from_modified'],
+            metadata_completeness['time_fallback']['from_updated_at'],
+            metadata_completeness['time_fallback']['missing'],
+        )
 
     if len(embeddings_dict) == 0:
         logger.warning("[SemanticDAG] No embeddings found!")
@@ -631,5 +803,6 @@ def build_semantic_dag_from_qdrant(
     )
     nodes, edges = builder.build_semantic_tree()
     stats = builder.get_stats()
+    stats['metadata_completeness'] = metadata_completeness
 
     return nodes, edges, stats

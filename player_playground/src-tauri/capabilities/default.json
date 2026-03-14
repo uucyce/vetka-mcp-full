@@ -1,0 +1,12 @@
+{
+  "$schema": "https://schemas.tauri.app/config/2/capability",
+  "identifier": "default",
+  "description": "Default capabilities for VETKA Player Lab",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-set-size"
+  ]
+}

@@ -36,7 +36,7 @@ logger = logging.getLogger("VETKA_QDRANT")
 
 try:
     from qdrant_client import QdrantClient
-    from qdrant_client.models import PointStruct, Distance, VectorParams, Filter, FieldCondition, MatchAny
+    from qdrant_client.models import PointStruct, Distance, VectorParams, Filter, FieldCondition, MatchAny, MatchValue
     # RecreateCollectionRequest is deprecated in qdrant-client 1.15+
     QDRANT_AVAILABLE = True
 except ImportError:
@@ -87,7 +87,8 @@ class QdrantVetkaClient:
         'leaf': 'VetkaLeaf',
         'changelog': 'VetkaChangeLog',
         'trash': 'VetkaTrash',  # MARKER-77-02: Phase 77 Memory Sync trash collection
-        'chat': 'VetkaGroupChat'  # MARKER_103.7: Phase 103 - Chat history persistence
+        'chat': 'VetkaGroupChat',  # MARKER_103.7: Phase 103 - Chat history persistence
+        'artifacts': 'VetkaArtifacts'  # MARKER_153.IMPL.G07: artifact batch collection
     }
     
     VECTOR_SIZE = 768  # For embeddings (adjustable)
@@ -100,7 +101,7 @@ class QdrantVetkaClient:
         
         if QDRANT_AVAILABLE:
             try:
-                self.client = QdrantClient(host=host, port=port)
+                self.client = QdrantClient(url=f"http://{host}:{port}")
                 self._initialize_collections()
                 print(f"✅ Qdrant connected ({host}:{port})")
             except Exception as e:
@@ -354,12 +355,17 @@ class QdrantVetkaClient:
             # Phase 68.2: Filter to only scanned_file types (excludes chat and browser_file which have no tree nodes)
             search_filter = None
             if file_types_only and QDRANT_AVAILABLE:
+                # MARKER_159.CLEAN_SEARCH_EXCLUDE_DELETED
                 search_filter = Filter(
                     must=[
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])  # Only scanned files have tree nodes
-                        )
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
+                        ),
                     ]
                 )
 
@@ -425,42 +431,55 @@ class QdrantVetkaClient:
             # FIX_95.3_FILENAME_SCROLL: Try scanned_file filter first, fallback to all points
             search_filter = None
             if QDRANT_AVAILABLE:
+                # MARKER_159.CLEAN_SEARCH_EXCLUDE_DELETED
                 search_filter = Filter(
                     must=[
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])
-                        )
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
+                        ),
                     ]
                 )
 
-            # Get all points with filter (up to 2000 for filename matching)
-            # Phase 68.2: Increased from 500 to 2000 for better coverage
-            points, _ = self.client.scroll(
-                collection_name=collection_name,
-                limit=2000,  # Increased for better filename coverage
-                scroll_filter=search_filter,
-                with_payload=True,
-                with_vectors=False
-            )
+            def _scroll_all_points(scroll_filter):
+                points_acc = []
+                offset = None
+                # MARKER_161.RECON.QDRANT_FILENAME_PAGINATION_GAP:
+                # iterate through full collection pages, not only first scroll page.
+                while True:
+                    page, offset = self.client.scroll(
+                        collection_name=collection_name,
+                        limit=512,
+                        offset=offset,
+                        scroll_filter=scroll_filter,
+                        with_payload=True,
+                        with_vectors=False,
+                    )
+                    if page:
+                        points_acc.extend(page)
+                    if offset is None:
+                        break
+                return points_acc
+
+            points = _scroll_all_points(search_filter)
 
             # FIX_95.3: Fallback - if no scanned_file found, search ALL points by path
             logger.info(f"[FILENAME] Scroll with type=scanned_file returned {len(points)} points")
             if not points:
                 logger.info(f"[FILENAME] No scanned_file entries, searching all points for '{filename_pattern}'")
-                points, _ = self.client.scroll(
-                    collection_name=collection_name,
-                    limit=2000,
-                    scroll_filter=None,  # No type filter
-                    with_payload=True,
-                    with_vectors=False
-                )
+                points = _scroll_all_points(None)
                 logger.info(f"[FILENAME] Fallback scroll (no filter) returned {len(points)} points")
 
             # Filter by filename pattern (case-insensitive substring match)
             # FIX_95.3: Search in BOTH 'name' field AND last part of 'path'
             results = []
             for point in points:
+                if bool(point.payload.get('deleted', False)):
+                    continue
                 name = point.payload.get('name', '')
                 path = point.payload.get('path', '')
                 # Extract filename from path if name is empty
@@ -543,6 +562,10 @@ class QdrantVetkaClient:
                         FieldCondition(
                             key='type',
                             match=MatchAny(any=['scanned_file'])
+                        ),
+                        FieldCondition(
+                            key='deleted',
+                            match=MatchValue(value=False)
                         )
                     ]
                 )

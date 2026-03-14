@@ -388,6 +388,25 @@ async def list_tools() -> list[Tool]:
             }
         ),
         Tool(
+            name="vetka_get_media_window_debug",
+            description="Get the latest detached media window debug snapshot. "
+                       "Shows native Tauri geometry, DOM wrapper geometry, toolbar size, "
+                       "video intrinsic size, and measured letterboxing.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Optional exact media path filter"
+                    },
+                    "src": {
+                        "type": "string",
+                        "description": "Optional media source/name substring filter"
+                    }
+                }
+            }
+        ),
+        Tool(
             name="vetka_list_files",
             description="List files in a directory or matching a pattern. Returns file paths with metadata.",
             inputSchema={
@@ -894,10 +913,43 @@ async def list_tools() -> list[Tool]:
             description="[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        # MARKER_178.6.1: Un-deprecated — live fallback when MYCELIUM unavailable
         Tool(
             name="vetka_task_board",
-            description="[DEPRECATED] Use mycelium_task_board instead. Moved to MCP MYCELIUM.",
-            inputSchema={"type": "object", "properties": {"action": {"type": "string"}}, "required": ["action"]}
+            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
+                        "description": "Operation to perform"
+                    },
+                    "title": {"type": "string", "description": "Task title (for add)"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
+                    "priority": {"type": "number", "description": "1=critical..5=someday"},
+                    "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"]},
+                    "preset": {"type": "string", "description": "Pipeline preset"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove/claim/complete)"},
+                    "status": {"type": "string", "description": "New status (for update)"},
+                    "filter_status": {"type": "string", "description": "Filter by status (for list)"},
+                    "assigned_to": {"type": "string", "description": "Agent name"},
+                    "agent_type": {"type": "string", "description": "Agent type"},
+                    "complexity": {"type": "string"},
+                    "dependencies": {"type": "array", "items": {"type": "string"}},
+                    "project_id": {"type": "string", "description": "Logical project ID"},
+                    "project_lane": {"type": "string", "description": "Specific project lane / MCC tab"},
+                    "architecture_docs": {"type": "array", "items": {"type": "string"}},
+                    "recon_docs": {"type": "array", "items": {"type": "string"}},
+                    "protocol_version": {"type": "string"},
+                    "require_closure_proof": {"type": "boolean"},
+                    "closure_tests": {"type": "array", "items": {"type": "string"}},
+                    "closure_files": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["action"]
+            }
         ),
         Tool(
             name="vetka_task_dispatch",
@@ -1114,6 +1166,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
         elif name == "vetka_health":
             # Health check
             response = await http_client.get("/api/health")
+
+        elif name == "vetka_get_media_window_debug":
+            params = {}
+            if arguments.get("path"):
+                params["path"] = arguments["path"]
+            if arguments.get("src"):
+                params["src"] = arguments["src"]
+            response = await http_client.get("/api/debug/media-window-snapshot", params=params or None)
 
         elif name == "vetka_list_files":
             # List files - use tree endpoint with filtering
@@ -1707,10 +1767,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             ))]
 
         elif name == "vetka_task_board":
-            return [TextContent(type="text", text=(
-                "⚠️ DEPRECATED: vetka_task_board moved to MCP MYCELIUM.\n"
-                "Use mycelium_task_board instead."
-            ))]
+            # MARKER_178.6.1: Live fallback — uses local task_board handler
+            try:
+                from src.mcp.tools.task_board_tools import handle_task_board
+                result = handle_task_board(arguments)
+                transport_note = "🔧 Transport: vetka_task_board (local fallback)"
+                return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
+            except Exception as e:
+                import logging
+                logging.getLogger("VETKA_MCP").error(f"vetka_task_board fallback failed: {e}")
+                return [TextContent(type="text", text=f"❌ vetka_task_board fallback error: {e}")]
 
         elif name == "vetka_task_dispatch":
             return [TextContent(type="text", text=(
@@ -1964,6 +2030,30 @@ def format_result(tool_name: str, data: Any) -> str:
                 status_icon = "✅" if comp_status else "❌"
                 formatted += f"  {status_icon} {comp_name}\n"
 
+            return formatted
+
+    elif tool_name == "vetka_get_media_window_debug":
+        if isinstance(data, dict):
+            latest = data.get("latest")
+            if not latest:
+                return "No detached media window debug snapshot captured yet."
+
+            snapshot = latest.get("snapshot") or {}
+            formatted = "Detached Media Window Debug\n"
+            formatted += "===========================\n"
+            formatted += f"Source: {latest.get('src', 'unknown')}\n"
+            formatted += f"Path: {latest.get('path', '')}\n"
+            formatted += f"Captured: {snapshot.get('capturedAt', 'unknown')}\n"
+            formatted += f"Horizontal letterbox: {snapshot.get('horizontalLetterboxPx', 0)} px\n"
+            formatted += f"Vertical letterbox: {snapshot.get('verticalLetterboxPx', 0)} px\n"
+            formatted += f"Video intrinsic: {snapshot.get('videoIntrinsicWidth', 0)}x{snapshot.get('videoIntrinsicHeight', 0)}\n"
+            formatted += f"Wrapper: {snapshot.get('wrapperWidth', 0)}x{snapshot.get('wrapperHeight', 0)}\n"
+            formatted += f"Toolbar: {snapshot.get('toolbarWidth', 0)}x{snapshot.get('toolbarHeight', 0)}\n"
+            formatted += f"Window inner (DOM): {snapshot.get('windowInnerWidth', 0)}x{snapshot.get('windowInnerHeight', 0)}\n"
+            formatted += f"Window inner (native logical): {snapshot.get('nativeInnerLogicalWidth', 0)}x{snapshot.get('nativeInnerLogicalHeight', 0)}\n"
+            formatted += f"Window inner (native physical): {snapshot.get('nativeInnerPhysicalWidth', 0)}x{snapshot.get('nativeInnerPhysicalHeight', 0)}\n"
+            formatted += f"Window outer (native physical): {snapshot.get('nativeOuterPhysicalWidth', 0)}x{snapshot.get('nativeOuterPhysicalHeight', 0)}\n"
+            formatted += f"Scale factor: {snapshot.get('nativeScaleFactor', 0)}\n"
             return formatted
 
     # Default: pretty-print JSON

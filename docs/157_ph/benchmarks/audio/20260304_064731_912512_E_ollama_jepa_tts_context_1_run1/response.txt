@@ -1,0 +1,3 @@
+1. Integrate hysteresis thresholds into `ContextPacker` to manage trigger streaks.
+2. Implement in-memory recent stats API for better memory management and faster lookups.
+3. Optimize probe tool script for synthetic runs to provide more accurate latency metrics.

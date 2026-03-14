@@ -61,6 +61,7 @@ class ChatHistoryManager:
         """Initialize ChatHistoryManager with file path."""
         self.history_file = Path(history_file)
         self.history_file.parent.mkdir(parents=True, exist_ok=True)
+        self.pins_log_file = self.history_file.parent / "chat_pins_log.json"
         self.history = self._load()
         self._ensure_chat_integrity()
         # MARKER_109_13: Thread lock for race condition prevention in get_or_create_chat
@@ -667,6 +668,10 @@ class ChatHistoryManager:
             existing_pins = chat.get("pinned_file_ids", [])
             existing_paths = chat.get("pinned_paths", [])
             normalized_paths = [str(p or "").strip() for p in (pinned_paths or []) if str(p or "").strip()]
+            added_ids = sorted(set(pinned_file_ids) - set(existing_pins))
+            removed_ids = sorted(set(existing_pins) - set(pinned_file_ids))
+            added_paths = sorted(set(normalized_paths) - set(existing_paths))
+            removed_paths = sorted(set(existing_paths) - set(normalized_paths))
 
             # Only update if pins or stable paths changed
             if set(existing_pins) != set(pinned_file_ids) or set(existing_paths) != set(normalized_paths):
@@ -674,6 +679,20 @@ class ChatHistoryManager:
                 chat["pinned_paths"] = normalized_paths
                 chat["updated_at"] = datetime.now().isoformat()
                 self._save()
+                if added_ids or added_paths:
+                    self._append_pin_event(
+                        chat_id=chat_id,
+                        action="add",
+                        node_ids=added_ids,
+                        paths=added_paths,
+                    )
+                if removed_ids or removed_paths:
+                    self._append_pin_event(
+                        chat_id=chat_id,
+                        action="remove",
+                        node_ids=removed_ids,
+                        paths=removed_paths,
+                    )
                 print(f"[ChatHistory] Updated pinned files for chat {chat_id}: {len(pinned_file_ids)} files")
             return True
         return False
@@ -699,6 +718,71 @@ class ChatHistoryManager:
         if chat_id in self.history["chats"]:
             return self.history["chats"][chat_id].get("pinned_paths", [])
         return []
+
+    def _load_pins_log(self) -> Dict[str, Any]:
+        """Load pin timeline log file."""
+        if not self.pins_log_file.exists():
+            return {"events": []}
+        try:
+            data = json.loads(self.pins_log_file.read_text(encoding="utf-8"))
+            if not isinstance(data, dict):
+                return {"events": []}
+            events = data.get("events", [])
+            if not isinstance(events, list):
+                events = []
+            return {"events": events}
+        except Exception:
+            return {"events": []}
+
+    def _save_pins_log(self, data: Dict[str, Any]) -> None:
+        """Persist pin timeline log with retention."""
+        events = data.get("events", [])
+        if isinstance(events, list) and len(events) > 5000:
+            data["events"] = events[-5000:]
+        try:
+            self.pins_log_file.write_text(
+                json.dumps(data, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except Exception as e:
+            logger.warning(f"[ChatHistory] Failed to save pin log: {e}")
+
+    def _append_pin_event(
+        self,
+        chat_id: str,
+        action: str,
+        node_ids: Optional[List[str]] = None,
+        paths: Optional[List[str]] = None,
+        message_id: Optional[str] = None,
+    ) -> None:
+        """Append a pin timeline event for chat navigation/debug."""
+        if not chat_id:
+            return
+        log_data = self._load_pins_log()
+        events = log_data.setdefault("events", [])
+        event = {
+            "event_id": str(uuid.uuid4()),
+            "chat_id": chat_id,
+            "timestamp": datetime.now().isoformat(),
+            "action": action,
+            "node_ids": sorted(set(node_ids or [])),
+            "paths": sorted(set(paths or [])),
+            "message_id": message_id,
+        }
+        events.append(event)
+        self._save_pins_log(log_data)
+
+    def get_pin_events(self, chat_id: str, limit: int = 200) -> List[Dict[str, Any]]:
+        """Return pin timeline events for a chat (newest first)."""
+        if not chat_id:
+            return []
+        data = self._load_pins_log()
+        events = data.get("events", [])
+        if not isinstance(events, list):
+            return []
+        filtered = [e for e in events if str(e.get("chat_id", "")).strip() == chat_id]
+        filtered.sort(key=lambda e: str(e.get("timestamp", "")), reverse=True)
+        return filtered[: max(1, min(limit, 1000))]
 
     def set_favorite(self, chat_id: str, is_favorite: bool) -> bool:
         """

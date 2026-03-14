@@ -1,0 +1,4 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Context**: When an agent's response is interrupted (e.g., due to a user's input or another agent's response), the current stream protocol kicks in.
+2. **Protocol**: The interrupt protocol involves the following

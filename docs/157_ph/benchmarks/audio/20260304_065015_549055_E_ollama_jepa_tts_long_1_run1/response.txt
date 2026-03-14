@@ -1,0 +1,6 @@
+<think>
+Okay, let's tackle this query step by step. The user is asking about the interrupt and restart stream protocol in relation to voice handoff and tool-loop transparency, referencing the provided context.
+
+First, I need to check if the context contains any information on these topics. Looking at the pinned files, there’s a capability matrix document that mentions a "MARKER_156.RECON.HYPOTHESIS.POSTFACTUM_AUDIO_PIPELINE" but doesn’t detail an interrupt/restart protocol. The dependency context shows a semantic search setup with Qdrant and CAM activations, which might relate to handling interruptions via tool loops.
+
+The user

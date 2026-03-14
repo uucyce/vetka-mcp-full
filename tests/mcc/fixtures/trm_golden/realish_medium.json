@@ -1,0 +1,33 @@
+{
+  "scope_name": "golden_realish_medium",
+  "records": [
+    { "id": "root_client", "path": "client/src/components/mcc", "kind": "dir", "label": "mcc_components" },
+    { "id": "root_api", "path": "src/api/routes", "kind": "dir", "label": "api_routes" },
+    { "id": "root_services", "path": "src/services", "kind": "dir", "label": "services" },
+    { "id": "root_tests", "path": "tests/mcc", "kind": "dir", "label": "tests" },
+    { "id": "cmp_center", "path": "client/src/components/mcc/MyceliumCommandCenter.tsx", "kind": "file", "label": "mcc_center" },
+    { "id": "cmp_first", "path": "client/src/components/mcc/FirstRunView.tsx", "kind": "file", "label": "first_run" },
+    { "id": "hook_roadmap", "path": "client/src/hooks/useRoadmapDAG.ts", "kind": "file", "label": "roadmap_hook" },
+    { "id": "api_mcc", "path": "src/api/routes/mcc_routes.py", "kind": "file", "label": "mcc_api" },
+    { "id": "svc_builder", "path": "src/services/mcc_architect_builder.py", "kind": "file", "label": "builder" },
+    { "id": "svc_compare", "path": "src/services/mcc_dag_compare.py", "kind": "file", "label": "compare" },
+    { "id": "svc_versions", "path": "src/services/mcc_dag_versions.py", "kind": "file", "label": "versions" },
+    { "id": "svc_trm_cfg", "path": "src/services/mcc_trm_config.py", "kind": "file", "label": "trm_config" },
+    { "id": "svc_trm_adapter", "path": "src/services/mcc_trm_adapter.py", "kind": "file", "label": "trm_adapter" },
+    { "id": "test_contract", "path": "tests/mcc/test_mcc_trm_api_contract_w1.py", "kind": "file", "label": "test_contract" },
+    { "id": "test_gate", "path": "tests/mcc/test_mcc_trm_builder_gate_w3.py", "kind": "file", "label": "test_gate" }
+  ],
+  "relations": [
+    { "source": "cmp_first", "target": "cmp_center", "weight": 0.88 },
+    { "source": "hook_roadmap", "target": "cmp_center", "weight": 0.91 },
+    { "source": "api_mcc", "target": "hook_roadmap", "weight": 0.74 },
+    { "source": "svc_builder", "target": "api_mcc", "weight": 0.89 },
+    { "source": "svc_compare", "target": "api_mcc", "weight": 0.77 },
+    { "source": "svc_versions", "target": "svc_compare", "weight": 0.72 },
+    { "source": "svc_trm_cfg", "target": "svc_trm_adapter", "weight": 0.94 },
+    { "source": "svc_trm_adapter", "target": "svc_builder", "weight": 0.86 },
+    { "source": "svc_builder", "target": "svc_compare", "weight": 0.82 },
+    { "source": "test_contract", "target": "api_mcc", "weight": 0.64 },
+    { "source": "test_gate", "target": "svc_builder", "weight": 0.66 }
+  ]
+}

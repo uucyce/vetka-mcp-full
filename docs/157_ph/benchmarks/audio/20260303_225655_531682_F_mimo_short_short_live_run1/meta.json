@@ -1,0 +1,9 @@
+{
+  "mode": "F_mimo_short",
+  "prompt_id": "short_live",
+  "run_index": 1,
+  "audio_chunks": 2,
+  "ttft_text_ms": 1767.901957995491,
+  "ttfa_audio_ms": 4680.142832978163,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_225655_531682_F_mimo_short_short_live_run1/merged.wav"
+}

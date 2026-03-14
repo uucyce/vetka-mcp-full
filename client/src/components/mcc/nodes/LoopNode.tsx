@@ -11,6 +11,7 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor } from '../../../utils/dagLayout';
 import type { NodeStatus } from '../../../types/dag';
+import { resolveMiniScale, scalePx } from './miniScale';
 
 interface LoopNodeProps {
   data: {
@@ -18,6 +19,8 @@ interface LoopNodeProps {
     status: NodeStatus;
     maxIterations?: number;
     currentIteration?: number;
+    mini?: boolean;
+    miniScale?: number;
   };
   selected?: boolean;
 }
@@ -25,19 +28,21 @@ interface LoopNodeProps {
 function LoopNodeComponent({ data, selected }: LoopNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const isRunning = data.status === 'running';
+  const isMini = Boolean(data.mini);
+  const compactScale = resolveMiniScale(isMini, data.miniScale);
 
   return (
     <div
       style={{
         background: NOLAN_PALETTE.bgLight,
-        border: `1.5px solid ${borderColor}`,
-        borderRadius: 12,
-        padding: '7px 12px',
-        minWidth: 100,
+        border: `${isMini ? 1 : 1.5}px solid ${borderColor}`,
+        borderRadius: isMini ? scalePx(7, compactScale, 5) : 12,
+        padding: isMini ? `${scalePx(3, compactScale, 2)}px ${scalePx(6, compactScale, 3)}px` : '7px 12px',
+        minWidth: isMini ? scalePx(38, compactScale, 30) : 100,
         fontFamily: 'monospace',
         textAlign: 'center',
         boxShadow: selected
-          ? `0 0 0 2px ${NOLAN_PALETTE.text}`
+          ? `0 0 0 ${isMini ? 1 : 2}px ${NOLAN_PALETTE.text}`
           : isRunning
             ? `0 0 6px ${borderColor}30`
             : 'none',
@@ -46,16 +51,16 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
     >
       {/* Icon + label */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}>
-        <span style={{ fontSize: 13, color: NOLAN_PALETTE.textMuted }}>↻</span>
+        <span style={{ fontSize: isMini ? scalePx(7, compactScale, 5) : 13, color: NOLAN_PALETTE.textMuted }}>↻</span>
         <span
           style={{
-            fontSize: 10,
+            fontSize: isMini ? scalePx(6, compactScale, 5) : 10,
             fontWeight: 500,
             color: NOLAN_PALETTE.text,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
-            maxWidth: 80,
+            maxWidth: isMini ? scalePx(26, compactScale, 20) : 80,
           }}
         >
           {data.label}
@@ -64,7 +69,7 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
 
       {/* Iteration info */}
       {(data.maxIterations || data.currentIteration) && (
-        <div style={{ fontSize: 8, color: NOLAN_PALETTE.textDim, marginTop: 2 }}>
+        <div style={{ fontSize: isMini ? scalePx(6, compactScale, 5) : 8, color: NOLAN_PALETTE.textDim, marginTop: isMini ? scalePx(1, compactScale, 1) : 2 }}>
           {data.currentIteration !== undefined
             ? `${data.currentIteration}/${data.maxIterations || '∞'}`
             : `max: ${data.maxIterations}`}
@@ -73,21 +78,34 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
 
       {/* Handles */}
       <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
+      />
+      <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
         style={{
           background: NOLAN_PALETTE.borderLight,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
         }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{ opacity: 0, width: 2, height: 2, background: 'transparent', border: 'none' }}
       />
       <Handle
         type="source"
         position={Position.Bottom}
         style={{
           background: NOLAN_PALETTE.borderLight,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
         }}
       />
       {/* Feedback handle — left side for loop-back edges */}
@@ -97,8 +115,8 @@ function LoopNodeComponent({ data, selected }: LoopNodeProps) {
         id="feedback"
         style={{
           background: NOLAN_PALETTE.border,
-          width: 5,
-          height: 5,
+          width: scalePx(5, compactScale, 3),
+          height: scalePx(5, compactScale, 3),
         }}
       />
     </div>

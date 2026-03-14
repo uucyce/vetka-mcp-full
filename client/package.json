@@ -9,7 +9,16 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build"
+    "tauri:build": "tauri build",
+    "dev:cut:human": "vite --host 127.0.0.1 --port 3011",
+    "build:cut:human": "../scripts/cut_build_human.sh",
+    "tauri:dev:cut:human": "tauri dev --config src-tauri/tauri.human.conf.json",
+    "tauri:build:cut:human": "tauri build --config src-tauri/tauri.human.conf.json",
+    "dev:cut:opus": "vite --host 127.0.0.1 --port 3111",
+    "tauri:dev:cut:opus": "tauri dev --config src-tauri/tauri.opus.conf.json",
+    "tauri:build:cut:opus": "tauri build --config src-tauri/tauri.opus.conf.json",
+    "dev:mcc": "VITE_MODE=mcc vite",
+    "build:mcc": "VITE_MODE=mcc vite build"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",
@@ -32,6 +41,7 @@
     "lucide-react": "^0.562.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-draggable": "^4.5.0",
     "react-hotkeys-hook": "^4.6.2",
     "react-markdown": "^10.1.0",
     "react-rnd": "^10.5.2",
@@ -44,6 +54,7 @@
     "zustand": "^4.5.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tauri-apps/cli": "^2.9.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

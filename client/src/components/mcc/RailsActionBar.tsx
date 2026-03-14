@@ -1,16 +1,17 @@
 /**
- * MARKER_153.6A: RailsActionBar — max 3 context-aware actions per level.
+ * ⚠️ DEPRECATED: RailsActionBar
  *
- * Floating bottom bar in the center DAG column.
- * Shows different actions depending on current navLevel.
- * Replaces WorkflowToolbar for non-edit scenarios.
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: forbidden in runtime path.
+ * Replaced by FooterActionBar which provides unified 3-action interface.
  *
- * Design: ComfyUI/n8n action-bar UX (Grok R6 recommendation).
- * Extra actions accessible via ⚙ gear icon popup.
+ * This file is kept for reference only. Do not use in new code.
+ * All functionality migrated to FooterActionBar + useMCCStore.LEVEL_CONFIG.
  *
  * @phase 153
  * @wave 6
- * @status active
+ * @status deprecated
+ * @replaced_by FooterActionBar
  */
 
 import { useCallback, useMemo } from 'react';
@@ -26,7 +27,13 @@ interface ActionDef {
 }
 
 // ── Level-specific actions (max 3 per level) ──
+// MARKER_154.3A: DEPRECATED — use LEVEL_CONFIG from useMCCStore instead
 const LEVEL_ACTIONS: Record<NavLevel, ActionDef[]> = {
+  first_run: [
+    { label: 'Folder', icon: '📁', action: 'selectFolder', shortcut: '1', primary: true },
+    { label: 'URL', icon: '🔗', action: 'enterUrl', shortcut: '2' },
+    { label: 'Text', icon: '📝', action: 'describeText', shortcut: '3' },
+  ],
   roadmap: [
     { label: 'Drill', icon: '▶', action: 'drillNode', shortcut: 'Enter', primary: true },
     { label: 'Regenerate', icon: '↻', action: 'regenerate' },

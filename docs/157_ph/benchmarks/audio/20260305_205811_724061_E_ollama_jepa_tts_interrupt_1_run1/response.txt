@@ -1,0 +1,1 @@
+First, focus on packing only key-value pairs. Second, establish the source of truth for web pages – raw HTML or sanitized HTML.

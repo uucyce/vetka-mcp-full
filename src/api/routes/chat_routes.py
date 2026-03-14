@@ -64,6 +64,18 @@ class ClearHistoryRequest(BaseModel):
     path: str
 
 
+class QuickChatRequest(BaseModel):
+    """
+    Lightweight MCC chat contract.
+    Used by MiniChat quick path.
+    """
+
+    message: str
+    role: str = "architect"
+    user_id: str = "danila"
+    context: Dict[str, Any] = {}
+
+
 # ============================================================
 # HELPER FUNCTIONS
 # ============================================================
@@ -117,6 +129,426 @@ def _load_chat_history(chat_dir: Path, node_path: str) -> list:
     return []
 
 
+def _append_chat_history(chat_dir: Path, node_path: str, message: Dict[str, Any]) -> None:
+    """Append one message to lightweight quick-chat history."""
+    if not node_path:
+        return
+    if not chat_dir:
+        chat_dir = Path("data/chat_history")
+    chat_dir.mkdir(parents=True, exist_ok=True)
+    file = _get_chat_history_file(chat_dir, node_path)
+    history = _load_chat_history(chat_dir, node_path)
+    history.append(message)
+    try:
+        file.write_text(json.dumps(history[-80:], ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(f"  [Chat] Error saving history: {e}")
+
+
+def _resolve_quick_chat_node_path(context: Dict[str, Any], role: str) -> str:
+    explicit = str(context.get("node_path") or "").strip()
+    if explicit.startswith("mcc::"):
+        return explicit
+    raw = str(
+        explicit
+        or context.get("path")
+        or context.get("task_id")
+        or context.get("taskId")
+        or context.get("node_id")
+        or context.get("nodeId")
+        or context.get("workflow_id")
+        or context.get("workflowId")
+        or context.get("label")
+        or "project"
+    ).strip()
+    scope = str(context.get("chat_scope") or context.get("chatScope") or context.get("scope") or "project").strip().lower() or "project"
+    return f"mcc::{role}::{scope}::{raw}"
+
+
+def _resolve_quick_chat_target(context: Dict[str, Any]) -> tuple[str, Optional[str]]:
+    model = str(context.get("model") or "").strip()
+    source = str(context.get("model_source") or "").strip() or None
+    provider = str(context.get("selected_key_provider") or context.get("provider") or "").strip().lower()
+    if not source and provider:
+        provider_to_source = {
+            "polza": "polza",
+            "openrouter": "openrouter",
+            "xai": "direct",
+            "openai": "direct",
+            "anthropic": "direct",
+            "google": "gemini_direct",
+            "nanogpt": "nanogpt",
+            "poe": "poe",
+        }
+        source = provider_to_source.get(provider)
+    if not model:
+        model = "grok-fast-4.1"
+    if not source and model == "grok-fast-4.1":
+        source = "polza"
+    return model, source
+
+
+def _normalize_guidance_context(context: Dict[str, Any]) -> Dict[str, Any]:
+    focus = dict(context or {})
+    nav_level = str(focus.get("nav_level") or focus.get("navLevel") or "").strip().lower() or "roadmap"
+    node_kind = str(focus.get("node_kind") or focus.get("nodeKind") or "").strip().lower()
+    graph_kind = str(focus.get("graph_kind") or focus.get("graphKind") or "").strip().lower()
+    role = str(focus.get("role") or "").strip().lower()
+    task_id = str(focus.get("task_id") or focus.get("taskId") or "").strip()
+    label = str(
+        focus.get("label")
+        or task_id
+        or focus.get("node_id")
+        or focus.get("nodeId")
+        or "project"
+    ).strip()
+    task_drill_state = str(focus.get("task_drill_state") or focus.get("taskDrillState") or "").strip().lower()
+    node_drill_state = str(focus.get("roadmap_node_drill_state") or focus.get("roadmapNodeDrillState") or "").strip().lower()
+    workflow_inline = bool(focus.get("workflow_inline_expanded") or focus.get("workflowInlineExpanded"))
+    node_inline = bool(focus.get("roadmap_node_inline_expanded") or focus.get("roadmapNodeInlineExpanded"))
+    chat_scope = str(focus.get("chat_scope") or focus.get("chatScope") or "").strip().lower()
+    # MARKER_164.P4.WINDOW_FOCUS_BACKEND_NORMALIZATION.V1:
+    # Normalize focused mini-window to let guidance branch on UI window intent.
+    window_focus = str(focus.get("window_focus") or focus.get("windowFocus") or "").strip().lower()
+    window_focus_state = str(
+        focus.get("window_focus_state") or focus.get("windowFocusState") or ""
+    ).strip().lower()
+    workflow_id = str(focus.get("workflow_id") or focus.get("workflowId") or "").strip()
+    team_profile = str(focus.get("team_profile") or focus.get("teamProfile") or "").strip()
+    workflow_family = str(focus.get("workflow_family") or focus.get("workflowFamily") or "").strip().lower()
+    if not workflow_family:
+        joined = f"{team_profile} {workflow_id}".lower().strip()
+        if "g3" in joined:
+            workflow_family = "g3"
+        elif "ralph" in joined:
+            workflow_family = "ralph_loop"
+        elif "openhands" in joined:
+            workflow_family = "openhands"
+        elif team_profile.lower().startswith("titan"):
+            workflow_family = "titans"
+        elif team_profile.lower().startswith("dragon"):
+            workflow_family = "dragons"
+        elif joined:
+            workflow_family = "custom"
+        else:
+            workflow_family = "bmad"
+    workflow_family_hint = {
+        "dragons": "Dragons (faster/cheaper)",
+        "titans": "Titans (smarter/costlier)",
+        "g3": "G3 (critic+coder)",
+        "ralph_loop": "Ralph loop (single-agent)",
+        "openhands": "OpenHands-collab",
+        "bmad": "BMAD/default",
+        "custom": "custom workflow",
+    }.get(workflow_family, workflow_family)
+    return {
+        "focus": focus,
+        "nav_level": nav_level,
+        "node_kind": node_kind,
+        "graph_kind": graph_kind,
+        "role": role,
+        "task_id": task_id,
+        "label": label,
+        "task_drill_state": task_drill_state,
+        "node_drill_state": node_drill_state,
+        "workflow_inline": workflow_inline,
+        "node_inline": node_inline,
+        "chat_scope": chat_scope,
+        "window_focus": window_focus,
+        "window_focus_state": window_focus_state,
+        "workflow_family_hint": workflow_family_hint,
+    }
+
+
+def _resolve_architect_guidance_scope(normalized: Dict[str, Any]) -> str:
+    """
+    MARKER_164.P1.PROJECT_ARCH_GUIDANCE_BIND.V1
+    MARKER_164.P1.TASK_ARCH_GUIDANCE_BIND.V1
+    Resolve architect guidance scope (project vs task) from normalized UI context.
+    """
+    node_kind = str(normalized.get("node_kind") or "")
+    graph_kind = str(normalized.get("graph_kind") or "")
+    nav_level = str(normalized.get("nav_level") or "")
+    task_id = str(normalized.get("task_id") or "")
+    task_drill_state = str(normalized.get("task_drill_state") or "")
+    workflow_inline = bool(normalized.get("workflow_inline"))
+    chat_scope = str(normalized.get("chat_scope") or "")
+    if (
+        chat_scope == "task"
+        or node_kind == "task"
+        or graph_kind == "project_task"
+        or bool(task_id)
+        or task_drill_state == "expanded"
+        or workflow_inline
+        or nav_level == "workflow"
+    ):
+        return "task_architect"
+    return "project_architect"
+
+
+def _build_role_aware_instruction_packet(role: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    MARKER_164.P1.SHARED_ROLE_AWARE_INSTRUCTION_CORE.V1
+    Shared UI-state-driven instruction core for MYCO and architect quick chat.
+    """
+    normalized = _normalize_guidance_context(context)
+    nav_level = normalized["nav_level"]
+    node_kind = normalized["node_kind"]
+    graph_kind = normalized["graph_kind"]
+    role_key = normalized["role"]
+    task_drill_state = normalized["task_drill_state"]
+    node_drill_state = normalized["node_drill_state"]
+    workflow_inline = normalized["workflow_inline"]
+    node_inline = normalized["node_inline"]
+    window_focus = normalized["window_focus"]
+    window_focus_state = normalized["window_focus_state"]
+    workflow_family_hint = normalized["workflow_family_hint"]
+    # MARKER_164.P4.WINDOW_FOCUS_ROLE_PACKET_ACTIONS.V1:
+    # Window-focus actions override generic node/drill actions for MYCO+architect quick guidance.
+    if window_focus == "balance":
+        next_actions = [
+            f"balance window {window_focus_state or 'focused'}",
+            "choose active API key (★) and provider/model",
+            "confirm cost + in/out limits before run",
+        ]
+    elif window_focus == "stats":
+        next_actions = [
+            f"stats window {window_focus_state or 'focused'}",
+            "inspect diagnostics + success/cost",
+            "apply model/task correction then rerun",
+        ]
+    elif window_focus == "tasks":
+        next_actions = [
+            f"tasks window {window_focus_state or 'focused'}",
+            "select active task and start/stop/retry",
+            "monitor heartbeat and status transitions",
+        ]
+    elif window_focus == "context":
+        next_actions = [
+            f"context window {window_focus_state or 'focused'}",
+            "inspect role/model/prompt and node details",
+            "update model then run/retry from Tasks",
+        ]
+    elif window_focus == "chat":
+        next_actions = [
+            f"chat window {window_focus_state or 'focused'}",
+            "ask architect/MYCO for concrete next step",
+            "execute action from Tasks/Context",
+        ]
+    elif (task_drill_state == "expanded" and nav_level == "roadmap") or workflow_inline:
+        if node_kind == "agent":
+            if role_key == "architect":
+                next_actions = [
+                    "define/adjust subtasks",
+                    f"pick team workflow ({workflow_family_hint})",
+                    "run/start from Tasks and watch stream",
+                ]
+            elif role_key == "coder":
+                next_actions = [
+                    "open Context and verify coder model/prompt",
+                    "run/retry coder from Tasks",
+                    "inspect artifacts then send to verifier",
+                ]
+            elif role_key in {"verifier", "eval"}:
+                next_actions = [
+                    "open Context and check quality criteria",
+                    "run verify/eval stage",
+                    "on fail send retry to coder from Tasks",
+                ]
+            else:
+                next_actions = [
+                    "open Context for this agent",
+                    "check model/prompt",
+                    "run/retry from Tasks panel",
+                ]
+        else:
+            next_actions = [
+                "select agent node in workflow",
+                f"choose team workflow ({workflow_family_hint})",
+                "run/start or retry from Tasks panel",
+            ]
+    elif (node_drill_state == "expanded" and nav_level == "roadmap") or node_inline:
+        next_actions = [
+            "double-click deeper",
+            "select task node in this module",
+            "create task here from Tasks panel",
+        ]
+    elif nav_level == "workflow":
+        next_actions = [
+            "select agent node",
+            "inspect stream/artifacts",
+            "adjust model in Context if needed",
+        ]
+    elif node_kind == "task" or graph_kind == "project_task":
+        next_actions = [
+            f"task scope detected ({workflow_family_hint})",
+            "press Enter to open workflow",
+            "run/start from Tasks or switch team profile",
+        ]
+    elif node_kind == "agent":
+        next_actions = [
+            f"agent scope detected ({role_key or 'agent'})",
+            "open Context and inspect model/prompt",
+            "run/retry from Tasks panel",
+        ]
+    elif nav_level in {"tasks", "roadmap"}:
+        next_actions = [
+            "select node or task",
+            "drill into workflow",
+            "ask for dependency map",
+        ]
+    else:
+        next_actions = [
+            "select focus node",
+            "ask MYCO for next action",
+            "open Context for details",
+        ]
+    architect_scope = _resolve_architect_guidance_scope(normalized)
+    return {
+        "normalized": normalized,
+        "architect_scope": architect_scope,
+        "next_actions": next_actions,
+        "workflow_family_hint": workflow_family_hint,
+        "top_tools_hint": "Context model/prompt | Tasks run/retry | Stats diagnostics | Balance key/model",
+    }
+
+
+def _build_architect_quick_system_prompt(context: Dict[str, Any]) -> str:
+    packet = _build_role_aware_instruction_packet("architect", context)
+    normalized = packet["normalized"]
+    scope = packet["architect_scope"]
+    scope_label = "task architect" if scope == "task_architect" else "project architect"
+    next_actions = packet["next_actions"]
+    tools_hint = packet["top_tools_hint"]
+    # MARKER_164.P1.CONTEXT_TOOLS_HINT_INJECTION.V1
+    # Inject context-tool hints into architect quick-chat system prompt.
+    return (
+        f"You are {scope_label} in MYCELIUM.\n"
+        f"Current view: {normalized['nav_level']}; node: {normalized['node_kind'] or 'project'}; "
+        f"workflow family: {packet['workflow_family_hint']}.\n"
+        f"Prioritize next actions in this order: {next_actions[0]} -> {next_actions[1]} -> {next_actions[2]}.\n"
+        f"Always include concrete UI step hints using these tools: {tools_hint}.\n"
+        "Answer concise, operational, and context-aware."
+    )
+
+
+def _build_myco_quick_reply(
+    message: str,
+    payload: Dict[str, Any],
+    context: Dict[str, Any],
+    retrieval: Optional[Dict[str, Any]] = None,
+) -> str:
+    """
+    MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    MARKER_162.P3.P2.MYCO.ORCHESTRATION_SNAPSHOT.V1
+    Lightweight MYCO response builder with hidden memory payload.
+    """
+    focus = dict(context or {})
+    label = str(
+        focus.get("label")
+        or focus.get("task_id")
+        or focus.get("taskId")
+        or focus.get("node_id")
+        or focus.get("nodeId")
+        or "project"
+    )
+    user_name = str(payload.get("user_name") or payload.get("user_id") or "operator")
+    active_project_id = str(payload.get("active_project_id") or "")
+    recent = payload.get("recent_tasks_by_project") or {}
+    active_recent = recent.get(active_project_id) if isinstance(recent, dict) and active_project_id else None
+    active_recent = active_recent if isinstance(active_recent, list) else []
+    active_task = active_recent[0] if active_recent else {}
+    active_task_title = str(active_task.get("title") or "").strip()
+    fastpath = payload.get("fastpath") or {}
+    fast_mode = str(fastpath.get("mode") or "local")
+    hidden = payload.get("hidden_index") or {}
+    indexed_sources = int(hidden.get("source_count") or 0)
+    orchestration = payload.get("orchestration") or {}
+    multitask = orchestration.get("multitask") if isinstance(orchestration, dict) else {}
+    multitask = multitask if isinstance(multitask, dict) else {}
+    digest = orchestration.get("digest") if isinstance(orchestration, dict) else {}
+    digest = digest if isinstance(digest, dict) else {}
+    mt_active = int(multitask.get("active") or 0)
+    mt_queued = int(multitask.get("queued") or 0)
+    mt_done = int(multitask.get("done") or 0)
+    mt_failed = int(multitask.get("failed") or 0)
+    mt_cap = int(multitask.get("max_concurrent") or 0)
+    mt_autodispatch = bool(multitask.get("auto_dispatch", False))
+    mt_phase = str(multitask.get("phase") or "").strip()
+    digest_phase = str(digest.get("phase") or "").strip()
+    digest_summary = str(digest.get("summary") or digest.get("status") or "").strip()
+
+    retrieval_obj = dict(retrieval or {})
+    refs = retrieval_obj.get("items") if isinstance(retrieval_obj.get("items"), list) else []
+    refs = refs[:2]
+    ref_line = ""
+    if refs:
+        ref_names = ", ".join(
+            str(r.get("source_path") or "").split("/")[-1]
+            for r in refs
+            if str(r.get("source_path") or "").strip()
+        )
+        if ref_names:
+            ref_line = f"- hidden refs: {ref_names}\n"
+
+    packet = _build_role_aware_instruction_packet("helper_myco", focus)
+    normalized = packet["normalized"]
+    nav_level = normalized["nav_level"]
+    node_kind = normalized["node_kind"]
+    role = normalized["role"]
+    workflow_family_hint = packet["workflow_family_hint"]
+    next_actions = packet["next_actions"]
+    tools_hint = packet["top_tools_hint"]
+
+    prompt = str(message or "").strip()
+    if prompt.lower() in {"?", "/myco", "/help myco", "help"}:
+        digest_line = f"- digest phase: {digest_phase}" if digest_phase else "- digest phase: n/a"
+        return (
+            f"MYCO {user_name}, quick guide:\n"
+            f"- focus: {label}\n"
+            f"- nav: {nav_level or 'n/a'}\n"
+            f"- node: {node_kind or 'n/a'}"
+            + (f" ({role})" if role else "")
+            + "\n"
+            f"- workflow family: {workflow_family_hint}\n"
+            f"- mode: {fast_mode}\n"
+            f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done}\n"
+            f"- multitask errors: failed {mt_failed}\n"
+            f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
+            f"{digest_line}\n"
+            f"{ref_line}"
+            f"- hidden memory sources: {indexed_sources}\n"
+            f"- tools: {tools_hint}\n"
+            f"- next: {next_actions[0]} -> {next_actions[1]} -> {next_actions[2]}"
+        )
+
+    task_line = f"- active task: {active_task_title}" if active_task_title else "- active task: not pinned"
+    digest_line = (
+        f"- digest: phase {digest_phase} ({digest_summary})"
+        if digest_phase and digest_summary
+        else (f"- digest: phase {digest_phase}" if digest_phase else "- digest: n/a")
+    )
+    return (
+        f"MYCO {user_name}, context loaded.\n"
+        f"- focus: {label}\n"
+        f"- nav: {nav_level or 'n/a'}\n"
+        f"- node: {node_kind or 'n/a'}"
+        + (f" ({role})" if role else "")
+        + "\n"
+        f"- workflow family: {workflow_family_hint}\n"
+        f"{task_line}\n"
+        f"- multitask: active {mt_active} · queued {mt_queued} · done {mt_done} · failed {mt_failed}\n"
+        f"- multitask cfg: cap {mt_cap or 'n/a'} · auto_dispatch {'on' if mt_autodispatch else 'off'} · board phase {mt_phase or 'n/a'}\n"
+        f"{digest_line}\n"
+        f"{ref_line}"
+        f"- project: {active_project_id or 'n/a'}\n"
+        f"- hidden memory index: {indexed_sources} sources\n"
+        f"- tools: {tools_hint}\n"
+        f"- options: {next_actions[0]} | {next_actions[1]} | {next_actions[2]}\n"
+        f"- tell me: explain node / plan next action / map dependencies"
+    )
+
+
 # ============================================================
 # ROUTES
 # ============================================================
@@ -163,6 +595,181 @@ async def clear_chat_history(req: ClearHistoryRequest, request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/chat/quick")
+async def api_chat_quick(req: QuickChatRequest, request: Request):
+    """
+    MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1
+    MARKER_162.P3.MYCO.ENGRAM_USER_TASK_MEMORY.V1
+    Lightweight chat endpoint for MCC MiniChat.
+    """
+    msg = str(req.message or "").strip()
+    if not msg:
+        raise HTTPException(status_code=400, detail="message is required")
+
+    role = str(req.role or "architect").strip().lower()
+    context = dict(req.context or {})
+    node_path = _resolve_quick_chat_node_path(context, role)
+    helper_mode = str(context.get("helper_mode") or context.get("helperMode") or "").strip().lower()
+    is_myco = role == "helper_myco" or helper_mode in {"passive", "active"} or msg.lower() in {"?", "/myco", "/help myco", "help"}
+
+    if is_myco:
+        try:
+            from src.services.project_config import ProjectConfig
+            from src.services.myco_memory_bridge import (
+                build_myco_memory_payload,
+                persist_myco_runtime_facts,
+                retrieve_myco_hidden_context,
+            )
+            from src.orchestration.context_packer import get_context_packer
+
+            cfg = ProjectConfig.load()
+            persist_myco_runtime_facts(
+                user_id=str(req.user_id or "danila"),
+                user_name=str((context or {}).get("user_name") or ""),
+                active_project_id=str(getattr(cfg, "project_id", "") or ""),
+                focus=context,
+            )
+            payload = build_myco_memory_payload(
+                user_id=str(req.user_id or "danila"),
+                active_project_id=str(getattr(cfg, "project_id", "") or ""),
+                focus=context,
+            )
+
+            # Optional JEPA summary signal from context packer when prompt/context is verbose.
+            retrieval = retrieve_myco_hidden_context(
+                # MARKER_162.P4.P3.MYCO.RAG_STATE_KEY_ENRICHMENT.V1:
+                # Enrich retrieval query with UI state key so guidance docs are retrieved by scenario.
+                query=" ".join(
+                    [
+                        msg,
+                        str(context.get("nav_level") or context.get("navLevel") or ""),
+                        str(context.get("task_drill_state") or context.get("taskDrillState") or ""),
+                        str(context.get("roadmap_node_drill_state") or context.get("roadmapNodeDrillState") or ""),
+                        str(context.get("node_kind") or context.get("nodeKind") or ""),
+                        str(context.get("graph_kind") or context.get("graphKind") or ""),
+                        str(context.get("workflow_family") or context.get("workflowFamily") or ""),
+                        str(context.get("workflow_id") or context.get("workflowId") or ""),
+                        str(context.get("role") or ""),
+                        str(context.get("window_focus") or context.get("windowFocus") or ""),
+                        str(context.get("window_focus_state") or context.get("windowFocusState") or ""),
+                    ]
+                ).strip(),
+                focus=context,
+                top_k=3,
+                min_score=0.22,
+            )
+            packed: Dict[str, Any] = {}
+            try:
+                packer = get_context_packer()
+                packed = packer.pack_context(
+                    user_message=msg,
+                    context_data={
+                        "myco_focus": context,
+                        "myco_payload": {
+                            "user_name": payload.get("user_name"),
+                            "active_project_id": payload.get("active_project_id"),
+                            "recent_tasks_by_project": payload.get("recent_tasks_by_project"),
+                            "orchestration": payload.get("orchestration"),
+                            "hidden_refs": retrieval.get("items"),
+                        },
+                    },
+                    max_context_chars=2200,
+                ) or {}
+            except Exception:
+                packed = {}
+
+            response = _build_myco_quick_reply(msg, payload, context, retrieval)
+            chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+            _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+            _append_chat_history(chat_dir, node_path, {"role": "helper_myco", "content": response, "node_path": node_path})
+            return {
+                "success": True,
+                "status": "ok",
+                "reply": response,
+                "response": response,
+                "role": "helper_myco",
+                "mode": "local_fastpath",
+                "fastpath": payload.get("fastpath"),
+                "hidden_index": payload.get("hidden_index"),
+                "retrieval": retrieval,
+                "packed_meta": packed.get("meta", {}),
+                "marker": "MARKER_162.P3.MYCO.JEPA_GEMMA_LOCAL_FASTPATH.V1",
+                "node_path": node_path,
+            }
+        except Exception as e:
+            fallback = f"MYCO helper fallback: {str(e)[:160]}"
+            chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+            _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+            _append_chat_history(chat_dir, node_path, {"role": "helper_myco", "content": fallback, "node_path": node_path})
+            return {
+                "success": True,
+                "status": "fallback",
+                "reply": fallback,
+                "response": fallback,
+                "role": "helper_myco",
+                "mode": "fallback",
+                "node_path": node_path,
+            }
+
+    # Architect quick path: lightweight single-turn model for MiniChat.
+    try:
+        from src.elisya.provider_registry import call_model_v2
+
+        model_name, model_source = _resolve_quick_chat_target(context)
+        result = await call_model_v2(
+            messages=[
+                {"role": "system", "content": _build_architect_quick_system_prompt(context)},
+                {"role": "user", "content": msg},
+            ],
+            model=model_name,
+            source=model_source,
+            max_tokens=500,
+            temperature=0.4,
+        )
+
+        reply = ""
+        if isinstance(result, dict):
+            message = result.get("message", {})
+            if isinstance(message, dict):
+                reply = str(message.get("content") or "").strip()
+            elif isinstance(message, str):
+                reply = message.strip()
+        elif isinstance(result, str):
+            reply = result.strip()
+
+        if not reply:
+            raise RuntimeError("empty quick chat reply")
+
+        chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+        _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+        _append_chat_history(chat_dir, node_path, {"role": "assistant", "content": reply, "node_path": node_path})
+        return {
+            "success": True,
+            "status": "ok",
+            "reply": reply,
+            "response": reply,
+            "role": "assistant",
+            "model": model_name,
+            "provider": model_source or "auto",
+            "mode": "single_turn",
+            "node_path": node_path,
+        }
+    except Exception:
+        fallback = "Backend model unavailable"
+        chat_dir = _get_chat_components(request).get("CHAT_HISTORY_DIR")
+        _append_chat_history(chat_dir, node_path, {"role": "user", "content": msg, "node_path": node_path})
+        _append_chat_history(chat_dir, node_path, {"role": "assistant", "content": fallback, "node_path": node_path})
+        return {
+            "success": True,
+            "status": "fallback",
+            "reply": fallback,
+            "response": fallback,
+            "role": "assistant",
+            "mode": "fallback",
+            "node_path": node_path,
+        }
 
 
 @router.post("/chat")

@@ -16,6 +16,7 @@ except ImportError:
 from typing import Optional, Union, List
 import logging
 from pathlib import Path
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -595,6 +596,123 @@ def get_fast_tts(voice: str = "en-male") -> FastTTSClient:
 # MARKER_104.7_END
 
 
+# MARKER_157_6_ESPEAK_PROVIDER
+class ESpeakTTSClient:
+    """
+    Ultra-fast local TTS client based on espeak-ng.
+
+    Returns WAV bytes from stdout. Designed for low-latency fallback and robotic presets.
+    """
+
+    def __init__(
+        self,
+        voice: str = "ru",
+        rate: int = 155,
+        pitch: int = 70,
+        amplitude: int = 130,
+        preset: str = "c3po",
+    ):
+        self.voice = voice
+        self.rate = int(rate)
+        self.pitch = int(pitch)
+        self.amplitude = int(amplitude)
+        self.preset = preset
+        self.espeak_bin = shutil.which("espeak-ng") or shutil.which("espeak")
+        logger.info(
+            f"[ESpeakTTS] Initialized voice={voice} rate={rate} pitch={pitch} amp={amplitude} "
+            f"preset={preset} bin={self.espeak_bin or 'NOT_FOUND'}"
+        )
+
+    def _preset_args(self) -> List[str]:
+        preset = (self.preset or "").strip().lower()
+        if preset == "c3po":
+            return ["-g", "6"]  # slight robotic segmentation pause
+        if preset == "chip":
+            return ["-g", "8", "-k", "12"]
+        if preset == "clean":
+            return ["-g", "2"]
+        return []
+
+    @staticmethod
+    def _fallback_voice_for_text(text: str) -> str:
+        alpha = sum(1 for c in text if c.isalpha())
+        cyr = sum(1 for c in text if "\u0400" <= c <= "\u04FF")
+        return "ru" if alpha > 0 and (cyr / alpha) > 0.3 else "en"
+
+    async def synthesize(self, text: str, voice: Optional[str] = None) -> bytes:
+        if not text or not text.strip():
+            return b""
+        if not self.espeak_bin:
+            logger.warning("[ESpeakTTS] espeak-ng not installed")
+            return b""
+
+        selected_voice = (voice or self.voice or "ru").strip()
+        cmd = [
+            self.espeak_bin,
+            "-v",
+            selected_voice,
+            "-s",
+            str(max(80, min(320, self.rate))),
+            "-p",
+            str(max(0, min(99, self.pitch))),
+            "-a",
+            str(max(0, min(200, self.amplitude))),
+            "--stdout",
+            text,
+        ]
+        cmd.extend(self._preset_args())
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                stderr_text = stderr.decode(errors='ignore')[:300]
+                logger.warning(
+                    f"[ESpeakTTS] synth failed code={proc.returncode} stderr={stderr_text}"
+                )
+                # MBROLA on macOS can fail in mbrowrap (/proc unavailable). Avoid silent turns.
+                if selected_voice.startswith("mb-"):
+                    fallback_voice = self._fallback_voice_for_text(text)
+                    retry_cmd = [
+                        self.espeak_bin,
+                        "-v",
+                        fallback_voice,
+                        "-s",
+                        str(max(80, min(320, self.rate))),
+                        "-p",
+                        str(max(0, min(99, self.pitch))),
+                        "-a",
+                        str(max(0, min(200, self.amplitude))),
+                        "--stdout",
+                        text,
+                    ]
+                    retry_cmd.extend(self._preset_args())
+                    retry_proc = await asyncio.create_subprocess_exec(
+                        *retry_cmd,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    retry_stdout, retry_stderr = await retry_proc.communicate()
+                    if retry_proc.returncode == 0 and retry_stdout:
+                        logger.info(
+                            f"[ESpeakTTS] fallback from {selected_voice} -> {fallback_voice} succeeded"
+                        )
+                        return retry_stdout
+                    logger.warning(
+                        f"[ESpeakTTS] fallback voice failed code={retry_proc.returncode} "
+                        f"stderr={retry_stderr.decode(errors='ignore')[:220]}"
+                    )
+                return b""
+            return stdout or b""
+        except Exception as e:
+            logger.warning(f"[ESpeakTTS] synth exception: {e}")
+            return b""
+
+
 # MARKER_105_TTS_FALLBACK
 """
 Phase 105: TTS Fallback Chain Implementation
@@ -617,6 +735,7 @@ class TTSProvider(Enum):
     QWEN3 = "qwen3"
     EDGE = "edge"
     PIPER = "piper"
+    ESPEAK = "espeak"
 
 
 class TTSError(Exception):
@@ -637,6 +756,12 @@ class TTSConfig:
     qwen3_speaker: str = "ryan"
     edge_voice_en: str = "en-US-GuyNeural"
     edge_voice_ru: str = "ru-RU-DmitryNeural"
+    espeak_voice_en: str = "en"
+    espeak_voice_ru: str = "ru"
+    espeak_preset: str = "c3po"
+    espeak_rate: int = 155
+    espeak_pitch: int = 70
+    espeak_amplitude: int = 130
     piper_model_path: str = ""  # Auto-detect if empty
     piper_data_dir: str = ""  # Auto-detect if empty
 
@@ -665,7 +790,7 @@ class TTSEngine:
         audio = await engine.synthesize("Hello world!")
     """
 
-    PROVIDERS = ["qwen3", "edge", "piper"]
+    PROVIDERS = ["qwen3", "edge", "espeak", "piper"]
 
     def __init__(
         self,
@@ -686,6 +811,7 @@ class TTSEngine:
         # Provider instances (lazy loaded)
         self._qwen3_client: Optional[Qwen3TTSClient] = None
         self._fast_tts_client: Optional[FastTTSClient] = None
+        self._espeak_client: Optional[ESpeakTTSClient] = None
         self._piper_voice = None
 
         # Stats
@@ -840,6 +966,8 @@ class TTSEngine:
             return await self._synthesize_qwen3(text, voice, speed, pitch)
         elif provider == "edge":
             return await self._synthesize_edge(text, voice, speed, pitch)
+        elif provider == "espeak":
+            return await self._synthesize_espeak(text, voice, speed, pitch)
         elif provider == "piper":
             return await self._synthesize_piper(text, voice, speed, pitch)
         else:
@@ -935,6 +1063,32 @@ class TTSEngine:
             voice,
             speed
         )
+        return audio
+
+    async def _synthesize_espeak(
+        self,
+        text: str,
+        voice: str,
+        speed: float,
+        pitch: int
+    ) -> bytes:
+        """
+        Synthesize using local espeak-ng (robotic fast mode).
+        """
+        if self._espeak_client is None:
+            base_voice = self.config.espeak_voice_ru if self.config.language == "ru" else self.config.espeak_voice_en
+            self._espeak_client = ESpeakTTSClient(
+                voice=base_voice,
+                rate=self.config.espeak_rate,
+                pitch=self.config.espeak_pitch,
+                amplitude=self.config.espeak_amplitude,
+                preset=self.config.espeak_preset,
+            )
+
+        selected_voice = voice if voice != "default" else None
+        audio = await self._espeak_client.synthesize(text, voice=selected_voice)
+        if not audio:
+            raise TTSError("eSpeak returned empty audio")
         return audio
 
     def _piper_synthesize_sync(
@@ -1035,6 +1189,9 @@ class TTSEngine:
             availability["edge"] = True  # Assume available if module exists
         except ImportError:
             availability["edge"] = False
+
+        # Check eSpeak (local binary)
+        availability["espeak"] = bool(shutil.which("espeak-ng") or shutil.which("espeak"))
 
         # Check Piper
         try:

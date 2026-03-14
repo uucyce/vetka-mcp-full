@@ -93,6 +93,7 @@ Three-agent army: Opus (architect), Cursor (frontend), Codex (backend).
 | S2.5 | Model Directory: auto-detect local + API voice models (Polza, Qwen TTS) | Codex | P1 | Medium | 2026-02-21 | Model Directory lists local+remote providers with refresh and capability badges (text/voice/image/embed) |
 | S2.6 | Agent Voice IDs: persistent voice assignment per agent + voice messages in chat | Dragon Silver | P2 | Medium | 2026-02-27 | Agent voice config persisted; chat voice messages replay correctly after restart |
 | S2.7 | Model fallback chain with key roaming | Codex | P2 | High | 2026-02-27 | Simulated provider outages recover automatically via fallback order without user-visible failure |
+| S2.8 | Jarvis Realtime Start (Jarvis button only): sentence/chunk TTS kickoff from early context (viewport + pin + first words) | Codex | P1 | High | 2026-02-28 | Applies only to dedicated Jarvis live dialog; group/solo chat keep full voice-message responses |
 
 ### Sprint Definition of Done (S1-S2)
 - Task is linked to TaskBoard ID and has recon + implementation report in `docs/*_ph/`.
@@ -190,31 +191,27 @@ MCP JARVIS (NEW)     — dedicated non-blocking voice+agent (won't lag during pi
   └── Tool access (full VETKA control: search, camera, files, pipeline)
 ```
 
-### Voice Pipeline — Low-Latency Strategy
+### Voice Pipeline — Low-Latency Strategy (Jarvis Button Mode)
 ```
-Problem: Qwen TTS ~10s per generation — too slow for real-time conversation.
+Current baseline: full-message generation usually ~2-4s on local M4 (4bit), but we still need faster first-audio.
 
-Solution: 3-layer pre-generation pipeline:
+Solution (Jarvis button mode): 2-stage streaming-first pipeline.
+Group/solo chat mode: emit full voice messages (no early kickoff).
 
-Layer 1 — Filler Phrases (instant, <100ms):
-  Pre-generated audio bank: "hmm...", "let me think...", "searching now..."
-  Triggered immediately when user finishes speaking.
-
-Layer 2 — T9 Prediction (while user speaks, 1-3s):
+Stage 1 — Early sentence kickoff (while user speaks, ~0.3-1.2s):
   Based on: viewport context + first words of user input
-  Generate first sentence of response BEFORE user finishes.
-  Play Layer 1 filler → crossfade to Layer 2 prediction.
+  Generate first short sentence BEFORE user finishes.
+  Stream first audio chunk immediately.
 
-Layer 3 — Full Response (after user done, 3-10s):
-  Full LLM response → TTS generation.
-  Appended seamlessly after Layer 2 plays.
+Stage 2 — Full response continuation (after user done, ~2-4s):
+  Complete LLM response, split by sentences, stream sequentially.
+  Preserve one voice_id per agent/role during the full turn.
 
 Timeline:
   User speaks ──────────────────┐
-  Layer 1 filler (pre-cached) ──│──▶ [plays instantly]
-  Layer 2 predict (parallel) ───│──▶ [plays after filler]
+  Stage 1 early chunk (parallel)│──▶ [starts before full text is ready]
   User stops ───────────────────┘
-  Layer 3 full response ────────────▶ [plays after Layer 2]
+  Stage 2 full stream ──────────────▶ [continues without voice switch]
 ```
 
 ### Voice Activation (No Extra Button)
@@ -239,8 +236,10 @@ Each agent gets permanent voice_id:
 
 Stored in: data/agent_voice_config.json
   {
-    "jarvis": {"voice_id": "alloy", "provider": "qwen_tts", "speed": 1.0},
-    "dragon_bronze": {"voice_id": "echo", "provider": "qwen_tts", "speed": 1.2},
+    "jarvis": {"voice_id": "dylan", "provider": "qwen_tts", "speed": 1.0},
+    "dragon_bronze": {"voice_id": "eric", "provider": "qwen_tts", "speed": 1.15},
+    "dragon_silver": {"voice_id": "ryan", "provider": "qwen_tts", "speed": 1.0},
+    "dragon_gold": {"voice_id": "uncle_fu", "provider": "qwen_tts", "speed": 0.95},
     ...
   }
 

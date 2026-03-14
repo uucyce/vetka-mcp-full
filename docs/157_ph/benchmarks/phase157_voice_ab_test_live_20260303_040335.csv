@@ -1,0 +1,16 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,timestamp
+A_qwen_only,short_1,45,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:58:11.749439
+A_qwen_only,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:58:38.592755
+A_qwen_only,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:58:58.595332
+B_api_tts,short_1,45,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:59:44.341602
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:00:04.344031
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:00:24.347732
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:00:44.350599
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:01:04.359397
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:01:24.371564
+D_ollama_tts,short_1,45,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:01:57.929596
+D_ollama_tts,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:02:17.936915
+D_ollama_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:02:37.939282
+E_ollama_jepa_tts,short_1,45,True,,447.99,,447.99,,17668.57,42,0,136,1.0,"ВЕТКА - российская компания, производящая алкогольные напитки, включая водку и коньяк. Основной продукцией является водка «Водка Ветка».",2026-03-03T01:02:55.618120
+E_ollama_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:03:15.625198
+E_ollama_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T01:03:35.633375

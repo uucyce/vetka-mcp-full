@@ -209,18 +209,14 @@ export function ArtifactViewer() {
     }
   }, [panelArtifactContent]);
 
+  // MARKER_145.CLEANUP: Fetch once on mount only — no polling.
+  // Was: 10s interval × 4 fetches = 34,560 API calls/day.
+  // Refresh happens on user actions (approve/reject) below.
   useEffect(() => {
     fetchPending();
     fetchDiskArtifacts();
     fetchPanelArtifacts();
     fetchFeedbackReports();
-    const interval = setInterval(() => {
-      fetchPending();
-      fetchDiskArtifacts();
-      fetchPanelArtifacts();
-      fetchFeedbackReports();
-    }, 10000);
-    return () => clearInterval(interval);
   }, [fetchPending, fetchDiskArtifacts, fetchPanelArtifacts, fetchFeedbackReports]);
 
   const handleApprove = useCallback(async (requestId: string) => {

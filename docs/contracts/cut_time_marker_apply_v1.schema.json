@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_time_marker_apply_v1.schema.json",
+  "title": "VETKA CUT Time Marker Apply V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "success",
+    "schema_version"
+  ],
+  "properties": {
+    "success": {
+      "type": "boolean"
+    },
+    "schema_version": {
+      "type": "string",
+      "const": "cut_time_marker_apply_v1"
+    },
+    "marker": {
+      "type": ["object", "null"]
+    },
+    "marker_bundle": {
+      "type": ["object", "null"]
+    },
+    "edit_event": {
+      "type": ["object", "null"]
+    },
+    "error": {
+      "type": ["object", "null"]
+    }
+  }
+}

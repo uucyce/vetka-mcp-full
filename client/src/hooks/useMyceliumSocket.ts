@@ -14,7 +14,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 const MYCELIUM_WS_URL = 'ws://localhost:8082';
 const RECONNECT_INTERVAL = 5000;
-const PING_INTERVAL = 30000;
 
 interface MyceliumMessage {
   type: string;
@@ -25,7 +24,12 @@ export function useMyceliumSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const [connected, setConnected] = useState(false);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pingTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const reconnectPendingRef = useRef(false);
+
+  const isWindowActive = useCallback(() => {
+    if (typeof document === 'undefined') return true;
+    return document.visibilityState === 'visible';
+  }, []);
 
   const connect = useCallback(() => {
     // Don't reconnect if already connected
@@ -38,29 +42,24 @@ export function useMyceliumSocket() {
       ws.onopen = () => {
         setConnected(true);
         console.log('[MYCELIUM WS] Connected to', MYCELIUM_WS_URL);
+        reconnectPendingRef.current = false;
 
         // Clear reconnect timer
         if (reconnectTimer.current) {
           clearTimeout(reconnectTimer.current);
           reconnectTimer.current = null;
         }
-
-        // Start ping to keep connection alive
-        pingTimer.current = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ type: 'ping' }));
-          }
-        }, PING_INTERVAL);
       };
 
       ws.onclose = () => {
         setConnected(false);
-        if (pingTimer.current) {
-          clearInterval(pingTimer.current);
-          pingTimer.current = null;
+        // MARKER_155A.P2.ACTIVE_WINDOW_PRIORITY:
+        // Reconnect only when window is active to avoid background churn.
+        if (isWindowActive()) {
+          reconnectTimer.current = setTimeout(connect, RECONNECT_INTERVAL);
+        } else {
+          reconnectPendingRef.current = true;
         }
-        // Auto-reconnect silently
-        reconnectTimer.current = setTimeout(connect, RECONNECT_INTERVAL);
       };
 
       ws.onerror = () => {
@@ -112,6 +111,11 @@ export function useMyceliumSocket() {
               break;
 
             default:
+              // Forward raw events for trigger-driven UI refresh flows.
+              window.dispatchEvent(new CustomEvent('mycelium-event', { detail: data }));
+              if (typeof data.type === 'string') {
+                window.dispatchEvent(new CustomEvent(data.type, { detail: data }));
+              }
               // Unknown message type — log for debugging
               if (data.type !== 'ping') {
                 console.log('[MYCELIUM WS] Unknown message type:', data.type);
@@ -124,22 +128,33 @@ export function useMyceliumSocket() {
     } catch {
       // WebSocket creation failed — MYCELIUM not running
       setConnected(false);
-      reconnectTimer.current = setTimeout(connect, RECONNECT_INTERVAL);
+      if (isWindowActive()) {
+        reconnectTimer.current = setTimeout(connect, RECONNECT_INTERVAL);
+      } else {
+        reconnectPendingRef.current = true;
+      }
     }
-  }, []);
+  }, [isWindowActive]);
 
   useEffect(() => {
     connect();
+
+    const handleWindowActive = () => {
+      if (wsRef.current?.readyState === WebSocket.OPEN) return;
+      if (!reconnectPendingRef.current && wsRef.current?.readyState === WebSocket.CONNECTING) return;
+      reconnectPendingRef.current = false;
+      connect();
+    };
+    document.addEventListener('visibilitychange', handleWindowActive);
+    window.addEventListener('focus', handleWindowActive);
 
     return () => {
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
       }
-      if (pingTimer.current) {
-        clearInterval(pingTimer.current);
-        pingTimer.current = null;
-      }
+      document.removeEventListener('visibilitychange', handleWindowActive);
+      window.removeEventListener('focus', handleWindowActive);
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;

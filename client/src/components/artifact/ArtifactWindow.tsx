@@ -36,6 +36,7 @@ type ApprovalLevel = 'L1' | 'L2' | 'L3';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
+  isChatOpen?: boolean;
   /** Phase 68.2: Direct file info (overrides store selection) */
   file?: FileInfo | null;
   /** Phase 68.2: Raw content for preview */
@@ -46,9 +47,11 @@ interface Props {
   artifactId?: string;
   /** Phase 104.9: Callback for L2 content changes */
   onContentChange?: (content: string) => void;
+  /** Phase 153: Initial media seek timestamp (seconds) for audio/video artifacts */
+  initialSeekSec?: number;
 }
 
-export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, approvalLevel, artifactId, onContentChange }: Props) {
+export function ArtifactWindow({ isOpen, onClose, isChatOpen = false, file: propFile, rawContent, approvalLevel, artifactId, onContentChange, initialSeekSec }: Props) {
   const selectedId = useStore((state) => state.selectedId);
   const nodes = useStore((state) => state.nodes);
   const selectedNode = selectedId ? nodes[selectedId] : null;
@@ -258,9 +261,11 @@ export function ArtifactWindow({ isOpen, onClose, file: propFile, rawContent, ap
         file={file}
         rawContent={rawContent}
         onClose={onClose}
+        isChatOpen={isChatOpen}
         approvalLevel={approvalLevel}
         artifactId={artifactId}
         onContentChange={onContentChange}
+        initialSeekSec={initialSeekSec}
       />
     </FloatingWindow>
   );

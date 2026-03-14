@@ -1,0 +1,22 @@
+{
+  "mode": "A_qwen_only",
+  "prompt_id": "interrupt_1",
+  "run_index": 1,
+  "audio_chunks": 4,
+  "ttft_text_ms": 170.39229199872352,
+  "ttfa_audio_ms": 6174.317583005177,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260304_204830_297292_A_qwen_only_interrupt_1_run1/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 22.64,
+    "frame_ms": 20,
+    "silence_threshold": 0.017413,
+    "silence_ratio": 0.4293,
+    "pause_count": 18,
+    "long_pause_count": 4,
+    "longest_pause_ms": 1460,
+    "stretch_events": 0,
+    "qc_score": 49.38
+  }
+}

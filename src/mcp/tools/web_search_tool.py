@@ -1,3 +1,5 @@
+# file: src/mcp/tools/web_search_tool.py
+# MARKER_102.3_START
 """
 MARKER_119.7: Tavily web search tool for pipeline @researcher.
 
@@ -94,6 +96,7 @@ class WebSearchTool(BaseMCPTool):
                 "success": True,
                 "result": {
                     "query": query,
+                    # Keep native Tavily shape (title/url/content/score) for unified_search adapter.
                     "results": results,
                     "answer": response.get("answer", "")
                 }
@@ -110,3 +113,4 @@ class WebSearchTool(BaseMCPTool):
 def register_web_search_tool(tool_list: list):
     """Register web search tool with a tool registry list."""
     tool_list.append(WebSearchTool())
+# MARKER_102.3_END

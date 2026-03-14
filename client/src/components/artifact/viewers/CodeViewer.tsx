@@ -36,15 +36,6 @@ export function CodeViewer({ content, filename, readOnly = true, onChange }: Pro
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#0a0a0a' }}>
-      <div style={{
-        fontSize: 11,
-        color: '#666',
-        padding: '4px 8px',
-        borderBottom: '1px solid #222'
-      }}>
-        Press Ctrl+F to search
-      </div>
-
       <div style={{ flex: 1, overflow: 'auto' }}>
         <CodeMirror
           value={content}

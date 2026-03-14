@@ -86,6 +86,15 @@ tmp/
 temp/
 *.tmp
 
+# Local runtime/tool noise (git cleanliness)
+.media_cache/
+.ocr_cache/
+.playwright-cli/
+client/test-results/
+pulse_playground/
+docs/160_git/secret.r
+docs/160_git/secret.rtf
+
 # Media (large files)
 media/**/*.mp4
 media/**/*.mov
@@ -102,6 +111,26 @@ _trash/
 
 # Phase 146: Playground worktrees (ephemeral sandboxes)
 .playgrounds/
+.claude/worktrees/
+.vetka-playground-pg_*
+config/runtime.env
+
+# Runtime data (keep only minimal templates/placeholders tracked)
+data/**
+!data/.gitkeep
+!data/raw/
+!data/raw/.gitkeep
+!data/artifacts/
+!data/artifacts/.gitkeep
+!data/changelog/
+!data/changelog/.gitkeep
+!data/templates/
+!data/templates/**
+!data/trufflehog_patterns.json
+!data/config.example.json
+!data/connectors_tokens.example.json
+!data/reflex/
+!data/reflex/**
 
 # Tauri build artifacts
 client/src-tauri/target/

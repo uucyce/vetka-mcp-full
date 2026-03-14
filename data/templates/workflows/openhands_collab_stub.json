@@ -1,0 +1,43 @@
+{
+  "id": "openhands_collab_stub_v1",
+  "name": "OpenHands-style Collaborative Loop (Stub)",
+  "description": "Stub workflow for OpenHands-inspired multi-agent collaboration contract. Runtime-safe DAG without structural cycles.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-03T12:00:00Z",
+    "updated_at": "2026-03-03T12:00:00Z",
+    "author": "vetka-system",
+    "phase": "155E",
+    "task_types": ["openhands", "all_hands", "all-hands", "multi_agent"],
+    "complexity_range": [3, 8],
+    "template_family": "openhands_family",
+    "workflow_family": {
+      "family": "openhands_family",
+      "version": "v1",
+      "roles": ["architect", "coder", "critic", "verifier", "deploy"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": true,
+        "allows_structural_cycles": false,
+        "stub": true
+      }
+    }
+  },
+  "nodes": [
+    {"id": "architect", "type": "agent", "label": "Architect", "position": {"x": 300, "y": 520}, "data": {"role": "architect"}},
+    {"id": "coder", "type": "agent", "label": "Coder", "position": {"x": 300, "y": 400}, "data": {"role": "coder"}},
+    {"id": "critic", "type": "agent", "label": "Critic", "position": {"x": 300, "y": 280}, "data": {"role": "critic"}},
+    {"id": "verifier", "type": "agent", "label": "Verifier", "position": {"x": 300, "y": 160}, "data": {"role": "verifier"}},
+    {"id": "approval_gate", "type": "gate", "label": "Approval Gate", "position": {"x": 300, "y": 80}, "data": {"role": "approval"}},
+    {"id": "deploy", "type": "task", "label": "Deploy", "position": {"x": 300, "y": 0}, "data": {"role": "deploy"}}
+  ],
+  "edges": [
+    {"id": "oh_e1", "source": "architect", "target": "coder", "type": "structural", "label": "plan"},
+    {"id": "oh_e2", "source": "coder", "target": "critic", "type": "dataflow", "label": "candidate"},
+    {"id": "oh_e3", "source": "critic", "target": "verifier", "type": "dataflow", "label": "reviewed"},
+    {"id": "oh_e4", "source": "verifier", "target": "approval_gate", "type": "condition", "label": "quality_ok"},
+    {"id": "oh_e5", "source": "approval_gate", "target": "deploy", "type": "structural", "label": "approved"},
+    {"id": "oh_e6", "source": "critic", "target": "coder", "type": "retry", "label": "feedback", "data": {"non_structural": true}}
+  ]
+}

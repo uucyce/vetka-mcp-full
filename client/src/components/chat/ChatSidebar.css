@@ -127,6 +127,20 @@
   margin-bottom: 2px;
 }
 
+.chat-sidebar-rename-input {
+  margin-left: 6px;
+  width: min(260px, 100%);
+  background: #111;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 2px 6px;
+  outline: none;
+}
+
 .chat-sidebar-item-meta {
   display: flex;
   gap: 6px;

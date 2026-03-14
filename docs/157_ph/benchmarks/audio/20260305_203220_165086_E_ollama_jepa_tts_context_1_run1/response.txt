@@ -1,0 +1,2 @@
+1. **Optimize `ContextPacker` hysteresis thresholds**: Tune ON/OFF streak limits to reduce unnecessary trigger processing and lower `pack_latency_ms`.
+2. **Reduce JEPA branch overhead**: Minimize `jepa_latency_ms` by optimizing

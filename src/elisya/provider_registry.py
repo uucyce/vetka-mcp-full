@@ -28,7 +28,7 @@ import time
 import json
 import httpx
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any, AsyncGenerator
+from typing import Dict, List, Optional, Any, AsyncGenerator, Callable, Awaitable
 from enum import Enum
 from dataclasses import dataclass
 from collections import deque
@@ -40,6 +40,10 @@ logger = logging.getLogger(__name__)
 # Phase 111.10.1: Global debug flag for context logging
 # Set VETKA_DEBUG_CONTEXT=1 to enable
 DEBUG_CONTEXT = os.getenv("VETKA_DEBUG_CONTEXT", "").lower() in ("1", "true", "yes")
+ADAPTIVE_OUTPUT_DEFAULT = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_DEFAULT", "4096"))
+ADAPTIVE_OUTPUT_MIN = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_MIN", "128"))
+ADAPTIVE_OUTPUT_HARD_CAP = int(os.getenv("VETKA_ADAPTIVE_MAX_OUTPUT_HARD_CAP", "8192"))
+ADAPTIVE_CONTEXT_SAFETY = int(os.getenv("VETKA_ADAPTIVE_CONTEXT_SAFETY", "1024"))
 
 
 # MARKER_106d_1: Per-model concurrency limits (Phase 106)
@@ -63,6 +67,58 @@ def get_model_semaphore(model: str) -> asyncio.Semaphore:
         if key in model_lower:
             return MODEL_SEMAPHORES[key]
     return MODEL_SEMAPHORES["default"]
+
+
+def _estimate_message_tokens(messages: List[Dict[str, str]]) -> int:
+    """Fast rough token estimate for adaptive context budgeting."""
+    try:
+        from src.utils.token_utils import estimate_tokens
+    except Exception:
+        estimate_tokens = lambda text: max(1, len(str(text)) // 4)
+
+    total = 0
+    for msg in messages or []:
+        total += estimate_tokens(str(msg.get("content", "")))
+        total += 8  # chat wrapper overhead
+    return max(1, total + 16)
+
+
+async def _resolve_adaptive_max_tokens(
+    *,
+    model: str,
+    messages: List[Dict[str, str]],
+    requested_max_tokens: Optional[int],
+) -> int:
+    """
+    Resolve completion budget from model context length and prompt size.
+    Works for all providers through central call paths.
+    """
+    context_length = 128000
+    try:
+        from src.elisya.llm_model_registry import get_llm_registry
+        profile = await get_llm_registry().get_profile(model)
+        context_length = int(getattr(profile, "context_length", context_length) or context_length)
+    except Exception:
+        # Keep resilient fallback to avoid blocking model calls on registry failures.
+        pass
+
+    prompt_tokens = _estimate_message_tokens(messages)
+    available_for_output = max(0, context_length - prompt_tokens - ADAPTIVE_CONTEXT_SAFETY)
+
+    requested = int(requested_max_tokens) if requested_max_tokens is not None else ADAPTIVE_OUTPUT_DEFAULT
+    target = min(requested, ADAPTIVE_OUTPUT_HARD_CAP)
+    resolved = max(ADAPTIVE_OUTPUT_MIN, min(target, available_for_output or ADAPTIVE_OUTPUT_MIN))
+
+    logger.debug(
+        "[ADAPTIVE_TOKENS] model=%s context=%s prompt=%s available=%s requested=%s resolved=%s",
+        model,
+        context_length,
+        prompt_tokens,
+        available_for_output,
+        requested_max_tokens,
+        resolved,
+    )
+    return resolved
 
 
 # Phase 80.39: Custom exception for xai key exhaustion
@@ -267,6 +323,7 @@ class OpenAIProvider(BaseProvider):
                 "model": clean_model,
                 "messages": messages,
                 "temperature": kwargs.get("temperature", 0.7),
+                "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
             }
 
             if tools:
@@ -893,6 +950,7 @@ class OpenRouterProvider(BaseProvider):
                 "model": clean_model,
                 "messages": messages,
                 "temperature": kwargs.get("temperature", 0.7),
+                "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
             }
 
             try:
@@ -1457,7 +1515,7 @@ class ProviderRegistry:
             # MARKER_94.8_OPENROUTER_XAI: Models like "x-ai/grok-4" or "xai/grok-4"
             # are OpenRouter models, not direct xAI API
             return Provider.OPENROUTER
-        elif ":" in model_name or model_lower.startswith("ollama/"):
+        elif (":" in model_name and "/" not in model_name) or model_lower.startswith("ollama/"):
             return Provider.OLLAMA
         # Phase 111.10.1: Direct provider routing - models go to their native APIs, not OpenRouter
         # Perplexity: perplexity/sonar, sonar-pro, etc.
@@ -1547,6 +1605,13 @@ async def call_model_v2(
     # Phase 111.9: If source provided, use it for routing
     if provider is None:
         provider = ProviderRegistry.detect_provider(model, source=source)
+
+    # Adaptive completion budget (context-aware, provider-agnostic).
+    kwargs["max_tokens"] = await _resolve_adaptive_max_tokens(
+        model=model,
+        messages=messages,
+        requested_max_tokens=kwargs.get("max_tokens"),
+    )
 
     # Phase 111.9: Check if this is an OpenAI-compatible aggregator
     # that needs OpenAICompatibleProvider instead of registered provider
@@ -1732,150 +1797,70 @@ async def call_model_v2_stream(
         Token strings as they arrive
     """
     from collections import deque
+    from contextlib import suppress
     import time as time_module
-    import httpx
 
     registry = get_registry()
+    # MARKER_152.CLEANUP: Removed stream_event_cb telemetry — was noise in chat
+    kwargs.pop("stream_event_cb", None)  # Ignore if caller still passes it
 
     # Auto-detect provider if not specified
     # Phase 111.9: Use source for routing
     if provider is None:
         provider = ProviderRegistry.detect_provider(model, source=source)
 
+    # Adaptive completion budget for streaming as well (prevents context overflow).
+    kwargs["max_tokens"] = await _resolve_adaptive_max_tokens(
+        model=model,
+        messages=messages,
+        requested_max_tokens=kwargs.get("max_tokens"),
+    )
+
     # MARKER_93.2_START: Anti-loop detection setup
     token_history = deque(maxlen=100)
     stream_start = time_module.time()
     max_duration = kwargs.get("stream_timeout", 300)  # 5 min default
-    loop_threshold = 0.99  # Phase 100.1: Effectively DISABLED - user request (false positives on JSON/code)
+    loop_threshold = 0.99  # Phase 100.1: Effectively DISABLED (false positives on JSON/code)
     # MARKER_93.2_END
+
+    # Helper: guard against timeout and repetition loops
+    def _check_stream_guards() -> Optional[str]:
+        """Returns stop message if stream should halt, None otherwise."""
+        if time_module.time() - stream_start > max_duration:
+            print(f"[STREAM_V2] Timeout after {max_duration}s")
+            return "\n\n[Stream stopped: timeout]"
+        if len(token_history) >= 50 and _detect_loop(token_history, loop_threshold):
+            print(f"[STREAM_V2] Loop detected")
+            return "\n\n[Stream stopped: repetition detected]"
+        return None
 
     print(f"[STREAM_V2] Starting stream: model={model}, provider={provider.value}")
 
+    token_source = None
     try:
+        # Select stream source based on provider
         if provider == Provider.OLLAMA:
-            # Ollama streaming
-            async for token in _stream_ollama(messages, model, registry, **kwargs):
-                # Apply anti-loop detection
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                # Check for loops every 50 tokens
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_ollama(messages, model, registry, **kwargs)
 
         elif provider == Provider.OPENROUTER:
-            # OpenRouter SSE streaming
-            async for token in _stream_openrouter(messages, model, registry, **kwargs):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider == Provider.XAI:
-            # MARKER_94.1_FIX: Direct xAI streaming (not via OpenRouter)
-            # x.ai API now supports streaming, use it directly
             clean_model = model.replace("xai/", "").replace("x-ai/", "")
             print(f"[STREAM_V2] XAI direct: {model} -> {clean_model}")
-
-            async for token in _stream_xai_direct(messages, clean_model, **kwargs):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_xai_direct(messages, clean_model, **kwargs)
 
         elif provider == Provider.OPENAI:
-            # MARKER_93.10: OpenAI streaming via OpenRouter
-            # OpenRouter supports OpenAI models with streaming
-            # Model format: openai/gpt-5.2 stays as openai/gpt-5.2
             print(f"[STREAM_V2] OpenAI via OpenRouter: {model}")
-
-            async for token in _stream_openrouter(messages, model, registry, **kwargs):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider == Provider.ANTHROPIC:
-            # MARKER_93.10: Anthropic streaming via OpenRouter
             print(f"[STREAM_V2] Anthropic via OpenRouter: {model}")
-
-            async for token in _stream_openrouter(messages, model, registry, **kwargs):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            token_source = _stream_openrouter(messages, model, registry, **kwargs)
 
         elif provider.value in ("poe", "polza", "mistral", "perplexity", "nanogpt"):
-            # Phase 111.10: OpenAI-compatible provider streaming
-            # Use OpenAICompatibleProvider.stream() method
-            print(f"[STREAM_V2] OpenAI-compatible provider: {provider.value}")
-
-            async for token in _stream_openai_compatible(
-                messages, model, provider.value, **kwargs
-            ):
-                if time_module.time() - stream_start > max_duration:
-                    print(f"[STREAM_V2] Timeout after {max_duration}s")
-                    yield "\n\n[Stream stopped: timeout]"
-                    break
-
-                token_history.append(token)
-
-                if len(token_history) >= 50:
-                    if _detect_loop(token_history, loop_threshold):
-                        print(f"[STREAM_V2] Loop detected")
-                        yield "\n\n[Stream stopped: repetition detected]"
-                        break
-
-                yield token
+            print(f"[STREAM_V2] OpenAI-compatible: {provider.value}")
+            token_source = _stream_openai_compatible(messages, model, provider.value, **kwargs)
 
         else:
             # Fallback: non-streaming call, yield result at once
@@ -1884,10 +1869,30 @@ async def call_model_v2_stream(
             )
             content = result.get("message", {}).get("content", "")
             yield content
+            return
+
+        # Unified token loop with guards
+        first_token_seen = False
+        async for token in token_source:
+            if not first_token_seen:
+                first_token_seen = True
+                ttft_ms = (time_module.time() - stream_start) * 1000.0
+                print(f"[STREAM_V2] first token in {ttft_ms:.1f}ms")
+            token_history.append(token)
+            stop_msg = _check_stream_guards()
+            if stop_msg:
+                yield stop_msg
+                break
+            yield token
 
     except Exception as e:
-        print(f"[STREAM_V2 ERROR] {e}")
-        yield f"\n[STREAM ERROR]: {str(e)}"
+        err_detail = str(e) or type(e).__name__
+        print(f"[STREAM_V2 ERROR] {type(e).__name__}: {err_detail}")
+        yield f"\n[STREAM ERROR]: {type(e).__name__}: {err_detail}"
+    finally:
+        if token_source is not None:
+            with suppress(Exception):
+                await token_source.aclose()
 
 
 def _detect_loop(token_history: deque, threshold: float) -> bool:
@@ -1931,6 +1936,8 @@ async def _stream_openai_compatible(
     from src.elisya.api_key_detector import get_provider_base_url
 
     km = get_key_manager()
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
+
     api_key = km.get_key(provider_name)
     base_url = get_provider_base_url(provider_name)
 
@@ -1959,40 +1966,66 @@ async def _stream_openai_compatible(
         if v is not None and k not in ("stream_timeout",):
             payload[k] = v
 
-    print(f"[STREAM_{provider_name.upper()}] Starting stream: {url}")
+    # MARKER_152.FIX1: Retry logic for transient connection errors
+    max_retries = 2
+    last_error = None
 
-    try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
-            async with client.stream(
-                "POST", url, headers=headers, json=payload
-            ) as response:
-                # Phase 111.10: Accept both 200 and 201
-                if response.status_code not in (200, 201):
-                    error_text = ""
-                    async for chunk in response.aiter_text():
-                        error_text += chunk
-                        if len(error_text) > 500:
-                            break
-                    yield f"[STREAM ERROR]: {provider_name} API error {response.status_code}: {error_text[:500]}"
+    for attempt in range(max_retries):
+        if attempt > 0:
+            print(f"[STREAM_{provider_name.upper()}] Retry {attempt}/{max_retries - 1} after: {type(last_error).__name__}: {last_error}")
+            import asyncio as _asyncio
+            await _asyncio.sleep(1.0)  # Brief pause before retry
+
+        print(f"[STREAM_{provider_name.upper()}] Starting stream: {url} (attempt {attempt + 1}/{max_retries})")
+
+        try:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0)) as client:
+                async with client.stream(
+                    "POST", url, headers=headers, json=payload
+                ) as response:
+                    # Phase 111.10: Accept both 200 and 201
+                    if response.status_code not in (200, 201):
+                        error_text = ""
+                        async for chunk in response.aiter_text():
+                            error_text += chunk
+                            if len(error_text) > 500:
+                                break
+                        yield f"[STREAM ERROR]: {provider_name} API error {response.status_code}: {error_text[:500]}"
+                        return
+
+                    async for line in response.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:]
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data_str)
+                                delta = chunk.get("choices", [{}])[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    yield content
+                            except json.JSONDecodeError:
+                                continue
+                    # Stream completed successfully — exit retry loop
                     return
 
-                async for line in response.aiter_lines():
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                yield content
-                        except json.JSONDecodeError:
-                            continue
-    except httpx.TimeoutException:
-        yield f"[STREAM ERROR]: {provider_name} request timeout"
-    except Exception as e:
-        yield f"[STREAM ERROR]: {provider_name} error: {str(e)}"
+        except httpx.TimeoutException:
+            yield f"[STREAM ERROR]: {provider_name} request timeout (attempt {attempt + 1})"
+            return  # Timeout = don't retry (already waited 120s)
+        except (httpx.RemoteProtocolError, httpx.ReadError, httpx.ConnectError) as e:
+            # MARKER_152.FIX1: Transient connection errors — retry
+            last_error = e
+            err_detail = str(e) or type(e).__name__
+            print(f"[STREAM_{provider_name.upper()}] Connection error (retryable): {type(e).__name__}: {err_detail}")
+            if attempt == max_retries - 1:
+                yield f"[STREAM ERROR]: {provider_name} connection failed after {max_retries} attempts: {type(e).__name__}: {err_detail}"
+                return
+            continue  # Retry
+        except Exception as e:
+            err_detail = str(e) or type(e).__name__
+            print(f"[STREAM_{provider_name.upper()}] Unexpected error: {type(e).__name__}: {err_detail}")
+            yield f"[STREAM ERROR]: {provider_name} error ({type(e).__name__}): {err_detail}"
+            return
 
 
 async def _stream_ollama(
@@ -2004,8 +2037,10 @@ async def _stream_ollama(
     """
     Phase 93.2: Ollama streaming implementation.
     """
-    import ollama
-    import asyncio
+    import json
+    import httpx
+
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     provider_instance = registry.get(Provider.OLLAMA)
     if not provider_instance:
@@ -2032,29 +2067,43 @@ async def _stream_ollama(
         "model": clean_model,
         "messages": messages,
         "stream": True,
-        "options": {"temperature": kwargs.get("temperature", 0.7)},
+        "options": {
+            "temperature": kwargs.get("temperature", 0.7),
+            "num_predict": max(16, int(kwargs.get("max_tokens", 256) or 256)),
+        },
     }
-
-    loop = asyncio.get_event_loop()
+    if "think" in kwargs and kwargs.get("think") is not None:
+        params["think"] = bool(kwargs.get("think"))
 
     try:
-        # ollama.chat with stream=True returns generator
-        def stream_sync():
-            return ollama.chat(**params)
+        async with httpx.AsyncClient(timeout=httpx.Timeout(120.0), trust_env=False) as client:
+            async with client.stream(
+                "POST",
+                "http://127.0.0.1:11434/api/chat",
+                json=params,
+            ) as response:
+                if response.status_code != 200:
+                    body = await response.aread()
+                    detail = body.decode("utf-8", errors="ignore")[:400]
+                    raise RuntimeError(f"ollama /api/chat status {response.status_code}: {detail}")
 
-        response_gen = await loop.run_in_executor(None, stream_sync)
-
-        for chunk in response_gen:
-            if chunk and "message" in chunk:
-                content = chunk["message"].get("content", "")
-                if content:
-                    yield content
-            if chunk.get("done"):
-                print(f"[STREAM_OLLAMA] Complete")
-                break
+                async for line in response.aiter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if chunk and "message" in chunk:
+                        content = (chunk.get("message") or {}).get("content", "")
+                        if content:
+                            yield content
+                    if chunk.get("done"):
+                        print("[STREAM_OLLAMA] Complete")
+                        break
 
     except Exception as e:
-        print(f"[STREAM_OLLAMA ERROR] {e}")
+        print(f"[STREAM_OLLAMA ERROR] {type(e).__name__}: {e!r}")
         yield f"\n[STREAM ERROR]: {str(e)}"
 
 
@@ -2070,6 +2119,7 @@ async def _stream_xai_direct(
     """
     import httpx
     import json
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     from src.orchestration.services.api_key_service import APIKeyService
     from src.utils.unified_key_manager import get_key_manager, ProviderType
@@ -2188,6 +2238,7 @@ async def _stream_openrouter(
     """
     import httpx
     import json
+    kwargs.pop("stream_event_cb", None)  # MARKER_152.CLEANUP
 
     from src.utils.unified_key_manager import get_key_manager
 
@@ -2221,6 +2272,8 @@ async def _stream_openrouter(
             "messages": messages,
             "stream": True,
             "temperature": kwargs.get("temperature", 0.7),
+            # Adaptive across models/providers (resolved centrally in call_model_v2_stream).
+            "max_tokens": int(kwargs.get("max_tokens", ADAPTIVE_OUTPUT_DEFAULT)),
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:

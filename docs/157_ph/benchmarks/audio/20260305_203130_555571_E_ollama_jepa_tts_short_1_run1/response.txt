@@ -1,0 +1,2 @@
+1. **HAIKU_TEST_4_WATCHER_MARKERS.md** — подтверждает корректное размещение маркеров `MARKER_COHERENCE_BYPASS` в файле `watcher_routes.py`.  
+2. **81_PHASE_COMPLETE.md** — завершающий файл проекта (факты о

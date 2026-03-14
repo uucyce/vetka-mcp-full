@@ -72,10 +72,16 @@ export function AgentStatusBar() {
     }
   }, []);
 
+  // MARKER_145.CLEANUP: Fetch on mount + event-driven. Was 5s polling = 17,280 req/day.
   useEffect(() => {
     fetchAgents();
-    const interval = setInterval(fetchAgents, 5000);
-    return () => clearInterval(interval);
+
+    const handleBoardUpdate = () => fetchAgents();
+    window.addEventListener('task-board-updated', handleBoardUpdate);
+
+    return () => {
+      window.removeEventListener('task-board-updated', handleBoardUpdate);
+    };
   }, [fetchAgents]);
 
   if (agents.length === 0 && !loading) {

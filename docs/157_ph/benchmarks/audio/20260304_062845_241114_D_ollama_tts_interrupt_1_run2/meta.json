@@ -1,0 +1,10 @@
+{
+  "mode": "D_ollama_tts",
+  "prompt_id": "interrupt_1",
+  "run_index": 2,
+  "audio_chunks": 0,
+  "ttft_text_ms": 123.35079201147892,
+  "ttfa_audio_ms": null,
+  "merged_wav": null,
+  "wav_qc": null
+}

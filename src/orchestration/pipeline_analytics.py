@@ -213,7 +213,7 @@ def compute_time_series(
 
         # Retries from task stats if available
         task = task_lookup.get(run.get("task_id", ""))
-        if task and task.get("stats", {}).get("agent_stats"):
+        if task and (task.get("stats") or {}).get("agent_stats"):
             for role_stats in task["stats"]["agent_stats"].values():
                 b["retries"] += role_stats.get("retries", 0)
 
@@ -270,7 +270,7 @@ def compute_agent_efficiency() -> List[Dict[str, Any]]:
     for tid, task in tasks.items():
         if task.get("status") not in ("done", "failed"):
             continue
-        stats = task.get("stats", {})
+        stats = task.get("stats") or {}
         agent_stats = stats.get("agent_stats", {})
 
         for role_raw, values in agent_stats.items():
@@ -402,7 +402,7 @@ def get_task_analytics(task_id: str) -> Optional[Dict[str, Any]]:
     if not task:
         return None
 
-    stats = task.get("stats", {})
+    stats = task.get("stats") or {}
     agent_stats = stats.get("agent_stats", {})
 
     # Token distribution (for pie chart)
@@ -596,7 +596,7 @@ def compute_dag_mini_stats(task_ids: Optional[List[str]] = None) -> Dict[str, Di
         if task_ids is not None and tid not in task_ids:
             continue
 
-        stats = task.get("stats", {})
+        stats = task.get("stats") or {}
         if not stats:
             # No pipeline stats recorded — skip (pending/queued tasks)
             continue
@@ -674,13 +674,13 @@ def compute_summary() -> Dict[str, Any]:
         status_counts[status] += 1
 
         if status in ("done", "failed"):
-            preset = task.get("preset", task.get("stats", {}).get("preset", "unknown"))
+            preset = task.get("preset", (task.get("stats") or {}).get("preset", "unknown"))
             preset_counts[preset] += 1
 
             source = task.get("source", "unknown")
             source_counts[source] += 1
 
-            stats = task.get("stats", {})
+            stats = task.get("stats") or {}
             if stats:
                 total_tokens += stats.get("tokens_in", 0) + stats.get("tokens_out", 0)
                 total_duration += stats.get("duration_s", 0)
@@ -759,7 +759,7 @@ def compute_team_comparison() -> List[Dict[str, Any]]:
     for tid, task in tasks.items():
         if task.get("status") not in ("done", "failed"):
             continue
-        stats = task.get("stats", {})
+        stats = task.get("stats") or {}
         preset = stats.get("preset", task.get("preset", "unknown"))
 
         d = preset_data[preset]
@@ -882,7 +882,7 @@ def compute_cost_report() -> Dict[str, Any]:
     for tid, task in tasks.items():
         if task.get("status") not in ("done", "failed"):
             continue
-        stats = task.get("stats", {})
+        stats = task.get("stats") or {}
         preset = stats.get("preset", task.get("preset", "unknown"))
         tier = PRESET_COST_TIER.get(preset, 1.0)
 

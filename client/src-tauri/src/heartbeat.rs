@@ -56,26 +56,19 @@ async fn check_open_tasks() -> Result<HeartbeatPayload, String> {
 
     // Try to get open tasks from backend
     // Falls back to 0 if endpoint doesn't exist yet
-    let open_tasks = client
+    // MARKER_148.HEARTBEAT_NO_BLOCK_ON: never call block_on inside tokio runtime worker.
+    let open_tasks = match client
         .get(format!("{}/api/tasks/open", api_url))
         .timeout(Duration::from_secs(10))
         .send()
         .await
-        .ok()
-        .and_then(|r| {
-            if r.status().is_success() {
-                Some(r)
-            } else {
-                None
-            }
-        })
-        .and_then(|r| {
-            tauri::async_runtime::block_on(async {
-                r.json::<TasksResponse>().await.ok()
-            })
-        })
-        .map(|t| t.tasks.len())
-        .unwrap_or(0);
+    {
+        Ok(resp) if resp.status().is_success() => match resp.json::<TasksResponse>().await {
+            Ok(payload) => payload.tasks.len(),
+            Err(_) => 0,
+        },
+        _ => 0,
+    };
 
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

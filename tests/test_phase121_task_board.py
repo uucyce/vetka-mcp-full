@@ -53,6 +53,26 @@ class TestTaskBoardCRUD:
         assert task["complexity"] == "medium"
         assert task["status"] == "pending"
 
+    def test_add_task_accepts_test_phase_type(self):
+        task_id = self.board.add_task("Test flow", phase_type="test")
+        task = self.board.get_task(task_id)
+        assert task["phase_type"] == "test"
+
+    def test_add_task_closure_tests_auto_enable_protocol(self):
+        task_id = self.board.add_task(
+            "Protocol task",
+            closure_tests=["pytest -q tests/test_phase121_task_board.py"],
+            architecture_docs=["docs/171_ph_multytask_vetka_MCP/RECON_MULTITASK_PROTOCOL_VETKA_MCP_2026-03-11.md"],
+        )
+        task = self.board.get_task(task_id)
+        assert task["require_closure_proof"] is True
+        assert task["protocol_version"] == "multitask_mcp_v1"
+        assert task["closure_subtask"]["status"] == "pending"
+
+    def test_add_task_invalid_phase_type_raises(self):
+        with pytest.raises(ValueError):
+            self.board.add_task("Bad task", phase_type="deploy")
+
     def test_get_task(self):
         task_id = self.board.add_task("Test task", description="Details")
         task = self.board.get_task(task_id)
@@ -106,6 +126,23 @@ class TestTaskBoardCRUD:
         board2 = TaskBoard(board_file=Path(self.tmp.name))
         assert board2.get_task(task_id) is not None
         assert board2.get_task(task_id)["title"] == "Persistent task"
+
+    def test_save_writes_integrity_signature(self):
+        self.board.add_task("Signed task")
+        raw = json.loads(Path(self.tmp.name).read_text())
+        meta = raw.get("_meta") or {}
+        assert meta.get("integrity_sig")
+        assert meta.get("last_writer") == "task_board_runtime"
+
+    def test_load_warns_on_integrity_signature_mismatch(self):
+        task_id = self.board.add_task("Tampered task")
+        raw = json.loads(Path(self.tmp.name).read_text())
+        raw["tasks"][task_id]["title"] = "Tampered outside protocol"
+        Path(self.tmp.name).write_text(json.dumps(raw))
+
+        board2 = TaskBoard(board_file=Path(self.tmp.name))
+        assert board2.integrity_warning == "task_board_signature_mismatch"
+        assert board2.settings.get("_integrity_warning") == "task_board_signature_mismatch"
 
 
 # --- TestTaskBoardQueue ---
@@ -233,6 +270,18 @@ class TestTaskBoardImport:
         assert tasks[0]["phase_type"] == "research"
         Path(tmp_todo.name).unlink()
 
+    def test_import_test_detection(self):
+        """Lines with 'pytest'/'e2e' detected as phase_type=test."""
+        tmp_todo = tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w")
+        tmp_todo.write("Add pytest smoke coverage for closure protocol\n")
+        tmp_todo.close()
+
+        self.board.import_from_todo(tmp_todo.name, "test")
+        tasks = list(self.board.tasks.values())
+        assert len(tasks) == 1
+        assert tasks[0]["phase_type"] == "test"
+        Path(tmp_todo.name).unlink()
+
     def test_import_skips_short_lines(self):
         """Lines under 10 chars are skipped."""
         tmp_todo = tempfile.NamedTemporaryFile(suffix=".txt", delete=False, mode="w")
@@ -343,6 +392,67 @@ class TestMCPToolHandlers:
         result = handle_task_board({"action": "summary"})
         assert result["success"] is True
         assert result["total"] == 1
+
+    @patch("src.orchestration.task_board.get_task_board")
+    def test_handle_add_with_closure_tests_enables_protocol(self, mock_get_board):
+        from src.mcp.tools.task_board_tools import handle_task_board
+        board = TaskBoard(board_file=Path(self.tmp.name))
+        mock_get_board.return_value = board
+
+        result = handle_task_board({
+            "action": "add",
+            "title": "Proof task",
+            "phase_type": "test",
+            "closure_tests": ["pytest -q tests/test_phase121_task_board.py"],
+            "architecture_docs": ["docs/171_ph_multytask_vetka_MCP/PHASE_171_MULTITASK_MCC_PROJECT_LANE_RECON_2026-03-13.md"],
+            "project_lane": "mcc_lane_a",
+        })
+
+        assert result["success"] is True
+        task = board.get_task(result["task_id"])
+        assert task["phase_type"] == "test"
+        assert task["require_closure_proof"] is True
+        assert task["project_lane"] == "mcc_lane_a"
+
+    @patch("src.orchestration.task_board.get_task_board")
+    def test_handle_add_with_p6_profile_applies_protocol_defaults(self, mock_get_board):
+        from src.mcp.tools.task_board_tools import handle_task_board
+        board = TaskBoard(board_file=Path(self.tmp.name))
+        mock_get_board.return_value = board
+
+        result = handle_task_board({
+            "action": "add",
+            "title": "Emergency P6 proof task",
+            "profile": "p6",
+            "project_lane": "lane_p6",
+            "architecture_docs": ["docs/171_ph_multytask_vetka_MCP/PHASE_171_MULTITASK_MCC_PROJECT_LANE_RECON_2026-03-13.md"],
+            "closure_tests": ["pytest -q tests/test_phase121_task_board.py"],
+            "closure_files": ["src/mcp/tools/task_board_tools.py"],
+        })
+
+        assert result["success"] is True
+        task = board.get_task(result["task_id"])
+        assert task["phase_type"] == "test"
+        assert task["protocol_version"] == "multitask_mcp_v1"
+        assert task["require_closure_proof"] is True
+        assert task["task_origin"] == "p6_profile"
+        assert "p6" in task["tags"]
+
+    @patch("src.orchestration.task_board.get_task_board")
+    def test_handle_add_with_p6_profile_requires_docs_and_tests(self, mock_get_board):
+        from src.mcp.tools.task_board_tools import handle_task_board
+        board = TaskBoard(board_file=Path(self.tmp.name))
+        mock_get_board.return_value = board
+
+        result = handle_task_board({
+            "action": "add",
+            "title": "Broken Emergency P6 proof task",
+            "profile": "p6",
+            "project_lane": "lane_p6",
+        })
+
+        assert result["success"] is False
+        assert result["error"] == "p6 profile requires: architecture_docs, closure_tests"
 
     @patch("src.orchestration.task_board.get_task_board")
     def test_handle_list(self, mock_get_board):

@@ -1,0 +1,5 @@
+Okay, let's analyze the provided context and formulate a helpful, specific answer to the user's question.
+
+**Here's the answer:**
+
+"Based on the context, I'd suggest looking at `data/playground_proposals.json` – it's likely where the

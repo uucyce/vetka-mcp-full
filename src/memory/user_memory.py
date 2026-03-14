@@ -40,6 +40,9 @@ class ViewportPatterns:
     zoom_levels: List[float] = field(default_factory=lambda: [1.0, 1.5, 2.0])
     focus_areas: List[str] = field(default_factory=list)
     navigation_style: str = "keyboard-driven"  # keyboard-driven/mouse-driven/voice
+    # MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
+    # Cross-surface DAG layout intent profiles keyed by scope (MCC/VETKA shared).
+    dag_layout_profiles: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
     confidence: float = 0.5  # 0-1, increases with usage
 
@@ -103,6 +106,9 @@ class CommunicationStyle:
     formality: float = 0.3  # 0=casual, 1=formal
     detail_level: float = 0.8  # 0=concise, 1=verbose
     prefers_russian: bool = True
+    preferred_language: str = "auto"  # auto/ru/en
+    last_assistant_language: str = "ru"  # ru/en
+    user_name: str = ""  # Optional remembered user name
     response_length: str = "medium"  # short/medium/long
     technical_depth: str = "high"  # low/medium/high (for code explanations)
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())

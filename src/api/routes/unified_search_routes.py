@@ -7,11 +7,12 @@ import re
 from urllib.parse import urlparse
 from typing import List, Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from pydantic import BaseModel
 import httpx
 
-from src.api.handlers.unified_search import run_unified_search
+from src.api.handlers.unified_search import get_search_capabilities, run_unified_search
+from src.search.file_search_service import search_files, get_file_search_capabilities
 
 
 router = APIRouter(prefix="/api/search", tags=["unified-search"])
@@ -21,11 +22,19 @@ class UnifiedSearchRequest(BaseModel):
     query: str
     limit: int = 20
     sources: Optional[List[str]] = None
+    mode: Optional[str] = None
+    viewport_context: Optional[dict] = None
 
 
 class WebPreviewRequest(BaseModel):
     url: str
     timeout_s: float = 8.0
+
+
+class FileSearchRequest(BaseModel):
+    query: str
+    limit: int = 20
+    mode: str = "keyword"  # keyword|filename
 
 
 def _is_private_or_local_host(hostname: str) -> bool:
@@ -82,6 +91,41 @@ def _build_srcdoc(safe_html: str, source_url: str) -> str:
     )
 
 
+def _is_probably_js_app(raw_html: str, safe_html: str) -> bool:
+    """
+    Heuristic: page is mostly JS-driven and sanitized preview is likely blank.
+    """
+    raw = raw_html or ""
+    safe = safe_html or ""
+    has_app_root = bool(re.search(r'(?i)id\s*=\s*["\'](app|root|__next|react-root)["\']', raw))
+    has_many_scripts = len(re.findall(r"(?is)<script\b", raw)) >= 3
+    # Remove tags and check visible text footprint.
+    text_only = re.sub(r"(?is)<[^>]+>", " ", safe)
+    text_only = re.sub(r"\s+", " ", text_only).strip()
+    low_visible_text = len(text_only) < 180
+    return low_visible_text and (has_app_root or has_many_scripts)
+
+
+def _is_frame_blocked_by_headers(headers: dict) -> bool:
+    """
+    Heuristic: detect if site is likely blocked inside iframe/webview frame.
+    """
+    xfo = str(headers.get("x-frame-options", "")).lower()
+    if "deny" in xfo or "sameorigin" in xfo:
+        return True
+
+    csp = str(headers.get("content-security-policy", "")).lower()
+    if "frame-ancestors" in csp:
+        # Most restrictive common cases
+        if "'none'" in csp or "'self'" in csp:
+            return True
+        # If frame-ancestors exists but does not allow wildcards/protocols, treat as likely blocked.
+        if "*" not in csp and "https:" not in csp and "http:" not in csp:
+            return True
+
+    return False
+
+
 @router.post("/unified")
 async def unified_search_endpoint(body: UnifiedSearchRequest):
     safe_limit = max(1, min(body.limit, 100))
@@ -89,7 +133,32 @@ async def unified_search_endpoint(body: UnifiedSearchRequest):
         query=body.query,
         limit=safe_limit,
         sources=body.sources,
+        mode=body.mode,
+        viewport_context=body.viewport_context,
     )
+
+
+@router.get("/capabilities")
+async def unified_search_capabilities(
+    context: str = Query("vetka", description="Search context (vetka|web|file|cloud|social)"),
+):
+    return get_search_capabilities(context=context)
+
+
+@router.post("/file")
+async def file_search_endpoint(body: FileSearchRequest):
+    safe_limit = max(1, min(body.limit, 100))
+    mode = "filename" if str(body.mode).strip().lower() == "filename" else "keyword"
+    return search_files(
+        query=body.query,
+        limit=safe_limit,
+        mode=mode,
+    )
+
+
+@router.get("/file/capabilities")
+async def file_search_capabilities_endpoint():
+    return get_file_search_capabilities()
 
 
 @router.post("/web-preview")
@@ -116,6 +185,7 @@ async def web_preview_endpoint(body: WebPreviewRequest):
         return {"success": False, "error": f"Fetch failed: {e}", "url": raw_url}
 
     content_type = (resp.headers.get("content-type") or "").lower()
+    frame_blocked = _is_frame_blocked_by_headers(dict(resp.headers))
     text = resp.text or ""
     final_url = str(resp.url)
 
@@ -123,10 +193,12 @@ async def web_preview_endpoint(body: WebPreviewRequest):
         safe_html = _sanitize_html(text)
         title = _extract_title(text, fallback=parsed.netloc)
         srcdoc = _build_srcdoc(safe_html, final_url)
+        js_app_like = _is_probably_js_app(text, safe_html)
     else:
         title = parsed.netloc
         escaped_text = html.escape(text[:50000])
         srcdoc = _build_srcdoc(f"<pre>{escaped_text}</pre>", final_url)
+        js_app_like = False
 
     return {
         "success": True,
@@ -135,4 +207,6 @@ async def web_preview_endpoint(body: WebPreviewRequest):
         "content_type": content_type or "unknown",
         "status_code": resp.status_code,
         "html": srcdoc,
+        "is_probably_js_app": js_app_like,
+        "frame_blocked": frame_blocked,
     }

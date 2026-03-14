@@ -1,0 +1,77 @@
+{
+  "marker": "MARKER_168.MYCO.MOTION.MCC_PROBE.CONTRACT.V1",
+  "version": 1,
+  "surfaces": [
+    {
+      "id": "top_avatar",
+      "label": "Top MYCO avatar",
+      "component": "client/src/components/mcc/MyceliumCommandCenter.tsx",
+      "states": ["idle", "ready", "speaking"]
+    },
+    {
+      "id": "top_hint",
+      "label": "Top MYCO hint bubble",
+      "component": "client/src/components/mcc/MyceliumCommandCenter.tsx",
+      "states": ["idle", "ready", "speaking"]
+    },
+    {
+      "id": "mini_chat_compact",
+      "label": "MiniChat compact",
+      "component": "client/src/components/mcc/MiniChat.tsx",
+      "states": ["idle", "ready", "speaking"]
+    },
+    {
+      "id": "mini_chat_expanded",
+      "label": "MiniChat expanded",
+      "component": "client/src/components/mcc/MiniChat.tsx",
+      "states": ["idle", "ready", "speaking"]
+    },
+    {
+      "id": "mini_stats_compact",
+      "label": "MiniStats compact",
+      "component": "client/src/components/mcc/MiniStats.tsx",
+      "states": ["idle", "ready", "speaking"]
+    },
+    {
+      "id": "mini_stats_expanded",
+      "label": "MiniStats expanded",
+      "component": "client/src/components/mcc/MiniStats.tsx",
+      "states": ["idle", "ready", "speaking"]
+    }
+  ],
+  "triggers": [
+    "idle",
+    "ready",
+    "speaking",
+    "window_focus_chat",
+    "window_focus_context",
+    "window_focus_stats",
+    "window_focus_tasks",
+    "window_focus_balance",
+    "workflow_selected",
+    "model_selected",
+    "task_started",
+    "task_completed",
+    "task_failed",
+    "parallel_role_active"
+  ],
+  "roles": {
+    "singleton": ["architect", "researcher", "verifier"],
+    "parallel": {
+      "coder": 2,
+      "scout": 3
+    }
+  },
+  "metrics": [
+    "clip_ratio",
+    "text_overlap_ratio",
+    "motion_dominance_score",
+    "layout_delta",
+    "readability_pass"
+  ],
+  "artifacts": [
+    "surface_screenshot",
+    "surface_snapshot_json",
+    "surface_state_matrix"
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_montage_state_v1.schema.json",
+  "title": "VETKA CUT Montage State V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "revision",
+    "source_bundle_revisions",
+    "accepted_decisions",
+    "rejected_decisions",
+    "updated_at",
+    "updated_by"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_montage_state_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source_bundle_revisions": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "minLength": 1
+      },
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "accepted_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/montageDecisionAccepted"
+      }
+    },
+    "rejected_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/montageDecisionRejected"
+      }
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_by": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "montageDecisionBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "decision_id",
+        "source_family",
+        "cue_provenance_ids",
+        "confidence",
+        "score",
+        "editorial_intent",
+        "timeline_id",
+        "lane_id",
+        "anchor_sec",
+        "start_sec",
+        "end_sec",
+        "source_bundle_id",
+        "source_bundle_revision",
+        "created_at",
+        "updated_at",
+        "author"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_family": {
+          "type": "string",
+          "enum": [
+            "transcript",
+            "pause_slice",
+            "music",
+            "sync",
+            "scene_graph",
+            "manual_note",
+            "marker"
+          ]
+        },
+        "cue_provenance_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "editorial_intent": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeline_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "lane_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anchor_sec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "start_sec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "end_sec": {
+          "type": "number",
+          "minimum": 0
+        },
+        "source_bundle_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_bundle_revision": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "author": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "montageDecisionAccepted": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/montageDecisionBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "accepted"
+            }
+          }
+        }
+      ]
+    },
+    "montageDecisionRejected": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/montageDecisionBase"
+        },
+        {
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "type": "string",
+              "const": "rejected"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

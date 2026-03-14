@@ -1,0 +1,8 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+A_qwen_only,short_1,1,122,False,,,,,,47.01,0,0,0,0.0,"low_ru_ratio,no_file_refs,no_two_items",,docs/157_ph/benchmarks/audio/20260304_204830_280422_A_qwen_only_short_1_run1,,,,,,False,0,,,,2026-03-04T17:48:30.281463+00:00
+A_qwen_only,context_1,1,133,False,,,,,,5.64,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms",,docs/157_ph/benchmarks/audio/20260304_204830_286515_A_qwen_only_context_1_run1,,,,,,False,0,,,,2026-03-04T17:48:30.287128+00:00
+A_qwen_only,long_1,1,171,False,,,,,,5.31,0,0,0,0.0,"low_ru_ratio,no_interrupt_terms,no_handoff_terms",,docs/157_ph/benchmarks/audio/20260304_204830_292062_A_qwen_only_long_1_run1,,,,,,False,0,,,,2026-03-04T17:48:30.292463+00:00
+A_qwen_only,interrupt_1,1,139,True,,170.39,6174.32,170.39,6174.32,29675.88,44,4,126,0.85,,"Сначала определи цель, потом составь план.Назову два шага:
+
+1. Определить структуру данных.
+2. Сerializировать данные в байты.",docs/157_ph/benchmarks/audio/20260304_204830_297292_A_qwen_only_interrupt_1_run1,docs/157_ph/benchmarks/audio/20260304_204830_297292_A_qwen_only_interrupt_1_run1/merged.wav,49.38,18,1460,0,False,0,,,,2026-03-04T17:48:59.968767+00:00

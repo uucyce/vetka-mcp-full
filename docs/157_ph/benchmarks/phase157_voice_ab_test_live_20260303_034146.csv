@@ -1,0 +1,16 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,timestamp
+A_qwen_only,short_1,45,False,,236.71,4569.72,236.71,4569.72,4569.92,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:39:12.618270
+A_qwen_only,context_1,85,False,,179.75,4394.22,179.75,4394.22,4394.33,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:39:17.012654
+A_qwen_only,long_1,124,False,,164.1,4427.16,164.1,4427.16,4427.25,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:39:21.439931
+B_api_tts,short_1,45,False,,647.84,,647.84,,16667.56,1,0,369,0.0,"[ERROR] OpenRouter: 429 - {""error"":{""message"":""Provider returned error"",""code"":429,""metadata"":{""raw"":""qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations""",2026-03-03T00:39:38.107550
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:39:58.568317
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:40:18.569770
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:40:44.120502
+C_api_jepa_tts,context_1,85,False,,639.98,,639.98,,16660.69,1,0,369,0.0,"[ERROR] OpenRouter: 429 - {""error"":{""message"":""Provider returned error"",""code"":429,""metadata"":{""raw"":""qwen/qwen3-coder:free is temporarily rate-limited upstream. Please retry shortly, or add your own key to accumulate your rate limits: https://openrouter.ai/settings/integrations""",2026-03-03T00:41:00.781316
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 20.0s,,,,,,0,0,0,0.0,,2026-03-03T00:41:21.177158
+D_ollama_tts,short_1,45,False,,201.97,4527.84,201.97,4527.84,4527.97,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:25.705211
+D_ollama_tts,context_1,85,False,,168.72,4271.27,168.72,4271.27,4271.39,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:29.976640
+D_ollama_tts,long_1,124,False,,284.52,3311.32,284.52,3311.32,3311.39,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:33.288085
+E_ollama_jepa_tts,short_1,45,False,,176.83,4232.41,176.83,4232.41,4232.48,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:37.520595
+E_ollama_jepa_tts,context_1,85,False,,173.44,4257.33,173.44,4257.33,4257.39,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:41.778002
+E_ollama_jepa_tts,long_1,124,False,,168.43,4238.1,168.43,4238.1,4238.18,1,1,36,0.0,[STREAM ERROR]:  (status code: 503),2026-03-03T00:41:46.016196

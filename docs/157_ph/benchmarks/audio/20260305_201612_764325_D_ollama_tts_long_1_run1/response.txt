@@ -1,0 +1,1 @@
+В предоставленном контексте нет информации о "interrupt + restart stream protocol" или его влиянии на voice handoff/tool-loop transparency. Упоминается только capability matrix и реконструкция гипотезы для аудио-пайплайна, но нет деталей протокола.

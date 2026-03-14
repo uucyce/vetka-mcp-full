@@ -1,0 +1,10 @@
+Базовый ответ:
+
+2 конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/api/routes/watcher_routes.py` - нужен для анализа watcher_routes.py и проверки маркеров.
+2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/95_ph/HAIKU_TEST_4_WATCHER_MARKERS.md` - нужен для понимания результатов проверки маркеров.
+
+Фразы, зачем каждая нужна:
+
+1. `/Users/danilagulin

@@ -49,6 +49,38 @@ export interface ChatEdgeAPI {
   metadata: { type: "chat"; color: string; opacity: number };
 }
 
+export interface ArtifactNodeAPI {
+  id: string;
+  type: "artifact";
+  name: string;
+  parent_id: string | null;
+  metadata: {
+    artifact_type?: string;
+    artifact_id?: string;
+    file_path?: string;
+    parent_file_path?: string;
+    source_artifact_id?: string;
+    start_sec?: number;
+    end_sec?: number;
+    chunk_text?: string;
+    status?: string;
+    extension?: string;
+    [key: string]: any;
+  };
+  visual_hints: {
+    layout_hint: { expected_x: number; expected_y: number; expected_z: number };
+    color: string;
+    opacity: number;
+  };
+}
+
+export interface ArtifactEdgeAPI {
+  from: string;
+  to: string;
+  semantics: string;
+  metadata?: { type?: string; [key: string]: any };
+}
+
 // API response can be either legacy or new VETKA format
 export interface ApiTreeResponse {
   success: boolean;
@@ -63,6 +95,38 @@ export interface ApiTreeResponse {
   // Phase 108.2: Chat nodes
   chat_nodes?: ChatNodeAPI[];
   chat_edges?: ChatEdgeAPI[];
+  artifact_nodes?: ArtifactNodeAPI[];
+  artifact_edges?: ArtifactEdgeAPI[];
+  error?: string;
+}
+
+export type TreeViewMode = 'directed' | 'knowledge' | 'media_edit';
+
+export interface KnowledgeGraphResponse {
+  status: 'ok' | 'error';
+  source?: 'cache' | 'computed';
+  tags?: Record<string, {
+    id?: string;
+    name?: string;
+    files?: string[];
+    color?: string;
+    [key: string]: any;
+  }>;
+  positions?: Record<string, {
+    x?: number;
+    y?: number;
+    z?: number;
+    knowledge_level?: number;
+    [key: string]: any;
+  }>;
+  edges?: Array<{ source?: string; target?: string; from?: string; to?: string; [key: string]: any }>;
+  chain_edges?: Array<{ source?: string; target?: string; from?: string; to?: string; [key: string]: any }>;
+  hydration?: {
+    path?: string;
+    hydrated?: boolean;
+    reason?: string;
+    indexed_count?: number;
+  };
   error?: string;
 }
 
@@ -80,6 +144,8 @@ export async function fetchTreeData(): Promise<ApiTreeResponse> {
       tree: data.tree,
       chat_nodes: data.chat_nodes,
       chat_edges: data.chat_edges,
+      artifact_nodes: data.artifact_nodes,
+      artifact_edges: data.artifact_edges,
     };
   } catch (error) {
     console.error('[API] fetchTreeData error:', error);
@@ -87,6 +153,39 @@ export async function fetchTreeData(): Promise<ApiTreeResponse> {
       success: false,
       nodes: [],
       error: error instanceof Error ? error.message : 'Unknown error'
+    };
+  }
+}
+
+export async function fetchKnowledgeGraphData(params?: {
+  forceRefresh?: boolean;
+  hydrateScopePath?: string;
+  hydrateForce?: boolean;
+  filePositions?: Record<string, { x: number; y: number; z: number }>;
+  semanticExpansionBudget?: number;
+  semanticExpansionThreshold?: number;
+}): Promise<KnowledgeGraphResponse> {
+  try {
+    const response = await fetch(`${API_BASE}/tree/knowledge-graph`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        force_refresh: Boolean(params?.forceRefresh),
+        hydrate_scope_path: params?.hydrateScopePath || '',
+        hydrate_force: Boolean(params?.hydrateForce),
+        file_positions: params?.filePositions || {},
+        semantic_expansion_budget: params?.semanticExpansionBudget,
+        semantic_expansion_threshold: params?.semanticExpansionThreshold,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    return {
+      status: 'error',
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }

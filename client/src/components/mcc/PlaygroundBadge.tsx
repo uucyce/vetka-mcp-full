@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
 interface PlaygroundInfo {
   playground_id: string;
@@ -17,7 +19,6 @@ function fmtAge(minutes: number): string {
   return `${Math.floor(minutes / 1440)}d`;
 }
 
-const API_DEBUG = 'http://localhost:5001/api/debug';
 
 export function PlaygroundBadge() {
   const [playgrounds, setPlaygrounds] = useState<PlaygroundInfo[]>([]);
@@ -26,7 +27,7 @@ export function PlaygroundBadge() {
 
   const fetchPlaygrounds = useCallback(async () => {
     try {
-      const res = await fetch(`${API_DEBUG}/playground`);
+      const res = await fetch(`${DEBUG_API}/playground`);
       if (!res.ok) return;
       const data = await res.json();
       setPlaygrounds(data.playgrounds || []);
@@ -38,14 +39,29 @@ export function PlaygroundBadge() {
   // Initial fetch + periodic refresh
   useEffect(() => {
     fetchPlaygrounds();
-    const timer = setInterval(fetchPlaygrounds, 15000);
-    return () => clearInterval(timer);
+    const onVisibility = () => {
+      if (!document.hidden) fetchPlaygrounds();
+    };
+    window.addEventListener('task-board-updated', fetchPlaygrounds as EventListener);
+    window.addEventListener('pipeline-stats', fetchPlaygrounds as EventListener);
+    window.addEventListener('focus', fetchPlaygrounds);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('task-board-updated', fetchPlaygrounds as EventListener);
+      window.removeEventListener('pipeline-stats', fetchPlaygrounds as EventListener);
+      window.removeEventListener('focus', fetchPlaygrounds);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchPlaygrounds]);
+
+  useEffect(() => {
+    if (showDropdown) fetchPlaygrounds();
+  }, [showDropdown, fetchPlaygrounds]);
 
   const handleDestroy = useCallback(async (pgId: string) => {
     setLoading(true);
     try {
-      await fetch(`${API_DEBUG}/playground/${pgId}`, { method: 'DELETE' });
+      await fetch(`${DEBUG_API}/playground/${pgId}`, { method: 'DELETE' });
       await fetchPlaygrounds();
     } catch {
       // silently fail

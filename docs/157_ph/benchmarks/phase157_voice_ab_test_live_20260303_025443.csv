@@ -1,0 +1,10 @@
+mode,prompt_id,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,timestamp
+A_qwen_only,short_1,45,True,,262.43,5279.41,262.43,5279.41,5283.12,1,1,36,0.0,2026-03-02T23:52:33.984748
+A_qwen_only,context_1,85,True,,337.77,2568.19,337.77,2568.19,2568.25,1,1,36,0.0,2026-03-02T23:52:36.553088
+A_qwen_only,long_1,124,True,,181.88,3694.06,181.88,3694.06,3694.14,1,1,36,0.0,2026-03-02T23:52:40.247162
+B_api_tts,short_1,45,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:52:55.248279
+B_api_tts,context_1,85,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:53:21.256952
+B_api_tts,long_1,124,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:53:36.258090
+C_api_jepa_tts,short_1,45,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:54:02.219576
+C_api_jepa_tts,context_1,85,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:54:17.220109
+C_api_jepa_tts,long_1,124,False,TimeoutError: per-run timeout 15.0s,,,,,,0,0,0,0.0,2026-03-02T23:54:43.163953

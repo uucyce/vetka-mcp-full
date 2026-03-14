@@ -1,0 +1,10 @@
+Interrupt and Restart Stream Protocol:
+
+1. **Purpose**: Remove discrepancies between:
+	* Stream generation (`stream`),
+	* Tool calls (`tool calling`),
+	* Model/Provider capabilities.
+2. **Key issue**: Current project has partial support for capability logic scattered across `provider_registry.py`, routes, and handlers; stream-path and tool-loop are implemented separately, leading to "false expectations" in the chat (e.g., tools used but not executed in specific stream-branch).
+3. **Unified Model Capability Matrix**: A single contract behavior to display truth: what's really supported and executed.
+
+Impact on Voice Handoff/Tool-

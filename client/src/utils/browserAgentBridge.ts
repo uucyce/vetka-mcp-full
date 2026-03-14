@@ -42,6 +42,7 @@
  *   vetkaAPI.getFormulas('knowledge') - Layout formula values
  *   vetkaAPI.getErrors()              - Recent errors
  *   vetkaAPI.getLogs()                - Debug logs
+ *   vetkaAPI.getDetachedMediaSnapshot() - Latest detached media geometry
  *   vetkaAPI.getModes()               - Visualization mode info
  *   vetkaAPI.getChatContext()         - Get chat context (like internal agents)
  *   vetkaAPI.focusCamera('file.py')   - Control 3D camera!
@@ -55,7 +56,7 @@
  * ═══════════════════════════════════════════════════════════════════════════
  */
 
-const API_BASE = 'http://localhost:5001/api/debug';
+const API_BASE = `${CORE_API_BASE}/debug`;
 
 interface TreeState {
   healthy: boolean;
@@ -107,6 +108,22 @@ interface LogsResult {
     data: Record<string, unknown>;
   }>;
   available_categories: string[];
+}
+
+interface DetachedMediaSnapshotResult {
+  total_snapshots: number;
+  returned: number;
+  latest: {
+    timestamp: number;
+    src: string;
+    path: string;
+    snapshot: Record<string, unknown>;
+  } | null;
+  available_sources: string[];
+  filter_applied: {
+    path: string | null;
+    src: string | null;
+  };
 }
 
 interface ModesResult {
@@ -290,6 +307,20 @@ const vetkaAPI = {
     const response = await fetch(url);
     const data = await response.json();
     console.log('📋 VETKA Logs:', data);
+    return data;
+  },
+
+  /**
+   * Get latest detached media window geometry snapshot captured by renderer debug tooling.
+   */
+  async getDetachedMediaSnapshot(path?: string, src?: string): Promise<DetachedMediaSnapshotResult> {
+    const params = new URLSearchParams();
+    if (path) params.set('path', path);
+    if (src) params.set('src', src);
+    const suffix = params.toString() ? `?${params.toString()}` : '';
+    const response = await fetch(`${API_BASE}/media-window-snapshot${suffix}`);
+    const data = await response.json();
+    console.log('🎬 VETKA Detached Media Snapshot:', data);
     return data;
   },
 
@@ -576,6 +607,7 @@ const vetkaAPI = {
 ║  vetkaAPI.getFormulas('mode')   Layout formula values              ║
 ║  vetkaAPI.getErrors()           Recent errors                      ║
 ║  vetkaAPI.getLogs()             Debug logs                         ║
+║  vetkaAPI.getDetachedMediaSnapshot() Latest media geometry         ║
 ║  vetkaAPI.getModes()            Visualization mode info            ║
 ║  vetkaAPI.getChatContext()      Chat context (like internal agents)║
 ║  vetkaAPI.getChatContext(true)  With chat history                  ║
@@ -626,3 +658,4 @@ export function initBrowserAgentBridge(): void {
 }
 
 export default vetkaAPI;
+import { API_BASE as CORE_API_BASE } from '../config/api.config';

@@ -1,0 +1,3 @@
+Based on the provided context, here are three points to improve memory context packing in VETKA without regressing latency:
+
+1.  **

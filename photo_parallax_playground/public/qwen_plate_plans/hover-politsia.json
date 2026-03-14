@@ -1,0 +1,216 @@
+{
+  "sample_id": "hover-politsia",
+  "title": "Hover Politsia street",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "A police vehicle hovering above a city street, with a person walking and a cat nearby. The scene is set in an urban environment with buildings in the background.",
+  "recommended_plate_count": 5,
+  "plates": [
+    {
+      "id": "proposal_plate_01",
+      "name": "vehicle",
+      "role": "foreground-subject",
+      "depth_order": 1,
+      "objects": [
+        "hovering police vehicle"
+      ],
+      "reason": "The vehicle is the main focus of the scene and is positioned in the foreground.",
+      "box": {
+        "x": 0.28,
+        "y": 0.21,
+        "width": 0.5,
+        "height": 0.54
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-vehicle"
+    },
+    {
+      "id": "proposal_plate_02",
+      "name": "walker",
+      "role": "secondary-subject",
+      "depth_order": 2,
+      "objects": [
+        "person walking"
+      ],
+      "reason": "The person is a secondary subject and is positioned in the middle ground.",
+      "box": {
+        "x": 0.02,
+        "y": 0.45,
+        "width": 0.16,
+        "height": 0.4
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-people"
+    },
+    {
+      "id": "proposal_plate_03",
+      "name": "street steam",
+      "role": "environment-mid",
+      "depth_order": 3,
+      "objects": [
+        "street steam"
+      ],
+      "reason": "The steam is an environmental element that adds depth to the scene.",
+      "box": {
+        "x": 0.24,
+        "y": 0.55,
+        "width": 0.44,
+        "height": 0.28
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-vehicle"
+    },
+    {
+      "id": "proposal_plate_04",
+      "name": "background city",
+      "role": "background-far",
+      "depth_order": 4,
+      "objects": [
+        "buildings"
+      ],
+      "reason": "The buildings are in the background and provide context for the scene.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-vehicle"
+    },
+    {
+      "id": "proposal_plate_05",
+      "name": "no vehicle",
+      "role": "special-clean",
+      "depth_order": 5,
+      "objects": [
+        "no vehicle"
+      ],
+      "reason": "The no-vehicle plate is used to remove the vehicle from the scene.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-vehicle"
+    }
+  ],
+  "special_clean_plates": [
+    {
+      "name": "no-people",
+      "target_plate": "plate_02",
+      "clean_variant": "no-people",
+      "reason": "The no-people plate is used to remove the person from the scene."
+    },
+    {
+      "name": "no-vehicle",
+      "target_plate": "plate_01",
+      "clean_variant": "no-vehicle",
+      "reason": "The no-vehicle plate is used to remove the vehicle from the scene."
+    }
+  ],
+  "notes": [
+    "The scene is set in an urban environment with buildings in the background. The vehicle is the main focus of the scene and is positioned in the foreground. The person is a secondary subject and is positioned in the middle ground. The steam is an environmental element that adds depth to the scene. The buildings are in the background and provide context for the scene. The no-people and no-vehicle plates are used to remove the person and the vehicle from the scene, respectively."
+  ],
+  "confidence": 0.9,
+  "plate_stack_proposal": {
+    "sampleId": "hover-politsia",
+    "plates": [
+      {
+        "id": "plate_01",
+        "label": "vehicle",
+        "role": "foreground-subject",
+        "source": "qwen-plan",
+        "x": 0.28,
+        "y": 0.21,
+        "width": 0.5,
+        "height": 0.54,
+        "z": 28,
+        "depthPriority": 0.88,
+        "visible": true,
+        "depthOrder": 4,
+        "cleanVariant": "no-vehicle"
+      },
+      {
+        "id": "plate_02",
+        "label": "walker",
+        "role": "secondary-subject",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.45,
+        "width": 0.16,
+        "height": 0.4,
+        "z": 12,
+        "depthPriority": 0.7,
+        "visible": true,
+        "depthOrder": 3,
+        "cleanVariant": "no-people"
+      },
+      {
+        "id": "plate_03",
+        "label": "street steam",
+        "role": "environment-mid",
+        "source": "qwen-plan",
+        "x": 0.24,
+        "y": 0.55,
+        "width": 0.44,
+        "height": 0.28,
+        "z": -4,
+        "depthPriority": 0.52,
+        "visible": true,
+        "depthOrder": 2,
+        "cleanVariant": null
+      },
+      {
+        "id": "plate_04",
+        "label": "background city",
+        "role": "background-far",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -20,
+        "depthPriority": 0.34,
+        "visible": true,
+        "depthOrder": 1,
+        "cleanVariant": null
+      },
+      {
+        "id": "plate_05",
+        "label": "no-people",
+        "role": "special-clean",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -30,
+        "depthPriority": 0.08,
+        "visible": false,
+        "depthOrder": 99,
+        "cleanVariant": "no-people",
+        "targetPlate": "plate_02"
+      },
+      {
+        "id": "plate_06",
+        "label": "no-vehicle",
+        "role": "special-clean",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -34,
+        "depthPriority": 0.08,
+        "visible": false,
+        "depthOrder": 99,
+        "cleanVariant": "no-vehicle",
+        "targetPlate": "plate_01"
+      }
+    ]
+  },
+  "raw_response": "{\n  \"scene_summary\": \"A police vehicle hovering above a city street, with a person walking and a cat nearby. The scene is set in an urban environment with buildings in the background.\",\n  \"recommended_plate_count\": 5,\n  \"plates\": [\n    {\n      \"name\": \"vehicle\",\n      \"role\": \"foreground-subject\",\n      \"depth_order\": 1,\n      \"objects\": [\"hovering police vehicle\"],\n      \"reason\": \"The vehicle is the main focus of the scene and is positioned in the foreground.\",\n      \"box\": {\"x\": 0.28, \"y\": 0.21, \"width\": 0.5, \"height\": 0.54},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-vehicle\"\n    },\n    {\n      \"name\": \"walker\",\n      \"role\": \"secondary-subject\",\n      \"depth_order\": 2,\n      \"objects\": [\"person walking\"],\n      \"reason\": \"The person is a secondary subject and is positioned in the middle ground.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.45, \"width\": 0.16, \"height\": 0.4},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-people\"\n    },\n    {\n      \"name\": \"street steam\",\n      \"role\": \"environment-mid\",\n      \"depth_order\": 3,\n      \"objects\": [\"street steam\"],\n      \"reason\": \"The steam is an environmental element that adds depth to the scene.\",\n      \"box\": {\"x\": 0.24, \"y\": 0.55, \"width\": 0.44, \"height\": 0.28},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-vehicle\"\n    },\n    {\n      \"name\": \"background city\",\n      \"role\": \"background-far\",\n      \"depth_order\": 4,\n      \"objects\": [\"buildings\"],\n      \"reason\": \"The buildings are in the background and provide context for the scene.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-vehicle\"\n    },\n    {\n      \"name\": \"no vehicle\",\n      \"role\": \"special-clean\",\n      \"depth_order\": 5,\n      \"objects\": [\"no vehicle\"],\n      \"reason\": \"The no-vehicle plate is used to remove the vehicle from the scene.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-vehicle\"\n    }\n  ],\n  \"special_clean_plates\": [\n    {\n      \"name\": \"no-people\",\n      \"target_plate\": \"plate_02\",\n      \"reason\": \"The no-people plate is used to remove the person from the scene.\"\n    },\n    {\n      \"name\": \"no-vehicle\",\n      \"target_plate\": \"plate_01\",\n      \"reason\": \"The no-vehicle plate is used to remove the vehicle from the scene.\"\n    }\n  ],\n  \"notes\": [\"The scene is set in an urban environment with buildings in the background. The vehicle is the main focus of the scene and is positioned in the foreground. The person is a secondary subject and is positioned in the middle ground. The steam is an environmental element that adds depth to the scene. The buildings are in the background and provide context for the scene. The no-people and no-vehicle plates are used to remove the person and the vehicle from the scene, respectively.\"],\n  \"confidence\": 0.9\n}",
+  "error": null
+}

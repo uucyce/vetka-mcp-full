@@ -25,11 +25,13 @@ class TestMyceliumMCPServer:
         )
         return MYCELIUM_TOOLS, list_tools, call_tool, _handle_health, _handle_pipeline, _handle_devpanel_stream, _TOOL_DISPATCH
 
-    # --- 1. list_tools returns 17 tools ---
-    def test_list_tools_returns_17(self):
+    # --- 1. list_tools returns baseline set including task board ---
+    def test_list_tools_returns_baseline_set(self):
         TOOLS, list_tools_fn, *_ = self._import_server()
         result = asyncio.run(list_tools_fn())
-        assert len(result) == 17, f"Expected 17 tools, got {len(result)}"
+        names = {tool.name for tool in result}
+        assert len(result) >= 17, f"Expected at least 17 tools, got {len(result)}"
+        assert "mycelium_task_board" in names
 
     # --- 2. All tool names start with mycelium_ ---
     def test_all_tools_prefixed_mycelium(self):

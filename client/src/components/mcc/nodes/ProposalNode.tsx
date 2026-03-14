@@ -10,12 +10,15 @@ import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { NOLAN_PALETTE, getStatusBorderColor, getConfidenceColor } from '../../../utils/dagLayout';
 import type { NodeStatus } from '../../../types/dag';
+import { resolveMiniScale, scalePx } from './miniScale';
 
 interface ProposalNodeProps {
   data: {
     label: string;
     status: NodeStatus;
     confidence?: number;
+    mini?: boolean;
+    miniScale?: number;
   };
   selected?: boolean;
 }
@@ -24,23 +27,56 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
   const borderColor = getStatusBorderColor(data.status);
   const confidenceColor = data.confidence ? getConfidenceColor(data.confidence) : NOLAN_PALETTE.borderLight;
   const isReady = data.status === 'done' && data.confidence;
+  const isWorkflowCompact = Boolean(data.mini);
+  const compactScale = resolveMiniScale(isWorkflowCompact, data.miniScale);
 
   return (
     <div
       style={{
         position: 'relative',
-        width: 100,
-        height: 60,
+        width: isWorkflowCompact ? scalePx(40, compactScale, 30) : 100,
+        height: isWorkflowCompact ? scalePx(26, compactScale, 20) : 60,
       }}
     >
       <Handle
+        type="source"
+        id="source-top"
+        position={Position.Top}
+        style={{
+          opacity: 0,
+          width: 2,
+          height: 2,
+          background: 'transparent',
+          border: 'none',
+          top: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
+      />
+      <Handle
         type="target"
+        id="target-top"
         position={Position.Top}
         style={{
           background: NOLAN_PALETTE.borderLight,
-          width: 6,
-          height: 6,
+          width: scalePx(6, compactScale, 4),
+          height: scalePx(6, compactScale, 4),
           top: 0,
+          left: '50%',
+          transform: 'translateX(-50%)',
+        }}
+      />
+      <Handle
+        type="target"
+        id="target-bottom"
+        position={Position.Bottom}
+        style={{
+          opacity: 0,
+          width: 2,
+          height: 2,
+          background: 'transparent',
+          border: 'none',
+          bottom: 0,
           left: '50%',
           transform: 'translateX(-50%)',
         }}
@@ -52,8 +88,8 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
           position: 'absolute',
           top: '50%',
           left: '50%',
-          width: 80,
-          height: 50,
+          width: isWorkflowCompact ? scalePx(30, compactScale, 22) : 80,
+          height: isWorkflowCompact ? scalePx(20, compactScale, 16) : 50,
           transform: 'translate(-50%, -50%) rotate(45deg)',
           background: NOLAN_PALETTE.bgLight,
           border: `2px solid ${borderColor}`,
@@ -82,7 +118,7 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
         {data.confidence !== undefined && (
           <div
             style={{
-              fontSize: 14,
+              fontSize: isWorkflowCompact ? scalePx(9, compactScale, 7) : 14,
               fontWeight: 600,
               color: confidenceColor,
             }}
@@ -94,7 +130,7 @@ function ProposalNodeComponent({ data, selected }: ProposalNodeProps) {
         {/* Label */}
         <div
           style={{
-            fontSize: 8,
+            fontSize: isWorkflowCompact ? scalePx(6, compactScale, 5) : 8,
             color: NOLAN_PALETTE.textNormal,
             textTransform: 'uppercase',
             letterSpacing: 0.5,

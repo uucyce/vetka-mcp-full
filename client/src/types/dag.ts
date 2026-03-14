@@ -8,19 +8,23 @@
 
 // Node types in the DAG
 // MARKER_144.4: Extended with workflow editor node types
+// MARKER_154.6A: Added 'roadmap_task' for Phase 154 Matryoshka roadmap level
 export type DAGNodeType = 'task' | 'agent' | 'subtask' | 'proposal'
-  | 'condition' | 'parallel' | 'loop' | 'transform' | 'group';
+  | 'condition' | 'parallel' | 'loop' | 'transform' | 'group'
+  | 'roadmap_task';
 
 // Agent roles in the pipeline
-export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier';
+export type AgentRole = 'scout' | 'architect' | 'researcher' | 'coder' | 'verifier' | 'eval';
 
 // Node status
 export type NodeStatus = 'pending' | 'running' | 'done' | 'failed';
 
 // Edge types for different relationships
 // MARKER_144.4: Extended with workflow editor edge types
+// MARKER_154.6A: Added 'dependency' for roadmap-level inter-task relationships
 export type EdgeType = 'structural' | 'dataflow' | 'temporal'
-  | 'conditional' | 'parallel_fork' | 'parallel_join' | 'feedback';
+  | 'conditional' | 'parallel_fork' | 'parallel_join' | 'feedback'
+  | 'dependency' | 'predicted';
 
 /**
  * DAG Node — represents any entity in the graph.
@@ -51,6 +55,41 @@ export interface DAGNode {
   role?: AgentRole;           // For agent nodes
   description?: string;       // Full description for detail view
   code?: string;              // Code preview for subtasks
+  position?: { x: number; y: number };
+  width?: number;
+  height?: number;
+
+  // MARKER_155.1A: Extra fields for RoadmapTaskNode at tasks level
+  preset?: string;            // Team preset (dragon_bronze/silver/gold) for badge
+  subtasksDone?: number;      // Completed subtasks for progress bar
+  subtasksTotal?: number;     // Total subtasks for progress bar
+
+  // MARKER_155A.P1.GRAPH_SCHEMA: Unified graph contract metadata (adapter-friendly)
+  graphKind?: 'project_root' | 'project_dir' | 'project_file' | 'project_task'
+    | 'workflow_agent' | 'workflow_artifact' | 'workflow_message';
+  projectNodeId?: string;
+  workflowId?: string;
+  agentNodeId?: string;
+  sourceMessageId?: string;
+  primaryNodeId?: string;
+  affectedNodes?: string[];
+  integrationTaskOf?: string[];
+  anchorNodeIds?: string[];
+  anchorState?: 'anchored' | 'suggested' | 'unplaced';
+  taskOrigin?: 'architect' | 'chat' | 'manual' | 'system';
+  teamProfile?: string;
+
+  // MARKER_155.ARCH_LAYOUT.METADATA_BRIDGE.V1:
+  // Keep backend layout metadata (parent/cluster/buckets) for architecture tree renderer.
+  metadata?: {
+    parent?: string;
+    cluster_id?: number;
+    rank_bucket?: number;
+    bucket_count?: number;
+    layer_index?: number;
+    is_branch?: boolean;
+    [key: string]: any;
+  };
 }
 
 /**
@@ -63,6 +102,14 @@ export interface DAGEdge {
   type: EdgeType;
   strength: number;           // 0.0-1.0
   animated?: boolean;
+  label?: string;
+  className?: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  data?: Record<string, any>;
+
+  // MARKER_155A.P1.GRAPH_SCHEMA: Unified edge relation metadata
+  relationKind?: string;
 }
 
 /**

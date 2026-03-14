@@ -14,10 +14,14 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
+import type { StreamEvent } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import type { DAGNode } from '../../types/dag';
+import { ReflexInsight } from '../chat/ReflexInsight';
+import type { ChatMessage } from '../../types/chat';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const API_BASE = 'http://localhost:5001/api';
 
 interface NodeArtifact {
   id: string;
@@ -203,7 +207,35 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-function StreamTabContent({ events }: { events: Array<{ id: string; ts: number; role: string; message: string }> }) {
+/** MARKER_174.B: Role → avatar emoji for chat bubbles */
+const ROLE_AVATAR: Record<string, string> = {
+  architect: '🏗️',
+  coder: '⚡',
+  researcher: '🔍',
+  scout: '🐝',
+  verifier: '✅',
+  pipeline: '⚙️',
+  board: '📋',
+  stats: '📊',
+  '@reflex': '🎯',
+};
+
+/** MARKER_174.B: Role → accent color for chat bubbles */
+const ROLE_COLOR: Record<string, string> = {
+  architect: 'rgba(234, 179, 8, 0.15)',     // gold
+  coder: 'rgba(59, 130, 246, 0.15)',        // blue
+  researcher: 'rgba(16, 185, 129, 0.15)',   // green
+  scout: 'rgba(249, 115, 22, 0.15)',        // orange
+  verifier: 'rgba(139, 92, 246, 0.15)',     // purple
+  pipeline: 'rgba(255, 255, 255, 0.04)',
+  '@reflex': 'rgba(139, 92, 246, 0.10)',
+};
+
+/**
+ * MARKER_174.B: Chat-style stream tab — agent messages as bubbles with ReflexInsight pills.
+ * Replaces plain-text log with conversational UX.
+ */
+function StreamTabContent({ events }: { events: StreamEvent[] }) {
   if (events.length === 0) {
     return (
       <div style={{ padding: 10, color: NOLAN_PALETTE.textDim, fontSize: 9, textAlign: 'center' }}>
@@ -215,26 +247,68 @@ function StreamTabContent({ events }: { events: Array<{ id: string; ts: number; 
   }
 
   return (
-    <div style={{ padding: '4px 6px' }}>
-      {events.map(event => (
-        <div key={event.id} style={{
-          display: 'flex', gap: 4, padding: '2px 4px', fontSize: 8,
-          borderBottom: `1px solid rgba(255,255,255,0.02)`,
-        }}>
-          <span style={{ color: '#444', minWidth: 44 }}>
-            {new Date(event.ts).toLocaleTimeString()}
-          </span>
-          <span style={{ color: '#666', minWidth: 40, textTransform: 'uppercase', fontSize: 7 }}>
-            {event.role}
-          </span>
-          <span style={{
-            color: '#aaa', flex: 1,
-            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          }} title={event.message}>
-            {event.message}
-          </span>
-        </div>
-      ))}
+    <div style={{ padding: '4px 6px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {events.map(event => {
+        // MARKER_174.B: Rich rendering for REFLEX events
+        if (event.metadata?.type === 'reflex') {
+          const reflexMsg: ChatMessage = {
+            id: event.id,
+            role: 'system',
+            content: event.message,
+            type: 'reflex',
+            timestamp: new Date(event.ts).toISOString(),
+            metadata: { reflex: event.metadata as any },
+          };
+          return (
+            <div key={event.id} style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 10, minWidth: 16 }}>
+                {ROLE_AVATAR[event.role] || ROLE_AVATAR['@reflex']}
+              </span>
+              <div style={{ flex: 1 }}>
+                <ReflexInsight message={reflexMsg} />
+              </div>
+            </div>
+          );
+        }
+
+        // MARKER_174.B: Chat bubble for regular agent messages
+        const avatar = ROLE_AVATAR[event.role] || '💬';
+        const bgColor = ROLE_COLOR[event.role] || 'rgba(255,255,255,0.04)';
+        return (
+          <div key={event.id} style={{
+            display: 'flex', gap: 5, alignItems: 'flex-start',
+          }}>
+            <span style={{ fontSize: 10, minWidth: 16, marginTop: 1 }}>{avatar}</span>
+            <div style={{
+              flex: 1,
+              background: bgColor,
+              borderRadius: '4px 8px 8px 4px',
+              padding: '3px 8px',
+              borderLeft: `2px solid ${bgColor.replace(/[\d.]+\)$/, '0.4)')}`,
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6, marginBottom: 1,
+              }}>
+                <span style={{
+                  fontSize: 8, color: 'rgba(255,255,255,0.5)',
+                  textTransform: 'uppercase', fontWeight: 600, letterSpacing: '0.5px',
+                }}>
+                  {event.role}
+                </span>
+                <span style={{ fontSize: 7, color: '#444' }}>
+                  {new Date(event.ts).toLocaleTimeString()}
+                </span>
+              </div>
+              <span style={{
+                fontSize: 9, color: '#bbb', lineHeight: '14px',
+                display: 'block', wordBreak: 'break-word',
+              }} title={event.message}>
+                {event.message}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

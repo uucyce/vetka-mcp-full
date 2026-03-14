@@ -1,0 +1,6 @@
+<think>
+Okay, let's tackle the user's question. They want to know about context packing in VETKA, specifically two initial steps. The user mentioned an interrupt test, so they might be in the middle of a process.
+
+First, I need to recall what context packing in VETKA involves. From the provided dependency context, there's a mention of "qdrant_semantic + cam_activation" and some files related to schema markup testing and error handling. The pinned files include a response.txt with issues and fixes, which might relate to setup steps.
+
+The user asked for two steps to take first. Looking at the dependency

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useDevPanelStore } from '../../store/useDevPanelStore';
+// MARKER_176.15: Centralized MCC API config import.
+import { DEBUG_API } from '../../config/api.config';
 
 interface BalanceRecord {
   provider: string;
@@ -14,7 +16,6 @@ interface BalancesResponse {
   records?: BalanceRecord[];
 }
 
-const API_DEBUG = 'http://localhost:5001/api/debug';
 
 function formatUsd(value: number | null): string {
   if (value === null || Number.isNaN(value)) return '--';
@@ -26,6 +27,8 @@ export function KeyDropdown() {
   const selectedKey = useStore(s => s.selectedKey);
   const setSelectedKey = useStore(s => s.setSelectedKey);
   const clearSelectedKey = useStore(s => s.clearSelectedKey);
+  const favoriteKeys = useStore(s => s.favoriteKeys);
+  const toggleFavoriteKey = useStore(s => s.toggleFavoriteKey);
 
   const [open, setOpen] = useState(false);
   const [records, setRecords] = useState<BalanceRecord[]>([]);
@@ -39,10 +42,15 @@ export function KeyDropdown() {
       if (!map.has(key)) map.set(key, r);
     }
     return Array.from(map.values()).sort((a, b) => {
+      const aFavId = `${a.provider.toLowerCase().trim()}:${a.key_masked}`;
+      const bFavId = `${b.provider.toLowerCase().trim()}:${b.key_masked}`;
+      const aFav = favoriteKeys.includes(aFavId) ? 0 : 1;
+      const bFav = favoriteKeys.includes(bFavId) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
       if (a.exhausted !== b.exhausted) return a.exhausted ? 1 : -1;
       return a.provider.localeCompare(b.provider);
     });
-  }, [records]);
+  }, [records, favoriteKeys]);
 
   const selectedBalance = useMemo(() => {
     if (!selectedKey) return null;
@@ -54,7 +62,7 @@ export function KeyDropdown() {
   const fetchBalances = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_DEBUG}/usage/balances`);
+      const res = await fetch(`${DEBUG_API}/usage/balances`);
       if (!res.ok) return;
       const data: BalancesResponse = await res.json();
       if (data.success && Array.isArray(data.records)) {
@@ -69,9 +77,24 @@ export function KeyDropdown() {
 
   useEffect(() => {
     fetchBalances();
-    const t = setInterval(fetchBalances, 30000);
-    return () => clearInterval(t);
+    const onVisibility = () => {
+      if (!document.hidden) fetchBalances();
+    };
+    window.addEventListener('task-board-updated', fetchBalances as EventListener);
+    window.addEventListener('pipeline-stats', fetchBalances as EventListener);
+    window.addEventListener('focus', fetchBalances);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('task-board-updated', fetchBalances as EventListener);
+      window.removeEventListener('pipeline-stats', fetchBalances as EventListener);
+      window.removeEventListener('focus', fetchBalances);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [fetchBalances]);
+
+  useEffect(() => {
+    if (open) fetchBalances();
+  }, [open, fetchBalances]);
 
   useEffect(() => {
     if (!open) return;
@@ -166,6 +189,8 @@ export function KeyDropdown() {
           )}
 
           {grouped.map(record => {
+            const favKeyId = `${record.provider.toLowerCase().trim()}:${record.key_masked}`;
+            const isFavorite = favoriteKeys.includes(favKeyId);
             const isSelected = selectedKey?.provider === record.provider
               && selectedKey?.key_masked === record.key_masked;
             return (
@@ -197,6 +222,24 @@ export function KeyDropdown() {
                 </span>
                 <span style={{ color: '#888', minWidth: 92, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {record.key_masked}
+                </span>
+                <span
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleFavoriteKey(favKeyId);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: isFavorite ? '#ddd' : '#666',
+                    cursor: 'pointer',
+                    padding: '0 4px',
+                    fontSize: 11,
+                    fontFamily: 'monospace',
+                  }}
+                  title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                >
+                  {isFavorite ? '★' : '☆'}
                 </span>
                 <span style={{ marginLeft: 'auto', color: '#999' }}>
                   {formatUsd(record.balance_usd)}

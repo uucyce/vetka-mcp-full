@@ -12,6 +12,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Panel } from './Panel';
 import { CodeViewer } from './viewers/CodeViewer';
 import { useStore } from '../../store/useStore';
+import { readFileViaApi } from '../../utils/fileReadClient';
 
 export function FilePreview() {
   const selectedId = useStore((state) => state.selectedId);
@@ -34,11 +35,7 @@ export function FilePreview() {
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/files/read?path=${encodeURIComponent(selectedNode.path)}`
-        );
-        if (!response.ok) throw new Error('Failed to load file');
-        const data = await response.json();
+        const data = await readFileViaApi(selectedNode.path);
         setContent(data.content);
       } catch {
         // Demo mode fallback

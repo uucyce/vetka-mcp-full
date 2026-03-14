@@ -1,0 +1,5 @@
+1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in STM/ENGRAM context packing, using semantic compaction without data loss.
+
+2. **Add CAM saliency signals** to prioritize high-relevance memory traces during packing, ensuring only critical context is retained for latency-sensitive operations.
+
+3. **Integrate HNSW ANN indexing** for efficient memory retrieval, replacing linear scans with hierarchical navigation to maintain low latency during context packing.

@@ -1,0 +1,3 @@
+Okay, here’s a 3-point plan to improve VETKA memory context packing, prioritizing low latency and avoiding regressions, based on the provided context:
+
+1. **Prioritize STM for Immediate Context:**  Focus initial improvements on the STM (Short Term Memory) component.  Given the emphasis

@@ -1,0 +1,215 @@
+{
+  "schema_version": "cut_core_dep_audit_v1",
+  "manifest_path": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/config/cut/cut_core_mirror_manifest.example.json",
+  "source_root": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+  "manifest_groups": {
+    "watcher_core": [
+      "src/api/routes/watcher_routes.py",
+      "src/scanners/file_watcher.py",
+      "src/scanners/local_project_scanner.py"
+    ],
+    "multimodal_ingest": [
+      "src/scanners/extractor_registry.py",
+      "src/scanners/multimodal_contracts.py",
+      "src/scanners/qdrant_updater.py",
+      "src/memory/qdrant_batch_manager.py"
+    ],
+    "memory_core": [
+      "src/memory/engram_user_memory.py",
+      "src/memory/stm_buffer.py",
+      "src/memory/mgc_cache.py",
+      "src/memory/spiral_context_generator.py",
+      "src/orchestration/cam_engine.py"
+    ],
+    "core_boot_closure_tier1": [
+      "src/scanners/mime_policy.py",
+      "src/memory/qdrant_client.py",
+      "src/orchestration/triple_write_manager.py",
+      "src/utils/embedding_service.py",
+      "src/services/activity_hub.py",
+      "src/services/activity_emitter.py",
+      "src/memory/elision.py",
+      "src/memory/surprise_detector.py",
+      "src/memory/qdrant_auto_retry.py",
+      "src/ocr/ocr_processor.py",
+      "src/voice/stt_engine.py"
+    ],
+    "media_contracts": [],
+    "media_runtime": [
+      "src/api/routes/artifact_routes.py",
+      "src/services/media_mcp_job_store.py",
+      "tests/phase159/test_media_mcp_async_startup.py"
+    ]
+  },
+  "mirrored_python_paths": [
+    "src/api/routes/artifact_routes.py",
+    "src/api/routes/watcher_routes.py",
+    "src/memory/elision.py",
+    "src/memory/engram_user_memory.py",
+    "src/memory/mgc_cache.py",
+    "src/memory/qdrant_auto_retry.py",
+    "src/memory/qdrant_batch_manager.py",
+    "src/memory/qdrant_client.py",
+    "src/memory/spiral_context_generator.py",
+    "src/memory/stm_buffer.py",
+    "src/memory/surprise_detector.py",
+    "src/ocr/ocr_processor.py",
+    "src/orchestration/cam_engine.py",
+    "src/orchestration/triple_write_manager.py",
+    "src/scanners/extractor_registry.py",
+    "src/scanners/file_watcher.py",
+    "src/scanners/local_project_scanner.py",
+    "src/scanners/mime_policy.py",
+    "src/scanners/multimodal_contracts.py",
+    "src/scanners/qdrant_updater.py",
+    "src/services/activity_emitter.py",
+    "src/services/activity_hub.py",
+    "src/services/media_mcp_job_store.py",
+    "src/utils/embedding_service.py",
+    "src/voice/stt_engine.py",
+    "tests/phase159/test_media_mcp_async_startup.py"
+  ],
+  "imports_by_file": {
+    "src/api/routes/artifact_routes.py": [
+      "src.api.handlers.artifact_routes",
+      "src.memory.engram_user_memory",
+      "src.memory.qdrant_batch_manager",
+      "src.orchestration.cam_engine",
+      "src.orchestration.cam_event_handler",
+      "src.orchestration.triple_write_manager",
+      "src.scanners.extractor_registry",
+      "src.scanners.mime_policy",
+      "src.scanners.qdrant_updater",
+      "src.services.artifact_scanner",
+      "src.services.premiere_adapter",
+      "src.voice.stt_engine"
+    ],
+    "src/api/routes/watcher_routes.py": [
+      "src.memory.qdrant_client",
+      "src.ocr.ocr_processor",
+      "src.orchestration.triple_write_manager",
+      "src.scanners.file_watcher",
+      "src.scanners.local_project_scanner",
+      "src.scanners.mime_policy",
+      "src.scanners.qdrant_updater",
+      "src.voice.stt_engine"
+    ],
+    "src/memory/elision.py": [
+      "src.memory.surprise_detector"
+    ],
+    "src/memory/engram_user_memory.py": [
+      "src.memory.elision",
+      "src.memory.qdrant_client",
+      "src.orchestration.cam_engine"
+    ],
+    "src/memory/mgc_cache.py": [],
+    "src/memory/qdrant_auto_retry.py": [
+      "src.memory.qdrant_auto_retry"
+    ],
+    "src/memory/qdrant_batch_manager.py": [
+      "src.memory.qdrant_client",
+      "src.utils.embedding_service"
+    ],
+    "src/memory/qdrant_client.py": [
+      "src.utils.embedding_service"
+    ],
+    "src/memory/spiral_context_generator.py": [
+      "src.memory.elision",
+      "src.memory.mgc_cache"
+    ],
+    "src/memory/stm_buffer.py": [],
+    "src/memory/surprise_detector.py": [
+      "src.utils.embedding_service"
+    ],
+    "src/ocr/ocr_processor.py": [],
+    "src/orchestration/cam_engine.py": [
+      "src.memory.stm_buffer",
+      "src.utils.embedding_service"
+    ],
+    "src/orchestration/triple_write_manager.py": [
+      "src.memory.qdrant_auto_retry",
+      "src.memory.qdrant_client",
+      "src.utils.embedding_service"
+    ],
+    "src/scanners/extractor_registry.py": [
+      "src.ocr.ocr_processor",
+      "src.scanners.mime_policy",
+      "src.scanners.multimodal_contracts",
+      "src.services.mcc_jepa_adapter",
+      "src.voice.stt_engine"
+    ],
+    "src/scanners/file_watcher.py": [
+      "src.initialization.components_init",
+      "src.memory.qdrant_client",
+      "src.scanners.qdrant_updater",
+      "src.services.activity_hub"
+    ],
+    "src/scanners/local_project_scanner.py": [],
+    "src/scanners/mime_policy.py": [],
+    "src/scanners/multimodal_contracts.py": [],
+    "src/scanners/qdrant_updater.py": [
+      "src.orchestration.triple_write_manager",
+      "src.scanners.mime_policy",
+      "src.services.activity_hub",
+      "src.utils.embedding_service"
+    ],
+    "src/services/activity_emitter.py": [
+      "src.services.activity_emitter"
+    ],
+    "src/services/activity_hub.py": [
+      "src.services.activity_emitter",
+      "src.services.activity_hub"
+    ],
+    "src/services/media_mcp_job_store.py": [],
+    "src/utils/embedding_service.py": [],
+    "src/voice/stt_engine.py": [],
+    "tests/phase159/test_media_mcp_async_startup.py": [
+      "src.api.routes.artifact_routes"
+    ]
+  },
+  "transitive_internal_relpaths": [
+    "src/api/handlers/artifact_routes.py",
+    "src/api/routes/artifact_routes.py",
+    "src/initialization/components_init.py",
+    "src/memory/elision.py",
+    "src/memory/engram_user_memory.py",
+    "src/memory/mgc_cache.py",
+    "src/memory/qdrant_auto_retry.py",
+    "src/memory/qdrant_batch_manager.py",
+    "src/memory/qdrant_client.py",
+    "src/memory/stm_buffer.py",
+    "src/memory/surprise_detector.py",
+    "src/ocr/ocr_processor.py",
+    "src/orchestration/cam_engine.py",
+    "src/orchestration/cam_event_handler.py",
+    "src/orchestration/triple_write_manager.py",
+    "src/scanners/extractor_registry.py",
+    "src/scanners/file_watcher.py",
+    "src/scanners/local_project_scanner.py",
+    "src/scanners/mime_policy.py",
+    "src/scanners/multimodal_contracts.py",
+    "src/scanners/qdrant_updater.py",
+    "src/services/activity_emitter.py",
+    "src/services/activity_hub.py",
+    "src/services/artifact_scanner.py",
+    "src/services/mcc_jepa_adapter.py",
+    "src/services/premiere_adapter.py",
+    "src/utils/embedding_service.py",
+    "src/voice/stt_engine.py"
+  ],
+  "missing_from_manifest_relpaths": [
+    "src/api/handlers/artifact_routes.py",
+    "src/initialization/components_init.py",
+    "src/orchestration/cam_event_handler.py",
+    "src/services/artifact_scanner.py",
+    "src/services/mcc_jepa_adapter.py",
+    "src/services/premiere_adapter.py"
+  ],
+  "unresolved_internal_relpaths": [],
+  "summary": {
+    "mirrored_python_file_count": 26,
+    "transitive_internal_count": 28,
+    "missing_from_manifest_count": 6,
+    "unresolved_internal_count": 0
+  }
+}

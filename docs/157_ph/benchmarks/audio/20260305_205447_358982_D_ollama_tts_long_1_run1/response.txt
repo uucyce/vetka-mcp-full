@@ -1,0 +1,7 @@
+Here’s a breakdown of the interrupt and restart stream protocol, referencing the provided context:
+
+1.  **Stream Start:** The `chat_voice_stream_start` socket contract initiates the stream. A `voice_pending` bubble is created on the `stream_start`.
+
+2.  **Stream Chunks:**  `chat_voice_stream_chunk` sends audio data.
+
+3.  **Stream End:** The `

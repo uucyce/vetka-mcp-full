@@ -1,0 +1,5 @@
+Okay, let's break down the context packing process in VETKA. Here’s a concise overview of the two initial steps:
+
+1.  **Define the Probe Tool's Parameters:** First, you need to configure the probe tool to define specific parameters for the local measurements. This involves setting the trigger/hysteresis threshold and other relevant settings.
+
+2.  **Implement the Test Logic:**  Then, you'll need to

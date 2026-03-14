@@ -1,0 +1,3 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When the `tool_execution_mode` is not set to `enabled_stream`, the model should not assert that tools

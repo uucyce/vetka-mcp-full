@@ -1,0 +1,3 @@
+1.  Implement `get_recent_stats(limit=...)` for latency metrics within `ContextPacker`.
+2.  Utilize `pack_latency_ms`, `jepa_latency_ms` for analysis and optimization.
+3.  Focus probe tool on trigger/hysteresis measurements to reduce overhead.

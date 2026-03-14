@@ -1,0 +1,11 @@
+Okay, here’s a concise breakdown:
+
+**Interrupt + Restart Stream Protocol (IRSP):**
+
+1.  **Interrupt:** Call drops unexpectedly.
+2.  **Restart:** A new session is initiated, seamlessly reconnecting.
+3.  **Synchronization:**  Data is re-synchronized between the new and old sessions.
+
+**Impact on Voice Handoff:**
+
+*   IRSP enables

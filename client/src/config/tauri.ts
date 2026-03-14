@@ -29,6 +29,30 @@ export interface HealthStatus {
   latency_ms: number;
 }
 
+export interface DetachedMediaGeometryTrace {
+  src: string;
+  dpr: number;
+  window_inner_width: number;
+  window_inner_height: number;
+  video_intrinsic_width: number;
+  video_intrinsic_height: number;
+  wrapper_width: number;
+  wrapper_height: number;
+  toolbar_width: number;
+  toolbar_height: number;
+}
+
+export interface DetachedMediaNativeGeometry {
+  src: string;
+  scale_factor: number;
+  inner_physical_width: number;
+  inner_physical_height: number;
+  inner_logical_width: number;
+  inner_logical_height: number;
+  outer_physical_width: number;
+  outer_physical_height: number;
+}
+
 export interface FileInfo {
   name: string;
   path: string;
@@ -69,6 +93,21 @@ export interface WebArtifactSavedEvent {
   error?: string;
 }
 
+interface TauriTestOverrides {
+  isTauri?: boolean;
+  getCurrentWindowFullscreen?: () => Promise<boolean | null> | boolean | null;
+  setCurrentWindowFullscreen?: (fullscreen: boolean) => Promise<boolean | null> | boolean | null;
+  setCurrentWindowLogicalSize?: (width: number, height: number) => Promise<boolean> | boolean;
+  setWindowFullscreen?: (fullscreen: boolean, windowLabel?: string) => Promise<boolean> | boolean;
+}
+
+function getTauriTestOverrides(): TauriTestOverrides | null {
+  if (typeof window === 'undefined') return null;
+  const w = window as unknown as Record<string, unknown>;
+  const overrides = w.__VETKA_TAURI_TEST__;
+  return overrides && typeof overrides === 'object' ? overrides as TauriTestOverrides : null;
+}
+
 // ============================================
 // Runtime Detection
 // ============================================
@@ -77,7 +116,13 @@ export interface WebArtifactSavedEvent {
  * Check if running inside Tauri desktop app
  */
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  if (typeof window === 'undefined') return false;
+  const overrides = getTauriTestOverrides();
+  if (overrides?.isTauri === true) return true;
+  const w = window as unknown as Record<string, unknown>;
+  // MARKER_161.7.MULTIPROJECT.UI.TAURI_DETECT_HARDENING.V1
+  // Support both legacy and v2 internals bridges.
+  return Boolean(w.__TAURI__ || w.__TAURI_INTERNALS__);
 }
 
 // ============================================
@@ -90,6 +135,12 @@ let _invoke: any = null;
 let _listen: any = null;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _open: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _save: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _getCurrentWindow: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _LogicalSize: any = null;
 
 async function getInvoke() {
   if (!isTauri()) return null;
@@ -133,6 +184,48 @@ async function getOpen() {
   return _open;
 }
 
+async function getSave() {
+  if (!isTauri()) return null;
+  if (!_save) {
+    try {
+      const mod = await import('@tauri-apps/plugin-dialog');
+      _save = mod.save;
+    } catch (e) {
+      console.warn('[Tauri] Failed to import save from @tauri-apps/plugin-dialog:', e);
+      return null;
+    }
+  }
+  return _save;
+}
+
+async function getCurrentWindowApi() {
+  if (!isTauri()) return null;
+  if (!_getCurrentWindow) {
+    try {
+      const mod = await import('@tauri-apps/api/window');
+      _getCurrentWindow = mod.getCurrentWindow;
+    } catch (e) {
+      console.warn('[Tauri] Failed to import @tauri-apps/api/window:', e);
+      return null;
+    }
+  }
+  return _getCurrentWindow;
+}
+
+async function getLogicalSizeCtor() {
+  if (!isTauri()) return null;
+  if (!_LogicalSize) {
+    try {
+      const mod = await import('@tauri-apps/api/dpi');
+      _LogicalSize = mod.LogicalSize;
+    } catch (e) {
+      console.warn('[Tauri] Failed to import @tauri-apps/api/dpi:', e);
+      return null;
+    }
+  }
+  return _LogicalSize;
+}
+
 // ============================================
 // Backend Configuration
 // ============================================
@@ -154,7 +247,7 @@ export async function getBackendConfig(): Promise<BackendConfig> {
   // Browser fallback
   return {
     api_url: import.meta.env.VITE_API_BASE || '/api',
-    socket_url: import.meta.env.DEV ? 'http://localhost:5001' : window.location.origin,
+    socket_url: import.meta.env.DEV ? 'http://127.0.0.1:5001' : window.location.origin,
     is_local: true,
   };
 }
@@ -189,6 +282,288 @@ export async function getSystemInfo(): Promise<SystemInfo | null> {
   }
 }
 
+/**
+ * Toggle native fullscreen for a Tauri window by label.
+ * Returns false in browser mode or on failure.
+ */
+export async function setWindowFullscreen(
+  fullscreen: boolean,
+  windowLabel: string = 'main'
+): Promise<boolean> {
+  const overrides = getTauriTestOverrides();
+  if (overrides?.setWindowFullscreen) {
+    try {
+      return await Promise.resolve(overrides.setWindowFullscreen(fullscreen, windowLabel)) === true;
+    } catch (e) {
+      console.warn('[TauriTest] setWindowFullscreen override failed:', e);
+      return false;
+    }
+  }
+
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const ok = await invoke<boolean>('set_window_fullscreen', {
+      windowLabel,
+      fullscreen,
+    });
+    return ok === true;
+  } catch (e) {
+    console.warn('[Tauri] set_window_fullscreen failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Toggle fullscreen for current calling Tauri window.
+ * Returns `null` in browser mode or on failure.
+ */
+export async function toggleCurrentWindowFullscreen(): Promise<boolean | null> {
+  const invoke = await getInvoke();
+  if (!invoke) return null;
+
+  try {
+    return await invoke<boolean>('toggle_current_window_fullscreen');
+  } catch (e) {
+    console.warn('[Tauri] toggle_current_window_fullscreen failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Read fullscreen state of current calling Tauri window.
+ * Returns `null` in browser mode or on failure.
+ */
+export async function getCurrentWindowFullscreen(): Promise<boolean | null> {
+  const overrides = getTauriTestOverrides();
+  if (overrides?.getCurrentWindowFullscreen) {
+    try {
+      return await Promise.resolve(overrides.getCurrentWindowFullscreen());
+    } catch (e) {
+      console.warn('[TauriTest] getCurrentWindowFullscreen override failed:', e);
+      return null;
+    }
+  }
+
+  const invoke = await getInvoke();
+  if (!invoke) return null;
+
+  try {
+    return await invoke<boolean>('get_current_window_fullscreen');
+  } catch (e) {
+    console.warn('[Tauri] get_current_window_fullscreen failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Set fullscreen state for current calling Tauri window.
+ * Returns resulting state, or `null` in browser mode / failure.
+ */
+export async function setCurrentWindowFullscreen(fullscreen: boolean): Promise<boolean | null> {
+  const overrides = getTauriTestOverrides();
+  if (overrides?.setCurrentWindowFullscreen) {
+    try {
+      return await Promise.resolve(overrides.setCurrentWindowFullscreen(fullscreen));
+    } catch (e) {
+      console.warn('[TauriTest] setCurrentWindowFullscreen override failed:', e);
+      return null;
+    }
+  }
+
+  const invoke = await getInvoke();
+  if (!invoke) return null;
+
+  try {
+    return await invoke<boolean>('set_current_window_fullscreen', { fullscreen });
+  } catch (e) {
+    console.warn('[Tauri] set_current_window_fullscreen failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Start native drag for current Tauri window (desktop only).
+ * Returns false in browser mode or on failure.
+ */
+export async function startCurrentWindowDragging(): Promise<boolean> {
+  const getCurrentWindow = await getCurrentWindowApi();
+  if (!getCurrentWindow) return false;
+  try {
+    const win = getCurrentWindow();
+    await win.startDragging();
+    return true;
+  } catch (e) {
+    console.warn('[Tauri] startDragging failed:', e);
+    return false;
+  }
+}
+
+/**
+ * MARKER_159.C5.WINDOW_SIZE_API:
+ * Resize current Tauri window in logical pixels.
+ * Returns false in browser mode or on failure.
+ */
+export async function setCurrentWindowLogicalSize(width: number, height: number): Promise<boolean> {
+  const overrides = getTauriTestOverrides();
+  if (overrides?.setCurrentWindowLogicalSize) {
+    try {
+      return await Promise.resolve(overrides.setCurrentWindowLogicalSize(width, height)) === true;
+    } catch (e) {
+      console.warn('[TauriTest] setCurrentWindowLogicalSize override failed:', e);
+      return false;
+    }
+  }
+
+  const getCurrentWindow = await getCurrentWindowApi();
+  const LogicalSize = await getLogicalSizeCtor();
+  if (!getCurrentWindow || !LogicalSize) return false;
+
+  const w = Math.max(240, Math.round(Number(width) || 0));
+  const h = Math.max(224, Math.round(Number(height) || 0));
+  if (!Number.isFinite(w) || !Number.isFinite(h)) return false;
+
+  try {
+    const win = getCurrentWindow();
+    await win.setSize(new LogicalSize(w, h));
+    return true;
+  } catch (e) {
+    console.warn('[Tauri] setCurrentWindowLogicalSize failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Open/reuse native artifact window route.
+ * Returns false in browser mode or on failure.
+ */
+export async function openArtifactWindow(params: {
+  path: string;
+  name?: string;
+  extension?: string;
+  artifactId?: string;
+  inVetka?: boolean;
+  initialSeekSec?: number;
+  contentMode?: 'file' | 'raw' | 'web';
+  windowLabel?: 'artifact-main' | 'artifact-media';
+}): Promise<boolean> {
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const ok = await invoke<boolean>('open_artifact_window', {
+      path: params.path,
+      name: params.name,
+      extension: params.extension,
+      artifactId: params.artifactId,
+      inVetka: typeof params.inVetka === 'boolean' ? params.inVetka : undefined,
+      initialSeekSec: params.initialSeekSec,
+      contentMode: params.contentMode || 'file',
+      windowLabel: params.windowLabel || 'artifact-main',
+    });
+    return ok === true;
+  } catch (e) {
+    console.warn('[Tauri] open_artifact_window failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Open/reuse detached artifact media window.
+ * Returns false in browser mode or on failure.
+ */
+export async function openArtifactMediaWindow(params: {
+  path: string;
+  name?: string;
+  extension?: string;
+  artifactId?: string;
+  inVetka?: boolean;
+  initialSeekSec?: number;
+}): Promise<boolean> {
+  let videoWidth: number | undefined;
+  let videoHeight: number | undefined;
+  let aspectRatio: string | undefined;
+
+  try {
+    // MARKER_159.R13.FRONTEND_MEDIA_METADATA_BRIDGE:
+    // fetch detached media sizing metadata in the browser process so backend access
+    // is visible in dev logs and exact dimensions are passed explicitly into Tauri.
+    const response = await fetch('/api/artifacts/media/window-metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: params.path }),
+    });
+    if (response.ok) {
+      const payload = await response.json();
+      videoWidth = Number(payload?.width_px || 0) || undefined;
+      videoHeight = Number(payload?.height_px || 0) || undefined;
+      aspectRatio = typeof payload?.aspect_ratio === 'string' ? payload.aspect_ratio : undefined;
+      console.info('[MARKER_159.R13.FRONTEND_MEDIA_METADATA_BRIDGE]', {
+        path: params.path,
+        width: videoWidth || 0,
+        height: videoHeight || 0,
+        aspectRatio: aspectRatio || null,
+      });
+    }
+  } catch (e) {
+    console.warn('[Tauri] media window metadata prefetch failed:', e);
+  }
+
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const ok = await invoke<boolean>('open_artifact_media_window', {
+      path: params.path,
+      name: params.name,
+      extension: params.extension,
+      artifactId: params.artifactId,
+      inVetka: typeof params.inVetka === 'boolean' ? params.inVetka : undefined,
+      initialSeekSec: params.initialSeekSec,
+      videoWidth,
+      videoHeight,
+      aspectRatio,
+    });
+    return ok === true;
+  } catch (e) {
+    console.warn('[Tauri] open_artifact_media_window failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Close detached artifact media window by label.
+ * Defaults to `artifact-media`.
+ */
+export async function closeArtifactMediaWindow(windowLabel: string = 'artifact-media'): Promise<boolean> {
+  const invoke = await getInvoke();
+  if (!invoke) return false;
+
+  try {
+    const ok = await invoke<boolean>('close_artifact_media_window', { windowLabel });
+    return ok === true;
+  } catch (e) {
+    console.warn('[Tauri] close_artifact_media_window failed:', e);
+    return false;
+  }
+}
+
+/**
+ * Send detached media geometry trace to native terminal logs and return native window geometry.
+ */
+export async function traceDetachedMediaGeometry(trace: DetachedMediaGeometryTrace): Promise<DetachedMediaNativeGeometry | null> {
+  const invoke = await getInvoke();
+  if (!invoke) return null;
+
+  try {
+    return await invoke<DetachedMediaNativeGeometry>('trace_detached_media_geometry', { trace });
+  } catch (e) {
+    console.warn('[Tauri] trace_detached_media_geometry failed:', e);
+    return null;
+  }
+}
+
 // ============================================
 // Native Dialog (Tauri only, Phase I3)
 // ============================================
@@ -200,19 +575,74 @@ export async function getSystemInfo(): Promise<SystemInfo | null> {
  */
 export async function openFolderDialog(title: string = 'Select folder to scan'): Promise<string | null> {
   const open = await getOpen();
-  if (!open) return null;
+  // MARKER_161.7.MULTIPROJECT.UI.OPEN_FOLDER_FALLBACK.V1
+  // Layer order:
+  // 1) JS plugin-dialog open()
+  // 2) Rust invoke fallback pick_folder_native
+  if (open) {
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title
+      });
+      if (Array.isArray(selected)) {
+        return selected.length > 0 ? String(selected[0]) : null;
+      }
+      if (typeof selected === 'string' && selected.trim()) {
+        return selected;
+      }
+      if (selected) {
+        return String(selected);
+      }
+    } catch (e) {
+      console.warn('Native folder dialog (plugin) failed:', e);
+    }
+  }
+
+  const invoke = await getInvoke();
+  if (!invoke) return null;
+  try {
+    const selected = await invoke<string | null>('pick_folder_native', { title });
+    return selected && String(selected).trim() ? String(selected) : null;
+  } catch (e) {
+    console.warn('Native folder dialog (invoke fallback) failed:', e);
+    return null;
+  }
+}
+
+/**
+ * Open native Save dialog and write text file via Tauri command.
+ * Returns saved path, null on cancel/error, browser mode always null.
+ */
+export async function saveTextFileNative(
+  suggestedName: string,
+  content: string,
+  title: string = 'Save file'
+): Promise<string | null> {
+  const save = await getSave();
+  if (!save) return null;
 
   try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title
+    const selected = await save({
+      title,
+      defaultPath: suggestedName,
+      // Keep dialog config minimal for Tauri v2 compatibility.
+      // Wildcard filters like '*' can break dialog opening in some runtimes.
+      filters: [
+        { name: 'Text', extensions: ['txt', 'md', 'json', 'log', 'csv', 'ts', 'tsx', 'js', 'py'] },
+      ],
     });
-    // open() returns string | string[] | null
-    // With multiple: false, it returns string | null
-    return selected as string | null;
+
+    if (!selected) return null;
+    const targetPath = Array.isArray(selected) ? String(selected[0] || '') : String(selected);
+    if (!targetPath) return null;
+
+    const result = await writeFileNative(targetPath, content);
+    if (!result) return null;
+    return targetPath;
   } catch (e) {
-    console.warn('Native folder dialog failed:', e);
+    console.warn('Native save dialog/write failed:', e);
     return null;
   }
 }

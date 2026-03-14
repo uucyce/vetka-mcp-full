@@ -1,0 +1,7 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+E_ollama_jepa_tts,short_1,1,122,False,TimeoutError: per-run timeout 25.0s,,,,,54450.56,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_031501_897814_E_ollama_jepa_tts_short_1_run1,,,,,,True,10,hybrid-jepa,True,True,2026-03-04T00:15:56.308645+00:00
+E_ollama_jepa_tts,context_1,1,133,False,TimeoutError: per-run timeout 25.0s,,,,,52268.64,0,0,0,0.0,,docs/157_ph/benchmarks/audio/20260304_031556_319614_E_ollama_jepa_tts_context_1_run1,,,,,,True,10,hybrid-jepa,True,True,2026-03-04T00:16:48.577784+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,7231.77,11568.8,7231.77,11568.8,24772.09,39,5,170,1.0,"Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When a user sends an interrupt message (e.g., ""Stop""), the system detects this and stops the current stream.
+2. **",docs/157_ph/benchmarks/audio/20260304_031648_587180_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_031648_587180_E_ollama_jepa_tts_long_1_run1/merged.wav,41.5,28,1380,0,True,10,hybrid-jepa,True,True,2026-03-04T00:17:13.350167+00:00

@@ -1,0 +1,6 @@
+<think>
+Okay, let's tackle this question. The user wants a short plan (3 points) to improve memory context packing in VETKA without regressing latency. They specified no general phrases, so I need to be specific.
+
+First, looking at the context provided. The pinned files mention the ContextPacker and a probe tool. The probe tool has metrics like pack_latency_ms and jepa_latency_ms. Also, there's mention of hysteresis thresholds and trace fields for raw/effective triggers. 
+
+The user is concerned about latency, so any improvements must not add overhead. The first idea could be optimizing the existing

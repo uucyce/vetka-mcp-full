@@ -1,0 +1,26 @@
+{
+  "id": "research_localguys_v1",
+  "name": "Research localguys",
+  "description": "Research-first local workflow with researcher, architect, coder, and verifier.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "research_localguys", "research_patch"],
+    "workflow_family": {
+      "family": "research_localguys",
+      "version": "v1",
+      "roles": ["researcher", "architect", "coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

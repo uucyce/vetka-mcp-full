@@ -1,0 +1,37 @@
+{
+  "id": "ownership_localguys_v1",
+  "name": "Ownership localguys",
+  "description": "Controlled local task ownership workflow with explicit task-board writes.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-14T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "complexity_range": [
+      1,
+      2
+    ],
+    "task_types": [
+      "ownership_localguys",
+      "local_task_ownership",
+      "mycelium_local_ownership",
+      "task_claim_local"
+    ],
+    "workflow_family": {
+      "family": "ownership_localguys",
+      "version": "v1",
+      "roles": [
+        "operator"
+      ],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

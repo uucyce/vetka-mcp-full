@@ -1,0 +1,4 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.15,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:25.605991+00:00
+D_ollama_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.2,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:25.658249+00:00
+D_ollama_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,51.64,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:25.709975+00:00

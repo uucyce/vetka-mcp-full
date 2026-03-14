@@ -1,0 +1,26 @@
+{
+  "id": "testonly_localguys_v1",
+  "name": "Test Only localguys",
+  "description": "Local test-writing workflow with scout, coder, and verifier.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "testonly_localguys", "tests_local"],
+    "workflow_family": {
+      "family": "testonly_localguys",
+      "version": "v1",
+      "roles": ["scout", "coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [],
+  "edges": []
+}

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export type DevPanelTab = 'mcc' | 'stats' | 'architect' | 'balance';
 export type TaskSortKey = 'priority' | 'created_at' | 'duration_s' | 'success_rate';
+export type StatsPanelMode = 'ops' | 'diagnostics';
 
 interface TaskFilterState {
   source: string;
@@ -16,13 +17,16 @@ interface TaskFilterState {
 
 interface DevPanelStoreState {
   activeTab: DevPanelTab;
+  statsMode: StatsPanelMode;
   taskFilters: TaskFilterState;
   setActiveTab: (tab: DevPanelTab) => void;
+  setStatsMode: (mode: StatsPanelMode) => void;
   setTaskFilters: (updates: Partial<TaskFilterState>) => void;
   resetTaskFilters: () => void;
 }
 
 const FILTERS_STORAGE_KEY = 'vetka_mcc_task_filters';
+const STATS_MODE_STORAGE_KEY = 'vetka_mcc_stats_mode';
 
 const DEFAULT_TASK_FILTERS: TaskFilterState = {
   source: 'all',
@@ -54,10 +58,33 @@ function saveFilters(filters: TaskFilterState) {
   }
 }
 
+function loadStatsMode(): StatsPanelMode {
+  try {
+    const raw = localStorage.getItem(STATS_MODE_STORAGE_KEY);
+    if (raw === 'diagnostics' || raw === 'ops') return raw;
+    return 'ops';
+  } catch {
+    return 'ops';
+  }
+}
+
+function saveStatsMode(mode: StatsPanelMode) {
+  try {
+    localStorage.setItem(STATS_MODE_STORAGE_KEY, mode);
+  } catch {
+    // ignore localStorage failures
+  }
+}
+
 export const useDevPanelStore = create<DevPanelStoreState>((set, get) => ({
   activeTab: 'mcc',
+  statsMode: loadStatsMode(),
   taskFilters: loadFilters(),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setStatsMode: (mode) => {
+    saveStatsMode(mode);
+    set({ statsMode: mode });
+  },
   setTaskFilters: (updates) => {
     const next = { ...get().taskFilters, ...updates };
     saveFilters(next);

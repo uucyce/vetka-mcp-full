@@ -1,0 +1,3 @@
+Here are three points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `hysteresis` threshold**: Reduce the default value of `VETKA_CONTEXT_PACKER_HYSTERESIS_ON` from 3 to 2 and adjust `VETKA_CONTEXT_PACKER_HYSTERESIS_OFF` accordingly. This

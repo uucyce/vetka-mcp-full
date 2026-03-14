@@ -310,15 +310,106 @@ class SessionInitTool(BaseMCPTool):
             context["persisted"] = False
             context["persist_error"] = str(e)
 
-        # TODO MARKER_126.11D: Include claimable tasks from Task Board
-        # When implemented, add:
-        # try:
-        #     from src.orchestration.task_board import get_task_board
-        #     board = get_task_board()
-        #     context["available_tasks"] = board.get_claimable_tasks(limit=5)
-        #     context["my_claimed_tasks"] = board.get_claimed_by(session_id)
-        # except Exception:
-        #     pass
+        # MARKER_178.1.1: Load active tasks from TaskBoard
+        try:
+            from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
+            board = TaskBoard(TASK_BOARD_FILE)
+            pending = [t for t in board.list_tasks() if t.get("status") == "pending"]
+            in_progress = [t for t in board.list_tasks() if t.get("status") == "in_progress"]
+            context["task_board_summary"] = {
+                "pending_count": len(pending),
+                "in_progress_count": len(in_progress),
+                "top_pending": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
+                "in_progress": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]]
+            }
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"TaskBoard load failed: {e}")
+
+        # MARKER_178.1.2: Recent commits
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "log", "--oneline", "-5"],
+                capture_output=True, text=True, timeout=3,
+                cwd=str(Path(__file__).resolve().parent.parent.parent.parent)
+            )
+            if result.returncode == 0:
+                context["recent_commits"] = result.stdout.strip().split("\n")[:5]
+        except Exception:
+            pass
+
+        # MARKER_178.1.3: Capability manifest
+        try:
+            from src.mcp.tools.capability_broker import build_manifest
+            manifest = build_manifest()
+            context["capabilities"] = {
+                "transports": [
+                    {"kind": t.kind.value, "status": t.status.value, "capabilities": t.capabilities}
+                    for t in manifest.transports
+                ],
+                "recommended": manifest.recommended
+            }
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
+
+        # MARKER_172.P4.IP6: REFLEX session recommendations (called AFTER tasks/commits/capabilities)
+        try:
+            from src.services.reflex_integration import reflex_session
+            reflex_recs = reflex_session(context)
+            if reflex_recs:
+                context["reflex_recommendations"] = reflex_recs
+        except Exception:
+            pass  # REFLEX errors never block session init
+
+        # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
+        try:
+            from src.services.reflex_feedback import ReflexFeedback
+            fb = ReflexFeedback()
+            summary = fb.get_feedback_summary()
+            if summary and summary.get("total_entries", 0) > 0:
+                context["reflex_report"] = {
+                    "total_entries": summary["total_entries"],
+                    "success_rate": summary.get("success_rate", 0),
+                    "useful_rate": summary.get("useful_rate", 0),
+                    "verified_rate": summary.get("verified_rate", 0),
+                    "top_tools": list(summary.get("per_tool", {}).keys())[:5],
+                }
+        except Exception:
+            pass  # REFLEX report never blocks session init
+
+        # MARKER_178.1.4: Build actionable next_steps from context
+        try:
+            next_steps = []
+
+            # From tasks
+            tb = context.get("task_board_summary", {})
+            if tb.get("pending_count", 0) > 0:
+                # MARKER_178.5.2: Reference both task board tools (primary + fallback)
+                next_steps.append(f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list (or vetka_task_board as fallback)")
+            if tb.get("in_progress_count", 0) > 0:
+                items = ", ".join(t["title"][:30] for t in tb.get("in_progress", [])[:2])
+                next_steps.append(f"In progress: {items}")
+
+            # From REFLEX
+            recs = context.get("reflex_recommendations", [])
+            if recs:
+                top = recs[0] if isinstance(recs[0], dict) else {}
+                tool_name = top.get("tool_id", "")
+                reason = top.get("reason", "")
+                if tool_name:
+                    next_steps.append(f"REFLEX suggests: {tool_name} ({reason})")
+
+            # From commits staleness
+            commits = context.get("recent_commits", [])
+            if not commits:
+                next_steps.append("No recent commits found — check git status")
+
+            if next_steps:
+                context["next_steps"] = next_steps
+        except Exception:
+            pass
 
         return {
             "success": True,

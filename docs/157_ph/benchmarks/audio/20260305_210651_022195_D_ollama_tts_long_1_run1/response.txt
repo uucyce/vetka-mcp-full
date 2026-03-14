@@ -1,0 +1,1 @@
+Based on the provided context, there is no explicit mention of an "interrupt + restart stream protocol" or its influence on voice handoff/tool-loop transparency. The context discusses a unified capability matrix for VETKA chat and Mycelium runtime, aiming to standard

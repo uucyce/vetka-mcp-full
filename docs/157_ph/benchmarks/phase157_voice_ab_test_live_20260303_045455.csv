@@ -1,0 +1,39 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,timestamp
+A_qwen_only,short_1,1,45,True,,3880.26,,3880.26,,20796.18,89,0,305,1.0,"VETKA специализируется на разработке и внедрении инновационных решений для автоматизации бизнес-процессов, управления данными и аналитики. Компания предлагает услуги по цифровой трансформации, помогая организациям улучшить эффективность, снизить затраты и увеличить конкурентоспос",docs/157_ph/benchmarks/audio/20260303_044816_280125_A_qwen_only_short_1_run1,,2026-03-03T01:48:37.029760+00:00
+A_qwen_only,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,17986.76,,17986.76,,27079.12,39,0,121,0.0,"Улучшение пакетирования контекста памяти в VETKA без регрессий в задержке может быть достигнуто следующим образом:
+
+1. **",docs/157_ph/benchmarks/audio/20260303_044853_731394_A_qwen_only_context_1_run1,,2026-03-03T01:49:04.109831+00:00
+A_qwen_only,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,12017.84,,12017.84,,29176.59,45,0,191,0.0,"Interrupt + Restart Stream Protocol используется для обеспечения непрерывности потока данных в случае прерывания или переключения соединений, что особенно важно для голосовых сервисов.
+
+1. **",docs/157_ph/benchmarks/audio/20260303_044914_011183_A_qwen_only_long_1_run1,,2026-03-03T01:49:33.286561+00:00
+B_api_tts,short_1,1,45,True,,10972.43,,10972.43,,27992.93,73,0,301,1.0,"VETKA — это российский сервис для поиска и бронирования туров, который агрегирует предложения от туроператоров и турагентств. Он позволяет пользователям сравнивать цены, читать отзывы и находить горящие туры, а также помогает турагентам управлять заявками и вести клиентскую базу ",docs/157_ph/benchmarks/audio/20260303_044942_624799_B_api_tts_short_1_run1,,2026-03-03T01:50:01.279905+00:00
+B_api_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,19491.31,,19491.31,,27910.77,20,0,127,0.0,"Вот краткий план по оптимизации memory context packing в VETKA (или аналогичных компиляторах/рантаймах) без роста latency.
+
+###",docs/157_ph/benchmarks/audio/20260303_045018_558028_B_api_tts_context_1_run1,,2026-03-03T01:50:29.190853+00:00
+B_api_tts,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,3471.66,,3471.66,,27798.72,47,0,380,0.0,"Вот пошаговое объяснение протокола **Interrupt + Restart Stream**, его устройства и влияния на ключевые параметры голосовых интерфейсов.
+
+---
+
+### 1. Как устроен протокол Interrupt + Restart Stream
+
+Этот протокол используется в системах распознавания речи (ASR) и голосовых агента",docs/157_ph/benchmarks/audio/20260303_045031_507079_B_api_tts_long_1_run1,,2026-03-03T01:50:56.990098+00:00
+C_api_jepa_tts,short_1,1,45,False,TimeoutError: per-run timeout 25.0s,21124.62,,21124.62,,29505.21,21,0,74,0.0,VETKA — это российский сервис для **создания и продажи онлайн-курсов**. Он,docs/157_ph/benchmarks/audio/20260303_045116_518134_C_api_jepa_tts_short_1_run1,,2026-03-03T01:51:26.495770+00:00
+C_api_jepa_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,3085.54,,3085.54,,27676.84,62,0,350,0.0,"Вот краткий план оптимизации `memory context packing` в VETKA (предполагая архитектуру, похожую на трансформеры/LLM) без роста латентности:
+
+1.  **Профилирование и Анализ**
+    *   Используйте `nsys`/`nsight` для выявления узких мест (L2 Cache Misses, TLB Misses).
+    *   Определ",docs/157_ph/benchmarks/audio/20260303_045128_521309_C_api_jepa_tts_context_1_run1,,2026-03-03T01:51:54.172743+00:00
+C_api_jepa_tts,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,18557.39,,18557.39,,26886.38,16,0,134,0.0,"Вот пошаговое объяснение протокола **Interrupt + Restart Stream**, его устройства и влияния на ключевые аспекты взаимодействия с ИИ.",docs/157_ph/benchmarks/audio/20260303_045211_136827_C_api_jepa_tts_long_1_run1,,2026-03-03T01:52:21.059775+00:00
+D_ollama_tts,short_1,1,45,True,,14344.85,,14344.85,,23294.38,37,0,108,1.0,"Vetka - российская компания, производящая напитки на основе фруктового сока (красный перец, лимонад и т.п.).",docs/157_ph/benchmarks/audio/20260303_045227_468236_D_ollama_tts_short_1_run1,,2026-03-03T01:52:44.354324+00:00
+D_ollama_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,14659.19,,14659.19,,30791.68,40,0,134,0.0,"1. **Анализ текущего состояния**:
+   - Изучите существующую реализацию VETKA и определите основные компоненты, участвующие в packing.",docs/157_ph/benchmarks/audio/20260303_045255_195138_D_ollama_tts_context_1_run1,,2026-03-03T01:53:15.146211+00:00
+D_ollama_tts,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,17050.46,,17050.46,,25555.9,12,0,54,0.0,"Устройство Interrupt + Restart Stream Protocol:
+
+1. **",docs/157_ph/benchmarks/audio/20260303_045329_691590_D_ollama_tts_long_1_run1,,2026-03-03T01:53:40.702877+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,4820.73,,4820.73,,13674.33,29,0,91,1.0,"Vetka - российская компания, производящая алкогольные напитки, в частности, водку и коньяк.",docs/157_ph/benchmarks/audio/20260303_045344_296448_E_ollama_jepa_tts_short_1_run1,,2026-03-03T01:53:54.377531+00:00
+E_ollama_jepa_tts,context_1,1,85,False,TimeoutError: per-run timeout 25.0s,8267.81,22969.87,8267.81,22969.87,28204.82,35,3,111,0.0,"1. Анализ текущего кода и профилирования.
+2. Определение критических сегментов и оптимизация их пакетирования.",docs/157_ph/benchmarks/audio/20260303_045400_936322_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260303_045400_936322_E_ollama_jepa_tts_context_1_run1/merged.wav,2026-03-03T01:54:22.582871+00:00
+E_ollama_jepa_tts,long_1,1,124,False,,805.71,15990.71,805.71,15990.71,33279.51,92,2,325,0.0,"Вот краткий алгоритм работы Interrupt + Restart Stream Protocol:
+
+1. **Получение пакета**: Сокет-приемник получает данные от сокета-передатчика.
+2. **Переключение**: При обнаружении ошибки или проблем с подключением, сокет-приемник отправляет сигнал о перезапуске (interrupt) к со",docs/157_ph/benchmarks/audio/20260303_045422_596525_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260303_045422_596525_E_ollama_jepa_tts_long_1_run1/merged.wav,2026-03-03T01:54:55.872599+00:00

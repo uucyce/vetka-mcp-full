@@ -1,0 +1,22 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 28.0s,,,,,33665.91,0,0,0,0.0,"low_ru_ratio,no_file_refs,no_two_items,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064740_009621_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:48:13.627135+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,51818.92,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064813_662407_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:49:05.446825+00:00
+D_ollama_tts,long_1,1,171,True,,3200.18,,3200.18,,7299.5,128,0,439,0.85,,"<think>
+Хорошо, пользователь спрашивает о пошаговом объяснении протокола прерывания и повторного запуска потока (interrupt + restart stream protocol) и его влиянии на voice handoff и tool-loop transparency. Вижу, что в предоставленном контексте есть файл ""CAPABILITY_MATRIX_UNIFIE",docs/157_ph/benchmarks/audio/20260304_064905_468759_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:49:12.746842+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,49992.55,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064912_765352_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:50:02.739779+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,2556.08,,2556.08,,6258.64,128,0,595,0.7,"low_ru_ratio,no_two_items","<think>
+Okay, let's break this down based on the provided context. 
+
+First, I see there's only one current file mentioned in the dependency context: `GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md`. That seems to be about camera movement issues (like sudden lateral movements) and a use",docs/157_ph/benchmarks/audio/20260304_065002_759597_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:50:08.998888+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,2664.28,,2664.28,,6536.01,128,0,417,0.85,,"<think>
+Хм, пользователь просит на основе предоставленного контекста сделать конкретный трехпунктный план по улучшению памяти для контекстного пакетирования (context packing) в VETKA без регрессии латенции. 
+
+Из контекста видно, что мы имеем дело с инструментом probe и усиленным ",docs/157_ph/benchmarks/audio/20260304_065009_015385_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:50:15.535217+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,2661.4,,2661.4,,6409.66,128,0,635,0.75,low_ru_ratio,"<think>
+Okay, let's tackle this query step by step. The user is asking about the interrupt and restart stream protocol in relation to voice handoff and tool-loop transparency, referencing the provided context.
+
+First, I need to check if the context contains any information on the",docs/157_ph/benchmarks/audio/20260304_065015_549055_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:50:21.945072+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,2847.52,,2847.52,,6601.91,128,0,605,0.5,"low_ru_ratio,no_stepwise_followup,too_long_after_interrupt","<think>
+Okay, let's tackle this query. The user is asking about how the context packing works in VETKA and wants two steps first.
+
+First, I need to parse the provided contexts carefully. There are benchmark and dependency contexts given. The main pinned file is about Schema Marku",docs/157_ph/benchmarks/audio/20260304_065021_954030_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:50:28.547252+00:00

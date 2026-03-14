@@ -1,0 +1,13 @@
+{
+  "tokens": {
+    "provider_name": {
+      "token_enc": "<encrypted-token>",
+      "refresh_token_enc": "<encrypted-refresh-token>",
+      "token_type": "Bearer",
+      "expires_in": 3600,
+      "scope": "example.scope"
+    }
+  },
+  "encryption_enabled": true,
+  "updated_at": "1970-01-01T00:00:00Z"
+}

@@ -1,0 +1,4 @@
+На основе предоставленного контекста:
+
+1. Файл: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`
+   Фраза: Содержит спецификацию для реализации п

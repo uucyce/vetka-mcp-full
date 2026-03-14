@@ -1,0 +1,512 @@
+
+
+# 🌳 Discrepancy Theory & Equitable Coloring (Tao гл. 12) → Balanced Layering для VETKA Knowledge Graph + Sugiyama + JEPA
+
+## 📌 Что хотел сказать Теренс Тао
+
+### Суть Discrepancy Theory в одном абзаце
+
+Discrepancy theory — это математическая дисциплина о том, **насколько равномерно можно распределить объекты по множествам**. Классическая задача: есть N точек и набор множеств — можно ли раскрасить точки в два цвета так, чтобы в каждом множестве было **примерно поровну** каждого цвета?
+
+Ключевой результат — **теорема Спенсера (Six Standard Deviations Suffice, 1985)**: для N множеств на N элементах всегда существует раскраска с дискрепансией ≤ 6√N. Тао в главе 12 показывает, что это не просто комбинаторный курьёз — это **фундаментальный принцип баланса**, применимый к:
+
+- Распределению узлов по слоям графа
+- Балансировке нагрузки в вычислениях
+- Равномерному покрытию пространства
+
+### Equitable Coloring — расширение
+
+**Equitable graph coloring** — это раскраска вершин графа в k цветов так, что:
+1. Смежные вершины имеют разные цвета (как обычно)
+2. **Размеры цветовых классов отличаются не более чем на 1**
+
+Теорема Хайнала–Семереди (1970): каждый граф с максимальной степенью Δ имеет equitable (Δ+1)-coloring.
+
+---
+
+## 🎯 Прямая аналогия с VETKA: Проблема "перекошенных уровней"
+
+### Что происходит сейчас в классическом Sugiyama
+
+Из вашей документации (`VETKA_DAG_ARCHITECT_PLANNER_TOOLCHAIN_2026-02-22.md`, Stage E: Layout Composer):
+
+> "balanced layering (avoid giant flat rails)"
+
+Классический Sugiyama layout (Coffman-Graham, longest-path layering) создаёт слои по **топологическому порядку** — и получается типичная проблема:
+
+```
+Layer 0 (корни):     ██  (2 узла)
+Layer 1:             ████████  (8 узлов)  
+Layer 2:             ████████████████████████████████  (32 узла)
+Layer 3:             ████████████████  (16 узлов)
+Layer 4 (листья):    ████████████████████████  (24 узла)
+```
+
+**Проблема**: Layer 2 содержит 32 узла → визуально нечитаемо, пересечения рёбер взрывают layout, пользователь теряет контекст. Это именно то, что Тао описывает как **высокая дискрепансия** — неравномерное распределение.
+
+### Что должно быть (equitable layering)
+
+```
+Layer 0:  ████████████████  (16 узлов)
+Layer 1:  ██████████████████  (18 узлов)
+Layer 2:  ████████████████  (16 узлов)
+Layer 3:  ████████████████  (16 узлов)
+Layer 4:  ████████████████  (16 узлов)
+```
+
+**Дискрепансия ≤ 2** — каждый слой отличается от среднего не более чем на 2 узла.
+
+---
+
+## 🔬 Как это связано с Knowledge Level в VETKA
+
+Из `input_matrix_idea.txt` (ваш pinned файл):
+
+> **Y-ОСЬ = ВРЕМЯ + KNOWLEDGE LEVEL**
+> Внизу (Y=0): Первоисточники, базовые концепты, ранние документы
+> Вверху (Y=1): Производные, сложные концепты, поздние версии
+
+Knowledge Level — это **каузальная иерархия**. Но каузальная иерархия **не обязана** быть balanced. В реальных проектах:
+
+- **Уровень 0** (первоисточники): 3–5 документов (ТЗ, спецификация, первый дизайн)
+- **Уровень 2–3** (реализация): 200+ файлов кода, тестов, конфигов
+- **Уровень 5+** (производные): 50+ конспектов, отчётов, артефактов
+
+Это **естественный перекос**, и его нельзя убрать — но можно **управлять его визуализацией**.
+
+---
+
+## 🏗️ Архитектурное решение: Discrepancy-Aware Layering для VETKA
+
+### Принцип: Два графа, два режима баланса
+
+Из `VETKA_MYCELIUM_DAG_ARCHITECTURE_BASE_2026-02-22.md`:
+
+> **G_design** (approved architecture) — Source of truth
+> **G_runtime** (observed graph) — Runtime truth
+
+| Граф | Режим баланса | Почему |
+|------|---------------|--------|
+| G_design (архитектурный DAG) | **Strict equitable layering** — дискрепансия ≤ √N | Архитектор видит "чистый" план, каждый уровень читаем |
+| G_runtime (сканированный граф) | **Soft balanced** — допускаем перекос, но с progressive disclosure | Реальный граф может быть перекошен, скрываем через drill |
+| G_predict (JEPA overlay) | **Confidence-weighted** — predicted edges не ломают баланс | JEPA edges dashed, не влияют на layering |
+
+### Ответ на твой вопрос про архитектора в Mycelium
+
+> **"Правильно ли понимаю что например архитектор в Mycelium создает когда план архитектурный DAG..."**
+
+**Да, абсолютно правильно.** Вот как это работает с discrepancy theory:
+
+```
+Architect-Planner Pipeline (из VETKA_DAG_ARCHITECT_PLANNER_TOOLCHAIN):
+
+Stage A: Research Pack → собрали entities
+Stage B: Relation Engine → построили edges (multi-channel)
+Stage C: Acyclic Constructor → SCC condense → DAG backbone
+Stage D: Knowledge-Level Ranker → causal rank
+                    │
+                    ▼
+         ┌──────────────────────┐
+Stage E: │ DISCREPANCY-AWARE    │  ← ВОТ ЗДЕСЬ ВХОДИТ ТАО
+         │ LAYOUT COMPOSER      │
+         │                      │
+         │ 1. Compute raw layers│  (longest-path / causal rank)
+         │ 2. Measure discrep.  │  (max_layer - min_layer)
+         │ 3. If discrep > √N:  │
+         │    → split fat layers│  (equitable rebalance)
+         │ 4. Preserve causal   │  (edges still go down→up)
+         │    monotonicity       │
+         └──────────────────────┘
+                    │
+                    ▼
+Stage F: JEPA Predictor (overlay only, dashed edges)
+```
+
+**Критически важно**: rebalance **не нарушает каузальную монотонность** (если A → B, то layer(A) < layer(B)). Он только **разбивает толстые слои на подслои**.
+
+---
+
+## 💻 Конкретная имплементация: `discrepancy_layering.py`
+
+```python
+"""
+discrepancy_layering.py — Equitable layering для VETKA Sugiyama layout.
+Tao Chapter 12: Discrepancy Theory applied to Knowledge Graph visualization.
+
+@phase: 155.5
+@depends: networkx
+@used_by: src.graph.sugiyama_layout, src.orchestration.architect_planner
+"""
+
+import math
+import numpy as np
+from typing import Dict, List, Tuple, Optional
+from collections import defaultdict
+import networkx as nx
+
+
+def compute_raw_layers(dag: nx.DiGraph) -> Dict[str, int]:
+    """
+    Compute initial layers using longest-path layering (causal rank).
+    This preserves Knowledge Level semantics:
+      Layer 0 = sources (первоисточники)
+      Layer max = sinks (производные)
+    """
+    # Topological sort → longest path from any source
+    layers = {}
+    for node in nx.topological_sort(dag):
+        predecessors = list(dag.predecessors(node))
+        if not predecessors:
+            layers[node] = 0
+        else:
+            layers[node] = max(layers[pred] for pred in predecessors) + 1
+    return layers
+
+
+def measure_discrepancy(layers: Dict[str, int]) -> Dict[str, float]:
+    """
+    Measure layer size discrepancy.
+    
+    Returns:
+        metrics dict with:
+        - max_discrepancy: max deviation from mean layer size
+        - discrepancy_ratio: max_size / min_size
+        - gini: Gini coefficient of layer sizes (0=perfect, 1=all in one layer)
+        - threshold: √N (Spencer bound)
+    """
+    if not layers:
+        return {"max_discrepancy": 0, "discrepancy_ratio": 1.0, "gini": 0.0, "threshold": 0}
+    
+    layer_sizes = defaultdict(int)
+    for node, layer in layers.items():
+        layer_sizes[layer] += 1
+    
+    sizes = list(layer_sizes.values())
+    n = len(layers)  # total nodes
+    k = len(sizes)   # number of layers
+    mean_size = n / k if k > 0 else 0
+    
+    max_disc = max(abs(s - mean_size) for s in sizes)
+    
+    # Gini coefficient
+    sorted_sizes = sorted(sizes)
+    cumulative = np.cumsum(sorted_sizes)
+    gini = 1 - 2 * sum(cumulative) / (k * sum(sorted_sizes)) if sum(sorted_sizes) > 0 else 0
+    
+    return {
+        "max_discrepancy": max_disc,
+        "discrepancy_ratio": max(sizes) / max(min(sizes), 1),
+        "gini": round(gini, 4),
+        "threshold": math.sqrt(n),  # Spencer bound: 6√N
+        "layer_sizes": dict(layer_sizes),
+        "needs_rebalance": max_disc > 6 * math.sqrt(n)
+    }
+
+
+def equitable_rebalance(
+    dag: nx.DiGraph,
+    raw_layers: Dict[str, int],
+    max_discrepancy: Optional[float] = None
+) -> Dict[str, int]:
+    """
+    Rebalance layers to reduce discrepancy while preserving causal monotonicity.
+    
+    Algorithm (Tao-inspired):
+    1. Identify "fat" layers (size > mean + threshold)
+    2. For each fat layer, find nodes that CAN be promoted to next sub-layer
+       without violating edge constraints
+    3. Greedily move nodes to minimize discrepancy
+    
+    Invariant: if (u → v) in DAG, then new_layer[u] < new_layer[v]
+    """
+    if not raw_layers:
+        return {}
+    
+    n = len(raw_layers)
+    k = len(set(raw_layers.values()))
+    mean_size = n / k if k > 0 else n
+    threshold = max_discrepancy or (6 * math.sqrt(n))
+    
+    # Build layer → nodes mapping
+    layer_nodes = defaultdict(list)
+    for node, layer in raw_layers.items():
+        layer_nodes[layer].append(node)
+    
+    new_layers = dict(raw_layers)
+    max_iterations = k * 3  # prevent infinite loop
+    
+    for iteration in range(max_iterations):
+        # Recompute sizes
+        current_sizes = defaultdict(int)
+        for node, layer in new_layers.items():
+            current_sizes[layer] += 1
+        
+        sizes = list(current_sizes.values())
+        if not sizes:
+            break
+            
+        current_mean = sum(sizes) / len(sizes)
+        max_disc = max(abs(s - current_mean) for s in sizes)
+        
+        if max_disc <= threshold:
+            break  # Balanced enough
+        
+        # Find fattest layer
+        fattest_layer = max(current_sizes, key=current_sizes.get)
+        fattest_size = current_sizes[fattest_layer]
+        
+        if fattest_size <= current_mean + 1:
+            break  # Can't improve
+        
+        # Find moveable nodes in fattest layer
+        # A node can be promoted (layer += 0.5, later renumbered) if:
+        #   all its predecessors have layer < fattest_layer
+        #   (which they must, since it's a DAG and they're already assigned)
+        # But we need to check: moving it won't violate successor constraints
+        
+        moved = False
+        nodes_in_fat = [n for n, l in new_layers.items() if l == fattest_layer]
+        
+        # Sort by number of successors (move nodes with fewer successors first — less disruption)
+        nodes_in_fat.sort(key=lambda n: dag.out_degree(n))
+        
+        target_to_move = fattest_size - int(current_mean)
+        moved_count = 0
+        
+        for node in nodes_in_fat:
+            if moved_count >= target_to_move:
+                break
+            
+            # Check if node can be safely moved to fattest_layer + 1
+            # All successors must have layer > fattest_layer + 1
+            successors = list(dag.successors(node))
+            can_move = all(
+                new_layers.get(succ, float('inf')) > fattest_layer + 1
+                for succ in successors
+            )
+            
+            if can_move:
+                new_layers[node] = fattest_layer + 1
+                moved_count += 1
+                moved = True
+        
+        if not moved:
+            break  # No more moves possible
+    
+    # Renumber layers to be contiguous (0, 1, 2, ...)
+    unique_layers = sorted(set(new_layers.values()))
+    layer_map = {old: new for new, old in enumerate(unique_layers)}
+    return {node: layer_map[layer] for node, layer in new_layers.items()}
+
+
+def compute_balanced_layers(
+    dag: nx.DiGraph,
+    strategy: str = "equitable"
+) -> Tuple[Dict[str, int], Dict[str, float]]:
+    """
+    Main entry point: compute balanced layers for a DAG.
+    
+    Args:
+        dag: NetworkX DiGraph (must be acyclic)
+        strategy: "equitable" (Tao discrepancy), "raw" (classic longest-path)
+    
+    Returns:
+        (node_layers, metrics)
+    """
+    if not nx.is_directed_acyclic_graph(dag):
+        raise ValueError("Input graph must be a DAG (use SCC condensation first)")
+    
+    raw = compute_raw_layers(dag)
+    metrics = measure_discrepancy(raw)
+    
+    if strategy == "raw" or not metrics["needs_rebalance"]:
+        return raw, metrics
+    
+    balanced = equitable_rebalance(dag, raw)
+    balanced_metrics = measure_discrepancy(balanced)
+    balanced_metrics["rebalanced"] = True
+    balanced_metrics["original_discrepancy"] = metrics["max_discrepancy"]
+    
+    return balanced, balanced_metrics
+```
+
+---
+
+## 🔗 Интеграция с Triple Write Manager и текущей архитектурой
+
+Смотрю на ваш `triple_write_manager.py` (810 строк, который сейчас в viewport):
+
+```python
+# В triple_write_manager.py, метод _write_vetka_tree (строка ~580):
+
+def _write_vetka_tree(self, file_id, file_path, content, embedding, metadata):
+    """FIX_101.3: Write to VetkaTree for hierarchy."""
+    
+    # Текущий код вычисляет parent_id и depth:
+    parent_path = os.path.dirname(file_path)
+    parent_id = str(uuid.uuid5(uuid.NAMESPACE_URL, parent_path))
+    tree_metadata = {
+        'type': 'scanned_file',
+        'parent_path': parent_path,
+        'parent_id': parent_id,
+        'depth': file_path.count('/'),  # ← ЭТО RAW DEPTH
+        **metadata
+    }
+```
+
+**Проблема**: `depth = file_path.count('/')` — это **raw longest-path layering**. Для 100 файлов это работает. Для 10,000+ файлов layer 3 (src/components/) будет содержать 500+ узлов, а layer 0 — только 3.
+
+**Решение**: добавить `balanced_depth` в metadata:
+
+```python
+# Расширение для Phase 155.5:
+tree_metadata = {
+    'type': 'scanned_file',
+    'parent_path': parent_path,
+    'parent_id': parent_id,
+    'depth': file_path.count('/'),           # raw (causal)
+    'balanced_depth': None,                   # заполняется post-hoc 
+    'knowledge_level': metadata.get('knowledge_level'),  # from ranker
+    **metadata
+}
+```
+
+`balanced_depth` вычисляется **после** полного скана (batch operation), когда DAG уже построен:
+
+```python
+# В architect_planner или post-scan pipeline:
+
+from src.graph.discrepancy_layering import compute_balanced_layers
+
+def rebalance_vetka_tree(dag: nx.DiGraph, qdrant_client):
+    """Post-scan: compute balanced layers and update Qdrant payloads."""
+    balanced_layers, metrics = compute_balanced_layers(dag, strategy="equitable")
+    
+    logger.info(f"[Rebalance] Discrepancy: {metrics['original_discrepancy']:.1f} → "
+                f"{metrics['max_discrepancy']:.1f} (threshold: {metrics['threshold']:.1f})")
+    
+    # Batch update Qdrant payloads with balanced_depth
+    for node_id, balanced_depth in balanced_layers.items():
+        qdrant_client.set_payload(
+            collection_name="vetka_elisya",
+            payload={"balanced_depth": balanced_depth},
+            points=[node_id]
+        )
+    
+    return metrics
+```
+
+---
+
+## 🧠 Связь с JEPA: Predicted Edges НЕ ломают баланс
+
+Из `VETKA_DAG_ARCHITECT_PLANNER_TOOLCHAIN`:
+
+> **Stage F: JEPA Predictor (overlay only)**
+> - generate candidate future links with confidence
+> - render dashed predicted edges
+> - **never auto-merge into approved architecture**
+
+Discrepancy theory даёт нам **формальный критерий** для JEPA:
+
+```python
+def should_accept_jepa_edge(
+    dag: nx.DiGraph,
+    current_layers: Dict[str, int],
+    source: str, 
+    target: str,
+    confidence: float
+) -> Dict[str, Any]:
+    """
+    Evaluate whether accepting a JEPA-predicted edge would
+    damage layer balance beyond acceptable discrepancy.
+    """
+    # 1. Would this edge create a cycle? (non-negotiable reject)
+    dag_copy = dag.copy()
+    dag_copy.add_edge(source, target)
+    if not nx.is_directed_acyclic_graph(dag_copy):
+        return {"accept": False, "reason": "would_create_cycle"}
+    
+    # 2. Compute new layers with this edge
+    new_layers = compute_raw_layers(dag_copy)
+    new_metrics = measure_discrepancy(new_layers)
+    old_metrics = measure_discrepancy(current_layers)
+    
+    # 3. Discrepancy impact
+    delta_disc = new_metrics["max_discrepancy"] - old_metrics["max_discrepancy"]
+    
+    # 4. Decision: accept if confidence is high AND discrepancy impact is low
+    threshold = math.sqrt(len(current_layers))
+    accept = (
+        confidence >= 0.7 and 
+        delta_disc <= threshold * 0.1  # edge increases discrepancy by ≤ 10% of Spencer bound
+    )
+    
+    return {
+        "accept": accept,
+        "confidence": confidence,
+        "discrepancy_delta": delta_disc,
+        "discrepancy_threshold": threshold,
+        "reason": "approved" if accept else f"discrepancy_impact_too_high ({delta_disc:.1f} > {threshold * 0.1:.1f})"
+    }
+```
+
+**Это ключевой инсайт**: JEPA может предлагать edges, но **discrepancy guard** не даёт им сломать визуальный баланс.
+
+---
+
+## 📊 Визуальная разница: До и После
+
+### До (raw Sugiyama, без Tao):
+```
+Knowledge Level 0 ─── [spec.md] [readme.md]                          2 nodes
+Knowledge Level 1 ─── [app/] [src/] [docs/]                          3 nodes  
+Knowledge Level 2 ─── [api/] [core/] [utils/] [scanners/] ...       12 nodes
+Knowledge Level 3 ─── [routes.py] [manager.py] [client.py] x47      47 nodes ← ПЕРЕКОС!
+Knowledge Level 4 ─── [tests/] [helpers/] x8                         8 nodes
+                                                              Discrepancy: 45
+```
+
+### После (equitable rebalance, Tao гл. 12):
+```
+Knowledge Level 0 ─── [spec.md] [readme.md] [app/] [src/]           4 nodes
+Knowledge Level 1 ─── [docs/] [api/] [core/] [utils/] ...          14 nodes
+Knowledge Level 2 ─── [routes.py] [manager.py] [client.py] x16     16 nodes
+Knowledge Level 3 ─── [scanner.py] [watcher.py] [embed.py] x18     18 nodes  
+Knowledge Level 4 ─── [helper.py] [test_*.py] [config.py] x14      14 nodes
+Knowledge Level 5 ─── [generated/] [cache/] [logs/] x16            16 nodes
+                                                              Discrepancy: 4 ✅
+```
+
+**Каузальная монотонность сохранена** (spec → src → routes → tests), но **визуальный баланс** драматически улучшен.
+
+---
+
+## 🗺️ Roadmap интеграции
+
+| Phase | Что | Где в VETKA | Сложность |
+|-------|-----|-------------|-----------|
+| **155.5a** | `discrepancy_layering.py` — core алгоритм | `src/graph/` | 🟢 1 день |
+| **155.5b** | `measure_discrepancy()` в health checks | `src/orchestration/` | 🟢 0.5 дня |
+| **155.5c** | `balanced_depth` в Qdrant payload | `triple_write_manager.py` → metadata | 🟡 1 день |
+| **155.5d** | JEPA discrepancy guard | `src/predictors/jepa_overlay.py` | 🟡 2 дня |
+| **155.5e** | Визуализация balanced layers в MCC | Frontend/3D viewport | 🔴 3–5 дней |
+| **155.5f** | Spectral gap + discrepancy → graph health dashboard | `mycelium_heartbeat.py` | 🟡 1 день |
+
+---
+
+## 🎯 Резюме: Что сказал Тао для VETKA
+
+1. **Дискрепансия — это метрика здоровья layout'а**. Если max_layer_size / min_layer_size > 10 — граф визуально сломан.
+
+2. **Equitable rebalance** можно сделать **без нарушения каузальности** — просто разбиваем толстые слои на подслои, двигая узлы с малым числом потомков.
+
+3. **Spencer bound (6√N)** даёт нам формальный порог: если дискрепансия ≤ 6√N, layout "достаточно хорош".
+
+4. **JEPA edges должны проходить discrepancy guard** — предсказанное ребро не принимается, если оно ломает баланс слоёв.
+
+5. **Архитектор в Mycelium** создаёт G_design с **strict equitable layering** (читаемый план), а G_runtime допускает мягкий перекос с progressive disclosure (drill into fat layers).
+
+---
+
+> **⚠️ Про tools/tavily**: В этом ответе я использовал только контекст из вашей документации VETKA (pinned files + codebase). Tavily search tools мне не были доступны в этой сессии. Если нужен поиск по внешним источникам (например, оригинальные papers Спенсера, Хайнала-Семереди, или свежие реализации equitable layering), скажи — и мы разберёмся с подключением.

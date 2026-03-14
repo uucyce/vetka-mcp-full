@@ -1,0 +1,231 @@
+
+
+# Анализ: Canonical DAG как универсальный формат для VETKA Workflows
+
+## Что здесь происходит
+
+Вы с Codex пришли к фундаментально правильному архитектурному решению. Давай разберу по порядку и подскажу, где уже есть аналоги и что лучше делать.
+
+---
+
+## 🎯 Ключевой инсайт вашего диалога
+
+Вы обнаружили **три проблемы одновременно**:
+
+1. **UI рисует DAG из шаблона, а не из реального исполнения** — поэтому вектора "произвольные"
+2. **Retry Coder — ложная сущность** — это должен быть обратный вектор `Verifier --[on_fail]--> Coder`
+3. **Нужен canonical формат** — чтобы любой источник (py/json/md/xlsx) транслировался в один граф и обратно
+
+Это прямо ложится на ваш же контракт из архитектурного документа:
+
+> Из `VETKA_MYCELIUM_DAG_ARCHITECTURE_BASE`:
+> - **G_design** (approved architecture) — source of truth для плана
+> - **G_runtime** (observed reality) — извлекается из сканеров и input_matrix
+> - **G_predict** (JEPA overlay) — предиктивный слой
+
+**Проблема сейчас**: у вас G_design (template) рендерится вместо G_runtime, и они смешаны.
+
+---
+
+## 🔍 Что уже существует похожего (и что стоит взять)
+
+### 1. **n8n / Temporal / Prefect — JSON workflow как граф**
+
+n8n хранит workflow как JSON с `nodes[]` и `connections{}`. Это ближайший аналог вашего canonical формата. **Но** у них нет разделения template vs runtime — у вас это преимущество.
+
+Что взять: структуру `nodes + edges + metadata` как JSON schema.
+
+### 2. **Apache Airflow DAG — Python-скрипт как граф**
+
+Airflow делает ровно то, что вы хотите: Python-скрипт **IS** the DAG. Парсер строит граф из операторов `>>` и `set_downstream()`.
+
+```python
+# Airflow-стиль — ваш pipeline мог бы выглядеть так:
+task_intake >> architect
+architect >> [scout, researcher]  # parallel recon
+[scout, researcher] >> architect_final_plan
+architect_final_plan >> coder
+coder >> verifier
+verifier.on_fail >> coder        # обратный вектор, не "Retry Coder"
+verifier.on_major_fail >> architect  # re-plan
+verifier.on_pass >> quality_summary >> completion
+```
+
+**Это лучшая модель для вас**, потому что:
+- Python-скрипт остаётся source of truth
+- DAG строится детерминированно из кода
+- Условные рёбра (`on_fail`, `on_pass`) — это свойства edge, а не фейковые ноды
+
+### 3. **DOT/Graphviz — текстовый формат → визуализация**
+
+Промежуточный формат, в который можно экспортировать из canonical DAG для дебага.
+
+### 4. **BPMN (Business Process Model and Notation)**
+
+Стандарт для workflow с гейтами, условными ветками, параллельными путями. XML-based. Избыточен для вас, но **концепция gateway nodes** (exclusive/parallel) полезна.
+
+### 5. **Excel как source**
+
+Реально работает через простую таблицу:
+
+| step_id | label | type | depends_on | condition |
+|---------|-------|------|------------|-----------|
+| 1 | Task Intake | phase | — | always |
+| 2 | Architect | agent | 1 | always |
+| 3 | Scout | agent | 2 | always |
+| 4 | Researcher | agent | 2 | always |
+| 5 | Architect Plan | agent | 3,4 | always |
+| 6 | Coder | agent | 5 | always |
+| 7 | Verifier | gate | 6 | always |
+| 8 | Coder | agent | 7 | on_fail |
+| 9 | Architect | agent | 7 | on_major_fail |
+| 10 | Completion | phase | 7 | on_pass |
+
+Парсер xlsx → canonical DAG — тривиален.
+
+---
+
+## 🏗️ Рекомендуемая архитектура Canonical DAG
+
+```
+┌─────────────────────────────────────────────────┐
+│              CANONICAL DAG SCHEMA                │
+│                                                  │
+│  graph:                                          │
+│    id, version, source_format, execution_mode    │
+│                                                  │
+│  nodes[]:                                        │
+│    id, type, label, role, status, meta{}         │
+│                                                  │
+│  edges[]:                                        │
+│    source, target, kind, condition, meta{}       │
+│                                                  │
+│  layout_hints:                                   │
+│    orientation, layer_assignment, spacing         │
+└─────────────┬───────────────────┬───────────────┘
+              │                   │
+     ┌────────▼────────┐  ┌──────▼──────────┐
+     │    IMPORTERS     │  │    EXPORTERS     │
+     │                  │  │                  │
+     │  py  → canonical │  │  canonical → py  │
+     │  json→ canonical │  │  canonical → json│
+     │  md  → canonical │  │  canonical → md  │
+     │  xlsx→ canonical │  │  canonical → xlsx│
+     │  xml → canonical │  │  canonical → xml │
+     │  yaml→ canonical │  │  canonical → yaml│
+     └─────────────────┘  └─────────────────┘
+              │
+     ┌────────▼────────┐
+     │  RUNTIME LAYER   │
+     │                  │
+     │  event_log[]     │
+     │  → builds        │
+     │    runtime DAG   │
+     │  → overlays on   │
+     │    template DAG  │
+     └─────────────────┘
+```
+
+---
+
+## 🔗 Связь с Discrepancy Theory и Spectral Methods (предыдущие обсуждения)
+
+Это прямо стыкуется:
+
+1. **Discrepancy Theory (пункт 5)** → balanced layering canonical DAG. Когда у вас canonical формат, вы можете применить discrepancy-методы для автоматического распределения узлов по уровням Sugiyama, чтобы граф был читаемым.
+
+2. **Graph Fourier / Spectral (пункт 6)** → аномалии в runtime DAG. Когда runtime trace пишет реальный execution graph, спектральный анализ Лапласиана может детектировать:
+   - аномальные паттерны (слишком много retry)
+   - кластеры подзадач, которые стоит группировать
+   - drift между G_design и G_runtime
+
+3. **JEPA** (из вашего pinned контекста) → предиктивный слой **поверх** canonical DAG:
+   - JEPA предсказывает в embedding-пространстве, не генерирует пиксели
+   - Аналогично: JEPA-слой в VETKA предсказывает **какой следующий шаг вероятен** в canonical DAG, не переписывает его
+   - Это ваш G_predict — dashed overlay
+
+---
+
+## 📋 Конкретный план действий
+
+### Фаза 1: Canonical Schema (без правок runtime)
+```
+1. Определить JSON Schema для canonical DAG
+2. Написать exporter: agent_pipeline.py → canonical JSON
+3. Написать importer: canonical JSON → визуализация в MCC
+4. Тест: round-trip (py → canonical → визуализация = ожидаемый DAG)
+```
+
+### Фаза 2: Runtime Event Log → Canonical DAG
+```
+1. Стандартизировать события pipeline (уже есть emit_progress/timeline)
+2. Builder: event_log[] → canonical DAG (runtime mode)
+3. API endpoint: /api/workflow/runtime-graph/{task_id}
+4. MCC переключается на runtime source (флаг source="runtime")
+```
+
+### Фаза 3: Multi-format Import/Export
+```
+1. xlsx parser → canonical
+2. md parser → canonical  
+3. canonical → xlsx/md/json export
+4. Визуальный редактор DAG → canonical → обратно в py/json
+```
+
+### Фаза 4: JEPA + Spectral overlay
+```
+1. G_predict как dashed edges поверх canonical
+2. Spectral anomaly detection на runtime DAG
+3. Balanced layering через discrepancy optimization
+```
+
+---
+
+## ⚡ Главная рекомендация
+
+**Начните с JSON Schema canonical формата.** Это фундамент. Без него каждый следующий шаг будет ad-hoc. Codex правильно предложил RFC-док — делайте его, но с конкретной JSON Schema, а не абстрактным описанием.
+
+Минимальный рабочий пример:
+
+```json
+{
+  "graph": {
+    "id": "dragon_workflow_v1",
+    "version": "1.0.0",
+    "source_format": "python",
+    "execution_mode": "template"
+  },
+  "nodes": [
+    {"id": "task_intake", "type": "phase", "label": "Task Intake", "role": "system"},
+    {"id": "architect_1", "type": "agent", "label": "Architect", "role": "architect"},
+    {"id": "scout", "type": "agent", "label": "Scout", "role": "scout"},
+    {"id": "researcher", "type": "agent", "label": "Researcher", "role": "researcher"},
+    {"id": "architect_2", "type": "agent", "label": "Architect Plan", "role": "architect"},
+    {"id": "coder", "type": "agent", "label": "Coder", "role": "coder"},
+    {"id": "verifier", "type": "gate", "label": "Verifier", "role": "verifier"},
+    {"id": "completion", "type": "phase", "label": "Completion", "role": "system"}
+  ],
+  "edges": [
+    {"source": "task_intake", "target": "architect_1", "kind": "flow", "condition": "always"},
+    {"source": "architect_1", "target": "scout", "kind": "flow", "condition": "always"},
+    {"source": "architect_1", "target": "researcher", "kind": "flow", "condition": "always"},
+    {"source": "scout", "target": "architect_2", "kind": "flow", "condition": "always"},
+    {"source": "researcher", "target": "architect_2", "kind": "flow", "condition": "always"},
+    {"source": "architect_2", "target": "coder", "kind": "flow", "condition": "always"},
+    {"source": "coder", "target": "verifier", "kind": "flow", "condition": "always"},
+    {"source": "verifier", "target": "coder", "kind": "conditional", "condition": "on_fail"},
+    {"source": "verifier", "target": "architect_1", "kind": "conditional", "condition": "on_major_fail"},
+    {"source": "verifier", "target": "completion", "kind": "flow", "condition": "on_pass"}
+  ]
+}
+```
+
+Этот JSON — **один и тот же** граф, который можно:
+- Сгенерировать из Python pipeline
+- Отрендерить в MCC
+- Экспортировать в Excel
+- Импортировать из Markdown таблицы
+- Наложить JEPA predictions как дополнительные dashed edges
+- Сравнить с runtime execution trace для drift detection
+
+Это и есть ваша **единая схема графа**.

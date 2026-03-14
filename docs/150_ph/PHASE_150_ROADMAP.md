@@ -18,13 +18,13 @@ DAG Editor (Phase 144) → Workflow Template → DAG Executor → Real Pipeline.
 | 150.3a | Wire DAG → real pipeline methods | ✅ DONE | `4e639ef1` | 28 |
 | 150.3b | Live DAG streaming (dag_node_update) | ✅ DONE | `9ed6768e` | 7 |
 | 150.3c | Sparse Apply (PatchApplier) | ✅ DONE | `2fdadd6f` | 22 |
-| 150.4 | PatchApplier → Pipeline integration | ✅ DONE | (pending commit) | 25 |
-| 150.5 | Coder PATCH MODE prompt | ✅ DONE | (pending commit) | (in 150.4) |
+| 150.4 | PatchApplier → Pipeline integration | ✅ DONE | `af34b83f` | 25 |
+| 150.5 | Coder PATCH MODE prompt | ✅ DONE | `af34b83f` | (in 150.4) |
 | 150.6 | Structured Agent Streaming | 📋 PLANNED | — | — |
 | 150.7 | E2E: DAG Executor + Dragon Silver | 🔥 NEXT | — | — |
 
-**Total Phase 150 tests: 84** (21 + 6 + 28 + 7 + 22)
-**Total project tests: 569 passing** (14 pre-existing failures)
+**Total Phase 150 tests: 109** (21 + 6 + 28 + 7 + 22 + 25)
+**Total project tests: 569+ passing** (14 pre-existing failures)
 
 ---
 
@@ -74,66 +74,44 @@ DAG Editor (Phase 144) → Workflow Template → DAG Executor → Real Pipeline.
 
 ---
 
-## WHAT'S NEXT (150.4 — 150.7)
+## WHAT WE BUILT (150.4 — 150.5)
 
-### 150.4 — PatchApplier → Pipeline Integration 🔥 HIGH PRIORITY
+### 150.4 — PatchApplier → Pipeline Integration ✅ DONE (af34b83f)
 **Goal:** Dragon uses sparse apply for existing files, full write for new files only.
 
-**Changes needed:**
-```
-src/orchestration/agent_pipeline.py → _execute_subtask():
-  if subtask.target_file and Path(target_file).exists():
-      result = await self._execute_patch_mode(subtask)  # sparse apply
-  else:
-      result = await self._execute_create_mode(subtask)  # full file (current)
-```
+**What was built:**
+- **MARKER_150.4_IMPORT:** `PatchApplier` import with try/except and `PATCH_APPLIER_AVAILABLE` flag
+- **MARKER_150.4A:** `_detect_target_files(subtask, base_path)` static method
+  - Extracts existing file paths from subtask.context.scout_report (marker_map + relevant_files)
+  - Deduplicates, resolves against base_path, returns only files that exist on disk
+  - Empty list = CREATE mode, non-empty = PATCH mode
+- **MARKER_150.4B:** `_apply_patches(content, subtask)` async method
+  - Uses PatchApplier.detect_mode() to identify unified_diff / marker_insert / create
+  - Routes to correct apply method, graceful fallback on exception
+- **MARKER_150.4C:** Mode detection before user message construction
+  - Injects `⚠️ MODE: PATCH` or `MODE: CREATE` into coder's task description
+- **MARKER_150.4D:** FC loop post-processing — try PatchApplier first, fallback to extract_and_write
+- **MARKER_150.4E:** One-shot post-processing — same pattern
 
-**New method `_execute_patch_mode()`:**
-1. Run coder with PATCH MODE prompt (see 150.5)
-2. Receive unified diff / marker insert output
-3. Call `PatchApplier.detect_mode()` → route to correct apply method
-4. Apply patch → verify syntax (optional ESLint/ruff)
-5. Return result for verifier
+**Files modified:**
+- `src/orchestration/agent_pipeline.py` — +169 lines (3 new methods + mode routing)
+- `data/templates/pipeline_prompts.json` — coder + verifier prompts updated
 
-**Files to modify:**
-- `src/orchestration/agent_pipeline.py` — add `_execute_patch_mode()`, modify `_execute_subtask()` routing
-- `src/tools/fc_loop.py` — possibly add PatchApplier as post-processing step
-- `data/templates/pipeline_prompts.json` — see 150.5
+**Tests:** 25 in `test_phase150_4_patch_integration.py`
 
-**Estimated:** 2-3 hours, ~150 LOC
-
-### 150.5 — Coder PATCH MODE Prompt 🔥 HIGH PRIORITY
+### 150.5 — Coder PATCH MODE Prompt ✅ DONE (af34b83f)
 **Goal:** Force coder LLM to output patches instead of full file rewrites.
 
-**Prompt additions for `pipeline_prompts.json` → coder:**
-```
-PATCH MODE (for EXISTING files):
-You are MODIFYING an existing file. DO NOT rewrite the entire file.
+**What was built:**
+- Coder prompt: `## OUTPUT MODES` section with MODE: CREATE and MODE: PATCH
+- MODE: PATCH requires unified diff format with 3-line context
+- Alternative: MARKER INSERT JSON format for marker-based edits
+- Explicit rules: "NEVER rewrite or output the full file content"
+- Verifier prompt: patch-awareness — checks diff has proper context, flags >50% removal as severity=major
 
-OUTPUT FORMAT — choose ONE:
-A) UNIFIED DIFF (preferred for modifications):
-   --- a/path/to/file.ts
-   +++ b/path/to/file.ts
-   @@ -line,count +line,count @@
-    context line
-   +added line
-   -removed line
+---
 
-B) MARKER INSERT (for additions only):
-   {"marker": "MARKER_SCOUT_1:42", "action": "INSERT_AFTER", "code": "..."}
-
-RULES:
-- NEVER output full file content for existing files
-- Output ONLY the changed portions
-- Include 3 lines of context around each change
-- New files: output full content (CREATE mode)
-```
-
-**Files to modify:**
-- `data/templates/pipeline_prompts.json` — add PATCH MODE section to coder prompt
-- Possibly add mode detection in `_execute_subtask()` to inject correct prompt variant
-
-**Estimated:** 1-2 hours, ~50 LOC
+## WHAT'S NEXT (150.6 — 150.7)
 
 ### 150.6 — Structured Agent Streaming 📋 PLANNED
 **Goal:** Real-time visibility into what Dragon is thinking and doing (Cursor-level transparency).
@@ -231,17 +209,17 @@ Original roadmap had different numbering. Actual implementation:
 
 ## PRIORITY ORDER (What to do next)
 
-### Immediate (150.4 + 150.5) — "Dragon stops destroying files"
-1. **150.5 Coder PATCH MODE prompt** — smallest change, biggest impact
-2. **150.4 Pipeline integration** — route existing vs new files to correct mode
-3. **Quick E2E test** — verify Dragon outputs diffs instead of full rewrites
+### ✅ DONE — "Dragon stops destroying files" (150.4 + 150.5)
+1. ~~150.5 Coder PATCH MODE prompt~~ ✅
+2. ~~150.4 Pipeline integration~~ ✅
+3. **Quick E2E test** — verify Dragon outputs diffs instead of full rewrites (part of 150.7)
 
-### Short-term (150.6) — "See what Dragon is thinking"
+### Next — "See what Dragon is thinking" (150.6)
 4. **150.6 Structured streaming** — agent_stream events, basic UI panel
 
-### Medium-term (150.7+) — "Full autonomous loop"
+### After — "Full autonomous loop" (150.7+)
 5. **150.7 E2E with real Dragon** — full BMAD loop through DAG Executor
-6. **Playground UI** — DAG visualization in playground context (deferred from 150.2)
+6. **Playground UI** — create/review/promote playground from frontend (deferred from 150.2)
 7. **Approval gate** — wire approval_service.py into DAG (blocks until user approves)
 
 ---
@@ -253,9 +231,10 @@ Original roadmap had different numbering. Actual implementation:
 | `docs/150_ph/SPARSE_APPLY_DESIGN.md` | Original Sparse Apply architecture |
 | `docs/150_ph/GROK_RESEARCH_150_DAG_PIPELINE_BRIDGE.md` | Research questions for Grok |
 | `docs/150_ph/stream_GROK.txt` | Full Grok research: streaming + control architecture |
+| `docs/150_ph/USER_TEST_GUIDE.md` | User test guide — how to run first task |
 | `docs/BATTLEFIELD_REPORT_2026_02_14.md` | Day 2 battle report (pre-Phase 150) |
 
 ---
 
 *Updated by Opus Commander | Phase 150 | 2026-02-15*
-*84 new tests, 3 commits, 1448 LOC (993 DAG + 455 PatchApplier)*
+*109 new tests, 4 commits, 1617 LOC (993 DAG + 455 PatchApplier + 169 integration)*

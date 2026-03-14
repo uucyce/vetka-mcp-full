@@ -1,0 +1,9 @@
+{
+  "mode": "B_api_tts",
+  "prompt_id": "long_1",
+  "run_index": 1,
+  "audio_chunks": 6,
+  "ttft_text_ms": 1278.5992909921333,
+  "ttfa_audio_ms": 6156.267957994714,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_045946_693988_B_api_tts_long_1_run1/merged.wav"
+}

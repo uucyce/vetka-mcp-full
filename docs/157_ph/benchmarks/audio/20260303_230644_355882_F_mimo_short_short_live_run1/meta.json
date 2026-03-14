@@ -1,0 +1,22 @@
+{
+  "mode": "F_mimo_short",
+  "prompt_id": "short_live",
+  "run_index": 1,
+  "audio_chunks": 2,
+  "ttft_text_ms": 1605.729082977632,
+  "ttfa_audio_ms": 3008.660666993819,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260303_230644_355882_F_mimo_short_short_live_run1/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 5.12,
+    "frame_ms": 20,
+    "silence_threshold": 0.018355,
+    "silence_ratio": 0.5273,
+    "pause_count": 5,
+    "long_pause_count": 1,
+    "longest_pause_ms": 1080,
+    "stretch_events": 0,
+    "qc_score": 73.25
+  }
+}

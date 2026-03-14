@@ -213,6 +213,24 @@ class AgentPipeline:
         self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
         # MARKER_152.4: Timeline events for pipeline drill-down visualization
         self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
+        # MARKER_172.P4.FC_EXECS: Last FC tool executions for REFLEX feedback
+        self._last_fc_tool_executions: List[Dict] = []
+        # MARKER_172.P5.OBSERVE + MARKER_173.P1: REFLEX observability counters
+        self._reflex_stats: Dict[str, Any] = {
+            "enabled": False,
+            "recommendations_given": 0,
+            "tools_recommended": [],      # flat list of all tool_ids recommended
+            "tools_used": [],             # flat list of all tool_ids actually used
+            "feedback_recorded": 0,
+            "verifier_feedbacks": 0,
+            "schemas_filtered": 0,        # MARKER_173.P1: times IP-7 reduced schemas
+            "schemas_original_count": 0,  # MARKER_173.P1: total schemas before filtering
+            "schemas_filtered_count": 0,  # MARKER_173.P1: total schemas after filtering
+        }
+        # MARKER_173.P3: REFLEX structured event emitter (lazy init)
+        self._reflex_emitter = None
+        # MARKER_173.P4: REFLEX A/B experiment arm (lazy assigned)
+        self._reflex_experiment_arm: Optional[str] = None
         # MARKER_102.23_START: Short-Term Memory for context passing
         self.stm: List[Dict[str, str]] = []  # Last N subtask results
         self.stm_limit = PIPELINE_STM_LIMIT
@@ -1298,7 +1316,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
     # MARKER_102.27_START: Progress emission to VETKA chat
     # MARKER_117.8B: Async emit — SocketIO direct for solo, AsyncClient for groups
     # Replaces sync httpx.Client that was BLOCKING the event loop for 5s per emit
-    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None):
+    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None, metadata: dict = None):
         """
         Emit progress update to VETKA chat.
 
@@ -1307,12 +1325,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
           1. SocketIO direct (solo chat) — via self.sio.emit("chat_response") → instant
           2. HTTP AsyncClient (group chat) — via POST to group endpoint → async
 
+        MARKER_174.REFLEX_LIVE: Optional metadata dict for structured message rendering.
+        When metadata contains {"type": "reflex"}, frontend renders as ReflexInsight pills.
+
         Args:
             role: @architect, @researcher, @coder, or @pipeline
             message: Status message
             subtask_idx: Current subtask index (1-based for display)
             total: Total subtasks count
             model: Optional model name for attribution (e.g. "moonshotai/kimi-k2.5")
+            metadata: Optional structured metadata for rich rendering (e.g. REFLEX events)
         """
         try:
             # MARKER_117.6C: Show which model is executing
@@ -1328,7 +1350,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_129.4A: Broadcast to DevPanel via MYCELIUM WebSocket (direct, no relay)
             if getattr(self, '_ws_broadcaster', None):
                 try:
-                    await self._ws_broadcaster.broadcast({
+                    ws_payload = {
                         "type": "pipeline_activity",
                         "role": role,
                         "message": message,
@@ -1338,7 +1360,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset_name,
                         "timestamp": time.time(),
-                    })
+                    }
+                    # MARKER_174.REFLEX_LIVE: Include structured metadata for rich rendering
+                    if metadata:
+                        ws_payload["metadata"] = metadata
+                    await self._ws_broadcaster.broadcast(ws_payload)
                 except Exception:
                     pass  # Never fail pipeline on WS broadcast
 
@@ -1347,7 +1373,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 try:
                     await self._http_client.emit_pipeline_progress(
                         self.chat_id, role, full_message, model=model or "system",
-                        subtask_idx=subtask_idx, total=total
+                        subtask_idx=subtask_idx, total=total, metadata=metadata
                     )
                 except Exception:
                     pass
@@ -1357,7 +1383,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # This runs BEFORE chat routing so early returns don't skip it
             try:
                 if self.sio:
-                    await self.sio.emit("pipeline_activity", {
+                    sio_activity = {
                         "role": role,
                         "message": message,
                         "model": model or "system",
@@ -1366,32 +1392,45 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset,
                         "timestamp": time.time(),
-                    })
+                    }
+                    # MARKER_174.REFLEX_LIVE: Include metadata for MYCELIUM stream
+                    if metadata:
+                        sio_activity["metadata"] = metadata
+                    await self.sio.emit("pipeline_activity", sio_activity)
             except Exception:
                 pass  # Never fail pipeline on broadcast
 
             # MARKER_118.6: Route 1 — emit "chat_response" so ChatPanel sees it
             # (Was "agent_message" → wrote to legacy messages[], invisible in ChatPanel)
             if self.sio and self.sid:
-                await self.sio.emit("chat_response", {
+                sio_payload = {
                     "message": full_message,
                     "agent": "pipeline",
                     "model": model or "system",
-                }, to=self.sid)
+                }
+                # MARKER_174.REFLEX_LIVE: Include structured metadata for ReflexInsight rendering
+                if metadata:
+                    sio_payload["type"] = metadata.get("type", "text")
+                    sio_payload["metadata"] = metadata
+                await self.sio.emit("chat_response", sio_payload, to=self.sid)
                 logger.debug(f"[Pipeline] SIO emit: {full_message[:80]}...")
                 return
 
             # MARKER_117.8B Route 2: HTTP async (group chat — non-blocking)
             if self.chat_id:
                 import httpx
+                http_json = {
+                    "agent_id": "pipeline",
+                    "content": full_message,
+                    "message_type": "reflex" if metadata and metadata.get("type") == "reflex" else "system",
+                }
+                # MARKER_174.REFLEX_LIVE: Include structured metadata
+                if metadata:
+                    http_json["metadata"] = metadata
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.post(
                         f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
-                        json={
-                            "agent_id": "pipeline",
-                            "content": full_message,
-                            "message_type": "system"
-                        }
+                        json=http_json
                     )
                     if response.status_code != 200:
                         logger.warning(f"[Pipeline] Emit got status {response.status_code}")
@@ -1618,7 +1657,108 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         tasks[task.task_id] = asdict(task)
         self._save_tasks(tasks)
 
+    # MARKER_173.P1.TIER: Derive model tier from preset name
+    def _get_model_tier(self) -> str:
+        """Map preset_name to bronze/silver/gold for REFLEX filtering."""
+        tier_map = {
+            "dragon_bronze": "bronze",
+            "dragon_silver": "silver",
+            "dragon_gold": "gold",
+            "dragon_gold_gpt": "gold",
+            "titan_lite": "bronze",
+            "titan_core": "silver",
+            "titan_prime": "gold",
+        }
+        return tier_map.get(self.preset_name or "", "silver")
+
+    def _get_reflex_experiment_arm(self) -> str:
+        """MARKER_173.P4.ARM — Get A/B experiment arm for this pipeline run."""
+        if self._reflex_experiment_arm is None:
+            try:
+                from src.services.reflex_experiment import is_experiment_active, assign_arm
+                if is_experiment_active():
+                    pipeline_id = getattr(self, '_board_task_id', '') or ''
+                    self._reflex_experiment_arm = assign_arm(pipeline_id)
+                else:
+                    self._reflex_experiment_arm = ""  # Not in experiment
+            except ImportError:
+                self._reflex_experiment_arm = ""
+        return self._reflex_experiment_arm
+
+    def _record_reflex_experiment(self, pipeline_stats: Dict[str, Any]):
+        """MARKER_173.P4.RECORD — Record experiment metrics after pipeline completes."""
+        try:
+            arm = self._get_reflex_experiment_arm()
+            if not arm:
+                return
+            from src.services.reflex_experiment import get_reflex_experiment, ExperimentMetrics
+            rs = self._reflex_stats
+            metrics = ExperimentMetrics(
+                pipeline_id=getattr(self, '_board_task_id', '') or '',
+                arm=arm,
+                experiment_id="reflex_active_v1",
+                success_rate=pipeline_stats.get("success_rate", 0.0),
+                match_rate=rs.get("_match_rate", 0.0),
+                duration_ms=pipeline_stats.get("duration_ms", 0.0),
+                tokens_used=pipeline_stats.get("total_tokens", 0),
+                schemas_filtered=rs.get("schemas_filtered", 0),
+                tokens_saved_estimate=rs.get("schemas_original_count", 0) - rs.get("schemas_filtered_count", 0),
+                fallback_count=0,
+                subtask_count=pipeline_stats.get("subtasks_total", 0),
+            )
+            get_reflex_experiment().record_metrics(metrics)
+            logger.info("[REFLEX P4] Experiment recorded: arm=%s, success=%.2f", arm, metrics.success_rate)
+        except Exception as e:
+            logger.debug("[REFLEX P4] Experiment record error (non-fatal): %s", e)
+
+    def _get_reflex_emitter(self):
+        """MARKER_173.P3.LAZY — Lazy-init REFLEX event emitter."""
+        if self._reflex_emitter is None:
+            try:
+                from src.services.reflex_streaming import ReflexEventEmitter
+                self._reflex_emitter = ReflexEventEmitter(
+                    ws_broadcaster=getattr(self, '_ws_broadcaster', None),
+                )
+            except ImportError:
+                pass
+        return self._reflex_emitter
+
     # MARKER_135.DAG_BRIDGE: Build structured result for DAG visualization
+    def _build_reflex_stats(self) -> Dict[str, Any]:
+        """MARKER_172.P5.3 — Build REFLEX observability section for pipeline_stats.
+
+        Returns:
+            Dict with enabled, recommendation counts, match rate, etc.
+        """
+        rs = self._reflex_stats
+        if not rs.get("enabled"):
+            return {"enabled": False}
+
+        # Compute match rate: how many recommended tools were actually used
+        recommended_set = set(rs["tools_recommended"])
+        used_set = set(rs["tools_used"])
+        matched = recommended_set & used_set
+        match_rate = len(matched) / len(recommended_set) if recommended_set else 0.0
+
+        result = {
+            "enabled": True,
+            "recommendations_given": rs["recommendations_given"],
+            "tools_recommended_unique": list(recommended_set),
+            "tools_used_unique": list(used_set),
+            "match_rate": round(match_rate, 3),
+            "matched_tools": list(matched),
+            "feedback_recorded": rs["feedback_recorded"],
+            "verifier_feedbacks": rs["verifier_feedbacks"],
+        }
+
+        # MARKER_173.P1: Include schema filtering stats if active
+        if rs.get("schemas_filtered", 0) > 0:
+            result["schemas_filtered"] = rs["schemas_filtered"]
+            result["schemas_original_count"] = rs["schemas_original_count"]
+            result["schemas_filtered_count"] = rs["schemas_filtered_count"]
+
+        return result
+
     def _build_dag_result(self, pipeline_task: PipelineTask, stats: dict) -> dict:
         """Build structured result for DAG visualization.
 
@@ -2256,6 +2396,34 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 logger.debug(f"[Pipeline] Feedback load skipped: {fb_err}")
             # MARKER_135.FB_LOOP_A_END
 
+            # MARKER_176.2: Wire ArchitectPrefetch into dispatch chain
+            # Enrich architect context with prefetched files, markers, and workflow selection
+            self._prefetch_context = None
+            try:
+                from src.services.architect_prefetch import ArchitectPrefetch, PrefetchContext
+                task_packet = await self._load_mcc_task_context_packet()
+                packet_binding = task_packet.get("workflow_binding") if isinstance(task_packet.get("workflow_binding"), dict) else {}
+                prefetch_ctx = ArchitectPrefetch.prepare(
+                    task_description=task,
+                    task_type=phase_type,
+                    complexity=5,  # default; architect will refine later
+                    workflow_family=str(packet_binding.get("workflow_family") or ""),
+                    task_packet=task_packet,
+                )
+                self._prefetch_context = prefetch_ctx
+                _pf_files = [f["path"] for f in prefetch_ctx.relevant_files[:10]] if prefetch_ctx.relevant_files else []
+                _pf_markers = [m.get("content", "")[:60] for m in prefetch_ctx.markers[:5]] if prefetch_ctx.markers else []
+                _pf_docs = list(((prefetch_ctx.task_packet or {}).get("docs") or {}).get("architecture_docs") or [])
+                await self._emit_progress(
+                    "@mycelium",
+                    f"\U0001f52e Prefetch: {len(_pf_files)} files, {len(_pf_markers)} markers, "
+                    f"docs={len(_pf_docs)}, workflow={prefetch_ctx.workflow_name}"
+                )
+                logger.info(f"[Pipeline] MARKER_176.2: Prefetch ready \u2014 {prefetch_ctx.summary}")
+            except Exception as prefetch_err:
+                logger.warning(f"MARKER_176.2: Prefetch skipped: {prefetch_err}")
+            # MARKER_176.2_END
+
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             self._emit_timeline_event("architect", "start", "planning subtasks")
@@ -2389,17 +2557,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if hasattr(self, '_board_task_id') and self._board_task_id:
                 try:
                     from src.orchestration.task_board import get_task_board
-                    from datetime import datetime as _dt
                     board = get_task_board()
                     board.update_task(
                         self._board_task_id,
-                        status="done" if pipeline_task.status == "done" else "failed",
-                        completed_at=_dt.now().isoformat(),
                         pipeline_task_id=task_id,
                         assigned_tier=self.preset_name,
-                        result_summary=str(pipeline_task.results)[:500]
+                        result_summary=str(pipeline_task.results)[:500],
                     )
-                    logger.info(f"[Pipeline] Task board updated: {self._board_task_id} → {pipeline_task.status}")
+                    logger.info(f"[Pipeline] Task board checkpoint saved: {self._board_task_id}")
                 except Exception as e:
                     logger.debug(f"[Pipeline] Task board update skipped: {e}")
             # MARKER_121.3_END
@@ -2449,7 +2614,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "agent_stats": dict(self._agent_stats),
                     # MARKER_152.4: Timeline events for drill-down visualization
                     "timeline": list(self._timeline_events),
+                    # MARKER_172.P5.3: REFLEX observability in pipeline stats
+                    "reflex": self._build_reflex_stats(),
                 }
+                # MARKER_173.P4: Record A/B experiment metrics
+                self._record_reflex_experiment(pipeline_stats)
                 # Save to TaskBoard if task has a board ID
                 if hasattr(self, '_board_task_id') and self._board_task_id:
                     from src.orchestration.task_board import get_task_board
@@ -2495,14 +2664,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_133.TRACKER: Auto-track task completion in digest
             try:
-                from src.services.task_tracker import on_task_completed
-                await on_task_completed(
-                    task_id=task_id,
-                    task_title=task[:200],
-                    status="done" if pipeline_stats.get("success") else "failed",
-                    stats=pipeline_stats,
-                    source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
-                )
+                if hasattr(self, '_board_task_id') and self._board_task_id:
+                    logger.debug(f"[Pipeline Tracker] Board-backed task {self._board_task_id} defers tracker update to closure protocol")
+                else:
+                    from src.services.task_tracker import on_task_completed
+                    await on_task_completed(
+                        task_id=task_id,
+                        task_title=task[:200],
+                        status="done" if pipeline_stats.get("success") else "failed",
+                        stats=pipeline_stats,
+                        source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
+                    )
             except Exception as track_err:
                 logger.debug(f"[Pipeline Tracker] Failed: {track_err}")
 
@@ -2710,6 +2882,41 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if subtask.visible:
                 await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
+            # MARKER_172.P4.IP1: REFLEX pre-FC recommendations
+            try:
+                from src.services.reflex_integration import reflex_pre_fc
+                _recs = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+                # MARKER_172.P5.OBSERVE: Track recommendations
+                if _recs:
+                    self._reflex_stats["enabled"] = True
+                    self._reflex_stats["recommendations_given"] += 1
+                    self._reflex_stats["tools_recommended"].extend(r["tool_id"] for r in _recs)
+                    # MARKER_172.P5.4: Stream to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
+                    _rec_ids = ", ".join(r["tool_id"] for r in _recs[:3])
+                    await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks,
+                        metadata={
+                            "type": "reflex",
+                            "event": "recommendation",
+                            "tools": [{"id": r["tool_id"], "score": round(r.get("score", 0), 2)} for r in _recs[:5]],
+                            "phase": phase_type,
+                            "tier": self._get_model_tier(),
+                            "subtask": subtask.marker or f"step_{i+1}",
+                        })
+                    # MARKER_173.P3.IP1: Structured recommendation event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_recommendation(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            model_tier=self._get_model_tier(),
+                            recommendations=_recs,
+                        )
+            except Exception:
+                pass  # REFLEX errors never block pipeline
+
             # MARKER_133.C33B: Coder phase with timeout
             # MARKER_145.ADAPTIVE_TIMEOUT: Coder gets fc_turns=4 for FC loop, model from prompts
             _coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
@@ -2721,6 +2928,45 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 subtask.result = "Coder phase timed out"
                 self._update_task(pipeline_task)
                 continue
+
+            # MARKER_172.P4.IP3: REFLEX post-FC feedback (record tool usage)
+            try:
+                from src.services.reflex_integration import reflex_post_fc
+                _fc_execs = self._last_fc_tool_executions
+                if _fc_execs:
+                    _fb_count = reflex_post_fc(_fc_execs, phase_type=phase_type, subtask_id=subtask.marker or f"step_{i+1}")
+                    # MARKER_172.P5.OBSERVE: Track used tools + feedback
+                    _used_names = [e.get("name", "") for e in _fc_execs]
+                    self._reflex_stats["tools_used"].extend(_used_names)
+                    self._reflex_stats["feedback_recorded"] += _fb_count
+                    # MARKER_172.P5.4: Stream to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
+                    if _fb_count > 0:
+                        _used_ids = ", ".join(_used_names[:3])
+                        await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "outcome",
+                                "tools_used": _used_names[:5],
+                                "feedback_count": _fb_count,
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
+                    # MARKER_173.P3.IP3: Structured outcome event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_outcome(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            model_tier=self._get_model_tier(),
+                            recommended_ids=list(self._reflex_stats.get("tools_recommended", [])),
+                            used_ids=_used_names,
+                            feedback_count=_fb_count,
+                        )
+            except Exception:
+                pass  # REFLEX errors never block pipeline
 
             # MARKER_122.3: Verify-Retry loop (only for fix/build phases)
             if phase_type in ("fix", "build") and "verifier" in self.prompts:
@@ -2793,6 +3039,47 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     except Exception as fb_err:
                         logger.debug(f"[Feedback] Verifier save failed: {fb_err}")
                 # MARKER_134.FEEDBACK_A_END
+
+                # MARKER_172.P4.IP5: REFLEX verifier feedback
+                try:
+                    from src.services.reflex_integration import reflex_verifier
+                    _fc_tool_names = [e.get("name", "") for e in self._last_fc_tool_executions]
+                    _vf_count = reflex_verifier(
+                        subtask_id=subtask.marker or f"step_{i+1}",
+                        tools_used=_fc_tool_names,
+                        verifier_passed=verification.get("passed", False),
+                        phase_type=phase_type,
+                    )
+                    # MARKER_172.P5.OBSERVE: Track verifier feedback count
+                    self._reflex_stats["verifier_feedbacks"] += _vf_count
+                    # MARKER_172.P5.4: Stream verifier outcome to DevPanel
+                    # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
+                    if _vf_count > 0:
+                        _v_status = "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
+                        await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "verifier",
+                                "passed": verification.get("passed", False),
+                                "tools": _fc_tool_names[:5],
+                                "feedback_count": _vf_count,
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
+                    # MARKER_173.P3.IP5: Structured verifier event
+                    _emitter = self._get_reflex_emitter()
+                    if _emitter:
+                        await _emitter.emit_verifier(
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
+                            phase_type=phase_type,
+                            tools_used=_fc_tool_names,
+                            verifier_passed=verification.get("passed", False),
+                            feedback_count=_vf_count,
+                        )
+                except Exception:
+                    pass  # REFLEX errors never block pipeline
 
                 if subtask.visible:
                     v_icon = "✅" if verification.get("passed", True) else "⚠️"
@@ -3089,6 +3376,50 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         except Exception:
             return ""  # Graceful — never block pipeline
 
+    async def _load_mcc_task_context_packet(self) -> Dict[str, Any]:
+        """
+        MARKER_177.MCC.PACKET_FIRST_INTAKE.V1
+        Resolve the canonical MCC task packet for board-backed pipeline runs.
+        """
+        board_task_id = str(getattr(self, "_board_task_id", "") or "").strip()
+        if not board_task_id:
+            return {}
+        try:
+            from src.api.routes import mcc_routes as mcc_routes_module
+            from src.orchestration.task_board import get_task_board
+            from src.services.mcc_local_run_registry import get_localguys_run_registry
+            from src.services.roadmap_task_sync import build_task_context_packet
+
+            board = get_task_board()
+            task = board.get_task(board_task_id) if board else None
+            if not isinstance(task, dict) or not task:
+                return {}
+
+            workflow_binding = {
+                "workflow_id": str(task.get("workflow_id") or task.get("workflow_family") or "").strip(),
+                "workflow_family": str(task.get("workflow_family") or task.get("workflow_id") or "").strip(),
+                "workflow_selection_origin": str(task.get("workflow_selection_origin") or "").strip(),
+                "preset": str(task.get("preset") or task.get("team_profile") or "").strip(),
+            }
+            workflow_family = str(workflow_binding.get("workflow_family") or "").strip()
+            workflow_contract = {}
+            if workflow_family:
+                workflow_contract = await mcc_routes_module._resolve_workflow_contract(workflow_family) or {}
+
+            history = board.get_task_history(board_task_id) if hasattr(board, "get_task_history") else list(task.get("status_history") or [])
+            latest_run = get_localguys_run_registry().get_latest_for_task(board_task_id)
+            packet = build_task_context_packet(
+                task,
+                workflow_binding=workflow_binding,
+                workflow_contract=workflow_contract,
+                task_history=history,
+                localguys_run=latest_run or {},
+            )
+            return packet if isinstance(packet, dict) else {}
+        except Exception as exc:
+            logger.debug(f"[Pipeline] MCC task packet skipped: {exc}")
+            return {}
+
     # MARKER_102.5_START: Architect planning
     async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
                                research_context: Optional[Dict] = None,
@@ -3146,15 +3477,93 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if pinned_ctx:
             user_content += f"\n\n{pinned_ctx}"
         # MARKER_152.12B_END
+        # MARKER_176.2B: Inject prefetch context into architect user message
+        if hasattr(self, '_prefetch_context') and self._prefetch_context:
+            _pctx = self._prefetch_context
+            _pfiles = [f["path"] for f in _pctx.relevant_files[:10]] if _pctx.relevant_files else []
+            _pmarkers = [m.get("content", "")[:60] for m in _pctx.markers[:5]] if _pctx.markers else []
+            _packet = _pctx.task_packet if isinstance(getattr(_pctx, "task_packet", None), dict) else {}
+            _packet_docs = _packet.get("docs") if isinstance(_packet.get("docs"), dict) else {}
+            _packet_tests = _packet.get("tests") if isinstance(_packet.get("tests"), dict) else {}
+            _packet_scope = _packet.get("code_scope") if isinstance(_packet.get("code_scope"), dict) else {}
+            _packet_binding = _packet.get("roadmap_binding") if isinstance(_packet.get("roadmap_binding"), dict) else {}
+            _packet_gaps = [str(item).strip() for item in list(_packet.get("gaps") or []) if str(item).strip()]
+            _packet_slice = {}
+            if _packet:
+                try:
+                    from src.services.roadmap_task_sync import build_role_context_slice
+                    _packet_slice = build_role_context_slice(
+                        _packet,
+                        "architect",
+                        overlays={
+                            "pinned_summary": getattr(self, "_pinned_context", ""),
+                            "viewport_summary": str(getattr(self, "_viewport_summary", "") or ""),
+                        },
+                    )
+                except Exception:
+                    _packet_slice = {}
+            _prefetch_block = (
+                f"\n\n[Prefetch Context (MARKER_176.2)]\n"
+                f"Workflow: {_pctx.workflow_name} ({_pctx.workflow_id})\n"
+                f"Team suggestion: {_pctx.preset}\n"
+                f"Relevant files: {', '.join(_pfiles) if _pfiles else 'none'}\n"
+                f"Related markers: {', '.join(_pmarkers) if _pmarkers else 'none'}"
+            )
+            if _pctx.workflow_reinforcement:
+                _prefetch_block += "\nReinforcement: " + ", ".join(_pctx.workflow_reinforcement[:3])
+            if _pctx.similar_tasks:
+                _prefetch_block += "\nSimilar past tasks: " + "; ".join(
+                    t.get("description", "")[:50] for t in _pctx.similar_tasks[:3]
+                )
+            if _packet:
+                _prefetch_block += (
+                    f"\nTask packet: {getattr(_pctx, 'task_packet_summary', '') or 'attached'}"
+                    f"\nRoadmap node: {str(_packet_binding.get('roadmap_node_id') or _packet_binding.get('roadmap_title') or 'none')}"
+                    f"\nPacket docs: {', '.join(list(_packet_docs.get('architecture_docs') or [])[:4]) if _packet_docs.get('architecture_docs') else 'none'}"
+                    f"\nPacket tests: {', '.join(list(_packet_tests.get('closure_tests') or [])[:3]) if _packet_tests.get('closure_tests') else 'none'}"
+                    f"\nPacket scope: {', '.join(list(_packet_scope.get('closure_files') or [])[:4]) if _packet_scope.get('closure_files') else 'none'}"
+                    f"\nPacket gaps: {', '.join(_packet_gaps) if _packet_gaps else 'none'}"
+                )
+                if _packet_slice:
+                    _prefetch_block += (
+                        f"\nArchitect slice keys: {', '.join(sorted(_packet_slice.keys()))}"
+                    )
+                    _slice_ui = _packet_slice.get("ui_context") if isinstance(_packet_slice.get("ui_context"), dict) else {}
+                    _slice_viewport = str(_slice_ui.get("viewport_summary") or "").strip()
+                    if _slice_viewport:
+                        _prefetch_block += f"\nArchitect viewport: {_slice_viewport[:180]}"
+            user_content += _prefetch_block
+        # MARKER_176.2B_END
         # MARKER_151.14B: Inject team performance summary for Architect awareness
         team_perf = await self._get_team_performance_summary()
         if team_perf:
             user_content = f"{team_perf}\n\n{user_content}"
 
+        # MARKER_178.4.2: Inject REFLEX feedback summary into architect prompt
+        _arch_system_prompt = prompt["system"]
+        try:
+            from src.services.reflex_integration import _is_enabled
+            if _is_enabled():
+                from src.services.reflex_feedback import get_reflex_feedback
+                fb = get_reflex_feedback()
+                summary = fb.get_feedback_summary()
+                if summary.get("total_entries", 0) > 0:
+                    reflex_preamble = f"\n\n[REFLEX Team Performance]\n"
+                    reflex_preamble += f"Total tool calls tracked: {summary['total_entries']}\n"
+                    reflex_preamble += f"Success rate: {summary['success_rate']:.0%}\n"
+                    reflex_preamble += f"Useful rate: {summary.get('useful_rate', 0):.0%}\n"
+                    tools = summary.get("tools", {})
+                    top_tools = sorted(tools.items(), key=lambda x: x[1]["count"], reverse=True)[:3]
+                    if top_tools:
+                        reflex_preamble += "Top tools: " + ", ".join(f"{t[0]}({t[1]['count']})" for t in top_tools) + "\n"
+                    _arch_system_prompt = _arch_system_prompt + reflex_preamble
+        except Exception:
+            pass
+
         call_args = {
             "model": model,
             "messages": [
-                {"role": "system", "content": prompt["system"]},
+                {"role": "system", "content": _arch_system_prompt},
                 {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
@@ -3538,6 +3947,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         temperature = prompt.get("temperature", 0.4)
         system_prompt = prompt.get("system", "Execute the subtask. Be concise.")
 
+        # MARKER_178.4.4: Inject REFLEX recommendations into coder prompt
+        _reflex_recs_coder = []
+        try:
+            from src.services.reflex_integration import reflex_pre_fc, _is_enabled
+            if _is_enabled():
+                _reflex_recs_coder = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
+                if _reflex_recs_coder:
+                    coder_hint = "\n\n[REFLEX Recommendations]\n"
+                    for rec in _reflex_recs_coder[:5]:
+                        if isinstance(rec, dict):
+                            coder_hint += f"- {rec.get('tool_id', '?')} (score: {rec.get('score', 0):.2f})\n"
+                    system_prompt = system_prompt + coder_hint
+        except Exception:
+            pass
+
         # MARKER_119.8: Pre-fetch library docs for coder context
         lib_context = ""
         if phase_type in ["fix", "build"]:
@@ -3614,6 +4038,47 @@ Execute this subtask. Provide clear, actionable output."""}
         if phase_type in ("fix", "build") and FC_LOOP_AVAILABLE:
             try:
                 coder_tool_schemas = get_coder_tool_schemas()
+                # MARKER_173.P1.IP7: Active REFLEX tool schema filtering
+                try:
+                    from src.services.reflex_integration import reflex_filter_schemas
+                    _orig_count = len(coder_tool_schemas)
+                    coder_tool_schemas = reflex_filter_schemas(
+                        coder_tool_schemas,
+                        subtask=subtask,
+                        phase_type=phase_type,
+                        agent_role="coder",
+                        model_tier=self._get_model_tier(),
+                    )
+                    _filtered_count = len(coder_tool_schemas)
+                    if _filtered_count < _orig_count:
+                        self._reflex_stats["schemas_filtered"] += 1
+                        self._reflex_stats["schemas_original_count"] += _orig_count
+                        self._reflex_stats["schemas_filtered_count"] += _filtered_count
+                        # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
+                        await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks,
+                            metadata={
+                                "type": "reflex",
+                                "event": "filter",
+                                "original_count": _orig_count,
+                                "filtered_count": _filtered_count,
+                                "tier": self._get_model_tier(),
+                                "phase": phase_type,
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
+                        # MARKER_173.P3.IP7: Structured filter event
+                        _emitter = self._get_reflex_emitter()
+                        if _emitter:
+                            await _emitter.emit_filter(
+                                pipeline_id=getattr(self, '_board_task_id', '') or '',
+                                subtask_idx=i+1,
+                                subtask_marker=subtask.marker or f"step_{i+1}",
+                                phase_type=phase_type,
+                                model_tier=self._get_model_tier(),
+                                original_count=_orig_count,
+                                filtered_count=_filtered_count,
+                            )
+                except Exception:
+                    pass  # REFLEX errors never block pipeline
                 if coder_tool_schemas:
                     # MARKER_150.2_PLAYGROUND: Pass playground_root for scoped file reads
                     fc_result = await execute_fc_loop(
@@ -3632,6 +4097,8 @@ Execute this subtask. Provide clear, actionable output."""}
                     self._last_used_model = fc_result.get("model", model)
                     # Log tool usage
                     tool_execs = fc_result.get("tool_executions", [])
+                    # MARKER_172.P4.FC_EXECS: Store for REFLEX IP-3/IP-5 hooks
+                    self._last_fc_tool_executions = tool_execs
                     if tool_execs:
                         files_read = [
                             e["args"].get("file_path", "")

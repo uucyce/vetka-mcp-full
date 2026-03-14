@@ -1,0 +1,5 @@
+Here’s an explanation of the interrupt + restart stream protocol, referencing the provided context:
+
+1.  **Stream Start:** The `chat_voice_stream_start` socket contract initiates the voice stream. A `voice_pending` assistant bubble is created on the `stream_start`.
+2.  **Stream Chunks:** Subsequent `chat_voice_stream_chunk` calls send audio data.
+3.  **Stream End:** The `chat_voice_stream_end` contract terminates the stream

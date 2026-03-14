@@ -1,0 +1,20 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,True,,22846.44,,22846.44,,24113.69,79,0,264,0.7,no_file_refs,"2 конкретных файлов не указано в данном контексте. 
+
+Необходимо сформулировать:
+
+- ""108_knowledg_directed_chat_artefacts.txt"": для создания стейт диаграммы и пользовательских сценариев.
+- Необходимо добавить еще один конкретный файл, но его нет в данном контексте.",docs/157_ph/benchmarks/audio/20260304_064527_668125_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:51.737693+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,47274.0,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064551_746840_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:46:39.012182+00:00
+D_ollama_tts,long_1,1,171,True,,1679.18,,1679.18,,3056.62,50,0,315,0.75,low_ru_ratio,The provided context does not contain detailed information about the interrupt and restart stream protocols or their impact on voice handoff and tool-loop transparency. The pinned file discusses general capabilities but does not cover these specific points related to stream manag,docs/157_ph/benchmarks/audio/20260304_064639_023036_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:46:42.069015+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,47151.26,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064642_080010_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:47:29.220603+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,1141.24,,1141.24,,2674.78,102,0,307,0.9,,"2 конкретных файлов для этого контекста не указано. 
+
+По 1 фразе:
+- ""108_knowledg_directed_chat_artefacts.txt"": используется для описания работы по алгоритму и требуемых элементов в чат-артефактах.
+- ""108_ph/108_knowledg_directed_chat_artefacts.txt"": содержит полный текст, но не ",docs/157_ph/benchmarks/audio/20260304_064729_239144_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:47:31.895949+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,1162.37,,1162.37,,2685.84,55,0,262,0.75,low_ru_ratio,"1. Integrate hysteresis thresholds into `ContextPacker` to manage trigger streaks.
+2. Implement in-memory recent stats API for better memory management and faster lookups.
+3. Optimize probe tool script for synthetic runs to provide more accurate latency metrics.",docs/157_ph/benchmarks/audio/20260304_064731_912512_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:47:34.581953+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,1158.99,,1158.99,,2022.51,32,0,177,0.75,low_ru_ratio,Interrupt and restart protocols for streams in this context are not detailed. Voice handoff and tool-loop transparency issues are noted but no step-by-step protocol is provided.,docs/157_ph/benchmarks/audio/20260304_064734_591925_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:47:36.604594+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,1185.14,,1185.14,,2420.2,43,0,244,0.55,"low_ru_ratio,no_stepwise_followup",The provided context does not contain information about how context packing works in VETKA. It discusses other issues and fixes related to the codebase. Please provide additional context or ask a question that matches the available information.,docs/157_ph/benchmarks/audio/20260304_064736_624380_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:47:39.024966+00:00

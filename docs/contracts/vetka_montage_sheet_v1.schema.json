@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "vetka_montage_sheet_v1.schema.json",
+  "title": "VETKA Montage Sheet V1",
+  "type": "object",
+  "required": ["schema_version", "project", "records"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "vetka_montage_sheet_v1"
+    },
+    "project": {
+      "type": "object",
+      "required": ["project_id", "project_name"],
+      "additionalProperties": true,
+      "properties": {
+        "project_id": { "type": "string", "minLength": 1 },
+        "project_name": { "type": "string", "minLength": 1 },
+        "fps": { "type": "number", "minimum": 1, "maximum": 120 },
+        "timezone": { "type": "string" }
+      }
+    },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "record_id",
+          "scene_id",
+          "take_id",
+          "source_file",
+          "start_tc",
+          "end_tc",
+          "duration_sec"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "record_id": { "type": "string", "minLength": 1 },
+          "scene_id": { "type": "string", "minLength": 1 },
+          "take_id": { "type": "string", "minLength": 1 },
+          "shot_id": { "type": "string" },
+          "camera_id": { "type": "string" },
+          "source_file": { "type": "string", "minLength": 1 },
+          "source_reel": { "type": "string" },
+          "start_tc": {
+            "type": "string",
+            "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}(:|;)[0-9]{2}$"
+          },
+          "end_tc": {
+            "type": "string",
+            "pattern": "^[0-9]{2}:[0-9]{2}:[0-9]{2}(:|;)[0-9]{2}$"
+          },
+          "duration_sec": { "type": "number", "exclusiveMinimum": 0 },
+          "intra_motion_score": { "type": "number", "minimum": 0, "maximum": 1 },
+          "cut_rhythm_hint": { "type": "number", "minimum": 0, "maximum": 1 },
+          "dialogue_text": { "type": "string" },
+          "hero_entities": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "location_entities": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "action_tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "quality_flags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "notes": { "type": "string" }
+        }
+      }
+    }
+  }
+}

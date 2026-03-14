@@ -8,6 +8,45 @@
 
 ---
 
+## Grok-Driven Priorities (Phase 72/153)
+
+MARKER_153.ROADMAP.GROK_PRIORITIES.V1
+
+На основе внешнего архитектурного ответа (Grok, 2026-02-16) фиксируем приоритизацию
+для ветки multimodal ingest + universal relations перед глубокой MCP-интеграцией.
+
+### Priority Order
+
+1. Universal ingest contract in Core (без MCP зависимости).
+2. Multimodal extraction routing (text/image/pdf/audio/video/doc formats).
+3. TemporalLinker (time-as-import) + явные reference/import/citation связи.
+4. Graph payload enrichment для Directed/Knowledge modes.
+5. MCP heavy modes как отдельный слой после стабилизации Core.
+
+### Proposed Additional Wave (between existing waves)
+
+#### Wave 1.5: Universal Ingestion and Relation Spine (1-2 days, narrow)
+
+1. Ввести единый extraction result contract:
+   - `text`, `modality`, `mime_type`, `extraction_status`, `extraction_method`, `warnings`, `quality_score`.
+2. Подключить контракт в ключевые entrypoints:
+   - `/api/watcher/index-file`,
+   - `/api/watcher/add-from-browser`,
+   - `QdrantIncrementalUpdater.update_file`.
+3. Добавить temporal relation pass:
+   - `created(A) < created(B)` + `sim(A,B) > threshold`.
+4. Пробросить relation metadata в graph payload для режимов Directed/Knowledge.
+5. Сохранить обратную совместимость для существующего text-only indexing.
+
+#### Acceptance Criteria (Wave 1.5)
+
+1. Binary/media файлы не индексируются как `"[Binary file]"` в Core path.
+2. Для каждого ingest сохраняется явный `extraction_status`.
+3. Temporal edges появляются в графе при выполнении условий времени и семантики.
+4. Existing text/code tests проходят без регрессии.
+
+---
+
 ## Pre-requisite: Conservation
 
 **Перед началом Phase 153:**

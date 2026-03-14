@@ -261,6 +261,7 @@ def save_chat_message(
         msg_to_save = {
             "role": message.get("role", "user"),
             "content": message.get("content") or message.get("text"),
+            "message_type": message.get("message_type", "text"),
             "agent": message.get("agent"),
             "model": message.get("model"),
             "model_provider": message.get("model_provider"),  # Provider attribution for model disambiguation

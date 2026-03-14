@@ -1124,7 +1124,10 @@ def build_prerequisite_edges(
     file_ids: List[str],
     embeddings_dict: Dict[str, np.ndarray],
     tags: Dict[str, KnowledgeTag],
-    similarity_threshold: float = 0.7
+    similarity_threshold: float = 0.7,
+    file_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    top_k_out: int = 2,
+    top_k_in: int = 2,
 ) -> Tuple[List[KnowledgeEdge], Dict[str, float]]:
     """
     Create edges between files based on similarity.
@@ -1219,29 +1222,85 @@ def build_prerequisite_edges(
                 knowledge_levels[fid] = 0.5
         logger.info(f"[KnowledgeLayout] Distributed {len(isolated_files)} isolated files across KL 0.3-0.7")
 
-    # Now direct edges from low KL to high KL (foundational -> advanced)
-    directed_edges: List[KnowledgeEdge] = []
+    # Build directed candidates:
+    # prefer temporal direction (older -> newer) when timestamps are known,
+    # fallback to KL direction and stable lexical tie-break.
+    directed_candidates: List[KnowledgeEdge] = []
+
+    def _node_time(node_id: str) -> float:
+        if not file_metadata:
+            return 0.0
+        meta = file_metadata.get(node_id, {}) or {}
+        created = float(meta.get('created_time') or 0.0)
+        modified = float(meta.get('modified_time') or 0.0)
+        updated = float(meta.get('updated_at') or 0.0)
+        return created or modified or updated or 0.0
 
     for src, tgt, weight in undirected_edges:
+        t_src = _node_time(src)
+        t_tgt = _node_time(tgt)
         kl_src = knowledge_levels.get(src, 0.5)
         kl_tgt = knowledge_levels.get(tgt, 0.5)
 
-        if kl_src <= kl_tgt:
-            directed_edges.append(KnowledgeEdge(
-                source=src,
-                target=tgt,
-                edge_type='prerequisite',
-                weight=weight
-            ))
+        if t_src > 0 and t_tgt > 0 and t_src != t_tgt:
+            forward_src, forward_tgt = (src, tgt) if t_src < t_tgt else (tgt, src)
+        elif kl_src != kl_tgt:
+            forward_src, forward_tgt = (src, tgt) if kl_src <= kl_tgt else (tgt, src)
         else:
-            directed_edges.append(KnowledgeEdge(
-                source=tgt,
-                target=src,
-                edge_type='prerequisite',
-                weight=weight
-            ))
+            forward_src, forward_tgt = (src, tgt) if src <= tgt else (tgt, src)
 
-    logger.info(f"[KnowledgeLayout] Created {len(directed_edges)} prerequisite edges")
+        directed_candidates.append(KnowledgeEdge(
+            source=forward_src,
+            target=forward_tgt,
+            edge_type='prerequisite',
+            weight=weight
+        ))
+
+    # MARKER_155.IMPL.A3_EDGE_THINNING_DEFAULTS
+    # Keep strongest edges under bounded degree to prevent cone/spaghetti.
+    dedup: Dict[Tuple[str, str], KnowledgeEdge] = {}
+    for edge in directed_candidates:
+        key = (edge.source, edge.target)
+        prev = dedup.get(key)
+        if prev is None or edge.weight > prev.weight:
+            dedup[key] = edge
+
+    by_source: Dict[str, List[KnowledgeEdge]] = defaultdict(list)
+    for edge in dedup.values():
+        by_source[edge.source].append(edge)
+
+    out_limited: List[KnowledgeEdge] = []
+    for source, src_edges in by_source.items():
+        src_edges.sort(key=lambda e: (-e.weight, e.target))
+        out_limit = max(1, int(top_k_out))
+        out_limited.extend(src_edges[:out_limit])
+
+    by_target: Dict[str, List[KnowledgeEdge]] = defaultdict(list)
+    for edge in out_limited:
+        by_target[edge.target].append(edge)
+
+    kept_pairs: set[Tuple[str, str]] = set()
+    for target, tgt_edges in by_target.items():
+        tgt_edges.sort(key=lambda e: (-e.weight, e.source))
+        in_limit = max(1, int(top_k_in))
+        for edge in tgt_edges[:in_limit]:
+            kept_pairs.add((edge.source, edge.target))
+
+    directed_edges: List[KnowledgeEdge] = [
+        edge for edge in out_limited if (edge.source, edge.target) in kept_pairs
+    ]
+
+    # For tiny scopes keep at least one strongest edge.
+    if directed_candidates and not directed_edges:
+        directed_edges = [max(directed_candidates, key=lambda e: e.weight)]
+
+    logger.info(
+        "[KnowledgeLayout] Created %d prerequisite edges (candidates=%d, top_k_out=%d, top_k_in=%d)",
+        len(directed_edges),
+        len(directed_candidates),
+        max(1, int(top_k_out)),
+        max(1, int(top_k_in)),
+    )
     logger.info(f"[KnowledgeLayout] KL range: {min(knowledge_levels.values()):.2f} - {max(knowledge_levels.values()):.2f}")
 
     return directed_edges, knowledge_levels
@@ -1677,6 +1736,81 @@ def compute_adaptive_layout_params(num_tags: int, num_files: int) -> dict:
     logger.info(f"  file_fan_spread={params['file_fan_spread']:.0f}, max_files_per_row={params['max_files_per_row']}")
 
     return params
+
+
+def apply_topological_layering(
+    positions: Dict[str, Dict[str, Any]],
+    edges: List[KnowledgeEdge],
+    file_metadata: Optional[Dict[str, Dict[str, Any]]] = None,
+    layer_gap_y: float = 95.0,
+    node_gap_x: float = 52.0,
+) -> None:
+    """
+    MARKER_155.IMPL.A3_TOPOLOGICAL_LAYERING
+    Apply lightweight DAG layering for file nodes:
+    - layer index from prerequisite DAG (Kahn longest-path propagation)
+    - Y grows by layer (older/foundational -> newer/advanced)
+    - X spread inside layer to avoid vertical "sticks"
+    """
+    file_ids = [node_id for node_id, pos in positions.items() if pos.get('type') in ('file', 'leaf')]
+    if len(file_ids) < 2:
+        return
+
+    file_set = set(file_ids)
+    indeg: Dict[str, int] = {fid: 0 for fid in file_ids}
+    outs: Dict[str, List[str]] = {fid: [] for fid in file_ids}
+
+    for edge in edges:
+        src = str(edge.source)
+        tgt = str(edge.target)
+        if src in file_set and tgt in file_set and src != tgt:
+            outs[src].append(tgt)
+            indeg[tgt] = indeg.get(tgt, 0) + 1
+
+    def _node_time(node_id: str) -> float:
+        if not file_metadata:
+            return 0.0
+        meta = file_metadata.get(node_id, {}) or {}
+        created = float(meta.get('created_time') or 0.0)
+        modified = float(meta.get('modified_time') or 0.0)
+        updated = float(meta.get('updated_at') or 0.0)
+        return created or modified or updated or 0.0
+
+    # Deterministic start order.
+    queue: List[str] = sorted(
+        [fid for fid in file_ids if indeg.get(fid, 0) == 0],
+        key=lambda fid: (_node_time(fid), fid),
+    )
+    layer: Dict[str, int] = {fid: 0 for fid in queue}
+
+    while queue:
+        cur = queue.pop(0)
+        cur_layer = layer.get(cur, 0)
+        for nxt in outs.get(cur, []):
+            layer[nxt] = max(layer.get(nxt, 0), cur_layer + 1)
+            indeg[nxt] = indeg.get(nxt, 0) - 1
+            if indeg[nxt] == 0:
+                queue.append(nxt)
+        queue.sort(key=lambda fid: (_node_time(fid), fid))
+
+    # Residual nodes (if any) stay in base layer.
+    for fid in file_ids:
+        layer.setdefault(fid, 0)
+
+    by_layer: Dict[int, List[str]] = defaultdict(list)
+    for fid, lv in layer.items():
+        by_layer[lv].append(fid)
+
+    if not by_layer:
+        return
+
+    base_y = min(float(positions[fid].get('y') or 0.0) for fid in file_ids)
+    for lv, ids in sorted(by_layer.items(), key=lambda item: item[0]):
+        ordered = sorted(ids, key=lambda fid: (float(positions[fid].get('x') or 0.0), _node_time(fid), fid))
+        center = (len(ordered) - 1) / 2.0
+        for idx, fid in enumerate(ordered):
+            positions[fid]['x'] = (idx - center) * node_gap_x
+            positions[fid]['y'] = base_y + lv * layer_gap_y
 
 
 def calculate_knowledge_positions(
@@ -2203,6 +2337,15 @@ def calculate_knowledge_positions(
                 'chain_index': chain_index
             })
 
+    # Phase A.3: Apply DAG layering after base placement.
+    apply_topological_layering(
+        positions=positions,
+        edges=edges,
+        file_metadata=file_metadata,
+        layer_gap_y=95.0,
+        node_gap_x=52.0,
+    )
+
     # Log stats (accept both "file" and "leaf" types)
     files_positioned = len([p for p in positions.values() if p['type'] in ['file', 'leaf']])
     logger.info(f"[KnowledgeLayout] Positioned {files_positioned} files under {num_tags} tags")
@@ -2428,7 +2571,9 @@ def build_knowledge_graph_from_qdrant(
     min_cluster_size: int = 2,  # Phase 17.20: Reduced from 3 for more clusters
     similarity_threshold: float = 0.7,
     file_directory_positions: Optional[Dict[str, Dict[str, float]]] = None,
-    rrf_scores: Optional[Dict[str, float]] = None  # Phase 22: RRF scores for hybrid ranking
+    rrf_scores: Optional[Dict[str, float]] = None,  # Phase 22: RRF scores for hybrid ranking
+    semantic_expansion_budget: Optional[int] = None,
+    semantic_expansion_threshold: Optional[float] = None,
 ) -> Dict[str, Any]:
     """
     Build complete Knowledge Graph data from Qdrant collection.
@@ -2460,10 +2605,43 @@ def build_knowledge_graph_from_qdrant(
         logger.error("[KnowledgeLayout] No Qdrant client provided")
         return {'tags': {}, 'edges': [], 'chain_edges': [], 'positions': {}, 'knowledge_levels': {}}
 
+    def _safe_float(value: Any) -> float:
+        try:
+            if value is None:
+                return 0.0
+            return float(value)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _resolve_times(payload: Dict[str, Any]) -> Tuple[float, float]:
+        created = _safe_float(payload.get('created_time'))
+        modified = _safe_float(payload.get('modified_time'))
+        updated = _safe_float(payload.get('updated_at'))
+        created_resolved = created or modified or updated or 0.0
+        modified_resolved = modified or created_resolved or updated or 0.0
+        return created_resolved, modified_resolved
+
     # 1. Fetch embeddings from Qdrant
     embeddings_dict: Dict[str, np.ndarray] = {}
     file_metadata: Dict[str, Dict] = {}
     offset = None
+    metadata_stats = {
+        'total': 0,
+        'with_created_time': 0,
+        'with_modified_time': 0,
+        'with_updated_at': 0,
+        'with_parent_folder': 0,
+        'with_modality': 0,
+        'with_mime_type': 0,
+        'with_size_bytes': 0,
+        'with_content_hash': 0,
+        'with_source': 0,
+        'with_depth': 0,
+        'created_from_created': 0,
+        'created_from_modified': 0,
+        'created_from_updated': 0,
+        'created_missing': 0,
+    }
 
     logger.info("[KnowledgeLayout] Fetching embeddings from Qdrant...")
 
@@ -2482,25 +2660,116 @@ def build_knowledge_graph_from_qdrant(
                 embeddings_dict[file_id] = np.array(point.vector)
 
             payload = point.payload or {}
+            path = payload.get('path', '')
+            created_time, modified_time = _resolve_times(payload)
+            parent_folder = payload.get('parent_folder', '')
+            modality = payload.get('modality', '')
             file_metadata[file_id] = {
-                'path': payload.get('path', ''),
+                'path': path,
                 'name': payload.get('name', ''),
                 'extension': payload.get('extension', ''),
-                'type': payload.get('type', 'file')
+                'type': payload.get('type', 'file'),
+                'depth': int(payload.get('depth') or (path.count('/') if path else 0)),
+                'parent_folder': parent_folder,
+                'mime_type': payload.get('mime_type', ''),
+                'modality': modality,
+                'size_bytes': int(payload.get('size_bytes') or 0),
+                'content_hash': payload.get('content_hash', ''),
+                'source': payload.get('source', ''),
+                'created_time': created_time,
+                'modified_time': modified_time,
+                'updated_at': _safe_float(payload.get('updated_at')),
+                'mtime': modified_time,
+                'ctime': created_time,
             }
+            raw_created = _safe_float(payload.get('created_time'))
+            raw_modified = _safe_float(payload.get('modified_time'))
+            raw_updated = _safe_float(payload.get('updated_at'))
+
+            metadata_stats['total'] += 1
+            if created_time > 0:
+                metadata_stats['with_created_time'] += 1
+            if modified_time > 0:
+                metadata_stats['with_modified_time'] += 1
+            if raw_updated > 0:
+                metadata_stats['with_updated_at'] += 1
+            if parent_folder:
+                metadata_stats['with_parent_folder'] += 1
+            if modality:
+                metadata_stats['with_modality'] += 1
+            if payload.get('mime_type'):
+                metadata_stats['with_mime_type'] += 1
+            if int(payload.get('size_bytes') or 0) > 0:
+                metadata_stats['with_size_bytes'] += 1
+            if payload.get('content_hash'):
+                metadata_stats['with_content_hash'] += 1
+            if payload.get('source'):
+                metadata_stats['with_source'] += 1
+            if int(payload.get('depth') or 0) > 0 or path:
+                metadata_stats['with_depth'] += 1
+
+            if raw_created > 0:
+                metadata_stats['created_from_created'] += 1
+            elif raw_modified > 0:
+                metadata_stats['created_from_modified'] += 1
+            elif raw_updated > 0:
+                metadata_stats['created_from_updated'] += 1
+            else:
+                metadata_stats['created_missing'] += 1
 
         if offset is None:
             break
 
     logger.info(f"[KnowledgeLayout] Loaded {len(embeddings_dict)} embeddings from Qdrant")
+    total = max(1, metadata_stats['total'])
+    metadata_completeness = {
+        'total': metadata_stats['total'],
+        'percent': {
+            'created_time': round(100.0 * metadata_stats['with_created_time'] / total, 1),
+            'modified_time': round(100.0 * metadata_stats['with_modified_time'] / total, 1),
+            'updated_at': round(100.0 * metadata_stats['with_updated_at'] / total, 1),
+            'parent_folder': round(100.0 * metadata_stats['with_parent_folder'] / total, 1),
+            'modality': round(100.0 * metadata_stats['with_modality'] / total, 1),
+            'mime_type': round(100.0 * metadata_stats['with_mime_type'] / total, 1),
+            'size_bytes': round(100.0 * metadata_stats['with_size_bytes'] / total, 1),
+            'content_hash': round(100.0 * metadata_stats['with_content_hash'] / total, 1),
+            'source': round(100.0 * metadata_stats['with_source'] / total, 1),
+            'depth': round(100.0 * metadata_stats['with_depth'] / total, 1),
+        },
+        'time_fallback': {
+            'from_created': metadata_stats['created_from_created'],
+            'from_modified': metadata_stats['created_from_modified'],
+            'from_updated_at': metadata_stats['created_from_updated'],
+            'missing': metadata_stats['created_missing'],
+        },
+    }
+    logger.info(
+        "[KnowledgeLayout] Metadata completeness: created=%s%% modified=%s%% updated=%s%% parent=%s%% modality=%s%% mime=%s%% source=%s%%",
+        metadata_completeness['percent']['created_time'],
+        metadata_completeness['percent']['modified_time'],
+        metadata_completeness['percent']['updated_at'],
+        metadata_completeness['percent']['parent_folder'],
+        metadata_completeness['percent']['modality'],
+        metadata_completeness['percent']['mime_type'],
+        metadata_completeness['percent']['source'],
+    )
+    if metadata_completeness['percent']['created_time'] < 90.0:
+        logger.warning(
+            "[KnowledgeLayout] Low created_time completeness: %.1f%% (fallback modified=%d updated=%d missing=%d)",
+            metadata_completeness['percent']['created_time'],
+            metadata_completeness['time_fallback']['from_modified'],
+            metadata_completeness['time_fallback']['from_updated_at'],
+            metadata_completeness['time_fallback']['missing'],
+        )
 
     # Phase 22 FIX: SAVE ORIGINAL DATA before filtering for fallback
     original_embeddings_dict = embeddings_dict.copy()
     original_file_metadata = file_metadata.copy()
 
     # Phase 17.21: CRITICAL FIX - Filter to only files that exist in 3D scene!
-    # Qdrant may contain more files than current directory scan
-    # We must only use files that the 3D scene knows about
+    # Qdrant may contain more files than current directory scan.
+    # IMPORTANT: when scope positions are provided by frontend (single-folder mode switch),
+    # we must NOT fallback to global filename-only matches, otherwise unrelated files leak in.
     if file_directory_positions:
         scene_file_paths = set(file_directory_positions.keys())
         original_count = len(embeddings_dict)
@@ -2524,6 +2793,8 @@ def build_knowledge_graph_from_qdrant(
             logger.info(f"  Sample path→id mapping: {sample_mapping}")
 
         # Phase 23 FIX: Improved path matching with normalization + backslash handling
+        # Strict-scoped matching: only exact normalized path or safe suffix path match.
+        # Filename-only fallback is intentionally disabled for scoped knowledge mode.
         scene_file_paths_normalized = {
             os.path.normpath(p.replace('\\', '/')): p for p in scene_file_paths
         }
@@ -2547,29 +2818,86 @@ def build_knowledge_graph_from_qdrant(
                 if normalized_path.endswith(scene_norm) or scene_norm.endswith(normalized_path):
                     scene_file_ids.add(qdrant_id)
                     break
-            else:
-                # Check 3: Match by filename only (last resort)
-                filename = os.path.basename(normalized_path)
-                for scene_norm in scene_file_paths_normalized:
-                    if os.path.basename(scene_norm) == filename:
-                        scene_file_ids.add(qdrant_id)
-                        break
 
         if not scene_file_ids and file_metadata:
             logger.warning(f"[KnowledgeLayout] No files matched! scene_paths={len(scene_file_paths_normalized)}, qdrant_files={len(file_metadata)}")
-            # Fallback: use all Qdrant files
-            scene_file_ids = set(file_metadata.keys())
-            logger.warning(f"[KnowledgeLayout] FALLBACK: Using all {len(scene_file_ids)} Qdrant files")
+            # Strict scope mode: do not fallback to all Qdrant files.
+            # Return empty KG for this scope; caller can keep directed view unchanged.
+            logger.warning("[KnowledgeLayout] Strict scope mode: skipping global fallback to avoid cross-folder contamination")
+            return {'tags': {}, 'edges': [], 'positions': {}, 'knowledge_levels': {}, 'chain_edges': []}
 
         # Check intersection
         matching_ids = qdrant_ids & scene_file_ids
         logger.info(f"  Matching IDs after mapping: {len(matching_ids)} (Qdrant: {len(qdrant_ids)}, Scene: {len(scene_file_ids)})")
 
-        # Filter embeddings to only scene files
-        embeddings_dict = {fid: emb for fid, emb in embeddings_dict.items()
-                          if fid in scene_file_ids}
-        file_metadata = {fid: meta for fid, meta in file_metadata.items()
-                         if fid in scene_file_ids}
+        selected_file_ids = set(scene_file_ids)
+
+        # MARKER_155.IMPL.A2_SCOPED_SEMANTIC_EXPANSION:
+        # Keep strict scope as seed set, then add budgeted semantic neighbors
+        # from outside scope (no global fallback).
+        if selected_file_ids:
+            selected_count = len(selected_file_ids)
+            all_count = max(1, len(qdrant_ids))
+            selected_ratio = selected_count / float(all_count)
+
+            if semantic_expansion_budget is None:
+                if selected_count <= 2:
+                    resolved_budget = 8  # file scope default
+                elif selected_ratio >= 0.60:
+                    resolved_budget = 80  # root-like scope default
+                else:
+                    resolved_budget = 20  # folder scope default
+            else:
+                resolved_budget = max(0, int(semantic_expansion_budget))
+
+            resolved_threshold = float(
+                semantic_expansion_threshold
+                if semantic_expansion_threshold is not None
+                else 0.72
+            )
+
+            expanded_ids = set(selected_file_ids)
+            if resolved_budget > 0:
+                candidate_ids = [fid for fid in embeddings_dict.keys() if fid not in selected_file_ids]
+                seed_vectors = [embeddings_dict[fid] for fid in selected_file_ids if fid in embeddings_dict]
+                if seed_vectors and candidate_ids:
+                    centroid = np.mean(np.stack(seed_vectors), axis=0)
+                    centroid_norm = float(np.linalg.norm(centroid))
+                    if centroid_norm > 1e-8:
+                        scored_candidates: List[Tuple[float, str]] = []
+                        for candidate_id in candidate_ids:
+                            vec = embeddings_dict.get(candidate_id)
+                            if vec is None:
+                                continue
+                            vec_norm = float(np.linalg.norm(vec))
+                            if vec_norm <= 1e-8:
+                                continue
+                            similarity = float(np.dot(centroid, vec) / (centroid_norm * vec_norm))
+                            if similarity >= resolved_threshold:
+                                scored_candidates.append((similarity, candidate_id))
+
+                        scored_candidates.sort(key=lambda item: (-item[0], item[1]))
+                        for _score, candidate_id in scored_candidates[:resolved_budget]:
+                            expanded_ids.add(candidate_id)
+
+            # Filter embeddings/metadata to selected scope + expansion neighbors
+            embeddings_dict = {
+                fid: emb for fid, emb in embeddings_dict.items() if fid in expanded_ids
+            }
+            file_metadata = {
+                fid: meta for fid, meta in file_metadata.items() if fid in expanded_ids
+            }
+
+            logger.info(
+                "[KnowledgeLayout] Scoped semantic expansion: selected=%d expanded=%d budget=%d threshold=%.2f",
+                len(selected_file_ids),
+                len(expanded_ids),
+                resolved_budget,
+                resolved_threshold,
+            )
+        else:
+            embeddings_dict = {fid: emb for fid, emb in embeddings_dict.items() if fid in selected_file_ids}
+            file_metadata = {fid: meta for fid, meta in file_metadata.items() if fid in selected_file_ids}
 
         filtered_count = len(embeddings_dict)
         logger.info(f"[KnowledgeLayout] Phase 17.21: Filtered to {filtered_count} files "
@@ -2579,16 +2907,12 @@ def build_knowledge_graph_from_qdrant(
             logger.warning(f"[KnowledgeLayout] Removed {original_count - filtered_count} files "
                            f"not present in 3D scene!")
 
-        # If NO matches, IDs are incompatible - USE FALLBACK!
+        # If NO matches, IDs are incompatible - keep strict empty response.
         if filtered_count == 0 and original_count > 0:
             logger.error(f"[KnowledgeLayout] NO MATCHING IDs! ID formats incompatible!")
             logger.error(f"  First Qdrant ID: {list(qdrant_ids)[0] if qdrant_ids else 'none'}")
             logger.error(f"  First Scene ID: {list(scene_file_ids)[0] if scene_file_ids else 'none'}")
-            # Phase 22 FIX: RESTORE original data from saved copies
-            logger.warning("[KnowledgeLayout] FALLBACK: Restoring ALL Qdrant files due to ID mismatch!")
-            embeddings_dict = original_embeddings_dict
-            file_metadata = original_file_metadata
-            logger.info(f"[KnowledgeLayout] Restored {len(embeddings_dict)} embeddings for fallback processing")
+            return {'tags': {}, 'edges': [], 'positions': {}, 'knowledge_levels': {}, 'chain_edges': []}
     else:
         logger.warning("[KnowledgeLayout] No file_directory_positions provided - using ALL Qdrant files!")
 
@@ -2609,7 +2933,13 @@ def build_knowledge_graph_from_qdrant(
     # 3. Build prerequisite edges
     file_ids = list(embeddings_dict.keys())
     edges, knowledge_levels = build_prerequisite_edges(
-        file_ids, embeddings_dict, tags, similarity_threshold
+        file_ids,
+        embeddings_dict,
+        tags,
+        similarity_threshold,
+        file_metadata=file_metadata,
+        top_k_out=2,
+        top_k_in=2,
     )
 
     # Phase 23 FIX: Simplified RRF fallback when not provided
@@ -2662,6 +2992,55 @@ def build_knowledge_graph_from_qdrant(
         }
 
     # 5. Convert to serializable format
+    # MARKER_153.IMPL.G11_CLASSIFY_EDGE_WIRING: propagate visual edge classification
+    # into final payload so frontend can render edge style/color consistently.
+    file_to_tag: Dict[str, Optional[str]] = {}
+    for tag_id, tag in tags.items():
+        for file_id in tag.files:
+            file_to_tag[file_id] = tag_id
+
+    def _edge_temporal_days(source_id: str, target_id: str) -> int:
+        src_meta = file_metadata.get(source_id, {}) if file_metadata else {}
+        tgt_meta = file_metadata.get(target_id, {}) if file_metadata else {}
+        src_t = src_meta.get("created_time") or src_meta.get("modified_time")
+        tgt_t = tgt_meta.get("created_time") or tgt_meta.get("modified_time")
+        if src_t is None or tgt_t is None:
+            return 0
+        try:
+            delta = abs(float(tgt_t) - float(src_t))
+            return int(delta / 86400)
+        except Exception:
+            return 0
+
+    serialized_edges: List[Dict[str, Any]] = []
+    for edge in edges:
+        src_tag = file_to_tag.get(edge.source)
+        tgt_tag = file_to_tag.get(edge.target)
+        temporal_days = _edge_temporal_days(edge.source, edge.target)
+        classification = classify_edge(
+            source_id=edge.source,
+            target_id=edge.target,
+            source_tag=src_tag,
+            target_tag=tgt_tag,
+            edge_type=edge.edge_type,
+            is_chat_history=(edge.edge_type == "chat_history"),
+            temporal_distance_days=temporal_days,
+        )
+        serialized_edges.append(
+            {
+                "source": edge.source,
+                "target": edge.target,
+                "type": edge.edge_type,
+                "weight": edge.weight,
+                "style": classification.get("style", "solid"),
+                "color": classification.get("color", "#888888"),
+                "opacity": classification.get("opacity", 0.8),
+                "width": classification.get("width", 1.0),
+                "visual_type": classification.get("type", "LOCAL"),
+                "description": classification.get("description", ""),
+            }
+        )
+
     result = {
         'tags': {
             tag_id: {
@@ -2677,19 +3056,12 @@ def build_knowledge_graph_from_qdrant(
             }
             for tag_id, tag in tags.items()
         },
-        'edges': [
-            {
-                'source': edge.source,
-                'target': edge.target,
-                'type': edge.edge_type,
-                'weight': edge.weight
-            }
-            for edge in edges
-        ],
+        'edges': serialized_edges,
         'positions': positions,
         'knowledge_levels': knowledge_levels,
         'chain_edges': chain_edges,  # Chain edges for stem rendering
-        'rrf_stats': rrf_stats  # Phase 22: RRF statistics
+        'rrf_stats': rrf_stats,  # Phase 22: RRF statistics
+        'metadata_completeness': metadata_completeness,
     }
 
     logger.info(f"[KnowledgeLayout] Knowledge graph complete:")

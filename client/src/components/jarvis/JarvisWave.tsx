@@ -49,25 +49,26 @@ const JarvisWave: React.FC<JarvisWaveProps> = ({
       // Clear canvas
       ctx.clearRect(0, 0, width, height);
 
-      // Update phase for wave animation
-      phaseRef.current += 0.05;
+      // Keep idle motion minimal; animate stronger only in active states
+      const phaseStep = state === 'idle' ? 0.003 : state === 'thinking' ? 0.015 : 0.035;
+      phaseRef.current += phaseStep;
 
       // Update pulse for thinking state
       if (state === 'thinking') {
-        pulseRef.current += 0.08;
+        pulseRef.current += 0.04;
       }
 
       // Calculate amplitude based on state and audioLevel
-      let baseAmplitude = height * 0.2;
+      let baseAmplitude = height * 0.035;
 
       if (state === 'listening') {
-        baseAmplitude = height * 0.3 + audioLevel * height * 0.2;
+        baseAmplitude = height * 0.16 + audioLevel * height * 0.18;
       } else if (state === 'speaking') {
-        baseAmplitude = height * 0.25 + audioLevel * height * 0.35;
+        baseAmplitude = height * 0.14 + audioLevel * height * 0.16;
       } else if (state === 'thinking') {
         // Pulsing effect
         const pulse = Math.sin(pulseRef.current) * 0.5 + 0.5;
-        baseAmplitude = height * 0.2 + pulse * height * 0.15;
+        baseAmplitude = height * 0.08 + pulse * height * 0.08;
       }
 
       // Draw sine wave
@@ -78,7 +79,7 @@ const JarvisWave: React.FC<JarvisWaveProps> = ({
       ctx.lineJoin = 'round';
 
       const centerY = height / 2;
-      const frequency = 0.02;
+      const frequency = state === 'idle' ? 0.012 : 0.018;
       const points = width;
 
       for (let x = 0; x < points; x++) {
@@ -95,7 +96,7 @@ const JarvisWave: React.FC<JarvisWaveProps> = ({
 
       // Add glow effect for active states
       if (state !== 'idle') {
-        ctx.shadowBlur = state === 'thinking' ? 15 : 10;
+        ctx.shadowBlur = state === 'thinking' ? 8 : 6;
         ctx.shadowColor = colors[state];
         ctx.stroke();
         ctx.shadowBlur = 0;

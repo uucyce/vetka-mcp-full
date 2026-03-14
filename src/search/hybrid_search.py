@@ -34,6 +34,8 @@ from src.search.rrf_fusion import (
 )
 from src.utils.embedding_service import get_embedding_service
 from config.config import COLLECTIONS
+from src.search.file_search_service import search_files
+from src.services.mcc_jepa_adapter import embed_texts_for_overlay
 
 logger = logging.getLogger("VETKA_HYBRID_SEARCH")
 
@@ -42,6 +44,11 @@ SEMANTIC_WEIGHT = float(os.getenv("VETKA_SEMANTIC_WEIGHT", "0.5"))
 KEYWORD_WEIGHT = float(os.getenv("VETKA_KEYWORD_WEIGHT", "0.3"))
 GRAPH_WEIGHT = float(os.getenv("VETKA_GRAPH_WEIGHT", "0.2"))
 RRF_K = int(os.getenv("VETKA_RRF_K", "60"))
+FILE_WEIGHT = float(os.getenv("VETKA_FILE_WEIGHT", "0.35"))
+FILENAME_WEIGHT = float(os.getenv("VETKA_FILENAME_WEIGHT", "0.45"))
+JEPA_REORDER_WEIGHT = float(os.getenv("VETKA_HYBRID_JEPA_REORDER_WEIGHT", "0.35"))
+HYBRID_JEPA_ENABLED = os.getenv("VETKA_HYBRID_JEPA_ENABLED", "true").lower() == "true"
+HYBRID_JEPA_INTENT_MIN_WORDS = max(4, int(os.getenv("VETKA_HYBRID_JEPA_INTENT_MIN_WORDS", "4")))
 
 # Cache configuration
 HYBRID_CACHE_TTL = int(os.getenv("VETKA_HYBRID_CACHE_TTL", "300"))  # 5 minutes
@@ -49,6 +56,76 @@ _hybrid_search_cache: Dict[str, Any] = {}
 
 # Thread pool for parallel searches
 _executor = ThreadPoolExecutor(max_workers=3)
+
+
+def _is_descriptive_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    words = [w for w in q.split() if w]
+    file_like = any(x in q for x in [".py", ".md", ".txt", "marker_", "/", "\\"])
+    markers = ["не помню", "найди файл где", "документ", "где ", "про "]
+    return (len(words) >= HYBRID_JEPA_INTENT_MIN_WORDS and not file_like) or any(m in q for m in markers)
+
+
+def _is_explicit_file_finder_query(query: str) -> bool:
+    q = (query or "").lower().strip()
+    markers = [
+        "найди файл",
+        "какой файл",
+        "где файл",
+        "find file",
+        "which file",
+    ]
+    return any(m in q for m in markers)
+
+
+def _is_lexical_filename_query(query: str) -> bool:
+    """
+    Short lexical queries should include filename search source in vetka/hybrid path.
+    Example: 'abbreviation', 'auth', 'router', 'marker_157'.
+    """
+    q = (query or "").strip().lower()
+    if not q:
+        return False
+    words = [w for w in q.split() if w]
+    if len(words) > 2:
+        return False
+    if len(q) < 3:
+        return False
+    # File-ish token patterns are strong filename intent signals.
+    if any(ch in q for ch in ("_", "-", ".", "/")):
+        return True
+    return len(words) == 1
+
+
+def _query_lexical_variants(query: str) -> List[str]:
+    q = (query or "").strip().lower()
+    if not q:
+        return []
+    variants = {q}
+    if q.endswith("s") and len(q) > 3:
+        variants.add(q[:-1])
+    else:
+        variants.add(f"{q}s")
+    return [v for v in variants if v]
+
+
+def _path_name_lexical_bonus(query: str, row: Dict[str, Any]) -> float:
+    variants = _query_lexical_variants(query)
+    if not variants:
+        return 0.0
+    path = str(row.get("path") or "").lower()
+    name = str(row.get("name") or os.path.basename(path)).lower()
+    best = 0.0
+    for token in variants:
+        if name == token:
+            best = max(best, 0.2)
+        elif name.startswith(token):
+            best = max(best, 0.12)
+        elif token in name:
+            best = max(best, 0.08)
+        elif token in path:
+            best = max(best, 0.04)
+    return best
 
 
 class HybridSearchService:
@@ -118,6 +195,68 @@ class HybridSearchService:
         self._init_backends()
         return self._embedding_service
 
+    async def _file_search_local(self, query: str, limit: int, mode: str = "keyword") -> List[Dict]:
+        try:
+            res = await asyncio.to_thread(search_files, query=query, limit=limit, mode=mode)
+            rows = []
+            for it in (res or {}).get("results", []):
+                rows.append(
+                    {
+                        "id": it.get("path") or it.get("title"),
+                        "path": it.get("path") or it.get("title", ""),
+                        "name": os.path.basename(it.get("path") or it.get("title", "")),
+                        "content": it.get("snippet", ""),
+                        "score": float(it.get("score", 0.0)),
+                        "source": "file_local",
+                    }
+                )
+            return rows
+        except Exception as e:
+            logger.debug(f"[HYBRID] local file search failed: {e}")
+            return []
+
+    @staticmethod
+    def _cosine(a: List[float], b: List[float]) -> float:
+        if not a or not b:
+            return 0.0
+        n = min(len(a), len(b))
+        dot = sum(float(a[i]) * float(b[i]) for i in range(n))
+        na = sum(float(a[i]) * float(a[i]) for i in range(n)) ** 0.5
+        nb = sum(float(b[i]) * float(b[i]) for i in range(n)) ** 0.5
+        if na <= 1e-12 or nb <= 1e-12:
+            return 0.0
+        return float(dot / (na * nb))
+
+    def _jepa_reorder(self, query: str, results: List[Dict], limit: int) -> List[Dict]:
+        if not HYBRID_JEPA_ENABLED or not results:
+            return results[:limit]
+        try:
+            texts = [query]
+            for r in results[: max(limit * 3, 30)]:
+                txt = (r.get("path") or r.get("name") or "") + " " + (r.get("content") or "")
+                texts.append(txt.strip())
+            jr = embed_texts_for_overlay(texts=texts, target_dim=128)
+            vectors = getattr(jr, "vectors", []) or []
+            if len(vectors) != len(texts):
+                return results[:limit]
+            qv = vectors[0]
+            rescored = []
+            for idx, r in enumerate(results[: max(limit * 3, 30)], start=1):
+                base = float(r.get("rrf_score") or r.get("score") or 0.0)
+                js = max(0.0, self._cosine(qv, vectors[idx]))
+                merged = base + (JEPA_REORDER_WEIGHT * js)
+                rc = dict(r)
+                rc["jepa_score"] = round(js, 6)
+                rc["jepa_provider_mode"] = getattr(jr, "provider_mode", "")
+                rc["jepa_reordered"] = True
+                rc["score"] = merged
+                rescored.append(rc)
+            rescored.sort(key=lambda x: float(x.get("score", 0.0)), reverse=True)
+            return rescored[:limit]
+        except Exception as e:
+            logger.debug(f"[HYBRID] JEPA reorder skipped: {e}")
+            return results[:limit]
+
     async def search(
         self,
         query: str,
@@ -149,9 +288,10 @@ class HybridSearchService:
         """
         start_time = time.time()
         filters = filters or {}
+        query_intent = "descriptive" if _is_descriptive_query(query) else "name_like"
 
         # Check cache first
-        cache_key = f"hybrid:{query}:{limit}:{mode}:{hash(str(filters))}"
+        cache_key = f"hybrid:{query}:{limit}:{mode}:{query_intent}:{hash(str(filters))}"
         if not skip_cache and cache_key in _hybrid_search_cache:
             cached = _hybrid_search_cache[cache_key]
             age = time.time() - cached["timestamp"]
@@ -172,6 +312,20 @@ class HybridSearchService:
             # Phase 68.2: Handle filename mode separately (no fusion needed)
             if mode == "filename":
                 filename_results = await self._filename_search(query, limit, collection)
+                if not filename_results:
+                    # Keep vetka/FILE useful when dedicated filename list is temporarily sparse.
+                    keyword_fallback = await self._keyword_search(query, limit * 3, collection)
+                    if keyword_fallback:
+                        variants = _query_lexical_variants(query)
+                        filtered = []
+                        for row in keyword_fallback:
+                            hay = f"{row.get('name', '')} {row.get('path', '')}".lower()
+                            if any(v in hay for v in variants):
+                                nr = dict(row)
+                                nr["source"] = "filename_fallback"
+                                nr["score"] = max(float(nr.get("score", 0.0)), 0.55)
+                                filtered.append(nr)
+                        filename_results = filtered[:limit]
                 elapsed_ms = (time.time() - start_time) * 1000
 
                 # Normalize results
@@ -211,6 +365,7 @@ class HybridSearchService:
 
             # Run searches in parallel using asyncio
             tasks = []
+            normalized_by_source: Dict[str, List[Dict[str, Any]]] = {}
 
             # 1. Semantic search (Qdrant)
             if mode in ("semantic", "hybrid") and self.qdrant:
@@ -218,10 +373,22 @@ class HybridSearchService:
                     ("semantic", self._semantic_search(query, limit * 2, collection))
                 )
 
-            # 2. Keyword search (Weaviate BM25)
-            if mode in ("keyword", "hybrid") and self.weaviate:
+            # 2. Keyword search (Weaviate BM25, Qdrant fallback)
+            if mode in ("keyword", "hybrid") and (self.weaviate or self.qdrant):
                 tasks.append(
                     ("keyword", self._keyword_search(query, limit * 2, collection))
+                )
+
+            # 2.1 Filename search source for lexical/name-like vetka queries.
+            if mode in ("keyword", "hybrid") and self.qdrant and _is_lexical_filename_query(query):
+                tasks.append(
+                    ("filename", self._filename_search(query, limit * 2, collection))
+                )
+
+            # 3. Local file search source (especially useful for descriptive doc queries).
+            if mode in ("keyword", "hybrid") and query_intent == "descriptive":
+                tasks.append(
+                    ("file", self._file_search_local(query, limit * 2, mode="keyword"))
                 )
 
             # Execute tasks
@@ -238,33 +405,79 @@ class HybridSearchService:
 
                     if result:
                         # Normalize results to common format
-                        source = "qdrant" if task_name == "semantic" else "weaviate"
+                        source_map = {
+                            "semantic": "qdrant",
+                            "keyword": "weaviate",
+                            "file": "file",
+                            "filename": "filename",
+                        }
+                        source = source_map.get(task_name, task_name)
                         normalized = normalize_results(result, source)
                         if normalized:
+                            normalized_by_source[task_name] = normalized
                             results_lists.append(normalized)
                             sources_used.append(task_name)
 
-                            # Set weight based on mode
-                            if mode == "hybrid":
-                                if task_name == "semantic":
-                                    weights.append(SEMANTIC_WEIGHT)
-                                elif task_name == "keyword":
-                                    weights.append(KEYWORD_WEIGHT)
-                            else:
-                                weights.append(1.0)
+                        # Set weight based on mode
+                        if mode == "hybrid":
+                            if task_name == "semantic":
+                                weights.append(SEMANTIC_WEIGHT)
+                            elif task_name == "keyword":
+                                weights.append(KEYWORD_WEIGHT)
+                            elif task_name == "file":
+                                weights.append(FILE_WEIGHT)
+                            elif task_name == "filename":
+                                weights.append(FILENAME_WEIGHT)
+                        else:
+                            weights.append(1.0)
 
-            # 3. RRF Fusion if multiple sources
-            if len(results_lists) > 1:
-                fused = weighted_rrf(results_lists, weights, k=RRF_K, top_n=limit)
-                actual_mode = "hybrid"
-            elif len(results_lists) == 1:
-                fused = results_lists[0][:limit]
-                actual_mode = sources_used[0] if sources_used else mode
+            # Phase 157 runtime policy:
+            # explicit "find file" intent should prioritize local file retrieval to avoid semantic noise.
+            if (
+                mode == "hybrid"
+                and query_intent == "descriptive"
+                and _is_explicit_file_finder_query(query)
+                and normalized_by_source.get("file")
+            ):
+                fused = normalized_by_source["file"][:limit]
+                actual_mode = "file"
+                sources_used = ["file"]
             else:
-                fused = []
-                # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
-                # This allows frontend to show correct mode even with 0 results
-                actual_mode = mode  # Was: "none" - bug caused confusion in UI
+                # 3. RRF Fusion if multiple sources
+                if len(results_lists) > 1:
+                    fused = weighted_rrf(results_lists, weights, k=RRF_K, top_n=limit)
+                    actual_mode = "hybrid"
+                elif len(results_lists) == 1:
+                    fused = results_lists[0][:limit]
+                    actual_mode = sources_used[0] if sources_used else mode
+                else:
+                    fused = []
+                    # FIX_95.1_MODE_NONE: Preserve requested mode instead of "none"
+                    # This allows frontend to show correct mode even with 0 results
+                    actual_mode = mode  # Was: "none" - bug caused confusion in UI
+
+            # For lexical queries, prioritize direct name/path hits in fused list.
+            if mode in ("hybrid", "keyword") and _is_lexical_filename_query(query) and fused:
+                boosted = []
+                for row in fused:
+                    nr = dict(row)
+                    base = float(nr.get("rrf_score") or nr.get("score") or 0.0)
+                    bonus = _path_name_lexical_bonus(query, nr)
+                    if bonus > 0:
+                        nr["lexical_bonus"] = round(bonus, 6)
+                        nr["score"] = base + bonus
+                        if "rrf_score" in nr:
+                            nr["rrf_score"] = round(float(nr.get("rrf_score", 0.0)) + bonus, 6)
+                    boosted.append(nr)
+                boosted.sort(
+                    key=lambda x: float(x.get("rrf_score") or x.get("score") or 0.0),
+                    reverse=True,
+                )
+                fused = boosted[:limit]
+
+            # Optional JEPA reorder for descriptive queries.
+            if query_intent == "descriptive":
+                fused = self._jepa_reorder(query, fused, limit=limit)
 
             # Add explanations to results
             for result in fused:
@@ -283,9 +496,13 @@ class HybridSearchService:
                 "timing_ms": round(elapsed_ms, 2),
                 "sources": sources_used,
                 "cache_hit": False,
+                "intent": query_intent,
+                "jepa_reordered": bool(query_intent == "descriptive" and HYBRID_JEPA_ENABLED),
                 "config": {
                     "semantic_weight": SEMANTIC_WEIGHT,
                     "keyword_weight": KEYWORD_WEIGHT,
+                    "file_weight": FILE_WEIGHT,
+                    "filename_weight": FILENAME_WEIGHT,
                     "rrf_k": RRF_K,
                 },
             }
@@ -396,9 +613,32 @@ class HybridSearchService:
         Returns:
             List of results with score, path, content, etc.
         """
+        async def _qdrant_fallback() -> List[Dict]:
+            if not self.qdrant:
+                return []
+            try:
+                qdrant_collection = {
+                    "tree": "vetka_tree",
+                    "leaf": "vetka_elisya",
+                    "shared": "vetka_shared",
+                }.get(collection, "vetka_elisya")
+                rows = self.qdrant.search_by_content(
+                    query=query,
+                    limit=limit,
+                    collection=qdrant_collection,
+                )
+                for r in rows:
+                    r["source"] = "qdrant_keyword"
+                if rows:
+                    logger.info(f"[KEYWORD] Qdrant content fallback returned {len(rows)} rows")
+                return rows
+            except Exception as e:
+                logger.debug(f"[KEYWORD] Qdrant content fallback failed: {e}")
+                return []
+
         if not self.weaviate:
-            logger.warning("[KEYWORD] Weaviate not available")
-            return []
+            logger.warning("[KEYWORD] Weaviate not available, using Qdrant content fallback")
+            return await _qdrant_fallback()
 
         try:
             col_name = COLLECTIONS.get(collection, collection)
@@ -413,7 +653,7 @@ class HybridSearchService:
                     f"[KEYWORD] BM25 returned 0 results for '{query}'. "
                     f"Weaviate collection '{col_name}' may be empty - needs data sync from Qdrant."
                 )
-                return []
+                return await _qdrant_fallback()
 
             # Normalize Weaviate results
             # FIX_95.11: Include 'name' field from file_name mapping
@@ -442,7 +682,7 @@ class HybridSearchService:
 
         except Exception as e:
             logger.error(f"[KEYWORD] BM25 search failed: {e}")
-            return []
+            return await _qdrant_fallback()
 
     async def _filename_search(
         self, query: str, limit: int, collection: str

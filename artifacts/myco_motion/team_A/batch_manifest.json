@@ -1,0 +1,292 @@
+{
+  "marker": "MARKER_168.MYCO.MOTION.BATCH_BUILD.V1",
+  "source_dir": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4",
+  "output_root": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A",
+  "preset": {
+    "mode": "luma",
+    "fps": 8.0,
+    "luma_threshold": 52.0,
+    "alpha_blur": 0.8
+  },
+  "dry_run": false,
+  "architect_assembly": {
+    "output_mp4": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/architect_master.mp4",
+    "source_parts": [
+      "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/arch1.mp4",
+      "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/arch1-2.mp4"
+    ],
+    "ffprobe": {
+      "width": 828,
+      "height": 1108,
+      "r_frame_rate": "24/1",
+      "avg_frame_rate": "24/1",
+      "nb_frames": "242",
+      "duration": "10.083333"
+    },
+    "role": "architect",
+    "variant": "primary",
+    "status": "assembled"
+  },
+  "assets": [
+    {
+      "role": "architect",
+      "variant": "primary",
+      "assembled": true,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/architect_master.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/architect_primary.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "source_parts": [
+        "arch1.mp4",
+        "arch1-2.mp4"
+      ],
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "242",
+        "duration": "10.083333"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/architect_master.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 81,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/architect_primary.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/architect/primary/build/frames_rgba"
+      }
+    },
+    {
+      "role": "coder",
+      "variant": "coder1",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/coder1.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder1/coder_coder1.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder1/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder1/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/coder1.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder1/coder_coder1.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder1/build/frames_rgba"
+      }
+    },
+    {
+      "role": "coder",
+      "variant": "coder2",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/coder2.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder2/coder_coder2.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder2/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder2/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/coder2.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder2/coder_coder2.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/coder/coder2/build/frames_rgba"
+      }
+    },
+    {
+      "role": "researcher",
+      "variant": "primary",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/researcher1.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/researcher/primary/researcher_primary.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/researcher/primary/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 960,
+        "height": 960,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/researcher/primary/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/researcher1.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/researcher/primary/researcher_primary.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/researcher/primary/build/frames_rgba"
+      }
+    },
+    {
+      "role": "scout",
+      "variant": "scout1",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout1/scout_scout1.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout1/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout1/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout1/scout_scout1.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout1/build/frames_rgba"
+      }
+    },
+    {
+      "role": "scout",
+      "variant": "scout2",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout2.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout2/scout_scout2.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout2/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout2/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout2.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout2/scout_scout2.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout2/build/frames_rgba"
+      }
+    },
+    {
+      "role": "scout",
+      "variant": "scout3",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout3.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout3/scout_scout3.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout3/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout3/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/scout3.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout3/scout_scout3.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/scout/scout3/build/frames_rgba"
+      }
+    },
+    {
+      "role": "verifier",
+      "variant": "primary",
+      "assembled": false,
+      "source_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/verif1.mp4",
+      "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/verifier/primary/verifier_primary.apng",
+      "build_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/verifier/primary/build",
+      "preset": {
+        "mode": "luma",
+        "fps": 8.0,
+        "luma_threshold": 52.0,
+        "alpha_blur": 0.8
+      },
+      "ffprobe": {
+        "width": 828,
+        "height": 1108,
+        "r_frame_rate": "24/1",
+        "avg_frame_rate": "24/1",
+        "nb_frames": "121",
+        "duration": "5.041667"
+      },
+      "status": "built",
+      "conversion_manifest": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/verifier/primary/build/manifest.json",
+      "conversion": {
+        "input_mp4": "/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/verif1.mp4",
+        "mode": "luma",
+        "fps": 8.0,
+        "processed_frames": 40,
+        "output_apng": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/verifier/primary/verifier_primary.apng",
+        "rgba_dir": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/artifacts/myco_motion/team_A/verifier/primary/build/frames_rgba"
+      }
+    }
+  ]
+}

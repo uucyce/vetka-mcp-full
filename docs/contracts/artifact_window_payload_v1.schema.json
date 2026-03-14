@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact_window_payload_v1.schema.json",
+  "title": "VETKA Artifact Window Payload V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "path",
+    "name",
+    "content_mode"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "artifact_window_payload_v1"
+    },
+    "path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "extension": {
+      "type": "string",
+      "minLength": 1
+    },
+    "artifact_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "initial_seek_sec": {
+      "type": "number",
+      "minimum": 0
+    },
+    "content_mode": {
+      "type": "string",
+      "enum": [
+        "file",
+        "raw",
+        "web"
+      ]
+    }
+  }
+}

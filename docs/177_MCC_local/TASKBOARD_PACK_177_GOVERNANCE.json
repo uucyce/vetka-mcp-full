@@ -1,0 +1,72 @@
+[
+  {
+    "title": "Draft TaskBoard Governance V1",
+    "description": "Turn the current lane ownership and dirty-tree pain into a formal TaskBoard governance contract. Cover ownership_scope, allowed_paths, owner_agent, completion_contract, and rollout rules for MCC/localguys.",
+    "priority": 2,
+    "phase_type": "research",
+    "workflow_family": "docs_localguys",
+    "workflow_selection_origin": "phase177_governance_pack",
+    "team_profile": "dragon_bronze",
+    "task_origin": "phase177_governance_pack",
+    "source": "phase177_governance_pack",
+    "created_by": "codex",
+    "tags": ["localguys", "taskboard", "governance", "docs"],
+    "dependencies": ["tb_1773275513_7"]
+  },
+  {
+    "title": "Add minimal governance fields to TaskBoard",
+    "description": "Extend TaskBoard model, adapters, and API with the four required governance fields: ownership_scope, allowed_paths, owner_agent, completion_contract. Keep them serializable and backward compatible.",
+    "priority": 1,
+    "phase_type": "build",
+    "workflow_family": "g3_localguys",
+    "workflow_selection_origin": "phase177_governance_pack",
+    "team_profile": "dragon_silver",
+    "task_origin": "phase177_governance_pack",
+    "source": "phase177_governance_pack",
+    "created_by": "codex",
+    "tags": ["localguys", "taskboard", "governance", "metadata"],
+    "dependencies": ["tb_1773275513_7"]
+  },
+  {
+    "title": "Enforce TaskBoard owner and completion contract gates",
+    "description": "Prevent arbitrary agent status mutation and block done transitions unless result_summary, completed_at, and completion_contract are satisfied. Allow verification_agent override by contract.",
+    "priority": 1,
+    "phase_type": "build",
+    "workflow_family": "g3_localguys",
+    "workflow_selection_origin": "phase177_governance_pack",
+    "team_profile": "dragon_silver",
+    "task_origin": "phase177_governance_pack",
+    "source": "phase177_governance_pack",
+    "created_by": "codex",
+    "tags": ["localguys", "taskboard", "governance", "enforcement"],
+    "dependencies": ["tb_1773275513_7"]
+  },
+  {
+    "title": "Add extended TaskBoard governance fields",
+    "description": "Add blocked_paths, forbidden_scopes, verification_agent, worktree_hint, touch_policy, overlap_risk, and depends_on_docs. Define normalization rules and a compact policy matrix for lane isolation.",
+    "priority": 2,
+    "phase_type": "build",
+    "workflow_family": "g3_localguys",
+    "workflow_selection_origin": "phase177_governance_pack",
+    "team_profile": "dragon_silver",
+    "task_origin": "phase177_governance_pack",
+    "source": "phase177_governance_pack",
+    "created_by": "codex",
+    "tags": ["localguys", "taskboard", "governance", "policy"],
+    "dependencies": ["tb_1773275513_7"]
+  },
+  {
+    "title": "Feed TaskBoard governance metadata into MCC task packets",
+    "description": "Extend the canonical MCC task packet so agents receive governance metadata from the DAG-linked packet: ownership_scope, allowed_paths, blocked_paths, owner_agent, verification_agent, touch_policy, overlap_risk, and completion_contract.",
+    "priority": 1,
+    "phase_type": "build",
+    "workflow_family": "g3_localguys",
+    "workflow_selection_origin": "phase177_governance_pack",
+    "team_profile": "dragon_silver",
+    "task_origin": "phase177_governance_pack",
+    "source": "phase177_governance_pack",
+    "created_by": "codex",
+    "tags": ["localguys", "taskboard", "governance", "mcc", "context-packet"],
+    "dependencies": ["tb_1773275513_7"]
+  }
+]

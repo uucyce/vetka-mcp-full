@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import asyncio
+import hashlib
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -32,6 +33,7 @@ logger = logging.getLogger("VETKA_TASK_BOARD")
 # MARKER_121.1: Task Board storage
 TASK_BOARD_FILE = Path(__file__).parent.parent.parent / "data" / "task_board.json"
 _TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
+PROJECT_ROOT = TASK_BOARD_FILE.parent.parent
 
 # Priority levels
 PRIORITY_CRITICAL = 1
@@ -44,12 +46,15 @@ PRIORITY_SOMEDAY = 5
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
 # MARKER_130.C16A: Added "claimed" status for multi-agent support
 VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold"}
+VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
 # Counter for generating IDs
 _task_counter = 0
+DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
+DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 
 
 def _generate_task_id() -> str:
@@ -117,6 +122,7 @@ class TaskBoard:
             "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
             "default_preset": "dragon_silver"
         }
+        self.integrity_warning: str = ""
         self._load()
 
     # ==========================================
@@ -131,22 +137,66 @@ class TaskBoard:
                     data = json.loads(path.read_text())
                     self.tasks = data.get("tasks", {})
                     self.settings = data.get("settings", self.settings)
+                    meta = data.get("_meta") if isinstance(data.get("_meta"), dict) else {}
+                    expected_sig = str(meta.get("integrity_sig") or "").strip()
+                    actual_sig = self._compute_integrity_sig(self.tasks, self.settings)
+                    if expected_sig and expected_sig != actual_sig:
+                        self.integrity_warning = "task_board_signature_mismatch"
+                        self.settings["_integrity_warning"] = self.integrity_warning
+                        logger.warning("[TaskBoard] Integrity signature mismatch — board may have been edited outside protocol")
+                    elif not expected_sig and self.tasks:
+                        self.integrity_warning = "task_board_signature_missing"
+                        self.settings["_integrity_warning"] = self.integrity_warning
+                        logger.warning("[TaskBoard] Integrity signature missing — legacy or out-of-band write detected")
+                    else:
+                        self.integrity_warning = ""
+                        self.settings.pop("_integrity_warning", None)
                     logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from {path}")
+                    self._backfill_modules()
                     return
                 except Exception as e:
                     logger.warning(f"[TaskBoard] Failed to load from {path}: {e}")
         logger.info("[TaskBoard] No existing board found, starting fresh")
 
+    def _backfill_modules(self):
+        """MARKER_155.2A: Backfill 'module' field for existing tasks."""
+        updated = 0
+        for task in self.tasks.values():
+            if "module" not in task or not task.get("module"):
+                task["module"] = self._auto_assign_module(
+                    task.get("title", ""),
+                    task.get("description", ""),
+                    task.get("tags", []),
+                )
+                updated += 1
+        if updated > 0:
+            self._save(action="backfill_modules")
+            logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
+
+    @staticmethod
+    def _compute_integrity_sig(tasks: Dict[str, Dict[str, Any]], settings: Dict[str, Any]) -> str:
+        payload = {
+            "tasks": tasks,
+            "settings": {k: v for k, v in settings.items() if not str(k).startswith("_")},
+        }
+        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
     def _save(self, action: str = "update"):
         """Save task board to disk with sandbox fallback."""
+        runtime_settings = {k: v for k, v in self.settings.items() if not str(k).startswith("_")}
+        integrity_sig = self._compute_integrity_sig(self.tasks, runtime_settings)
         data = {
             "_meta": {
                 "version": "1.0",
                 "phase": "121",
-                "updated": datetime.now().isoformat()
+                "updated": datetime.now().isoformat(),
+                "integrity_sig": integrity_sig,
+                "last_writer": "task_board_runtime",
+                "last_action": str(action or "update"),
             },
             "tasks": self.tasks,
-            "settings": self.settings
+            "settings": runtime_settings
         }
         content = json.dumps(data, indent=2, default=str, ensure_ascii=False)
 
@@ -162,6 +212,221 @@ class TaskBoard:
                 logger.warning(f"[TaskBoard] Cannot write to {path}: {e}")
 
         logger.error("[TaskBoard] Failed to save task board to any location")
+
+    @staticmethod
+    def _history_entry(
+        *,
+        event: str,
+        status: str,
+        agent_name: str = "",
+        agent_type: str = "",
+        source: str = "task_board",
+        reason: str = "",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        entry = {
+            "ts": datetime.now().isoformat(),
+            "event": str(event or status or "update"),
+            "status": str(status or ""),
+            "agent_name": str(agent_name or ""),
+            "agent_type": str(agent_type or ""),
+            "source": str(source or "task_board"),
+            "reason": str(reason or "")[:300],
+        }
+        if isinstance(extra, dict) and extra:
+            entry["extra"] = extra
+        return entry
+
+    def _append_history(
+        self,
+        task: Dict[str, Any],
+        *,
+        event: str,
+        status: str,
+        agent_name: str = "",
+        agent_type: str = "",
+        source: str = "task_board",
+        reason: str = "",
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        history = task.setdefault("status_history", [])
+        if not isinstance(history, list):
+            history = []
+            task["status_history"] = history
+        history.append(
+            self._history_entry(
+                event=event,
+                status=status,
+                agent_name=agent_name,
+                agent_type=agent_type,
+                source=source,
+                reason=reason,
+                extra=extra,
+            )
+        )
+        task["status_history"] = history[-50:]
+
+    def get_task_history(self, task_id: str) -> List[Dict[str, Any]]:
+        task = self.get_task(task_id)
+        if not task:
+            return []
+        history = task.get("status_history")
+        return list(history) if isinstance(history, list) else []
+
+    @staticmethod
+    def _normalize_test_commands(commands: Any) -> List[str]:
+        if isinstance(commands, str):
+            return [commands.strip()] if commands.strip() else []
+        if not isinstance(commands, list):
+            return []
+        out = []
+        for item in commands:
+            text = str(item or "").strip()
+            if text:
+                out.append(text)
+        return out
+
+    @staticmethod
+    def _normalize_doc_refs(items: Any) -> List[str]:
+        if isinstance(items, str):
+            text = items.strip()
+            return [text] if text else []
+        if not isinstance(items, list):
+            return []
+        out: List[str] = []
+        seen = set()
+        for item in items:
+            text = str(item or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            out.append(text)
+        return out
+
+    @staticmethod
+    def _normalize_phase_type(phase_type: Optional[str]) -> str:
+        value = str(phase_type or "build").strip().lower()
+        if value in VALID_PHASE_TYPES:
+            return value
+        raise ValueError(f"Invalid phase_type '{phase_type}'. Expected one of: {sorted(VALID_PHASE_TYPES)}")
+
+    def _normalize_protocol_fields(
+        self,
+        *,
+        architecture_docs: Any,
+        recon_docs: Any,
+        protocol_version: Optional[str],
+        require_closure_proof: bool,
+        closure_tests: Any,
+        closure_files: Any,
+    ) -> Dict[str, Any]:
+        docs = self._normalize_doc_refs(architecture_docs)
+        recon = self._normalize_doc_refs(recon_docs)
+        tests = self._normalize_test_commands(closure_tests)
+        files = self._normalize_doc_refs(closure_files)
+        proof_required = bool(require_closure_proof or tests)
+        protocol = protocol_version or (DEFAULT_PROTOCOL_VERSION if (proof_required or docs or recon) else None)
+        return {
+            "architecture_docs": docs,
+            "recon_docs": recon,
+            "protocol_version": protocol,
+            "require_closure_proof": proof_required,
+            "closure_tests": tests,
+            "closure_files": files,
+        }
+
+    async def _run_closure_tests(self, commands: List[str]) -> List[Dict[str, Any]]:
+        results: List[Dict[str, Any]] = []
+        for command in commands:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            results.append(
+                {
+                    "command": command,
+                    "passed": proc.returncode == 0,
+                    "exit_code": int(proc.returncode or 0),
+                    "stdout": stdout.decode("utf-8", errors="replace")[-2000:],
+                    "stderr": stderr.decode("utf-8", errors="replace")[-2000:],
+                }
+            )
+            if proc.returncode != 0:
+                break
+        return results
+
+    def _closure_threshold(self, task: Dict[str, Any]) -> float:
+        try:
+            return float(task.get("verifier_threshold") or DEFAULT_VERIFIER_PASS_THRESHOLD)
+        except (TypeError, ValueError):
+            return DEFAULT_VERIFIER_PASS_THRESHOLD
+
+    def _validate_closure_proof(
+        self,
+        task: Dict[str, Any],
+        closure_proof: Optional[Dict[str, Any]],
+        *,
+        manual_override: bool = False,
+    ) -> Optional[str]:
+        if manual_override:
+            return None
+        if not task.get("require_closure_proof"):
+            return None
+        if not isinstance(closure_proof, dict):
+            return "closure_proof is required for protocol tasks"
+
+        stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
+        if not bool(closure_proof.get("pipeline_success", stats.get("success"))):
+            return "pipeline_success must be true before closing the task"
+
+        verifier_confidence = closure_proof.get("verifier_confidence", stats.get("verifier_avg_confidence", 0))
+        try:
+            verifier_confidence = float(verifier_confidence or 0)
+        except (TypeError, ValueError):
+            verifier_confidence = 0.0
+        if verifier_confidence < self._closure_threshold(task):
+            return f"verifier_confidence {verifier_confidence:.2f} is below threshold"
+
+        tests = closure_proof.get("tests")
+        if not isinstance(tests, list) or not tests:
+            return "closure_proof.tests must contain at least one passing test"
+        if any(not isinstance(row, dict) or not row.get("passed") for row in tests):
+            return "all closure_proof tests must pass before closing the task"
+
+        if not str(closure_proof.get("commit_hash") or "").strip():
+            return "closure_proof.commit_hash is required for protocol task closure"
+        return None
+
+    def _mark_closure_failed(
+        self,
+        task_id: str,
+        *,
+        reason: str,
+        activating_agent: str = "",
+        agent_type: str = "",
+        closure_results: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
+        self.update_task(
+            task_id,
+            status="failed",
+            completed_at=datetime.now().isoformat(),
+            result_summary=str(reason)[:500],
+            closure_subtask={
+                "status": "failed",
+                "finished_at": datetime.now().isoformat(),
+                "tests": closure_results or [],
+                "reason": reason[:500],
+            },
+            _history_event="closure_failed",
+            _history_source="closure_protocol",
+            _history_reason=reason[:300],
+            _history_agent_name=activating_agent,
+            _history_agent_type=agent_type,
+        )
+        return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
 
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
         """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
@@ -235,6 +500,39 @@ class TaskBoard:
         created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
         source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
         source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
+        module: Optional[str] = None,            # MARKER_155.2A: Roadmap module assignment
+        primary_node_id: Optional[str] = None,   # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        affected_nodes: Optional[List[str]] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_id: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_bank: Optional[str] = None,     # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_family: Optional[str] = None,   # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_selection_origin: Optional[str] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        team_profile: Optional[str] = None,      # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        task_origin: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        roadmap_id: Optional[str] = None,
+        roadmap_node_id: Optional[str] = None,
+        roadmap_lane: Optional[str] = None,
+        roadmap_title: Optional[str] = None,
+        ownership_scope: Optional[str] = None,
+        allowed_paths: Optional[List[str]] = None,
+        owner_agent: Optional[str] = None,
+        completion_contract: Optional[List[str]] = None,
+        verification_agent: Optional[str] = None,
+        blocked_paths: Optional[List[str]] = None,
+        forbidden_scopes: Optional[List[str]] = None,
+        worktree_hint: Optional[str] = None,
+        touch_policy: Optional[str] = None,
+        overlap_risk: Optional[str] = None,
+        depends_on_docs: Optional[List[str]] = None,
+        project_id: Optional[str] = None,
+        project_lane: Optional[str] = None,
+        parent_task_id: Optional[str] = None,
+        architecture_docs: Optional[List[str]] = None,
+        recon_docs: Optional[List[str]] = None,
+        protocol_version: Optional[str] = None,
+        require_closure_proof: bool = False,
+        closure_tests: Optional[List[str]] = None,
+        closure_files: Optional[List[str]] = None,
     ) -> str:
         """Add a new task to the board.
 
@@ -257,8 +555,17 @@ class TaskBoard:
         """
         task_id = _generate_task_id()
         priority = max(1, min(5, priority))  # Clamp 1-5
+        phase_type = self._normalize_phase_type(phase_type)
+        protocol_fields = self._normalize_protocol_fields(
+            architecture_docs=architecture_docs,
+            recon_docs=recon_docs,
+            protocol_version=protocol_version,
+            require_closure_proof=require_closure_proof,
+            closure_tests=closure_tests,
+            closure_files=closure_files,
+        )
 
-        self.tasks[task_id] = {
+        task_payload = {
             "id": task_id,
             "title": title,
             "description": description or title,
@@ -290,11 +597,102 @@ class TaskBoard:
             # MARKER_152.3: Task provenance — trace back to originating chat
             "source_chat_id": source_chat_id,   # VETKA chat UUID where task was created
             "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
+            # MARKER_155.2A: Roadmap module assignment for drill-down filtering
+            "module": module or self._auto_assign_module(title, description or title, tags or []),
+            # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: explicit task-to-code anchor metadata
+            "primary_node_id": primary_node_id,
+            "affected_nodes": affected_nodes or [],
+            "workflow_id": workflow_id,
+            "workflow_bank": workflow_bank,
+            "workflow_family": workflow_family,
+            "workflow_selection_origin": workflow_selection_origin,
+            "team_profile": team_profile,
+            "task_origin": task_origin,
+            "roadmap_id": roadmap_id,
+            "roadmap_node_id": roadmap_node_id,
+            "roadmap_lane": roadmap_lane,
+            "roadmap_title": roadmap_title,
+            "ownership_scope": ownership_scope,
+            "allowed_paths": self._normalize_doc_refs(allowed_paths),
+            "owner_agent": owner_agent,
+            "completion_contract": self._normalize_doc_refs(completion_contract),
+            "verification_agent": verification_agent,
+            "blocked_paths": self._normalize_doc_refs(blocked_paths),
+            "forbidden_scopes": self._normalize_doc_refs(forbidden_scopes),
+            "worktree_hint": worktree_hint,
+            "touch_policy": touch_policy,
+            "overlap_risk": overlap_risk,
+            "depends_on_docs": self._normalize_doc_refs(depends_on_docs),
+            "project_id": project_id,
+            "project_lane": project_lane or project_id,
+            "parent_task_id": parent_task_id,
+            "architecture_docs": protocol_fields["architecture_docs"],
+            "recon_docs": protocol_fields["recon_docs"],
+            "protocol_version": protocol_fields["protocol_version"],
+            "require_closure_proof": protocol_fields["require_closure_proof"],
+            "closure_tests": protocol_fields["closure_tests"],
+            "closure_files": protocol_fields["closure_files"],
+            "closure_subtask": {
+                "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
+                "tests": [],
+                "finished_at": None,
+            },
+            "closed_by": None,
+            "closed_at": None,
+            "closure_proof": None,
+            "status_history": [],
         }
+        self._append_history(
+            task_payload,
+            event="created",
+            status="pending",
+            agent_name=created_by,
+            agent_type=agent_type or "unknown",
+            source=source,
+            reason="task created",
+            extra={
+                "project_lane": project_lane or project_id or "",
+                "parent_task_id": parent_task_id or "",
+                "protocol_version": task_payload.get("protocol_version") or "",
+            },
+        )
+        self.tasks[task_id] = task_payload
 
         self._save(action="added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id
+
+    # MARKER_155.2A: Auto-assign module from task content
+    # Maps keywords in title/description/tags to roadmap module IDs
+    _MODULE_KEYWORDS: dict = {
+        "backend_api": ["api", "routes", "endpoint", "rest", "http", "backend route"],
+        "backend_orchestration": ["pipeline", "orchestration", "agent", "dragon", "mycelium", "heartbeat"],
+        "backend_mcp": ["mcp", "mcp server", "mcp tool"],
+        "backend_services": ["service", "roadmap", "config", "project config"],
+        "backend_memory": ["memory", "cam", "stm", "engram", "qdrant", "vector"],
+        "backend_elisya": ["elisya", "llm", "model", "provider", "call_model"],
+        "backend_tools": ["tool", "fc_loop", "patch", "registry"],
+        "backend_scanners": ["scanner", "scan", "watcher", "indexer"],
+        "frontend_components": ["component", "ui", "panel", "view", "dag", "node", "mcc", "dagview",
+                                "frontend", "canvas", "chat", "button", "toggle", "import", "drag"],
+        "frontend_hooks": ["hook", "useSocket", "useStore", "useMCC"],
+        "frontend_store": ["store", "zustand", "state"],
+        "tests": ["test", "pytest", "e2e", "playwright"],
+        "scripts": ["script", "setup", "deploy", "ci"],
+    }
+
+    @staticmethod
+    def _auto_assign_module(title: str, description: str, tags: list) -> str:
+        """Match task content to a roadmap module ID."""
+        text = f"{title} {description} {' '.join(tags)}".lower()
+        best_module = ""
+        best_score = 0
+        for module_id, keywords in TaskBoard._MODULE_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in text)
+            if score > best_score:
+                best_score = score
+                best_module = module_id
+        return best_module
 
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a task by ID.
@@ -322,20 +720,82 @@ class TaskBoard:
             logger.warning(f"[TaskBoard] Task {task_id} not found for update")
             return False
 
+        history_event = updates.pop("_history_event", None)
+        history_source = updates.pop("_history_source", "task_board")
+        history_reason = updates.pop("_history_reason", "")
+        history_agent_name = updates.pop("_history_agent_name", "")
+        history_agent_type = updates.pop("_history_agent_type", "")
+        history_extra = updates.pop("_history_extra", None)
+
+        old_status = str(task.get("status") or "")
+        new_status = str(updates.get("status") or old_status)
+
         # Validate status if being updated
         if "status" in updates:
             if updates["status"] not in VALID_STATUSES:
                 logger.warning(f"[TaskBoard] Invalid status: {updates['status']}")
                 return False
+        if "phase_type" in updates:
+            try:
+                updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
+            except ValueError as e:
+                logger.warning(f"[TaskBoard] {e}")
+                return False
+
+        protocol_update_keys = {"architecture_docs", "recon_docs", "protocol_version", "require_closure_proof", "closure_tests", "closure_files"}
+        if any(key in updates for key in protocol_update_keys):
+            protocol_fields = self._normalize_protocol_fields(
+                architecture_docs=updates.get("architecture_docs", task.get("architecture_docs")),
+                recon_docs=updates.get("recon_docs", task.get("recon_docs")),
+                protocol_version=updates.get("protocol_version", task.get("protocol_version")),
+                require_closure_proof=bool(updates.get("require_closure_proof", task.get("require_closure_proof"))),
+                closure_tests=updates.get("closure_tests", task.get("closure_tests")),
+                closure_files=updates.get("closure_files", task.get("closure_files")),
+            )
+            updates.update(protocol_fields)
+            if "closure_subtask" not in updates:
+                current = task.get("closure_subtask") if isinstance(task.get("closure_subtask"), dict) else {}
+                if current.get("status") not in {"done", "manual_override"}:
+                    updates["closure_subtask"] = {
+                        **current,
+                        "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
+                        "tests": current.get("tests", []),
+                        "finished_at": current.get("finished_at"),
+                    }
 
         # MARKER_137.S1_4: Allow adding 'result' field even if not present
         # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
         # MARKER_152.3: Added source_chat_id, source_group_id for task provenance
-        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status",
-                          "source_chat_id", "source_group_id"}
+        # MARKER_155.2A: Added 'module' for roadmap module assignment
+        # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
+        # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1: Added workflow binding metadata fields
+        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status", "feedback",
+                          "source_chat_id", "source_group_id", "module",
+                          "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
+                          "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
+                          "roadmap_id", "roadmap_node_id", "roadmap_lane", "roadmap_title",
+                          "ownership_scope", "allowed_paths", "owner_agent", "completion_contract",
+                          "verification_agent", "blocked_paths", "forbidden_scopes", "worktree_hint",
+                          "touch_policy", "overlap_risk", "depends_on_docs",
+                          "project_id", "project_lane", "parent_task_id", "architecture_docs",
+                          "recon_docs", "protocol_version", "require_closure_proof", "closure_tests",
+                          "closure_files", "closure_subtask", "closed_by", "closed_at",
+                          "closure_proof", "status_history"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
+
+        if history_event or ("status" in updates and new_status != old_status):
+            self._append_history(
+                task,
+                event=str(history_event or f"status_{new_status}"),
+                status=new_status,
+                agent_name=history_agent_name or str(task.get("assigned_to") or ""),
+                agent_type=history_agent_type or str(task.get("agent_type") or ""),
+                source=str(history_source or "task_board"),
+                reason=str(history_reason or ""),
+                extra=history_extra if isinstance(history_extra, dict) else None,
+            )
 
         self._save(action="updated")
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
@@ -389,6 +849,15 @@ class TaskBoard:
                         if (now - started).total_seconds() > running_timeout_min * 60:
                             task["status"] = "failed"
                             task["result_summary"] = f"Timeout: running > {running_timeout_min}min"
+                            self._append_history(
+                                task,
+                                event="stale_running_timeout",
+                                status="failed",
+                                agent_name=str(task.get("assigned_to") or ""),
+                                agent_type=str(task.get("agent_type") or ""),
+                                source="cleanup",
+                                reason=f"running > {running_timeout_min}min",
+                            )
                             cleaned += 1
                             logger.info(f"[TaskBoard] Cleaned stale running task {task.get('id')}")
                     except Exception:
@@ -403,6 +872,13 @@ class TaskBoard:
                             task["status"] = "pending"
                             task["assigned_to"] = None
                             task["assigned_at"] = None
+                            self._append_history(
+                                task,
+                                event="stale_claim_released",
+                                status="pending",
+                                source="cleanup",
+                                reason=f"claimed > {claimed_timeout_min}min",
+                            )
                             cleaned += 1
                             logger.info(f"[TaskBoard] Released stale claimed task {task.get('id')}")
                     except Exception:
@@ -441,6 +917,11 @@ class TaskBoard:
             assigned_to=agent_name,
             agent_type=agent_type,
             assigned_at=datetime.now().isoformat(),
+            _history_event="claimed",
+            _history_source="task_board",
+            _history_reason="task claimed by agent",
+            _history_agent_name=agent_name,
+            _history_agent_type=agent_type,
         )
 
         # MARKER_130.C18C: Emit enhanced event for claim
@@ -454,8 +935,17 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})")
         return {"success": True, "task_id": task_id, "assigned_to": agent_name}
 
-    def complete_task(self, task_id: str, commit_hash: Optional[str] = None,
-                      commit_message: Optional[str] = None) -> Dict[str, Any]:
+    def complete_task(
+        self,
+        task_id: str,
+        commit_hash: Optional[str] = None,
+        commit_message: Optional[str] = None,
+        *,
+        closure_proof: Optional[Dict[str, Any]] = None,
+        closed_by: Optional[str] = None,
+        manual_override: bool = False,
+        override_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
         Args:
@@ -470,16 +960,48 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
+        proof = dict(closure_proof or {})
+        if commit_hash and not proof.get("commit_hash"):
+            proof["commit_hash"] = commit_hash
+        if commit_message and not proof.get("commit_message"):
+            proof["commit_message"] = commit_message[:200]
+        if closed_by and not proof.get("activating_agent"):
+            proof["activating_agent"] = closed_by
+        if override_reason and not proof.get("override_reason"):
+            proof["override_reason"] = override_reason[:300]
+
+        proof_error = self._validate_closure_proof(task, proof if proof else closure_proof, manual_override=manual_override)
+        if proof_error:
+            return {"success": False, "error": proof_error, "task_id": task_id}
+
         update = {
             "status": "done",
             "completed_at": datetime.now().isoformat(),
+            "closed_at": datetime.now().isoformat(),
+            "closed_by": closed_by or task.get("assigned_to"),
+            "closure_proof": proof or None,
         }
         if commit_hash:
             update["commit_hash"] = commit_hash
         if commit_message:
             update["commit_message"] = commit_message[:200]  # Truncate
+        if task.get("require_closure_proof"):
+            update["closure_subtask"] = {
+                "status": "done" if not manual_override else "manual_override",
+                "tests": (proof or {}).get("tests", []),
+                "finished_at": datetime.now().isoformat(),
+                "commit_hash": (proof or {}).get("commit_hash"),
+            }
 
-        self.update_task(task_id, **update)
+        self.update_task(
+            task_id,
+            **update,
+            _history_event="closed_manual" if manual_override else "closed",
+            _history_source="task_board",
+            _history_reason=override_reason or ("task closed by closure protocol" if task.get("require_closure_proof") else "task completed"),
+            _history_agent_name=closed_by or str(task.get("assigned_to") or ""),
+            _history_agent_type=str(task.get("agent_type") or ""),
+        )
 
         # MARKER_130.C18C: Emit enhanced event for completion
         self._notify_board_update("task_completed", {
@@ -493,6 +1015,151 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} completed" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
         return {"success": True, "task_id": task_id, "commit_hash": commit_hash}
+
+    async def run_closure_protocol(
+        self,
+        task_id: str,
+        *,
+        activating_agent: str = "unknown",
+        agent_type: str = "unknown",
+        commit_message: Optional[str] = None,
+        auto_push: bool = False,
+        manual_override: bool = False,
+        override_reason: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
+        verifier_confidence = float(stats.get("verifier_avg_confidence") or 0.0)
+        proof: Dict[str, Any] = {
+            "protocol_version": task.get("protocol_version") or DEFAULT_PROTOCOL_VERSION,
+            "pipeline_success": bool(stats.get("success")),
+            "verifier_confidence": verifier_confidence,
+            "activating_agent": activating_agent,
+            "agent_type": agent_type,
+            "manual_override": bool(manual_override),
+            "override_reason": str(override_reason or "")[:300],
+            "pipeline_task_id": task.get("pipeline_task_id"),
+        }
+
+        if manual_override:
+            return self.complete_task(
+                task_id,
+                closure_proof=proof,
+                closed_by=activating_agent,
+                manual_override=True,
+                override_reason=override_reason,
+            )
+
+        if not stats.get("success"):
+            return self._mark_closure_failed(
+                task_id,
+                reason="pipeline did not finish successfully",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        if verifier_confidence < self._closure_threshold(task):
+            return self._mark_closure_failed(
+                task_id,
+                reason=f"verifier confidence {verifier_confidence:.2f} is below threshold",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        test_commands = self._normalize_test_commands(task.get("closure_tests"))
+        if not test_commands:
+            return self._mark_closure_failed(
+                task_id,
+                reason="protocol task requires closure_tests before it can be closed",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+            )
+
+        closure_results = await self._run_closure_tests(test_commands)
+        proof["tests"] = closure_results
+        if any(not row.get("passed") for row in closure_results):
+            return self._mark_closure_failed(
+                task_id,
+                reason="closure tests failed",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        closure_files = [str(path) for path in (task.get("closure_files") or []) if str(path).strip()]
+        if not closure_files:
+            return self._mark_closure_failed(
+                task_id,
+                reason="protocol task requires explicit closure_files for scoped auto-commit",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        commit_title = commit_message or f"[Task {task_id}] {task.get('title', '')[:72]}".strip()
+        from src.mcp.tools.git_tool import GitCommitTool
+
+        commit_tool = GitCommitTool()
+        commit_result = commit_tool.execute(
+            {
+                "message": commit_title,
+                "files": closure_files,
+                "dry_run": False,
+                "auto_push": auto_push,
+            }
+        )
+        if not commit_result.get("success"):
+            return self._mark_closure_failed(
+                task_id,
+                reason=f"auto-commit failed: {commit_result.get('error') or 'unknown error'}",
+                activating_agent=activating_agent,
+                agent_type=agent_type,
+                closure_results=closure_results,
+            )
+
+        commit_payload = commit_result.get("result") or {}
+        commit_hash = str(commit_payload.get("hash") or "").strip()
+        proof["commit_hash"] = commit_hash
+        proof["commit_message"] = commit_title
+        proof["digest_updated"] = bool(commit_payload.get("digest_updated"))
+
+        completed = self.complete_task(
+            task_id,
+            commit_hash=commit_hash,
+            commit_message=commit_title,
+            closure_proof=proof,
+            closed_by=activating_agent,
+        )
+        if not completed.get("success"):
+            return completed
+
+        try:
+            from src.services.task_tracker import on_task_completed
+
+            tracker_stats = dict(stats)
+            tracker_stats["closure_tests"] = closure_results
+            tracker_stats["commit_hash"] = commit_hash
+            await on_task_completed(
+                task_id=task_id,
+                task_title=str(task.get("title") or task_id),
+                status="done",
+                stats=tracker_stats,
+                source=f"{activating_agent}:{agent_type}" if agent_type else activating_agent,
+            )
+        except Exception as track_err:
+            logger.debug(f"[TaskBoard] Tracker update skipped for {task_id}: {track_err}")
+
+        return {
+            "success": True,
+            "task_id": task_id,
+            "commit_hash": commit_hash,
+            "tests": closure_results,
+            "commit": commit_payload,
+            "closed_by": activating_agent,
+        }
 
     def get_active_agents(self) -> List[Dict[str, Any]]:
         """Get list of agents with active (claimed/running) tasks.
@@ -554,14 +1221,28 @@ class TaskBoard:
         # This enables infra flow: vetka_git_commit("... tb_123_4 ...") -> board.complete_task(...)
         eligible = [
             t for t in self.tasks.values()
-            if t["status"] in ("pending", "queued", "claimed", "running")
+            if not t.get("require_closure_proof") and t["status"] in ("pending", "queued", "claimed", "running")
         ]
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):
-                self.complete_task(task["id"], commit_hash, commit_message.split('\n')[0])
-                completed.append(task["id"])
-                logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
+                result = self.complete_task(
+                    task["id"],
+                    commit_hash,
+                    commit_message.split('\n')[0],
+                    closure_proof={
+                        "commit_hash": commit_hash,
+                        "commit_message": commit_message.split('\n')[0],
+                        "pipeline_success": bool((task.get("stats") or {}).get("success")),
+                        "verifier_confidence": float((task.get("stats") or {}).get("verifier_avg_confidence") or 0),
+                        "tests": [{"command": "git auto-close", "passed": True, "exit_code": 0}],
+                        "activating_agent": str(task.get("assigned_to") or "git"),
+                    },
+                    closed_by=str(task.get("assigned_to") or "git"),
+                )
+                if result.get("success"):
+                    completed.append(task["id"])
+                    logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
 
         return completed
 
@@ -813,6 +1494,15 @@ class TaskBoard:
 
         # For pending/queued/hold — just set status directly
         task["status"] = "cancelled"
+        self._append_history(
+            task,
+            event="cancelled",
+            status="cancelled",
+            agent_name=str(task.get("assigned_to") or ""),
+            agent_type=str(task.get("agent_type") or ""),
+            source="task_board",
+            reason=reason,
+        )
         self._save(action="cancelled")
         logger.info(f"[TaskBoard] Task {task_id} cancelled (was {old_status})")
         return True
@@ -877,14 +1567,29 @@ class TaskBoard:
         if sem.locked():
             running_count = len([t for t in self.tasks.values() if t.get("status") == "running"])
             logger.warning(f"[TaskBoard] Max concurrent ({max_concurrent}) reached, queuing {task_id}. Running: {running_count}")
-            self.update_task(task_id, status="queued")
+            self.update_task(
+                task_id,
+                status="queued",
+                _history_event="queued",
+                _history_source="dispatch",
+                _history_reason=f"max_concurrent={max_concurrent} reached",
+            )
             return {"success": False, "error": f"max_concurrent ({max_concurrent}) reached", "queued": True, "task_id": task_id}
 
         # Acquire semaphore and dispatch
         # MARKER_133.C33C: Pipeline execution inside semaphore context
         async with sem:
             # Mark as running (inside semaphore to ensure accurate count)
-            self.update_task(task_id, status="running", started_at=datetime.now().isoformat())
+            self.update_task(
+                task_id,
+                status="running",
+                started_at=datetime.now().isoformat(),
+                _history_event="running",
+                _history_source="dispatch",
+                _history_reason="pipeline dispatch started",
+                _history_agent_name=str(task.get("assigned_to") or ""),
+                _history_agent_type=str(task.get("agent_type") or ""),
+            )
 
             try:
                 from src.orchestration.agent_pipeline import AgentPipeline
@@ -937,11 +1642,39 @@ class TaskBoard:
 
                 self.update_task(
                     task_id,
-                    status="done" if completed else "failed",
-                    completed_at=datetime.now().isoformat(),
                     pipeline_task_id=result.get("task_id"),
                     assigned_tier=pipeline.preset_name,
-                    result_summary=result_summary
+                    result_summary=result_summary,
+                )
+
+                if completed and task.get("require_closure_proof"):
+                    closure_result = await self.run_closure_protocol(
+                        task_id,
+                        activating_agent=str(task.get("assigned_to") or "pipeline"),
+                        agent_type=str(task.get("agent_type") or "mycelium"),
+                    )
+                    final_status = "done" if closure_result.get("success") else "failed"
+                    logger.info(f"[TaskBoard] Task {task_id} closure protocol → {final_status}")
+                    return {
+                        "success": bool(closure_result.get("success")),
+                        "task_id": task_id,
+                        "pipeline_task_id": result.get("task_id"),
+                        "status": final_status,
+                        "tier_used": pipeline.preset_name,
+                        "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
+                        "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                        "closure": closure_result,
+                    }
+
+                self.update_task(
+                    task_id,
+                    status="done" if completed else "failed",
+                    completed_at=datetime.now().isoformat(),
+                    _history_event="pipeline_done" if completed else "pipeline_failed",
+                    _history_source="dispatch",
+                    _history_reason="pipeline finished" if completed else "pipeline returned failed status",
+                    _history_agent_name=str(task.get("assigned_to") or ""),
+                    _history_agent_type=str(task.get("agent_type") or ""),
                 )
 
                 logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")
@@ -962,7 +1695,12 @@ class TaskBoard:
                     task_id,
                     status="failed",
                     completed_at=datetime.now().isoformat(),
-                    result_summary=f"Dispatch error: {str(e)[:200]}"
+                    result_summary=f"Dispatch error: {str(e)[:200]}",
+                    _history_event="dispatch_error",
+                    _history_source="dispatch",
+                    _history_reason=str(e)[:300],
+                    _history_agent_name=str(task.get("assigned_to") or ""),
+                    _history_agent_type=str(task.get("agent_type") or ""),
                 )
                 return {"success": False, "task_id": task_id, "error": str(e)}
 
@@ -979,6 +1717,7 @@ class TaskBoard:
         Format heuristics:
         - Lines with "баг" / "fix" / "исправ" → phase_type="fix", priority=2
         - Lines with "research" / "исследов" / "выяснить" → phase_type="research", priority=3
+        - Lines with "test" / "pytest" / "e2e" → phase_type="test", priority=3
         - Other lines → phase_type="build", priority=3
 
         Args:
@@ -1014,6 +1753,9 @@ class TaskBoard:
                 priority = PRIORITY_HIGH
             elif any(w in line_lower for w in ["research", "исследов", "выяснить", "diagnose", "узнать"]):
                 phase_type = "research"
+                priority = PRIORITY_MEDIUM
+            elif any(w in line_lower for w in ["test", "pytest", "e2e", "spec", "smoke"]):
+                phase_type = "test"
                 priority = PRIORITY_MEDIUM
             elif any(w in line_lower for w in ["нужно сделать", "добавить", "add", "create", "implement"]):
                 phase_type = "build"

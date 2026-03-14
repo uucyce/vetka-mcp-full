@@ -1,0 +1,7 @@
+Context packing in VETKA involves:
+1. Pinning relevant files and metadata.
+2. Visualizing the context in a 3D overview for better understanding.
+
+Briefly: 
+1. Pin necessary files.
+2. View in 3D for overview.

@@ -249,8 +249,14 @@ class WeaviateHelper:
 
     @staticmethod
     def _escape_quotes(s: str) -> str:
-        """Escape quotes for GraphQL"""
-        return s.replace('"', '\\"')
+        """Escape user input for GraphQL string literals."""
+        if not s:
+            return ""
+
+        # Normalize newlines/tabs to spaces first to avoid unterminated GraphQL strings.
+        normalized = " ".join(s.replace("\r", " ").replace("\n", " ").replace("\t", " ").split())
+        # Escape backslashes before quotes to preserve literal intent.
+        return normalized.replace("\\", "\\\\").replace('"', '\\"')
 
 # Global instance
 weaviate = WeaviateHelper()

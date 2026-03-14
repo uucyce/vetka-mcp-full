@@ -1,0 +1,22 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 28.0s,,,,,30949.77,0,0,0,0.0,"low_ru_ratio,no_file_refs,no_two_items,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_063942_533549_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:40:13.437067+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,55906.01,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064013_466910_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:41:09.343518+00:00
+D_ollama_tts,long_1,1,171,True,,3207.24,,3207.24,,7397.7,128,0,640,0.75,low_ru_ratio,"<think>
+Okay, let's tackle this user question. They want a step-by-step explanation of the interrupt + restart stream protocol and its impact on voice handoff and tool-loop transparency, referencing the provided context. If the context doesn't cover it, I need to state that clear",docs/157_ph/benchmarks/audio/20260304_064109_357352_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:41:16.741574+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,56367.52,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064116_758112_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:42:13.109444+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,2632.98,,2632.98,,6527.61,128,0,572,0.7,"low_ru_ratio,no_two_items","<think>
+Okay, let's tackle this user question. The user wants two specific files from the provided context and a one-line reason for each. If there's no info, I should say so.
+
+First, I'll check the pinned_context. There are two files listed. The first one is ""PHASE_52_6_SIMPLE_S",docs/157_ph/benchmarks/audio/20260304_064213_133970_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:42:19.637471+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,2681.1,,2681.1,,7166.46,128,0,605,0.75,low_ru_ratio,"<think>
+Okay, let's tackle this question. The user wants a short plan (3 points) to improve memory context packing in VETKA without regressing latency. They specified no general phrases, so I need to be specific.
+
+First, looking at the context provided. The pinned files mention t",docs/157_ph/benchmarks/audio/20260304_064219_647369_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:42:26.804193+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,2671.23,,2671.23,,6632.18,128,0,688,0.75,low_ru_ratio,"<think>
+Okay, let's tackle this user question. They want a step-by-step explanation of the interrupt + restart stream protocol and its impact on voice handoff and tool-loop transparency, referencing the context. If the context doesn't cover it, I need to say so directly.
+
+First, ",docs/157_ph/benchmarks/audio/20260304_064226_814065_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:42:33.436649+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,False,,2814.96,,2814.96,,7060.21,128,0,608,0.25,"low_ru_ratio,no_stepwise_followup,too_long_after_interrupt","<think>
+Okay, let's tackle the user's question. They want to know about context packing in VETKA, specifically two initial steps. The user mentioned an interrupt test, so they might be in the middle of a process.
+
+First, I need to recall what context packing in VETKA involves. Fr",docs/157_ph/benchmarks/audio/20260304_064233_448463_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:42:40.497077+00:00

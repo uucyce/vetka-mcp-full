@@ -1,0 +1,6 @@
+В предоставленном контексте нет информации о протоколе `interrupt + restart stream` и его влиянии на `voice handoff` или `tool-loop transparency`. Контекст фокусируется на:
+- Capability Matrix для stream и tool calling (MARKER_152).
+- Voice pipeline (TTS/STT) и агентские голосовые ответы (MARKER_156).
+- Проблемы с прогрессивной доставкой аудио и гигиеной режимов.
+
+Упоминается поддержка interrupt во время ответа

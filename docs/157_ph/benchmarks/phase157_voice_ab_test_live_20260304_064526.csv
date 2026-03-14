@@ -1,0 +1,19 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,quality_notes,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+D_ollama_tts,short_1,1,122,False,TimeoutError: per-run timeout 28.0s,,,,,29663.02,0,0,0,0.0,"low_ru_ratio,no_file_refs,no_two_items,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064241_609704_D_ollama_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:43:11.219307+00:00
+D_ollama_tts,context_1,1,133,False,TimeoutError: per-run timeout 28.0s,,,,,60242.24,0,0,0,0.0,"low_ru_ratio,no_memory_terms,no_latency_terms,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064311_249706_D_ollama_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:44:11.465657+00:00
+D_ollama_tts,long_1,1,171,True,,7104.71,,7104.71,,9159.44,73,0,250,0.85,,"В предоставленном контексте не найдено информации о протоколе interrupt + restart stream и его влиянии на прозрачность передачи голоса (voice handoff) и tool-loop. Следовательно, нельзя дать пошаговое объяснение этой темы ссылаясь на данный контекст.",docs/157_ph/benchmarks/audio/20260304_064411_494869_D_ollama_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:44:20.625670+00:00
+D_ollama_tts,interrupt_1,1,139,False,TimeoutError: per-run timeout 28.0s,,,,,48431.94,0,0,0,0.0,"low_ru_ratio,no_stepwise_followup,timeout,stream_error",,docs/157_ph/benchmarks/audio/20260304_064420_635285_D_ollama_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:09.060338+00:00
+E_ollama_jepa_tts,short_1,1,122,True,,2495.82,,2495.82,,5046.59,98,0,388,0.8,low_ru_ratio,"1. **ANTI_GRAVITY_FORMULAS_CHEATSHEET.md** - Этот файл содержит формулы для решения проблемы с перекрытиями веток в интерактивной структуре VETKA Tree.
+
+2. **Not explicitly mentioned in the context, but inferred from the 3D viewport context:** A file related to the `google_maps_f",docs/157_ph/benchmarks/audio/20260304_064509_075196_E_ollama_jepa_tts_short_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:14.108064+00:00
+E_ollama_jepa_tts,context_1,1,133,True,,2144.23,,2144.23,,4502.23,88,0,273,0.6,"no_memory_terms,no_latency_terms","1. Увеличить объем кэша для хранения более часто используемых данных.
+2. Реализовать алгоритмLRU (Least Recently Used) для удаления наименее свежих записей при превышении размера кэша.
+3. Провести аудит текущего использования памяти и оптимизировать неэффективные операции.",docs/157_ph/benchmarks/audio/20260304_064514_115903_E_ollama_jepa_tts_context_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:18.611108+00:00
+E_ollama_jepa_tts,long_1,1,171,True,,2420.36,,2420.36,,3934.05,54,0,233,0.85,,В данном контексте не указано подробного описания interrupt + restart stream protocol и его влияния на voice handoff/tool-loop transparency. Данные аспекты не затронуты в предоставленном Capability Matrix или других файлах контекста.,docs/157_ph/benchmarks/audio/20260304_064518_621648_E_ollama_jepa_tts_long_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:22.545772+00:00
+E_ollama_jepa_tts,interrupt_1,1,139,True,,2395.98,,2395.98,,4049.02,53,0,207,0.75,low_ru_ratio,"Context packing in VETKA involves:
+1. Pinning relevant files and metadata.
+2. Visualizing the context in a 3D overview for better understanding.
+
+Briefly: 
+1. Pin necessary files.
+2. View in 3D for overview.",docs/157_ph/benchmarks/audio/20260304_064522_557098_E_ollama_jepa_tts_interrupt_1_run1,,,,,,True,6,algorithmic,False,False,2026-03-04T03:45:26.595225+00:00

@@ -1,0 +1,71 @@
+{
+  "generated_at": "2026-03-03T20:06:54.835448+00:00",
+  "dry_run": false,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 1605.73,
+      "ttfa_audio_ms": 3008.66,
+      "reaction_text_ms": 1605.73,
+      "reaction_audio_ms": 3008.66,
+      "e2e_ms": 5353.07,
+      "tokens_out": 13,
+      "audio_chunks": 2,
+      "response_chars": 43,
+      "quality_proxy": 1.0,
+      "response_preview": "Привет! Да, я на месте и готов тебе помочь.",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260303_230644_355882_F_mimo_short_short_live_run1",
+      "audio_merged_wav": "docs/157_ph/benchmarks/audio/20260303_230644_355882_F_mimo_short_short_live_run1/merged.wav",
+      "audio_qc_score": 73.25,
+      "audio_pause_count": 5,
+      "audio_longest_pause_ms": 1080,
+      "audio_stretch_events": 0,
+      "timestamp": "2026-03-03T20:06:49.661244+00:00"
+    },
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 2,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 822.06,
+      "ttfa_audio_ms": 1725.65,
+      "reaction_text_ms": 822.06,
+      "reaction_audio_ms": 1725.65,
+      "e2e_ms": 5173.9,
+      "tokens_out": 15,
+      "audio_chunks": 3,
+      "response_chars": 40,
+      "quality_proxy": 1.0,
+      "response_preview": "Привет! Да, я на месте. Чем могу помочь?",
+      "audio_dir": "docs/157_ph/benchmarks/audio/20260303_230649_669159_F_mimo_short_short_live_run2",
+      "audio_merged_wav": "docs/157_ph/benchmarks/audio/20260303_230649_669159_F_mimo_short_short_live_run2/merged.wav",
+      "audio_qc_score": 56.25,
+      "audio_pause_count": 6,
+      "audio_longest_pause_ms": 1320,
+      "audio_stretch_events": 0,
+      "timestamp": "2026-03-03T20:06:54.835294+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 2,
+        "success_runs": 2,
+        "success_rate": 1.0,
+        "ttft_text_ms_p50": 1213.89,
+        "ttfa_audio_ms_p50": 2367.15,
+        "reaction_text_ms_p50": 1213.89,
+        "reaction_audio_ms_p50": 2367.15,
+        "e2e_ms_p50": 5263.48,
+        "quality_proxy_mean": 1.0
+      }
+    }
+  }
+}

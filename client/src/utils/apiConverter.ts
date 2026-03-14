@@ -10,7 +10,7 @@
  */
 import { TreeNode, TreeEdge, VetkaNodeType } from '../store/useStore';
 import { ChatNode } from '../types/treeNodes';
-import type { ChatNodeAPI, ChatEdgeAPI } from './api';
+import type { ChatNodeAPI, ChatEdgeAPI, ArtifactNodeAPI, ArtifactEdgeAPI } from './api';
 
 // Backend API types
 export interface VetkaApiNode {
@@ -253,5 +253,45 @@ export function chatNodeToTreeNode(chatNode: ChatNode, position: { x: number; y:
       last_activity: chatNode.lastActivity.toISOString(),
       context_type: 'chat',
     },
+  };
+}
+
+export function convertArtifactNode(apiArtifactNode: ArtifactNodeAPI): TreeNode {
+  const metadata = apiArtifactNode.metadata || {};
+  const layoutHint = apiArtifactNode.visual_hints?.layout_hint || { expected_x: 0, expected_y: 0, expected_z: 0 };
+  const basePath = String(metadata.file_path || metadata.parent_file_path || apiArtifactNode.id);
+  const chunkStart = typeof metadata.start_sec === 'number' ? metadata.start_sec : undefined;
+  const path = chunkStart !== undefined ? `${basePath}#t=${chunkStart}` : basePath;
+
+  return {
+    id: apiArtifactNode.id,
+    path,
+    name: apiArtifactNode.name,
+    type: 'artifact',
+    backendType: 'leaf',
+    depth: 0,
+    parentId: apiArtifactNode.parent_id || null,
+    position: {
+      x: layoutHint.expected_x ?? 0,
+      y: layoutHint.expected_y ?? 0,
+      z: layoutHint.expected_z ?? 0,
+    },
+    color: apiArtifactNode.visual_hints?.color || '#10b981',
+    opacity: apiArtifactNode.visual_hints?.opacity ?? 1.0,
+    extension: metadata.extension,
+    metadata: {
+      ...metadata,
+      artifact_id: metadata.artifact_id || apiArtifactNode.id,
+      path,
+    },
+  };
+}
+
+export function convertArtifactEdge(apiArtifactEdge: ArtifactEdgeAPI, index: number): TreeEdge {
+  return {
+    id: `artifact_edge_${index}`,
+    source: apiArtifactEdge.from,
+    target: apiArtifactEdge.to,
+    type: apiArtifactEdge.semantics || apiArtifactEdge.metadata?.type || 'artifact',
   };
 }

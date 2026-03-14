@@ -24,6 +24,10 @@ Phase History:
 
 import os
 import json
+import hashlib
+import asyncio
+import time
+import copy
 from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, Query
 from fastapi.responses import FileResponse
@@ -63,35 +67,469 @@ def _save_node_favorites(data: Dict[str, Any]) -> bool:
         return False
 
 
+def _stable_folder_node_id(folder_path: str) -> str:
+    digest = hashlib.md5((folder_path or "").encode("utf-8")).hexdigest()[:8]
+    return f"folder_{digest}"
+
+
 # Module-level cache for semantic DAG (computed once per session)
-_semantic_cache = {
-    'nodes': None,
-    'edges': None,
-    'positions': None,
-    'stats': None
-}
+_semantic_cache = {"nodes": None, "edges": None, "positions": None, "stats": None}
 
 # Module-level cache for Knowledge Graph (computed once per session)
 _knowledge_graph_cache = {
-    'tags': None,
-    'edges': None,
-    'chain_edges': None,
-    'positions': None,
-    'knowledge_levels': None,
-    'rrf_stats': None
+    "tags": None,
+    "edges": None,
+    "chain_edges": None,
+    "positions": None,
+    "knowledge_levels": None,
+    "rrf_stats": None,
+    "metadata_completeness": None,
+    "signature": None,
 }
+_knowledge_scope_hydration_cache: Dict[str, Dict[str, Any]] = {}
+
+# MARKER_155.PERF.TREE_DATA_BURST_CACHE:
+# Short TTL cache to reduce repeated identical startup requests.
+_tree_data_cache = {
+    "key": "",
+    "ts": 0.0,
+    "response": None,
+}
+_TREE_DATA_TTL_SOFT_SEC = 6.0
+_TREE_DATA_TTL_HARD_SEC = 24.0
+_tree_data_inflight: Dict[str, asyncio.Event] = {}
+_tree_data_inflight_lock = asyncio.Lock()
+_tree_data_revalidate_tasks: Dict[str, asyncio.Task] = {}
+
+# Path-exists cache for ghost detection (trigger/ttl-based).
+_ghost_exists_cache: Dict[str, Dict[str, Any]] = {}
+_GHOST_EXISTS_TTL_SEC = 15.0
+
+# Artifact graph cache (scan/chunk build trigger-based).
+_artifact_graph_cache: Dict[str, Any] = {
+    "source_mtime": 0.0,
+    "nodes": None,
+    "chunk_edges": None,
+}
+
+# Heat scores cache (trigger-based).
+_heat_scores_cache: Dict[str, Any] = {
+    "source_mtime": 0.0,
+    "scores": {},
+}
+
+# Tree structure cache (folders + files_by_folder) keyed by collection/source trigger.
+_tree_structure_cache: Dict[str, Any] = {
+    "collection": "",
+    "source_mtime": 0.0,
+    "ts": 0.0,
+    "all_files_count": 0,
+    "deleted_count": 0,
+    "browser_count": 0,
+    "folders": None,
+    "files_by_folder": None,
+}
+_TREE_STRUCTURE_TTL_SEC = 30.0
+
+# Session perf counters for health endpoint visibility.
+_tree_perf_counters: Dict[str, int] = {
+    "full_rebuild_count": 0,
+}
+
+# MARKER_155.PERF.CAM_TRIGGERED:
+# CAM metrics are refreshed by change-trigger, not per-request blocking compute.
+_cam_metrics_cache = {
+    "data": {},  # file_id -> metrics
+    "source_mtime": 0.0,  # trigger timestamp
+    "updated_at": 0.0,  # wall time
+}
+_cam_refresh_lock = asyncio.Lock()
+_cam_refresh_task = None
+_TREE_VERBOSE = str(os.getenv("VETKA_TREE_VERBOSE", "0")).strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+
+def _tree_log(message: str) -> None:
+    if _TREE_VERBOSE:
+        print(message)
+
+
+def get_tree_perf_counters() -> Dict[str, int]:
+    """Expose tree perf counters for /api/health diagnostics."""
+    return dict(_tree_perf_counters)
+
+
+def _artifact_source_mtime() -> float:
+    candidates = [
+        Path("data/artifacts"),
+        Path("src/vetka_out"),
+        Path("data/artifacts/staging.json"),
+    ]
+    mtimes = []
+    for p in candidates:
+        try:
+            if p.exists():
+                mtimes.append(p.stat().st_mtime)
+        except Exception:
+            pass
+    return max(mtimes) if mtimes else 0.0
+
+
+def _heat_source_mtime() -> float:
+    candidates = [
+        Path("data/watcher_state.json"),
+        Path("data/heat_scores.json"),
+    ]
+    mtimes = []
+    for p in candidates:
+        try:
+            if p.exists():
+                mtimes.append(p.stat().st_mtime)
+        except Exception:
+            pass
+    return max(mtimes) if mtimes else 0.0
+
+
+def _cam_source_mtime() -> float:
+    candidates = [
+        Path("data/changelog.jsonl"),
+        Path("data/changelog"),
+        Path("data/watcher_state.json"),
+    ]
+    mtimes = []
+    for p in candidates:
+        try:
+            if p.exists():
+                mtimes.append(p.stat().st_mtime)
+        except Exception:
+            pass
+    return max(mtimes) if mtimes else 0.0
+
+
+async def _get_tree_structure_cached(qdrant, collection_name: str) -> Dict[str, Any]:
+    """
+    Build or reuse tree structure state:
+    - all_files_count
+    - deleted_count
+    - browser_count
+    - folders
+    - files_by_folder
+    """
+    now_mono = time.monotonic()
+    source_mtime = _cam_source_mtime()
+
+    cached_folders = _tree_structure_cache.get("folders")
+    cached_files_by_folder = _tree_structure_cache.get("files_by_folder")
+    if (
+        cached_folders is not None
+        and cached_files_by_folder is not None
+        and _tree_structure_cache.get("collection") == collection_name
+        and source_mtime <= float(_tree_structure_cache.get("source_mtime", 0.0))
+        and (now_mono - float(_tree_structure_cache.get("ts", 0.0)))
+        <= _TREE_STRUCTURE_TTL_SEC
+    ):
+        _tree_log(
+            f"[TREE_PERF] structure_cache=hit age={now_mono - float(_tree_structure_cache.get('ts', 0.0)):.2f}s"
+        )
+        return {
+            "all_files_count": int(_tree_structure_cache.get("all_files_count", 0)),
+            "deleted_count": int(_tree_structure_cache.get("deleted_count", 0)),
+            "browser_count": int(_tree_structure_cache.get("browser_count", 0)),
+            "folders": copy.deepcopy(cached_folders),
+            "files_by_folder": copy.deepcopy(cached_files_by_folder),
+        }
+
+    _tree_log("[TREE_PERF] structure_cache=miss rebuild=on")
+
+    from qdrant_client.models import Filter, FieldCondition, MatchValue
+
+    all_files = []
+    offset = None
+
+    async def scroll_batch(offset):
+        return await asyncio.to_thread(
+            qdrant.scroll,
+            collection_name=collection_name,
+            scroll_filter=Filter(
+                must=[
+                    FieldCondition(key="type", match=MatchValue(value="scanned_file")),
+                    FieldCondition(key="deleted", match=MatchValue(value=False)),
+                ]
+            ),
+            limit=100,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+
+    while True:
+        results, offset = await scroll_batch(offset)
+        all_files.extend(results)
+        if offset is None:
+            break
+
+    all_files_count = len(all_files)
+    if not all_files:
+        return {
+            "all_files_count": 0,
+            "deleted_count": 0,
+            "browser_count": 0,
+            "folders": {},
+            "files_by_folder": {},
+        }
+
+    valid_files = []
+    deleted_count = 0
+    browser_count = 0
+    browser_files = []
+    disk_files = []
+
+    for point in all_files:
+        file_path = (point.payload or {}).get("path", "")
+        if file_path.startswith("browser://"):
+            browser_files.append(point)
+            browser_count += 1
+        elif file_path:
+            disk_files.append((point, file_path))
+
+    async def check_file_exists(path: str) -> bool:
+        now_ts = time.monotonic()
+        cached = _ghost_exists_cache.get(path)
+        if cached is not None and (now_ts - float(cached.get("ts", 0.0))) <= _GHOST_EXISTS_TTL_SEC:
+            return bool(cached.get("exists", False))
+
+        exists = await asyncio.to_thread(os.path.exists, path)
+        _ghost_exists_cache[path] = {"exists": bool(exists), "ts": now_ts}
+        return bool(exists)
+
+    batch_size = 50
+    for i in range(0, len(disk_files), batch_size):
+        batch = disk_files[i : i + batch_size]
+        exists_results = await asyncio.gather(*[check_file_exists(path) for _, path in batch])
+        for (point, _file_path), exists in zip(batch, exists_results):
+            if not exists:
+                point.payload["is_ghost"] = True
+                deleted_count += 1
+            valid_files.append(point)
+
+    valid_files.extend(browser_files)
+
+    folders = {}
+    files_by_folder = {}
+
+    for point in valid_files:
+        p = point.payload or {}
+        file_path = p.get("path", "")
+        file_name = p.get("name", "unknown")
+
+        parent_folder = p.get("parent_folder", "")
+        if not parent_folder and file_path:
+            parent_folder = "/".join(file_path.split("/")[:-1])
+        if not parent_folder:
+            parent_folder = "root"
+
+        if parent_folder not in files_by_folder:
+            files_by_folder[parent_folder] = []
+        files_by_folder[parent_folder].append(
+            {
+                "id": str(point.id),
+                "name": file_name,
+                "path": file_path,
+                "created_time": p.get("created_time", 0),
+                "modified_time": p.get("modified_time", 0),
+                "extension": p.get("extension", ""),
+                "content": p.get("content", "")[:150] if p.get("content") else "",
+                "is_ghost": p.get("is_ghost", False),
+            }
+        )
+
+        if parent_folder.startswith("browser://"):
+            browser_parts = parent_folder.replace("browser://", "").split("/")
+            browser_parts = [part for part in browser_parts if part]
+            browser_root = (
+                "browser://" + browser_parts[0] if browser_parts else "browser://unknown"
+            )
+            if browser_root not in folders:
+                folders[browser_root] = {
+                    "path": browser_root,
+                    "name": browser_parts[0] if browser_parts else "unknown",
+                    "parent_path": None,
+                    "depth": 1,
+                    "children": [],
+                }
+
+            for i in range(1, len(browser_parts)):
+                folder_path = "browser://" + "/".join(browser_parts[: i + 1])
+                parent_path = "browser://" + "/".join(browser_parts[:i])
+
+                if folder_path not in folders:
+                    folders[folder_path] = {
+                        "path": folder_path,
+                        "name": browser_parts[i],
+                        "parent_path": parent_path,
+                        "depth": i + 1,
+                        "children": [],
+                    }
+
+                if (
+                    parent_path in folders
+                    and folder_path not in folders[parent_path]["children"]
+                ):
+                    folders[parent_path]["children"].append(folder_path)
+        else:
+            parts = parent_folder.split("/") if parent_folder != "root" else ["root"]
+            for i in range(len(parts)):
+                folder_path = (
+                    "/".join(parts[: i + 1])
+                    if parts[0] != "root"
+                    else "root"
+                    if i == 0
+                    else "/".join(parts[: i + 1])
+                )
+                parent_path = "/".join(parts[:i]) if i > 0 else None
+
+                if folder_path and folder_path not in folders:
+                    folders[folder_path] = {
+                        "path": folder_path,
+                        "name": parts[i] if parts[i] else "root",
+                        "parent_path": parent_path,
+                        "depth": i,
+                        "children": [],
+                    }
+
+                if (
+                    parent_path
+                    and parent_path in folders
+                    and folder_path not in folders[parent_path]["children"]
+                ):
+                    folders[parent_path]["children"].append(folder_path)
+
+    for folder_path, folder_files in files_by_folder.items():
+        if folder_path in folders and folder_files:
+            min_time = min(f.get("created_time", 0) for f in folder_files)
+            folders[folder_path]["created_time"] = min_time
+
+    def propagate_folder_times(folder_path):
+        folder = folders.get(folder_path)
+        if not folder:
+            return float("inf")
+        min_time = folder.get("created_time", float("inf"))
+        for child_path in folder.get("children", []):
+            child_time = propagate_folder_times(child_path)
+            min_time = min(min_time, child_time)
+        folder["created_time"] = min_time if min_time != float("inf") else 0
+        return min_time
+
+    root_folder_paths = [p for p, f in folders.items() if not f.get("parent_path")]
+    for root_path in root_folder_paths:
+        propagate_folder_times(root_path)
+
+    def recalculate_depth(folder_path, current_depth):
+        if folder_path in folders:
+            folders[folder_path]["depth"] = current_depth
+            for child_path in folders[folder_path].get("children", []):
+                recalculate_depth(child_path, current_depth + 1)
+
+    for root_path in root_folder_paths:
+        recalculate_depth(root_path, 0)
+
+    _tree_structure_cache["collection"] = collection_name
+    _tree_structure_cache["source_mtime"] = source_mtime
+    _tree_structure_cache["ts"] = now_mono
+    _tree_structure_cache["all_files_count"] = all_files_count
+    _tree_structure_cache["deleted_count"] = deleted_count
+    _tree_structure_cache["browser_count"] = browser_count
+    _tree_structure_cache["folders"] = copy.deepcopy(folders)
+    _tree_structure_cache["files_by_folder"] = copy.deepcopy(files_by_folder)
+
+    return {
+        "all_files_count": all_files_count,
+        "deleted_count": deleted_count,
+        "browser_count": browser_count,
+        "folders": folders,
+        "files_by_folder": files_by_folder,
+    }
+
+
+def _compute_cam_metrics_sync(
+    files_by_folder: Dict[str, List[Dict[str, Any]]],
+    qdrant,
+) -> Dict[str, Dict[str, Any]]:
+    from src.orchestration.cam_engine import calculate_surprise_metrics_for_tree
+
+    return calculate_surprise_metrics_for_tree(
+        files_by_folder=files_by_folder,
+        qdrant_client=qdrant,
+        collection_name="vetka_elisya",
+    )
+
+
+async def _ensure_cam_metrics_async(
+    files_by_folder: Dict[str, List[Dict[str, Any]]],
+    qdrant,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Returns cached CAM metrics immediately.
+    If source changed, starts background refresh once (non-blocking).
+    """
+    global _cam_refresh_task
+    source_mtime = _cam_source_mtime()
+    cached_data = _cam_metrics_cache.get("data", {})
+    cached_source = float(_cam_metrics_cache.get("source_mtime", 0.0))
+
+    if source_mtime <= cached_source and cached_data:
+        return cached_data
+
+    async with _cam_refresh_lock:
+        # Double-check after lock
+        source_mtime = _cam_source_mtime()
+        cached_data = _cam_metrics_cache.get("data", {})
+        cached_source = float(_cam_metrics_cache.get("source_mtime", 0.0))
+        if source_mtime <= cached_source and cached_data:
+            return cached_data
+
+        # Spawn one refresh task at a time
+        if _cam_refresh_task is None or _cam_refresh_task.done():
+
+            async def _runner():
+                try:
+                    refreshed = await asyncio.to_thread(
+                        _compute_cam_metrics_sync, files_by_folder, qdrant
+                    )
+                    _cam_metrics_cache["data"] = refreshed or {}
+                    _cam_metrics_cache["source_mtime"] = source_mtime
+                    _cam_metrics_cache["updated_at"] = time.time()
+                    _tree_log(
+                        f"[CAM] Trigger-refresh complete: {len(refreshed or {})} metrics"
+                    )
+                except Exception as e:
+                    _tree_log(f"[CAM] Trigger-refresh failed: {e}")
+
+            _cam_refresh_task = asyncio.create_task(_runner())
+
+    return _cam_metrics_cache.get("data", {})
 
 
 # ============================================================
 # PYDANTIC MODELS
 # ============================================================
 
+
 class KnowledgeGraphRequest(BaseModel):
     """Request for Knowledge Graph data."""
+
     force_refresh: Optional[bool] = False
     min_cluster_size: Optional[int] = 3
     similarity_threshold: Optional[float] = 0.7
     file_positions: Optional[Dict[str, Any]] = {}
+    hydrate_scope_path: Optional[str] = None
+    hydrate_force: Optional[bool] = False
+    semantic_expansion_budget: Optional[int] = None
+    semantic_expansion_threshold: Optional[float] = None
 
 
 class NodeFavoriteRequest(BaseModel):
@@ -103,13 +541,143 @@ class NodeFavoriteRequest(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================
 
+
 def _get_memory_manager(request: Request):
     """Get memory manager from app state or singleton."""
-    memory = getattr(request.app.state, 'memory_manager', None)
+    memory = getattr(request.app.state, "memory_manager", None)
     if not memory:
         from src.initialization.components_init import get_memory_manager
+
         memory = get_memory_manager()
     return memory
+
+
+def _get_qdrant_client(request: Request):
+    """
+    Resolve a healthy Qdrant client with lazy recovery.
+    Handles startup race where Qdrant returns 503 and becomes ready later.
+    """
+    memory = _get_memory_manager(request)
+    if not memory:
+        return None
+
+    qdrant = getattr(memory, "qdrant", None)
+    if qdrant is not None:
+        try:
+            qdrant.get_collections()
+            return qdrant
+        except Exception:
+            pass
+
+    # Prefer shared auto-retry manager if it has reconnected.
+    try:
+        from src.memory.qdrant_auto_retry import get_qdrant_auto_retry
+
+        mgr = get_qdrant_auto_retry()
+        if mgr is not None:
+            if not mgr.is_ready():
+                mgr.manual_connect(timeout=3.0)
+            if mgr.is_ready():
+                client = mgr.get_client()
+                if client is not None:
+                    memory.qdrant = client
+                    try:
+                        memory._ensure_qdrant_collection()
+                    except Exception:
+                        pass
+                    return client
+    except Exception:
+        pass
+
+    # Last fallback: direct reconnect on memory manager.
+    try:
+        client = memory._init_qdrant()
+        if client is not None:
+            memory.qdrant = client
+            try:
+                memory._ensure_qdrant_collection()
+            except Exception:
+                pass
+            return client
+    except Exception:
+        pass
+
+    return None
+
+
+def _normalize_scope_path(path: str) -> str:
+    """Normalize scope path for stable hydration cache keys."""
+    return os.path.abspath(os.path.expanduser((path or "").strip()))
+
+
+def _should_hydrate_scope(scope_path: str, force: bool = False) -> tuple[bool, str]:
+    """
+    Decide whether to run folder-local hydration before Knowledge build.
+    Uses path mtime cache to avoid repeated rescans on every mode switch.
+    """
+    if not scope_path:
+        return False, "empty_scope"
+
+    normalized = _normalize_scope_path(scope_path)
+    if not os.path.exists(normalized):
+        return False, "scope_not_found"
+    if not os.path.isdir(normalized):
+        return False, "scope_not_directory"
+    if force:
+        return True, "forced"
+
+    try:
+        mtime = float(os.path.getmtime(normalized))
+    except Exception:
+        mtime = 0.0
+
+    cached = _knowledge_scope_hydration_cache.get(normalized)
+    if not cached:
+        return True, "first_hydration"
+    if mtime > float(cached.get("source_mtime", 0.0)):
+        return True, "scope_changed"
+
+    return False, "up_to_date"
+
+
+async def _hydrate_scope_for_knowledge(scope_path: str, qdrant_client: Any, force: bool = False) -> Dict[str, Any]:
+    """
+    Run local Qdrant updater scan for selected folder scope.
+    Designed for Directed->Knowledge switch on chosen folder only.
+    """
+    normalized = _normalize_scope_path(scope_path)
+    should_run, reason = _should_hydrate_scope(normalized, force=force)
+    if not should_run:
+        return {
+            "path": normalized,
+            "hydrated": False,
+            "reason": reason,
+            "indexed_count": 0,
+        }
+
+    from src.scanners.qdrant_updater import get_qdrant_updater
+
+    updater = get_qdrant_updater(qdrant_client=qdrant_client, enable_triple_write=True)
+    indexed_count = await asyncio.to_thread(updater.scan_directory, normalized)
+
+    source_mtime = 0.0
+    try:
+        source_mtime = float(os.path.getmtime(normalized))
+    except Exception:
+        pass
+
+    _knowledge_scope_hydration_cache[normalized] = {
+        "source_mtime": source_mtime,
+        "indexed_count": int(indexed_count or 0),
+        "hydrated_at": time.time(),
+    }
+
+    return {
+        "path": normalized,
+        "hydrated": True,
+        "reason": reason,
+        "indexed_count": int(indexed_count or 0),
+    }
 
 
 # MARKER_108_CHAT_VIZ_API: Phase 108.2 - Chat nodes in tree API - Helper functions
@@ -140,7 +708,8 @@ def extract_participants(chat: Dict[str, Any]) -> List[str]:
         # Extract @mentions from content
         content = msg.get("content", "")
         import re
-        mentions = re.findall(r'@(\w+)', content)
+
+        mentions = re.findall(r"@(\w+)", content)
         participants.update(mentions)
 
     return list(participants)
@@ -176,11 +745,20 @@ def calculate_decay(updated_at_str: Optional[str]) -> float:
 # ROUTES
 # ============================================================
 
+
 @router.get("/data")
 async def get_tree_data(
-    mode: str = Query("directory", description="Layout mode: directory, semantic, or both"),
-    source: str = Query("vetka_elisya", description="Qdrant collection: vetka_elisya or vetka_tree"),
-    request: Request = None
+    mode: str = Query(
+        "directory", description="Layout mode: directory, semantic, or both"
+    ),
+    source: str = Query(
+        "vetka_elisya", description="Qdrant collection: vetka_elisya or vetka_tree"
+    ),
+    chat_filter: str = Query(
+        "active", description="Chat node filter: active, favorite, all"
+    ),
+    request: Request = None,
+    _force_refresh: bool = False,
 ):
     """
     Phase 17.2: Multi-tree layout with directory/semantic blend.
@@ -237,245 +815,163 @@ async def get_tree_data(
        - Shift+click → pins chat node (shows in context)
        - Can drag chat nodes to reorganize conversations
     """
-    from qdrant_client.models import Filter, FieldCondition, MatchValue
     from datetime import datetime
-    import math
+    request_started = time.monotonic()
 
     # MARKER_101.8_START: Source collection selection
     collection_name = "VetkaTree" if source == "vetka_tree" else "vetka_elisya"
     # MARKER_101.8_END
+    cache_key = f"{mode}|{source}|{chat_filter}"
+    now_mono = time.monotonic()
+    cached_response = _tree_data_cache.get("response")
+    cache_age = now_mono - float(_tree_data_cache.get("ts", 0.0))
+    if not _force_refresh:
+        if (
+            cached_response is not None
+            and _tree_data_cache.get("key") == cache_key
+            and cache_age <= _TREE_DATA_TTL_SOFT_SEC
+        ):
+            _tree_log(f"[TREE_PERF] cache=fresh age={cache_age:.2f}s")
+            return cached_response
+
+        # Serve stale cache fast and refresh in background.
+        if (
+            cached_response is not None
+            and _tree_data_cache.get("key") == cache_key
+            and cache_age <= _TREE_DATA_TTL_HARD_SEC
+        ):
+            async def _revalidate_tree() -> None:
+                try:
+                    await get_tree_data(
+                        mode=mode,
+                        source=source,
+                        chat_filter=chat_filter,
+                        request=request,
+                        _force_refresh=True,
+                    )
+                except Exception:
+                    pass
+
+            task = _tree_data_revalidate_tasks.get(cache_key)
+            if task is None or task.done():
+                _tree_data_revalidate_tasks[cache_key] = asyncio.create_task(
+                    _revalidate_tree()
+                )
+            _tree_log(f"[TREE_PERF] cache=stale age={cache_age:.2f}s revalidate=bg")
+            return cached_response
+
+    # MARKER_155.PERF.TREE_DATA_SINGLEFLIGHT:
+    # Only one request per cache key computes the tree; others wait and reuse cache.
+    is_owner = False
+    wait_event: Optional[asyncio.Event] = None
+    async with _tree_data_inflight_lock:
+        wait_event = _tree_data_inflight.get(cache_key)
+        if wait_event is None:
+            wait_event = asyncio.Event()
+            _tree_data_inflight[cache_key] = wait_event
+            is_owner = True
+
+    if not is_owner and wait_event is not None:
+        await wait_event.wait()
+        now_mono = time.monotonic()
+        cached_response = _tree_data_cache.get("response")
+        if (
+            cached_response is not None
+            and _tree_data_cache.get("key") == cache_key
+            and (now_mono - float(_tree_data_cache.get("ts", 0.0)))
+            <= _TREE_DATA_TTL_HARD_SEC
+        ):
+            _tree_log(
+                f"[TREE_PERF] cache=singleflight_wait age={now_mono - float(_tree_data_cache.get('ts', 0.0)):.2f}s"
+            )
+            return cached_response
+
+    def _release_tree_inflight() -> None:
+        if not is_owner:
+            return
+        evt = _tree_data_inflight.pop(cache_key, None)
+        if evt is not None and not evt.is_set():
+            evt.set()
 
     try:
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        qdrant = _get_qdrant_client(request)
 
         if not qdrant:
-            return {
-                'error': 'Qdrant not connected',
-                'tree': {'nodes': [], 'edges': []}
-            }
+            response = {"error": "Qdrant not connected", "tree": {"nodes": [], "edges": []}}
+            _release_tree_inflight()
+            return response
 
         # Import layout functions
         # MARKER_111_TREE_LAYOUT: Use classic tree layout instead of fan layout
-        from src.layout.fan_layout import calculate_tree_layout, calculate_directory_fan_layout
+        from src.layout.fan_layout import (
+            calculate_tree_layout,
+            calculate_directory_fan_layout,
+        )
         from src.layout.incremental import (
             detect_new_branches,
             incremental_layout_update,
             get_last_branch_count,
             set_last_branch_count,
         )
-        from src.orchestration.cam_engine import calculate_surprise_metrics_for_tree
 
         node_favorites = _load_node_favorites().get("favorites", {})
 
         # ═══════════════════════════════════════════════════════════════════
-        # STEP 1: Get ALL scanned files from Qdrant
+        # STEP 1+2: Tree structure snapshot (trigger-cached)
         # ═══════════════════════════════════════════════════════════════════
-        all_files = []
-        offset = None
+        structure = await _get_tree_structure_cached(qdrant, collection_name)
+        all_files_count = int(structure.get("all_files_count", 0))
+        deleted_count = int(structure.get("deleted_count", 0))
+        browser_count = int(structure.get("browser_count", 0))
+        folders = structure.get("folders", {}) or {}
+        files_by_folder = structure.get("files_by_folder", {}) or {}
 
-        while True:
-            results, offset = qdrant.scroll(
-                collection_name=collection_name,  # MARKER_101.8: Use selected source
-                scroll_filter=Filter(
-                    must=[
-                        FieldCondition(key="type", match=MatchValue(value="scanned_file")),
-                        FieldCondition(key="deleted", match=MatchValue(value=False))
-                    ]
-                ),
-                limit=100,
-                offset=offset,
-                with_payload=True,
-                with_vectors=False
-            )
-            all_files.extend(results)
-            if offset is None:
-                break
-
-        print(f"[API] Found {len(all_files)} files in {collection_name}")
-
-        if not all_files:
-            return {'tree': {'nodes': [], 'edges': []}}
-
-        # ═══════════════════════════════════════════════════════════════════
-        # STEP 1.5: Mark deleted files (don't filter - show as ghost/transparent)
-        # Phase 90.11: Keep deleted files but mark them for transparent rendering
-        # ═══════════════════════════════════════════════════════════════════
-        valid_files = []
-        deleted_count = 0
-        browser_count = 0
-        for point in all_files:
-            file_path = (point.payload or {}).get('path', '')
-            # Phase 54.5: Keep browser:// virtual paths (from drag & drop)
-            if file_path.startswith('browser://'):
-                valid_files.append(point)
-                browser_count += 1
-            elif file_path:
-                # Phase 90.11: Mark as deleted if file doesn't exist on disk
-                if not os.path.exists(file_path):
-                    point.payload['is_ghost'] = True  # Ghost file - render transparent
-                    deleted_count += 1
-                valid_files.append(point)
-
+        _tree_log(f"[API] Found {all_files_count} files in {collection_name}")
         if deleted_count > 0 or browser_count > 0:
-            print(f"[API] Ghost files: {deleted_count}, browser files: {browser_count}, total: {len(valid_files)}")
+            visible_total = sum(len(v) for v in files_by_folder.values())
+            _tree_log(
+                f"[API] Ghost files: {deleted_count}, browser files: {browser_count}, total: {visible_total}"
+            )
+        _tree_log(f"[API] Built {len(folders)} folders")
+        _tree_log(f"[API] Calculated created_time for {len(folders)} folders")
+        _tree_log(f"[API] Recalculated depth for {len(folders)} folders (root=0)")
 
-        all_files = valid_files
-
-        # ═══════════════════════════════════════════════════════════════════
-        # STEP 2: Build folder hierarchy
-        # ═══════════════════════════════════════════════════════════════════
-        folders = {}
-        files_by_folder = {}
-
-        for point in all_files:
-            p = point.payload or {}
-            file_path = p.get('path', '')
-            file_name = p.get('name', 'unknown')
-
-            parent_folder = p.get('parent_folder', '')
-            if not parent_folder and file_path:
-                parent_folder = '/'.join(file_path.split('/')[:-1])
-            if not parent_folder:
-                parent_folder = 'root'
-
-            if parent_folder not in files_by_folder:
-                files_by_folder[parent_folder] = []
-            files_by_folder[parent_folder].append({
-                'id': str(point.id),
-                'name': file_name,
-                'path': file_path,
-                'created_time': p.get('created_time', 0),
-                'modified_time': p.get('modified_time', 0),
-                'extension': p.get('extension', ''),
-                'content': p.get('content', '')[:150] if p.get('content') else '',
-                'is_ghost': p.get('is_ghost', False)  # Phase 90.11: Ghost files (deleted from disk)
-            })
-
-            # Phase 54.5: Handle browser:// paths specially
-            if parent_folder.startswith('browser://'):
-                # browser://folder_name -> ['browser:', 'folder_name']
-                browser_parts = parent_folder.replace('browser://', '').split('/')
-                browser_parts = [p for p in browser_parts if p]  # Remove empty parts
-
-                # Create browser root folder if needed
-                browser_root = 'browser://' + browser_parts[0] if browser_parts else 'browser://unknown'
-                if browser_root not in folders:
-                    folders[browser_root] = {
-                        'path': browser_root,
-                        'name': browser_parts[0] if browser_parts else 'unknown',
-                        'parent_path': None,  # Browser folders are top-level
-                        'depth': 1,
-                        'children': []
-                    }
-
-                # Create nested browser folders
-                for i in range(1, len(browser_parts)):
-                    folder_path = 'browser://' + '/'.join(browser_parts[:i+1])
-                    parent_path = 'browser://' + '/'.join(browser_parts[:i])
-
-                    if folder_path not in folders:
-                        folders[folder_path] = {
-                            'path': folder_path,
-                            'name': browser_parts[i],
-                            'parent_path': parent_path,
-                            'depth': i + 1,
-                            'children': []
-                        }
-
-                    if parent_path in folders and folder_path not in folders[parent_path]['children']:
-                        folders[parent_path]['children'].append(folder_path)
-            else:
-                # Original logic for regular file paths
-                parts = parent_folder.split('/') if parent_folder != 'root' else ['root']
-                for i in range(len(parts)):
-                    folder_path = '/'.join(parts[:i+1]) if parts[0] != 'root' else 'root' if i == 0 else '/'.join(parts[:i+1])
-                    parent_path = '/'.join(parts[:i]) if i > 0 else None
-
-                    if folder_path and folder_path not in folders:
-                        folders[folder_path] = {
-                            'path': folder_path,
-                            'name': parts[i] if parts[i] else 'root',
-                            'parent_path': parent_path,
-                            'depth': i,
-                            'children': []
-                        }
-
-                    if parent_path and parent_path in folders and folder_path not in folders[parent_path]['children']:
-                        folders[parent_path]['children'].append(folder_path)
-
-        print(f"[API] Built {len(folders)} folders")
-
-        # ═══════════════════════════════════════════════════════════════════
-        # STEP 2.6: CALCULATE FOLDER CREATED_TIME (Phase 111)
-        # Folder time = minimum created_time of all files inside
-        # ═══════════════════════════════════════════════════════════════════
-        for folder_path, folder_files in files_by_folder.items():
-            if folder_path in folders and folder_files:
-                min_time = min(f.get('created_time', 0) for f in folder_files)
-                folders[folder_path]['created_time'] = min_time
-
-        # Propagate created_time up the tree (parent = min of children times)
-        def propagate_folder_times(folder_path):
-            folder = folders.get(folder_path)
-            if not folder:
-                return float('inf')
-            # Get min time from direct files
-            min_time = folder.get('created_time', float('inf'))
-            # Get min time from children
-            for child_path in folder.get('children', []):
-                child_time = propagate_folder_times(child_path)
-                min_time = min(min_time, child_time)
-            folder['created_time'] = min_time if min_time != float('inf') else 0
-            return min_time
-
-        # Find root folders and propagate
-        root_folder_paths = [p for p, f in folders.items() if not f.get('parent_path')]
-        for root_path in root_folder_paths:
-            propagate_folder_times(root_path)
-
-        print(f"[API] Calculated created_time for {len(folders)} folders")
-
-        # ═══════════════════════════════════════════════════════════════════
-        # STEP 2.7: RECALCULATE DEPTH RELATIVE TO ROOT (Phase 111 FIX)
-        # The original depth was based on absolute path position, not tree depth
-        # ═══════════════════════════════════════════════════════════════════
-        def recalculate_depth(folder_path, current_depth):
-            """Recursively set correct depth from root (root=0, children=1, etc.)"""
-            if folder_path in folders:
-                folders[folder_path]['depth'] = current_depth
-                for child_path in folders[folder_path].get('children', []):
-                    recalculate_depth(child_path, current_depth + 1)
-
-        for root_path in root_folder_paths:
-            recalculate_depth(root_path, 0)  # Root folders are depth 0
-
-        print(f"[API] Recalculated depth for {len(folders)} folders (root=0)")
+        if all_files_count <= 0:
+            response = {"tree": {"nodes": [], "edges": []}}
+            _release_tree_inflight()
+            return response
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 2.5: CAM SURPRISE METRICS
         # ═══════════════════════════════════════════════════════════════════
         cam_metrics = {}
         try:
-            cam_metrics = calculate_surprise_metrics_for_tree(
-                files_by_folder=files_by_folder,
-                qdrant_client=qdrant,
-                collection_name='vetka_elisya'
-            )
-            print(f"[CAM] Calculated surprise metrics for {len(cam_metrics)} files")
+            cam_enabled = str(
+                os.getenv("VETKA_TREE_CAM_METRICS", "0")
+            ).strip().lower() in {"1", "true", "yes", "on"}
+            if cam_enabled:
+                cam_metrics = await _ensure_cam_metrics_async(files_by_folder, qdrant)
+                _tree_log(
+                    f"[CAM] Using cached/triggered metrics for {len(cam_metrics)} files"
+                )
+            else:
+                # Fast path by default: no per-request CAM compute.
+                cam_metrics = _cam_metrics_cache.get("data", {})
         except Exception as cam_err:
-            print(f"[CAM] Warning: Could not calculate surprise metrics: {cam_err}")
+            _tree_log(f"[CAM] Warning: Could not load CAM metrics: {cam_err}")
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 3: TREE LAYOUT (Phase 111 - Classic inverted DAG)
         # ═══════════════════════════════════════════════════════════════════
         # MARKER_111_TREE_LAYOUT: Use classic tree layout for proper hierarchy
         # Children are positioned ABOVE parents, centered horizontally
-        positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH = calculate_tree_layout(
-            folders=folders,
-            files_by_folder=files_by_folder,
-            all_files=[],
-            socketio_instance=None  # No socketio in FastAPI context
+        positions, root_folders, BRANCH_LENGTH, FAN_ANGLE, Y_PER_DEPTH = (
+            calculate_tree_layout(
+                folders=folders,
+                files_by_folder=files_by_folder,
+                all_files=[],
+                socketio_instance=None,  # No socketio in FastAPI context
+            )
         )
 
         # Incremental update
@@ -484,8 +980,10 @@ async def get_tree_data(
         )
 
         if new_branches or affected_nodes:
-            print(f"[PHASE 15] Detected changes: {len(new_branches)} new branches")
-            incremental_layout_update(new_branches, affected_nodes, folders, positions, files_by_folder)
+            _tree_log(f"[PHASE 15] Detected changes: {len(new_branches)} new branches")
+            incremental_layout_update(
+                new_branches, affected_nodes, folders, positions, files_by_folder
+            )
             set_last_branch_count(len(folders))
         else:
             set_last_branch_count(len(folders))
@@ -497,115 +995,127 @@ async def get_tree_data(
         edges = []
 
         root_id = "main_tree_root"
-        nodes.append({
-            'id': root_id,
-            'type': 'root',
-            'name': 'VETKA',
-            'visual_hints': {
-                'layout_hint': {'expected_x': 0, 'expected_y': -80, 'expected_z': 0},
-                'color': '#8B4513'
+        nodes.append(
+            {
+                "id": root_id,
+                "type": "root",
+                "name": "VETKA",
+                "visual_hints": {
+                    "layout_hint": {
+                        "expected_x": 0,
+                        "expected_y": -80,
+                        "expected_z": 0,
+                    },
+                    "color": "#8B4513",
+                },
             }
-        })
+        )
 
         EXT_COLORS = {
-            '.py': '#4A5A3A', '.js': '#5A5A3A', '.ts': '#3A4A6A',
-            '.md': '#3A4A5A', '.json': '#5A4A3A', '.html': '#5A4A4A'
+            ".py": "#4A5A3A",
+            ".js": "#5A5A3A",
+            ".ts": "#3A4A6A",
+            ".md": "#3A4A5A",
+            ".json": "#5A4A3A",
+            ".html": "#5A4A4A",
         }
 
         # Folder nodes
         for folder_path, folder in folders.items():
-            folder_id = f"folder_{abs(hash(folder_path)) % 100000000}"
-            pos = positions.get(folder_path, {'x': 0, 'y': 0})
+            folder_id = _stable_folder_node_id(folder_path)
+            pos = positions.get(folder_path, {"x": 0, "y": 0})
 
-            if folder['parent_path']:
-                parent_id = f"folder_{abs(hash(folder['parent_path'])) % 100000000}"
+            if folder["parent_path"]:
+                parent_id = _stable_folder_node_id(folder["parent_path"])
             else:
                 parent_id = root_id
 
-            nodes.append({
-                'id': folder_id,
-                'type': 'branch',
-                'name': folder['name'],
-                'parent_id': parent_id,
-                'metadata': {
-                    'path': folder_path,
-                    'depth': folder['depth'],
-                    'file_count': len(files_by_folder.get(folder_path, [])),
-                    'is_favorite': bool(node_favorites.get(folder_path, False)),
-                },
-                'visual_hints': {
-                    'layout_hint': {
-                        'expected_x': pos.get('x', 0),
-                        'expected_y': pos.get('y', 0),
-                        'expected_z': 0
+            nodes.append(
+                {
+                    "id": folder_id,
+                    "type": "branch",
+                    "name": folder["name"],
+                    "parent_id": parent_id,
+                    "metadata": {
+                        "path": folder_path,
+                        "depth": folder["depth"],
+                        "file_count": len(files_by_folder.get(folder_path, [])),
+                        "is_favorite": bool(node_favorites.get(folder_path, False)),
                     },
-                    'color': '#8B4513'
+                    "visual_hints": {
+                        "layout_hint": {
+                            "expected_x": pos.get("x", 0),
+                            "expected_y": pos.get("y", 0),
+                            "expected_z": 0,
+                        },
+                        "color": "#8B4513",
+                    },
                 }
-            })
+            )
 
-            edges.append({
-                'from': parent_id,
-                'to': folder_id,
-                'semantics': 'contains'
-            })
+            edges.append({"from": parent_id, "to": folder_id, "semantics": "contains"})
 
         # File nodes
         for folder_path, folder_files in files_by_folder.items():
-            folder_id = f"folder_{abs(hash(folder_path)) % 100000000}"
+            folder_id = _stable_folder_node_id(folder_path)
 
             for file_data in folder_files:
-                pos = positions.get(file_data['id'], {'x': 0, 'y': 0})
-                ext = file_data.get('extension', '')
-                color = EXT_COLORS.get(ext, '#3A3A4A')
+                pos = positions.get(file_data["id"], {"x": 0, "y": 0})
+                ext = file_data.get("extension", "")
+                color = EXT_COLORS.get(ext, "#3A3A4A")
 
-                folder_depth = folders.get(folder_path, {}).get('depth', 0)
+                folder_depth = folders.get(folder_path, {}).get("depth", 0)
                 file_depth = folder_depth + 1
 
-                file_cam = cam_metrics.get(file_data['id'], {})
+                file_cam = cam_metrics.get(file_data["id"], {})
 
                 # Phase 90.11: Ghost files get muted color
-                is_ghost = file_data.get('is_ghost', False)
-                ghost_color = '#2A2A2A' if is_ghost else color  # Darker for ghosts
+                is_ghost = file_data.get("is_ghost", False)
+                ghost_color = "#2A2A2A" if is_ghost else color  # Darker for ghosts
 
-                nodes.append({
-                    'id': file_data['id'],
-                    'type': 'leaf',
-                    'name': file_data['name'],
-                    'parent_id': folder_id,
-                    'metadata': {
-                        'path': file_data['path'],
-                        'name': file_data['name'],
-                        'extension': ext,
-                        'depth': file_depth,
-                        'created_time': file_data['created_time'],
-                        'modified_time': file_data['modified_time'],
-                        'content_preview': file_data.get('content', ''),
-                        'qdrant_id': file_data['id'],
-                        'is_ghost': is_ghost,  # Phase 90.11: Deleted from disk
-                        'is_favorite': bool(node_favorites.get(file_data['path'], False)),
-                    },
-                    'visual_hints': {
-                        'layout_hint': {
-                            'expected_x': pos.get('x', 0),
-                            'expected_y': pos.get('y', 0),
-                            'expected_z': pos.get('z', 0)
+                nodes.append(
+                    {
+                        "id": file_data["id"],
+                        "type": "leaf",
+                        "name": file_data["name"],
+                        "parent_id": folder_id,
+                        "metadata": {
+                            "path": file_data["path"],
+                            "name": file_data["name"],
+                            "extension": ext,
+                            "depth": file_depth,
+                            "created_time": file_data["created_time"],
+                            "modified_time": file_data["modified_time"],
+                            "content_preview": file_data.get("content", ""),
+                            "qdrant_id": file_data["id"],
+                            "is_ghost": is_ghost,  # Phase 90.11: Deleted from disk
+                            "is_favorite": bool(
+                                node_favorites.get(file_data["path"], False)
+                            ),
                         },
-                        'color': ghost_color,
-                        'opacity': 0.3 if is_ghost else 1.0  # Phase 90.11: Transparent ghosts
-                    },
-                    'cam': {
-                        'surprise_metric': file_cam.get('surprise_metric', 0.5),
-                        'operation': file_cam.get('cam_operation', 'append')
+                        "visual_hints": {
+                            "layout_hint": {
+                                "expected_x": pos.get("x", 0),
+                                "expected_y": pos.get("y", 0),
+                                "expected_z": pos.get("z", 0),
+                            },
+                            "color": ghost_color,
+                            "opacity": 0.3
+                            if is_ghost
+                            else 1.0,  # Phase 90.11: Transparent ghosts
+                        },
+                        "cam": {
+                            "surprise_metric": file_cam.get("surprise_metric", 0.5),
+                            "operation": file_cam.get("cam_operation", "append"),
+                        },
                     }
-                })
+                )
 
-                edges.append({
-                    'from': folder_id,
-                    'to': file_data['id'],
-                    'semantics': 'contains'
-                })
+                edges.append(
+                    {"from": folder_id, "to": file_data["id"], "semantics": "contains"}
+                )
 
-        print(f"[API] Tree built: {len(nodes)} nodes, {len(edges)} edges")
+        _tree_log(f"[API] Tree built: {len(nodes)} nodes, {len(edges)} edges")
 
         # ═══════════════════════════════════════════════════════════════════
         # STEP 4.5: Build chat nodes and edges
@@ -620,25 +1130,51 @@ async def get_tree_data(
             from src.layout.knowledge_layout import calculate_chat_positions
 
             chat_manager = get_chat_history_manager()
-            all_chats = chat_manager.get_all_chats(limit=100, load_from_end=True)
+            all_chats = chat_manager.get_all_chats(limit=300, load_from_end=True)
+
+            filter_mode = (chat_filter or "active").strip().lower()
+            now_dt = datetime.now()
+
+            def _is_active_chat(chat: Dict[str, Any]) -> bool:
+                if bool(chat.get("is_favorite", False)):
+                    return True
+                msg_count = len(chat.get("messages", []) or [])
+                if msg_count >= 10:
+                    return True
+                updated_raw = str(chat.get("updated_at", "") or "")
+                if not updated_raw:
+                    return False
+                try:
+                    updated = datetime.fromisoformat(updated_raw.replace("Z", "+00:00"))
+                except Exception:
+                    return False
+                age_sec = abs((now_dt - updated.replace(tzinfo=None)).total_seconds())
+                return age_sec <= (7 * 24 * 3600)
+
+            if filter_mode == "favorite":
+                all_chats = [c for c in all_chats if bool(c.get("is_favorite", False))]
+            elif filter_mode == "all":
+                pass
+            else:
+                all_chats = [c for c in all_chats if _is_active_chat(c)]
 
             # Create a mapping from file_path to file node id
             file_path_to_node_id = {}
             for node in nodes:
-                if node.get('type') in ['leaf', 'file']:
-                    node_path = node.get('metadata', {}).get('path')
+                if node.get("type") in ["leaf", "file"]:
+                    node_path = node.get("metadata", {}).get("path")
                     if node_path:
-                        file_path_to_node_id[node_path] = node['id']
+                        file_path_to_node_id[node_path] = node["id"]
 
             # MARKER_108_3_TIMELINE_Y: Build file_positions dict from existing tree nodes
             file_positions = {}
             for node in nodes:
-                if node.get('visual_hints', {}).get('layout_hint'):
-                    pos = node['visual_hints']['layout_hint']
-                    file_positions[node['id']] = {
-                        'x': pos.get('expected_x', 0),
-                        'y': pos.get('expected_y', 0),
-                        'z': pos.get('expected_z', 0)
+                if node.get("visual_hints", {}).get("layout_hint"):
+                    pos = node["visual_hints"]["layout_hint"]
+                    file_positions[node["id"]] = {
+                        "x": pos.get("expected_x", 0),
+                        "y": pos.get("expected_y", 0),
+                        "z": pos.get("expected_z", 0),
                     }
 
             # MARKER_108_3_TIMELINE_Y: Prepare chats for temporal positioning
@@ -655,24 +1191,28 @@ async def get_tree_data(
 
                 # Find associated file node id (if exists)
                 associated_file_id = None
-                if file_path and file_path not in ('unknown', 'root', ''):
+                if file_path and file_path not in ("unknown", "root", ""):
                     associated_file_id = file_path_to_node_id.get(file_path)
 
                 # Parse timestamp for temporal ordering
                 last_activity = updated_at
                 if isinstance(last_activity, str):
-                    last_activity = datetime.fromisoformat(last_activity.replace('Z', '+00:00'))
+                    last_activity = datetime.fromisoformat(
+                        last_activity.replace("Z", "+00:00")
+                    )
 
-                chats_to_position.append({
-                    'id': f"chat_{chat_id}",
-                    'parentId': associated_file_id,
-                    'lastActivity': last_activity,
-                    'chat_data': chat  # Store original chat data
-                })
+                chats_to_position.append(
+                    {
+                        "id": f"chat_{chat_id}",
+                        "parentId": associated_file_id,
+                        "lastActivity": last_activity,
+                        "chat_data": chat,  # Store original chat data
+                    }
+                )
 
             # MARKER_108_3_TIMELINE_Y: Calculate positions with temporal ordering
             # Y-axis range based on existing tree layout
-            y_positions = [pos['y'] for pos in file_positions.values() if 'y' in pos]
+            y_positions = [pos["y"] for pos in file_positions.values() if "y" in pos]
             y_min = min(y_positions) if y_positions else 0
             y_max = max(y_positions) if y_positions else 500
 
@@ -680,34 +1220,38 @@ async def get_tree_data(
                 chats=chats_to_position,
                 file_positions=file_positions,
                 y_min=y_min,
-                y_max=y_max
+                y_max=y_max,
             )
 
             # MARKER_108_3_TIMELINE_Y: Build chat nodes using calculated positions
             for positioned_chat in positioned_chats:
-                chat = positioned_chat.get('chat_data', {})
+                chat = positioned_chat.get("chat_data", {})
                 chat_id = chat.get("id")
                 file_path = chat.get("file_path", "")
                 updated_at = chat.get("updated_at")
                 message_count = len(chat.get("messages", []))
 
                 # Get calculated position
-                pos = positioned_chat.get('position', {})
-                chat_x = pos.get('x', 0)
-                chat_y = pos.get('y', 0)
-                chat_z = pos.get('z', 0)
-                decay_factor = pos.get('decay_factor', 0.5)
+                pos = positioned_chat.get("position", {})
+                chat_x = pos.get("x", 0)
+                chat_y = pos.get("y", 0)
+                chat_z = pos.get("z", 0)
+                decay_factor = pos.get("decay_factor", 0.5)
 
                 # Find associated file node id (if exists)
                 associated_file_id = None
-                if file_path and file_path not in ('unknown', 'root', ''):
+                if file_path and file_path not in ("unknown", "root", ""):
                     associated_file_id = file_path_to_node_id.get(file_path)
 
                 # Extract participants from messages
                 participants = extract_participants(chat)
 
                 # Determine chat name
-                chat_name = chat.get("display_name") or chat.get("file_name") or f"Chat #{chat_id[:8]}"
+                chat_name = (
+                    chat.get("display_name")
+                    or chat.get("file_name")
+                    or f"Chat #{chat_id[:8]}"
+                )
 
                 # Create chat node
                 chat_node = {
@@ -723,17 +1267,18 @@ async def get_tree_data(
                         "participants": participants,
                         "decay_factor": decay_factor,
                         "context_type": chat.get("context_type", "file"),
-                        "display_name": chat.get("display_name")
+                        "display_name": chat.get("display_name"),
                     },
                     "visual_hints": {
                         "layout_hint": {
                             "expected_x": chat_x,
                             "expected_y": chat_y,
-                            "expected_z": chat_z
+                            "expected_z": chat_z,
                         },
                         "color": "#4a9eff",  # Blue for chat nodes
-                        "opacity": 0.7 + (decay_factor * 0.3)  # More opaque for recent chats
-                    }
+                        "opacity": 0.7
+                        + (decay_factor * 0.3),  # More opaque for recent chats
+                    },
                 }
 
                 chat_nodes.append(chat_node)
@@ -747,17 +1292,22 @@ async def get_tree_data(
                         "metadata": {
                             "type": "chat",
                             "color": "#4a9eff",
-                            "opacity": 0.3
-                        }
+                            "opacity": 0.3,
+                        },
                     }
                     chat_edges.append(chat_edge)
 
-            print(f"[CHAT_VIZ] Built {len(chat_nodes)} chat nodes, {len(chat_edges)} chat edges")
-            print(f"[CHAT_VIZ] Temporal Y-axis ordering applied (y_min={y_min:.1f}, y_max={y_max:.1f})")
+            print(
+                f"[CHAT_VIZ] Built {len(chat_nodes)} chat nodes, {len(chat_edges)} chat edges"
+            )
+            print(
+                f"[CHAT_VIZ] Temporal Y-axis ordering applied (y_min={y_min:.1f}, y_max={y_max:.1f})"
+            )
 
         except Exception as chat_err:
             print(f"[CHAT_VIZ] Warning: Could not build chat nodes: {chat_err}")
             import traceback
+
             traceback.print_exc()
 
         # ═══════════════════════════════════════════════════════════════════
@@ -766,28 +1316,60 @@ async def get_tree_data(
         # ═══════════════════════════════════════════════════════════════════
         artifact_nodes = []
         artifact_edges = []
+        cached_chunk_edges: List[Dict[str, Any]] = []
 
         try:
             from src.services.artifact_scanner import (
                 scan_artifacts,
                 build_artifact_edges,
-                update_artifact_positions
+                update_artifact_positions,
+                build_media_chunk_nodes_and_edges,
             )
+            artifact_source_mtime = _artifact_source_mtime()
+            cached_artifact_nodes = _artifact_graph_cache.get("nodes")
+            cached_artifact_mtime = float(_artifact_graph_cache.get("source_mtime", 0.0))
 
-            # Scan artifacts directory
-            artifact_nodes = scan_artifacts()
+            if (
+                cached_artifact_nodes is not None
+                and artifact_source_mtime <= cached_artifact_mtime
+            ):
+                artifact_nodes = copy.deepcopy(cached_artifact_nodes)
+                cached_chunk_edges = copy.deepcopy(
+                    _artifact_graph_cache.get("chunk_edges") or []
+                )
+            else:
+                # Scan artifacts directory only when sources changed.
+                artifact_nodes = scan_artifacts()
 
-            # Update artifact positions based on parent chat positions
+                # MARKER_153.IMPL.G12_MEDIA_CHUNK_GRAPH:
+                # Extend artifact graph with timestamped media chunk nodes/edges from Qdrant.
+                chunk_nodes, chunk_edges = build_media_chunk_nodes_and_edges(artifact_nodes)
+                if chunk_nodes:
+                    artifact_nodes.extend(chunk_nodes)
+                cached_chunk_edges = chunk_edges or []
+
+                _artifact_graph_cache["source_mtime"] = artifact_source_mtime
+                _artifact_graph_cache["nodes"] = copy.deepcopy(artifact_nodes)
+                _artifact_graph_cache["chunk_edges"] = copy.deepcopy(cached_chunk_edges)
+
+            # Always project artifact positions to current chat layout.
             update_artifact_positions(artifact_nodes, chat_nodes)
 
-            # Build edges from chats to artifacts
+            # Build edges from chats to artifacts for current view.
             artifact_edges = build_artifact_edges(artifact_nodes, chat_nodes)
+            if cached_chunk_edges:
+                artifact_edges.extend(cached_chunk_edges)
 
-            print(f"[ARTIFACT_SCAN] Built {len(artifact_nodes)} artifact nodes, {len(artifact_edges)} artifact edges")
+            print(
+                f"[ARTIFACT_SCAN] Built {len(artifact_nodes)} artifact nodes, {len(artifact_edges)} artifact edges"
+            )
 
         except Exception as artifact_err:
-            print(f"[ARTIFACT_SCAN] Warning: Could not build artifact nodes: {artifact_err}")
+            print(
+                f"[ARTIFACT_SCAN] Warning: Could not build artifact nodes: {artifact_err}"
+            )
             import traceback
+
             traceback.print_exc()
 
         # ═══════════════════════════════════════════════════════════════════
@@ -796,30 +1378,42 @@ async def get_tree_data(
         # ═══════════════════════════════════════════════════════════════════
         try:
             from src.scanners.file_watcher import get_watcher
-            watcher = get_watcher()
-            heat_scores = watcher.adaptive_scanner.get_all_heat_scores()
+
+            heat_source_mtime = _heat_source_mtime()
+            cached_heat_mtime = float(_heat_scores_cache.get("source_mtime", 0.0))
+            cached_heat_scores = _heat_scores_cache.get("scores", {})
+
+            if cached_heat_scores and heat_source_mtime <= cached_heat_mtime:
+                heat_scores = cached_heat_scores
+            else:
+                watcher = get_watcher()
+                heat_scores = watcher.adaptive_scanner.get_all_heat_scores()
+                _heat_scores_cache["source_mtime"] = heat_source_mtime
+                _heat_scores_cache["scores"] = heat_scores
 
             # Inject heatScore into each node based on its directory
             for node in nodes:
-                node_path = node.get('metadata', {}).get('path', '')
+                node_path = node.get("metadata", {}).get("path", "")
                 if node_path:
                     # For files: use parent directory heat
                     # For folders: use folder path heat
-                    if node.get('type') in ['leaf', 'file']:
+                    if node.get("type") in ["leaf", "file"]:
                         dir_path = os.path.dirname(node_path)
                     else:
                         dir_path = node_path
 
                     # Get heat score (0.0-1.0)
-                    node['heatScore'] = heat_scores.get(dir_path, 0.0)
+                    node["heatScore"] = heat_scores.get(dir_path, 0.0)
 
                     # MARKER_137.6C: Favorites keep persistent visual glow.
-                    if bool(node.get('metadata', {}).get('is_favorite', False)):
-                        node['heatScore'] = max(float(node.get('heatScore', 0.0)), 0.95)
+                    if bool(node.get("metadata", {}).get("is_favorite", False)):
+                        node["heatScore"] = max(float(node.get("heatScore", 0.0)), 0.95)
 
-            heat_count = sum(1 for n in nodes if n.get('heatScore', 0) > 0)
+            heat_count = sum(1 for n in nodes if n.get("heatScore", 0) > 0)
             if heat_count > 0:
-                print(f"[HEAT] Phase 119.2: Injected heat scores into {heat_count} nodes")
+                print(
+                    f"[HEAT] Phase 119.2: Injected heat scores into {heat_count} nodes"
+                )
 
         except Exception as heat_err:
             print(f"[HEAT] Warning: Could not inject heat scores: {heat_err}")
@@ -828,36 +1422,57 @@ async def get_tree_data(
         # STEP 5: Build response
         # ═══════════════════════════════════════════════════════════════════
         response = {
-            'format': 'vetka-v1.4',
-            'source': 'qdrant',
-            'mode': mode,
-            'tree': {
-                'id': root_id,
-                'name': 'VETKA',
-                'nodes': nodes,
-                'edges': edges,
-                'metadata': {
-                    'total_nodes': len(nodes),
-                    'total_edges': len(edges),
+            "format": "vetka-v1.4",
+            "source": "qdrant",
+            "mode": mode,
+            "tree": {
+                "id": root_id,
+                "name": "VETKA",
+                "nodes": nodes,
+                "edges": edges,
+                "metadata": {
+                    "total_nodes": len(nodes),
+                    "total_edges": len(edges),
                     # Accept both "leaf" and "file" types
-                    'total_files': len([n for n in nodes if n['type'] in ['leaf', 'file']]),
-                    'total_folders': len(folders)
-                }
+                    "total_files": len(
+                        [n for n in nodes if n["type"] in ["leaf", "file"]]
+                    ),
+                    "total_folders": len(folders),
+                },
             },
             # MARKER_108_CHAT_VIZ_API: Add chat nodes and edges to response
-            'chat_nodes': chat_nodes,
-            'chat_edges': chat_edges,
+            "chat_nodes": chat_nodes,
+            "chat_edges": chat_edges,
             # MARKER_108_3_ARTIFACT_SCAN: Add artifact nodes and edges to response
-            'artifact_nodes': artifact_nodes,
-            'artifact_edges': artifact_edges
+            "artifact_nodes": artifact_nodes,
+            "artifact_edges": artifact_edges,
         }
 
+        _tree_data_cache["key"] = cache_key
+        _tree_data_cache["ts"] = time.monotonic()
+        _tree_data_cache["response"] = response
+        _tree_perf_counters["full_rebuild_count"] = (
+            int(_tree_perf_counters.get("full_rebuild_count", 0)) + 1
+        )
+        _tree_log(
+            f"[TREE_PERF] cache=miss rebuild=full took_ms={(time.monotonic() - request_started) * 1000:.1f}"
+        )
+        _release_tree_inflight()
         return response
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
-        return {'error': str(e), 'tree': {'nodes': [], 'edges': []}}
+        error_response = {"error": str(e), "tree": {"nodes": [], "edges": []}}
+        _tree_data_cache["key"] = cache_key
+        _tree_data_cache["ts"] = time.monotonic()
+        _tree_data_cache["response"] = error_response
+        _tree_log(
+            f"[TREE_PERF] cache=miss rebuild=error took_ms={(time.monotonic() - request_started) * 1000:.1f}"
+        )
+        _release_tree_inflight()
+        return error_response
 
 
 @router.get("/favorites")
@@ -887,9 +1502,14 @@ async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
 
     # MARKER_137.6F: Optional CAM sync for favorited nodes.
     try:
-        flask_config = getattr(request.app.state, "flask_config", {}) if request and request.app else {}
+        flask_config = (
+            getattr(request.app.state, "flask_config", {})
+            if request and request.app
+            else {}
+        )
         if bool(flask_config.get("ELISYA_ENABLED", False)) and body.is_favorite:
             from src.orchestration.cam_event_handler import emit_cam_event
+
             await emit_cam_event(
                 "file_uploaded",
                 {
@@ -945,21 +1565,16 @@ async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
 async def clear_semantic_cache():
     """Clear the semantic DAG cache to force recalculation."""
     global _semantic_cache
-    _semantic_cache = {
-        'nodes': None,
-        'edges': None,
-        'positions': None,
-        'stats': None
-    }
+    _semantic_cache = {"nodes": None, "edges": None, "positions": None, "stats": None}
     print("[SEMANTIC] Cache cleared")
-    return {'status': 'ok', 'message': 'Semantic cache cleared'}
+    return {"status": "ok", "message": "Semantic cache cleared"}
 
 
 @router.get("/export/blender")
 async def export_blender(
     format: str = Query("json", description="Export format: json, glb, or obj"),
     mode: str = Query("directory", description="Layout mode: directory or semantic"),
-    request: Request = None
+    request: Request = None,
 ):
     """
     Export current tree state to Blender-compatible format.
@@ -974,8 +1589,7 @@ async def export_blender(
     try:
         from src.export.blender_exporter import BlenderExporter
 
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             raise HTTPException(status_code=500, detail="Qdrant not connected")
@@ -983,40 +1597,56 @@ async def export_blender(
         exporter = BlenderExporter(output_format=format)
 
         # Fetch nodes from Qdrant
+        # MARKER_155.PERF.ASYNC_QDRANT: Run Qdrant scroll in thread pool to prevent blocking
         all_files = []
         offset = None
-        while True:
-            results, offset = qdrant.scroll(
-                collection_name='vetka_elisya',
+
+        async def async_scroll_batch(offset):
+            """Async wrapper for Qdrant scroll."""
+            return await asyncio.to_thread(
+                qdrant.scroll,
+                collection_name="vetka_elisya",
                 scroll_filter=Filter(
                     must=[
-                        FieldCondition(key="type", match=MatchValue(value="scanned_file")),
-                        FieldCondition(key="deleted", match=MatchValue(value=False))
+                        FieldCondition(
+                            key="type", match=MatchValue(value="scanned_file")
+                        ),
+                        FieldCondition(key="deleted", match=MatchValue(value=False)),
                     ]
                 ),
                 limit=100,
                 offset=offset,
                 with_payload=True,
-                with_vectors=False
+                with_vectors=False,
             )
+
+        while True:
+            results, offset = await async_scroll_batch(offset)
             all_files.extend(results)
             if offset is None:
                 break
 
         # Add root node
         exporter.add_node(
-            node_id='main_tree_root',
-            pos={'x': 0, 'y': 0, 'z': 0},
-            node_type='root',
-            label='VETKA'
+            node_id="main_tree_root",
+            pos={"x": 0, "y": 0, "z": 0},
+            node_type="root",
+            label="VETKA",
         )
 
         # Add file nodes
+        # MARKER_155.PERF.ASYNC_FILE: Batch file existence checks
+        async def check_file_exists(path: str) -> bool:
+            return await asyncio.to_thread(os.path.exists, path)
+
         for point in all_files:
             p = point.payload or {}
-            file_path = p.get('path', '')
+            file_path = p.get("path", "")
 
-            if not file_path or not os.path.exists(file_path):
+            if not file_path:
+                continue
+
+            if not await check_file_exists(file_path):
                 continue
 
             file_id = str(point.id)
@@ -1025,32 +1655,30 @@ async def export_blender(
             exporter.add_node(
                 node_id=file_id,
                 pos={
-                    'x': (hash_val % 1000) - 500,
-                    'y': ((hash_val // 1000) % 1000) - 500,
-                    'z': ((hash_val // 1000000) % 100) - 50
+                    "x": (hash_val % 1000) - 500,
+                    "y": ((hash_val // 1000) % 1000) - 500,
+                    "z": ((hash_val // 1000000) % 100) - 50,
                 },
-                node_type='file',
-                label=p.get('name', 'file')
+                node_type="file",
+                label=p.get("name", "file"),
             )
 
             exporter.add_edge(
-                from_id='main_tree_root',
-                to_id=file_id,
-                edge_type='contains'
+                from_id="main_tree_root", to_id=file_id, edge_type="contains"
             )
 
         # Export to temp file
-        ext = 'json' if format == 'json' else format
-        fd, filepath = tempfile.mkstemp(suffix=f'.{ext}', prefix='vetka_export_')
+        ext = "json" if format == "json" else format
+        fd, filepath = tempfile.mkstemp(suffix=f".{ext}", prefix="vetka_export_")
         os.close(fd)
 
-        if format == 'glb':
+        if format == "glb":
             success = exporter.export_glb(filepath)
             if not success:
-                filepath = filepath.replace('.glb', '.json')
+                filepath = filepath.replace(".glb", ".json")
                 exporter.export_json(filepath)
-                format = 'json'
-        elif format == 'obj':
+                format = "json"
+        elif format == "obj":
             exporter.export_obj(filepath)
         else:
             exporter.export_json(filepath)
@@ -1059,12 +1687,13 @@ async def export_blender(
 
         return FileResponse(
             path=filepath,
-            filename=f'vetka-tree-{mode}.{format}',
-            media_type='application/octet-stream'
+            filename=f"vetka-tree-{mode}.{format}",
+            media_type="application/octet-stream",
         )
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1074,7 +1703,9 @@ async def get_knowledge_graph(
     request: Request,
     force_refresh: bool = Query(False, description="Force recalculation"),
     min_cluster_size: int = Query(3, description="Minimum files per cluster"),
-    similarity_threshold: float = Query(0.7, description="Minimum similarity for edges")
+    similarity_threshold: float = Query(
+        0.7, description="Minimum similarity for edges"
+    ),
 ):
     """
     Phase 17.1: Return Knowledge Graph structure for tag-based layout.
@@ -1090,50 +1721,110 @@ async def get_knowledge_graph(
     try:
         # Parse POST body if present
         file_positions = {}
+        hydrate_scope_path = ""
+        hydrate_force = False
+        semantic_expansion_budget = None
+        semantic_expansion_threshold = None
         if request.method == "POST":
             try:
                 body = await request.json()
-                force_refresh = body.get('force_refresh', force_refresh)
-                min_cluster_size = body.get('min_cluster_size', min_cluster_size)
-                similarity_threshold = body.get('similarity_threshold', similarity_threshold)
-                file_positions = body.get('file_positions', {})
+                force_refresh = body.get("force_refresh", force_refresh)
+                min_cluster_size = body.get("min_cluster_size", min_cluster_size)
+                similarity_threshold = body.get(
+                    "similarity_threshold", similarity_threshold
+                )
+                file_positions = body.get("file_positions", {})
+                hydrate_scope_path = str(body.get("hydrate_scope_path", "") or "")
+                hydrate_force = bool(body.get("hydrate_force", False))
+                semantic_expansion_budget = body.get("semantic_expansion_budget")
+                semantic_expansion_threshold = body.get("semantic_expansion_threshold")
             except:
                 pass
 
+        normalized_scope = _normalize_scope_path(hydrate_scope_path) if hydrate_scope_path else ""
+        file_position_keys = sorted(str(k) for k in (file_positions or {}).keys())
+        signature_payload = {
+            "min_cluster_size": int(min_cluster_size),
+            "similarity_threshold": float(similarity_threshold),
+            "scope_path": normalized_scope,
+            "scope_size": len(file_position_keys),
+            "scope_keys_hash": hashlib.md5("|".join(file_position_keys).encode("utf-8")).hexdigest() if file_position_keys else "",
+            "semantic_expansion_budget": semantic_expansion_budget,
+            "semantic_expansion_threshold": semantic_expansion_threshold,
+        }
+        request_signature = hashlib.md5(
+            json.dumps(signature_payload, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+        hydration_result = None
+        qdrant = None
+        if hydrate_scope_path:
+            qdrant = _get_qdrant_client(request)
+            if not qdrant:
+                return {
+                    "status": "error",
+                    "error": "Qdrant not connected",
+                    "tags": {},
+                    "edges": [],
+                    "chain_edges": [],
+                    "positions": {},
+                    "knowledge_levels": {},
+                    "hydration": {
+                        "path": _normalize_scope_path(hydrate_scope_path),
+                        "hydrated": False,
+                        "reason": "qdrant_not_connected",
+                        "indexed_count": 0,
+                    },
+                }
+            hydration_result = await _hydrate_scope_for_knowledge(
+                scope_path=hydrate_scope_path,
+                qdrant_client=qdrant,
+                force=hydrate_force,
+            )
+            if hydration_result.get("hydrated"):
+                force_refresh = True
+
         # Return cached if available
-        if not force_refresh and _knowledge_graph_cache['tags'] is not None:
+        if (
+            not force_refresh
+            and _knowledge_graph_cache["tags"] is not None
+            and _knowledge_graph_cache.get("signature") == request_signature
+        ):
             print("[KG] Returning cached Knowledge Graph")
             return {
-                'status': 'ok',
-                'source': 'cache',
-                'tags': _knowledge_graph_cache['tags'],
-                'edges': _knowledge_graph_cache['edges'],
-                'chain_edges': _knowledge_graph_cache.get('chain_edges', []),
-                'positions': _knowledge_graph_cache['positions'],
-                'knowledge_levels': _knowledge_graph_cache['knowledge_levels'],
-                'nodes': len(_knowledge_graph_cache['positions'] or {}),
-                'rrf_stats': _knowledge_graph_cache.get('rrf_stats', {}),
-                'statistics': {
-                    'tags': len(_knowledge_graph_cache['tags'] or {}),
-                    'edges': len(_knowledge_graph_cache['edges'] or []),
-                    'chain_edges': len(_knowledge_graph_cache.get('chain_edges', [])),
-                    'positions': len(_knowledge_graph_cache['positions'] or {})
-                }
+                "status": "ok",
+                "source": "cache",
+                "tags": _knowledge_graph_cache["tags"],
+                "edges": _knowledge_graph_cache["edges"],
+                "chain_edges": _knowledge_graph_cache.get("chain_edges", []),
+                "positions": _knowledge_graph_cache["positions"],
+                "knowledge_levels": _knowledge_graph_cache["knowledge_levels"],
+                "nodes": len(_knowledge_graph_cache["positions"] or {}),
+                "rrf_stats": _knowledge_graph_cache.get("rrf_stats", {}),
+                "metadata_completeness": _knowledge_graph_cache.get("metadata_completeness", {}),
+                "hydration": hydration_result,
+                "statistics": {
+                    "tags": len(_knowledge_graph_cache["tags"] or {}),
+                    "edges": len(_knowledge_graph_cache["edges"] or []),
+                    "chain_edges": len(_knowledge_graph_cache.get("chain_edges", [])),
+                    "positions": len(_knowledge_graph_cache["positions"] or {}),
+                },
             }
 
         # Get Qdrant client
-        memory = _get_memory_manager(request)
-        qdrant = memory.qdrant if memory else None
+        if qdrant is None:
+            qdrant = _get_qdrant_client(request)
 
         if not qdrant:
             return {
-                'status': 'error',
-                'error': 'Qdrant not connected',
-                'tags': {},
-                'edges': [],
-                'chain_edges': [],
-                'positions': {},
-                'knowledge_levels': {}
+                "status": "error",
+                "error": "Qdrant not connected",
+                "tags": {},
+                "edges": [],
+                "chain_edges": [],
+                "positions": {},
+                "knowledge_levels": {},
+                "hydration": hydration_result,
             }
 
         print(f"[KG] Building Knowledge Graph...")
@@ -1143,51 +1834,61 @@ async def get_knowledge_graph(
 
         kg_data = build_knowledge_graph_from_qdrant(
             qdrant_client=qdrant,
-            collection_name='vetka_elisya',
+            collection_name="vetka_elisya",
             min_cluster_size=min_cluster_size,
             similarity_threshold=similarity_threshold,
-            file_directory_positions=file_positions
+            file_directory_positions=file_positions,
+            semantic_expansion_budget=semantic_expansion_budget,
+            semantic_expansion_threshold=semantic_expansion_threshold,
         )
 
         # Cache the result
-        _knowledge_graph_cache['tags'] = kg_data['tags']
-        _knowledge_graph_cache['edges'] = kg_data['edges']
-        _knowledge_graph_cache['chain_edges'] = kg_data.get('chain_edges', [])
-        _knowledge_graph_cache['positions'] = kg_data['positions']
-        _knowledge_graph_cache['knowledge_levels'] = kg_data['knowledge_levels']
-        _knowledge_graph_cache['rrf_stats'] = kg_data.get('rrf_stats', {})
+        _knowledge_graph_cache["tags"] = kg_data["tags"]
+        _knowledge_graph_cache["edges"] = kg_data["edges"]
+        _knowledge_graph_cache["chain_edges"] = kg_data.get("chain_edges", [])
+        _knowledge_graph_cache["positions"] = kg_data["positions"]
+        _knowledge_graph_cache["knowledge_levels"] = kg_data["knowledge_levels"]
+        _knowledge_graph_cache["rrf_stats"] = kg_data.get("rrf_stats", {})
+        _knowledge_graph_cache["metadata_completeness"] = kg_data.get("metadata_completeness", {})
+        _knowledge_graph_cache["signature"] = request_signature
 
-        print(f"[KG] Knowledge Graph built: {len(kg_data['tags'])} tags, {len(kg_data['edges'])} edges")
+        print(
+            f"[KG] Knowledge Graph built: {len(kg_data['tags'])} tags, {len(kg_data['edges'])} edges"
+        )
 
         return {
-            'status': 'ok',
-            'source': 'computed',
-            'tags': kg_data['tags'],
-            'edges': kg_data['edges'],
-            'chain_edges': kg_data.get('chain_edges', []),
-            'positions': kg_data['positions'],
-            'knowledge_levels': kg_data['knowledge_levels'],
-            'nodes': len(kg_data['positions']),
-            'rrf_stats': kg_data.get('rrf_stats', {}),
-            'statistics': {
-                'tags': len(kg_data['tags']),
-                'edges': len(kg_data['edges']),
-                'chain_edges': len(kg_data.get('chain_edges', [])),
-                'positions': len(kg_data['positions'])
-            }
+            "status": "ok",
+            "source": "computed",
+            "tags": kg_data["tags"],
+            "edges": kg_data["edges"],
+            "chain_edges": kg_data.get("chain_edges", []),
+            "positions": kg_data["positions"],
+            "knowledge_levels": kg_data["knowledge_levels"],
+            "nodes": len(kg_data["positions"]),
+            "rrf_stats": kg_data.get("rrf_stats", {}),
+            "metadata_completeness": kg_data.get("metadata_completeness", {}),
+            "hydration": hydration_result,
+            "statistics": {
+                "tags": len(kg_data["tags"]),
+                "edges": len(kg_data["edges"]),
+                "chain_edges": len(kg_data.get("chain_edges", [])),
+                "positions": len(kg_data["positions"]),
+            },
         }
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         return {
-            'status': 'error',
-            'error': str(e),
-            'tags': {},
-            'edges': [],
-            'chain_edges': [],
-            'positions': {},
-            'knowledge_levels': {}
+            "status": "error",
+            "error": str(e),
+            "tags": {},
+            "edges": [],
+            "chain_edges": [],
+            "positions": {},
+            "knowledge_levels": {},
+            "hydration": hydration_result if "hydration_result" in locals() else None,
         }
 
 
@@ -1196,12 +1897,14 @@ async def clear_knowledge_cache():
     """Clear the Knowledge Graph cache to force recalculation."""
     global _knowledge_graph_cache
     _knowledge_graph_cache = {
-        'tags': None,
-        'edges': None,
-        'chain_edges': None,
-        'positions': None,
-        'knowledge_levels': None,
-        'rrf_stats': None
+        "tags": None,
+        "edges": None,
+        "chain_edges": None,
+        "positions": None,
+        "knowledge_levels": None,
+        "rrf_stats": None,
+        "metadata_completeness": None,
+        "signature": None,
     }
     print("[KG] Cache cleared")
-    return {'status': 'ok', 'message': 'Knowledge Graph cache cleared'}
+    return {"status": "ok", "message": "Knowledge Graph cache cleared"}

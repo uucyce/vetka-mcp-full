@@ -1,0 +1,7 @@
+To explain how context packing works in VETKA and provide two initial steps to take:
+
+Context packing is a technique used to compress and represent large amounts of data (in this case, around ~2008 tokens) into a more manageable format. This allows for efficient storage and retrieval of the data.
+
+Two initial steps to take when dealing with context packing in VETKA are:
+
+1. **Understand the context**: Review the pinned files, specifically `web_20260214_174926_schema-markup-testing-tool-google-search-central-google-for-developers_86d8c45a.md`, to grasp the semantic relevance of the content

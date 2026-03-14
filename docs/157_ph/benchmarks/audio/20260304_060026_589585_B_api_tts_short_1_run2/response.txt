@@ -1,0 +1,7 @@
+Based on the provided context, here are 2 specific files and their purposes:
+
+1. **GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md**  
+   Needed to define dynamic formulas for preventing file collisions and repulsion forces during manual branch dragging in the VETKA tree layout.
+
+2. **GROK_RESEARCH_PROMPT_153_G09_G12_VETKA_MULTIMODAL_UI.md**  
+   Needed to research and specify the UX architecture for handling media chunks in the VETKA graph, including state models and interaction policies.

@@ -1,0 +1,45 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,timestamp
+D_ollama_tts,short_1,1,45,True,,3478.52,8719.32,3478.52,8719.32,14344.16,32,3,144,1.0,"VETKA - это платформа для инвестирования в криптовалюту, предлагающая автоматизированные торговые стратегии и доступ к широкому спектру активов.",docs/157_ph/benchmarks/audio/20260304_020556_026731_D_ollama_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_020556_026731_D_ollama_tts_short_1_run1/merged.wav,76.87,13,920,0,2026-03-03T23:06:10.325463+00:00
+D_ollama_tts,short_1,2,45,True,,154.73,4707.54,154.73,4707.54,13196.59,37,3,181,1.0,"VETKA – это платформа для инвестирования в криптовалюту, предлагающая автоматизированные торговые боты, которые используют алгоритмы для торговли на различных криптовалютных биржах.",docs/157_ph/benchmarks/audio/20260304_020610_332179_D_ollama_tts_short_1_run2,docs/157_ph/benchmarks/audio/20260304_020610_332179_D_ollama_tts_short_1_run2/merged.wav,54.27,18,1080,0,2026-03-03T23:06:23.522509+00:00
+D_ollama_tts,context_1,1,85,True,,195.42,,195.42,,32772.03,86,0,287,1.0,"1.  **Оптимизация размера контекста:** Уменьшить размер блоков памяти.
+2.  **Алгоритмы распределения:** Использовать более эффективные алгоритмы для распределения памяти.
+3.  **Кэширование:** Улучшить кэширование данных в памяти.
+4.  **Асинхронность:**  Использовать асинхронные о",docs/157_ph/benchmarks/audio/20260304_020623_528720_D_ollama_tts_context_1_run1,,,,,,2026-03-03T23:06:56.296122+00:00
+D_ollama_tts,context_1,2,85,False,TimeoutError: per-run timeout 25.0s,5145.09,13855.41,5145.09,13855.41,29911.49,68,1,246,0.0,"1.  **Оптимизация размера контекста:** Уменьшить размер данных, хранящихся в контексте.
+2.  **Инкрементальное обновление:** Обновлять контекст только при необходимости.
+3.  **Использование техник сжатия данных:** Применить сжатие данных для умень",docs/157_ph/benchmarks/audio/20260304_020701_250558_D_ollama_tts_context_1_run2,docs/157_ph/benchmarks/audio/20260304_020701_250558_D_ollama_tts_context_1_run2/merged.wav,47.0,12,940,0,2026-03-03T23:07:26.209353+00:00
+D_ollama_tts,long_1,1,124,False,TimeoutError: per-run timeout 25.0s,2166.81,6697.77,2166.81,6697.77,26986.06,97,7,377,0.0,"Okay, here’s a concise breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Steps:**
+
+*   **Interrupt:**  The current voice stream is abruptly terminated.
+*   **Short Delay:** A brief pause (milliseconds) occurs.
+*   **Restart:** A new v",docs/157_ph/benchmarks/audio/20260304_020727_838691_D_ollama_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_020727_838691_D_ollama_tts_long_1_run1/merged.wav,25.0,38,2820,0,2026-03-03T23:07:53.196983+00:00
+D_ollama_tts,long_1,2,124,True,,168.64,4700.41,168.64,4700.41,23853.65,66,7,241,1.0,"Okay, here’s a concise breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Step-by-Step:**
+
+*   **Interrupt:**  A device (e.g., a phone) detects a loss of connection or a need to switch streams. It",docs/157_ph/benchmarks/audio/20260304_020753_205081_D_ollama_tts_long_1_run2,docs/157_ph/benchmarks/audio/20260304_020753_205081_D_ollama_tts_long_1_run2/merged.wav,34.5,29,1940,0,2026-03-03T23:08:17.051076+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,190.82,4622.81,190.82,4622.81,12573.35,37,3,181,1.0,"VETKA – это платформа для инвестирования в криптовалюту, предлагающая автоматизированные торговые боты, которые используют алгоритмы для торговли на различных криптовалютных биржах.",docs/157_ph/benchmarks/audio/20260304_020817_056605_E_ollama_jepa_tts_short_1_run1,docs/157_ph/benchmarks/audio/20260304_020817_056605_E_ollama_jepa_tts_short_1_run1/merged.wav,58.99,16,1900,0,2026-03-03T23:08:29.624943+00:00
+E_ollama_jepa_tts,short_1,2,45,True,,132.46,5822.03,132.46,5822.03,12687.32,32,3,144,1.0,"VETKA - это платформа для инвестирования в криптовалюту, предлагающая доступ к широкому спектру активов и автоматизированные торговые стратегии.",docs/157_ph/benchmarks/audio/20260304_020829_631165_E_ollama_jepa_tts_short_1_run2,docs/157_ph/benchmarks/audio/20260304_020829_631165_E_ollama_jepa_tts_short_1_run2/merged.wav,25.0,17,2700,0,2026-03-03T23:08:42.312717+00:00
+E_ollama_jepa_tts,context_1,1,85,True,,206.13,8142.52,206.13,8142.52,23066.52,65,3,252,1.0,"1.  **Оптимизация размера блоков:** Уменьшить размер блоков memory context.
+2.  **Алгоритмы распределения:** Использовать более эффективные алгоритмы для распределения блоков.
+3.  **Кэширование:** Добавить кэширование часто используемых memory contexts",docs/157_ph/benchmarks/audio/20260304_020842_318795_E_ollama_jepa_tts_context_1_run1,docs/157_ph/benchmarks/audio/20260304_020842_318795_E_ollama_jepa_tts_context_1_run1/merged.wav,38.25,25,1640,0,2026-03-03T23:09:05.379853+00:00
+E_ollama_jepa_tts,context_1,2,85,True,,604.49,24734.88,604.49,24734.88,26435.02,74,2,264,1.0,"1.  **Оптимизация размера контекста:** Уменьшите размер каждого контекста.
+2.  **Иерархическое packing:** Используйте несколько уровней packing.
+3.  **Адаптивное packing:** Динамически изменяйте размер контекста в зависимости от нагрузки.
+4.  **Оптимизация алгорит",docs/157_ph/benchmarks/audio/20260304_020905_388077_E_ollama_jepa_tts_context_1_run2,docs/157_ph/benchmarks/audio/20260304_020905_388077_E_ollama_jepa_tts_context_1_run2/merged.wav,61.01,13,1080,0,2026-03-03T23:09:31.815537+00:00
+E_ollama_jepa_tts,long_1,1,124,True,,237.7,4856.6,237.7,4856.6,24913.37,87,7,349,1.0,"Okay, here’s a breakdown of the Interrupt + Restart Stream (IRS) protocol and its impact:
+
+**1. IRS Protocol - Steps:**
+
+*   **Interruption:**  The current session detects a gap in audio.
+*   **Interrupt Signal:** Sends a signal to the other party (e.g., the receiving device).
+* ",docs/157_ph/benchmarks/audio/20260304_020931_821671_E_ollama_jepa_tts_long_1_run1,docs/157_ph/benchmarks/audio/20260304_020931_821671_E_ollama_jepa_tts_long_1_run1/merged.wav,37.75,38,1680,0,2026-03-03T23:09:56.729653+00:00
+E_ollama_jepa_tts,long_1,2,124,True,,147.59,4365.44,147.59,4365.44,22453.46,85,5,329,1.0,"Okay, here’s a concise breakdown:
+
+**Interrupt + Restart Stream Protocol (IRSP):**
+
+1.  **Interrupt:** Call drops unexpectedly.
+2.  **Restart:** A new session is initiated, seamlessly reconnecting.
+3.  **Synchronization:**  Data is re-synchronized between the new and old sessions",docs/157_ph/benchmarks/audio/20260304_020956_736531_E_ollama_jepa_tts_long_1_run2,docs/157_ph/benchmarks/audio/20260304_020956_736531_E_ollama_jepa_tts_long_1_run2/merged.wav,41.75,33,1360,0,2026-03-03T23:10:19.183563+00:00

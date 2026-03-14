@@ -1,0 +1,6 @@
+<think>
+Okay, let's tackle this user question. The user wants two specific files from the provided context and a one-line reason for each. If there's no info, I should say so.
+
+First, I'll check the pinned_context. There are two files listed. The first one is "PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md" with a relevance of 0.48. The content mentions camera movement issues and user requests for smooth transitions. This file likely outlines the problem and requirements for the camera system.
+
+The second pinned file is "playground_proposals.json". The context shows it's a JSON

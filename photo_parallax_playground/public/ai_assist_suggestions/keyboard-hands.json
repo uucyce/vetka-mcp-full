@@ -1,0 +1,60 @@
+{
+  "sample_id": "keyboard-hands",
+  "title": "Keyboard hands",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "Keyboard with hands typing, displaying coordinates",
+  "primary_subject": "Hands typing on keyboard",
+  "background_note": "Monitors displaying coordinates in the background",
+  "warnings": [],
+  "accepted_foreground_groups": [
+    {
+      "label": "focus fallback",
+      "x": 0.156,
+      "y": 0.2836,
+      "width": 0.708,
+      "height": 0.5928,
+      "reason": "Safe fallback around the default focus region because the model response was missing or too broad.",
+      "area": 0.4197
+    }
+  ],
+  "accepted_midground_groups": [
+    {
+      "label": "midground fallback",
+      "x": 0.076,
+      "y": 0.6122,
+      "width": 0.6912,
+      "height": 0.2708,
+      "reason": "Fallback midground band derived from focus region for layered layouts.",
+      "area": 0.1872
+    }
+  ],
+  "raw_foreground_groups": [
+    {
+      "label": "Hands",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 0.5,
+      "height": 0.5,
+      "reason": "Hands are the main focus and are in the foreground."
+    }
+  ],
+  "raw_midground_groups": [
+    {
+      "label": "Keyboard",
+      "x": 0.5,
+      "y": 0.0,
+      "width": 0.5,
+      "height": 0.5,
+      "reason": "The keyboard is directly in front of the hands and is the next layer in depth."
+    }
+  ],
+  "sanitation_flags": [
+    "rejected_fg_box",
+    "rejected_mid_box",
+    "fallback_focus_box",
+    "fallback_midground_box"
+  ],
+  "confidence": 0.64,
+  "error": null,
+  "raw_response": "```json\n{\n  \"scene_summary\": \"Keyboard with hands typing, displaying coordinates\",\n  \"primary_subject\": \"Hands typing on keyboard\",\n  \"foreground_groups\": [\n    {\n      \"label\": \"Hands\",\n      \"x\": 0.0,\n      \"y\": 0.0,\n      \"width\": 0.5,\n      \"height\": 0.5,\n      \"reason\": \"Hands are the main focus and are in the foreground.\"\n    }\n  ],\n  \"midground_groups\": [\n    {\n      \"label\": \"Keyboard\",\n      \"x\": 0.5,\n      \"y\": 0.0,\n      \"width\": 0.5,\n      \"height\": 0.5,\n      \"reason\": \"The keyboard is directly in front of the hands and is the next layer in depth.\"\n    }\n  ],\n  \"background_note\": \"Monitors displaying coordinates in the background\",\n  \"warnings\": []\n}\n```"
+}

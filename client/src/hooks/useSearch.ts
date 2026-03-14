@@ -197,11 +197,12 @@ export function useSearch(options: UseSearchOptions = {}): UseSearchReturn {
 
   // Re-search when mode changes (if there's an active query)
   useEffect(() => {
+    if (!autoSearch) return;
     if (query.trim() && isConnected) {
       executeSearch(query);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMode]);
+  }, [searchMode, autoSearch]);
 
   // Clear everything
   const clearResults = useCallback(() => {

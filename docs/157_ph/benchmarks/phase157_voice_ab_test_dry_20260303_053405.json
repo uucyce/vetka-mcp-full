@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-03-03T02:34:05.216776+00:00",
+  "dry_run": true,
+  "rows": [
+    {
+      "mode": "F_mimo_short",
+      "prompt_id": "short_live",
+      "run_index": 1,
+      "prompt_chars": 14,
+      "success": true,
+      "error": null,
+      "ttft_text_ms": 20.0,
+      "ttfa_audio_ms": 50.0,
+      "reaction_text_ms": 20.0,
+      "reaction_audio_ms": 50.0,
+      "e2e_ms": 52.15,
+      "tokens_out": 20,
+      "audio_chunks": 1,
+      "response_chars": 7,
+      "quality_proxy": 1.0,
+      "response_preview": "DRY_RUN_SYNTHETIC",
+      "audio_dir": null,
+      "audio_merged_wav": null,
+      "timestamp": "2026-03-03T02:34:05.216676+00:00"
+    }
+  ],
+  "summary": {
+    "modes": {
+      "F_mimo_short": {
+        "runs": 1,
+        "success_runs": 1,
+        "success_rate": 1.0,
+        "ttft_text_ms_p50": 20.0,
+        "ttfa_audio_ms_p50": 50.0,
+        "reaction_text_ms_p50": 20.0,
+        "reaction_audio_ms_p50": 50.0,
+        "e2e_ms_p50": 52.15,
+        "quality_proxy_mean": 1.0
+      }
+    }
+  }
+}

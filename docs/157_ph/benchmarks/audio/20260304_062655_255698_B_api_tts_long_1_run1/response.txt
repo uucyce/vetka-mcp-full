@@ -1,0 +1,5 @@
+В предоставленном контексте нет детального описания протокола `interrupt + restart stream` и его влияния на `voice handoff` или `tool-loop transparency`. 
+
+Контекст упоминает:
+- Поддержку interrupt во время ответа в `voice_stream_start -> voice_pcm -> voice_utterance_end -> STT -> LLM stream -> TTS chunks` (файл `src/api/handlers/voice_router.py`).
+- Общие принципы прозрачности инструментов в `MARKER_152.CAP_MATRIX.UNIFIED

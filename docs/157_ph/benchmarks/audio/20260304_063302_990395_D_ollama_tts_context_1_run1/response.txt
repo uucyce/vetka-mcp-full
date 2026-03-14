@@ -1,0 +1,5 @@
+Based on the provided context, here are 3 points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize `hysteresis` thresholds**: Reduce the range of hysteresis thresholds to minimize unnecessary trigger checks, which can lead to increased latency.
+2. **Leverage caching mechanisms**: Implement caching for frequently accessed data structures, such as recent stats API, to reduce computation overhead and improve memory context packing efficiency.
+3. **Parallelize `ContextPacker` computations**: Utilize multi-threading or parallel processing techniques to concurrently process multiple files, reducing overall computation time and allowing for

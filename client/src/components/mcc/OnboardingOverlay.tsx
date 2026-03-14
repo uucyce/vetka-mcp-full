@@ -12,10 +12,11 @@ interface StepConfig {
 }
 
 const STEPS: Record<number, StepConfig> = {
-  1: { target: 'key-dropdown', message: 'Select your API key to get started.' },
-  2: { target: 'team-dropdown', message: 'Choose your team preset. Dragon Silver is recommended.' },
-  3: { target: 'sandbox-dropdown', message: 'Select or create a sandbox for safe experimentation.' },
-  4: { target: 'architect-chat', message: 'Type a task and press Enter, or click Execute.' },
+  // MARKER_155A.P0.ONBOARDING_REBIND: Targets aligned with current MCC UI
+  1: { target: 'step-indicator', message: 'You are in MCC workspace mode. Progress is context-aware.' },
+  2: { target: 'footer-primary-1', message: 'Use the primary action button for the current level.' },
+  3: { target: 'mini-chat', message: 'Open chat to ask architect or inspect live team context.' },
+  4: { target: 'dag-canvas', message: 'Drill by selecting nodes and zooming deeper in the same canvas.' },
 };
 
 export function OnboardingOverlay({ step, onAdvance, onDismiss }: OnboardingOverlayProps) {

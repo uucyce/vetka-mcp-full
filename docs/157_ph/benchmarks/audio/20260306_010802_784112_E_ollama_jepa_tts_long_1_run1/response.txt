@@ -1,0 +1,5 @@
+Okay, let's break down the interruption and restart of the stream protocol, focusing on voice handoff and transparency, based on the provided context.
+
+Here’s a step-by-step explanation:
+
+1. **The Problem:** The current implementation has a fragmented approach to stream handling, particularly regarding the interaction between the stream protocol and the tool loop. This

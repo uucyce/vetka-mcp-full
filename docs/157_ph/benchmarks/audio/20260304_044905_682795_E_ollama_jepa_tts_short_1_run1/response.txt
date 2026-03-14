@@ -1,0 +1,2 @@
+1. **Файл:** /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_14/GROK_ANTI_GRAVITY_COLLISION_AVOIDANCE.md  
+   **Назначение:** Описывает алгоритмы для пред

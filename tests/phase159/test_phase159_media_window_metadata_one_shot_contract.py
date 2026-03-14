@@ -1,0 +1,45 @@
+from pathlib import Path
+
+
+ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+
+
+def _read(path: str) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_phase159_media_window_metadata_route_contract():
+    routes_py = _read("src/api/routes/artifact_routes.py")
+
+    assert "class MediaWindowMetadataRequest(BaseModel):" in routes_py
+    assert '@router.post("/media/window-metadata")' in routes_py
+    assert "_probe_video_dimensions(target)" in routes_py
+    assert '"width_px": int(width_px or 0)' in routes_py
+    assert '"height_px": int(height_px or 0)' in routes_py
+    assert '"aspect_ratio": _format_aspect_ratio(width_px, height_px) if is_video else None' in routes_py
+
+
+def test_phase159_media_window_one_shot_size_contract():
+    commands_rs = _read("client/src-tauri/src/commands.rs")
+    tauri_ts = _read("client/src/config/tauri.ts")
+
+    assert "MARKER_159.R9.ONE_SHOT_MEDIA_INITIAL_SIZE" in commands_rs
+    assert "MARKER_159.R10.ONE_SHOT_REUSE_PIXEL_SIZE" in commands_rs
+    assert "MARKER_159.R12.MONITOR_LOGICAL_SIZE" in commands_rs
+    assert "monitor.scale_factor()" in commands_rs
+    assert "const TOOLBAR_H: f64 = 49.0;" in commands_rs
+    assert "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE" in commands_rs
+    assert "video_width: Option<u32>," in commands_rs
+    assert "video_height: Option<u32>," in commands_rs
+    assert "aspect_ratio: Option<String>," in commands_rs
+    assert "explicit_video_width" in commands_rs
+    assert "fetch_media_window_metadata(clean_path).await" in commands_rs
+    assert "compute_detached_media_initial_inner_size(" in commands_rs
+    assert ".inner_size(initial_width, initial_height)" in commands_rs
+    assert "apply_detached_media_inner_size(&existing, initial_width, initial_height)" in commands_rs
+    assert "set_size(Size::Logical(LogicalSize::new(width, height)))" in commands_rs
+    assert "MARKER_159.R13.FRONTEND_MEDIA_METADATA_BRIDGE" in tauri_ts
+    assert "fetch('/api/artifacts/media/window-metadata'" in tauri_ts
+    assert "videoWidth," in tauri_ts
+    assert "videoHeight," in tauri_ts
+    assert "aspectRatio," in tauri_ts

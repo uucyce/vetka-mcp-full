@@ -179,14 +179,14 @@ MYCELIUM_TOOLS = [
         name="mycelium_pipeline",
         description="Mycelium agent pipeline for fractal task execution. "
                     "Auto-triggers researcher on unclear parts. "
-                    "Phases: research (explore), fix (debug), build (implement). "
+                    "Phases: research (explore), fix (debug), build (implement), test (verify). "
                     "Progress streams to chat + DevPanel WebSocket in real-time. "
                     "NON-BLOCKING: returns immediately, pipeline runs in background.",
         inputSchema={
             "type": "object",
             "properties": {
                 "task": {"type": "string", "description": "Task description"},
-                "phase_type": {"type": "string", "description": "Pipeline phase: research, fix, build"},
+                "phase_type": {"type": "string", "description": "Pipeline phase: research, fix, build, test"},
                 "preset": {"type": "string", "description": "Team preset: dragon_bronze, dragon_silver, dragon_gold"},
                 "provider": {"type": "string", "description": "LLM provider override"},
                 "chat_id": {"type": "string", "description": "Chat ID for progress streaming"},
@@ -225,11 +225,20 @@ MYCELIUM_TOOLS = [
             "properties": {
                 "action": {"type": "string", "description": "Action: add, list, get, update, remove, summary"},
                 "title": {"type": "string"}, "description": {"type": "string"},
+                "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
                 "priority": {"type": "number"}, "phase_type": {"type": "string"},
                 "complexity": {"type": "string"}, "preset": {"type": "string"},
                 "tags": {"type": "array"}, "dependencies": {"type": "array"},
                 "task_id": {"type": "string"}, "status": {"type": "string"},
                 "filter_status": {"type": "string"},
+                "project_id": {"type": "string"},
+                "project_lane": {"type": "string"},
+                "architecture_docs": {"type": "array"},
+                "recon_docs": {"type": "array"},
+                "protocol_version": {"type": "string"},
+                "require_closure_proof": {"type": "boolean"},
+                "closure_tests": {"type": "array"},
+                "closure_files": {"type": "array"},
             },
             "required": ["action"],
         },
@@ -322,6 +331,7 @@ MYCELIUM_TOOLS = [
             "properties": {
                 "request": {"type": "string", "description": "Workflow request"},
                 "workflow_type": {"type": "string", "description": "pm_to_qa, pm_only, dev_qa"},
+                "workflow_family": {"type": "string", "description": "Optional MCC workflow family for contract-aware REFLEX preflight"},
                 "include_eval": {"type": "boolean"}, "timeout": {"type": "number"},
             },
             "required": ["request"],
@@ -663,6 +673,7 @@ async def _handle_execute_workflow(arguments: Dict[str, Any]) -> str:
     result = await vetka_execute_workflow(
         request=arguments.get("request", ""),
         workflow_type=arguments.get("workflow_type", "pm_to_qa"),
+        workflow_family=arguments.get("workflow_family", ""),
         include_eval=arguments.get("include_eval", True),
         timeout=arguments.get("timeout", 300),
     )

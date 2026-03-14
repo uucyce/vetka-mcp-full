@@ -15,4 +15,5 @@ export { MessageInput } from './MessageInput';
 export { MentionPopup } from './MentionPopup';
 export { WorkflowProgress } from './WorkflowProgress';
 export { CompoundMessage } from './CompoundMessage';
+export { ReflexInsight } from './ReflexInsight';
 export { ChatSidebar } from './ChatSidebar';

@@ -1,0 +1,5 @@
+Based on the provided context, here are 3 points to improve memory context packing in VETKA without regressing latency:
+
+1. **Optimize file loading**: Reduce the number of files loaded into memory by using lazy loading or streaming. This can help reduce memory usage and prevent lag.
+2. **Use compression and caching**: Compressing frequently used files and storing them in a cache can significantly reduce memory usage. Consider implementing compression algorithms like gzip or brotli, and use caching mechanisms like Redis or Memcached to store compressed files.
+3. **Implement memory-friendly data structures**: Replace large data structures with more memory-efficient alternatives,

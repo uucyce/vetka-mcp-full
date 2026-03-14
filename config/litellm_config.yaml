@@ -1,0 +1,32 @@
+model_list:
+  - model_name: gpt-4
+    litellm_params:
+      model: azure/gpt-4
+      api_key: os.environ/AZURE_API_KEY
+      api_base: os.environ/AZURE_API_BASE
+      api_version: os.environ/AZURE_API_VERSION
+  
+  - model_name: gpt-3.5-turbo
+    litellm_params:
+      model: azure/gpt-3.5-turbo
+      api_key: os.environ/AZURE_API_KEY
+      api_base: os.environ/AZURE_API_BASE
+      api_version: os.environ/AZURE_API_VERSION
+
+  - model_name: claude-2
+    litellm_params:
+      model: anthropic/claude-2
+      api_key: os.environ/ANTHROPIC_API_KEY
+
+  - model_name: llama2
+    litellm_params:
+      model: ollama/llama2
+      base_url: http://localhost:11434
+
+fallback_order:
+  - gpt-4
+  - gpt-3.5-turbo
+  - claude-2
+  - llama2
+
+key_roaming: true

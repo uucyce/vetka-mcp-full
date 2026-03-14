@@ -1,0 +1,735 @@
+{
+  "scope_root": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+  "signature": "1d930e85a778",
+  "stats": {
+    "l0_nodes": 821,
+    "l0_edges": 2017,
+    "l0_explicit_edges": 1569,
+    "l0_reference_edges": 687,
+    "l0_channel_hist": {
+      "structural": 1569,
+      "semantic": 19,
+      "temporal": 429
+    },
+    "l1_scc_nodes": 671,
+    "l1_scc_edges": 1198,
+    "l1_roots": 14,
+    "l1_roots_raw": 91,
+    "l1_backbone_edges": 464,
+    "l1_cross_edges": 811,
+    "cyclic_scc_count": 11,
+    "max_scc_size": 80,
+    "l2_nodes": 120,
+    "l2_edges": 115,
+    "build_ms": 1082
+  },
+  "markers": [
+    "MARKER_155.MODE_ARCH.V11.P1",
+    "MARKER_155.INPUT_MATRIX.SCANNERS.V1",
+    "MARKER_155.INPUT_MATRIX.ROOT_SCORE.V1",
+    "MARKER_155.INPUT_MATRIX.BACKBONE_DAG.V1",
+    "MARKER_155.ALGORITHMIC_DAG_FORMULAS.V1",
+    "MARKER_155.MODE_ARCH.V11.GRAPH_LEVELS",
+    "MARKER_155.MODE_ARCH.V11.CYCLE_POLICY"
+  ],
+  "sample_l1_roots": [
+    "scc_25",
+    "scc_360",
+    "scc_363",
+    "scc_364",
+    "scc_365",
+    "scc_366",
+    "scc_367",
+    "scc_376",
+    "scc_403",
+    "scc_420",
+    "scc_507",
+    "scc_508"
+  ],
+  "sample_l1_backbone_edges": [
+    {
+      "source": "scc_420",
+      "target": "scc_320",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_25",
+      "target": "scc_5",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_509",
+      "target": "scc_523",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_509",
+      "target": "scc_524",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_20",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_361",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_406",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_2",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    }
+  ],
+  "sample_l1_cross_edges": [
+    {
+      "source": "scc_11",
+      "target": "scc_10",
+      "type": "cross_link",
+      "relation_kind": "temporal",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.23889974872564293,
+      "confidence": 0.9930282524541252,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9930282524541252,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766902805->1766925492"
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_12",
+      "target": "scc_10",
+      "type": "cross_link",
+      "relation_kind": "temporal",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.23798616800629857,
+      "confidence": 0.9900335676344829,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9900335676344829,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766892998->1766925492"
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_13",
+      "target": "scc_10",
+      "type": "cross_link",
+      "relation_kind": "temporal",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.23798040306255555,
+      "confidence": 0.990014645294625,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.990014645294625,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766892936->1766925492"
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_14",
+      "target": "scc_10",
+      "type": "cross_link",
+      "relation_kind": "temporal",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.23779799119656936,
+      "confidence": 0.9894157498873701,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.7150997150997151,
+        "temporal": 0.9894157498873701,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.778",
+        "temporal:1766890970->1766925492"
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_102",
+      "target": "scc_101",
+      "type": "cross_link",
+      "relation_kind": "temporal",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.18881696382848287,
+      "confidence": 0.9778554764127603,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.5726495726495726,
+        "temporal": 0.9778554764127603,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "semantic_jaccard:0.667",
+        "temporal:1767949414->1768022174"
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_106",
+      "target": "scc_102",
+      "type": "cross_link",
+      "relation_kind": "structural",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "from .memory_service import ..."
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_526",
+      "target": "scc_102",
+      "type": "cross_link",
+      "relation_kind": "structural",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "from src.orchestration.services.memory_service import ..."
+      ],
+      "is_backbone": false
+    },
+    {
+      "source": "scc_105",
+      "target": "scc_104",
+      "type": "cross_link",
+      "relation_kind": "structural",
+      "mode_layer": 1,
+      "is_condensed": true,
+      "score": 0.9404756340234984,
+      "confidence": 1.0,
+      "channels": {
+        "structural": 1.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "from src.validators.vetka_validator import ..."
+      ],
+      "is_backbone": false
+    }
+  ],
+  "sample_l2_nodes": [
+    {
+      "id": "scc_403",
+      "kind": "module",
+      "label": "scripts/update_phase63_part3.py",
+      "layer": 0,
+      "knowledge_level": 0.0,
+      "is_root": true,
+      "scope": "architecture",
+      "members": [
+        "scripts/update_phase63_part3.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "root_metrics": {
+        "root_score": 0.14164841256748023,
+        "source_centrality": 0.0,
+        "time_earliness": 0.7002315506635306,
+        "authority": 0.0,
+        "cycle_penalty": 0.6842105263157894
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "scripts"
+      }
+    },
+    {
+      "id": "scc_420",
+      "kind": "module",
+      "label": "src/api/handlers/di_container.py",
+      "layer": 0,
+      "knowledge_level": 0.0,
+      "is_root": true,
+      "scope": "architecture",
+      "members": [
+        "src/api/handlers/di_container.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "root_metrics": {
+        "root_score": 0.3763876255156117,
+        "source_centrality": 1.0,
+        "time_earliness": 0.1493622604906355,
+        "authority": 0.0,
+        "cycle_penalty": 0.6842105263157894
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "src/api/handlers"
+      }
+    },
+    {
+      "id": "scc_446",
+      "kind": "module",
+      "label": "src/intake/__init__.py",
+      "layer": 0,
+      "knowledge_level": 0.0,
+      "is_root": false,
+      "scope": "architecture",
+      "members": [
+        "src/intake/__init__.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "root_metrics": {
+        "root_score": 0.11919607362851017,
+        "source_centrality": 0.35714285714285715,
+        "time_earliness": 0.14919994467648748,
+        "authority": 0.0,
+        "cycle_penalty": 0.6842105263157894
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "src/intake"
+      }
+    },
+    {
+      "id": "scc_509",
+      "kind": "module",
+      "label": "tests/__init__.py",
+      "layer": 0,
+      "knowledge_level": 0.0,
+      "is_root": true,
+      "scope": "architecture",
+      "members": [
+        "tests/__init__.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "root_metrics": {
+        "root_score": 0.1473268067025697,
+        "source_centrality": 0.0,
+        "time_earliness": 0.7191595311138288,
+        "authority": 0.0,
+        "cycle_penalty": 0.6842105263157894
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "tests"
+      }
+    },
+    {
+      "id": "scc_516",
+      "kind": "module",
+      "label": "tests/phase5_3_test.py",
+      "layer": 0,
+      "knowledge_level": 0.0,
+      "is_root": true,
+      "scope": "architecture",
+      "members": [
+        "tests/phase5_3_test.py"
+      ],
+      "scc_size": 1,
+      "scc_health": {
+        "size": 1,
+        "density": 1.0,
+        "max_cycle_len": 0,
+        "warning": "singleton"
+      },
+      "root_metrics": {
+        "root_score": 0.19925008009749234,
+        "source_centrality": 0.14285714285714285,
+        "time_earliness": 0.7017609186207138,
+        "authority": 0.0,
+        "cycle_penalty": 0.6842105263157894
+      },
+      "ports": {
+        "inputs": [
+          "in.default"
+        ],
+        "outputs": [
+          "out.default"
+        ]
+      },
+      "metadata": {
+        "parent": "tests"
+      }
+    }
+  ],
+  "sample_l2_edges": [
+    {
+      "source": "scc_420",
+      "target": "scc_320",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_509",
+      "target": "scc_523",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_509",
+      "target": "scc_524",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_20",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_361",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_406",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_2",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    },
+    {
+      "source": "scc_420",
+      "target": "scc_451",
+      "type": "hier_root",
+      "relation_kind": "hier_root",
+      "score": 0.55,
+      "confidence": 0.65,
+      "channels": {
+        "structural": 0.0,
+        "semantic": 0.0,
+        "temporal": 0.0,
+        "reference": 0.0,
+        "contextual": 0.0
+      },
+      "evidence": [
+        "root_coalesce"
+      ],
+      "is_backbone": true,
+      "mode_layer": 0
+    }
+  ]
+}

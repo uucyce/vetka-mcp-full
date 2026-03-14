@@ -1,0 +1,17 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,audio_qc_score,audio_pause_count,audio_longest_pause_ms,audio_stretch_events,grounded_context,grounded_files,grounded_packing_path,grounded_jepa_trigger,grounded_jepa_mode,timestamp
+A_qwen_only,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.15,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.001015+00:00
+A_qwen_only,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.47,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.052531+00:00
+A_qwen_only,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.88,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.105588+00:00
+B_api_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,53.68,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.159316+00:00
+B_api_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.2,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.211572+00:00
+B_api_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,51.85,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.263464+00:00
+C_api_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.29,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.314804+00:00
+C_api_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.26,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.366097+00:00
+C_api_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,51.25,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.417420+00:00
+D_ollama_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.24,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.468742+00:00
+D_ollama_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.23,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.521030+00:00
+D_ollama_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,50.79,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.571874+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.22,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.624173+00:00
+E_ollama_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.92,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.676140+00:00
+E_ollama_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,53.0,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.729199+00:00
+F_mimo_short,short_live,1,14,True,,20.0,50.0,20.0,50.0,52.18,20,1,7,1.0,DRY_RUN_SYNTHETIC,,,,,,,False,0,,,,2026-03-04T00:04:26.781435+00:00

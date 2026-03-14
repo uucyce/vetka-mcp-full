@@ -1,0 +1,5 @@
+Устройство Interrupt+Restart Stream Protocol (IRSP):
+
+1. **Interrupt**: Сигнал от клиента или сервер
+
+[Stream stopped: timeout]

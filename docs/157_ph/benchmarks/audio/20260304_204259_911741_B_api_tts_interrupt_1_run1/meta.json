@@ -1,0 +1,22 @@
+{
+  "mode": "B_api_tts",
+  "prompt_id": "interrupt_1",
+  "run_index": 1,
+  "audio_chunks": 2,
+  "ttft_text_ms": 7099.6374579845,
+  "ttfa_audio_ms": 12508.389291993808,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260304_204259_911741_B_api_tts_interrupt_1_run1/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 15.92,
+    "frame_ms": 20,
+    "silence_threshold": 0.01864,
+    "silence_ratio": 0.6307,
+    "pause_count": 6,
+    "long_pause_count": 2,
+    "longest_pause_ms": 5360,
+    "stretch_events": 0,
+    "qc_score": 46.0
+  }
+}

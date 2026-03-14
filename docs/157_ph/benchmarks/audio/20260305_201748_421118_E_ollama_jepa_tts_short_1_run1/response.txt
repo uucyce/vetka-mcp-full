@@ -1,0 +1,6 @@
+На основе предоставленного контекста:
+
+1. **File**: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/PHASE_52_6_SIMPLE_SMOOTH_CAMERA.md`  
+   **Пояснение**: Содержит спецификации для реализации плавного движения камеры в 3D-сцене.
+
+2. **

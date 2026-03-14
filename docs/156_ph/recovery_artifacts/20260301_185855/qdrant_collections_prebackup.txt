@@ -1,0 +1,7 @@
+HTTP/1.1 200 OK
+content-length: 335
+content-type: application/json
+vary: Origin, Access-Control-Request-Method, Access-Control-Request-Headers
+date: Sun, 01 Mar 2026 16:28:09 GMT
+
+{"result":{"collections":[{"name":"VetkaTree"},{"name":"VetkaChangeLog"},{"name":"VetkaGroupChat"},{"name":"vetka_metadata"},{"name":"vetka_files"},{"name":"vetka_elisya"},{"name":"VetkaTrash"},{"name":"VetkaLeaf"},{"name":"VetkaArtifacts"},{"name":"vetka_user_memories"},{"name":"vetka_mcp_states"}]},"status":"ok","time":0.000011666}

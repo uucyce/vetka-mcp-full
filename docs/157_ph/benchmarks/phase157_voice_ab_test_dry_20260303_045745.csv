@@ -1,0 +1,16 @@
+mode,prompt_id,run_index,prompt_chars,success,error,ttft_text_ms,ttfa_audio_ms,reaction_text_ms,reaction_audio_ms,e2e_ms,tokens_out,audio_chunks,response_chars,quality_proxy,response_preview,audio_dir,audio_merged_wav,timestamp
+A_qwen_only,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.15,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.311685+00:00
+A_qwen_only,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.16,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.363886+00:00
+A_qwen_only,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.14,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.416060+00:00
+B_api_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.18,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.467285+00:00
+B_api_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.16,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.518486+00:00
+B_api_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.16,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.570701+00:00
+C_api_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.32,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.623109+00:00
+C_api_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,52.36,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.675542+00:00
+C_api_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.33,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.728014+00:00
+D_ollama_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,51.6,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.779677+00:00
+D_ollama_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.82,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.831581+00:00
+D_ollama_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,51.2,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.882851+00:00
+E_ollama_jepa_tts,short_1,1,45,True,,20.0,50.0,20.0,50.0,52.3,20,1,22,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.935246+00:00
+E_ollama_jepa_tts,context_1,1,85,True,,20.0,50.0,20.0,50.0,51.8,20,1,42,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:44.987126+00:00
+E_ollama_jepa_tts,long_1,1,124,True,,20.0,50.0,20.0,50.0,52.28,24,1,62,1.0,DRY_RUN_SYNTHETIC,,,2026-03-03T01:57:45.039456+00:00

@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "artifact_window_routing_v1.schema.json",
+  "title": "VETKA Artifact Window Routing V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_id",
+    "action",
+    "payload",
+    "timestamp_ms"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "artifact_window_routing_v1"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^[a-fA-F0-9-]{16,64}$"
+    },
+    "action": {
+      "type": "string",
+      "enum": [
+        "open_artifact_window",
+        "close_artifact_window",
+        "focus_artifact_window",
+        "set_artifact_fullscreen"
+      ]
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "window_label": {
+          "type": "string",
+          "enum": [
+            "artifact-main",
+            "artifact-media"
+          ]
+        },
+        "fullscreen_enabled": {
+          "type": "boolean"
+        },
+        "artifact_payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema_version",
+            "path",
+            "name",
+            "content_mode"
+          ],
+          "properties": {
+            "schema_version": {
+              "type": "string",
+              "const": "artifact_window_payload_v1"
+            },
+            "path": {
+              "type": "string",
+              "minLength": 1
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "extension": {
+              "type": "string",
+              "minLength": 1
+            },
+            "artifact_id": {
+              "type": "string",
+              "minLength": 1
+            },
+            "initial_seek_sec": {
+              "type": "number",
+              "minimum": 0
+            },
+            "content_mode": {
+              "type": "string",
+              "enum": [
+                "file",
+                "raw",
+                "web"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "timestamp_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "open_artifact_window"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "window_label",
+              "artifact_payload"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "close_artifact_window"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "window_label"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "focus_artifact_window"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "window_label"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "action": {
+            "const": "set_artifact_fullscreen"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "required": [
+              "window_label",
+              "fullscreen_enabled"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,231 @@
+{
+  "success": true,
+  "schema_version": "cut_project_state_v1",
+  "project": {
+    "schema_version": "cut_project_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "display_name": "Berlin Fixture Demo",
+    "source_path": "/Users/danilagulin/work/teletape_temp/berlin",
+    "sandbox_root": "/tmp/codex54_cut_fixture_sandbox",
+    "bootstrap_profile": "berlin_fixture_v1",
+    "state": "ready"
+  },
+  "bootstrap_state": {
+    "schema_version": "cut_bootstrap_state_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "last_bootstrap_mode": "create_or_open",
+    "last_source_path": "/Users/danilagulin/work/teletape_temp/berlin",
+    "last_stats": {
+      "media_files": 895,
+      "video_files": 159,
+      "audio_files": 2,
+      "image_files": 734,
+      "doc_files": 3,
+      "scanned_entries": 1059
+    },
+    "last_degraded_reason": "",
+    "last_job_id": "",
+    "updated_at": "2026-03-13T00:00:00+00:00",
+    "profile": {
+      "profile_name": "berlin_fixture_v1",
+      "source_label": "berlin_sample",
+      "sandbox_hint": "codex54_cut_fixture_sandbox",
+      "reserved_port": 3211,
+      "launch_protocol_doc": "docs/170_ph_VIDEO_edit_mode/PHASE_170_CUT_LAUNCH_AND_PORT_PROTOCOL_2026-03-13.md",
+      "music_track": {
+        "path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+        "relative_path": "250623_vanpticdanyana_berlin_Punch.m4a",
+        "label": "punch_track",
+        "priority": 2
+      }
+    }
+  },
+  "timeline_state": {
+    "schema_version": "cut_timeline_state_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "timeline_id": "main",
+    "revision": 1,
+    "fps": 25,
+    "lanes": [
+      {
+        "lane_id": "video_main",
+        "lane_type": "video_main",
+        "clips": [
+          {
+            "clip_id": "berlin_clip_01",
+            "scene_id": "scene_01",
+            "start_sec": 0.0,
+            "duration_sec": 8.4,
+            "source_path": "/Users/danilagulin/work/teletape_temp/berlin/source_gh5/take_01.mov"
+          }
+        ]
+      },
+      {
+        "lane_id": "audio_sync",
+        "lane_type": "audio_sync",
+        "clips": [
+          {
+            "clip_id": "berlin_music_01",
+            "scene_id": "music_ref",
+            "start_sec": 0.0,
+            "duration_sec": 182.4,
+            "source_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a"
+          }
+        ]
+      }
+    ],
+    "selection": {
+      "clip_ids": [
+        "berlin_clip_01"
+      ],
+      "scene_ids": [
+        "scene_01"
+      ]
+    },
+    "view": {
+      "zoom": 1.25,
+      "active_lane_id": "video_main"
+    },
+    "updated_at": "2026-03-13T00:00:00+00:00"
+  },
+  "scene_graph": null,
+  "scene_graph_view": null,
+  "waveform_bundle": null,
+  "transcript_bundle": null,
+  "thumbnail_bundle": {
+    "schema_version": "cut_thumbnail_bundle_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "revision": 1,
+    "items": [
+      {
+        "item_id": "thumb_take_01",
+        "source_path": "/Users/danilagulin/work/teletape_temp/berlin/source_gh5/take_01.mov",
+        "modality": "video",
+        "duration_sec": 8.4
+      },
+      {
+        "item_id": "thumb_board_01",
+        "source_path": "/Users/danilagulin/work/teletape_temp/berlin/boards/frame_01.png",
+        "modality": "image",
+        "duration_sec": 0.0
+      },
+      {
+        "item_id": "thumb_punch",
+        "source_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+        "modality": "audio",
+        "duration_sec": 182.4
+      }
+    ],
+    "generated_at": "2026-03-13T00:00:00+00:00"
+  },
+  "audio_sync_result": null,
+  "music_sync_result": {
+    "schema_version": "cut_music_sync_result_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "revision": 1,
+    "music_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+    "tempo": {
+      "bpm": 124.0,
+      "confidence": 0.89
+    },
+    "downbeats": [0.0, 1.94, 3.88, 5.82],
+    "phrases": [
+      {
+        "phrase_id": "phrase_intro",
+        "start_sec": 0.0,
+        "end_sec": 15.52,
+        "label": "Intro",
+        "energy": 0.61
+      },
+      {
+        "phrase_id": "phrase_main",
+        "start_sec": 15.52,
+        "end_sec": 31.04,
+        "label": "Main lift",
+        "energy": 0.86
+      }
+    ],
+    "cue_points": [
+      {
+        "cue_id": "cue_drop_01",
+        "start_sec": 5.82,
+        "end_sec": 6.18,
+        "label": "Drop lead",
+        "cue_type": "drop",
+        "confidence": 0.94,
+        "energy": 0.88
+      },
+      {
+        "cue_id": "cue_turn_02",
+        "start_sec": 15.52,
+        "end_sec": 15.9,
+        "label": "Phrase turn",
+        "cue_type": "phrase_turn",
+        "confidence": 0.91,
+        "energy": 0.79
+      },
+      {
+        "cue_id": "cue_hit_03",
+        "start_sec": 23.28,
+        "end_sec": 23.64,
+        "label": "Hit accent",
+        "cue_type": "accent",
+        "confidence": 0.87,
+        "energy": 0.83
+      }
+    ],
+    "derived_from": "music_sync_transient_v1",
+    "generated_at": "2026-03-13T00:00:00+00:00"
+  },
+  "music_cue_summary": {
+    "schema_version": "cut_music_cue_summary_v1",
+    "track_label": "250623_vanpticdanyana_berlin_Punch.m4a",
+    "music_path": "/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a",
+    "primary_candidate": true,
+    "cue_point_count": 3,
+    "phrase_count": 2,
+    "downbeat_count": 4,
+    "tempo_bpm": 124.0,
+    "tempo_confidence": 0.89,
+    "top_cues": [
+      {
+        "cue_id": "cue_drop_01",
+        "label": "Drop lead",
+        "start_sec": 5.82,
+        "cue_type": "drop",
+        "confidence": 0.94
+      },
+      {
+        "cue_id": "cue_turn_02",
+        "label": "Phrase turn",
+        "start_sec": 15.52,
+        "cue_type": "phrase_turn",
+        "confidence": 0.91
+      }
+    ]
+  },
+  "slice_bundle": null,
+  "timecode_sync_result": null,
+  "sync_surface": {
+    "schema_version": "cut_sync_surface_v1",
+    "project_id": "cut_berlin_fixture_demo",
+    "items": []
+  },
+  "time_marker_bundle": null,
+  "recent_jobs": [],
+  "active_jobs": [],
+  "layout": {
+    "sandbox_root": "/tmp/codex54_cut_fixture_sandbox"
+  },
+  "runtime_ready": true,
+  "graph_ready": false,
+  "waveform_ready": false,
+  "transcript_ready": false,
+  "thumbnail_ready": true,
+  "audio_sync_ready": false,
+  "music_cues_ready": true,
+  "slice_ready": false,
+  "timecode_sync_ready": false,
+  "sync_surface_ready": false,
+  "time_markers_ready": false
+}

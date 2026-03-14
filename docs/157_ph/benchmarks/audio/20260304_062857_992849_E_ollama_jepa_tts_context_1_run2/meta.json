@@ -1,0 +1,10 @@
+{
+  "mode": "E_ollama_jepa_tts",
+  "prompt_id": "context_1",
+  "run_index": 2,
+  "audio_chunks": 0,
+  "ttft_text_ms": 119.74308401113376,
+  "ttfa_audio_ms": null,
+  "merged_wav": null,
+  "wav_qc": null
+}

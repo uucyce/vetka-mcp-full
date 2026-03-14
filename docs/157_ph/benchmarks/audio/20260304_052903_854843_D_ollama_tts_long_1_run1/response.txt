@@ -1,0 +1,4 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: When an agent's response is interrupted by another user's message, the system detects this and triggers an interrupt event (`tool_execution_mode != enabled_*`).
+2. **Restart Stream Protocol**: The system then restarts the

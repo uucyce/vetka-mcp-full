@@ -1,0 +1,6 @@
+Устройство Interrupt+Restart Stream Protocol:
+
+1. **Прием данных**: Клиент отправляет данные серверу.
+
+
+[Stream stopped: timeout]

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "cut_bootstrap_state_v1.schema.json",
+  "title": "VETKA CUT Bootstrap State V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "project_id",
+    "last_bootstrap_mode",
+    "last_source_path",
+    "last_stats",
+    "last_degraded_reason",
+    "last_job_id",
+    "updated_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "cut_bootstrap_state_v1"
+    },
+    "project_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "last_bootstrap_mode": {
+      "type": "string",
+      "enum": ["create_or_open", "open_existing", "create_new"]
+    },
+    "last_source_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "last_stats": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "last_degraded_reason": {
+      "type": "string"
+    },
+    "last_job_id": {
+      "type": "string"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}

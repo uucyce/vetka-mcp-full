@@ -1,6 +1,8 @@
 """Phase 136 tests for TaskBoard claim/complete flow."""
 
+import asyncio
 from datetime import datetime
+from unittest.mock import AsyncMock
 
 from src.orchestration.task_board import TaskBoard
 
@@ -106,3 +108,73 @@ def test_complete_task_returns_not_found_for_unknown_id(tmp_path):
     assert result["success"] is False
     assert "not found" in result["error"]
 
+
+def test_status_history_tracks_created_claimed_and_closed(tmp_path):
+    board = _create_board(tmp_path)
+    task_id = board.add_task(title="History protocol")
+    board.claim_task(task_id, "codex", "claude_code")
+    board.complete_task(task_id, commit_hash="abc123", commit_message="history close")
+
+    history = board.get_task_history(task_id)
+    assert [row["event"] for row in history] == ["created", "claimed", "closed"]
+    assert history[1]["agent_name"] == "codex"
+    assert history[-1]["status"] == "done"
+
+
+def test_protocol_task_requires_closure_proof(tmp_path):
+    board = _create_board(tmp_path)
+    task_id = board.add_task(
+        title="Protocol close",
+        require_closure_proof=True,
+        closure_tests=["python -c \"print('ok')\""],
+        closure_files=["src/orchestration/task_board.py"],
+    )
+    board.claim_task(task_id, "codex", "claude_code")
+    board.record_pipeline_stats(task_id, {"success": True, "verifier_avg_confidence": 0.9})
+
+    result = board.complete_task(task_id, commit_hash="abc123", commit_message="manual close")
+
+    assert result["success"] is False
+    assert "closure_proof" in result["error"]
+
+
+def test_run_closure_protocol_executes_tests_commit_and_tracker(monkeypatch, tmp_path):
+    board = _create_board(tmp_path)
+    task_id = board.add_task(
+        title="Protocol success path",
+        assigned_to="codex",
+        agent_type="claude_code",
+        require_closure_proof=True,
+        closure_tests=["python -c \"print('ok')\""],
+        closure_files=["src/orchestration/task_board.py"],
+    )
+    board.record_pipeline_stats(task_id, {"success": True, "verifier_avg_confidence": 0.92, "duration_s": 1.5})
+
+    class _FakeCommitTool:
+        def execute(self, arguments):
+            return {
+                "success": True,
+                "result": {
+                    "hash": "cafebabe",
+                    "message": arguments["message"],
+                    "digest_updated": True,
+                },
+                "error": None,
+            }
+
+    tracker_mock = AsyncMock()
+    monkeypatch.setattr("src.mcp.tools.git_tool.GitCommitTool", _FakeCommitTool)
+    monkeypatch.setattr("src.services.task_tracker.on_task_completed", tracker_mock)
+
+    result = asyncio.run(
+        board.run_closure_protocol(task_id, activating_agent="codex", agent_type="claude_code")
+    )
+
+    assert result["success"] is True
+    assert result["commit_hash"] == "cafebabe"
+    assert result["tests"][0]["passed"] is True
+    task = board.get_task(task_id)
+    assert task["status"] == "done"
+    assert task["closed_by"] == "codex"
+    assert task["closure_proof"]["commit_hash"] == "cafebabe"
+    tracker_mock.assert_awaited_once()

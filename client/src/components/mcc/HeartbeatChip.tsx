@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
 
 // Format interval helper
@@ -10,9 +10,24 @@ function fmtInterval(s: number): string {
 
 export function HeartbeatChip() {
   const { heartbeat, updateHeartbeat } = useMCCStore();
+  const tasks = useMCCStore((s) => s.tasks);
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
+  const selectedTaskId = useMCCStore((s) => s.selectedTaskId);
+  const navTaskId = useMCCStore((s) => s.navTaskId);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
   const [nextTickIn, setNextTickIn] = useState<number | null>(null);
-  const [showIntervalInput, setShowIntervalInput] = useState(false);
-  const [tempInterval, setTempInterval] = useState(heartbeat?.interval || 30);
+  const [customMinutes, setCustomMinutes] = useState('');
+
+  const PRESETS = useMemo(() => ([
+    { label: '10 min', value: 600 },
+    { label: '30 min', value: 1800 },
+    { label: '1 hour', value: 3600 },
+    { label: '4 hours', value: 14400 },
+    { label: '12 hours', value: 43200 },
+    { label: '1 day', value: 86400 },
+    { label: '1 week', value: 604800 },
+  ]), []);
 
   // Countdown timer effect
   useEffect(() => {
@@ -29,125 +44,287 @@ export function HeartbeatChip() {
     return () => clearInterval(timer);
   }, [heartbeat?.enabled, heartbeat?.last_tick, heartbeat?.interval]);
 
-  // Toggle heartbeat
-  const handleToggle = useCallback(async () => {
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const toggleHeartbeat = useCallback(async () => {
     if (!heartbeat) return;
     await updateHeartbeat({ enabled: !heartbeat.enabled });
   }, [heartbeat, updateHeartbeat]);
 
-  // Handle interval change
-  const handleIntervalSubmit = useCallback(async () => {
-    if (!heartbeat) return;
-    await updateHeartbeat({ interval: tempInterval });
-    setShowIntervalInput(false);
-  }, [heartbeat, tempInterval, updateHeartbeat]);
+  const selectPreset = useCallback(async (seconds: number) => {
+    await updateHeartbeat({ interval: seconds });
+  }, [updateHeartbeat]);
+
+  const applyCustom = useCallback(async () => {
+    const mins = parseInt(customMinutes, 10);
+    if (!Number.isFinite(mins) || mins <= 0) return;
+    await updateHeartbeat({ interval: mins * 60 });
+    setCustomMinutes('');
+  }, [customMinutes, updateHeartbeat]);
+
+  const focusedTaskId = navTaskId || selectedTaskId || '';
+  const focusedTask = tasks.find((task) => task.id === focusedTaskId) || null;
+  const focusedWorkflowFamily = String(focusedTask?.workflow_family || focusedTask?.workflow_id || '').trim();
+  const profileMode = String(heartbeat?.profile_mode || 'global');
+
+  const applyScope = useCallback(async (mode: 'global' | 'project' | 'workflow' | 'task') => {
+    const payload: Record<string, any> = {
+      profile_mode: mode,
+      project_id: '',
+      workflow_family: '',
+      task_id: '',
+    };
+    if (mode === 'project') {
+      payload.project_id = activeProjectId || '';
+    } else if (mode === 'workflow') {
+      payload.project_id = activeProjectId || '';
+      payload.workflow_family = focusedWorkflowFamily || '';
+    } else if (mode === 'task') {
+      payload.project_id = activeProjectId || '';
+      payload.workflow_family = focusedWorkflowFamily || '';
+      payload.task_id = focusedTaskId || '';
+    }
+    await updateHeartbeat(payload);
+  }, [activeProjectId, focusedTaskId, focusedWorkflowFamily, updateHeartbeat]);
 
   if (!heartbeat) return null;
 
   const isActive = heartbeat.enabled;
-  const displayTime = nextTickIn !== null ? fmtInterval(nextTickIn) : '--';
+  const displayTime = isActive ? (nextTickIn !== null ? fmtInterval(nextTickIn) : '--') : 'Heartbeat off';
+  const selectedPreset = PRESETS.find(p => p.value === heartbeat.interval) || null;
+  const nextTickTs = heartbeat.last_tick ? (heartbeat.last_tick + heartbeat.interval) * 1000 : null;
+  const nextTickLabel = nextTickTs ? new Date(nextTickTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+  const remainingLabel = nextTickIn !== null ? `${Math.max(0, Math.round(nextTickIn / 60))}m remaining` : '--';
+  const scopeLabel =
+    String(heartbeat.effective_profile?.key || '').trim()
+      || (
+        profileMode === 'task'
+          ? `task:${heartbeat.task_id || focusedTaskId || '-'}`
+          : profileMode === 'workflow'
+            ? (() => {
+              const wf = heartbeat.workflow_family || focusedWorkflowFamily || '-';
+              const project = heartbeat.project_id || activeProjectId || '';
+              return project ? `workflow:${wf}@${project}` : `workflow:${wf}`;
+            })()
+            : profileMode === 'project'
+              ? `project:${heartbeat.project_id || activeProjectId || '-'}`
+              : 'global'
+      );
 
   return (
     <div
+      ref={dropdownRef}
       style={{
         display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        background: '#111',
-        border: `1px solid ${isActive ? '#4ecdc4' : 'rgba(255,255,255,0.1)'}`,
-        borderRadius: 12,
-        padding: '4px 8px',
-        fontSize: 10,
-        fontFamily: 'monospace',
-        color: '#ccc',
-        cursor: 'pointer',
+        flexDirection: 'column',
+        alignItems: 'stretch',
         position: 'relative',
-        animation: isActive ? 'hb-pulse 1.5s infinite' : 'none',
-      }}
-      onClick={handleToggle}
-      onContextMenu={(e) => {
-        e.preventDefault();
-        setShowIntervalInput(true);
       }}
     >
-      {/* Status dot */}
-      <div
+      <button
+        onClick={() => setOpen(v => !v)}
         style={{
-          width: 6,
-          height: 6,
-          borderRadius: '50%',
-          background: isActive ? '#4ecdc4' : '#444',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          background: '#111',
+          border: `1px solid ${open ? '#4ecdc4' : (isActive ? '#4ecdc460' : 'rgba(255,255,255,0.1)')}`,
+          borderRadius: 12,
+          padding: '4px 8px',
+          fontSize: 10,
+          fontFamily: 'monospace',
+          color: '#ccc',
+          cursor: 'pointer',
+          animation: isActive ? 'hb-pulse 1.5s infinite' : 'none',
         }}
-      />
+        title="Heartbeat settings"
+      >
+        <span style={{ width: 10, textAlign: 'center' }}>⏱</span>
+        <span>{isActive ? displayTime : 'Heartbeat off'}</span>
+        <span style={{ color: '#777' }}>▾</span>
+      </button>
 
-      {/* Label */}
-      <span>{isActive ? `Heartbeat ${displayTime}` : 'Heartbeat off'}</span>
-
-      {/* Interval popup */}
-      {showIntervalInput && (
+      {open && (
         <div
           style={{
             position: 'absolute',
-            top: '100%',
+            top: 'calc(100% + 4px)',
             left: 0,
             background: '#1a1a1a',
             border: '1px solid #333',
-            borderRadius: 4,
-            padding: 8,
+            borderRadius: 6,
             zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 6,
-            minWidth: 120,
+            width: 220,
+            fontFamily: 'monospace',
+            fontSize: 10,
+            color: '#ccc',
+            overflow: 'hidden',
           }}
-          onClick={e => e.stopPropagation()}
         >
-          <div style={{ fontSize: 10, color: '#888' }}>Interval (seconds)</div>
-          <input
-            type="number"
-            value={tempInterval}
-            onChange={e => setTempInterval(Number(e.target.value))}
+          <button
+            onClick={toggleHeartbeat}
             style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid #333',
-              borderRadius: 2,
-              color: '#ccc',
-              padding: '4px 6px',
-              fontSize: 11,
+              width: '100%',
+              textAlign: 'left',
+              background: 'transparent',
+              border: 'none',
+              borderBottom: '1px solid #2a2a2a',
+              color: '#ddd',
+              padding: '8px 10px',
               fontFamily: 'monospace',
+              fontSize: 10,
+              cursor: 'pointer',
             }}
-          />
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={handleIntervalSubmit}
+          >
+            {isActive ? '● Pause' : '● Start'}
+          </button>
+
+          <div style={{ padding: '6px 8px' }}>
+            <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+              Scope
+            </div>
+            {([
+              { key: 'global', label: 'Global', disabled: false },
+              { key: 'project', label: 'Project', disabled: !activeProjectId },
+              { key: 'workflow', label: 'Workflow', disabled: !focusedWorkflowFamily },
+              { key: 'task', label: 'Task', disabled: !focusedTaskId },
+            ] as const).map((item) => {
+              const selected = profileMode === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => { void applyScope(item.key); }}
+                  disabled={item.disabled}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: item.disabled ? '#666' : (selected ? '#e8f8f6' : '#bbb'),
+                    padding: '4px 2px',
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    cursor: item.disabled ? 'default' : 'pointer',
+                    opacity: item.disabled ? 0.5 : 1,
+                  }}
+                >
+                  <span style={{ color: selected ? '#4ecdc4' : '#666' }}>{selected ? '●' : '○'}</span>
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div style={{ padding: '6px 8px', borderTop: '1px solid #2a2a2a' }}>
+            <div style={{ color: '#7f8893', fontSize: 9, textTransform: 'uppercase', marginBottom: 6 }}>
+              Interval
+            </div>
+            {PRESETS.map((preset) => {
+              const selected = heartbeat.interval === preset.value;
+              return (
+                <button
+                  key={preset.value}
+                  onClick={() => selectPreset(preset.value)}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    background: 'transparent',
+                    border: 'none',
+                    color: selected ? '#e8f8f6' : '#bbb',
+                    padding: '4px 2px',
+                    fontFamily: 'monospace',
+                    fontSize: 10,
+                    cursor: 'pointer',
+                  }}
+                >
+                  <span style={{ color: selected ? '#4ecdc4' : '#666' }}>{selected ? '●' : '○'}</span>
+                  <span>{preset.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid #2a2a2a',
+              padding: '8px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <span style={{ color: '#888' }}>Custom:</span>
+            <input
+              type="number"
+              min={1}
+              value={customMinutes}
+              onChange={(e) => setCustomMinutes(e.target.value)}
               style={{
-                flex: 1,
-                background: '#2d3d5a',
-                color: '#8af',
-                border: 'none',
-                borderRadius: 2,
-                padding: '4px 0',
+                width: 56,
+                background: '#111',
+                border: '1px solid #333',
+                borderRadius: 3,
+                color: '#ddd',
+                padding: '3px 5px',
                 fontSize: 10,
+                fontFamily: 'monospace',
+              }}
+            />
+            <span style={{ color: '#888' }}>min</span>
+            <button
+              onClick={applyCustom}
+              style={{
+                marginLeft: 'auto',
+                background: '#222',
+                border: '1px solid #3a3a3a',
+                color: '#ddd',
+                borderRadius: 3,
+                padding: '3px 8px',
+                fontSize: 10,
+                fontFamily: 'monospace',
                 cursor: 'pointer',
               }}
             >
               Set
             </button>
-            <button
-              onClick={() => setShowIntervalInput(false)}
-              style={{
-                flex: 1,
-                background: 'transparent',
-                color: '#888',
-                border: '1px solid #333',
-                borderRadius: 2,
-                padding: '4px 0',
-                fontSize: 10,
-                cursor: 'pointer',
-              }}
-            >
-              Cancel
-            </button>
+          </div>
+
+          <div
+            style={{
+              borderTop: '1px solid #2a2a2a',
+              padding: '8px 10px',
+              color: '#8d8d8d',
+              fontSize: 9,
+              lineHeight: 1.5,
+            }}
+          >
+            <div>Next: {nextTickLabel} ({remainingLabel})</div>
+            <div>
+              Dispatched: {heartbeat.tasks_dispatched ?? 0}
+              {' | '}
+              Last: {heartbeat.last_tick ? 'OK' : '--'}
+              {selectedPreset ? ` | ${selectedPreset.label}` : ''}
+            </div>
+            <div>Scope: {scopeLabel}</div>
+            <div>
+              localguys: {heartbeat.localguys_enabled === false ? 'off' : (heartbeat.localguys_action || 'auto')}
+              {' | '}
+              idle: {Math.max(1, Math.round(Number(heartbeat.localguys_idle_sec || 900) / 60))}m
+            </div>
           </div>
         </div>
       )}

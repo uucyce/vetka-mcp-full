@@ -1,0 +1,4 @@
+2 конкретных файла:
+
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/101_ph_eval_reactions/chat_into_vetka_grok.txt` - Этот файл необходим для понимания интеграции чатов в VETKA как "динамических артефактов".
+2. `/

@@ -1,0 +1,3 @@
+Interrupt + Restart Stream Protocol:
+
+1. **Interrupt**: Когда агент завершает свою работу и хочет передать voice stream на another agent или tool, он должен отслеживать interrupt events (`on_tool_in_stream_unsupported`) в

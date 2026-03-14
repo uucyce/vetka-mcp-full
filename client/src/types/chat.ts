@@ -12,11 +12,14 @@ export interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
   agent?: 'PM' | 'Dev' | 'QA' | 'Architect' | 'Hostess';
   content: string;
-  type: 'text' | 'code' | 'plan' | 'compound';
+  // MARKER_156.VOICE.S1_CONTRACT_TYPES: Voice messages are first-class chat timeline items.
+  // MARKER_174.REFLEX_LIVE: Added 'reflex' type for tool selection visibility
+  type: 'text' | 'code' | 'plan' | 'compound' | 'voice' | 'reflex';
   timestamp: string;
   metadata?: {
     model?: string;
     model_source?: string;  // Phase 111.10.2: Provider source for Reply routing
+    model_provider?: string; // MARKER_152.FIX2: Provider type for display (polza, xai, etc.)
     duration?: number;
     tokens?: number;
     score?: number;
@@ -33,6 +36,34 @@ export interface ChatMessage {
       model?: string;
       text_preview: string;         // First ~100 chars of the message
       timestamp: string;
+    };
+    // MARKER_174.REFLEX_LIVE: Tool selection visibility metadata
+    reflex?: {
+      event: 'recommendation' | 'outcome' | 'verifier' | 'filter';
+      tools?: Array<{ id: string; score?: number }>;
+      tools_used?: string[];
+      feedback_count?: number;
+      passed?: boolean;
+      original_count?: number;
+      filtered_count?: number;
+      phase?: string;
+      tier?: string;
+      subtask?: string;
+    };
+    // MARKER_156.VOICE.S1_CONTRACT_AUDIO: Persisted audio payload contract for voice bubbles.
+    audio?: {
+      format?: string | null;
+      duration_ms?: number | null;
+      waveform?: number[];
+      storage_id?: string | null;
+      url?: string | null;
+    };
+    // MARKER_156.VOICE.S1_CONTRACT_VOICE: Voice identity metadata for model/provider lock logic.
+    voice?: {
+      voice_id?: string | null;
+      tts_provider?: string | null;
+      model_identity_key?: string;
+      persona_tag?: string | null;
     };
   };
   sections?: {

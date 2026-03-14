@@ -1,0 +1,6 @@
+Вот краткий план оптимизации `memory context packing` в VETKA с фокусом на сохранение латентности.
+
+### 1. Профилирование и Анализ (Baseline)
+*   **И
+
+[Stream stopped: timeout]

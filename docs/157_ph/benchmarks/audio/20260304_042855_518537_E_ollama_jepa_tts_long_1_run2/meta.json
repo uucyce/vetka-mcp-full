@@ -1,0 +1,22 @@
+{
+  "mode": "E_ollama_jepa_tts",
+  "prompt_id": "long_1",
+  "run_index": 2,
+  "audio_chunks": 8,
+  "ttft_text_ms": 119.80354200932197,
+  "ttfa_audio_ms": 5393.438375002006,
+  "merged_wav": "docs/157_ph/benchmarks/audio/20260304_042855_518537_E_ollama_jepa_tts_long_1_run2/merged.wav",
+  "wav_qc": {
+    "ok": true,
+    "sample_rate": 24000,
+    "duration_s": 39.68,
+    "frame_ms": 20,
+    "silence_threshold": 0.018487,
+    "silence_ratio": 0.5076,
+    "pause_count": 32,
+    "long_pause_count": 15,
+    "longest_pause_ms": 1460,
+    "stretch_events": 0,
+    "qc_score": 40.5
+  }
+}

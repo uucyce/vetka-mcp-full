@@ -2,7 +2,8 @@
 // Phase 100.1: Basic commands
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, Size, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_dialog::DialogExt;
 use url::Url;
 use std::sync::{Mutex, OnceLock};
 
@@ -26,6 +27,156 @@ pub struct HealthStatus {
     pub backend_alive: bool,
     pub qdrant_alive: bool,
     pub latency_ms: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetachedMediaGeometryTrace {
+    pub src: String,
+    pub dpr: f64,
+    pub window_inner_width: f64,
+    pub window_inner_height: f64,
+    pub video_intrinsic_width: f64,
+    pub video_intrinsic_height: f64,
+    pub wrapper_width: f64,
+    pub wrapper_height: f64,
+    pub toolbar_width: f64,
+    pub toolbar_height: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DetachedMediaNativeGeometry {
+    pub src: String,
+    pub scale_factor: f64,
+    pub inner_physical_width: f64,
+    pub inner_physical_height: f64,
+    pub inner_logical_width: f64,
+    pub inner_logical_height: f64,
+    pub outer_physical_width: f64,
+    pub outer_physical_height: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct MediaWindowMetadataRequest {
+    path: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct MediaWindowMetadataResponse {
+    success: bool,
+    modality: Option<String>,
+    width_px: Option<u32>,
+    height_px: Option<u32>,
+}
+
+fn backend_api_url() -> String {
+    std::env::var("VETKA_API_URL")
+        .unwrap_or_else(|_| "http://localhost:5001".to_string())
+}
+
+async fn fetch_media_window_metadata(path: &str) -> Option<MediaWindowMetadataResponse> {
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("{}/api/artifacts/media/window-metadata", backend_api_url()))
+        .timeout(std::time::Duration::from_secs(4))
+        .json(&MediaWindowMetadataRequest {
+            path: path.to_string(),
+        })
+        .send()
+        .await
+        .ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    let payload = response.json::<MediaWindowMetadataResponse>().await.ok()?;
+    if !payload.success {
+        return None;
+    }
+    Some(payload)
+}
+
+fn preferred_monitor_size(app: &AppHandle) -> (f64, f64) {
+    // MARKER_159.R12.MONITOR_LOGICAL_SIZE:
+    // Tauri window inner/set_size APIs use logical units. Convert monitor physical pixels
+    // to logical pixels via scale_factor before computing window bounds on Retina macOS.
+    let to_logical = |size: tauri::PhysicalSize<u32>, scale: f64| -> (f64, f64) {
+        let factor = if scale.is_finite() && scale > 0.0 { scale } else { 1.0 };
+        (
+            (size.width as f64 / factor).floor(),
+            (size.height as f64 / factor).floor(),
+        )
+    };
+
+    if let Some(main) = app.get_webview_window("main") {
+        if let Ok(Some(monitor)) = main.current_monitor() {
+            let size = monitor.size();
+            return to_logical(*size, monitor.scale_factor());
+        }
+    }
+    if let Ok(Some(monitor)) = app.primary_monitor() {
+        let size = monitor.size();
+        return to_logical(*size, monitor.scale_factor());
+    }
+    (1440.0, 900.0)
+}
+
+fn compute_detached_media_initial_inner_size(
+    video_width: u32,
+    video_height: u32,
+    screen_width: f64,
+    screen_height: f64,
+) -> (f64, f64) {
+    // MARKER_159.R9.ONE_SHOT_MEDIA_INITIAL_SIZE:
+    // compute detached media window size once, before creation, from real media metadata.
+    const DEFAULT_WINDOW_W: f64 = 960.0;
+    const DEFAULT_WINDOW_H: f64 = 540.0;
+    const MIN_WINDOW_W: f64 = 360.0;
+    const MIN_WINDOW_H: f64 = 240.0;
+    // MARKER_159.R12.DETACHED_MEDIA_TOOLBAR_OUTER:
+    // compact detached media toolbar uses 36 content px + 12 vertical padding + 1 border.
+    const TOOLBAR_H: f64 = 49.0;
+
+    if video_width == 0 || video_height == 0 {
+        return (DEFAULT_WINDOW_W, DEFAULT_WINDOW_H);
+    }
+
+    let max_window_w = (screen_width * 0.92).floor().max(MIN_WINDOW_W);
+    let max_window_h = (screen_height * 0.9).floor().max(MIN_WINDOW_H);
+    let ratio = (video_width as f64) / (video_height as f64);
+
+    let mut window_h = DEFAULT_WINDOW_H.min(max_window_h).max(MIN_WINDOW_H);
+    let mut viewer_h = (window_h - TOOLBAR_H).max(180.0);
+    let mut window_w = (viewer_h * ratio).round().max(MIN_WINDOW_W);
+
+    if window_w > max_window_w {
+        window_w = max_window_w;
+        viewer_h = (window_w / ratio).round();
+        window_h = (viewer_h + TOOLBAR_H).round();
+    }
+
+    if window_h > max_window_h {
+        window_h = max_window_h;
+        viewer_h = (window_h - TOOLBAR_H).max(180.0);
+        window_w = (viewer_h * ratio).round();
+    }
+
+    window_w = window_w.clamp(MIN_WINDOW_W, max_window_w);
+    window_h = window_h.clamp(MIN_WINDOW_H, max_window_h);
+    (window_w, window_h)
+}
+
+fn apply_detached_media_inner_size(
+    window: &WebviewWindow,
+    width: f64,
+    height: f64,
+) -> Result<(), String> {
+    // MARKER_159.R10.ONE_SHOT_REUSE_PIXEL_SIZE:
+    // apply the precomputed pixel size both on first create and when reusing
+    // the singleton detached media window so stale wide bounds do not survive.
+    window
+        .set_size(Size::Logical(LogicalSize::new(width, height)))
+        .map_err(|e| format!("set_size failed: {e}"))
 }
 
 /// Get backend URL configuration
@@ -82,6 +233,412 @@ pub fn get_system_info() -> SystemInfo {
         tauri_version: "2.0".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
     }
+}
+
+/// MARKER_159.R14.DETACHED_MEDIA_TRACE_CMD:
+/// Emit detached media geometry from the frontend into the native terminal logs and
+/// return the observed native window geometry to the renderer for self-debug tooling.
+#[tauri::command]
+pub fn trace_detached_media_geometry(
+    window: WebviewWindow,
+    trace: DetachedMediaGeometryTrace,
+) -> Result<DetachedMediaNativeGeometry, String> {
+    let scale_factor = window
+        .scale_factor()
+        .map_err(|e| format!("scale_factor failed: {e}"))?;
+    let inner = window
+        .inner_size()
+        .map_err(|e| format!("inner_size failed: {e}"))?;
+    let outer = window
+        .outer_size()
+        .map_err(|e| format!("outer_size failed: {e}"))?;
+    let factor = if scale_factor.is_finite() && scale_factor > 0.0 {
+        scale_factor
+    } else {
+        1.0
+    };
+
+    log::info!(
+        "MARKER_159.R14.DETACHED_MEDIA_TRACE src={} dpr={} window_inner={}x{} video_intrinsic={}x{} wrapper={}x{} toolbar={}x{} native_scale={} native_inner_physical={}x{} native_outer_physical={}x{}",
+        trace.src,
+        trace.dpr,
+        trace.window_inner_width,
+        trace.window_inner_height,
+        trace.video_intrinsic_width,
+        trace.video_intrinsic_height,
+        trace.wrapper_width,
+        trace.wrapper_height,
+        trace.toolbar_width,
+        trace.toolbar_height,
+        factor,
+        inner.width,
+        inner.height,
+        outer.width,
+        outer.height,
+    );
+    Ok(DetachedMediaNativeGeometry {
+        src: trace.src,
+        scale_factor: factor,
+        inner_physical_width: inner.width as f64,
+        inner_physical_height: inner.height as f64,
+        inner_logical_width: inner.width as f64 / factor,
+        inner_logical_height: inner.height as f64 / factor,
+        outer_physical_width: outer.width as f64,
+        outer_physical_height: outer.height as f64,
+    })
+}
+
+/// MARKER_161.7.MULTIPROJECT.TAURI.NATIVE_FOLDER_PICKER.V1
+/// Fallback native folder picker for MCC onboarding when JS plugin dialog bridge is unavailable.
+#[tauri::command]
+pub async fn pick_folder_native(app: AppHandle, title: Option<String>) -> Result<Option<String>, String> {
+    let mut builder = app.dialog().file();
+    if let Some(t) = title.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        builder = builder.set_title(t);
+    }
+    let selected = builder
+        .blocking_pick_folder()
+        .and_then(|p| p.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string());
+    Ok(selected)
+}
+
+/// MARKER_159.WINFS.R1_CMD: Native window-level fullscreen toggle.
+#[tauri::command]
+pub fn set_window_fullscreen(
+    app: AppHandle,
+    window_label: Option<String>,
+    fullscreen: bool,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("main")
+        .to_string();
+
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Window not found: {label}"))?;
+
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+
+    if fullscreen {
+        let _ = window.set_focus();
+    }
+    Ok(true)
+}
+
+/// MARKER_159.C2.WINFS.STATE_CMD: Read current native fullscreen state by window label.
+#[tauri::command]
+pub fn get_window_fullscreen(
+    app: AppHandle,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("main")
+        .to_string();
+
+    let window = app
+        .get_webview_window(&label)
+        .ok_or_else(|| format!("Window not found: {label}"))?;
+
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))
+}
+
+/// MARKER_159.C2.WINFS.TOGGLE_CURRENT: Toggle fullscreen for the current (calling) window.
+#[tauri::command]
+pub fn toggle_current_window_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    let current = window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))?;
+    let next = !current;
+
+    window
+        .set_fullscreen(next)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+
+    if next {
+        let _ = window.set_focus();
+    }
+    Ok(next)
+}
+
+/// MARKER_159.C2.WINFS.GET_CURRENT: Read fullscreen state for current (calling) window.
+#[tauri::command]
+pub fn get_current_window_fullscreen(window: WebviewWindow) -> Result<bool, String> {
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen failed: {e}"))
+}
+
+/// MARKER_159.C2.WINFS.SET_CURRENT: Set fullscreen state for current (calling) window.
+#[tauri::command]
+pub fn set_current_window_fullscreen(window: WebviewWindow, fullscreen: bool) -> Result<bool, String> {
+    window
+        .set_fullscreen(fullscreen)
+        .map_err(|e| format!("set_fullscreen failed: {e}"))?;
+    if fullscreen {
+        let _ = window.set_focus();
+    }
+    window
+        .is_fullscreen()
+        .map_err(|e| format!("is_fullscreen verify failed: {e}"))
+}
+
+/// MARKER_159.WINFS.R2_CMD: Open/reuse detached artifact media window.
+#[tauri::command]
+pub async fn open_artifact_media_window(
+    app: AppHandle,
+    path: String,
+    name: Option<String>,
+    extension: Option<String>,
+    artifact_id: Option<String>,
+    in_vetka: Option<bool>,
+    initial_seek_sec: Option<f64>,
+    video_width: Option<u32>,
+    video_height: Option<u32>,
+    aspect_ratio: Option<String>,
+) -> Result<bool, String> {
+    let clean_path = path.trim();
+    if clean_path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let label = "artifact-media".to_string();
+    let window_title = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("Artifact Media")
+        .to_string();
+
+    let mut route = format!("/artifact-media?path={}", urlencoding::encode(clean_path));
+    if let Some(v) = name.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&name=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = extension.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&extension=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = artifact_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&artifact_id=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = in_vetka {
+        route.push_str("&in_vetka=");
+        route.push_str(if v { "1" } else { "0" });
+    }
+    if let Some(seek) = initial_seek_sec.filter(|v| v.is_finite() && *v >= 0.0) {
+        route.push_str("&seek=");
+        route.push_str(&format!("{seek:.3}"));
+    }
+
+    let explicit_video_width = video_width.filter(|v| *v > 0);
+    let explicit_video_height = video_height.filter(|v| *v > 0);
+    let metadata = if explicit_video_width.is_some() && explicit_video_height.is_some() {
+        None
+    } else {
+        fetch_media_window_metadata(clean_path).await
+    };
+    let (screen_width, screen_height) = preferred_monitor_size(&app);
+    let sizing_video_width = explicit_video_width
+        .or_else(|| metadata.as_ref().and_then(|m| m.width_px))
+        .unwrap_or(0);
+    let sizing_video_height = explicit_video_height
+        .or_else(|| metadata.as_ref().and_then(|m| m.height_px))
+        .unwrap_or(0);
+    let sizing_is_video = sizing_video_width > 0 && sizing_video_height > 0;
+    let (initial_width, initial_height) = if sizing_is_video {
+        compute_detached_media_initial_inner_size(
+            sizing_video_width,
+            sizing_video_height,
+            screen_width,
+            screen_height,
+        )
+    } else {
+        (960.0, 540.0)
+    };
+
+    log::info!(
+        "MARKER_159.R12.DETACHED_MEDIA_SIZE_TRACE path={} screen_logical={}x{} metadata={}x{} explicit={}x{} aspect={} requested_inner={}x{}",
+        clean_path,
+        screen_width,
+        screen_height,
+        metadata.as_ref().and_then(|m| m.width_px).unwrap_or(0),
+        metadata.as_ref().and_then(|m| m.height_px).unwrap_or(0),
+        explicit_video_width.unwrap_or(0),
+        explicit_video_height.unwrap_or(0),
+        aspect_ratio.as_deref().unwrap_or(""),
+        initial_width,
+        initial_height,
+    );
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
+        // reuse the same detached artifact window label and navigate in-place to avoid
+        // close/recreate races on repeated media opens while preserving a single authority window.
+        let _ = apply_detached_media_inner_size(&existing, initial_width, initial_height);
+        if let Ok(inner) = existing.inner_size() {
+            log::info!(
+                "MARKER_159.R12.DETACHED_MEDIA_REUSE_INNER observed_inner_physical={}x{}",
+                inner.width,
+                inner.height,
+            );
+        }
+        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
+        let nav_js = format!("window.location.replace({route_json});");
+        existing.eval(&nav_js).map_err(|e| e.to_string())?;
+        let _ = existing.set_title(&window_title);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+        .title(window_title)
+        .inner_size(initial_width, initial_height)
+        .min_inner_size(360.0, 240.0)
+        .always_on_top(true)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    if let Ok(inner) = window.inner_size() {
+        log::info!(
+            "MARKER_159.R12.DETACHED_MEDIA_CREATE_INNER observed_inner_physical={}x{}",
+            inner.width,
+            inner.height,
+        );
+    }
+
+    window.set_always_on_top(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// MARKER_159.C1_OPEN_PATH: Open/reuse native artifact window (generic route).
+#[tauri::command]
+pub fn open_artifact_window(
+    app: AppHandle,
+    path: String,
+    name: Option<String>,
+    extension: Option<String>,
+    artifact_id: Option<String>,
+    in_vetka: Option<bool>,
+    initial_seek_sec: Option<f64>,
+    content_mode: Option<String>,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let clean_path = path.trim();
+    if clean_path.is_empty() {
+        return Err("path is required".to_string());
+    }
+
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("artifact-main")
+        .to_string();
+
+    let window_title = name
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("Artifact")
+        .to_string();
+
+    let mode = content_mode
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| matches!(*v, "file" | "raw" | "web"))
+        .unwrap_or("file")
+        .to_string();
+
+    let mut route = format!(
+        "/artifact-window?path={}&content_mode={}&window_label={}",
+        urlencoding::encode(clean_path),
+        urlencoding::encode(&mode),
+        urlencoding::encode(&label),
+    );
+    if let Some(v) = name.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&name=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = extension.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&extension=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = artifact_id.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        route.push_str("&artifact_id=");
+        route.push_str(&urlencoding::encode(v));
+    }
+    if let Some(v) = in_vetka {
+        route.push_str("&in_vetka=");
+        route.push_str(if v { "1" } else { "0" });
+    }
+    if let Some(seek) = initial_seek_sec.filter(|v| v.is_finite() && *v >= 0.0) {
+        route.push_str("&seek=");
+        route.push_str(&format!("{seek:.3}"));
+    }
+
+    if let Some(existing) = app.get_webview_window(&label) {
+        // MARKER_159.R7.UNIFIED_WINDOW_NAV_REUSE:
+        // reuse the detached artifact shell so repeated opens keep one authority window.
+        let route_json = serde_json::to_string(&route).map_err(|e| e.to_string())?;
+        let nav_js = format!("window.location.replace({route_json});");
+        existing.eval(&nav_js).map_err(|e| e.to_string())?;
+        let _ = existing.set_title(&window_title);
+        existing.show().map_err(|e| e.to_string())?;
+        existing.set_always_on_top(true).map_err(|e| e.to_string())?;
+        existing.set_focus().map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+
+    let window = WebviewWindowBuilder::new(&app, label, WebviewUrl::App(route.into()))
+        .title(window_title)
+        .inner_size(960.0, 680.0)
+        .min_inner_size(760.0, 460.0)
+        .always_on_top(true)
+        .resizable(true)
+        .focused(true)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    window.set_always_on_top(true).map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    Ok(true)
+}
+
+/// MARKER_159.WINFS.R2_CMD: Close detached artifact media window by label.
+#[tauri::command]
+pub fn close_artifact_media_window(
+    app: AppHandle,
+    window_label: Option<String>,
+) -> Result<bool, String> {
+    let label = window_label
+        .as_deref()
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+        .unwrap_or("artifact-media")
+        .to_string();
+
+    if let Some(window) = app.get_webview_window(&label) {
+        window.close().map_err(|e| e.to_string())?;
+        return Ok(true);
+    }
+    Ok(false)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

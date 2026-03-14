@@ -82,6 +82,8 @@ async def on_task_completed(
             "duration_s": stats.get("duration_s", 0) if stats else 0,
             "llm_calls": stats.get("llm_calls", 0) if stats else 0,
             "preset": stats.get("preset", "unknown") if stats else "unknown",
+            "commit_hash": stats.get("commit_hash") if stats else None,
+            "closure_tests": stats.get("closure_tests", []) if stats else [],
         }
     }
     tracker["completed"].append(entry)

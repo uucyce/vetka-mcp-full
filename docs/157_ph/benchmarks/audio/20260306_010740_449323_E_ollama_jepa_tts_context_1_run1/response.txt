@@ -1,0 +1,3 @@
+1.  Optimize `pack_latency_ms` and `jepa_latency_ms` thresholds in `context_packer_probe.py` to reduce processing time.
+2.  Implement a more granular memory tracking system to pinpoint latency bottlenecks within the `context_packer_probe.py` script.
+3.  Reduce the number of `get_recent_stats` calls to

@@ -11,8 +11,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
-
-const API_BASE = 'http://localhost:5001/api';
+import { API_BASE } from '../config/api.config';
 
 export interface Recommendation {
   has_recommendation: boolean;

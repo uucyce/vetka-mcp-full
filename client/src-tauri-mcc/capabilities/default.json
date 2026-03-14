@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schemas.tauri.app/config/2/capability",
+  "identifier": "default",
+  "description": "MYCELIUM standalone capabilities — Phase 175",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "shell:allow-open",
+    "core:event:default",
+    "core:event:allow-emit",
+    "core:event:allow-listen"
+  ]
+}

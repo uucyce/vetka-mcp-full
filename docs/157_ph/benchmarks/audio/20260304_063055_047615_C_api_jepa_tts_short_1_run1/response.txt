@@ -1,0 +1,2 @@
+1. **HAIKU_TEST_4_WATCHER_MARKERS.md** — Проверяет корректность маркеров BYPASS в watcher_routes.py, чтобы обеспечить правильную интеграцию с TripleWriteManager.
+2. **HAIKU_1_BACKEND_STOP.md** — Описывает механизм остановки бэкенда, включая API endpoint для graceful shutdown сканирования.

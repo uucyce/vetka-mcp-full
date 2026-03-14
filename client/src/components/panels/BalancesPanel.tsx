@@ -10,8 +10,9 @@
  * @depends none (pure CSS)
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
+import { useMCCStore } from '../../store/useMCCStore';
 
 interface UsageRecord {
   provider: string;
@@ -44,6 +45,7 @@ interface Totals {
 }
 
 const API_BASE = 'http://localhost:5001/api/debug';
+const API_CONFIG_BASE = '/api';
 
 // MARKER_126.6A: Nolan monochrome palette
 const COLORS = {
@@ -67,10 +69,16 @@ export function BalancesPanel() {
   const [totals, setTotals] = useState<Totals | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [newKey, setNewKey] = useState('');
+  const [addingKey, setAddingKey] = useState(false);
+  const [addMessage, setAddMessage] = useState<string | null>(null);
 
   // MARKER_126.9A: Selected API key for next pipeline dispatch
-  const selectedKey = useStore((s) => s.selectedKey);
-  const setSelectedKey = useStore((s) => s.setSelectedKey);
+  const selectedKey = useMCCStore((s) => s.selectedKey);
+  const setSelectedKey = useMCCStore((s) => s.setSelectedKey);
+  const favoriteKeys = useStore((s) => s.favoriteKeys);
+  const toggleFavoriteKey = useStore((s) => s.toggleFavoriteKey);
+  const loadFavorites = useStore((s) => s.loadFavorites);
 
   const handleKeyClick = useCallback((provider: string, key_masked: string) => {
     // Toggle selection: click same key to deselect
@@ -100,10 +108,26 @@ export function BalancesPanel() {
   }, []);
 
   useEffect(() => {
+    loadFavorites();
+  }, [loadFavorites]);
+
+  useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, [fetchData]);
+
+  // MARKER_156.MCC_KEY_FAVORITES.002: Keep starred keys on top (VETKA pattern).
+  const sortedRecords = useMemo(() => {
+    const withIdx = records.map((r, idx) => ({ r, idx }));
+    withIdx.sort((a, b) => {
+      const aFav = favoriteKeys.includes(`${a.r.provider.toLowerCase().trim()}:${a.r.key_masked}`) ? 0 : 1;
+      const bFav = favoriteKeys.includes(`${b.r.provider.toLowerCase().trim()}:${b.r.key_masked}`) ? 0 : 1;
+      if (aFav !== bFav) return aFav - bFav;
+      return a.idx - b.idx;
+    });
+    return withIdx.map((x) => x.r);
+  }, [records, favoriteKeys]);
 
   const handleReset = async () => {
     if (!confirm('Reset all usage counters?')) return;
@@ -114,6 +138,34 @@ export function BalancesPanel() {
       console.error('Reset failed:', err);
     }
   };
+
+  // MARKER_166.UI.001: Add API key from existing Balance panel using core /api/keys/add-smart.
+  const handleAddKey = useCallback(async () => {
+    const key = newKey.trim();
+    if (!key || addingKey) return;
+    setAddingKey(true);
+    setAddMessage(null);
+    try {
+      const res = await fetch(`${API_CONFIG_BASE}/keys/add-smart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        setAddMessage(data?.error || data?.message || `HTTP ${res.status}`);
+        return;
+      }
+      const providerText = data.provider ? ` (${data.provider})` : '';
+      setAddMessage(`saved${providerText}`);
+      setNewKey('');
+      fetchData();
+    } catch (err) {
+      setAddMessage(err instanceof Error ? err.message : 'Add failed');
+    } finally {
+      setAddingKey(false);
+    }
+  }, [newKey, addingKey, fetchData]);
 
   // MARKER_126.6B: Format helpers
   const formatTokens = (n: number) => {
@@ -214,6 +266,59 @@ export function BalancesPanel() {
         </div>
       </div>
 
+      {/* MARKER_166.UI.002: Inline monochrome key-add form (reuses existing style system). */}
+      <div style={{
+        display: 'flex',
+        gap: 6,
+        alignItems: 'center',
+        marginBottom: 10,
+      }}>
+        <input
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              void handleAddKey();
+            }
+          }}
+          placeholder="paste api key"
+          style={{
+            flex: 1,
+            minWidth: 0,
+            padding: '4px 8px',
+            background: 'transparent',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 2,
+            color: COLORS.text,
+            fontSize: 9,
+            fontFamily: 'monospace',
+            outline: 'none',
+          }}
+        />
+        <button
+          onClick={() => { void handleAddKey(); }}
+          disabled={addingKey || !newKey.trim()}
+          style={{
+            padding: '4px 8px',
+            background: 'transparent',
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 2,
+            color: addingKey ? COLORS.textDimmer : COLORS.textMuted,
+            fontSize: 9,
+            fontFamily: 'monospace',
+            cursor: addingKey ? 'wait' : 'pointer',
+          }}
+        >
+          {addingKey ? '...' : 'add key'}
+        </button>
+        {addMessage && (
+          <span style={{ color: COLORS.textDim, fontSize: 9, whiteSpace: 'nowrap' }}>
+            {addMessage}
+          </span>
+        )}
+      </div>
+
       {error && (
         <div style={{
           color: COLORS.errorText,
@@ -247,9 +352,11 @@ export function BalancesPanel() {
             </tr>
           </thead>
           <tbody>
-            {records.map((r, i) => {
+            {sortedRecords.map((r, i) => {
               // MARKER_126.9A: Check if this row is selected
               const isSelected = selectedKey?.provider === r.provider && selectedKey?.key_masked === r.key_masked;
+              const favKeyId = `${r.provider.toLowerCase().trim()}:${r.key_masked}`;
+              const isFavorite = favoriteKeys.includes(favKeyId);
               return (
               <tr
                 key={i}
@@ -267,7 +374,19 @@ export function BalancesPanel() {
                 <td style={{ padding: '7px 0 7px 6px', color: isSelected ? COLORS.text : COLORS.textMuted }}>
                   {isSelected ? '▸ ' : ''}{r.provider}
                 </td>
-                <td style={{ padding: '7px 0', color: isSelected ? COLORS.textMuted : COLORS.textDim }}>{r.key_masked}</td>
+                <td style={{ padding: '7px 0', color: isSelected ? COLORS.textMuted : COLORS.textDim }}>
+                  <span
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleFavoriteKey(favKeyId);
+                    }}
+                    style={{ marginRight: 6, color: isFavorite ? COLORS.text : COLORS.textDim, cursor: 'pointer' }}
+                    title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+                  >
+                    {isFavorite ? '★' : '☆'}
+                  </span>
+                  {r.key_masked}
+                </td>
                 <td style={{ padding: '7px 0', textAlign: 'right', color: COLORS.textMuted }}>
                   {formatTokens(r.tokens_in)}
                 </td>

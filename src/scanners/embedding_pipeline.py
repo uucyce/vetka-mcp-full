@@ -305,11 +305,17 @@ class EmbeddingPipeline:
 
         # === OCR FOR IMAGES/PDFs ===
         ocr_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp', '.pdf'}
+        av_extensions = {
+            '.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',
+            '.mp4', '.mov', '.mkv', '.avi', '.webm'
+        }
         ocr_metadata = {}
+        media_chunks = []
 
         if extension in ocr_extensions:
             try:
                 from src.ocr.ocr_processor import get_ocr_processor
+                from src.scanners.multimodal_contracts import OCRResult
                 ocr = get_ocr_processor()
 
                 if extension == '.pdf':
@@ -320,6 +326,13 @@ class EmbeddingPipeline:
                 if ocr_result.get('text') and not ocr_result.get('error'):
                     # Use OCR text instead of empty/binary content
                     content = ocr_result['text']
+                    ocr_contract = OCRResult(
+                        text=ocr_result.get('text', ''),
+                        confidence=float(ocr_result.get('confidence', 0.0) or 0.0),
+                        boxes=ocr_result.get('boxes', []) if isinstance(ocr_result.get('boxes', []), list) else [],
+                        source_path=path,
+                        extractor=ocr_result.get('source', 'ocr_processor'),
+                    )
                     ocr_metadata = {
                         'ocr_source': ocr_result.get('source', 'unknown'),
                         'ocr_confidence': ocr_result.get('confidence', 0),
@@ -329,13 +342,52 @@ class EmbeddingPipeline:
                         # Vision model extras
                         'image_description': ocr_result.get('description', ''),
                         'processing_time_ms': ocr_result.get('processing_time_ms', 0),
-                        'vision_model': ocr_result.get('vision_model', '')
+                        'vision_model': ocr_result.get('vision_model', ''),
+                        'ocr_result': ocr_contract.to_dict(),
                     }
                     print(f"[OCR] {name}: {len(content)} chars, source={ocr_metadata['ocr_source']}, {ocr_metadata['processing_time_ms']}ms")
                 elif ocr_result.get('error'):
                     print(f"[OCR] {name}: error - {ocr_result['error']}")
             except Exception as ocr_error:
                 print(f"[OCR] {name}: exception - {ocr_error}")
+        elif extension in av_extensions:
+            # === AUDIO/VIDEO TRANSCRIPT EXTRACTION ===
+            # Local-first: use WhisperSTT if available, fallback to file summary.
+            try:
+                from src.voice.stt_engine import WhisperSTT
+                from src.scanners.multimodal_contracts import MediaChunk
+
+                stt = WhisperSTT(model_name="base")
+                transcript = stt.transcribe(path)
+                transcript_text = (transcript.get("text") or "").strip()
+                segments = transcript.get("segments", []) or []
+
+                if transcript_text:
+                    content = transcript_text
+                    for seg in segments[:128]:
+                        try:
+                            media_chunks.append(
+                                MediaChunk(
+                                    start_sec=float(seg.get("start", 0.0) or 0.0),
+                                    end_sec=float(seg.get("end", 0.0) or 0.0),
+                                    text=str(seg.get("text", "") or ""),
+                                    confidence=float(transcript.get("confidence", 0.0) or 0.0),
+                                ).to_dict()
+                            )
+                        except Exception:
+                            continue
+                    ocr_metadata = {
+                        'transcript_source': 'mlx_whisper',
+                        'transcript_confidence': float(transcript.get('confidence', 0.0) or 0.0),
+                        'media_chunks_count': len(media_chunks),
+                        'modality': 'audio' if extension in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'} else 'video',
+                    }
+                    print(f"[AV] {name}: transcript {len(content)} chars, chunks={len(media_chunks)}")
+                else:
+                    content = f"[Media file]\npath={path}\nextension={extension}\ntranscript=empty"
+            except Exception as av_error:
+                content = f"[Media file]\npath={path}\nextension={extension}\ntranscript_error={str(av_error)[:180]}"
+                print(f"[AV] {name}: transcription fallback - {av_error}")
         # === END OCR ===
 
         # Truncate content for embedding
@@ -369,7 +421,10 @@ class EmbeddingPipeline:
             'parent_folder': file_data.get('parent_folder', ''),
             'depth': file_data.get('depth', 0),
             'content': content[:500],  # Store preview only
-            'timestamp': time.time()
+            'timestamp': time.time(),
+            'modality': ocr_metadata.get('modality', 'document' if extension in ocr_extensions else ('media' if extension in av_extensions else 'text')),
+            'media_chunks': media_chunks[:32],
+            'extraction_version': 'phase153_mm_v1',
         }
 
         # Save to Qdrant (legacy - vetka_elisya collection)
@@ -387,7 +442,9 @@ class EmbeddingPipeline:
                 'mtime': file_data.get('modified_time', 0),
                 'extension': file_data.get('extension', ''),
                 'depth': file_data.get('depth', 0),
-                **ocr_metadata  # Include OCR metadata if present
+                'media_chunks': media_chunks[:32],
+                'extraction_version': 'phase153_mm_v1',
+                **ocr_metadata  # Include OCR/transcript metadata if present
             }
 
             tw_results = tw.write_file(
@@ -396,6 +453,12 @@ class EmbeddingPipeline:
                 embedding=embedding,
                 metadata=tw_metadata
             )
+            if media_chunks:
+                tw.write_media_chunks(
+                    file_path=path,
+                    media_chunks=media_chunks,
+                    modality=ocr_metadata.get('modality', 'media'),
+                )
             # Log Triple Write results (non-blocking)
             tw_success = sum(tw_results.values())
             if tw_success < 3:

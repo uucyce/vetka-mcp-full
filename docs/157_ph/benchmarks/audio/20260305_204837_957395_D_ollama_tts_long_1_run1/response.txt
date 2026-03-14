@@ -1,0 +1,5 @@
+Okay, let’s break down the problem and how to address it, focusing on the context provided.
+
+Here’s a breakdown of the issue and the steps to resolve it:
+
+1. **The Core Problem:** The current system has a fragmented approach to the TTS pipeline – the `stream` and `tool calling` logic are separated, leading to potential inconsistencies and delays in the voice output. This creates a situation where the UI might

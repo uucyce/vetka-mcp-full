@@ -1,12 +1,16 @@
 /**
- * MARKER_143.P4: MCCDetailPanel — context-sensitive right panel.
- * Mode A: DAG node selected → node info + role editor
- * Mode B: Task selected (done/failed) → PipelineResultsViewer
- * Mode C: Task selected (running) → live progress
- * Mode D: Nothing selected → stats overview
+ * ⚠️ DEPRECATED: MCCDetailPanel
+ *
+ * MARKER_155.CLEANUP: Component deprecated in Phase 155.
+ * MARKER_155A.G25.DEPRECATED_SURFACE_LOCK: forbidden in runtime path.
+ * Replaced by MiniStats floating window in DAG canvas.
+ *
+ * This file is kept for reference only. Do not use in new code.
+ * Node details now shown in modals/popups.
  *
  * @phase 143
- * @status active
+ * @status deprecated
+ * @replaced_by MiniStats + Modal dialogs
  */
 import { useMemo, useState, useEffect } from 'react';
 import { useMCCStore } from '../../store/useMCCStore';
@@ -17,8 +21,10 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { PipelineStats } from '../panels/PipelineStats';
 import { ArchitectChat } from '../panels/ArchitectChat';
 import type { DAGNode, DAGStats } from '../../types/dag';
+// MARKER_176.15: Centralized MCC API config import.
+import { API_BASE } from '../../config/api.config';
 
-const PIPELINE_API = 'http://localhost:5001/api/pipeline';
+const PIPELINE_API = `${API_BASE}/pipeline`;
 
 interface MCCDetailPanelProps {
   // DAG context
@@ -455,15 +461,20 @@ export function MCCDetailPanel({
         </div>
       )}
 
-      {/* MARKER_151.9: Compact stats preview (same component as Stats tab) */}
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
-        <PipelineStats tasks={tasks} mode="compact" />
-      </div>
+      {/* MARKER_152.W3B2: Contextual bottom panels — show only when relevant to current mode */}
+      {/* Stats compact: overview + task modes (not dag_node — already returned early above) */}
+      {(mode === 'overview' || mode === 'task_info' || mode === 'task_results' || mode === 'task_running') && (
+        <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}` }}>
+          <PipelineStats tasks={tasks} mode="compact" />
+        </div>
+      )}
 
-      {/* MARKER_151.8: Compact architect chat (same component as Architect tab) */}
-      <div data-onboarding="architect-chat" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
-        <ArchitectChat mode="compact" />
-      </div>
+      {/* Architect chat compact: only overview + task_info (user is thinking/planning) */}
+      {(mode === 'overview' || mode === 'task_info') && (
+        <div data-onboarding="architect-chat" style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${NOLAN_PALETTE.borderDim}`, minHeight: 230, maxHeight: 320 }}>
+          <ArchitectChat mode="compact" />
+        </div>
+      )}
     </div>
   );
 }

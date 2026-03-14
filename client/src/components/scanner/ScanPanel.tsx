@@ -36,6 +36,7 @@ interface ScannedFile {
   timestamp: number;
   type?: 'file' | 'directory';
   size?: number;
+  created?: string;
   modified?: string;
 }
 
@@ -67,6 +68,18 @@ interface ConnectorProvider {
   last_scan_at?: string | null;
   last_scan_count?: number;
 }
+
+interface ConnectorTreeNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  path: string;
+  mime_type?: string;
+  size?: number;
+  modified?: string | null;
+  children?: ConnectorTreeNode[];
+}
+
 type ConnectorAuthMethod = 'oauth' | 'api_key' | 'link';
 const resolveAuthMethods = (provider: ConnectorProvider | null): ConnectorAuthMethod[] => {
   if (!provider) return ['oauth'];
@@ -83,6 +96,8 @@ interface ScanPanelProps {
   pinnedPaths?: string[];  // Phase 92.5: Currently pinned file paths
   isVisible?: boolean;
   onEvent?: (event: ScannerEvent) => void;
+  onSourceChange?: (source: 'local' | 'cloud' | 'browser' | 'social') => void;
+  preferredSource?: 'local' | 'cloud' | 'browser' | 'social';
 }
 
 export interface ScannerEvent {
@@ -92,6 +107,17 @@ export interface ScannerEvent {
   error?: string;
   fileTypes?: Record<string, number>;
 }
+
+type MycoScannerStateCategory =
+  | 'none'
+  | 'browser_placeholder'
+  | 'auth_modal_open'
+  | 'missing_oauth_client'
+  | 'provider_connected'
+  | 'provider_expired'
+  | 'provider_token_missing'
+  | 'tree_preview_unavailable'
+  | 'provider_pending';
 
 // Source definitions for carousel
 const sources = [
@@ -225,13 +251,14 @@ const formatSize = (bytes?: number): string => {
 };
 
 const formatDate = (date?: string): string => {
-  if (!date) return '—';
+  if (!date) return 'n/a';
   try {
-    return new Date(date).toLocaleDateString('en-US', {
-      month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-    });
+    const d = new Date(date);
+    if (Number.isNaN(d.getTime())) return 'n/a';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   } catch {
-    return '—';
+    return 'n/a';
   }
 };
 
@@ -253,11 +280,49 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   onFilePin,
   pinnedPaths = [],
   isVisible = true,
-  onEvent
+  onEvent,
+  onSourceChange,
+  preferredSource,
 }) => {
+  const emitMycoScannerState = useCallback((detail: {
+    source?: 'local' | 'cloud' | 'browser' | 'social';
+    category?: MycoScannerStateCategory;
+    providerLabel?: string;
+    message?: string;
+    authMethod?: 'oauth' | 'api_key' | 'link' | '';
+    requiresVerification?: boolean;
+  }) => {
+    window.dispatchEvent(new CustomEvent('vetka-myco-scanner-state', {
+      detail: {
+        source: detail.source,
+        category: detail.category || 'none',
+        providerLabel: detail.providerLabel || '',
+        message: detail.message || '',
+        authMethod: detail.authMethod || '',
+        requiresVerification: Boolean(detail.requiresVerification),
+      },
+    }));
+  }, []);
+
   // Source carousel state
   const [currentSourceIndex, setCurrentSourceIndex] = useState(0);
   const currentSource = sources[currentSourceIndex];
+
+  useEffect(() => {
+    onSourceChange?.(currentSource.id as 'local' | 'cloud' | 'browser' | 'social');
+    emitMycoScannerState({
+      source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+      category: currentSource.id === 'browser' ? 'browser_placeholder' : 'none',
+      message: currentSource.id === 'browser' ? 'Browser import is not live in this runtime' : '',
+    });
+  }, [currentSource.id, emitMycoScannerState, onSourceChange]);
+
+  useEffect(() => {
+    if (!preferredSource) return;
+    const nextIndex = sources.findIndex((source) => source.id === preferredSource);
+    if (nextIndex === -1) return;
+    setCurrentSourceIndex((prev) => (prev === nextIndex ? prev : nextIndex));
+  }, [preferredSource]);
 
   // Watched directories state (kept for API status tracking)
   const [, setWatchedDirs] = useState<WatchedDirectory[]>([]);
@@ -276,6 +341,10 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
   const [connectorProviders, setConnectorProviders] = useState<ConnectorProvider[]>([]);
   const [connectorsLoading, setConnectorsLoading] = useState(false);
   const [connectorBusy, setConnectorBusy] = useState<Record<string, 'connect' | 'scan' | 'disconnect' | null>>({});
+  const [connectorTreeLoading, setConnectorTreeLoading] = useState<Record<string, boolean>>({});
+  const [connectorTrees, setConnectorTrees] = useState<Record<string, ConnectorTreeNode[]>>({});
+  const [connectorTreeModalProvider, setConnectorTreeModalProvider] = useState<ConnectorProvider | null>(null);
+  const [selectedTreeIdsByProvider, setSelectedTreeIdsByProvider] = useState<Record<string, string[]>>({});
   const [secureStorageEnabled, setSecureStorageEnabled] = useState(false);
   const [connectModalProvider, setConnectModalProvider] = useState<ConnectorProvider | null>(null);
   const [connectAuthMethod, setConnectAuthMethod] = useState<ConnectorAuthMethod>('oauth');
@@ -334,20 +403,56 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       const response = await fetch(`${API_BASE}/connectors/status?source=${encodeURIComponent(source)}`);
       const result = await response.json();
       if (response.ok && result?.success && Array.isArray(result.providers)) {
-        setConnectorProviders(result.providers as ConnectorProvider[]);
+        const providers = result.providers as ConnectorProvider[];
+        setConnectorProviders(providers);
         setSecureStorageEnabled(Boolean(result?.secure_storage_enabled));
+        const expiredProvider = providers.find((provider) => provider.status === 'expired' || (provider.connected && !provider.token_present));
+        const connectedProvider = providers.find((provider) => provider.connected && provider.token_present);
+        if (expiredProvider) {
+          emitMycoScannerState({
+            source,
+            category: 'provider_expired',
+            providerLabel: expiredProvider.display_name,
+            message: `${expiredProvider.display_name} token expired or missing`,
+            authMethod: resolveAuthMethods(expiredProvider)[0],
+            requiresVerification: Boolean(expiredProvider.requires_verification),
+          });
+        } else if (connectedProvider) {
+          emitMycoScannerState({
+            source,
+            category: 'provider_connected',
+            providerLabel: connectedProvider.display_name,
+            message: `${connectedProvider.display_name} connected`,
+            authMethod: resolveAuthMethods(connectedProvider)[0],
+            requiresVerification: Boolean(connectedProvider.requires_verification),
+          });
+        } else if (source === 'social' && providers.length > 0) {
+          const pendingProvider = providers.find((provider) => (provider.status || 'pending') === 'pending') || providers[0];
+          emitMycoScannerState({
+            source,
+            category: 'provider_pending',
+            providerLabel: pendingProvider.display_name,
+            message: `${pendingProvider.display_name} pending connection`,
+            authMethod: resolveAuthMethods(pendingProvider)[0],
+            requiresVerification: Boolean(pendingProvider.requires_verification),
+          });
+        } else {
+          emitMycoScannerState({ source, category: 'none' });
+        }
       } else {
         setConnectorProviders([]);
         setSecureStorageEnabled(false);
+        emitMycoScannerState({ source, category: 'none' });
       }
     } catch (err) {
       console.error('[ScanPanel] Failed to load connectors:', err);
       setConnectorProviders([]);
       setSecureStorageEnabled(false);
+      emitMycoScannerState({ source, category: 'none', message: 'Connector load failed' });
     } finally {
       setConnectorsLoading(false);
     }
-  }, []);
+  }, [emitMycoScannerState]);
 
   useEffect(() => {
     if (currentSource.id === 'cloud' || currentSource.id === 'social') {
@@ -402,7 +507,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
 
   const runConnectorAction = useCallback(async (
     providerId: string,
-    action: 'scan' | 'disconnect'
+    action: 'scan' | 'disconnect',
+    payload?: Record<string, unknown>
   ) => {
     setConnectorBusy((prev) => ({ ...prev, [providerId]: action }));
     try {
@@ -410,6 +516,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: payload ? JSON.stringify(payload) : undefined,
       });
       const result = await response.json();
       if (!response.ok || !result?.success) {
@@ -426,11 +533,47 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       }
     } catch (err) {
       console.error(`[ScanPanel] Connector ${action} failed:`, err);
-      alert(`Connector ${action} failed`);
+      const msg = err instanceof Error ? err.message : `${action} failed`;
+      alert(`Connector ${action} failed: ${msg}`);
     } finally {
       setConnectorBusy((prev) => ({ ...prev, [providerId]: null }));
     }
   }, [currentSource.id, loadConnectors, onEvent]);
+
+  const openConnectorTree = useCallback(async (provider: ConnectorProvider) => {
+    const providerId = provider.id;
+    setConnectorTreeLoading((prev) => ({ ...prev, [providerId]: true }));
+    try {
+      const response = await fetch(`${API_BASE}/connectors/${encodeURIComponent(providerId)}/tree`);
+      const result = await response.json();
+      if (!response.ok || !result?.success || !Array.isArray(result?.tree)) {
+        throw new Error(result?.detail || result?.error || `HTTP ${response.status}`);
+      }
+      setConnectorTrees((prev) => ({ ...prev, [providerId]: result.tree as ConnectorTreeNode[] }));
+      setConnectorTreeModalProvider(provider);
+      setSelectedTreeIdsByProvider((prev) => ({ ...prev, [providerId]: prev[providerId] || [] }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load tree';
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: 'tree_preview_unavailable',
+        providerLabel: provider.display_name,
+        message: msg,
+      });
+      alert(`Tree load failed: ${msg}`);
+    } finally {
+      setConnectorTreeLoading((prev) => ({ ...prev, [providerId]: false }));
+    }
+  }, [currentSource.id, emitMycoScannerState]);
+
+  const toggleTreeSelection = useCallback((providerId: string, nodeId: string) => {
+    setSelectedTreeIdsByProvider((prev) => {
+      const current = prev[providerId] || [];
+      const has = current.includes(nodeId);
+      const next = has ? current.filter((id) => id !== nodeId) : [...current, nodeId];
+      return { ...prev, [providerId]: next };
+    });
+  }, []);
 
   const openConnectModal = useCallback((provider: ConnectorProvider) => {
     const methods = resolveAuthMethods(provider);
@@ -439,7 +582,15 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
     setConnectValue('');
     setOauthClientId('');
     setOauthClientSecret('');
-  }, []);
+    emitMycoScannerState({
+      source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+      category: 'auth_modal_open',
+      providerLabel: provider.display_name,
+      message: `Auth modal opened for ${provider.display_name}`,
+      authMethod: methods[0],
+      requiresVerification: Boolean(provider.requires_verification),
+    });
+  }, [currentSource.id, emitMycoScannerState]);
 
   const submitConnectModal = useCallback(async () => {
     if (!connectModalProvider || connectSubmitting) return;
@@ -542,9 +693,26 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       onEvent?.({ type: 'connector_connected' });
       setConnectModalProvider(null);
       setConnectValue('');
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: 'provider_connected',
+        providerLabel: connectModalProvider.display_name,
+        message: `${connectModalProvider.display_name} connected`,
+        authMethod: connectAuthMethod,
+        requiresVerification: Boolean(connectModalProvider.requires_verification),
+      });
     } catch (err) {
       console.error('[ScanPanel] Connector auth failed:', err);
       const msg = err instanceof Error ? err.message : 'Unknown error';
+      const lower = msg.toLowerCase();
+      emitMycoScannerState({
+        source: currentSource.id as 'local' | 'cloud' | 'browser' | 'social',
+        category: lower.includes('oauth client credentials missing') ? 'missing_oauth_client' : 'provider_token_missing',
+        providerLabel: connectModalProvider.display_name,
+        message: msg,
+        authMethod: connectAuthMethod,
+        requiresVerification: Boolean(connectModalProvider.requires_verification),
+      });
       alert(`Connector auth failed: ${msg}`);
     } finally {
       setConnectSubmitting(false);
@@ -610,6 +778,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
           timestamp: Date.now(),
           type: 'file' as const,
           size: f.size,
+          created: f.modified ? new Date(f.modified * 1000).toISOString() : undefined,
           modified: f.modified ? new Date(f.modified * 1000).toISOString() : undefined
         }));
 
@@ -657,6 +826,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
       current?: number;
       total?: number;
       file_size?: number;
+      file_ctime?: number;
       file_mtime?: number;
     }>) => {
       const detail = event.detail;
@@ -673,6 +843,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
             timestamp: Date.now(),
             type: 'file',
             size: detail.file_size,
+            created: detail.file_ctime ? new Date(detail.file_ctime * 1000).toISOString() : undefined,
             modified: detail.file_mtime ? new Date(detail.file_mtime * 1000).toISOString() : undefined
           };
           const filtered = prev.filter(f => f.path !== detail.file_path);
@@ -1029,6 +1200,31 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
     return parts[parts.length - 1] || path;
   };
 
+  const renderConnectorTree = (providerId: string, nodes: ConnectorTreeNode[], depth = 0): React.ReactNode => {
+    const selectedIds = selectedTreeIdsByProvider[providerId] || [];
+    return nodes.map((node) => {
+      const checked = selectedIds.includes(node.id);
+      return (
+        <div key={`${providerId}-${node.id}`} className="connector-tree-row" style={{ paddingLeft: `${12 + depth * 16}px` }}>
+          <label className="connector-tree-label">
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={() => toggleTreeSelection(providerId, node.id)}
+            />
+            <span className={`connector-tree-type ${node.type}`}>{node.type === 'folder' ? 'DIR' : 'FILE'}</span>
+            <span className="connector-tree-name" title={node.path}>{node.name}</span>
+          </label>
+          {Array.isArray(node.children) && node.children.length > 0 ? (
+            <div className="connector-tree-children">
+              {renderConnectorTree(providerId, node.children, depth + 1)}
+            </div>
+          ) : null}
+        </div>
+      );
+    });
+  };
+
   // ============== RENDER ==============
 
   if (!isVisible) return null;
@@ -1257,6 +1453,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                     const isBusy = Boolean(busyAction);
                     const isConnected = provider.connected && (provider.status || 'pending') === 'connected';
                     const needsAuth = !isConnected || !provider.token_present;
+                    const isGoogleDrive = provider.id === 'google_drive';
+                    const selectedIds = selectedTreeIdsByProvider[provider.id] || [];
                     return (
                       <div key={provider.id} className="connector-card">
                         <div className="connector-meta">
@@ -1297,10 +1495,28 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                             </button>
                           ) : (
                             <>
+                              {isGoogleDrive && (
+                                <button
+                                  className="connector-btn ghost"
+                                  disabled={isBusy || Boolean(connectorTreeLoading[provider.id])}
+                                  onClick={() => void openConnectorTree(provider)}
+                                  title="Browse Google Drive tree"
+                                >
+                                  {connectorTreeLoading[provider.id] ? 'Loading...' : 'Browse'}
+                                </button>
+                              )}
                               <button
                                 className="connector-btn"
                                 disabled={isBusy}
-                                onClick={() => void runConnectorAction(provider.id, 'scan')}
+                                onClick={() =>
+                                  void runConnectorAction(
+                                    provider.id,
+                                    'scan',
+                                    isGoogleDrive
+                                      ? { selected_ids: selectedIds }
+                                      : undefined
+                                  )
+                                }
                                 title={`Scan ${provider.display_name}`}
                               >
                                 {busyAction === 'scan' ? 'Scanning...' : 'Scan'}
@@ -1320,6 +1536,7 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
                           <div className="connector-capabilities">
                             {provider.capabilities.offline_access && <span>Offline</span>}
                             {provider.capabilities.webhooks && <span>Webhooks</span>}
+                            {isGoogleDrive && selectedIds.length > 0 && <span>{selectedIds.length} selected</span>}
                           </div>
                         ) : null}
                       </div>
@@ -1436,6 +1653,37 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
         </div>
       )}
 
+      {connectorTreeModalProvider && (
+        <div className="connector-modal-overlay" onClick={() => setConnectorTreeModalProvider(null)}>
+          <div className="connector-modal connector-tree-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="connector-modal-title">
+              {connectorTreeModalProvider.display_name} — Select folders/files to scan
+            </div>
+            <div className="connector-tree-list">
+              {connectorTrees[connectorTreeModalProvider.id]?.length
+                ? renderConnectorTree(connectorTreeModalProvider.id, connectorTrees[connectorTreeModalProvider.id])
+                : <div className="connector-sub">No files found or access is limited.</div>}
+            </div>
+            <div className="connector-modal-actions">
+              <button
+                className="connector-btn ghost"
+                onClick={() => setConnectorTreeModalProvider(null)}
+              >
+                Close
+              </button>
+              <button
+                className="connector-btn"
+                onClick={() => {
+                  setConnectorTreeModalProvider(null);
+                }}
+              >
+                Use Selection
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ===== RESIZE HANDLE (at bottom) ===== */}
       <div
         className={`scan-resize-handle ${isDragging ? 'dragging' : ''}`}
@@ -1458,7 +1706,8 @@ export const ScanPanel: React.FC<ScanPanelProps> = ({
           <div className="preview-meta">
             <span>{hoveredFile.type === 'directory' ? 'Directory' : 'File'}</span>
             <span>{formatSize(hoveredFile.size)}</span>
-            <span>{formatDate(hoveredFile.modified)}</span>
+            <span>Created: {formatDate(hoveredFile.created || hoveredFile.modified)}</span>
+            <span>Modified: {formatDate(hoveredFile.modified)}</span>
           </div>
           <div className="preview-path">{hoveredFile.path}</div>
         </div>

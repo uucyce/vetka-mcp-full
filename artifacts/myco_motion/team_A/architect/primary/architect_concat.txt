@@ -1,0 +1,2 @@
+file '/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/arch1.mp4'
+file '/Users/danilagulin/Documents/VETKA_Project/icons/myco_logos/team_A_mp4/arch1-2.mp4'

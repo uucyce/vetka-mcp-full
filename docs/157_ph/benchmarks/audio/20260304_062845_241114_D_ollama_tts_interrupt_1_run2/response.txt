@@ -1,0 +1,6 @@
+To explain how context packing works in VETKA, I'll break it down into two initial steps:
+
+1. **Implement ELISION compression layer**: This step involves reducing noise in the context packing process by using semantic compaction to filter out irrelevant data before storage. This ensures no latency increase by processing only high-saliency items.
+2. **Apply semantic filtering and ranking**: Next, you would apply a semantic filtering mechanism to rank the remaining data based on its relevance to the user's query. This step is crucial in selecting the most relevant files for context packing.
+
+These two steps form the foundation of the context packing process in VET

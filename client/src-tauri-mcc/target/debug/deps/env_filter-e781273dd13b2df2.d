@@ -1,0 +1,10 @@
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri-mcc/target/debug/deps/env_filter-e781273dd13b2df2.d: /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/lib.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/directive.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filter.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filtered_log.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/op.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/parser.rs
+
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client/src-tauri-mcc/target/debug/deps/libenv_filter-e781273dd13b2df2.rmeta: /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/lib.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/directive.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filter.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filtered_log.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/op.rs /Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/parser.rs
+
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/lib.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/directive.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filter.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/filtered_log.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/op.rs:
+/Users/danilagulin/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/env_filter-1.0.0/src/parser.rs:

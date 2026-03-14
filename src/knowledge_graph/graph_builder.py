@@ -45,7 +45,7 @@ class VETKAKnowledgeGraphBuilder:
     }
 
     def __init__(self, qdrant_host: str = "localhost", qdrant_port: int = 6333):
-        self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
+        self.client = QdrantClient(url=f"http://{qdrant_host}:{qdrant_port}")
         self.collection_name = "vetka_elisya"  # Default collection
 
     def build_graph_for_files(

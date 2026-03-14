@@ -23,10 +23,13 @@ Changes from Flask version:
 """
 
 import os
+import mimetypes
+import hashlib
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
+from src.scanners.mime_policy import validate_ingest_target
 
 
 router = APIRouter(prefix="/api/triple-write", tags=["triple_write"])
@@ -43,6 +46,14 @@ class ReindexRequest(BaseModel):
     """Request to reindex files."""
     path: Optional[str] = "src"
     limit: Optional[int] = 500
+    multimodal: Optional[bool] = False
+
+
+class MediaChunksSearchRequest(BaseModel):
+    query: str
+    limit: Optional[int] = 20
+    modality: Optional[str] = None
+    parent_file_path: Optional[str] = None
 
 
 # ============================================================
@@ -127,7 +138,7 @@ async def check_coherence(depth: str = "basic"):
                 # Get 5 random samples from Qdrant
                 from qdrant_client.models import ScrollRequest
                 scroll_result = tw.qdrant_client.scroll(
-                    collection_name='vetka_files',
+                    collection_name='vetka_elisya',
                     limit=5,
                     with_payload=True,
                     with_vectors=False
@@ -226,6 +237,9 @@ async def triple_write_reindex(req: ReindexRequest):
 
         TEXT_EXTENSIONS = {'.py', '.js', '.ts', '.jsx', '.tsx', '.md', '.txt', '.json',
                           '.yaml', '.yml', '.html', '.css', '.sh', '.sql', '.go', '.rs'}
+        OCR_EXTENSIONS = {'.pdf', '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff'}
+        MEDIA_EXTENSIONS = {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg',
+                            '.mp4', '.mov', '.mkv', '.avi', '.webm'}
 
         for root, dirs, files in os.walk(target_dir):
             # Skip hidden and common ignore
@@ -240,19 +254,69 @@ async def triple_write_reindex(req: ReindexRequest):
                     skipped += 1
                     continue
 
-                # Only index text files
+                # Extension gate
                 ext = os.path.splitext(fname)[1].lower()
-                if ext not in TEXT_EXTENSIONS:
+                fpath = os.path.join(root, fname)
+                size_bytes = os.path.getsize(fpath)
+                policy_allowed, policy = validate_ingest_target(fpath, size_bytes)
+                if not policy_allowed:
                     skipped += 1
                     continue
 
-                fpath = os.path.join(root, fname)
+                allowed = ext in TEXT_EXTENSIONS or (req.multimodal and (ext in OCR_EXTENSIONS or ext in MEDIA_EXTENSIONS))
+                if not allowed:
+                    skipped += 1
+                    continue
+
                 rel_path = os.path.relpath(fpath, PROJECT_ROOT)
 
                 try:
-                    # Read content
-                    with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
-                        content = f.read()
+                    media_chunks = []
+                    # Read content (text / OCR / media summary)
+                    if ext in TEXT_EXTENSIONS:
+                        with open(fpath, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                    elif ext in OCR_EXTENSIONS:
+                        try:
+                            from src.ocr.ocr_processor import get_ocr_processor
+                            ocr = get_ocr_processor()
+                            ocr_result = ocr.process_pdf(fpath) if ext == '.pdf' else ocr.process_image(fpath)
+                            content = (ocr_result.get('text') or '').strip()
+                            if not content:
+                                content = f"[OCR empty] file={rel_path}"
+                        except Exception as ocr_err:
+                            content = f"[OCR error] file={rel_path} error={str(ocr_err)[:160]}"
+                    else:
+                        mime_type, _ = mimetypes.guess_type(fpath)
+                        mime_type = mime_type or 'application/octet-stream'
+                        size_bytes = os.path.getsize(fpath)
+                        try:
+                            from src.voice.stt_engine import WhisperSTT
+                            stt = WhisperSTT(model_name="base")
+                            tr = stt.transcribe(fpath)
+                            t_text = (tr.get("text") or "").strip()
+                            segments = tr.get("segments", []) or []
+                            if t_text:
+                                content = t_text
+                                for seg in segments[:128]:
+                                    media_chunks.append({
+                                        "start_sec": float(seg.get("start", 0.0) or 0.0),
+                                        "end_sec": float(seg.get("end", 0.0) or 0.0),
+                                        "text": str(seg.get("text", "") or ""),
+                                        "confidence": float(tr.get("confidence", 0.0) or 0.0),
+                                    })
+                            else:
+                                raise ValueError("empty transcript")
+                        except Exception:
+                            with open(fpath, 'rb') as fb:
+                                digest = hashlib.sha256(fb.read()).hexdigest()
+                            content = (
+                                f"[Media file summary]\n"
+                                f"path={rel_path}\n"
+                                f"mime={mime_type}\n"
+                                f"size_bytes={size_bytes}\n"
+                                f"sha256={digest}"
+                            )
 
                     # Skip very large or empty files
                     if len(content) < 10 or len(content) > 100000:
@@ -263,7 +327,13 @@ async def triple_write_reindex(req: ReindexRequest):
                     stat = os.stat(fpath)
                     metadata = {
                         'size': stat.st_size,
-                        'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat()
+                        'mtime': datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                        'extension': ext,
+                        'mime_type': policy.get('mime_type') or mimetypes.guess_type(fpath)[0] or 'application/octet-stream',
+                        'modality': policy.get('category'),
+                        'ingest_mode': 'multimodal' if req.multimodal else 'text_only',
+                        'media_chunks': media_chunks[:32],
+                        'extraction_version': 'phase153_mm_v1',
                     }
 
                     # Get embedding
@@ -276,6 +346,13 @@ async def triple_write_reindex(req: ReindexRequest):
                         embedding=embedding,
                         metadata=metadata
                     )
+                    if req.multimodal and media_chunks:
+                        modality = 'audio' if ext in {'.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'} else 'video'
+                        tw.write_media_chunks(
+                            file_path=rel_path,
+                            media_chunks=media_chunks,
+                            modality=modality,
+                        )
 
                     if any(results.values()):
                         indexed += 1
@@ -301,3 +378,31 @@ async def triple_write_reindex(req: ReindexRequest):
     except Exception as e:
         import traceback
         raise HTTPException(status_code=500, detail={'error': str(e), 'traceback': traceback.format_exc()})
+
+
+@router.post("/media-chunks/search")
+async def search_media_chunks(req: MediaChunksSearchRequest):
+    """
+    G12 retrieval bridge: semantic search over timestamped media chunk points.
+    """
+    query = (req.query or "").strip()
+    if len(query) < 2:
+        raise HTTPException(status_code=400, detail="query must be at least 2 chars")
+
+    try:
+        from src.orchestration.triple_write_manager import get_triple_write_manager
+        tw = get_triple_write_manager()
+        items: List[dict] = tw.search_media_chunks(
+            query=query,
+            limit=int(req.limit or 20),
+            modality=(req.modality or None),
+            parent_file_path=(req.parent_file_path or None),
+        )
+        return {
+            "success": True,
+            "query": query,
+            "count": len(items),
+            "items": items,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

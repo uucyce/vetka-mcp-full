@@ -10,6 +10,7 @@
 import { create } from 'zustand';
 import type { ChatMessage, WorkflowStatus } from '../types/chat';
 import type { PerspectiveCamera } from 'three';
+import { API_BASE } from '../config/api.config';
 
 // Backend node types
 export type VetkaNodeType = 'root' | 'branch' | 'leaf';
@@ -193,6 +194,9 @@ interface TreeState {
   // Phase 113.4: Label Championship — score-based label selection
   selectedLabelIds: string[];
   setSelectedLabels: (labelIds: string[]) => void;
+  // Phase 153: Toggle media chunk nodes/edges visibility in tree viewport
+  showMediaChunks: boolean;
+  setShowMediaChunks: (enabled: boolean) => void;
 
   // Phase 113.4: Persist positions toggle (DevPanel control)
   persistPositions: boolean;
@@ -206,11 +210,53 @@ interface TreeState {
   selectedKey: { provider: string; key_masked: string } | null;
   setSelectedKey: (key: { provider: string; key_masked: string } | null) => void;
   clearSelectedKey: () => void;
+
+  // MARKER_152.FIX3: Starred keys & models (persisted to data/favorites.json)
+  favoriteKeys: string[];       // ["polza:pza_****9PUM"]
+  favoriteModels: string[];     // ["x-ai/grok-4.1-fast"]
+  setFavoriteKeys: (keys: string[]) => void;
+  setFavoriteModels: (models: string[]) => void;
+  toggleFavoriteKey: (key: string) => void;
+  toggleFavoriteModel: (modelId: string) => void;
+  loadFavorites: () => Promise<void>;
+
+  // MARKER_174.TOGGLE: Show/hide REFLEX insight pills in chat
+  showReflexInsight: boolean;
+  setShowReflexInsight: (show: boolean) => void;
 }
 
 // Phase 113.1: Persistent Spatial Memory
 const POSITIONS_STORAGE_KEY = 'vetka_node_positions';
 let _positionSaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clamp(v: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, v));
+}
+
+function inferLayoutBiasFromPositionMap(positionMap: Record<string, { x: number; y: number; z: number }>) {
+  const points = Object.values(positionMap);
+  if (points.length < 3) return null;
+  const xs = points.map(p => p.x);
+  const ys = points.map(p => p.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const spreadX = Math.max(1, maxX - minX);
+  const spreadY = Math.max(1, maxY - minY);
+  const ratio = spreadY / spreadX;
+  const compactness = points.length / (spreadX * spreadY);
+  return {
+    vertical_separation_bias: clamp((ratio - 0.75) * 1.2, -1, 1),
+    sibling_spacing_bias: clamp((spreadX / Math.max(1, points.length * 50)) - 1, -1, 1),
+    branch_compactness_bias: clamp((compactness * 120000) - 0.5, -1, 1),
+    focus_overlay_preference: 'focus_only',
+    pin_persistence_preference: 'pin_first',
+    confidence: clamp(0.55 + Math.log10(points.length + 1) * 0.2, 0.55, 0.95),
+    sample_count: 1,
+    updated_at: new Date().toISOString(),
+  };
+}
 
 export const useStore = create<TreeState>((set, get) => ({
   nodes: {},
@@ -248,12 +294,58 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 113.4: Label Championship
   selectedLabelIds: [],
+  showMediaChunks: true,
+  setShowMediaChunks: (enabled) => set({ showMediaChunks: enabled }),
   persistPositions: false,  // OFF by default (Phase 113.3 lesson: persistence = risky without toggle)
 
   // MARKER_126.9B: Selected API key for pipeline dispatch
   selectedKey: null,
   setSelectedKey: (key) => set({ selectedKey: key }),
   clearSelectedKey: () => set({ selectedKey: null }),
+
+  // MARKER_152.FIX3: Starred keys & models
+  favoriteKeys: [],
+  favoriteModels: [],
+  setFavoriteKeys: (keys) => set({ favoriteKeys: keys }),
+  setFavoriteModels: (models) => set({ favoriteModels: models }),
+  toggleFavoriteKey: (key) => {
+    const current = get().favoriteKeys;
+    const next = current.includes(key)
+      ? current.filter(k => k !== key)
+      : [...current, key];
+    set({ favoriteKeys: next });
+    // Persist to backend
+    fetch('/api/favorites', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: next, models: get().favoriteModels }),
+    }).catch(() => {});
+  },
+  toggleFavoriteModel: (modelId) => {
+    const current = get().favoriteModels;
+    const next = current.includes(modelId)
+      ? current.filter(m => m !== modelId)
+      : [...current, modelId];
+    set({ favoriteModels: next });
+    fetch('/api/favorites', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys: get().favoriteKeys, models: next }),
+    }).catch(() => {});
+  },
+  loadFavorites: async () => {
+    try {
+      const res = await fetch('/api/favorites');
+      if (res.ok) {
+        const data = await res.json();
+        set({ favoriteKeys: data.keys || [], favoriteModels: data.models || [] });
+      }
+    } catch {}
+  },
+
+  // MARKER_174.TOGGLE: REFLEX insight pills visibility
+  showReflexInsight: true,
+  setShowReflexInsight: (show) => set({ showReflexInsight: show }),
 
   setNodes: (nodesList) => set({
     nodes: Object.fromEntries(nodesList.map(n => [n.id, n])),
@@ -512,7 +604,7 @@ export const useStore = create<TreeState>((set, get) => ({
 
   // Phase 113.1: Persistent Spatial Memory
   savePositions: () => {
-    const { nodes } = get();
+    const { nodes, rootPath } = get();
     const entries = Object.values(nodes);
     if (entries.length === 0) return;
 
@@ -549,6 +641,25 @@ export const useStore = create<TreeState>((set, get) => ({
         console.error('[Layout] Backend save failed:', e);
       }
     }, 500);
+
+    // MARKER_155.MEMORY.ENGRAM_DAG_PREFS.V1:
+    // Update shared ENGRAM DAG layout intent profile (no raw coordinates).
+    try {
+      const profile = inferLayoutBiasFromPositionMap(positionMap);
+      if (profile) {
+        const scopeRoot = String(rootPath || 'default').replace(/\\/g, '/');
+        const scopeKey = `dag:${scopeRoot}:architecture`;
+        fetch(`${API_BASE}/mcc/layout/preferences`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: 'danila',
+            scope_key: scopeKey,
+            profile,
+          }),
+        }).catch(() => {});
+      }
+    } catch {}
 
     console.log(`[Layout] Saved ${entries.length} positions`);
   },

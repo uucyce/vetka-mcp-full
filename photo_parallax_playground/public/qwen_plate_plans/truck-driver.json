@@ -1,0 +1,171 @@
+{
+  "sample_id": "truck-driver",
+  "title": "Truck driver",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "A person sitting inside a vintage truck, with the driver's hand on the steering wheel. The truck is parked in an industrial area with a large red truck in the background.",
+  "recommended_plate_count": 4,
+  "plates": [
+    {
+      "id": "proposal_plate_01",
+      "name": "driver",
+      "role": "foreground-subject",
+      "depth_order": 1,
+      "objects": [
+        "person",
+        "steering wheel"
+      ],
+      "reason": "The person is the main subject of the shot, and the steering wheel is a key element in the composition.",
+      "box": {
+        "x": 0.31,
+        "y": 0.17,
+        "width": 0.5,
+        "height": 0.58
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    },
+    {
+      "id": "proposal_plate_04",
+      "name": "no driver",
+      "role": "special-clean",
+      "depth_order": 1,
+      "objects": [
+        "person",
+        "truck interior"
+      ],
+      "reason": "The no-driver plate is used to remove the person from the scene, allowing for a clean background.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": true,
+      "suggested_clean_variant": "no-driver"
+    },
+    {
+      "id": "proposal_plate_02",
+      "name": "truck cabin",
+      "role": "environment-mid",
+      "depth_order": 2,
+      "objects": [
+        "truck interior",
+        "steering wheel",
+        "dashboard"
+      ],
+      "reason": "The truck cabin provides context and depth to the scene.",
+      "box": {
+        "x": 0.24,
+        "y": 0.18,
+        "width": 0.56,
+        "height": 0.64
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    },
+    {
+      "id": "proposal_plate_03",
+      "name": "roadside",
+      "role": "background-far",
+      "depth_order": 3,
+      "objects": [
+        "truck exterior",
+        "red truck"
+      ],
+      "reason": "The background provides depth and context to the scene.",
+      "box": {
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96
+      },
+      "needs_clean_plate": false,
+      "suggested_clean_variant": null
+    }
+  ],
+  "special_clean_plates": [
+    {
+      "name": "no driver",
+      "target_plate": "plate_01",
+      "clean_variant": "no-driver",
+      "reason": "The no-driver plate is used to remove the person from the scene, allowing for a clean background."
+    }
+  ],
+  "notes": [
+    "The truck is an old, vintage model, and the person is wearing a casual outfit.",
+    "The scene is set in an industrial area with a large red truck in the background.",
+    "The person is sitting inside the truck, with the steering wheel in their hand.",
+    "The truck cabin provides context and depth to the scene.",
+    "The background provides depth and context to the scene.",
+    "The no-driver plate is used to remove the person from the scene, allowing for a clean background."
+  ],
+  "confidence": 0.9,
+  "plate_stack_proposal": {
+    "sampleId": "truck-driver",
+    "plates": [
+      {
+        "id": "plate_01",
+        "label": "driver",
+        "role": "foreground-subject",
+        "source": "qwen-plan",
+        "x": 0.31,
+        "y": 0.17,
+        "width": 0.5,
+        "height": 0.58,
+        "z": 28,
+        "depthPriority": 0.88,
+        "visible": true,
+        "depthOrder": 3,
+        "cleanVariant": "no-driver"
+      },
+      {
+        "id": "plate_02",
+        "label": "truck cabin",
+        "role": "environment-mid",
+        "source": "qwen-plan",
+        "x": 0.24,
+        "y": 0.18,
+        "width": 0.56,
+        "height": 0.64,
+        "z": 12,
+        "depthPriority": 0.7,
+        "visible": true,
+        "depthOrder": 2,
+        "cleanVariant": null
+      },
+      {
+        "id": "plate_03",
+        "label": "roadside",
+        "role": "background-far",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -4,
+        "depthPriority": 0.52,
+        "visible": true,
+        "depthOrder": 1,
+        "cleanVariant": null
+      },
+      {
+        "id": "plate_04",
+        "label": "no driver",
+        "role": "special-clean",
+        "source": "qwen-plan",
+        "x": 0.02,
+        "y": 0.02,
+        "width": 0.96,
+        "height": 0.96,
+        "z": -30,
+        "depthPriority": 0.08,
+        "visible": false,
+        "depthOrder": 99,
+        "cleanVariant": "no-driver",
+        "targetPlate": "plate_01"
+      }
+    ]
+  },
+  "raw_response": "{\n  \"scene_summary\": \"A person sitting inside a vintage truck, with the driver's hand on the steering wheel. The truck is parked in an industrial area with a large red truck in the background.\",\n  \"recommended_plate_count\": 4,\n  \"plates\": [\n    {\n      \"name\": \"driver\",\n      \"role\": \"foreground-subject\",\n      \"depth_order\": 1,\n      \"objects\": [\"person\", \"steering wheel\"],\n      \"reason\": \"The person is the main subject of the shot, and the steering wheel is a key element in the composition.\",\n      \"box\": {\"x\": 0.31, \"y\": 0.17, \"width\": 0.5, \"height\": 0.58},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"truck cabin\",\n      \"role\": \"environment-mid\",\n      \"depth_order\": 2,\n      \"objects\": [\"truck interior\", \"steering wheel\", \"dashboard\"],\n      \"reason\": \"The truck cabin provides context and depth to the scene.\",\n      \"box\": {\"x\": 0.24, \"y\": 0.18, \"width\": 0.56, \"height\": 0.64},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"roadside\",\n      \"role\": \"background-far\",\n      \"depth_order\": 3,\n      \"objects\": [\"truck exterior\", \"red truck\"],\n      \"reason\": \"The background provides depth and context to the scene.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": false,\n      \"suggested_clean_variant\": null\n    },\n    {\n      \"name\": \"no driver\",\n      \"role\": \"special-clean\",\n      \"depth_order\": 0,\n      \"objects\": [\"person\", \"truck interior\"],\n      \"reason\": \"The no-driver plate is used to remove the person from the scene, allowing for a clean background.\",\n      \"box\": {\"x\": 0.02, \"y\": 0.02, \"width\": 0.96, \"height\": 0.96},\n      \"needs_clean_plate\": true,\n      \"suggested_clean_variant\": \"no-driver\"\n    }\n  ],\n  \"special_clean_plates\": [\n    {\n      \"name\": \"no driver\",\n      \"target_plate\": \"plate_01\",\n      \"reason\": \"The no-driver plate is used to remove the person from the scene, allowing for a clean background.\"\n    }\n  ],\n  \"notes\": [\"The truck is an old, vintage model, and the person is wearing a casual outfit.\", \"The scene is set in an industrial area with a large red truck in the background.\", \"The person is sitting inside the truck, with the steering wheel in their hand.\", \"The truck cabin provides context and depth to the scene.\", \"The background provides depth and context to the scene.\", \"The no-driver plate is used to remove the person from the scene, allowing for a clean background.\"],\n  \"confidence\": 0.9\n}",
+  "error": null
+}

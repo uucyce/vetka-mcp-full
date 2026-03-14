@@ -1,0 +1,5 @@
+1. **Implement ELISION compression layer** (from VETKA glossary) to reduce noise in context packing—use semantic compaction to filter irrelevant data before storage, ensuring no latency increase by processing only high-saliency items.
+
+2. **Integrate CAM activation signals** (from context meta) to prioritize memory packing based on relevance weights (qdrant=0.4, cam=0.2), avoiding full scans and maintaining low latency through targeted updates.
+
+3. **Adopt deterministic DAG structure** (from VETKA memory abbreviations) for memory graph organization, ensuring acyclic dependencies and fast retrieval without runtime

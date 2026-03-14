@@ -1,0 +1,1 @@
+Unfortunately, the provided context does not contain information about an "interrupt + restart stream protocol" or its impact on "voice handoff and tool-loop transparency". The context appears to be related to a project

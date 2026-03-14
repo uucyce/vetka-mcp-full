@@ -1,0 +1,4 @@
+<think>
+Okay, let's tackle this user question. They want a step-by-step explanation of the interrupt + restart stream protocol and its impact on voice handoff and tool-loop transparency, referencing the provided context. If the context doesn't cover it, I need to state that clearly.
+
+First, I'll check the pinned context. The user provided two main files. The first one is about a capability matrix for unified stream and tools, mentioning issues with stream and tool calling being separate, leading to potential false expectations in the chat. The second file seems to be about the voice stack, noting that the local Qwen TTS isn't active

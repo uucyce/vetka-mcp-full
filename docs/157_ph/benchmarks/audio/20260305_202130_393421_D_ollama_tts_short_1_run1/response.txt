@@ -1,0 +1,4 @@
+Базовый ответ: 
+
+1. `src/scanners/local_scanner.py` - necessary for file scanning and metadata extraction.
+2. `src/layout/knowledge_layout.py` - necessary for knowledge mode positioning

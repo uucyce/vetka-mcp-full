@@ -1,0 +1,76 @@
+{
+  "id": "g3_localguys_v1",
+  "name": "G3 localguys",
+  "description": "Local-first critic + coder workflow for playground execution under MCC supervision.",
+  "version": 1,
+  "metadata": {
+    "created_at": "2026-03-12T00:00:00Z",
+    "updated_at": "2026-03-12T00:00:00Z",
+    "author": "vetka-system",
+    "preset": "dragon_silver",
+    "task_types": ["localguys", "g3_localguys", "critic_coder_local", "playground_patch"],
+    "complexity_range": [2, 7],
+    "template_family": "core_library",
+    "workflow_family": {
+      "family": "g3_localguys",
+      "version": "v1",
+      "roles": ["coder", "verifier"],
+      "policy": {
+        "edge_semantics": "strict",
+        "role_contract": "strict",
+        "supports_runtime_edge_edit": false,
+        "allows_structural_cycles": false,
+        "stub": false
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "recon",
+      "type": "task",
+      "label": "Recon",
+      "position": { "x": 80, "y": 120 },
+      "data": {
+        "description": "Collect facts, files, and tests inside the playground scope.",
+        "outputs": ["facts.json"]
+      }
+    },
+    {
+      "id": "coder",
+      "type": "agent",
+      "label": "Coder",
+      "position": { "x": 300, "y": 120 },
+      "data": {
+        "role": "coder",
+        "description": "Produces the bounded patch and patch artifacts.",
+        "outputs": ["plan.json", "patch.diff", "test_output.txt"]
+      }
+    },
+    {
+      "id": "verifier",
+      "type": "agent",
+      "label": "Verifier",
+      "position": { "x": 520, "y": 120 },
+      "data": {
+        "role": "verifier",
+        "description": "Reviews patch quality, test output, and gate conditions.",
+        "outputs": ["review.json", "final_report.json"]
+      }
+    },
+    {
+      "id": "gate",
+      "type": "condition",
+      "label": "Verifier Gate",
+      "position": { "x": 740, "y": 120 },
+      "data": {
+        "condition": "required artifacts exist and verifier passes",
+        "max_iterations": 3
+      }
+    }
+  ],
+  "edges": [
+    { "id": "lg_e1", "source": "recon", "target": "coder", "type": "dataflow", "label": "facts" },
+    { "id": "lg_e2", "source": "coder", "target": "verifier", "type": "dataflow", "label": "candidate_patch" },
+    { "id": "lg_e3", "source": "verifier", "target": "gate", "type": "structural", "label": "review_state" }
+  ]
+}

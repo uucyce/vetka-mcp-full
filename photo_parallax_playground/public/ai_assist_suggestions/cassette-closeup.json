@@ -1,0 +1,49 @@
+{
+  "sample_id": "cassette-closeup",
+  "title": "Cassette close-up",
+  "model": "qwen2.5vl:3b",
+  "scene_summary": "Cassette close-up with hands holding it",
+  "primary_subject": "Cassette",
+  "background_note": "Soft background lights with red and blue colors.",
+  "warnings": [],
+  "accepted_foreground_groups": [
+    {
+      "label": "focus fallback",
+      "x": 0.2168,
+      "y": 0.1908,
+      "width": 0.5664,
+      "height": 0.6384,
+      "reason": "Safe fallback around the default focus region because the model response was missing or too broad.",
+      "area": 0.3616
+    }
+  ],
+  "accepted_midground_groups": [],
+  "raw_foreground_groups": [
+    {
+      "label": "Hands holding Cassette",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1.0,
+      "height": 1.0,
+      "reason": "Hands are holding the Cassette in the foreground."
+    }
+  ],
+  "raw_midground_groups": [
+    {
+      "label": "Background lights",
+      "x": 0.0,
+      "y": 0.0,
+      "width": 1.0,
+      "height": 1.0,
+      "reason": "Background lights are visible behind the Cassette."
+    }
+  ],
+  "sanitation_flags": [
+    "rejected_fg_box",
+    "rejected_mid_box",
+    "fallback_focus_box"
+  ],
+  "confidence": 0.58,
+  "error": null,
+  "raw_response": "{\n  \"scene_summary\": \"Cassette close-up with hands holding it\",\n  \"primary_subject\": \"Cassette\",\n  \"foreground_groups\": [\n    {\n      \"label\": \"Hands holding Cassette\",\n      \"x\": 0.0,\n      \"y\": 0.0,\n      \"width\": 1.0,\n      \"height\": 1.0,\n      \"reason\": \"Hands are holding the Cassette in the foreground.\"\n    }\n  ],\n  \"midground_groups\": [\n    {\n      \"label\": \"Background lights\",\n      \"x\": 0.0,\n      \"y\": 0.0,\n      \"width\": 1.0,\n      \"height\": 1.0,\n      \"reason\": \"Background lights are visible behind the Cassette.\"\n    }\n  ],\n  \"background_note\": \"Soft background lights with red and blue colors.\",\n  \"warnings\": []\n}"
+}

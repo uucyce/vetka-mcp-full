@@ -1,0 +1,1 @@
+В предоставленном контексте нет информации о протоколе interrupt + restart stream и его влиянии на voice handoff/tool-loop transparency. Контекст фокусируется на capability matrix, voice pipeline (TTS/STT), сокет-контрактах и архитектуре агентов, но не содержит деталей о прерывании потока или рестарте.
