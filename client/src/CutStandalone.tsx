@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 
 import { API_BASE } from './config/api.config';
 import { ReactFlowProvider } from '@xyflow/react';
 import { DAGView } from './components/mcc/DAGView';
 import { NOLAN_PALETTE } from './utils/dagLayout';
-import CutEditorLayout from './components/cut/CutEditorLayout';
+import CutEditorLayoutV2 from './components/cut/CutEditorLayoutV2';
 import {
   buildCutSceneGraphViewportModel,
   type CutSceneGraphView,
@@ -129,6 +129,13 @@ type MusicCueSummary = {
   cue_point_count?: number;
   phrase_count?: number;
   tempo_bpm?: number | null;
+};
+
+type PlayerLabImportPreview = {
+  markers: Array<Record<string, unknown>>;
+  provisionalEvents: Array<Record<string, unknown>>;
+  kindCounts: Record<string, number>;
+  fileName: string;
 };
 
 type SliceWindow = {
@@ -362,6 +369,27 @@ function formatMusicCueStatus(summary?: MusicCueSummary | null): string | null {
   return parts.join(' ');
 }
 
+function normalizePlayerLabPreview(raw: unknown, fileName: string): PlayerLabImportPreview {
+  const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const markers = Array.isArray(payload.markers) ? (payload.markers as Array<Record<string, unknown>>) : [];
+  const provisionalEvents = Array.isArray(payload.provisional_events)
+    ? (payload.provisional_events as Array<Record<string, unknown>>)
+    : Array.isArray(payload.provisionalEvents)
+      ? (payload.provisionalEvents as Array<Record<string, unknown>>)
+      : [];
+  const kindCounts = markers.reduce<Record<string, number>>((acc, item) => {
+    const kind = String(item.kind || 'unknown');
+    acc[kind] = (acc[kind] || 0) + 1;
+    return acc;
+  }, {});
+  return {
+    markers,
+    provisionalEvents,
+    kindCounts,
+    fileName,
+  };
+}
+
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -486,6 +514,7 @@ function persistSceneGraphPaneMode(mode: 'embedded' | 'peer_pane') {
 
 export default function CutStandalone() {
   const query = useMemo(parseQuery, []);
+  const playerLabInputRef = useRef<HTMLInputElement | null>(null);
   const [sandboxRoot, setSandboxRoot] = useState(query.sandboxRoot);
   const [sourcePath, setSourcePath] = useState(query.sourcePath);
   const [projectName, setProjectName] = useState(query.projectName || 'VETKA CUT Demo');
@@ -500,6 +529,7 @@ export default function CutStandalone() {
   const [showActiveMarkersOnly, setShowActiveMarkersOnly] = useState(true);
   const [showGlobalActiveMarkersOnly, setShowGlobalActiveMarkersOnly] = useState(true);
   const [selectedMarkerId, setSelectedMarkerId] = useState('');
+  const [playerLabPreview, setPlayerLabPreview] = useState<PlayerLabImportPreview | null>(null);
 
   const timelineLanes = (projectState?.timeline_state?.lanes as TimelineLane[] | undefined) || [];
   const selectedClipIds = ((projectState?.timeline_state?.selection as { clip_ids?: string[] } | undefined)?.clip_ids || []).map(String);
@@ -527,7 +557,7 @@ export default function CutStandalone() {
     });
     if (sceneGraphEdgeFilter === 'structural') {
       sceneGraphViewport.dagNodes.forEach((node) => {
-        if (structuralNodeIds.has(node.primaryNodeId)) nodeIdSet.add(node.id);
+        if (node.primaryNodeId && structuralNodeIds.has(node.primaryNodeId)) nodeIdSet.add(node.id);
       });
     }
     if (sceneGraphViewport.primaryNodeId) {
@@ -548,13 +578,20 @@ export default function CutStandalone() {
   }, [sceneGraphEdgeFilter, sceneGraphView?.overlay_edges, sceneGraphViewport]);
   const waveformItems = (projectState?.waveform_bundle?.items as WorkerBundleItem[] | undefined) || [];
   const transcriptItems = (projectState?.transcript_bundle?.items as TranscriptBundleItem[] | undefined) || [];
+  const scriptText = useMemo(() => {
+    return transcriptItems
+      .flatMap((item) => item.transcript_normalized_json?.segments || [])
+      .map((seg) => seg.text || '')
+      .filter(Boolean)
+      .join(' ');
+  }, [transcriptItems]);
   const thumbnailItems = (projectState?.thumbnail_bundle?.items as WorkerBundleItem[] | undefined) || [];
   const audioSyncItems = (projectState?.audio_sync_result?.items as AudioSyncResultItem[] | undefined) || [];
   const sliceItems = (projectState?.slice_bundle?.items as SliceBundleItem[] | undefined) || [];
   const timecodeSyncItems = (projectState?.timecode_sync_result?.items as TimecodeSyncResultItem[] | undefined) || [];
   const syncSurfaceItems = (projectState?.sync_surface?.items as SyncSurfaceItem[] | undefined) || [];
   const timeMarkers = (projectState?.time_marker_bundle?.items as CutTimeMarker[] | undefined) || [];
-  const musicCueSummary = (projectState?.music_cue_summary as MusicCueSummary | undefined) || null;
+  // musicCueSummary removed — was used by CutEditorLayout V1 statusText prop
   const recentJobs = projectState?.recent_jobs || [];
   const activeJobs = projectState?.active_jobs || [];
   const fallbackQuestions = (projectState?.bootstrap_state?.last_stats as Record<string, unknown> | undefined) || null;
@@ -746,12 +783,13 @@ export default function CutStandalone() {
       // MARKER_170.NLE.SESSION_WIRING: timeline/player actions reuse the shell's CUT session.
       sandboxRoot: sandboxRoot || null,
       projectId: projectId || null,
+      sourcePath: sourcePath || null,
       timelineId: String(projectState?.timeline_state?.timeline_id || 'main'),
       refreshProjectState: async () => {
         await refreshProjectState(projectId || undefined, { silent: true });
       },
     });
-  }, [sandboxRoot, projectId, projectState?.timeline_state, refreshProjectState, editorSetSession]);
+  }, [sandboxRoot, projectId, sourcePath, projectState?.timeline_state, refreshProjectState, editorSetSession]);
   useEffect(() => {
     editorSetSceneGraphSurfaceMode(sceneGraphPaneMode === 'peer_pane' ? 'nle_ready' : 'shell_only');
   }, [sceneGraphPaneMode, editorSetSceneGraphSurfaceMode]);
@@ -1386,951 +1424,54 @@ export default function CutStandalone() {
     }
   }
 
-  // ─── MARKER_170.NLE: NLE layout wraps the debug shell ───
-  const nleSceneGraphSurface = !sceneGraphViewport || sceneGraphViewport.cards.length === 0 ? (
-    <div style={shellStyle.muted}>No graph nodes available. Open a CUT project and run scene assembly.</div>
-  ) : (
-    <>
-      <div style={shellStyle.sectionTitle}>Viewport Priority</div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-        <button
-          style={shellStyle.smallButton}
-          onClick={() => setShowNleSceneGraphDetails((value) => !value)}
-        >
-          {showNleSceneGraphDetails ? 'Hide Details' : 'Show Details'}
-        </button>
-        <button style={shellStyle.smallButton} onClick={() => setSceneGraphEdgeFilter('all')}>
-          All Edges
-        </button>
-        <button style={shellStyle.smallButton} onClick={() => setSceneGraphEdgeFilter('structural')}>
-          Structural Only
-        </button>
-        <button style={shellStyle.smallButton} onClick={() => setSceneGraphEdgeFilter('overlay')}>
-          Overlay Only
-        </button>
-      </div>
-      <div style={shellStyle.muted}>Shared DAG viewport mounted inside NLE pane.</div>
-      <div style={shellStyle.muted}>edge filter: {sceneGraphEdgeFilter}</div>
-      <div style={shellStyle.muted}>
-        edge legend: nodes {(filteredSceneGraphViewport?.dagNodes || sceneGraphViewport.dagNodes).length} · edges {(filteredSceneGraphViewport?.dagEdges || sceneGraphViewport.dagEdges).length} · structural {sceneGraphViewport.structuralEdgeIds.length} · overlay {sceneGraphViewport.overlayEdgeCount}
-      </div>
-      <div style={shellStyle.muted}>roots {filteredSceneGraphViewport?.rootIds.length || 0} · structural {filteredSceneGraphViewport?.structuralNodeIds.length || 0} · overlays {filteredSceneGraphViewport?.overlayEdgeCount || 0}</div>
-      <div style={{ height: 240, border: `1px solid ${NOLAN_PALETTE.borderDim}`, borderRadius: 8, overflow: 'hidden' }}>
-        <ReactFlowProvider>
-          <DAGView
-            dagNodes={filteredSceneGraphViewport?.dagNodes || sceneGraphViewport.dagNodes}
-            dagEdges={filteredSceneGraphViewport?.dagEdges || sceneGraphViewport.dagEdges}
-            selectedNodeIds={selectedSceneGraphDagNodeIds}
-            onNodeSelect={handleSceneGraphNodeSelect}
-            graphIdentity={`cut_scene_graph_nle:${sceneGraphViewport.graphId}`}
-            layoutMode="workflow"
-            compact
-            width="100%"
-            height="100%"
-          />
-        </ReactFlowProvider>
-      </div>
-      <div style={shellStyle.muted}>NLE pane now reuses the shared DAG viewport bridge.</div>
-      {showNleSceneGraphDetails ? (
-        <>
-          <div style={shellStyle.sectionTitle}>Selection Summary</div>
-          <div style={shellStyle.muted}>clip-linked graph nodes: {selectedShotGraphCards.length}</div>
-          <div style={shellStyle.muted}>
-            active graph node: {selectedShotPrimaryGraphCard ? `${selectedShotPrimaryGraphCard.label} · ${selectedShotPrimaryGraphCard.nodeType}` : 'none'}
-          </div>
-          <div style={shellStyle.muted}>
-            pane inspector link: {selectedShotInspectorNodes.length ? selectedShotInspectorNodes.map((node) => node.label).join(' · ') : 'no linked inspector node'}
-          </div>
-          <div style={shellStyle.muted}>focus source: {selectedShotGraphFocusSource}</div>
-          <div style={shellStyle.muted}>graph buckets: {selectedShotGraphBuckets.length ? selectedShotGraphBuckets.join(', ') : 'none'}</div>
-          <div style={shellStyle.sectionTitle}>Media Card</div>
-          <div style={{ ...shellStyle.clip, marginBottom: 0, padding: '8px 10px' }}>
-        <div>Compact Graph Card</div>
-        {selectedShotPrimaryGraphCard?.posterUrl ? (
-          <img
-            src={selectedShotPrimaryGraphCard.posterUrl}
-            alt={selectedShotPrimaryGraphCard.label}
-            style={{ width: '100%', height: 88, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
-          />
-        ) : (
-          <div
-            style={{
-              height: 88,
-              borderRadius: 6,
-              marginBottom: 8,
-              background: NOLAN_PALETTE.bgDim,
-              border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: NOLAN_PALETTE.textMuted,
-              fontSize: 11,
-            }}
-          >
-            no poster preview
-          </div>
-        )}
-        <div style={shellStyle.muted}>
-          {selectedShotPrimaryGraphCard
-            ? `${selectedShotPrimaryGraphCard.label} · ${selectedShotPrimaryGraphCard.nodeType}`
-            : 'no primary graph card'}
-        </div>
-        <div style={shellStyle.muted}>
-          {selectedShotPrimaryGraphCard?.displayMode || 'display unknown'} · {selectedShotPrimaryGraphCard?.modality || 'n/a'}
-          {typeof selectedShotPrimaryGraphCard?.durationSec === 'number' ? ` · ${selectedShotPrimaryGraphCard.durationSec.toFixed(1)}s` : ''}
-        </div>
-        <div style={shellStyle.muted}>markers {selectedShotPrimaryGraphCard?.markerCount || 0}</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-          <span
-            style={{
-              fontSize: 10,
-              padding: '2px 6px',
-              borderRadius: 999,
-              border: `1px solid ${selectedShotPrimaryGraphCard?.syncBadge ? '#22c55e88' : NOLAN_PALETTE.borderDim}` ,
-              color: selectedShotPrimaryGraphCard?.syncBadge ? '#22c55e' : NOLAN_PALETTE.textMuted,
-              background: selectedShotPrimaryGraphCard?.syncBadge ? '#22c55e22' : 'transparent',
-            }}
-          >
-            {selectedShotPrimaryGraphCard?.syncBadge ? `sync ${selectedShotPrimaryGraphCard.syncBadge}` : 'no sync badge'}
-          </span>
-          <span style={shellStyle.muted}>
-            {selectedShotPrimaryGraphCard?.visualBucket ? `bucket ${selectedShotPrimaryGraphCard.visualBucket}` : 'no bucket'}
-          </span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-          {selectedShotInspectorNodes.length ? (
-            selectedShotInspectorNodes.map((node) => (
-              <span
-                key={`inspector-chip-${node.node_id}`}
-                style={{
-                  fontSize: 10,
-                  padding: '2px 6px',
-                  borderRadius: 999,
-                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  color: NOLAN_PALETTE.textMuted,
-                  background: NOLAN_PALETTE.bgDim,
-                }}
-              >
-                inspector {node.label}
-              </span>
-            ))
-          ) : (
-            <span style={shellStyle.muted}>no inspector chips</span>
-          )}
-        </div>
-          </div>
-        </>
-      ) : (
-        <div style={shellStyle.muted}>secondary summaries collapsed</div>
-      )}
-      <div style={shellStyle.sectionTitle}>Actions</div>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <button style={shellStyle.smallButton} onClick={() => void handleSyncSelectedShotToTimeline()} disabled={busy || !projectId || !selectedTimelineMatch}>
-          Focus Timeline From Graph
-        </button>
-        <button style={shellStyle.smallButton} onClick={() => selectedThumbnail && setSelectedThumbnailId(selectedThumbnail.item_id)} disabled={busy || !selectedThumbnail}>
-          Focus Selected Shot
-        </button>
-      </div>
-    </>
-  );
+  async function handleLoadPlayerLabFile(file: File) {
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text) as unknown;
+      const preview = normalizePlayerLabPreview(parsed, file.name);
+      setPlayerLabPreview(preview);
+      setStatus(
+        `Player Lab preview loaded: ${preview.markers.length} markers, ${preview.provisionalEvents.length} provisional events.`
+      );
+    } catch (error) {
+      setPlayerLabPreview(null);
+      setStatus(error instanceof Error ? error.message : 'Failed to parse Player Lab JSON');
+    }
+  }
 
-  const debugShell = (
-    <div style={shellStyle.root}>
-      <aside style={shellStyle.panel}>
-        <div style={shellStyle.title}>VETKA CUT</div>
-        <div style={shellStyle.label}>Sandbox Root</div>
-        <input style={shellStyle.input} value={sandboxRoot} onChange={(e) => setSandboxRoot(e.target.value)} />
-        <div style={shellStyle.label}>Source Path</div>
-        <input style={shellStyle.input} value={sourcePath} onChange={(e) => setSourcePath(e.target.value)} />
-        <div style={shellStyle.label}>Project Name</div>
-        <input style={shellStyle.input} value={projectName} onChange={(e) => setProjectName(e.target.value)} />
-        <button style={shellStyle.button} onClick={handleBootstrap} disabled={busy || !sandboxRoot || !sourcePath}>
-          Open CUT Project
-        </button>
-        <button style={shellStyle.secondaryButton} onClick={() => void refreshProjectState()} disabled={busy || !sandboxRoot || !projectId}>
-          Refresh Project State
-        </button>
-        <button
-          style={shellStyle.secondaryButton}
-          onClick={handleSceneAssembly}
-          disabled={busy || !sandboxRoot || !projectId || Boolean(projectState?.runtime_ready)}
-        >
-          Start Scene Assembly
-        </button>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Status</div>
-          <div style={projectState?.success ? shellStyle.statusOk : shellStyle.statusWarn}>{status}</div>
-          {projectId ? <div style={shellStyle.code}>{projectId}</div> : null}
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Shell Actions</div>
-          <button style={shellStyle.secondaryButton} onClick={handleSelectFirstClip} disabled={busy || !projectState?.runtime_ready}>
-            Select First Clip
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleAddDirectorNote} disabled={busy || !projectState?.graph_ready}>
-            Add Director Note
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleWaveformBuild} disabled={busy || !projectId}>
-            Build Waveforms
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleTranscriptNormalize} disabled={busy || !projectId}>
-            Normalize Transcripts
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleThumbnailBuild} disabled={busy || !projectId}>
-            Build Thumbnails
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleTimecodeSyncBuild} disabled={busy || !projectId}>
-            Build Timecode Sync
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleAudioSyncBuild} disabled={busy || !projectId}>
-            Build Audio Sync
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handlePauseSliceBuild} disabled={busy || !projectId}>
-            Build Pause Slices
-          </button>
-          <button style={shellStyle.secondaryButton} onClick={handleRunMetaSync} disabled={busy || !projectId}>
-            Build Meta Sync
-          </button>
-          <button
-            style={{ ...shellStyle.secondaryButton, background: syncSurfaceItems.some((item) => item.recommended_method && item.recommended_offset_sec !== 0) ? '#166534' : undefined }}
-            onClick={handleApplyAllSyncOffsets}
-            disabled={busy || !projectId || !syncSurfaceItems.some((item) => item.recommended_method && item.recommended_offset_sec !== 0)}
-          >
-            Apply All Syncs ({syncSurfaceItems.filter((item) => item.recommended_method && item.recommended_offset_sec !== 0).length})
-          </button>
-        </div>
-      </aside>
+  async function handleImportPlayerLab() {
+    if (!sandboxRoot || !projectId || !playerLabPreview) return;
+    setBusy(true);
+    try {
+      setStatus(`Importing Player Lab markers from ${playerLabPreview.fileName}...`);
+      const payload = await jsonFetch<{
+        success: boolean;
+        imported_count?: number;
+        skipped_duplicates?: number;
+        kind_counts?: Record<string, number>;
+        error?: { message?: string };
+      }>('/cut/markers/import-player-lab', {
+        method: 'POST',
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: 'main',
+          author: 'cut_shell_player_lab',
+          markers: playerLabPreview.markers,
+          provisional_events: playerLabPreview.provisionalEvents,
+        }),
+      });
+      if (!payload.success) throw new Error(payload.error?.message || 'Player Lab marker import failed');
+      await refreshProjectState(projectId);
+      setStatus(
+        `Imported Player Lab markers: ${Number(payload.imported_count || 0)} new, ${Number(payload.skipped_duplicates || 0)} duplicates skipped.`
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : 'Player Lab marker import failed');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-      <main
-        style={{
-          padding: 16,
-          overflow: 'auto',
-          display: 'grid',
-          gap: 16,
-          gridTemplateColumns: sceneGraphPaneMode === 'peer_pane' ? 'minmax(0, 1.4fr) minmax(420px, 0.9fr)' : 'minmax(0, 1fr)',
-          alignItems: 'start',
-        }}
-      >
-        <div style={{ display: 'grid', gap: 16 }}>
-        <div style={{ ...shellStyle.card, minHeight: 220, opacity: sceneGraphPaneMode === 'peer_pane' ? 0.9 : 1 }}>
-          <div style={shellStyle.sectionTitle}>Timeline Surface</div>
-          {!projectState?.runtime_ready ? (
-            <div style={shellStyle.muted}>Timeline not ready. Run scene assembly.</div>
-          ) : timelineLanes.length === 0 ? (
-            <div style={shellStyle.muted}>No lanes available.</div>
-          ) : (
-            timelineLanes.map((lane) => (
-              <div key={lane.lane_id} style={{ marginBottom: 14 }}>
-                <div style={{ ...shellStyle.muted, marginBottom: 8 }}>
-                  {lane.lane_id} / {lane.lane_type}
-                </div>
-                {lane.clips.map((clip) => (
-                  <div
-                    key={clip.clip_id}
-                    style={{
-                      ...shellStyle.clip,
-                      border:
-                        selectedClipIds.includes(clip.clip_id)
-                          ? `1px solid ${NOLAN_PALETTE.textAccent}`
-                          : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                    }}
-                  >
-                    <div>{clip.clip_id}</div>
-                    <div style={shellStyle.muted}>{clip.source_path.split('/').pop()}</div>
-                    <div style={shellStyle.muted}>
-                      start {clip.start_sec}s · duration {clip.duration_sec}s
-                    </div>
-                    {selectedClipIds.includes(clip.clip_id) ? <div style={shellStyle.muted}>timeline selected</div> : null}
-                  </div>
-                ))}
-              </div>
-            ))
-          )}
-        </div>
-
-        </div>
-
-        <div
-          style={{
-            ...shellStyle.card,
-            border: sceneGraphPaneMode === 'peer_pane' ? `1px solid ${NOLAN_PALETTE.textAccent}` : `1px solid ${NOLAN_PALETTE.borderDim}`,
-            position: sceneGraphPaneMode === 'peer_pane' ? 'sticky' : 'static',
-            top: sceneGraphPaneMode === 'peer_pane' ? 16 : undefined,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
-            <div style={shellStyle.sectionTitle}>Scene Graph Surface</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                style={shellStyle.smallButton}
-                onClick={() => setSceneGraphPaneMode('embedded')}
-                disabled={busy || sceneGraphPaneMode === 'embedded'}
-              >
-                Embed In Flow
-              </button>
-              <button
-                style={shellStyle.smallButton}
-                onClick={() => setSceneGraphPaneMode('peer_pane')}
-                disabled={busy || sceneGraphPaneMode === 'peer_pane'}
-              >
-                Promote To Peer Pane
-              </button>
-            </div>
-          </div>
-          {!projectState?.graph_ready ? (
-            <div style={shellStyle.muted}>Scene graph not ready. Open a CUT project and run scene assembly.</div>
-          ) : !sceneGraphViewport || sceneGraphViewport.cards.length === 0 ? (
-            <div style={shellStyle.muted}>No graph nodes available. Open a CUT project and run scene assembly.</div>
-          ) : (
-            <>
-              <div style={shellStyle.muted}>
-                viewport roots: {sceneGraphViewport.rootIds.length} · structural nodes: {sceneGraphViewport.structuralNodeIds.length} · overlays:{' '}
-                {sceneGraphViewport.overlayEdgeCount}
-              </div>
-              <div
-                style={{
-                  height: sceneGraphPaneMode === 'peer_pane' ? 480 : 320,
-                  marginTop: 12,
-                  marginBottom: 12,
-                  border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  borderRadius: 8,
-                  overflow: 'hidden',
-                }}
-              >
-                <ReactFlowProvider>
-                  <DAGView
-                    dagNodes={sceneGraphViewport.dagNodes}
-                    dagEdges={sceneGraphViewport.dagEdges}
-                    selectedNodeIds={selectedSceneGraphDagNodeIds}
-                    onNodeSelect={handleSceneGraphNodeSelect}
-                    graphIdentity={`cut_scene_graph:${sceneGraphViewport.graphId}`}
-                    layoutMode="workflow"
-                    compact
-                    width="100%"
-                    height="100%"
-                  />
-                </ReactFlowProvider>
-              </div>
-              <div style={shellStyle.muted}>
-                Scene Graph DAG viewport is explicit. Cards and inspector remain visible beside graph navigation.
-              </div>
-              <div style={shellStyle.muted}>
-                Graph focus follows storyboard + timeline context through source-path and clip crosslinks.
-              </div>
-              <div style={shellStyle.muted}>
-                pane mode: {sceneGraphPaneMode === 'peer_pane' ? 'peer product surface preview' : 'embedded debug-shell flow'}
-              </div>
-              <div style={shellStyle.muted}>
-                layout slot: {sceneGraphPaneMode === 'peer_pane' ? 'right peer pane beside timeline/storyboard stack' : 'inline shell flow card'}
-              </div>
-              <div style={shellStyle.muted}>
-                persistence: pane mode restores on CUT reload via localStorage preference
-              </div>
-              {sceneGraphViewport.cards.map((node) => (
-                <div
-                  key={node.nodeId}
-                  style={{
-                    ...shellStyle.clip,
-                    border: node.isPrimary
-                      ? `1px solid ${NOLAN_PALETTE.textAccent}`
-                      : selectedSceneGraphDagNodeIds.includes(`cut_graph:${node.nodeId}`)
-                        ? `1px solid ${NOLAN_PALETTE.borderLight}`
-                        : node.isFocused
-                          ? `1px solid ${NOLAN_PALETTE.borderLight}`
-                          : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  }}
-                >
-                  <div>{node.label}</div>
-                  <div style={shellStyle.muted}>
-                    {node.nodeId} · {node.nodeType} · {node.displayMode}
-                  </div>
-                  <div style={shellStyle.muted}>{node.summary}</div>
-                  <div style={shellStyle.muted}>
-                    modality: {node.modality || 'n/a'} · markers: {node.markerCount}
-                    {typeof node.durationSec === 'number' ? ` · ${node.durationSec.toFixed(1)}s` : ''}
-                  </div>
-                  <div style={shellStyle.muted}>
-                    bucket: {node.visualBucket}
-                    {node.syncBadge ? ` · sync ${node.syncBadge}` : ''}
-                  </div>
-                  {node.posterUrl ? (
-                    <div style={shellStyle.muted}>preview: poster attached</div>
-                  ) : null}
-                </div>
-              ))}
-              {sceneGraphViewport.inspectorNodes.length ? (
-                <div style={{ marginTop: 8 }}>
-                  <div style={shellStyle.sectionTitle}>Scene Graph Inspector</div>
-                  {sceneGraphViewport.inspectorNodes.map((node) => {
-                    const selectedShotLinked = selectedShotGraphCards.some((card) => card.nodeId === node.node_id);
-                    return (
-                      <div
-                        key={node.node_id}
-                        style={{
-                          ...shellStyle.clip,
-                          border: selectedShotLinked
-                            ? `1px solid ${NOLAN_PALETTE.textAccent}`
-                            : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                        }}
-                      >
-                        <div>{node.label}</div>
-                        <div style={shellStyle.muted}>{node.summary}</div>
-                        <div style={shellStyle.muted}>
-                          clips {node.related_clip_ids.length} · sources {node.related_source_paths.length}
-                        </div>
-                        <div style={shellStyle.muted}>
-                          {selectedShotLinked ? 'selected-shot linked inspector node' : 'graph-focused inspector node'}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : null}
-              <div style={shellStyle.muted}>
-                first-class viewport adapter ready: dag nodes {sceneGraphViewport.dagNodes.length} · dag edges {sceneGraphViewport.dagEdges.length}
-              </div>
-            </>
-          )}
-        </div>
-
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Worker Outputs</div>
-          <div style={shellStyle.muted}>waveforms: {waveformItems.length}</div>
-          <div style={shellStyle.muted}>transcripts: {transcriptItems.length}</div>
-          <div style={shellStyle.muted}>thumbnails: {thumbnailItems.length}</div>
-          <div style={shellStyle.muted}>timecode_sync: {timecodeSyncItems.length}</div>
-          <div style={shellStyle.muted}>audio_sync: {audioSyncItems.length}</div>
-          <div style={shellStyle.muted}>pause_slices: {sliceItems.length}</div>
-          <div style={shellStyle.muted}>time_markers: {timeMarkers.length}</div>
-          {waveformItems.slice(0, 3).map((item) => (
-            <div key={item.item_id} style={shellStyle.clip}>
-              <div>WF · {item.source_path.split('/').pop()}</div>
-              <div style={shellStyle.muted}>{item.degraded_mode ? item.degraded_reason || 'degraded' : 'ready'}</div>
-            </div>
-          ))}
-          {transcriptItems.slice(0, 3).map((item) => (
-            <div key={item.item_id} style={shellStyle.clip}>
-              <div>TX · {item.source_path.split('/').pop()}</div>
-              <div style={shellStyle.muted}>{item.degraded_mode ? item.degraded_reason || 'degraded' : 'ready'}</div>
-            </div>
-          ))}
-          {audioSyncItems.slice(0, 3).map((item) => (
-            <div key={item.item_id} style={shellStyle.clip}>
-              <div>SYNC · {item.source_path.split('/').pop()}</div>
-              <div style={shellStyle.muted}>
-                offset {Number(item.detected_offset_sec || 0).toFixed(3)}s · conf {Number(item.confidence || 0).toFixed(2)}
-              </div>
-              <div style={shellStyle.muted}>{item.method}</div>
-            </div>
-          ))}
-          {timecodeSyncItems.slice(0, 3).map((item) => (
-            <div key={item.item_id} style={shellStyle.clip}>
-              <div>TC · {item.source_path.split('/').pop()}</div>
-              <div style={shellStyle.muted}>
-                {item.reference_timecode} {'→'} {item.source_timecode}
-              </div>
-              <div style={shellStyle.muted}>
-                offset {Number(item.detected_offset_sec || 0).toFixed(3)}s · fps {item.fps}
-              </div>
-            </div>
-          ))}
-          {!waveformItems.length && !transcriptItems.length && !thumbnailItems.length ? (
-            <div style={shellStyle.muted}>No worker bundles available.</div>
-          ) : null}
-        </div>
-
-        <div style={{ ...shellStyle.card, opacity: sceneGraphPaneMode === 'peer_pane' ? 0.9 : 1 }}>
-          <div style={shellStyle.sectionTitle}>Storyboard Strip</div>
-          {!thumbnailItems.length ? (
-            <div style={shellStyle.muted}>No thumbnails yet. Run thumbnail build.</div>
-          ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 12 }}>
-              {thumbnailItems.slice(0, 8).map((item) => (
-                <div
-                  key={item.item_id}
-                  style={{
-                    ...shellStyle.clip,
-                    marginBottom: 0,
-                    border:
-                      selectedThumbnail?.item_id === item.item_id
-                        ? `1px solid ${NOLAN_PALETTE.textAccent}`
-                        : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                  }}
-                >
-                  {item.poster_url ? (
-                    <img
-                      src={item.poster_url}
-                      alt={item.source_path.split('/').pop() || item.item_id}
-                      style={{ width: '100%', height: 90, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
-                    />
-                  ) : (
-                    <div style={{ height: 90, borderRadius: 6, marginBottom: 8, background: NOLAN_PALETTE.bgDim, border: `1px solid ${NOLAN_PALETTE.borderDim}` }} />
-                  )}
-                  <div>{item.source_path.split('/').pop()}</div>
-                  <div style={shellStyle.muted}>{item.modality || 'media'}</div>
-                  {(() => {
-                    const syncMatch = findSyncSurfaceMatch(syncSurfaceItems, item.source_path);
-                    if (!syncMatch || !syncMatch.recommended_method) return null;
-                    const methodColors: Record<string, string> = { timecode: '#22c55e', waveform: '#3b82f6', meta_sync: '#a855f7' };
-                    const color = methodColors[syncMatch.recommended_method] || NOLAN_PALETTE.textMuted;
-                    return (
-                      <div style={{ fontSize: 11, marginTop: 4, padding: '2px 6px', borderRadius: 4, background: `${color}22`, border: `1px solid ${color}55`, color }}>
-                        Sync Badge {syncMatch.recommended_method} {Number(syncMatch.recommended_offset_sec).toFixed(3)}s ({(syncMatch.confidence * 100).toFixed(0)}%)
-                      </div>
-                    );
-                  })()}
-                  <div style={shellStyle.muted}>
-                    marker window {deriveBestMarkerWindow(item, transcriptItems.find((entry) => entry.source_path === item.source_path), sliceItems.find((entry) => entry.source_path === item.source_path)).startSec}s - {deriveBestMarkerWindow(item, transcriptItems.find((entry) => entry.source_path === item.source_path), sliceItems.find((entry) => entry.source_path === item.source_path)).endSec}s
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                    <button style={shellStyle.smallButton} onClick={() => setSelectedThumbnailId(item.item_id)} disabled={busy}>
-                      Select Shot
-                    </button>
-                    <button
-                      style={shellStyle.smallButton}
-                      onClick={() => void handleCreateTimeMarker(item, 'favorite')}
-                      disabled={busy || !projectId}
-                    >
-                      Favorite Moment
-                    </button>
-                    <button
-                      style={shellStyle.smallButton}
-                      onClick={() => void handleCreateTimeMarker(item, 'comment')}
-                      disabled={busy || !projectId}
-                    >
-                      Comment Marker
-                    </button>
-                    <button
-                      style={shellStyle.smallButton}
-                      onClick={() => void handleCreateTimeMarker(item, 'cam')}
-                      disabled={busy || !projectId}
-                    >
-                      CAM Marker
-                    </button>
-                    <a
-                      href={item.source_url || '#'}
-                      style={{ ...shellStyle.smallButton, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      Open Preview
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
-
-      <aside style={shellStyle.panelRight}>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Selected Shot</div>
-          {!selectedThumbnail ? (
-            <div style={shellStyle.muted}>No storyboard item selected.</div>
-          ) : (
-            <>
-              <div>{selectedThumbnail.source_path.split('/').pop()}</div>
-              <div style={shellStyle.muted}>{selectedThumbnail.modality || 'media'}</div>
-              <div style={shellStyle.muted}>duration: {Number(selectedThumbnail.duration_sec || 0).toFixed(2)}s</div>
-              <div style={shellStyle.muted}>
-                marker window {deriveBestMarkerWindow(selectedThumbnail, selectedTranscriptItem, selectedSliceItem).startSec}s - {deriveBestMarkerWindow(selectedThumbnail, selectedTranscriptItem, selectedSliceItem).endSec}s
-              </div>
-              <div style={shellStyle.muted}>slice source: {selectedSliceItem ? 'pause_slice_worker' : selectedTranscriptItem ? 'transcript_heuristic' : 'preview_fallback'}</div>
-              <div style={shellStyle.muted}>
-                timeline link: {selectedTimelineMatch ? selectedTimelineMatch.clip.clip_id : 'not in timeline yet'}
-              </div>
-              <div style={shellStyle.muted}>graph-linked nodes: {selectedShotGraphCards.length}</div>
-              <div style={shellStyle.muted}>
-                graph primary:{' '}
-                {selectedShotPrimaryGraphCard
-                  ? `${selectedShotPrimaryGraphCard.label} · ${selectedShotPrimaryGraphCard.nodeType}`
-                  : 'no linked graph node'}
-              </div>
-              <div style={shellStyle.muted}>
-                graph render mode:{' '}
-                {selectedShotPrimaryGraphCard
-                  ? `${selectedShotPrimaryGraphCard.displayMode || 'display unknown'} · ${selectedShotPrimaryGraphCard.modality || 'n/a'}`
-                  : 'no linked graph render hints'}
-              </div>
-              <div style={shellStyle.muted}>
-                graph summary: {selectedShotPrimaryGraphCard?.summary || 'no graph summary'}
-              </div>
-              <div style={shellStyle.muted}>
-                graph focus source:{' '}
-                {selectedTimelineGraphDagNodeIds.length
-                  ? 'timeline + storyboard crosslinks'
-                  : selectedStoryboardGraphDagNodeIds.length
-                    ? 'storyboard crosslinks'
-                    : sceneGraphViewport?.focusNodeIds.length
-                      ? 'scene graph anchor only'
-                      : 'none'}
-              </div>
-              <div style={shellStyle.muted}>graph marker budget: {selectedShotGraphMarkerCount}</div>
-              <div style={shellStyle.muted}>
-                graph sync badges: {selectedShotGraphSyncBadges.length ? selectedShotGraphSyncBadges.join(', ') : 'none'}
-              </div>
-              <div style={shellStyle.muted}>
-                graph buckets: {selectedShotGraphBuckets.length ? selectedShotGraphBuckets.join(', ') : 'none'}
-              </div>
-              <div style={shellStyle.muted}>
-                graph inspector link: {selectedShotInspectorNodes.length ? selectedShotInspectorNodes.map((node) => node.label).join(' · ') : 'no inspector node linked'}
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
-                {selectedShotGraphSyncBadges.length ? (
-                  selectedShotGraphSyncBadges.map((badge) => (
-                    <span
-                      key={`selected-shot-sync-${badge}`}
-                      style={{
-                        fontSize: 10,
-                        padding: '2px 6px',
-                        borderRadius: 999,
-                        border: '1px solid #22c55e88',
-                        color: '#22c55e',
-                        background: '#22c55e22',
-                      }}
-                    >
-                      graph sync {badge}
-                    </span>
-                  ))
-                ) : (
-                  <span style={shellStyle.muted}>no graph sync chips</span>
-                )}
-                {selectedShotGraphBuckets.map((bucket) => (
-                  <span
-                    key={`selected-shot-bucket-${bucket}`}
-                    style={{
-                      fontSize: 10,
-                      padding: '2px 6px',
-                      borderRadius: 999,
-                      border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-                      color: NOLAN_PALETTE.textMuted,
-                      background: NOLAN_PALETTE.bgDim,
-                    }}
-                  >
-                    graph bucket {bucket}
-                  </span>
-                ))}
-              </div>
-              <div style={{ ...shellStyle.clip, marginTop: 8, padding: '8px 10px' }}>
-                <div style={shellStyle.muted}>Primary Graph Mini Card</div>
-                {selectedShotPrimaryGraphCard?.posterUrl ? (
-                  <img
-                    src={selectedShotPrimaryGraphCard.posterUrl}
-                    alt={`${selectedShotPrimaryGraphCard.label} mini`}
-                    style={{ width: '100%', height: 64, objectFit: 'cover', borderRadius: 6, marginTop: 6, marginBottom: 6 }}
-                  />
-                ) : (
-                  <div style={shellStyle.muted}>no graph poster reuse</div>
-                )}
-                <div style={shellStyle.muted}>
-                  {selectedShotPrimaryGraphCard
-                    ? `${selectedShotPrimaryGraphCard.label} · ${selectedShotPrimaryGraphCard.nodeType}`
-                    : 'no graph mini card'}
-                </div>
-                <div style={shellStyle.muted}>
-                  {selectedShotPrimaryGraphCard?.summary || 'no mini summary'}
-                </div>
-              </div>
-              <div style={shellStyle.muted}>
-                sync hint:{' '}
-                {selectedAudioSyncItem
-                  ? `${Number(selectedAudioSyncItem.detected_offset_sec || 0).toFixed(3)}s via ${selectedAudioSyncItem.method}`
-                  : 'no sync result yet'}
-              </div>
-              <div style={shellStyle.muted}>
-                timecode hint:{' '}
-                {selectedTimecodeSyncItem
-                  ? `${selectedTimecodeSyncItem.reference_timecode} -> ${selectedTimecodeSyncItem.source_timecode}`
-                  : 'no timecode sync yet'}
-              </div>
-              <div style={shellStyle.muted}>
-                recommended sync:{' '}
-                {selectedSyncSurfaceItem?.recommended_method
-                  ? `${selectedSyncSurfaceItem.recommended_method} ${Number(selectedSyncSurfaceItem.recommended_offset_sec || 0).toFixed(3)}s`
-                  : 'none'}
-              </div>
-              <div style={shellStyle.muted}>markers for shot: {selectedShotMarkers.length}</div>
-              <div style={shellStyle.muted}>
-                favorite: {selectedShotMarkerGroups.favorite.length} · comment: {selectedShotMarkerGroups.comment.length} · cam:{' '}
-                {selectedShotMarkerGroups.cam.length}
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 8 }}>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => void handleSyncSelectedShotToTimeline()}
-                  disabled={busy || !projectId || !selectedTimelineMatch}
-                >
-                  Sync Timeline Selection
-                </button>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => void handleApplySelectedSyncOffset()}
-                  disabled={busy || !projectId || !selectedTimelineMatch || !selectedSyncSurfaceItem?.recommended_method}
-                >
-                  Apply Sync Offset
-                </button>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => void handleCreateTimeMarker(selectedThumbnail, 'favorite')}
-                  disabled={busy || !projectId}
-                >
-                  Favorite Selected
-                </button>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => void handleCreateTimeMarker(selectedThumbnail, 'comment')}
-                  disabled={busy || !projectId}
-                >
-                  Comment Selected
-                </button>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => void handleCreateTimeMarker(selectedThumbnail, 'cam')}
-                  disabled={busy || !projectId}
-                >
-                  CAM Selected
-                </button>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                <button
-                  style={shellStyle.smallButton}
-                  onClick={() => setShowActiveMarkersOnly((value) => !value)}
-                  disabled={busy}
-                >
-                  {showActiveMarkersOnly ? 'Show All Markers' : 'Show Active Only'}
-                </button>
-              </div>
-              <div style={shellStyle.card}>
-                <div style={shellStyle.sectionTitle}>CAM Ready</div>
-                <div style={shellStyle.muted}>cam markers: {selectedShotCamMarkers.length}</div>
-                <div style={shellStyle.muted}>
-                  status: {selectedShotCamMarkers.length ? 'context-linked markers detected' : 'waiting for CAM payloads'}
-                </div>
-                <div style={shellStyle.muted}>next: attach `cam_payload` and contextual hints for this shot</div>
-                {selectedShotCamMarkers.slice(0, 3).map((marker) => (
-                  <div key={`cam-ready-${marker.marker_id}`} style={shellStyle.clip}>
-                    <div>
-                      {marker.start_sec}s - {marker.end_sec}s
-                    </div>
-                    <div style={shellStyle.muted}>
-                      source: {marker.cam_payload?.source || 'unknown'} · status: {marker.cam_payload?.status || 'none'}
-                    </div>
-                    <div style={shellStyle.muted}>{marker.cam_payload?.hint || marker.text || 'no cam hint yet'}</div>
-                  </div>
-                ))}
-              </div>
-              {(
-                [
-                  ['Favorite Markers', selectedShotMarkerGroups.favorite],
-                  ['Comment Markers', selectedShotMarkerGroups.comment],
-                  ['CAM Markers', selectedShotMarkerGroups.cam],
-                  ['Other Markers', selectedShotMarkerGroups.other],
-                ] as Array<[string, CutTimeMarker[]]>
-              ).map(([title, markers]) =>
-                markers.length ? (
-                  <div key={title} style={{ marginBottom: 8 }}>
-                    <div style={{ ...shellStyle.muted, marginBottom: 6 }}>{title}</div>
-                    {markers.slice(0, 6).map((marker) => (
-                      <div
-                        key={`selected-shot-marker-${marker.marker_id}`}
-                        style={{
-                          ...shellStyle.clip,
-                          border:
-                            selectedMarkerId === marker.marker_id
-                              ? `1px solid ${NOLAN_PALETTE.textAccent}`
-                              : `1px solid ${NOLAN_PALETTE.borderDim}`,
-                        }}
-                      >
-                        <div>
-                          {marker.kind} · {marker.start_sec}s - {marker.end_sec}s
-                        </div>
-                        <div style={shellStyle.muted}>
-                          {marker.status || 'active'} · score {Number(marker.score || 0).toFixed(2)}
-                        </div>
-                        <div style={shellStyle.muted}>
-                          slice: {marker.context_slice?.mode || 'unknown'} · source: {marker.context_slice?.derived_from || 'n/a'}
-                        </div>
-                        {marker.text ? <div style={shellStyle.muted}>{marker.text}</div> : null}
-                        <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                          <button
-                            style={shellStyle.smallButton}
-                            onClick={() => void handleFocusMarkerInTimeline(marker)}
-                            disabled={busy || !projectId || !selectedTimelineMatch}
-                          >
-                            Focus Marker In Timeline
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : null
-              )}
-              {!selectedShotMarkers.length ? <div style={shellStyle.muted}>No markers for selected shot.</div> : null}
-              <div style={shellStyle.code}>{selectedThumbnail.source_path}</div>
-            </>
-          )}
-        </div>
-        <div style={shellStyle.sectionTitle}>Project Overview</div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.label}>Project</div>
-          <div>{projectState?.project?.display_name || 'No project loaded'}</div>
-          <div style={shellStyle.code}>{projectState?.project?.source_path || ''}</div>
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Runtime Flags</div>
-          <div style={shellStyle.muted}>runtime_ready: {String(Boolean(projectState?.runtime_ready))}</div>
-          <div style={shellStyle.muted}>graph_ready: {String(Boolean(projectState?.graph_ready))}</div>
-          <div style={shellStyle.muted}>waveform_ready: {String(Boolean(projectState?.waveform_ready))}</div>
-          <div style={shellStyle.muted}>transcript_ready: {String(Boolean(projectState?.transcript_ready))}</div>
-          <div style={shellStyle.muted}>thumbnail_ready: {String(Boolean(projectState?.thumbnail_ready))}</div>
-          <div style={shellStyle.muted}>audio_sync_ready: {String(Boolean(projectState?.audio_sync_ready))}</div>
-          <div style={shellStyle.muted}>slice_ready: {String(Boolean(projectState?.slice_ready))}</div>
-          <div style={shellStyle.muted}>timecode_sync_ready: {String(Boolean(projectState?.timecode_sync_ready))}</div>
-          <div style={shellStyle.muted}>sync_surface_ready: {String(Boolean(projectState?.sync_surface_ready))}</div>
-          <div style={shellStyle.muted}>meta_sync_ready: {String(Boolean(projectState?.meta_sync_ready))}</div>
-          <div style={shellStyle.muted}>time_markers_ready: {String(Boolean(projectState?.time_markers_ready))}</div>
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Sync Hints</div>
-          <div style={shellStyle.muted}>sync_surface items: {syncSurfaceItems.length}</div>
-          <div style={shellStyle.muted}>timecode_sync results: {timecodeSyncItems.length}</div>
-          <div style={shellStyle.muted}>audio_sync results: {audioSyncItems.length}</div>
-          {!audioSyncItems.length && !timecodeSyncItems.length ? (
-            <div style={shellStyle.muted}>No sync offsets yet.</div>
-          ) : (
-            <>
-              {timecodeSyncItems.slice(0, 6).map((item) => (
-                <div key={item.item_id} style={shellStyle.clip}>
-                  <div>{item.source_path.split('/').pop()}</div>
-                  <div style={shellStyle.muted}>ref: {item.reference_path.split('/').pop()}</div>
-                  <div style={shellStyle.muted}>
-                    {item.reference_timecode} {'→'} {item.source_timecode} · {Number(item.detected_offset_sec || 0).toFixed(3)}s
-                  </div>
-                  <div style={shellStyle.muted}>{item.method}</div>
-                </div>
-              ))}
-              {syncSurfaceItems.slice(0, 6).map((item) => (
-                <div key={item.item_id} style={shellStyle.clip}>
-                  <div>{item.source_path.split('/').pop()}</div>
-                  <div style={shellStyle.muted}>recommended: {item.recommended_method || 'none'}</div>
-                  <div style={shellStyle.muted}>
-                    offset {Number(item.recommended_offset_sec || 0).toFixed(3)}s · conf {Number(item.confidence || 0).toFixed(2)}
-                  </div>
-                </div>
-              ))}
-              {audioSyncItems.slice(0, 6).map((item) => (
-              <div key={item.item_id} style={shellStyle.clip}>
-                <div>{item.source_path.split('/').pop()}</div>
-                <div style={shellStyle.muted}>
-                  ref: {item.reference_path.split('/').pop()}
-                </div>
-                <div style={shellStyle.muted}>
-                  offset {Number(item.detected_offset_sec || 0).toFixed(3)}s · conf {Number(item.confidence || 0).toFixed(2)}
-                </div>
-                <div style={shellStyle.muted}>{item.method}</div>
-              </div>
-              ))}
-            </>
-          )}
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Cognitive Markers</div>
-          <div style={shellStyle.muted}>markers: {timeMarkers.length}</div>
-          <div style={shellStyle.muted}>
-            favorite: {globalMarkerGroups.favorite.length} · comment: {globalMarkerGroups.comment.length} · cam:{' '}
-            {globalMarkerGroups.cam.length}
-          </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 8, marginBottom: 8 }}>
-            <button
-              style={shellStyle.smallButton}
-              onClick={() => setShowGlobalActiveMarkersOnly((value) => !value)}
-              disabled={busy}
-            >
-              {showGlobalActiveMarkersOnly ? 'Show All Global Markers' : 'Show Active Global Only'}
-            </button>
-          </div>
-          {(
-            [
-              ['Favorite Markers', globalMarkerGroups.favorite],
-              ['Comment Markers', globalMarkerGroups.comment],
-              ['CAM Markers', globalMarkerGroups.cam],
-              ['Other Markers', globalMarkerGroups.other],
-            ] as Array<[string, CutTimeMarker[]]>
-          ).map(([title, markers]) =>
-            markers.length ? (
-              <div key={`global-${title}`} style={{ marginBottom: 8 }}>
-                <div style={{ ...shellStyle.muted, marginBottom: 6 }}>{title}</div>
-                {markers.slice(0, 6).map((marker) => (
-                  <div key={marker.marker_id} style={shellStyle.clip}>
-                    <div>
-                      {marker.kind} · {marker.media_path.split('/').pop()}
-                    </div>
-                    <div style={shellStyle.muted}>
-                      {marker.start_sec}s - {marker.end_sec}s · {marker.status || 'active'}
-                    </div>
-                    <div style={shellStyle.muted}>
-                      slice: {marker.context_slice?.mode || 'unknown'} · source: {marker.context_slice?.derived_from || 'n/a'}
-                    </div>
-                    {marker.text ? <div style={shellStyle.muted}>{marker.text}</div> : null}
-                    <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                      <button
-                        style={shellStyle.smallButton}
-                        onClick={() => void handleArchiveTimeMarker(marker.marker_id)}
-                        disabled={busy || !projectId || marker.status === 'archived'}
-                      >
-                        Archive Marker
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null
-          )}
-          {!globalVisibleMarkers.length ? <div style={shellStyle.muted}>No visible cognitive markers.</div> : null}
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Worker Queue</div>
-          <div style={shellStyle.muted}>active_jobs: {activeJobs.length}</div>
-          <div style={shellStyle.muted}>recent_jobs: {recentJobs.length}</div>
-          {activeJobs.slice(0, 4).map((job) => (
-            <div key={`active-${job.job_id}`} style={shellStyle.clip}>
-              <div>{job.job_type || 'job'}</div>
-              <div style={shellStyle.muted}>
-                {job.state || 'unknown'} · {Math.round((Number(job.progress) || 0) * 100)}%
-              </div>
-              <button style={shellStyle.smallButton} onClick={() => void handleCancelJob(job.job_id)} disabled={busy}>
-                Cancel Job
-              </button>
-            </div>
-          ))}
-          {recentJobs.slice(0, 4).map((job) => (
-            <div key={job.job_id} style={shellStyle.clip}>
-              <div>{job.job_type || 'job'}</div>
-              <div style={shellStyle.muted}>
-                {job.state || 'unknown'} · {Math.round((Number(job.progress) || 0) * 100)}%
-              </div>
-            </div>
-          ))}
-          {!recentJobs.length ? <div style={shellStyle.muted}>No worker jobs yet.</div> : null}
-        </div>
-        <div style={shellStyle.card}>
-          <div style={shellStyle.sectionTitle}>Inspector / Questions</div>
-          <div style={shellStyle.muted}>Bootstrap stats</div>
-          <pre style={{ ...shellStyle.code, whiteSpace: 'pre-wrap' }}>
-            {JSON.stringify(fallbackQuestions, null, 2)}
-          </pre>
-        </div>
-      </aside>
-    </div>
-  );
-
-  return (
-    <CutEditorLayout
-      sceneGraphSurface={nleSceneGraphSurface}
-      debugView={debugShell}
-      statusText={formatMusicCueStatus(musicCueSummary) || status}
-    />
-  );
+  return <CutEditorLayoutV2 scriptText={scriptText} />;
 }

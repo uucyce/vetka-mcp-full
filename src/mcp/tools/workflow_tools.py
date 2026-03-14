@@ -65,6 +65,10 @@ Integration:
                     "default": "pm_to_qa",
                     "description": "Type of workflow to execute"
                 },
+                "workflow_family": {
+                    "type": "string",
+                    "description": "Optional MCC workflow family for contract-aware runtime metadata"
+                },
                 "include_eval": {
                     "type": "boolean",
                     "default": True,
@@ -90,12 +94,16 @@ Integration:
         workflow_type = args.get("workflow_type", "pm_to_qa")
         if workflow_type not in ["pm_to_qa", "pm_only", "dev_qa"]:
             return f"Unknown workflow type: {workflow_type}"
+        workflow_family = str(args.get("workflow_family", "")).strip()
+        if workflow_family and " " in workflow_family:
+            return "workflow_family must be a compact identifier without spaces"
         return None
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute workflow synchronously (wraps async implementation)"""
         request = arguments.get("request")
         workflow_type = arguments.get("workflow_type", "pm_to_qa")
+        workflow_family = str(arguments.get("workflow_family", "")).strip()
         include_eval = arguments.get("include_eval", True)
         timeout = min(arguments.get("timeout", 300), 600)
 
@@ -108,7 +116,7 @@ Integration:
             try:
                 result = loop.run_until_complete(
                     asyncio.wait_for(
-                        self._execute_async(request, workflow_type, workflow_id, include_eval),
+                        self._execute_async(request, workflow_type, workflow_id, include_eval, workflow_family),
                         timeout=timeout
                     )
                 )
@@ -122,6 +130,7 @@ Integration:
                 "result": {
                     "workflow_id": workflow_id,
                     "workflow_type": workflow_type,
+                    "workflow_family": workflow_family,
                     "status": "timeout"
                 }
             }
@@ -132,6 +141,7 @@ Integration:
                 "result": {
                     "workflow_id": workflow_id,
                     "workflow_type": workflow_type,
+                    "workflow_family": workflow_family,
                     "status": "error"
                 }
             }
@@ -141,7 +151,8 @@ Integration:
         request: str,
         workflow_type: str,
         workflow_id: str,
-        include_eval: bool
+        include_eval: bool,
+        workflow_family: str = "",
     ) -> Dict[str, Any]:
         """Async workflow execution"""
         try:
@@ -150,11 +161,14 @@ Integration:
 
             orchestrator = OrchestratorWithElisya()
             mcp_bridge = get_mcp_state_bridge()
+            workflow_runtime_metadata = await self._resolve_workflow_runtime_metadata(workflow_family)
 
             if workflow_type == "pm_to_qa":
                 result = await orchestrator._execute_parallel(
                     feature_request=request,
                     workflow_id=workflow_id,
+                    workflow_family=workflow_family,
+                    workflow_runtime_metadata=workflow_runtime_metadata,
                 )
             elif workflow_type == "pm_only":
                 # Execute only PM agent
@@ -177,7 +191,9 @@ Integration:
                 "result": {
                     "workflow_id": workflow_id,
                     "workflow_type": workflow_type,
+                    "workflow_family": workflow_family,
                     "status": "complete",
+                    "runtime_metadata": workflow_runtime_metadata,
                     "data": result
                 },
                 "error": None
@@ -189,6 +205,7 @@ Integration:
                 "error": f"Import error: {str(e)}",
                 "result": {
                     "workflow_id": workflow_id,
+                    "workflow_family": workflow_family,
                     "status": "import_error"
                 }
             }
@@ -198,9 +215,35 @@ Integration:
                 "error": str(e),
                 "result": {
                     "workflow_id": workflow_id,
+                    "workflow_family": workflow_family,
                     "status": "error"
                 }
             }
+
+    async def _resolve_workflow_runtime_metadata(self, workflow_family: str) -> Dict[str, Any]:
+        """Load MCC contract metadata needed by workflow-entry REFLEX preflight."""
+        family = str(workflow_family or "").strip()
+        if not family:
+            return {}
+
+        metadata: Dict[str, Any] = {"workflow_family": family}
+        try:
+            from src.api.routes import mcc_routes
+
+            contract = await mcc_routes._resolve_workflow_contract(family)
+            if not isinstance(contract, dict):
+                return metadata
+
+            metadata["write_opt_ins"] = {
+                str(key): bool(value)
+                for key, value in dict(contract.get("write_opt_ins") or {}).items()
+            }
+            metadata["direct_allowed_tools"] = list(contract.get("direct_allowed_tools") or [])
+            metadata["expected_sequence"] = list(contract.get("expected_sequence") or [])
+            metadata["reflex_policy"] = dict(contract.get("reflex_policy") or {})
+            return metadata
+        except Exception:
+            return metadata
 
     async def _run_pm_only(
         self,
@@ -332,6 +375,7 @@ class WorkflowStatusTool(BaseMCPTool):
 async def vetka_execute_workflow(
     request: str,
     workflow_type: str = "pm_to_qa",
+    workflow_family: str = "",
     include_eval: bool = True,
     timeout: int = 300
 ) -> Dict[str, Any]:
@@ -351,6 +395,7 @@ async def vetka_execute_workflow(
     return tool.execute({
         "request": request,
         "workflow_type": workflow_type,
+        "workflow_family": workflow_family,
         "include_eval": include_eval,
         "timeout": timeout
     })

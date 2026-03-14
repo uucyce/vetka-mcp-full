@@ -30,6 +30,11 @@ def test_cut_standalone_shell_binds_to_cut_mcp_contracts():
     assert "Build Timecode Sync" in shell
     assert "Build Audio Sync" in shell
     assert "Build Pause Slices" in shell
+    assert "Player Lab Import" in shell
+    assert "Pick Player Lab JSON" in shell
+    assert "Import Player Lab Markers" in shell
+    assert "No Player Lab file loaded." in shell
+    assert "/cut/markers/import-player-lab" in shell
     assert "Favorite Moment" in shell
     assert "Comment Marker" in shell
     assert "CAM Marker" in shell
@@ -196,6 +201,13 @@ def test_cut_nle_scene_graph_promotion_hooks_present():
     assert "Cmd/Ctrl+Z" in transport
     assert "Cmd/Ctrl+Shift+Z" in transport
     assert "Scene Graph peer pane ready" in layout
+    assert "cut-media-import-dropzone" in layout
+    assert "cut-media-import-path" in layout
+    assert "cut-media-import-trigger" in layout
+    assert "cut-media-folder-picker" in layout
+    assert "cut-media-import-status" in layout
+    assert "/cut/bootstrap-async" in layout
+    assert "Drag media folder here or use folder/path import" in layout
     assert "sceneGraphSurface={nleSceneGraphSurface}" in shell
     assert "Shared DAG viewport mounted inside NLE pane." in shell
     assert "NLE pane now reuses the shared DAG viewport bridge." in shell

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import time
+from datetime import datetime, timezone
 
 import pytest
 
@@ -44,6 +45,7 @@ async def test_heartbeat_config_start_stop_roundtrip(monkeypatch, tmp_path):
     assert payload_cfg["enabled"] is True
     assert payload_cfg["profile_mode"] == "task"
     assert payload_cfg["task_id"] == "tb_local_1"
+    assert payload_cfg["effective_profile"]["key"] == "task:tb_local_1"
 
     # Disable
     payload_off = await debug_routes.update_heartbeat_settings({"enabled": False})
@@ -190,7 +192,11 @@ async def test_heartbeat_tick_nudges_scoped_localguys_run_without_chat_messages(
             "idle_nudge_template": "Continue verify in playground.",
         },
     })
-    monkeypatch.setattr(hb.time, "time", lambda: time.mktime(time.strptime("2026-03-13 10:03:00", "%Y-%m-%d %H:%M:%S")))
+    monkeypatch.setattr(
+        hb.time,
+        "time",
+        lambda: datetime(2026, 3, 13, 10, 3, 0, tzinfo=timezone.utc).timestamp(),
+    )
 
     result = await hb.heartbeat_tick(group_id="test-group", dry_run=False)
 
@@ -199,6 +205,7 @@ async def test_heartbeat_tick_nudges_scoped_localguys_run_without_chat_messages(
     assert result["localguys"]["stalled"] == 1
     assert result["localguys"]["nudged"] == 1
     assert result["localguys"]["resumed"] == 0
+    assert result["localguys"]["effective_profile"]["key"] == "task:tb_local_1"
     assert fake_registry.updated[0][0] == "lg_run_1"
     assert fake_registry.updated[0][1]["metadata"]["recommended_tools"] == ["context", "tests"]
     assert any("localguys nudge" in row for row in emitted)
@@ -277,11 +284,16 @@ async def test_heartbeat_tick_auto_resume_creates_continuation_task(monkeypatch,
             "idle_nudge_template": "Continue execute in playground.",
         },
     })
-    monkeypatch.setattr(hb.time, "time", lambda: time.mktime(time.strptime("2026-03-13 10:03:00", "%Y-%m-%d %H:%M:%S")))
+    monkeypatch.setattr(
+        hb.time,
+        "time",
+        lambda: datetime(2026, 3, 13, 10, 3, 0, tzinfo=timezone.utc).timestamp(),
+    )
 
     result = await hb.heartbeat_tick(group_id="test-group", dry_run=False)
 
     assert result["localguys"]["resumed"] == 1
+    assert result["effective_profile"]["key"] == "project:proj_alpha"
     assert fake_board.added[0]["task_origin"] == "heartbeat_localguys_resume"
     assert fake_board.added[0]["parent_task_id"] == "tb_local_1"
     assert "run:lg_run_1" in fake_board.added[0]["tags"]

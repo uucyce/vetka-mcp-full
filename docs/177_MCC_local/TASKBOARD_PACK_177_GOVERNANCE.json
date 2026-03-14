@@ -11,7 +11,7 @@
     "source": "phase177_governance_pack",
     "created_by": "codex",
     "tags": ["localguys", "taskboard", "governance", "docs"],
-    "dependencies": ["tb_1773275513_8"]
+    "dependencies": ["tb_1773275513_7"]
   },
   {
     "title": "Add minimal governance fields to TaskBoard",
@@ -25,7 +25,7 @@
     "source": "phase177_governance_pack",
     "created_by": "codex",
     "tags": ["localguys", "taskboard", "governance", "metadata"],
-    "dependencies": ["tb_1773275513_8"]
+    "dependencies": ["tb_1773275513_7"]
   },
   {
     "title": "Enforce TaskBoard owner and completion contract gates",
@@ -39,7 +39,7 @@
     "source": "phase177_governance_pack",
     "created_by": "codex",
     "tags": ["localguys", "taskboard", "governance", "enforcement"],
-    "dependencies": ["tb_1773275513_8"]
+    "dependencies": ["tb_1773275513_7"]
   },
   {
     "title": "Add extended TaskBoard governance fields",
@@ -53,7 +53,7 @@
     "source": "phase177_governance_pack",
     "created_by": "codex",
     "tags": ["localguys", "taskboard", "governance", "policy"],
-    "dependencies": ["tb_1773275513_8"]
+    "dependencies": ["tb_1773275513_7"]
   },
   {
     "title": "Feed TaskBoard governance metadata into MCC task packets",
@@ -67,6 +67,6 @@
     "source": "phase177_governance_pack",
     "created_by": "codex",
     "tags": ["localguys", "taskboard", "governance", "mcc", "context-packet"],
-    "dependencies": ["tb_1773275513_8"]
+    "dependencies": ["tb_1773275513_7"]
   }
 ]

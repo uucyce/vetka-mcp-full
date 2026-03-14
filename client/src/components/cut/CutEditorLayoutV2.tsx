@@ -62,24 +62,28 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
   const duration = useCutEditorStore((s) => s.duration);
   const timelineId = useCutEditorStore((s) => s.timelineId);
+  const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
+  const thumbnails = useCutEditorStore((s) => s.thumbnails);
+  const projectId = useCutEditorStore((s) => s.projectId);
 
   // ─── Left top: Source Monitor — raw clip preview ───
   const renderLeftTop = useCallback(() => {
+    const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'No clip';
     return (
-      <PanelShell panelId="source_monitor" title="Source Monitor">
+      <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
         <VideoPreview />
       </PanelShell>
     );
-  }, []);
+  }, [activeMediaPath]);
 
   // ─── Left bottom: Project Panel — media bin + import ───
   const renderLeftBottom = useCallback(() => {
     return (
-      <PanelShell panelId="project" title="Project">
+      <PanelShell panelId="project" title={`Project: ${projectId || 'cut'} (${thumbnails.length} clips)`}>
         <ProjectPanel />
       </PanelShell>
     );
-  }, []);
+  }, [projectId, thumbnails.length]);
 
   // ─── Center: Program Monitor — timeline playback ───
   const renderCenter = useCallback(() => {
@@ -112,22 +116,24 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   // ─── Bottom: Timeline area ───
   const renderBottom = useCallback(() => {
     return (
-      <div style={TIMELINE_AREA}>
-        <TransportBar />
-        <TimelineTabBar />
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <TimelineTrackView />
+      <PanelShell panelId="timeline" title={`Timeline: ${timelineId} (${thumbnails.length} clips)`}>
+        <div style={TIMELINE_AREA}>
+          <TransportBar />
+          <TimelineTabBar />
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <TimelineTrackView />
+          </div>
+          <BPMTrack
+            timelineId={timelineId}
+            scriptText={scriptText}
+            pxPerSec={zoom}
+            scrollLeft={scrollLeft}
+            durationSec={duration}
+          />
         </div>
-        <BPMTrack
-          timelineId={timelineId}
-          scriptText={scriptText}
-          pxPerSec={zoom}
-          scrollLeft={scrollLeft}
-          durationSec={duration}
-        />
-      </div>
+      </PanelShell>
     );
-  }, [timelineId, scriptText, zoom, scrollLeft, duration]);
+  }, [timelineId, scriptText, zoom, scrollLeft, duration, thumbnails.length]);
 
   // ─── Panel router ───
   const renderPanel = useCallback(

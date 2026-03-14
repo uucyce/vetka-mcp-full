@@ -40,7 +40,7 @@ def _post_json(url: str, payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _find_existing_project(api_base: str, fixture_path: str) -> str:
-    payload = _get_json(f"{api_base}/projects/list")
+    payload = _get_json(f"{api_base}/projects/list?include_hidden=1")
     for row in payload.get("projects") or []:
         if str((row or {}).get("source_path", "")) == fixture_path:
             return str((row or {}).get("project_id", "")).strip()
@@ -59,6 +59,7 @@ def _create_fixture_project(api_base: str, fixture_path: str) -> str:
         {
             "source_type": "local",
             "source_path": fixture_path,
+            "project_kind": "fixture",
             "sandbox_path": sandbox_path,
             "quota_gb": 1,
             "project_name": FIXTURE_NAME,

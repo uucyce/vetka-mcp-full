@@ -11,9 +11,10 @@ def test_playwright_seed_script_reuses_or_creates_fixture_project():
     text = SCRIPT.read_text()
     assert 'FIXTURE_ROOT = ROOT / "tests" / "mcc" / "fixtures" / "playwright_mcc_graph_repo"' in text
     assert 'DEFAULT_BROWSER_BASE = "http://127.0.0.1:3002/mycelium"' in text
-    assert 'projects/list' in text
+    assert 'projects/list?include_hidden=1' in text
     assert 'projects/activate' in text
     assert 'project/init' in text
+    assert '"project_kind": "fixture"' in text
     assert '"sandbox_path": sandbox_path' in text
     assert '"browser_url": browser_url' in text
 

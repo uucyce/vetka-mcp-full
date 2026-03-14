@@ -59,6 +59,7 @@ class ProjectConfig:
     qdrant_collection: str = ""
     # MARKER_161.9.MULTIPROJECT.NAMING.CONFIG_PERSIST.V1
     display_name: str = ""
+    project_kind: str = "user"         # user | fixture | temp | legacy
 
     def resolved_workspace_path(self) -> str:
         """
@@ -129,6 +130,7 @@ class ProjectConfig:
         execution_mode: str = "playground",
         sandbox_path: str = "",
         project_name: str = "",
+        project_kind: str = "user",
     ) -> 'ProjectConfig':
         """Create a new project config from source."""
         display_name = _normalize_display_name(project_name)
@@ -142,6 +144,7 @@ class ProjectConfig:
         slug = _slug_from_name(name)
         project_id = f"{slug}_{uuid.uuid4().hex[:8]}"
         mode = str(execution_mode or "playground").strip().lower() or "playground"
+        kind = str(project_kind or "user").strip().lower() or "user"
         resolved_sandbox = os.path.abspath(os.path.expanduser(sandbox_path.strip())) if str(sandbox_path or "").strip() else ""
         sandbox_path_final = (
             resolved_sandbox or os.path.join(DATA_DIR, "playgrounds", project_id)
@@ -164,6 +167,7 @@ class ProjectConfig:
             created_at=datetime.now(timezone.utc).isoformat(),
             qdrant_collection=project_id,
             display_name=display_name,
+            project_kind=kind,
         )
 
     def validate(self) -> list[str]:
@@ -175,6 +179,8 @@ class ProjectConfig:
             errors.append(f"Invalid source_type: {self.source_type}")
         if self.execution_mode not in ("playground", "oauth_agent", "local_workspace"):
             errors.append(f"Invalid execution_mode: {self.execution_mode}")
+        if self.project_kind not in ("user", "fixture", "temp", "legacy"):
+            errors.append(f"Invalid project_kind: {self.project_kind}")
         if not self.source_path:
             errors.append("source_path is required")
         if self.source_type == "local" and not os.path.isabs(self.source_path):

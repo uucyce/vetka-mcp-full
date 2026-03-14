@@ -4,8 +4,11 @@ import asyncio
 import json
 import logging
 import math
+import mimetypes
 import os
 import re
+import shutil
+import subprocess
 import threading
 
 logger = logging.getLogger("cut.routes")
@@ -66,6 +69,8 @@ from src.services.pulse_srt_bridge import (
     srt_to_narrative_bpm_with_timing,
     parse_subtitles,
 )
+from src.services.converters.premiere_xml_converter import build_premiere_xml
+from src.services.converters.fcpxml_converter import build_fcpxml
 from src.services.pulse_story_space import (
     TrianglePosition,
     StorySpacePoint,
@@ -194,6 +199,49 @@ class CutPlayerLabMarkerImportRequest(BaseModel):
     author: str = "player_lab_import"
     markers: list[PlayerLabMarkerImportItem] = Field(default_factory=list)
     provisional_events: list[PlayerLabProvisionalEventImportItem] = Field(default_factory=list)
+
+
+class CutMediaSupportRequest(BaseModel):
+    sandbox_root: str = ""
+    source_path: str
+    probe_ffprobe: bool = True
+
+
+class CutExportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    sequence_name: str = "VETKA_Sequence"
+    fps: int = Field(default=25, ge=1, le=120)
+    include_archived_markers: bool = False
+
+
+class CutBatchExportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    fps: int = Field(default=25, ge=1, le=120)
+    sequence_name: str = "VETKA_Sequence"
+    formats: list[Literal["premiere_xml", "fcpxml", "otio", "edl"]] = Field(default_factory=lambda: ["premiere_xml"])
+    social_targets: list[Literal["youtube", "instagram_reels", "instagram_feed_1x1", "instagram_feed_4x5", "tiktok", "telegram", "vk", "x"]] = Field(default_factory=list)
+
+
+class CutMarkerSrtExportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    include_archived: bool = False
+    kinds: list[str] = Field(default_factory=list)
+
+
+class CutMarkerSrtImportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    srt_content: str
+    author: str = "player_lab_srt_import"
+    default_media_path: str = ""
+    mode: Literal["append", "replace"] = "append"
 
 
 
@@ -2242,6 +2290,239 @@ def _build_time_marker(body: CutTimeMarkerApplyRequest, project_id: str, timelin
     }
 
 
+PRODUCTION_VIDEO_FORMATS = {
+    "camera_codecs": ["H.264", "H.265/HEVC", "ProRes 422/4444", "DNxHD/DNxHR", "RED R3D", "BRAW"],
+    "containers": ["MOV", "MP4", "MXF", "AVI", "MKV"],
+    "audio": ["WAV", "AIFF", "MP3", "AAC", "FLAC", "M4A"],
+    "images": ["JPEG", "PNG", "TIFF", "EXR", "DPX", "BMP"],
+    "documents": ["MD", "TXT", "PDF", "SRT", "VTT"],
+    "projects": ["FCP XML", "AAF", "EDL", "OTIO"],
+    "resolutions": ["SD", "HD", "FHD", "2K", "4K", "6K", "8K"],
+    "frame_rates": [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120],
+}
+
+NATIVE_VIDEO_EXT = {"mp4", "m4v", "webm", "ogg", "mov"}
+PROXY_RECOMMENDED_EXT = {"mxf", "r3d", "braw", "avi", "mkv", "mts", "m2ts", "dpx", "exr"}
+
+
+def _resolve_asset_path(path: str, sandbox_root: str = "") -> Path:
+    p = Path(str(path or "").strip())
+    if p.is_absolute():
+        return p
+    if sandbox_root:
+        return (Path(sandbox_root) / p).resolve()
+    return p.resolve()
+
+
+def _probe_ffprobe_metadata(path: Path) -> dict[str, Any]:
+    ffprobe_bin = shutil.which("ffprobe")
+    if not ffprobe_bin:
+        return {"available": False, "error": "ffprobe_not_found"}
+    if not path.exists():
+        return {"available": True, "error": "file_not_found"}
+    try:
+        proc = subprocess.run(
+            [
+                ffprobe_bin,
+                "-v",
+                "error",
+                "-show_entries",
+                "stream=index,codec_name,codec_type,width,height,avg_frame_rate,r_frame_rate,pix_fmt,channels,sample_rate:format=format_name,duration,bit_rate",
+                "-of",
+                "json",
+                str(path),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return {"available": True, "error": f"ffprobe_failed: {proc.stderr.strip() or proc.returncode}"}
+        payload = json.loads(proc.stdout or "{}")
+        return {"available": True, "metadata": payload}
+    except Exception as exc:
+        return {"available": True, "error": f"ffprobe_exception: {exc}"}
+
+
+def _collect_export_material(
+    *,
+    store: CutProjectStore,
+    project_id: str,
+    timeline_id: str,
+    include_archived_markers: bool,
+) -> dict[str, Any]:
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        raise HTTPException(status_code=404, detail="CUT project not found")
+
+    timeline = store.load_timeline_state()
+    if timeline is None:
+        raise HTTPException(status_code=404, detail="CUT timeline state not found")
+    resolved_timeline_id = str(timeline.get("timeline_id") or "main")
+    if timeline_id and str(timeline_id) != resolved_timeline_id:
+        raise HTTPException(status_code=404, detail="CUT timeline not found")
+
+    clips: list[dict[str, Any]] = []
+    duration_sec = 0.0
+    for lane in timeline.get("lanes", []) or []:
+        for clip in lane.get("clips", []) or []:
+            start_sec = float(clip.get("start_sec") or 0.0)
+            clip_duration = max(0.0, float(clip.get("duration_sec") or 0.0))
+            end_sec = start_sec + clip_duration
+            duration_sec = max(duration_sec, end_sec)
+            clips.append(
+                {
+                    "clip_id": str(clip.get("clip_id") or ""),
+                    "name": str(Path(str(clip.get("source_path") or "")).name or clip.get("clip_id") or "clip"),
+                    "source_path": str(clip.get("source_path") or ""),
+                    "lane_id": str(lane.get("lane_id") or ""),
+                    "start_sec": start_sec,
+                    "end_sec": end_sec,
+                    "duration_sec": clip_duration,
+                }
+            )
+
+    marker_bundle = store.load_time_marker_bundle() or {}
+    raw_items = list(marker_bundle.get("items") or [])
+    markers: list[dict[str, Any]] = []
+    for item in raw_items:
+        status = str(item.get("status") or "active")
+        if status != "active" and not include_archived_markers:
+            continue
+        markers.append(
+            {
+                "marker_id": str(item.get("marker_id") or ""),
+                "media_path": str(item.get("media_path") or ""),
+                "time_sec": float(item.get("anchor_sec") if item.get("anchor_sec") is not None else item.get("start_sec") or 0.0),
+                "start_sec": float(item.get("start_sec") or 0.0),
+                "end_sec": float(item.get("end_sec") or item.get("start_sec") or 0.0),
+                "kind": str(item.get("kind") or "comment"),
+                "comment": str(item.get("text") or item.get("label") or ""),
+                "color": str(item.get("kind") or "comment"),
+                "comment_thread_id": str(item.get("comment_thread_id") or ""),
+            }
+        )
+
+    return {
+        "project": project,
+        "timeline": timeline,
+        "clips": clips,
+        "markers": markers,
+        "duration_sec": duration_sec,
+    }
+
+
+def _build_otio_export(project_name: str, sequence_name: str, clips: list[dict[str, Any]], fps: int) -> dict[str, Any]:
+    track_children = []
+    for clip in clips:
+        start = float(clip.get("start_sec") or 0.0)
+        dur = float(clip.get("duration_sec") or 0.0)
+        track_children.append(
+            {
+                "OTIO_SCHEMA": "Clip.2",
+                "name": str(clip.get("name") or "clip"),
+                "source_range": {
+                    "OTIO_SCHEMA": "TimeRange.1",
+                    "start_time": {"OTIO_SCHEMA": "RationalTime.1", "value": 0, "rate": fps},
+                    "duration": {"OTIO_SCHEMA": "RationalTime.1", "value": round(dur * fps), "rate": fps},
+                },
+                "metadata": {
+                    "vetka": {
+                        "source_path": str(clip.get("source_path") or ""),
+                        "timeline_start_sec": start,
+                    }
+                },
+            }
+        )
+    return {
+        "OTIO_SCHEMA": "Timeline.1",
+        "name": sequence_name,
+        "metadata": {"project_name": project_name},
+        "tracks": {
+            "OTIO_SCHEMA": "Stack.1",
+            "children": [
+                {
+                    "OTIO_SCHEMA": "Track.1",
+                    "name": "V1",
+                    "kind": "Video",
+                    "children": track_children,
+                }
+            ],
+        },
+    }
+
+
+def _build_edl_export(sequence_name: str, clips: list[dict[str, Any]], fps: int) -> str:
+    def tc(sec: float) -> str:
+        total_frames = max(0, int(round(sec * fps)))
+        hh = total_frames // (fps * 3600)
+        mm = (total_frames // (fps * 60)) % 60
+        ss = (total_frames // fps) % 60
+        ff = total_frames % fps
+        return f"{hh:02d}:{mm:02d}:{ss:02d}:{ff:02d}"
+
+    lines = [f"TITLE: {sequence_name}", "FCM: NON-DROP FRAME"]
+    for idx, clip in enumerate(clips, start=1):
+        start = float(clip.get("start_sec") or 0.0)
+        end = float(clip.get("end_sec") or start)
+        name = str(clip.get("name") or f"clip_{idx}")
+        event = f"{idx:03d}  AX       V     C        00:00:00:00 {tc(end-start)} {tc(start)} {tc(end)}"
+        lines.append(event)
+        lines.append(f"* FROM CLIP NAME: {name}")
+    return "\n".join(lines) + "\n"
+
+
+def _srt_ts(sec: float) -> str:
+    total_ms = max(0, int(round(sec * 1000)))
+    hh = total_ms // 3_600_000
+    mm = (total_ms // 60_000) % 60
+    ss = (total_ms // 1_000) % 60
+    ms = total_ms % 1_000
+    return f"{hh:02d}:{mm:02d}:{ss:02d},{ms:03d}"
+
+
+def _serialize_srt_marker(index: int, marker: dict[str, Any]) -> str:
+    start_sec = float(marker.get("start_sec") or marker.get("time_sec") or 0.0)
+    end_sec = max(start_sec, float(marker.get("end_sec") or start_sec + 1.0))
+    meta = {
+        "kind": str(marker.get("kind") or "comment"),
+        "marker_id": str(marker.get("marker_id") or ""),
+        "media_path": str(marker.get("media_path") or ""),
+        "comment_thread_id": str(marker.get("comment_thread_id") or ""),
+    }
+    meta_text = json.dumps(meta, ensure_ascii=False, separators=(",", ":"))
+    comment = str(marker.get("comment") or "")
+    return f"{index}\n{_srt_ts(start_sec)} --> {_srt_ts(end_sec)}\n{{{meta_text}}} {comment}\n"
+
+
+def _extract_marker_meta_from_srt(text: str) -> tuple[dict[str, Any], str]:
+    line = str(text or "").strip()
+    if not line.startswith("{"):
+        return {}, line
+    try:
+        end = line.index("}")
+        raw_meta = line[1:end]
+        meta = json.loads(raw_meta)
+        note = line[end + 1 :].strip()
+        return (meta if isinstance(meta, dict) else {}), note
+    except Exception:
+        return {}, line
+
+
+def _social_presets_manifest() -> dict[str, Any]:
+    return {
+        "youtube": {"aspect_ratio": "16:9", "recommended": {"codec": "H.264", "resolution": "1920x1080"}, "extras": ["chapters_from_markers", "thumbnail_from_favorite"]},
+        "instagram_reels": {"aspect_ratio": "9:16", "recommended": {"codec": "H.264", "resolution": "1080x1920"}},
+        "instagram_feed_1x1": {"aspect_ratio": "1:1", "recommended": {"codec": "H.264", "resolution": "1080x1080"}},
+        "instagram_feed_4x5": {"aspect_ratio": "4:5", "recommended": {"codec": "H.264", "resolution": "1080x1350"}},
+        "tiktok": {"aspect_ratio": "9:16", "recommended": {"codec": "H.264", "resolution": "1080x1920"}},
+        "telegram": {"aspect_ratio": "16:9|9:16", "recommended": {"codec": "H.264", "resolution": "1280x720"}},
+        "vk": {"aspect_ratio": "16:9", "recommended": {"codec": "H.264", "resolution": "1920x1080"}},
+        "x": {"aspect_ratio": "16:9|1:1", "recommended": {"codec": "H.264", "resolution": "1280x720"}},
+    }
+
+
 def _player_lab_marker_to_apply_request(
     payload: PlayerLabMarkerImportItem | PlayerLabProvisionalEventImportItem,
     *,
@@ -2371,6 +2652,15 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
 
     store = CutProjectStore(sandbox_root)
     layout = store.sandbox_layout_status()
+
+    # MARKER_181.3: Auto-create sandbox layout when create_project_if_missing is set
+    if body.create_project_if_missing and (not layout["sandbox_exists"] or layout["missing_dirs"]):
+        os.makedirs(store.paths.config_dir, exist_ok=True)
+        os.makedirs(store.paths.runtime_dir, exist_ok=True)
+        os.makedirs(store.paths.storage_dir, exist_ok=True)
+        os.makedirs(store.paths.core_mirror_root, exist_ok=True)
+        layout = store.sandbox_layout_status()
+
     if not layout["sandbox_exists"]:
         return _bootstrap_error(
             "sandbox_missing",
@@ -2385,12 +2675,17 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             degraded_reason="sandbox_missing_layout",
         )
 
-    if body.use_core_mirror and not layout["manifest_exists"]:
-        return _bootstrap_error(
-            "core_mirror_manifest_missing",
-            "CUT core mirror manifest is missing from sandbox config.",
-            degraded_reason="core_mirror_manifest_missing",
-        )
+    # MARKER_181.3: Downgrade to non-mirror mode if manifest missing during auto-create
+    use_core_mirror = body.use_core_mirror
+    if use_core_mirror and not layout["manifest_exists"]:
+        if body.create_project_if_missing:
+            use_core_mirror = False
+        else:
+            return _bootstrap_error(
+                "core_mirror_manifest_missing",
+                "CUT core mirror manifest is missing from sandbox config.",
+                degraded_reason="core_mirror_manifest_missing",
+            )
 
     mode, project = store.resolve_create_or_open(source_path)
     if body.mode == "open_existing":
@@ -2424,7 +2719,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             source_path=source_path,
             display_name=body.project_name,
             bootstrap_profile=body.bootstrap_profile,
-            use_core_mirror=body.use_core_mirror,
+            use_core_mirror=use_core_mirror,
         )
 
     scan = quick_scan_cut_source(source_path, limit=body.quick_scan_limit)
@@ -2441,7 +2736,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
 
     degraded_mode = False
     degraded_reason = ""
-    if body.use_core_mirror and not layout["core_mirror_exists"]:
+    if use_core_mirror and not layout["core_mirror_exists"]:
         degraded_mode = True
         degraded_reason = "core_mirror_missing"
 
@@ -2469,7 +2764,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
         "bootstrap": {
             "mode": bootstrap_mode if body.mode != "create_or_open" else body.mode,
             "state": "degraded" if degraded_mode else "ready",
-            "use_core_mirror": bool(body.use_core_mirror),
+            "use_core_mirror": bool(use_core_mirror),
             "core_mirror_root": store.paths.core_mirror_root,
             "estimated_ready_sec": estimated_ready_sec,
             "profile": profile_payload,
@@ -4387,6 +4682,317 @@ async def cut_import_player_lab_markers(body: CutPlayerLabMarkerImportRequest) -
         "marker_bundle": updated_bundle,
         "edit_event": edit_event,
         "error": None,
+    }
+
+
+@router.post("/media/support")
+async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
+    path = _resolve_asset_path(body.source_path, body.sandbox_root)
+    ext = path.suffix.lower().lstrip(".")
+    mime_type, _ = mimetypes.guess_type(str(path))
+    playback_class = "native" if ext in NATIVE_VIDEO_EXT else ("proxy_recommended" if ext in PROXY_RECOMMENDED_EXT else "unknown")
+    ffprobe_payload = _probe_ffprobe_metadata(path) if body.probe_ffprobe else {"available": False, "error": "disabled"}
+    return {
+        "success": True,
+        "schema_version": "cut_media_support_v1",
+        "source_path": str(path),
+        "exists": path.exists(),
+        "mime_type": mime_type or "application/octet-stream",
+        "extension": ext,
+        "playback_class": playback_class,
+        "production_formats": PRODUCTION_VIDEO_FORMATS,
+        "ffprobe": ffprobe_payload,
+    }
+
+
+def _build_export_filename(sequence_name: str, fmt: str) -> str:
+    safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", sequence_name).strip("._-") or "vetka_cut_export"
+    ext_map = {"premiere_xml": ".xml", "fcpxml": ".fcpxml", "otio": ".otio.json", "edl": ".edl"}
+    return f"{safe_name}{ext_map.get(fmt, '.txt')}"
+
+
+def _write_export_artifact(store: CutProjectStore, fmt: str, sequence_name: str, content: str) -> str:
+    export_dir = Path(store.paths.storage_dir) / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    out_path = export_dir / _build_export_filename(sequence_name, fmt)
+    out_path.write_text(content, encoding="utf-8")
+    return str(out_path)
+
+
+def _run_export(body: CutExportRequest, fmt: str) -> dict[str, Any]:
+    store = CutProjectStore(body.sandbox_root)
+    material = _collect_export_material(
+        store=store,
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        include_archived_markers=body.include_archived_markers,
+    )
+    project = material["project"]
+    clips = material["clips"]
+    markers = material["markers"]
+    sequence_name = str(body.sequence_name or "VETKA_Sequence")
+    project_name = str(project.get("display_name") or project.get("project_name") or "VETKA_Project")
+
+    if fmt == "premiere_xml":
+        xml_content = build_premiere_xml(
+            {
+                "project_name": project_name,
+                "sequence_name": sequence_name,
+                "source_path": str(project.get("source_path") or ""),
+                "fps": int(body.fps),
+                "duration_sec": float(material["duration_sec"] or 0.0),
+                "clips": clips,
+                "markers": markers,
+            }
+        )
+        export_path = _write_export_artifact(store, fmt, sequence_name, xml_content)
+        return {"content": xml_content, "path": export_path}
+
+    if fmt == "fcpxml":
+        xml_content = build_fcpxml(
+            {
+                "project_name": project_name,
+                "sequence_name": sequence_name,
+                "source_path": str(project.get("source_path") or ""),
+                "fps": int(body.fps),
+                "duration_sec": float(material["duration_sec"] or 0.0),
+                "clips": clips,
+                "markers": markers,
+            }
+        )
+        export_path = _write_export_artifact(store, fmt, sequence_name, xml_content)
+        return {"content": xml_content, "path": export_path}
+
+    if fmt == "otio":
+        payload = _build_otio_export(project_name, sequence_name, clips, int(body.fps))
+        content = json.dumps(payload, ensure_ascii=False, indent=2)
+        export_path = _write_export_artifact(store, fmt, sequence_name, content)
+        return {"content": content, "path": export_path}
+
+    if fmt == "edl":
+        content = _build_edl_export(sequence_name, clips, int(body.fps))
+        export_path = _write_export_artifact(store, fmt, sequence_name, content)
+        return {"content": content, "path": export_path}
+
+    raise HTTPException(status_code=400, detail=f"Unsupported export format: {fmt}")
+
+
+@router.post("/export/premiere-xml")
+async def cut_export_premiere_xml(body: CutExportRequest) -> dict[str, Any]:
+    if not body.sandbox_root or not body.project_id:
+        raise HTTPException(status_code=400, detail="sandbox_root and project_id are required")
+    result = _run_export(body, "premiere_xml")
+    store = CutProjectStore(body.sandbox_root)
+    material = _collect_export_material(
+        store=store,
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        include_archived_markers=body.include_archived_markers,
+    )
+    return {
+        "success": True,
+        "schema_version": "cut_export_result_v1",
+        "format": "premiere_xml",
+        "project_id": body.project_id,
+        "clip_count": len(material["clips"]),
+        "marker_count": len(material["markers"]),
+        "xml_content": result["content"],
+        "export_path": result["path"],
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.post("/export/fcpxml")
+async def cut_export_fcpxml(body: CutExportRequest) -> dict[str, Any]:
+    if not body.sandbox_root or not body.project_id:
+        raise HTTPException(status_code=400, detail="sandbox_root and project_id are required")
+    result = _run_export(body, "fcpxml")
+    store = CutProjectStore(body.sandbox_root)
+    material = _collect_export_material(
+        store=store,
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        include_archived_markers=body.include_archived_markers,
+    )
+    return {
+        "success": True,
+        "schema_version": "cut_export_result_v1",
+        "format": "fcpxml",
+        "project_id": body.project_id,
+        "clip_count": len(material["clips"]),
+        "marker_count": len(material["markers"]),
+        "xml_content": result["content"],
+        "export_path": result["path"],
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.post("/export/otio")
+async def cut_export_otio(body: CutExportRequest) -> dict[str, Any]:
+    result = _run_export(body, "otio")
+    return {
+        "success": True,
+        "schema_version": "cut_export_result_v1",
+        "format": "otio",
+        "project_id": body.project_id,
+        "otio_content": result["content"],
+        "export_path": result["path"],
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.post("/export/edl")
+async def cut_export_edl(body: CutExportRequest) -> dict[str, Any]:
+    result = _run_export(body, "edl")
+    return {
+        "success": True,
+        "schema_version": "cut_export_result_v1",
+        "format": "edl",
+        "project_id": body.project_id,
+        "edl_content": result["content"],
+        "export_path": result["path"],
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.get("/export/social-presets")
+async def cut_export_social_presets() -> dict[str, Any]:
+    return {
+        "success": True,
+        "schema_version": "cut_export_social_presets_v1",
+        "presets": _social_presets_manifest(),
+        "batch_supported": True,
+    }
+
+
+@router.post("/export/batch")
+async def cut_export_batch(body: CutBatchExportRequest) -> dict[str, Any]:
+    export_req = CutExportRequest(
+        sandbox_root=body.sandbox_root,
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        sequence_name=body.sequence_name,
+        fps=body.fps,
+    )
+    results: dict[str, dict[str, Any]] = {}
+    for fmt in body.formats:
+        out = _run_export(export_req, fmt)
+        results[fmt] = {"export_path": out["path"]}
+    social_manifest = _social_presets_manifest()
+    social_targets = {target: social_manifest[target] for target in body.social_targets if target in social_manifest}
+    return {
+        "success": True,
+        "schema_version": "cut_export_batch_v1",
+        "project_id": body.project_id,
+        "exports": results,
+        "social_targets": social_targets,
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.post("/markers/export-srt")
+async def cut_export_markers_srt(body: CutMarkerSrtExportRequest) -> dict[str, Any]:
+    store = CutProjectStore(body.sandbox_root)
+    material = _collect_export_material(
+        store=store,
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        include_archived_markers=body.include_archived,
+    )
+    kinds = {str(kind).strip() for kind in body.kinds if str(kind).strip()}
+    markers = [
+        marker for marker in material["markers"]
+        if not kinds or str(marker.get("kind") or "") in kinds
+    ]
+    srt_parts = [_serialize_srt_marker(index, marker) for index, marker in enumerate(markers, start=1)]
+    srt_content = "\n".join(srt_parts).strip() + ("\n" if srt_parts else "")
+    export_dir = Path(store.paths.storage_dir) / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    out_path = export_dir / _build_export_filename("vetka_markers", "edl")
+    out_path = out_path.with_suffix(".srt")
+    out_path.write_text(srt_content, encoding="utf-8")
+    return {
+        "success": True,
+        "schema_version": "cut_marker_srt_v1",
+        "project_id": body.project_id,
+        "timeline_id": body.timeline_id,
+        "marker_count": len(markers),
+        "srt_content": srt_content,
+        "export_path": str(out_path),
+        "generated_at": _utc_now_iso(),
+    }
+
+
+@router.post("/markers/import-srt")
+async def cut_import_markers_srt(body: CutMarkerSrtImportRequest) -> dict[str, Any]:
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _time_marker_error("project_not_found", "CUT project not found for SRT marker import.")
+
+    marker_bundle = store.load_time_marker_bundle() or {
+        "schema_version": "cut_time_marker_bundle_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": str(body.timeline_id or "main"),
+        "revision": 0,
+        "items": [],
+        "ranking_summary": _compute_time_marker_ranking_summary([]),
+        "generated_at": _utc_now_iso(),
+    }
+
+    items = [] if body.mode == "replace" else [deepcopy(item) for item in marker_bundle.get("items", [])]
+    imported: list[dict[str, Any]] = []
+    blocks = parse_subtitles(str(body.srt_content or ""))
+    for block in blocks:
+        meta, note = _extract_marker_meta_from_srt(getattr(block, "text", ""))
+        media_path = str(meta.get("media_path") or body.default_media_path or "")
+        if not media_path:
+            continue
+        marker_kind = str(meta.get("kind") or "comment")
+        if marker_kind not in {"favorite", "comment", "cam", "insight", "chat"}:
+            marker_kind = "comment"
+        req = CutTimeMarkerApplyRequest(
+            sandbox_root=body.sandbox_root,
+            project_id=body.project_id,
+            timeline_id=body.timeline_id,
+            author=body.author,
+            op="create",
+            marker_id=str(meta.get("marker_id") or ""),
+            media_path=media_path,
+            kind=marker_kind,
+            start_sec=float(getattr(block, "start", 0.0)),
+            end_sec=float(getattr(block, "end", 0.0)),
+            anchor_sec=float(getattr(block, "start", 0.0)),
+            score=float(meta.get("score") or 0.7),
+            text=note,
+            comment_thread_id=str(meta.get("comment_thread_id") or "") or None,
+            source_engine="srt_import_v1",
+        )
+        try:
+            marker = _build_time_marker(req, str(project.get("project_id") or ""), str(body.timeline_id or "main"))
+        except ValueError:
+            continue
+        items.append(marker)
+        imported.append(marker)
+
+    updated_bundle = {
+        "schema_version": "cut_time_marker_bundle_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": str(body.timeline_id or "main"),
+        "revision": int(marker_bundle.get("revision") or 0) + (1 if imported else 0),
+        "items": items,
+        "ranking_summary": _compute_time_marker_ranking_summary(items),
+        "generated_at": _utc_now_iso(),
+    }
+    store.save_time_marker_bundle(updated_bundle)
+    return {
+        "success": True,
+        "schema_version": "cut_marker_srt_import_v1",
+        "project_id": body.project_id,
+        "timeline_id": body.timeline_id,
+        "imported_count": len(imported),
+        "mode": body.mode,
+        "marker_bundle": updated_bundle,
     }
 
 

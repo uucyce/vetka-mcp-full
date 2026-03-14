@@ -248,6 +248,32 @@ MODEL_PROFILES = {
 - Pass condition: the preset is discoverable through MCC workflow-contract/operator-method APIs and covered by template + contract tests.
 - Implementation marker: `MARKER_173.P6.MYCELIUM_LOCAL_OWNERSHIP_PRESET`
 
+### P6.8 — Workflow REFLEX boundary audit
+- Audit full `mycelium_execute_workflow` path and record where REFLEX is advisory versus enforced.
+- Current conclusion:
+  - Direct local call path (`vetka_call_model` / `mycelium_call_model`) applies contract-time REFLEX preflight via `maybe_apply_reflex_to_direct_tools` (enforced at entry).
+  - Full workflow path enters via `mycelium_execute_workflow` and previously relied on `agent_pipeline` hooks (`reflex_pre_fc`, `reflex_filter_schemas`) without direct-entry helper parity (advisory + flag-gated).
+- Pass condition: audit is codified by tests and remains visible in roadmap.
+- Implementation marker: `MARKER_173.P6.MYCELIUM_WORKFLOW_REFLEX_AUDIT`
+
+### P6.9 — Workflow-entry REFLEX enforcement parity
+- Add direct-call REFLEX preflight into workflow entry path so `mycelium_execute_workflow` reaches `call_model_v2` only after `maybe_apply_reflex_to_direct_tools`.
+- Keep existing `agent_pipeline` hooks intact as downstream reinforcement; entry parity is additive.
+- Pass condition: orchestrator path contains helper-based preflight and audit tests assert the new boundary.
+- Implementation marker: `MARKER_173.P6.P9`
+
+### P6.10 — Contract metadata in workflow runtime
+- Thread `workflow_family` through `mycelium_execute_workflow` -> `vetka_execute_workflow` -> orchestrator runtime metadata.
+- Resolve MCC contract at workflow tool layer and pass `write_opt_ins` into orchestrator REFLEX preflight context.
+- Pass condition: workflow entry preflight can enforce contract-specific write opts (e.g., task-board writes) instead of generic defaults.
+- Implementation marker: `MARKER_173.P6.P10`
+
+### P6.11 — Ownership workflow runtime e2e probe
+- Add an integration probe on the real MYCELIUM dispatch entry (`mycelium_execute_workflow`) with `workflow_family=ownership_localguys`.
+- Assert that runtime contract metadata (`write_opt_ins`, `direct_allowed_tools`, `expected_sequence`, `reflex_policy`) is threaded end-to-end into orchestrator workflow execution args.
+- Pass condition: the dispatch-level test proves runtime propagation without relying on static source assertions.
+- Implementation marker: `MARKER_173.P6.P11`
+
 ### Tests: ~12
 - Local Qwen uses VETKA search/read tools for code context
 - Local Qwen claims or updates its task-board task
@@ -262,6 +288,10 @@ MODEL_PROFILES = {
 - `MARKER_173.P6.LIVE_LOCAL_QWEN_BEHAVIOR`
 - `MARKER_173.P6.MYCELIUM_LOCAL_PATCH_PRESET`
 - `MARKER_173.P6.MYCELIUM_LOCAL_OWNERSHIP_PRESET`
+- `MARKER_173.P6.MYCELIUM_WORKFLOW_REFLEX_AUDIT`
+- `MARKER_173.P6.P9`
+- `MARKER_173.P6.P10`
+- `MARKER_173.P6.P11`
 
 ---
 

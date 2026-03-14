@@ -13,11 +13,14 @@ from typing import Any
 from src.services.cut_scene_graph_taxonomy import SCENE_GRAPH_EDGE_TYPE_SET, SCENE_GRAPH_NODE_TYPE_SET
 
 
-CUT_VIDEO_EXT = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
-CUT_AUDIO_EXT = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
-CUT_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".avif"}
-CUT_DOC_EXT = {".pdf", ".doc", ".docx", ".md", ".txt", ".rtf", ".fdx"}
-CUT_PROJECT_EXT = {".prproj", ".aep", ".fcpxml", ".xml", ".edl", ".prin"}
+CUT_VIDEO_EXT = {
+    ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mxf", ".r3d", ".braw",
+    ".mts", ".m2ts", ".dnxhd", ".dnxhr", ".hevc", ".h264", ".h265",
+}
+CUT_AUDIO_EXT = {".mp3", ".wav", ".aiff", ".aif", ".m4a", ".aac", ".flac", ".ogg"}
+CUT_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".tif", ".tiff", ".avif", ".bmp", ".exr", ".dpx"}
+CUT_DOC_EXT = {".pdf", ".doc", ".docx", ".md", ".txt", ".rtf", ".fdx", ".srt", ".vtt"}
+CUT_PROJECT_EXT = {".prproj", ".aep", ".fcpxml", ".xml", ".edl", ".prin", ".aaf", ".otio"}
 CUT_SCRIPT_TOKENS = ("script", "scenario", "treatment", "screenplay")
 CUT_MONTAGE_TOKENS = ("montage", "edit_sheet", "shotlist", "shot_list", "edl", "fcpxml", "xml")
 CUT_TIMECODE_TOKENS = ("transcript", "timecode", "subtitles", "captions", ".srt", ".vtt", ".json")

@@ -389,6 +389,70 @@ def test_localguys_run_tracks_turn_budget_and_runtime_guard(client: TestClient) 
     assert exceeded.json()["detail"] == "max_turns_exceeded:22/13"
 
 
+def test_ownership_localguys_run_update_allows_task_board_writes_only(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _install_localguys_client(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        tasks=[
+            {
+                "id": "tb_ownership_1",
+                "title": "Ownership localguys runtime guard",
+                "description": "Validate task_board write scope at run-update boundary.",
+                "phase_type": "build",
+                "complexity": "low",
+                "preset": "dragon_silver",
+                "team_profile": "dragon_silver",
+                "workflow_id": "ownership_localguys",
+                "workflow_family": "ownership_localguys",
+                "workflow_selection_origin": "user-selected",
+            }
+        ],
+    )
+
+    start = client.post("/api/mcc/tasks/tb_ownership_1/localguys-run")
+    assert start.status_code == 200
+    payload = start.json()
+    run = payload["run"]
+    assert payload["runtime_guard"]["write_opt_ins"]["task_board"] is True
+    assert payload["runtime_guard"]["write_opt_ins"]["edit_file"] is False
+
+    allow_task_board = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "execute",
+            "active_role": "operator",
+            "metadata": {
+                "used_tools": ["tasks"],
+                "write_attempts": ["task_board"],
+                "turn_increment": 1,
+            },
+        },
+    )
+    assert allow_task_board.status_code == 200
+    run_payload = allow_task_board.json()
+    assert run_payload["runtime_guard"]["allowed_tools"] == ["context", "tasks", "stats"]
+    assert run_payload["run"]["metadata"]["write_attempts"] == ["task_board"]
+    assert run_payload["run"]["metadata"]["turn_count"] == 1
+
+    reject_edit = client.patch(
+        f"/api/mcc/localguys-runs/{run['run_id']}",
+        json={
+            "status": "running",
+            "current_step": "execute",
+            "metadata": {
+                "used_tools": ["tasks"],
+                "write_attempts": ["edit_file"],
+            },
+        },
+    )
+    assert reject_edit.status_code == 400
+    assert reject_edit.json()["detail"] == "write_scope_not_allowed:edit_file"
+
+
 def test_localguys_run_start_returns_503_when_playground_creation_fails(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

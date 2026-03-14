@@ -152,6 +152,7 @@ interface CutEditorState {
   setMarkOut: (t: number | null) => void;
   setPlaybackRate: (rate: number) => void;
   setZoom: (z: number) => void;
+  setTrackHeight: (h: number) => void;
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
@@ -248,6 +249,7 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   setMarkOut: (t) => set({ markOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
+  setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),
   toggleMute: (laneId) =>
     set((state) => {

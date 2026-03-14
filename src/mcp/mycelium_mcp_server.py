@@ -331,6 +331,7 @@ MYCELIUM_TOOLS = [
             "properties": {
                 "request": {"type": "string", "description": "Workflow request"},
                 "workflow_type": {"type": "string", "description": "pm_to_qa, pm_only, dev_qa"},
+                "workflow_family": {"type": "string", "description": "Optional MCC workflow family for contract-aware REFLEX preflight"},
                 "include_eval": {"type": "boolean"}, "timeout": {"type": "number"},
             },
             "required": ["request"],
@@ -672,6 +673,7 @@ async def _handle_execute_workflow(arguments: Dict[str, Any]) -> str:
     result = await vetka_execute_workflow(
         request=arguments.get("request", ""),
         workflow_type=arguments.get("workflow_type", "pm_to_qa"),
+        workflow_family=arguments.get("workflow_family", ""),
         include_eval=arguments.get("include_eval", True),
         timeout=arguments.get("timeout", 300),
     )

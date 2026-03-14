@@ -79,6 +79,9 @@ const LOADING_STYLE: CSSProperties = {
   zIndex: 3,
 };
 
+const NATIVE_PLAYABLE_VIDEO_EXT = new Set(['mp4', 'm4v', 'webm', 'ogg', 'mov']);
+const HEAVY_CODEC_EXT = new Set(['mxf', 'r3d', 'braw', 'mkv', 'avi', 'mts', 'm2ts', 'dpx', 'exr']);
+
 function formatTimecode(seconds: number, fps = 25): string {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
@@ -115,6 +118,8 @@ export default function VideoPreview() {
   const animFrameRef = useRef(0);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const prevMediaRef = useRef<string | null>(null);
+  const [resolvedSrc, setResolvedSrc] = useState<string>('');
+  const [sourceHint, setSourceHint] = useState<string>('');
 
   const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
@@ -130,6 +135,8 @@ export default function VideoPreview() {
   const pause = useCutEditorStore((s) => s.pause);
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
+
+  const extension = (activeMediaPath?.split('.').pop() || '').toLowerCase();
 
   // Find poster for current media
   const activeThumbnail = activeMediaPath
@@ -163,6 +170,45 @@ export default function VideoPreview() {
     video.load();
     // Store loading flag is already set by setActiveMedia()
   }, [activeMediaPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const resolvePlayableSource = async () => {
+      if (!activeMediaPath) {
+        setResolvedSrc('');
+        setSourceHint('');
+        return;
+      }
+      const sourceUrl = `${API_BASE}/files/raw?path=${encodeURIComponent(activeMediaPath)}`;
+      const wantsProxy = HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension);
+      if (!sandboxRoot || !wantsProxy) {
+        setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
+        setSourceHint(wantsProxy ? 'proxy unavailable, trying source' : '');
+        return;
+      }
+      try {
+        const resp = await fetch(
+          `${API_BASE}/cut/proxy/path?sandbox_root=${encodeURIComponent(sandboxRoot)}&source_path=${encodeURIComponent(activeMediaPath)}`
+        );
+        const payload = (await resp.json()) as { success?: boolean; exists?: boolean; proxy_path?: string | null };
+        if (cancelled) return;
+        if (payload.success && payload.exists && payload.proxy_path) {
+          setResolvedSrc(`${API_BASE}/files/raw?path=${encodeURIComponent(payload.proxy_path)}`);
+          setSourceHint('proxy playback');
+          return;
+        }
+      } catch {
+        // fallback to raw source
+      }
+      if (cancelled) return;
+      setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
+      setSourceHint(wantsProxy ? 'proxy recommended' : '');
+    };
+    void resolvePlayableSource();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMediaPath, activeThumbnail?.source_url, extension, sandboxRoot]);
 
   // Play/pause control
   useEffect(() => {
@@ -253,16 +299,11 @@ export default function VideoPreview() {
     );
   }
 
-  // MARKER_170.NLE.MEDIA_PROXY: Build video URL via media-proxy endpoint
-  const videoSrc = sandboxRoot
-    ? `${API_BASE}/cut/media-proxy?sandbox_root=${encodeURIComponent(sandboxRoot)}&path=${encodeURIComponent(activeMediaPath)}`
-    : activeThumbnail?.source_url || activeMediaPath;
-
   return (
     <div style={CONTAINER_STYLE}>
       <video
         ref={videoRef}
-        src={videoSrc}
+        src={resolvedSrc}
         poster={activeThumbnail?.poster_url || undefined}
         style={VIDEO_STYLE}
         onLoadedMetadata={handleLoadedMetadata}
@@ -283,6 +324,11 @@ export default function VideoPreview() {
       {mediaLoading && !mediaError && (
         <div style={LOADING_STYLE}>loading…</div>
       )}
+      {sourceHint ? (
+        <div style={{ position: 'absolute', top: 12, right: 12, fontSize: 10, color: '#bbb', background: 'rgba(0,0,0,0.6)', padding: '2px 6px', borderRadius: 3 }}>
+          {sourceHint}
+        </div>
+      ) : null}
       <TranscriptOverlay />
       {/* MARKER_170.NLE.AUDIO_VU: VU meter strip on right edge */}
       <AudioLevelMeter

@@ -9,6 +9,28 @@ function writeDataUrl(filePath: string, dataUrl: string | undefined) {
   return true;
 }
 
+function readEnvInt(name: string, fallback: number) {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+type SourceReadinessDiagnostics = {
+  sampleId: string;
+  ready: boolean;
+  attempts: number;
+  pollMs: number;
+  maxPolls: number;
+  stageHydrateCalls: number;
+  stageHydrateSuccesses: number;
+  assetHydrateCalls: number;
+  assetHydrateSuccesses: number;
+  elapsedMs: number;
+  finalState: Record<string, unknown> | null;
+  snapshot: Record<string, unknown> | null;
+};
+
 test("export plate-wise png alpha and depth assets", async ({ page }) => {
   test.setTimeout(90000);
   const sampleId = process.env.PARALLAX_LAB_SAMPLE_ID || "hover-politsia";
@@ -23,47 +45,95 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
   await page.waitForFunction(() => Boolean(window.vetkaParallaxLab?.snapshot()?.ok), { timeout: 60000 });
   const applyQwenPlan = process.env.PARALLAX_LAB_APPLY_QWEN_PLAN === "1";
   const applyQwenGate = process.env.PARALLAX_LAB_APPLY_QWEN_GATE === "1";
+  const sourceReadyMaxPolls = readEnvInt("PARALLAX_LAB_SOURCE_READY_MAX_POLLS", 200);
+  const sourceReadyPollMs = readEnvInt("PARALLAX_LAB_SOURCE_READY_POLL_MS", 250);
+  const sourceReadyAssetEvery = readEnvInt("PARALLAX_LAB_SOURCE_READY_ASSET_EVERY", 4);
+  const sourceReadyFinalAssetRetries = readEnvInt("PARALLAX_LAB_SOURCE_READY_FINAL_ASSET_RETRIES", 3);
+  const sourceReadyFinalWaitMs = readEnvInt("PARALLAX_LAB_SOURCE_READY_FINAL_WAIT_MS", 1200);
   await page.evaluate(() => {
     const api = window.vetkaParallaxLab;
     if (!api) throw new Error("vetkaParallaxLab API is unavailable");
     api.setPreviewMode("composite");
   });
+  const readinessStartedAt = Date.now();
+  let stageHydrateCalls = 0;
+  let stageHydrateSuccesses = 0;
+  let assetHydrateCalls = 0;
+  let assetHydrateSuccesses = 0;
+  let attempts = 0;
   let sourceReady = false;
-  for (let index = 0; index < 160; index += 1) {
+  for (let index = 0; index < sourceReadyMaxPolls; index += 1) {
+    attempts = index + 1;
     sourceReady = await page.evaluate(() => {
       const api = window.vetkaParallaxLab;
       if (!api) throw new Error("vetkaParallaxLab API is unavailable");
       return api.getState().sourceRasterReady;
     });
     if (sourceReady) break;
+    stageHydrateCalls += 1;
     const stageHydrated = await page.evaluate(() => {
       const api = window.vetkaParallaxLab;
       if (!api) throw new Error("vetkaParallaxLab API is unavailable");
       return api.hydrateSourceRasterFromStage();
     });
-    if (!stageHydrated && index % 4 === 3) {
+    if (stageHydrated) stageHydrateSuccesses += 1;
+    if (!stageHydrated && index % sourceReadyAssetEvery === sourceReadyAssetEvery - 1) {
+      assetHydrateCalls += 1;
       await page.evaluate(async () => {
         const api = window.vetkaParallaxLab;
         if (!api) throw new Error("vetkaParallaxLab API is unavailable");
-        await api.hydrateSourceRasterFromAsset();
+        return api.hydrateSourceRasterFromAsset();
       });
+      assetHydrateSuccesses += 1;
     }
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(sourceReadyPollMs);
   }
   if (!sourceReady) {
-    await page.evaluate(async () => {
-      const api = window.vetkaParallaxLab;
-      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
-      await api.hydrateSourceRasterFromAsset();
-    });
-    await page.waitForTimeout(1200);
-    sourceReady = await page.evaluate(() => {
-      const api = window.vetkaParallaxLab;
-      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
-      return api.getState().sourceRasterReady;
-    });
+    for (let retry = 0; retry < sourceReadyFinalAssetRetries; retry += 1) {
+      assetHydrateCalls += 1;
+      const finalHydrateOk = await page.evaluate(async () => {
+        const api = window.vetkaParallaxLab;
+        if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+        return api.hydrateSourceRasterFromAsset();
+      });
+      if (finalHydrateOk) assetHydrateSuccesses += 1;
+      await page.waitForTimeout(sourceReadyFinalWaitMs);
+      sourceReady = await page.evaluate(() => {
+        const api = window.vetkaParallaxLab;
+        if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+        return api.getState().sourceRasterReady;
+      });
+      if (sourceReady) break;
+    }
   }
-  expect(sourceReady).toBeTruthy();
+  const readinessDiagnostics = await page.evaluate(
+    ({ sampleId }) => {
+      const api = window.vetkaParallaxLab;
+      if (!api) throw new Error("vetkaParallaxLab API is unavailable");
+      return {
+        sampleId,
+        finalState: api.getState(),
+        snapshot: api.snapshot(),
+      };
+    },
+    { sampleId },
+  );
+  const readinessReport: SourceReadinessDiagnostics = {
+    sampleId,
+    ready: sourceReady,
+    attempts,
+    pollMs: sourceReadyPollMs,
+    maxPolls: sourceReadyMaxPolls,
+    stageHydrateCalls,
+    stageHydrateSuccesses,
+    assetHydrateCalls,
+    assetHydrateSuccesses,
+    elapsedMs: Date.now() - readinessStartedAt,
+    finalState: readinessDiagnostics.finalState,
+    snapshot: readinessDiagnostics.snapshot,
+  };
+  fs.writeFileSync(path.join(outputDir, "plate_export_readiness_diagnostics.json"), JSON.stringify(readinessReport, null, 2), "utf8");
+  expect(sourceReady, `sourceRasterReady=false; see ${path.join(outputDir, "plate_export_readiness_diagnostics.json")}`).toBeTruthy();
   if (applyQwenGate) {
     await page.waitForFunction(() => Boolean((window as any).vetkaParallaxLab), { timeout: 15000 });
     await page.evaluate(async () => {
@@ -156,6 +226,7 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
           plateLayout: "plate_layout.json",
           jobState: "plate_export_job_state.json",
           snapshot: "plate_export_snapshot.json",
+          readinessDiagnostics: "plate_export_readiness_diagnostics.json",
           compositeState: "plate_export_composite_state.json",
           depthState: "plate_export_depth_state.json",
           globalDepth: "global_depth_bw.png",

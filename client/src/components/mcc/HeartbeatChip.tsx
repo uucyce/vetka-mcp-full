@@ -106,13 +106,20 @@ export function HeartbeatChip() {
   const nextTickLabel = nextTickTs ? new Date(nextTickTs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
   const remainingLabel = nextTickIn !== null ? `${Math.max(0, Math.round(nextTickIn / 60))}m remaining` : '--';
   const scopeLabel =
-    profileMode === 'task'
-      ? `task:${heartbeat.task_id || focusedTaskId || '-'}`
-      : profileMode === 'workflow'
-        ? `workflow:${heartbeat.workflow_family || focusedWorkflowFamily || '-'}`
-        : profileMode === 'project'
-          ? `project:${heartbeat.project_id || activeProjectId || '-'}`
-          : 'global';
+    String(heartbeat.effective_profile?.key || '').trim()
+      || (
+        profileMode === 'task'
+          ? `task:${heartbeat.task_id || focusedTaskId || '-'}`
+          : profileMode === 'workflow'
+            ? (() => {
+              const wf = heartbeat.workflow_family || focusedWorkflowFamily || '-';
+              const project = heartbeat.project_id || activeProjectId || '';
+              return project ? `workflow:${wf}@${project}` : `workflow:${wf}`;
+            })()
+            : profileMode === 'project'
+              ? `project:${heartbeat.project_id || activeProjectId || '-'}`
+              : 'global'
+      );
 
   return (
     <div

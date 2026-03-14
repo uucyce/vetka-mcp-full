@@ -243,6 +243,12 @@ type PlateAwareLayoutContract = {
     worstTransitionRisk: number;
     riskyPlateIds: string[];
     warning: string | null;
+    suggestion: {
+      overscanPct: number;
+      travelXPct: number;
+      travelYPct: number;
+      reason: string | null;
+    };
   };
   routing: {
     mode: "portrait-base" | "multi-plate";
@@ -1860,6 +1866,30 @@ function App() {
         : riskyPlateIds.length > 0
           ? "one or more plates exceed safe disocclusion threshold"
           : "plate transition risk is above safe threshold";
+    const overscanShortfall = Math.max(0, minSafeOverscanPct - layoutMotion.overscanPct);
+    const transitionOver = Math.max(0, worstTransitionRisk - 58);
+    const disocclusionOver = Math.max(0, highestDisocclusionRisk - 55);
+    const motionRiskPressure = clamp(
+      Math.max(
+        overscanShortfall / Math.max(6, minSafeOverscanPct),
+        transitionOver / 42,
+        disocclusionOver / 45,
+      ),
+      0,
+      0.82,
+    );
+    const suggestedTravelXPct = Number(clamp(layoutMotion.travelXPct * (1 - motionRiskPressure), 0.4, 10).toFixed(2));
+    const suggestedTravelYPct = Number(clamp(layoutMotion.travelYPct * (1 - motionRiskPressure), 0.2, 5).toFixed(2));
+    const suggestedOverscanPct = Number(
+      clamp(Math.max(layoutMotion.overscanPct, recommendedOverscanPct, minSafeOverscanPct), 6, 32).toFixed(2),
+    );
+    const cameraSuggestionReason = cameraSafeOk
+      ? null
+      : overscanShortfall > 0
+        ? "increase overscan to at least the plate-safe minimum before full travel"
+        : transitionOver >= disocclusionOver
+          ? "reduce camera travel to lower plate transition overlap risk"
+          : "reduce camera travel to keep plate disocclusion within safe range";
 
     return {
       sampleId,
@@ -1894,6 +1924,12 @@ function App() {
         worstTransitionRisk: Number(worstTransitionRisk.toFixed(2)),
         riskyPlateIds,
         warning: cameraSafeWarning,
+        suggestion: {
+          overscanPct: cameraSafeOk ? Number(layoutMotion.overscanPct.toFixed(2)) : suggestedOverscanPct,
+          travelXPct: cameraSafeOk ? Number(layoutMotion.travelXPct.toFixed(2)) : suggestedTravelXPct,
+          travelYPct: cameraSafeOk ? Number(layoutMotion.travelYPct.toFixed(2)) : suggestedTravelYPct,
+          reason: cameraSuggestionReason,
+        },
       },
       routing: workflowRouting,
       transitions,
@@ -2255,6 +2291,10 @@ function App() {
         cameraSafeWarning: plateLayout.cameraSafe.warning,
         riskyPlateCount: plateLayout.cameraSafe.riskyPlateIds.length,
         worstTransitionRisk: plateLayout.cameraSafe.worstTransitionRisk,
+        cameraSafeSuggestedOverscanPct: plateLayout.cameraSafe.suggestion.overscanPct,
+        cameraSafeSuggestedTravelXPct: plateLayout.cameraSafe.suggestion.travelXPct,
+        cameraSafeSuggestedTravelYPct: plateLayout.cameraSafe.suggestion.travelYPct,
+        cameraSafeSuggestionReason: plateLayout.cameraSafe.suggestion.reason,
         matteSeedMode,
         matteSeedCount: matteSeeds.length,
         debugOpen,
@@ -3295,6 +3335,19 @@ function App() {
                 <MiniStat label="travel" value={`${formatPct(snapshot.travelXPct)} / ${formatPct(snapshot.travelYPct)}`} />
                 <MiniStat label="render" value={renderPolicy} />
               </div>
+              <div className="mini-stat-grid mini-stat-grid-compact">
+                <MiniStat
+                  label="safe x / y"
+                  value={`${formatPct(plateLayout.cameraSafe.suggestion.travelXPct)} / ${formatPct(plateLayout.cameraSafe.suggestion.travelYPct)}`}
+                />
+                <MiniStat label="safe overscan" value={formatPct(plateLayout.cameraSafe.suggestion.overscanPct)} />
+              </div>
+              <div className="panel-copy">
+                {plateLayout.cameraSafe.warning
+                  ? `Camera-safe warning: ${plateLayout.cameraSafe.warning}.`
+                  : "Camera-safe check: no warning."}
+                {plateLayout.cameraSafe.suggestion.reason ? ` Suggested motion tweak: ${plateLayout.cameraSafe.suggestion.reason}.` : ""}
+              </div>
             </div>
           </article>
 
@@ -3482,6 +3535,22 @@ function App() {
             <DebugRow label="travel y" value={formatPct(snapshot.travelYPct)} tone={snapshot.travelYPct <= snapshot.safeTravelYPct ? "good" : "bad"} />
             <DebugRow label="recommended overscan" value={formatPct(snapshot.recommendedOverscanPct)} tone={snapshot.overscanPct >= snapshot.recommendedOverscanPct ? "good" : "mid"} />
             <DebugRow label="min safe overscan" value={formatPct(snapshot.minSafeOverscanPct)} tone={snapshot.overscanPct >= snapshot.minSafeOverscanPct ? "good" : "bad"} />
+            <DebugRow
+              label="camera-safe travel"
+              value={`${formatPct(plateLayout.cameraSafe.suggestion.travelXPct)} / ${formatPct(plateLayout.cameraSafe.suggestion.travelYPct)}`}
+              tone={plateLayout.cameraSafe.ok ? "good" : "mid"}
+            />
+            <DebugRow
+              label="camera-safe overscan"
+              value={formatPct(plateLayout.cameraSafe.suggestion.overscanPct)}
+              tone={snapshot.overscanPct >= plateLayout.cameraSafe.suggestion.overscanPct ? "good" : "mid"}
+            />
+            {plateLayout.cameraSafe.warning ? (
+              <DebugRow label="camera-safe warning" value={plateLayout.cameraSafe.warning} tone="bad" />
+            ) : null}
+            {plateLayout.cameraSafe.suggestion.reason ? (
+              <DebugRow label="camera-safe suggestion" value={plateLayout.cameraSafe.suggestion.reason} tone="mid" />
+            ) : null}
             <DebugRow label="disocclusion risk" value={`${snapshot.disocclusionRisk}`} tone={snapshot.disocclusionRisk < 35 ? "good" : snapshot.disocclusionRisk < 60 ? "mid" : "bad"} />
             <DebugRow label="cardboard risk" value={`${snapshot.cardboardRisk}`} tone={snapshot.cardboardRisk < 35 ? "good" : snapshot.cardboardRisk < 60 ? "mid" : "bad"} />
             <DebugRow label="preview score" value={`${snapshot.previewScore}/100`} tone={snapshot.previewScore >= 72 ? "good" : snapshot.previewScore >= 50 ? "mid" : "bad"} />

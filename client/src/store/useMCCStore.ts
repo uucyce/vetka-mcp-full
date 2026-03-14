@@ -53,6 +53,13 @@ export interface HeartbeatSettings {
   localguys_enabled?: boolean;
   localguys_idle_sec?: number;
   localguys_action?: 'auto' | 'nudge' | 'resume_task' | string;
+  effective_profile?: {
+    mode?: 'global' | 'project' | 'workflow' | 'task' | string;
+    project_id?: string;
+    workflow_family?: string;
+    task_id?: string;
+    key?: string;
+  };
 }
 
 export interface AgentStatus {
@@ -102,6 +109,8 @@ export interface PresetConfig {
 export interface MCCProjectTab {
   project_id: string;
   display_name?: string;
+  project_kind?: string;
+  tab_visibility?: string;
   source_type: string;
   execution_mode?: string;
   source_path: string;
@@ -455,6 +464,7 @@ interface MCCState {
   projectTabs: MCCProjectTab[];
   projectTabsLoading: boolean;
   projectTabsUpdatedAt: string;
+  projectTabsHiddenCount: number;
 
   // MARKER_155.4: Camera position for zoom-based navigation
   cameraPosition: { x: number; y: number; zoom: number } | null;
@@ -589,6 +599,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   projectTabs: [],
   projectTabsLoading: false,
   projectTabsUpdatedAt: '',
+  projectTabsHiddenCount: 0,
 
   // MARKER_155.4: Camera position initial state
   cameraPosition: null,
@@ -926,6 +937,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           activeProjectId: '',
           projectTabs: [],
           projectTabsUpdatedAt: '',
+          projectTabsHiddenCount: 0,
           navLevel: 'first_run',
           navHistory: [],
         });
@@ -959,6 +971,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           windowSessionId,
           projectTabs: tabs,
           projectTabsUpdatedAt: String(data.updated_at || ''),
+          projectTabsHiddenCount: Number(data.hidden_count || 0),
           selectedKey: savedSelectedKey,
           navLevel: 'roadmap',
           navRoadmapNodeId: '',
@@ -974,6 +987,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           windowSessionId,
           projectTabs: tabs,
           projectTabsUpdatedAt: String(data.updated_at || ''),
+          projectTabsHiddenCount: Number(data.hidden_count || 0),
           navLevel: 'first_run',
           navHistory: [],
         });
@@ -987,6 +1001,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
         windowSessionId: get().windowSessionId || INITIAL_WINDOW_SESSION_ID,
         projectTabs: [],
         projectTabsUpdatedAt: '',
+        projectTabsHiddenCount: 0,
         navLevel: 'first_run',
         navHistory: [],
       });
@@ -1006,6 +1021,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       set({
         projectTabs: tabs,
         projectTabsUpdatedAt: String(data?.updated_at || ''),
+        projectTabsHiddenCount: Number(data?.hidden_count || 0),
         activeProjectId: hasCurrent ? current : (active || current),
       });
     } catch (err) {

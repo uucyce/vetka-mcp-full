@@ -68,9 +68,12 @@ def _save_registry(registry: Dict[str, Any]) -> None:
 def _project_to_record(config: ProjectConfig) -> Dict[str, Any]:
     workspace_path = str(config.resolved_workspace_path() or "").strip()
     context_scope_path = str(config.resolved_context_scope_path() or "").strip()
+    project_kind = str(getattr(config, "project_kind", "user") or "user").strip().lower() or "user"
     return {
         "project_id": str(config.project_id),
         "display_name": str(getattr(config, "display_name", "") or ""),
+        "project_kind": project_kind,
+        "tab_visibility": "visible" if project_kind == "user" else "hidden",
         "source_type": str(config.source_type),
         "execution_mode": str(getattr(config, "execution_mode", "playground") or "playground"),
         "source_path": str(config.source_path),
@@ -96,6 +99,7 @@ def _record_to_project(record: Dict[str, Any]) -> Optional[ProjectConfig]:
             created_at=str(record.get("created_at", "")),
             qdrant_collection=str(record.get("qdrant_collection", "")),
             display_name=str(record.get("display_name", "")),
+            project_kind=str(record.get("project_kind", "user") or "user"),
         )
     except Exception:
         return None
@@ -211,13 +215,22 @@ def ensure_registry_bootstrap() -> Dict[str, Any]:
     return registry
 
 
-def list_projects() -> Dict[str, Any]:
+def list_projects(*, include_hidden: bool = False, always_include_project_id: str = "") -> Dict[str, Any]:
     registry = ensure_registry_bootstrap()
     rows = registry.get("projects") or []
     summaries: List[Dict[str, Any]] = []
     active_id = str(registry.get("active_project_id", ""))
+    always_include = str(always_include_project_id or "").strip()
+    hidden_count = 0
     for row in rows:
         if not isinstance(row, dict):
+            continue
+        project_id = str(row.get("project_id", "")).strip()
+        project_kind = str(row.get("project_kind", "user") or "user").strip().lower() or "user"
+        tab_visibility = str(row.get("tab_visibility", "visible") or "visible").strip().lower() or "visible"
+        is_hidden = tab_visibility != "visible" or project_kind != "user"
+        if is_hidden and project_id != always_include and not include_hidden:
+            hidden_count += 1
             continue
         display_name = str(row.get("display_name", "")).strip()
         if not display_name:
@@ -230,8 +243,10 @@ def list_projects() -> Dict[str, Any]:
             )
         summaries.append(
             {
-                "project_id": str(row.get("project_id", "")),
+                "project_id": project_id,
                 "display_name": display_name,
+                "project_kind": project_kind,
+                "tab_visibility": tab_visibility,
                 "source_type": str(row.get("source_type", "")),
                 "execution_mode": str(row.get("execution_mode", "playground") or "playground"),
                 "source_path": str(row.get("source_path", "")),
@@ -256,6 +271,7 @@ def list_projects() -> Dict[str, Any]:
         "updated_at": str(registry.get("updated_at", "")),
         "projects": summaries,
         "count": len(summaries),
+        "hidden_count": hidden_count,
     }
 
 

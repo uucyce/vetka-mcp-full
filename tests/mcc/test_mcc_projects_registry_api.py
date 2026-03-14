@@ -224,6 +224,7 @@ def test_project_init_supports_oauth_agent_mode_without_playground_copy(
     assert row.get("execution_mode") == "oauth_agent"
     assert row.get("workspace_path") == str(source)
     assert row.get("context_scope_path") == str(source)
+    assert row.get("project_kind") == "user"
 
 
 def test_registry_bootstrap_rehydrates_projects_from_snapshot_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -262,3 +263,45 @@ def test_registry_bootstrap_rehydrates_projects_from_snapshot_files(tmp_path: Pa
     assert row["display_name"] == "OAuth Snapshot"
     assert row["workspace_path"] == str(project_root)
     assert row["context_scope_path"] == str(project_root)
+
+
+def test_fixture_projects_are_hidden_from_default_project_tabs(client: TestClient, tmp_path: Path) -> None:
+    source = tmp_path / "fixture_repo"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "fixture.py").write_text("print('fixture')\n", encoding="utf-8")
+
+    created = client.post(
+        "/api/mcc/project/init",
+        json={
+            "source_type": "local",
+            "source_path": str(source),
+            "project_kind": "fixture",
+            "quota_gb": 1,
+            "project_name": "Playwright Fixture",
+        },
+    )
+    assert created.status_code == 200
+    payload = created.json()
+    assert payload["success"] is True
+    assert payload["project_kind"] == "fixture"
+
+    visible = client.get("/api/mcc/projects/list")
+    assert visible.status_code == 200
+    visible_data = visible.json()
+    assert visible_data["count"] == 0
+    assert visible_data["hidden_count"] == 1
+
+    hidden = client.get("/api/mcc/projects/list?include_hidden=1")
+    assert hidden.status_code == 200
+    hidden_data = hidden.json()
+    assert hidden_data["count"] == 1
+    row = hidden_data["projects"][0]
+    assert row["project_kind"] == "fixture"
+    assert row["tab_visibility"] == "hidden"
+
+    init = client.get(f"/api/mcc/init?project_id={payload['project_id']}")
+    assert init.status_code == 200
+    init_payload = init.json()
+    assert init_payload["active_project_id"] == payload["project_id"]
+    assert init_payload["hidden_count"] == 0
+    assert any(str(item.get("project_id")) == str(payload["project_id"]) for item in init_payload["projects"])

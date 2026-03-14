@@ -2945,6 +2945,33 @@ def _normalize_heartbeat_config(raw: Dict[str, Any]) -> Dict[str, Any]:
     return base
 
 
+def _effective_heartbeat_profile(config: Dict[str, Any]) -> Dict[str, str]:
+    profile_mode = str(config.get("profile_mode") or "global").strip().lower()
+    if profile_mode not in {"global", "project", "workflow", "task"}:
+        profile_mode = "global"
+    project_id = str(config.get("project_id") or "").strip()
+    workflow_family = str(config.get("workflow_family") or "").strip()
+    task_id = str(config.get("task_id") or "").strip()
+
+    if profile_mode == "task":
+        key = f"task:{task_id or '-'}"
+    elif profile_mode == "workflow":
+        workflow_key = workflow_family or "-"
+        key = f"workflow:{workflow_key}@{project_id}" if project_id else f"workflow:{workflow_key}"
+    elif profile_mode == "project":
+        key = f"project:{project_id or '-'}"
+    else:
+        key = "global"
+
+    return {
+        "mode": profile_mode,
+        "project_id": project_id,
+        "workflow_family": workflow_family,
+        "task_id": task_id,
+        "key": key,
+    }
+
+
 def _load_heartbeat_config() -> Dict[str, Any]:
     """Load heartbeat config from disk, with env var fallback."""
     if HEARTBEAT_CONFIG_FILE.exists():
@@ -3010,6 +3037,7 @@ async def get_heartbeat_settings() -> Dict[str, Any]:
         "localguys_enabled": bool(config.get("localguys_enabled", True)),
         "localguys_idle_sec": int(config.get("localguys_idle_sec", 900) or 900),
         "localguys_action": str(config.get("localguys_action", "auto")),
+        "effective_profile": _effective_heartbeat_profile(config),
         "last_tick": last_tick,
         "total_ticks": total_ticks,
         "tasks_dispatched": tasks_dispatched,
@@ -3090,6 +3118,7 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "success": True,
         **config,
+        "effective_profile": _effective_heartbeat_profile(config),
         "message": "Settings saved to disk. Persists across restarts.",
         "config_file": str(HEARTBEAT_CONFIG_FILE),
     }

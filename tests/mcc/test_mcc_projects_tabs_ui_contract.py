@@ -8,8 +8,10 @@ def test_store_has_project_tabs_contract() -> None:
     assert "activeProjectId" in code
     assert "projectTabs" in code
     assert "display_name?: string;" in code
+    assert "project_kind?: string;" in code
     assert "workspace_path?: string;" in code
     assert "context_scope_path?: string;" in code
+    assert "projectTabsHiddenCount" in code
     assert "MCC_PROJECT_REGISTRY_SYNC_KEY" in code
     assert "announceProjectRegistryChanged" in code
     assert "refreshProjectTabs" in code
@@ -25,6 +27,8 @@ def test_mcc_renders_project_tab_shell_marker() -> None:
     assert "projectWorkspacePath" in code
     assert "workspace_path" in code
     assert "execution_mode" in code
+    assert "projectTabsHiddenCount" in code
+    assert "+{projectTabsHiddenCount} hidden" in code
     assert "window.addEventListener('storage', onStorage)" in code
     assert "const explicitName" in code
     assert "+ project" in code

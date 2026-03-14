@@ -1770,7 +1770,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # MARKER_178.6.1: Live fallback — uses local task_board handler
             try:
                 from src.mcp.tools.task_board_tools import handle_task_board
-                import json
                 result = handle_task_board(arguments)
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"
                 return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]

@@ -78,6 +78,7 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
   const leftResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const rightResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const bottomResizeRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const rightSplitResizeRef = useRef<{ startY: number; startSplit: number; containerHeight: number } | null>(null);
 
   const handleLeftResizeDown = useCallback(
     (e: React.PointerEvent) => {
@@ -125,7 +126,28 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     (e: React.PointerEvent) => {
       if (!bottomResizeRef.current) return;
       const dy = e.clientY - bottomResizeRef.current.startY;
-      setGridSize('bottomHeight', Math.max(80, Math.min(600, bottomResizeRef.current.startHeight - dy)));
+      // Bottom panel grows when dragging up (negative dy)
+      setGridSize('bottomHeight', Math.max(120, Math.min(700, bottomResizeRef.current.startHeight - dy)));
+    },
+    [setGridSize],
+  );
+
+  const handleRightSplitResizeDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const parent = e.currentTarget.parentElement;
+      const containerHeight = Math.max(1, parent?.clientHeight || 1);
+      rightSplitResizeRef.current = { startY: e.clientY, startSplit: grid.rightSplit, containerHeight };
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    },
+    [grid.rightSplit],
+  );
+
+  const handleRightSplitResizeMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!rightSplitResizeRef.current) return;
+      const dy = e.clientY - rightSplitResizeRef.current.startY;
+      const nextSplit = rightSplitResizeRef.current.startSplit + (dy / rightSplitResizeRef.current.containerHeight);
+      setGridSize('rightSplit', Math.max(0.2, Math.min(0.8, nextSplit)));
     },
     [setGridSize],
   );
@@ -134,6 +156,7 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     leftResizeRef.current = null;
     rightResizeRef.current = null;
     bottomResizeRef.current = null;
+    rightSplitResizeRef.current = null;
   }, []);
 
   // Column splits (top/bottom within each side column)
@@ -202,6 +225,9 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
             background: '#1A1A1A',
             flexShrink: 0,
           }}
+          onPointerDown={handleRightSplitResizeDown}
+          onPointerMove={handleRightSplitResizeMove}
+          onPointerUp={handleResizeUp}
         />
         <div style={{ flex: rightBottomH, overflow: 'hidden', minHeight: 0 }}>
           {renderPanel('right_bottom')}

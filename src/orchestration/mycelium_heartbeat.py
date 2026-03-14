@@ -183,6 +183,33 @@ def _task_matches_heartbeat_profile(task: Dict[str, Any], config: Dict[str, Any]
     return True
 
 
+def _effective_heartbeat_profile(config: Dict[str, Any]) -> Dict[str, str]:
+    profile_mode = str(config.get("profile_mode") or "global").strip().lower()
+    if profile_mode not in {"global", "project", "workflow", "task"}:
+        profile_mode = "global"
+    project_id = str(config.get("project_id") or "").strip()
+    workflow_family = str(config.get("workflow_family") or "").strip()
+    task_id = str(config.get("task_id") or "").strip()
+
+    if profile_mode == "task":
+        key = f"task:{task_id or '-'}"
+    elif profile_mode == "workflow":
+        workflow_key = workflow_family or "-"
+        key = f"workflow:{workflow_key}@{project_id}" if project_id else f"workflow:{workflow_key}"
+    elif profile_mode == "project":
+        key = f"project:{project_id or '-'}"
+    else:
+        key = "global"
+
+    return {
+        "mode": profile_mode,
+        "project_id": project_id,
+        "workflow_family": workflow_family,
+        "task_id": task_id,
+        "key": key,
+    }
+
+
 def _is_stalled_localguys_run(run: Dict[str, Any], idle_sec: int) -> bool:
     status = str(run.get("status") or "").strip().lower()
     if status in {"done", "failed", "blocked", "escalated"}:
@@ -254,8 +281,16 @@ def _build_localguys_resume_payload(task: Dict[str, Any], run: Dict[str, Any], r
 
 
 async def _process_localguys_heartbeat(group_id: str, config: Dict[str, Any]) -> Dict[str, Any]:
+    effective_profile = _effective_heartbeat_profile(config)
     if not bool(config.get("localguys_enabled", True)):
-        return {"checked": 0, "stalled": 0, "nudged": 0, "resumed": 0, "results": []}
+        return {
+            "checked": 0,
+            "stalled": 0,
+            "nudged": 0,
+            "resumed": 0,
+            "results": [],
+            "effective_profile": effective_profile,
+        }
 
     from src.orchestration.task_board import get_task_board
     from src.services.mcc_local_run_registry import get_localguys_run_registry
@@ -315,7 +350,12 @@ async def _process_localguys_heartbeat(group_id: str, config: Dict[str, Any]) ->
                     group_id,
                     f"@pipeline: localguys resume queued for {task_id} · run:{run_id} · step:{runtime_guard.get('current_step') or run.get('current_step') or '-'}",
                 )
-                results.append({"task_id": task_id, "run_id": run_id, "action": "resume_task"})
+                results.append({
+                    "task_id": task_id,
+                    "run_id": run_id,
+                    "action": "resume_task",
+                    "effective_profile_key": effective_profile["key"],
+                })
                 continue
 
         nudged += 1
@@ -323,7 +363,12 @@ async def _process_localguys_heartbeat(group_id: str, config: Dict[str, Any]) ->
             group_id,
             f"@pipeline: localguys nudge for {task_id} · run:{run_id} · step:{runtime_guard.get('current_step') or run.get('current_step') or '-'} · tools:{', '.join(next_tools) if next_tools else '-'}",
         )
-        results.append({"task_id": task_id, "run_id": run_id, "action": "nudge"})
+        results.append({
+            "task_id": task_id,
+            "run_id": run_id,
+            "action": "nudge",
+            "effective_profile_key": effective_profile["key"],
+        })
 
     return {
         "checked": len(tasks),
@@ -331,6 +376,7 @@ async def _process_localguys_heartbeat(group_id: str, config: Dict[str, Any]) ->
         "nudged": nudged,
         "resumed": resumed,
         "results": results,
+        "effective_profile": effective_profile,
     }
 
 
@@ -615,6 +661,7 @@ async def heartbeat_tick(
     tick_start = time.time()
     state = _load_state()
     config = _load_heartbeat_config()
+    effective_profile = _effective_heartbeat_profile(config)
 
     logger.info(f"[Heartbeat] Tick #{state.total_ticks + 1} "
                 f"(last_msg: {state.last_message_id or 'none'}, monitor_all={monitor_all})")
@@ -677,7 +724,14 @@ async def heartbeat_tick(
 
     if new_count == 0:
         logger.info("[Heartbeat] No new messages, sleeping...")
-        localguys_result = {"checked": 0, "stalled": 0, "nudged": 0, "resumed": 0, "results": []}
+        localguys_result = {
+            "checked": 0,
+            "stalled": 0,
+            "nudged": 0,
+            "resumed": 0,
+            "results": [],
+            "effective_profile": effective_profile,
+        }
         if not dry_run:
             localguys_result = await _process_localguys_heartbeat(group_id, config)
         state.total_ticks += 1
@@ -703,6 +757,7 @@ async def heartbeat_tick(
             "tasks_found": 0,
             "tasks_dispatched": 0,
             "localguys": localguys_result,
+            "effective_profile": effective_profile,
             "dry_run": dry_run
         }
 
@@ -817,7 +872,14 @@ async def heartbeat_tick(
         )
         results = [{"task": t.task[:100], "phase_type": t.phase_type, "dry_run": True} for t in tasks]
 
-    localguys_result = {"checked": 0, "stalled": 0, "nudged": 0, "resumed": 0, "results": []}
+    localguys_result = {
+        "checked": 0,
+        "stalled": 0,
+        "nudged": 0,
+        "resumed": 0,
+        "results": [],
+        "effective_profile": effective_profile,
+    }
     if not dry_run:
         localguys_result = await _process_localguys_heartbeat(group_id, config)
 
@@ -850,6 +912,7 @@ async def heartbeat_tick(
         "tasks_dispatched": len(results),
         "results": results,
         "localguys": localguys_result,
+        "effective_profile": effective_profile,
         "dry_run": dry_run,
         "duration_ms": int((time.time() - tick_start) * 1000)
     }

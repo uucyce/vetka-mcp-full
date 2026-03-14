@@ -1571,12 +1571,14 @@ class InitResponse(BaseModel):
     active_project_id: str = ""
     window_session_id: str = ""
     updated_at: str = ""
+    hidden_count: int = 0
     projects: List[Dict[str, Any]] = []
 
 class ProjectInitRequest(BaseModel):
     source_type: str       # "local" | "git" | "empty"
     source_path: str       # absolute path or git URL
     execution_mode: str = "playground"
+    project_kind: str = "user"
     sandbox_path: str = "" # optional absolute path for playground/sandbox root
     # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
     project_name: str = "" # optional user-facing project name (tab + display)
@@ -1588,6 +1590,7 @@ class ProjectInitResponse(BaseModel):
     # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
     project_name: str = ""
     execution_mode: str = ""
+    project_kind: str = ""
     sandbox_path: str = ""
     errors: list[str] = []
 
@@ -1670,9 +1673,9 @@ async def mcc_init(
         from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects
 
         ensure_registry_bootstrap()
-        listing = list_projects()
+        listing = list_projects(always_include_project_id=requested_project_id)
     except Exception:
-        listing = {"active_project_id": "", "projects": []}
+        listing = {"active_project_id": "", "projects": [], "hidden_count": 0}
 
     config = _resolve_project_config(requested_project_id)
     if config is None:
@@ -1681,6 +1684,7 @@ async def mcc_init(
             active_project_id=requested_project_id or str(listing.get("active_project_id", "")),
             window_session_id=requested_window_session_id,
             updated_at=str(listing.get("updated_at", "")),
+            hidden_count=int(listing.get("hidden_count", 0) or 0),
             projects=list(listing.get("projects") or []),
         )
 
@@ -1693,6 +1697,7 @@ async def mcc_init(
         active_project_id=str(config.project_id),
         window_session_id=requested_window_session_id,
         updated_at=str(listing.get("updated_at", "")),
+        hidden_count=int(listing.get("hidden_count", 0) or 0),
         projects=list(listing.get("projects") or []),
     )
 
@@ -1769,6 +1774,7 @@ async def project_init(req: ProjectInitRequest):
     req_source_type = str(req.source_type or "").strip().lower()
     req_source_path = str(req.source_path or "").strip()
     req_execution_mode = str(req.execution_mode or "playground").strip().lower() or "playground"
+    req_project_kind = str(req.project_kind or "user").strip().lower() or "user"
     effective_source_type = req_source_type
     effective_source_path = req_source_path
 
@@ -1788,6 +1794,7 @@ async def project_init(req: ProjectInitRequest):
         source_path=effective_source_path,
         quota_gb=req.quota_gb,
         execution_mode=req_execution_mode,
+        project_kind=req_project_kind,
         sandbox_path=str(req.sandbox_path or ""),
         project_name=str(req.project_name or ""),
     )
@@ -1797,6 +1804,8 @@ async def project_init(req: ProjectInitRequest):
 
     if req_execution_mode not in {"playground", "oauth_agent", "local_workspace"}:
         errors.append(f"Invalid execution_mode: {req_execution_mode}")
+    if req_project_kind not in {"user", "fixture", "temp", "legacy"}:
+        errors.append(f"Invalid project_kind: {req_project_kind}")
 
     # Validate source exists
     if effective_source_type == "local":
@@ -1921,12 +1930,13 @@ async def project_init(req: ProjectInitRequest):
         project_id=config.project_id,
         project_name=str(config.display_name or ""),
         execution_mode=str(config.execution_mode or "playground"),
+        project_kind=str(config.project_kind or "user"),
         sandbox_path=config.sandbox_path,
     )
 
 
 @router.get("/projects/list")
-async def list_projects():
+async def list_projects(include_hidden: bool = Query(False, description="Include non-user projects")):
     """
     MARKER_161.7.MULTIPROJECT.API.PROJECTS_LIST.V1
     List project registry summaries and active project pointer.
@@ -1934,7 +1944,7 @@ async def list_projects():
     from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects as _list
 
     ensure_registry_bootstrap()
-    result = _list()
+    result = _list(include_hidden=bool(include_hidden))
     return {"success": True, **result}
 
 

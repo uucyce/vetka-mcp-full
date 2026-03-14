@@ -1513,6 +1513,7 @@ export function MyceliumCommandCenter() {
   const activateProjectTab = useMCCStore(s => s.activateProjectTab);
   const refreshProjectTabs = useMCCStore(s => s.refreshProjectTabs);
   const projectTabsLoading = useMCCStore(s => s.projectTabsLoading);
+  const projectTabsHiddenCount = useMCCStore(s => s.projectTabsHiddenCount);
   const navLevel = useMCCStore(s => s.navLevel);
   const navRoadmapNodeId = useMCCStore(s => s.navRoadmapNodeId);
   const drillDown = useMCCStore(s => s.drillDown);
@@ -3907,6 +3908,14 @@ export function MyceliumCommandCenter() {
           </button>
           {projectTabsLoading && (
             <span style={{ color: '#67707c', marginLeft: 2, whiteSpace: 'nowrap' }}>tabs…</span>
+          )}
+          {!projectTabsLoading && projectTabsHiddenCount > 0 && (
+            <span
+              style={{ color: '#67707c', marginLeft: 4, whiteSpace: 'nowrap', fontSize: 9 }}
+              title="Fixture, temp, and legacy-import projects are hidden from the main tab shell"
+            >
+              +{projectTabsHiddenCount} hidden
+            </span>
           )}
           <div style={{ marginLeft: 'auto' }} />
           {helperMode === 'off' && (

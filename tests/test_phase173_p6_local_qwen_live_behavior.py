@@ -6,6 +6,7 @@ MARKER_173.P6.LIVE_LOCAL_QWEN_BEHAVIOR
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shutil
@@ -302,6 +303,168 @@ class TestLocalQwenLiveBehavior:
         assert claimed is not None
         assert claimed["status"] == "claimed"
         assert claimed["assigned_to"] in {"local_qwen", claim_args.get("assigned_to")}
+
+    def test_live_local_qwen_ownership_preset_chooses_task_board_over_write_tools(self, tmp_path):
+        model = _require_live_local_qwen()
+        tool = LLMCallTool()
+
+        from src.api.routes.mcc_routes import _resolve_workflow_contract
+
+        ownership_contract = asyncio.run(_resolve_workflow_contract("ownership_localguys"))
+        assert ownership_contract is not None
+        assert ownership_contract["direct_allowed_tools"] == ["mycelium_task_board"]
+        assert ownership_contract["write_opt_ins"]["task_board"] is True
+        assert ownership_contract["write_opt_ins"]["edit_file"] is False
+
+        board = TaskBoard(board_file=tmp_path / "task_board.json")
+        task_id = board.add_task(
+            title="P6.7 live ownership preset",
+            description="Local Qwen should use ownership_localguys task-board flow before any answer.",
+            priority=2,
+            phase_type="build",
+            complexity="low",
+            tags=["phase173", "p6", "ownership", "preset", "live"],
+            source="pytest",
+        )
+
+        claim_result = _call_live(
+            tool,
+            model=model,
+            prompt=(
+                f"You are in the ownership_localguys workflow. Claim task {task_id} before any answer. "
+                "Use only the workflow-appropriate tool. Set action=claim, task_id exactly as given, "
+                "assigned_to=ownership_local_qwen, agent_type=local_qwen."
+            ),
+            tools=[
+                _tool_schema(
+                    "mycelium_task_board",
+                    "Claim or update the assigned task for the ownership_localguys workflow.",
+                    {
+                        "action": {
+                            "type": "string",
+                            "enum": ["list", "get", "summary", "claim", "update", "complete"],
+                        },
+                        "task_id": {"type": "string"},
+                        "assigned_to": {"type": "string"},
+                        "agent_type": {"type": "string"},
+                        "status": {"type": "string", "enum": ["pending", "claimed", "running", "done"]},
+                    },
+                    ["action"],
+                ),
+                _tool_schema(
+                    "vetka_edit_file",
+                    "Irrelevant write tool for this ownership-only workflow. Do not use it.",
+                    {
+                        "path": {"type": "string"},
+                        "content": {"type": "string"},
+                        "dry_run": {"type": "boolean"},
+                    },
+                    ["path", "content"],
+                ),
+            ],
+            extra={"_allow_task_board_writes": True},
+        )
+
+        tool_calls = _tool_calls(claim_result)
+        assert tool_calls, f"{model} returned no tool_calls for ownership preset"
+        assert tool_calls[0]["function"]["name"] == "mycelium_task_board", tool_calls
+        assert all(call["function"]["name"] != "vetka_edit_file" for call in tool_calls), tool_calls
+
+        claim_args = _parse_tool_args(tool_calls[0])
+        assert claim_args.get("action") == "claim", claim_args
+        assert claim_args.get("task_id") == task_id, claim_args
+
+        claim_response = board.claim_task(
+            task_id=task_id,
+            agent_name=str(claim_args.get("assigned_to") or "ownership_local_qwen"),
+            agent_type=str(claim_args.get("agent_type") or "local_qwen"),
+        )
+        assert claim_response["success"] is True, claim_response
+
+        claimed = board.get_task(task_id)
+        assert claimed is not None
+        assert claimed["status"] == "claimed"
+        assert claimed["assigned_to"] in {"ownership_local_qwen", claim_args.get("assigned_to")}
+
+    def test_live_local_qwen_ownership_preset_claim_then_update(self, tmp_path):
+        model = _require_live_local_qwen()
+        tool = LLMCallTool()
+
+        board = TaskBoard(board_file=tmp_path / "task_board.json")
+        task_id = board.add_task(
+            title="P6.7 ownership claim update",
+            description="Local Qwen should claim and then update status in ownership flow.",
+            priority=2,
+            phase_type="build",
+            complexity="low",
+            tags=["phase173", "p6", "ownership", "preset", "live", "update"],
+            source="pytest",
+        )
+
+        task_board_schema = _tool_schema(
+            "mycelium_task_board",
+            "Claim and update tasks in ownership_localguys flow.",
+            {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "get", "summary", "claim", "update", "complete"],
+                },
+                "task_id": {"type": "string"},
+                "assigned_to": {"type": "string"},
+                "agent_type": {"type": "string"},
+                "status": {"type": "string", "enum": ["pending", "claimed", "running", "done"]},
+            },
+            ["action"],
+        )
+
+        claim_result = _call_live(
+            tool,
+            model=model,
+            prompt=(
+                f"Ownership flow: claim task {task_id} before answering. "
+                "Use mycelium_task_board action=claim and keep task_id exact."
+            ),
+            tools=[task_board_schema],
+            extra={"_allow_task_board_writes": True},
+        )
+        claim_calls = _tool_calls(claim_result)
+        assert claim_calls, f"{model} returned no claim tool_calls"
+        assert claim_calls[0]["function"]["name"] == "mycelium_task_board", claim_calls
+        claim_args = _parse_tool_args(claim_calls[0])
+        assert claim_args.get("action") == "claim", claim_args
+        assert claim_args.get("task_id") == task_id, claim_args
+
+        claim_response = board.claim_task(
+            task_id=task_id,
+            agent_name=str(claim_args.get("assigned_to") or "ownership_local_qwen"),
+            agent_type=str(claim_args.get("agent_type") or "local_qwen"),
+        )
+        assert claim_response["success"] is True, claim_response
+
+        update_result = _call_live(
+            tool,
+            model=model,
+            prompt=(
+                f"Now update task {task_id} to running in the same ownership flow. "
+                "Use mycelium_task_board action=update and set status=running."
+            ),
+            tools=[task_board_schema],
+            extra={"_allow_task_board_writes": True},
+        )
+        update_calls = _tool_calls(update_result)
+        assert update_calls, f"{model} returned no update tool_calls"
+        assert update_calls[0]["function"]["name"] == "mycelium_task_board", update_calls
+        update_args = _parse_tool_args(update_calls[0])
+        assert update_args.get("action") == "update", update_args
+        assert update_args.get("task_id") == task_id, update_args
+        assert update_args.get("status") in {"running", "claimed"}, update_args
+
+        update_status = update_args.get("status") or "running"
+        update_response = board.update_task(task_id=task_id, status=str(update_status))
+        assert update_response is True
+        updated = board.get_task(task_id)
+        assert updated is not None
+        assert updated["status"] == str(update_status)
 
     def test_live_local_qwen_remembered_workflow_recalls_read_first(self, tmp_path, monkeypatch):
         model = _require_live_local_qwen()

@@ -5,6 +5,11 @@ Status: planning
 Tag: `localguys`
 Scope: MCC + TaskBoard + playground + local LLM workers
 
+## 2026-03-15 Checkpoint
+- Handoff: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/HANDOFF_MCC_PHASE177_2026-03-15.md`
+- Next-chat roadmap: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/177_MCC_local/ROADMAP_MCC_NEXT_CHAT_2026-03-15.md`
+- TaskBoard authority for this phase: MCP `vetka_task_board` (no direct JSON editing)
+
 ## Goal
 Bring local models into MCC as first-class workers that can execute bounded workflows inside playgrounds, report progress to TaskBoard, and stay observable and controllable from MCC.
 

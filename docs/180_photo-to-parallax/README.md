@@ -13,6 +13,7 @@
 - `PHOTO_TO_PARALLAX_ARCHITECTURE_V1_2026-03-10.md`: архитектурный документ и границы MVP.
 - `PHOTO_TO_PARALLAX_ROADMAP_CHECKLIST_2026-03-10.md`: дорожная карта с чек-листом.
 - `PHOTO_TO_PARALLAX_PROTOCOL_LOG_2026-03-10.md`: протокол выполненных и новых подшагов.
+- `HANDOFF_PHASE_180_2026-03-14.md`: handoff для старта нового чата без потери контекста.
 - `DEPTH_BAKEOFF_RESULTS_2026-03-10.md`: первый реальный runtime/quality отчёт по `Depth Anything V2 Small` и `Depth Pro`.
 - `MASK_BAKEOFF_RESULTS_2026-03-11.md`: quality-first отчёт по coarse mask стратегиям и решению по следующему шагу.
 - `MASK_REFINE_RESULTS_2026-03-11.md`: отчёт по `SAM 2` refinement и правилу conditional refine.

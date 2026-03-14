@@ -489,6 +489,7 @@ export default function TimelineTrackView() {
   const markOut = useCutEditorStore((state) => state.markOut);
   const seek = useCutEditorStore((state) => state.seek);
   const setScrollLeft = useCutEditorStore((state) => state.setScrollLeft);
+  const setTrackHeight = useCutEditorStore((state) => state.setTrackHeight);
   const mutedLanes = useCutEditorStore((state) => state.mutedLanes);
   const soloLanes = useCutEditorStore((state) => state.soloLanes);
   const laneVolumes = useCutEditorStore((state) => state.laneVolumes);
@@ -772,12 +773,19 @@ export default function TimelineTrackView() {
 
   const handleWheel = useCallback(
     (event: ReactWheelEvent) => {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const localX = containerRect ? (event.clientX - containerRect.left) : Number.POSITIVE_INFINITY;
+      if (event.shiftKey && localX <= LANE_HEADER_WIDTH) {
+        setTrackHeight(trackHeight - event.deltaY * 0.08);
+        event.preventDefault();
+        return;
+      }
       if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
         setScrollLeft(Math.max(0, scrollLeft + (event.deltaX || event.deltaY)));
         event.preventDefault();
       }
     },
-    [scrollLeft, setScrollLeft]
+    [scrollLeft, setScrollLeft, setTrackHeight, trackHeight]
   );
 
   const handleTrackClick = useCallback(

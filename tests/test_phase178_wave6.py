@@ -62,6 +62,13 @@ class TestVetkaTaskBoardUndeprecated:
         handler_block = source[handler_idx:handler_idx + 500]
         assert "Transport" in handler_block or "transport" in handler_block
 
+    def test_handler_does_not_shadow_global_json_module(self):
+        """178.6.5: No local `import json` inside handler block (breaks earlier branches)."""
+        source = _read_bridge_source()
+        handler_idx = source.find('elif name == "vetka_task_board"')
+        handler_block = source[handler_idx:handler_idx + 700]
+        assert "import json" not in handler_block
+
 
 class TestTaskBoardToolsHandler:
     """MARKER_178.6.2: handle_task_board works correctly for all actions."""

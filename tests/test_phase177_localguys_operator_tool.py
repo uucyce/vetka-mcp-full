@@ -76,30 +76,6 @@ class _FakeHttp:
                     },
                 },
             }
-        if "/localguys-runs/" in url:
-            run_id = url.rsplit("/", 1)[-1]
-            polls = self.run_polls.get(run_id, 0)
-            self.run_polls[run_id] = polls + 1
-            done = polls >= 1
-            return {
-                "success": True,
-                "run": {
-                    "run_id": run_id,
-                    "task_id": "tb_177",
-                    "workflow_family": "g3_localguys",
-                    "status": "done" if done else "running",
-                    "current_step": "finalize" if done else "execute",
-                    "playground_id": "pg_demo",
-                    "branch_name": "lg/tb_177",
-                    "worktree_path": "/tmp/pg_demo",
-                    "created_at": "2026-03-12T12:00:00Z",
-                    "updated_at": "2026-03-12T12:00:04Z" if done else "2026-03-12T12:00:03Z",
-                    "artifact_manifest": {
-                        "base_path": "artifacts/mcc_local/tb_177/lg_run_demo",
-                        "missing": [] if done else ["review.json"],
-                    },
-                },
-            }
         if method == "GET" and url.endswith("/tasks/tb_177/localguys-run"):
             return {
                 "success": True,
@@ -131,6 +107,30 @@ class _FakeHttp:
                         "main_tree_write": False,
                     },
                     "verification_target": "targeted_tests",
+                },
+            }
+        if "/localguys-runs/" in url:
+            run_id = url.rsplit("/", 1)[-1]
+            polls = self.run_polls.get(run_id, 0)
+            self.run_polls[run_id] = polls + 1
+            done = polls >= 1
+            return {
+                "success": True,
+                "run": {
+                    "run_id": run_id,
+                    "task_id": "tb_177",
+                    "workflow_family": "g3_localguys",
+                    "status": "done" if done else "running",
+                    "current_step": "finalize" if done else "execute",
+                    "playground_id": "pg_demo",
+                    "branch_name": "lg/tb_177",
+                    "worktree_path": "/tmp/pg_demo",
+                    "created_at": "2026-03-12T12:00:00Z",
+                    "updated_at": "2026-03-12T12:00:04Z" if done else "2026-03-12T12:00:03Z",
+                    "artifact_manifest": {
+                        "base_path": "artifacts/mcc_local/tb_177/lg_run_demo",
+                        "missing": [] if done else ["review.json"],
+                    },
                 },
             }
         raise AssertionError(f"unexpected call: {method} {url}")
