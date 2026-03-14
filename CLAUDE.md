@@ -110,17 +110,21 @@ Three agents work on ONE codebase through ONE TaskBoard:
 ### Task Lifecycle (ALL agents follow this)
 
 ```
-1. GET TASK:    mycelium_task_board action=list filter_status=pending
-2. CLAIM:       mycelium_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
+1. GET TASK:    vetka_task_board action=list filter_status=pending
+2. CLAIM:       vetka_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
 3. TRACK START: mycelium_track_started task_id=<id> title=<title> source=<agent>
 4. DO WORK:     Edit files, run tests
-5. COMMIT:      vetka_git_commit message="phase{N}.{M}: description [task:{task_id}]"
-                → Auto-triggers: digest update + task auto-complete + push (on main)
-6. VERIFY:      Check task was auto-completed, or manually: mycelium_task_board action=complete task_id=<id>
+5. COMPLETE:    vetka_task_board action=complete task_id=<id>
+                → Auto-triggers: git commit + digest update + push (on main)
 ```
 
-**CRITICAL: Step 5 is the key step.** A properly formatted commit message auto-closes tasks.
-Steps 5→6 replace the old manual `track_done` + `complete` — those are now optional fallbacks.
+**CRITICAL: Step 5 is the ONLY step needed to finish.** One call does everything:
+`complete task` → auto `git add -A` → auto `git commit` (with task reference) → pre-commit hook updates digest → task marked done.
+
+**You can optionally pass `commit_message` to customize the commit message.**
+If omitted, the commit message defaults to `"complete: {task title} [task:{task_id}]"`.
+
+**NEVER use raw `git commit`** — always close tasks via `vetka_task_board action=complete`.
 
 ### Commit Message Format (for auto-complete)
 
@@ -186,7 +190,7 @@ Set port in `.claude/launch.json` per worktree to avoid conflicts.
 - After completing a task, check if new tasks appeared (board may update)
 - If blocked, update task status to `hold` and note the blocker in description
 - **ALWAYS include `[task:tb_xxxx]` in commit messages** for auto-close to work
-- **NEVER use `git commit` directly** — always use `vetka_git_commit` (triggers hooks + auto-close)
+- **NEVER use `git commit` directly** — always close tasks via `vetka_task_board action=complete` (auto-commits + digest + close)
 
 ### File Ownership & Conflict Prevention (Phase 170+)
 
@@ -252,6 +256,6 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 1. ALWAYS call `vetka_session_init` FIRST
 2. Use MARKER_XXX.Y convention for code comments
 3. Tests: `python -m pytest tests/ -v`
-4. Commit via `vetka_git_commit` with `[task:tb_xxxx]` in message (auto-closes task + updates digest)
+4. **Close tasks via `vetka_task_board action=complete task_id=<id>`** — this auto-commits, updates digest, and closes the task in one step. NEVER use raw `git commit`.
 5. NO new UI panels/buttons — use existing UI, add functions only
-6. ALL work goes through TaskBoard: create task → claim → work → commit with task ID → auto-close
+6. ALL work goes through TaskBoard: create task → claim → work → **complete task** (auto-commit)

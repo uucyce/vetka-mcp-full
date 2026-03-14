@@ -17,9 +17,13 @@ TODO MARKER_126.11C: Add fourth tool:
 """
 
 import logging
+import subprocess
+from pathlib import Path
 from typing import Dict, Any
 
 logger = logging.getLogger("VETKA_MCP")
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 # ==========================================
@@ -191,14 +195,34 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         result = board.claim_task(task_id, agent_name, agent_type)
         return result
 
-    # MARKER_130.C16B: complete action
+    # MARKER_181.3: complete action — auto git commit + digest update
     elif action == "complete":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for complete"}
+
+        # Get task info for commit message
+        task = board.get_task(task_id)
+        task_title = task.get("title", "task") if task else "task"
+
+        # Auto-commit: stage all changes → commit with task reference
         commit_hash = arguments.get("commit_hash")
         commit_message = arguments.get("commit_message")
+        auto_commit_result = None
+
+        if not commit_hash:
+            # No commit provided — auto-create one
+            auto_msg = commit_message or f"complete: {task_title} [task:{task_id}]"
+            if f"[task:{task_id}]" not in auto_msg:
+                auto_msg += f" [task:{task_id}]"
+            auto_commit_result = _auto_git_commit(auto_msg)
+            if auto_commit_result.get("success"):
+                commit_hash = auto_commit_result["hash"]
+                commit_message = auto_msg
+
         result = board.complete_task(task_id, commit_hash, commit_message)
+        if auto_commit_result:
+            result["auto_commit"] = auto_commit_result
         return result
 
     # MARKER_130.C16B: active_agents action
@@ -208,6 +232,54 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
+
+
+def _auto_git_commit(message: str) -> Dict[str, Any]:
+    """MARKER_181.3: Auto git commit when completing a task.
+    Stages all changes → commits → pre-commit hook updates digest.
+    Returns {"success": bool, "hash": str} or {"success": False, "error": str}.
+    """
+    try:
+        # Check if there are changes to commit
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+        )
+        if not status.stdout.strip():
+            return {"success": False, "error": "nothing to commit", "hash": None}
+
+        # Stage all changes
+        subprocess.run(
+            ["git", "add", "-A"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+        )
+
+        # Commit (pre-commit hook handles digest update)
+        result = subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode != 0:
+            err = result.stderr or result.stdout
+            if "nothing to commit" in err.lower():
+                return {"success": False, "error": "nothing to commit", "hash": None}
+            return {"success": False, "error": err[:200], "hash": None}
+
+        # Get commit hash
+        hash_result = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+        )
+        commit_hash = hash_result.stdout.strip()
+
+        logger.info(f"[TaskBoard] Auto-commit {commit_hash}: {message[:60]}")
+        return {"success": True, "hash": commit_hash}
+
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "git timeout", "hash": None}
+    except Exception as e:
+        logger.error(f"[TaskBoard] Auto-commit failed: {e}")
+        return {"success": False, "error": str(e)[:200], "hash": None}
 
 
 # ==========================================
