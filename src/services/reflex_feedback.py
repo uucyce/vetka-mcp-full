@@ -311,7 +311,6 @@ class ReflexFeedback:
                 "useful_rate": 0.0,
                 "verified_rate": 0.0,
                 "per_tool": {},
-                "tools": {},
             }
 
         total = len(entries)
@@ -338,7 +337,6 @@ class ReflexFeedback:
             "useful_rate": round(useful_count / total, 3),
             "verified_rate": round(verified_count / total, 3) if total > 0 else 0.0,
             "per_tool": per_tool,
-            "tools": per_tool,
         }
 
     def compact(self) -> int:

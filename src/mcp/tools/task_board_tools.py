@@ -38,12 +38,19 @@ TASK_BOARD_SCHEMA = {
         # For "add":
         "title": {"type": "string", "description": "Task title (required for add)"},
         "description": {"type": "string", "description": "Detailed task description"},
+        "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
         "priority": {"type": "number", "description": "1=critical, 2=high, 3=medium, 4=low, 5=someday"},
-        "phase_type": {"type": "string", "enum": ["build", "fix", "research"], "description": "Task type"},
+        "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"], "description": "Task type"},
         "complexity": {"type": "string", "enum": ["low", "medium", "high"], "description": "Estimated complexity"},
         "preset": {"type": "string", "description": "Pipeline preset override"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
         "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
+        "project_id": {"type": "string", "description": "Logical project ID for lane-aware multitask routing"},
+        "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
+        "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
+        "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
+        "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Commands required for closure proof"},
+        "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit"},
         # MARKER_130.C16B: Agent assignment fields
         "assigned_to": {"type": "string", "description": "Agent name: opus, cursor, dragon, grok"},
         "agent_type": {"type": "string", "description": "Agent type: claude_code, cursor, mycelium, grok, human"},
@@ -61,31 +68,13 @@ TASK_BOARD_SCHEMA = {
 }
 
 
-def _check_ownership(task: dict, caller: str) -> str | None:
-    """MARKER_177.8: Role-based guard — returns error message if caller can't modify task.
-
-    Rules:
-    - Unassigned tasks: anyone can modify
-    - Assigned tasks: only the assigned agent (or 'opus' as commander) can modify
-    - 'list', 'get', 'summary' are read-only — no guard needed
-    """
-    assigned = task.get("assigned_to")
-    if not assigned:
-        return None  # Unassigned — open for all
-    if not caller or caller == "unknown":
-        return f"Task is assigned to '{assigned}'. Provide your agent name via 'assigned_to' to modify."
-    if caller == assigned or caller == "opus":
-        return None  # Owner or commander
-    return f"Task is assigned to '{assigned}', you are '{caller}'. Only the assigned agent or opus can modify."
-
-
 def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Handle vetka_task_board MCP tool calls.
 
     CRUD + list + summary operations on the task board.
-    MARKER_177.8: Role-based ownership guard on mutating actions.
     """
     from src.orchestration.task_board import get_task_board
+    from src.services.roadmap_task_sync import apply_task_profile_defaults
 
     action = arguments.get("action")
     if not action:
@@ -97,18 +86,38 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         title = arguments.get("title")
         if not title:
             return {"success": False, "error": "title is required for add"}
-
-        task_id = board.add_task(
-            title=title,
-            description=arguments.get("description", ""),
-            priority=int(arguments.get("priority", 3)),
-            phase_type=arguments.get("phase_type", "build"),
-            complexity=arguments.get("complexity", "medium"),
-            preset=arguments.get("preset"),
-            tags=arguments.get("tags"),
-            dependencies=arguments.get("dependencies"),
-            source="mcp"
-        )
+        payload = dict(arguments)
+        payload["source"] = "mcp"
+        try:
+            payload = apply_task_profile_defaults(payload)
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
+        try:
+            task_id = board.add_task(
+                title=title,
+                description=payload.get("description", ""),
+                priority=int(payload.get("priority", 3)),
+                phase_type=payload.get("phase_type", "build"),
+                complexity=payload.get("complexity", "medium"),
+                preset=payload.get("preset"),
+                tags=payload.get("tags"),
+                dependencies=payload.get("dependencies"),
+                source=payload.get("source", "mcp"),
+                project_id=payload.get("project_id"),
+                project_lane=payload.get("project_lane"),
+                architecture_docs=payload.get("architecture_docs"),
+                recon_docs=payload.get("recon_docs"),
+                protocol_version=payload.get("protocol_version"),
+                require_closure_proof=bool(payload.get("require_closure_proof")),
+                closure_tests=payload.get("closure_tests"),
+                closure_files=payload.get("closure_files"),
+                task_origin=payload.get("task_origin"),
+                workflow_selection_origin=payload.get("workflow_selection_origin"),
+                completion_contract=payload.get("completion_contract"),
+                depends_on_docs=payload.get("depends_on_docs"),
+            )
+        except ValueError as exc:
+            return {"success": False, "error": str(exc)}
         return {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
 
     elif action == "list":
@@ -146,19 +155,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not task_id:
             return {"success": False, "error": "task_id is required for update"}
 
-        # MARKER_177.8: Ownership guard
-        task = board.get_task(task_id)
-        if not task:
-            return {"success": False, "error": f"Task {task_id} not found"}
-        caller = arguments.get("assigned_to", "unknown")
-        err = _check_ownership(task, caller)
-        if err:
-            return {"success": False, "error": err, "guard": "ownership"}
-
         # Collect updatable fields
         updates = {}
         for field in ["title", "description", "priority", "phase_type", "complexity",
-                       "preset", "status", "tags", "dependencies", "assigned_to", "agent_type"]:
+                       "preset", "status", "tags", "dependencies", "project_id",
+                       "project_lane", "architecture_docs", "recon_docs",
+                       "closure_tests", "closure_files"]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 
@@ -172,14 +174,6 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for remove"}
-        # MARKER_177.8: Ownership guard
-        task = board.get_task(task_id)
-        if not task:
-            return {"success": False, "error": f"Task {task_id} not found"}
-        caller = arguments.get("assigned_to", "unknown")
-        err = _check_ownership(task, caller)
-        if err:
-            return {"success": False, "error": err, "guard": "ownership"}
         ok = board.remove_task(task_id)
         return {"success": ok, "message": f"Task {task_id} removed" if ok else f"Task {task_id} not found"}
 
@@ -197,14 +191,53 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         result = board.claim_task(task_id, agent_name, agent_type)
         return result
 
-    # MARKER_130.C16B: complete action
+    # MARKER_181.4: complete action — unified pipeline
+    # Flow: agent → complete → auto-commit (scoped) → digest → close task
+    # Same pattern as run_closure_protocol (task_board.py:1103)
     elif action == "complete":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for complete"}
+
+        task = board.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
         commit_hash = arguments.get("commit_hash")
         commit_message = arguments.get("commit_message")
-        result = board.complete_task(task_id, commit_hash, commit_message)
+
+        # Case A: agent already committed — just close
+        if commit_hash:
+            result = board.complete_task(task_id, commit_hash, commit_message)
+            return result
+
+        # Case B/C: no commit yet — try auto-commit
+        auto = _try_auto_commit(task_id, task, commit_message)
+
+        # If commit attempted but FAILED → do NOT close task
+        if auto.get("attempted") and not auto.get("success"):
+            return {
+                "success": False,
+                "error": f"Auto-commit failed: {auto.get('error', 'unknown')}. Task NOT closed.",
+                "task_id": task_id,
+                "auto_commit": auto,
+            }
+
+        # Double-close protection: GitCommitTool._auto_complete_tasks() may
+        # have already closed this task via [task:tb_xxxx] in commit message
+        task_refreshed = board.get_task(task_id)
+        if task_refreshed and task_refreshed.get("status") == "done":
+            return {
+                "success": True,
+                "task_id": task_id,
+                "commit_hash": auto.get("hash"),
+                "note": "auto-closed by commit pipeline",
+                "auto_commit": auto,
+            }
+
+        # Close task (commit succeeded or nothing to commit)
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"))
+        result["auto_commit"] = auto
         return result
 
     # MARKER_130.C16B: active_agents action
@@ -214,6 +247,94 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
+
+
+
+def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> dict:
+    """MARKER_181.4: Auto-commit via GitCommitTool.execute().
+
+    Same pattern as run_closure_protocol (task_board.py:1103).
+    GitCommitTool.execute() IS the full pipeline: stage → commit → digest → auto-close.
+
+    Scoped staging: uses task.closure_files if declared, otherwise parses
+    git status --porcelain for actual changed files. Never git add -A.
+
+    Returns: {attempted, success, hash, message, error, note}
+    """
+    import subprocess
+    from pathlib import Path
+
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+    # 1. Check if there are changes to commit
+    try:
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+        )
+    except Exception as e:
+        return {"attempted": False, "success": False, "error": f"git status failed: {e}"}
+
+    if not status.stdout.strip():
+        # Case C: nothing to commit — OK for research tasks
+        return {"attempted": False, "success": True, "hash": None, "message": None,
+                "note": "nothing to commit"}
+
+    # 2. Determine scoped files (NOT git add -A)
+    closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+
+    if not closure_files:
+        # Fallback: parse git status --porcelain for actually changed files
+        # Format: "XY filename" where XY = 2 status chars + 1 space = 3 char prefix
+        # Do NOT strip before slicing — leading space is part of status format
+        changed = []
+        for line in status.stdout.splitlines():
+            if len(line) > 3:
+                filepath = line[3:].split(" -> ")[-1].strip()
+                if filepath:
+                    changed.append(filepath)
+        closure_files = changed
+
+    if not closure_files:
+        return {"attempted": False, "success": True, "hash": None,
+                "note": "no changed files found"}
+
+    # 3. Build commit message with [task:tb_xxxx]
+    task_title = task.get("title", "task")
+    auto_msg = commit_message or f"complete: {task_title} [task:{task_id}]"
+    if f"[task:{task_id}]" not in auto_msg:
+        auto_msg += f" [task:{task_id}]"
+
+    # 4. GitCommitTool.execute() — the ACTUAL pipeline
+    try:
+        from src.mcp.tools.git_tool import GitCommitTool
+
+        tool = GitCommitTool()
+        result = tool.execute({
+            "message": auto_msg,
+            "files": closure_files,
+            "dry_run": False,
+            "auto_push": False,
+        })
+    except Exception as e:
+        logger.error(f"[TaskBoard] _try_auto_commit failed: {e}")
+        return {"attempted": True, "success": False, "error": str(e)[:200]}
+
+    if not result.get("success"):
+        error = result.get("error", "unknown")
+        if "nothing to commit" in str(error).lower():
+            return {"attempted": False, "success": True, "hash": None,
+                    "note": "nothing to commit"}
+        return {"attempted": True, "success": False, "error": error, "message": auto_msg}
+
+    result_data = result.get("result", {})
+    logger.info(f"[TaskBoard] Auto-commit {result_data.get('hash')}: {auto_msg[:60]}")
+    return {
+        "attempted": True,
+        "success": True,
+        "hash": result_data.get("hash"),
+        "message": auto_msg,
+    }
 
 
 # ==========================================

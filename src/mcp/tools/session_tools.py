@@ -71,28 +71,11 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
                 "system": digest.get("system_status", {}),
                 "instructions": digest.get("agent_instructions", {}),
                 "last_updated": digest.get("last_updated"),
-                "recent_fixes": [f.get("id") for f in digest.get("recent_fixes", [])[:5]],
-                "_seq": digest.get("_seq", 0),  # MARKER_177.5: digest sequence number
+                "recent_fixes": [f.get("id") for f in digest.get("recent_fixes", [])[:5]]
             }
     except Exception:
         pass
     return None
-
-
-def _get_recent_commits(n: int = 5) -> list:
-    """MARKER_177.2: Get recent git commits for session context."""
-    import subprocess
-    try:
-        result = subprocess.run(
-            ["git", "log", f"-{n}", "--oneline", "--no-decorate"],
-            cwd=str(PROJECT_ROOT),
-            capture_output=True, text=True, timeout=5
-        )
-        if result.returncode == 0:
-            return [line.strip() for line in result.stdout.splitlines() if line.strip()]
-    except Exception:
-        pass
-    return []
 
 
 class SessionInitTool(BaseMCPTool):
@@ -327,33 +310,51 @@ class SessionInitTool(BaseMCPTool):
             context["persisted"] = False
             context["persist_error"] = str(e)
 
-        # MARKER_177.2: Active tasks + recent commits for agent orientation
+        # MARKER_178.1.1: Load active tasks from TaskBoard
         try:
-            from src.orchestration.task_board import get_task_board
-            board = get_task_board()
-            context["active_tasks"] = board.get_claimable_tasks(limit=5)
-            context["active_tasks_count"] = len(context["active_tasks"])
-            summary = board.get_board_summary()
+            from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
+            board = TaskBoard(TASK_BOARD_FILE)
+            pending = [t for t in board.list_tasks() if t.get("status") == "pending"]
+            in_progress = [t for t in board.list_tasks() if t.get("status") == "in_progress"]
             context["task_board_summary"] = {
-                "total": summary.get("total", 0),
-                "by_status": summary.get("by_status", {}),
+                "pending_count": len(pending),
+                "in_progress_count": len(in_progress),
+                "top_pending": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
+                "in_progress": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]]
             }
         except Exception as e:
-            context["active_tasks"] = []
-            context["active_tasks_error"] = str(e)
+            import logging
+            logging.getLogger(__name__).warning(f"TaskBoard load failed: {e}")
 
-        # MARKER_177.2: Recent git commits for developer context
-        context["recent_commits"] = _get_recent_commits(5)
-
-        # MARKER_177.3: Capability manifest — what transports are available
+        # MARKER_178.1.2: Recent commits
         try:
-            from src.mcp.tools.capability_broker import build_capability_manifest, manifest_to_dict
-            manifest = build_capability_manifest(timeout_s=0.5)
-            context["capability_manifest"] = manifest_to_dict(manifest)
-        except Exception as e:
-            context["capability_manifest"] = {"error": str(e)}
+            import subprocess
+            result = subprocess.run(
+                ["git", "log", "--oneline", "-5"],
+                capture_output=True, text=True, timeout=3,
+                cwd=str(Path(__file__).resolve().parent.parent.parent.parent)
+            )
+            if result.returncode == 0:
+                context["recent_commits"] = result.stdout.strip().split("\n")[:5]
+        except Exception:
+            pass
 
-        # MARKER_172.P4.IP6: REFLEX session recommendations
+        # MARKER_178.1.3: Capability manifest
+        try:
+            from src.mcp.tools.capability_broker import build_manifest
+            manifest = build_manifest()
+            context["capabilities"] = {
+                "transports": [
+                    {"kind": t.kind.value, "status": t.status.value, "capabilities": t.capabilities}
+                    for t in manifest.transports
+                ],
+                "recommended": manifest.recommended
+            }
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
+
+        # MARKER_172.P4.IP6: REFLEX session recommendations (called AFTER tasks/commits/capabilities)
         try:
             from src.services.reflex_integration import reflex_session
             reflex_recs = reflex_session(context)
@@ -361,6 +362,54 @@ class SessionInitTool(BaseMCPTool):
                 context["reflex_recommendations"] = reflex_recs
         except Exception:
             pass  # REFLEX errors never block session init
+
+        # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
+        try:
+            from src.services.reflex_feedback import ReflexFeedback
+            fb = ReflexFeedback()
+            summary = fb.get_feedback_summary()
+            if summary and summary.get("total_entries", 0) > 0:
+                context["reflex_report"] = {
+                    "total_entries": summary["total_entries"],
+                    "success_rate": summary.get("success_rate", 0),
+                    "useful_rate": summary.get("useful_rate", 0),
+                    "verified_rate": summary.get("verified_rate", 0),
+                    "top_tools": list(summary.get("per_tool", {}).keys())[:5],
+                }
+        except Exception:
+            pass  # REFLEX report never blocks session init
+
+        # MARKER_178.1.4: Build actionable next_steps from context
+        try:
+            next_steps = []
+
+            # From tasks
+            tb = context.get("task_board_summary", {})
+            if tb.get("pending_count", 0) > 0:
+                # MARKER_178.5.2: Reference both task board tools (primary + fallback)
+                next_steps.append(f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list (or vetka_task_board as fallback)")
+            if tb.get("in_progress_count", 0) > 0:
+                items = ", ".join(t["title"][:30] for t in tb.get("in_progress", [])[:2])
+                next_steps.append(f"In progress: {items}")
+
+            # From REFLEX
+            recs = context.get("reflex_recommendations", [])
+            if recs:
+                top = recs[0] if isinstance(recs[0], dict) else {}
+                tool_name = top.get("tool_id", "")
+                reason = top.get("reason", "")
+                if tool_name:
+                    next_steps.append(f"REFLEX suggests: {tool_name} ({reason})")
+
+            # From commits staleness
+            commits = context.get("recent_commits", [])
+            if not commits:
+                next_steps.append("No recent commits found — check git status")
+
+            if next_steps:
+                context["next_steps"] = next_steps
+        except Exception:
+            pass
 
         return {
             "success": True,
@@ -580,140 +629,6 @@ async def vetka_session_status(session_id: str) -> Dict[str, Any]:
     """
     tool = SessionStatusTool()
     return await tool._execute_async({"session_id": session_id})
-
-
-def handle_mcc_session_init(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """MARKER_177.9: MCC Session Init — execution-aware entrypoint for MCC agents.
-
-    Aggregates:
-    - capability_manifest (what transports are alive)
-    - task_context (selected task + full metadata)
-    - workflow_context (workflow binding if task has one)
-    - runtime_context (latest localguys run for this task)
-    - project_config (project name, settings)
-    - active_tasks (top claimable tasks)
-    - recent_commits (git context)
-    - agent_role (who is calling, what can they do)
-
-    Unlike vetka_session_init, this is NOT about viewport/pinned/chat —
-    it's about giving an execution agent everything it needs to DO WORK.
-    """
-    agent_name = arguments.get("agent_name", "unknown")
-    agent_type = arguments.get("agent_type", "unknown")
-    task_id = arguments.get("task_id")
-
-    result = {
-        "session_kind": "mcc",
-        "agent": {"name": agent_name, "type": agent_type},
-        "initialized_at": time.time(),
-    }
-
-    # 1. Capability manifest
-    try:
-        from src.mcp.tools.capability_broker import build_capability_manifest, manifest_to_dict
-        manifest = build_capability_manifest(timeout_s=0.5)
-        result["capability_manifest"] = manifest_to_dict(manifest)
-    except Exception as e:
-        result["capability_manifest"] = {"error": str(e)}
-
-    # 2. Task context (if task_id provided)
-    if task_id:
-        try:
-            from src.orchestration.task_board import get_task_board
-            board = get_task_board()
-            task = board.get_task(task_id)
-            if task:
-                result["task_context"] = {
-                    "id": task["id"],
-                    "title": task.get("title", ""),
-                    "description": task.get("description", ""),
-                    "status": task.get("status", ""),
-                    "priority": task.get("priority", 3),
-                    "phase_type": task.get("phase_type", "build"),
-                    "preset": task.get("preset"),
-                    "assigned_to": task.get("assigned_to"),
-                    "agent_type": task.get("agent_type"),
-                    "tags": task.get("tags", []),
-                    "dependencies": task.get("dependencies", []),
-                    "created_at": task.get("created_at"),
-                    "architecture_docs": task.get("architecture_docs"),
-                    "recon_docs": task.get("recon_docs"),
-                }
-                # Ownership check
-                from src.mcp.tools.task_board_tools import _check_ownership
-                ownership_err = _check_ownership(task, agent_name)
-                result["task_context"]["can_modify"] = ownership_err is None
-                if ownership_err:
-                    result["task_context"]["ownership_warning"] = ownership_err
-            else:
-                result["task_context"] = {"error": f"Task {task_id} not found"}
-        except Exception as e:
-            result["task_context"] = {"error": str(e)}
-
-    # 3. Workflow context (if task has workflow binding)
-    if task_id:
-        try:
-            import requests
-            resp = requests.get(
-                f"http://127.0.0.1:5001/api/mcc/task/{task_id}/workflow",
-                timeout=1
-            )
-            if resp.status_code == 200:
-                result["workflow_context"] = resp.json()
-        except Exception:
-            result["workflow_context"] = None
-
-    # 4. Runtime context (latest localguys run)
-    if task_id:
-        try:
-            from src.services.mcc_local_run_registry import MCCLocalRunRegistry
-            registry = MCCLocalRunRegistry()
-            runs = registry.get_runs_for_task(task_id)
-            if runs:
-                latest = runs[-1]
-                result["runtime_context"] = {
-                    "run_id": latest.get("run_id"),
-                    "status": latest.get("status"),
-                    "started_at": latest.get("started_at"),
-                    "finished_at": latest.get("finished_at"),
-                    "artifacts": latest.get("artifacts", []),
-                }
-            else:
-                result["runtime_context"] = None
-        except Exception:
-            result["runtime_context"] = None
-
-    # 5. Active tasks (for orientation)
-    try:
-        from src.orchestration.task_board import get_task_board
-        board = get_task_board()
-        claimable = board.get_claimable_tasks(limit=10)
-        # Filter: show tasks assigned to this agent + unassigned
-        my_tasks = [t for t in claimable if t.get("assigned_to") in (None, "", agent_name)]
-        result["active_tasks"] = my_tasks[:5]
-        result["active_tasks_count"] = len(my_tasks)
-        summary = board.get_board_summary()
-        result["task_board_summary"] = {
-            "total": summary.get("total", 0),
-            "by_status": summary.get("by_status", {}),
-        }
-    except Exception as e:
-        result["active_tasks"] = []
-        result["task_board_error"] = str(e)
-
-    # 6. Recent commits
-    result["recent_commits"] = _get_recent_commits(5)
-
-    # 7. Project digest headline
-    result["project_phase"] = {}
-    result["project_headline"] = ""
-    digest = load_project_digest()
-    if digest:
-        result["project_phase"] = digest.get("phase", {})
-        result["project_headline"] = digest.get("summary", "")
-        result["digest_seq"] = digest.get("_seq", 0)
-
-    return {"success": True, "result": result}
 
 
 def register_session_tools(tool_list: list):

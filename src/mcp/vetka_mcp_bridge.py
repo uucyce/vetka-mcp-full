@@ -913,38 +913,43 @@ async def list_tools() -> list[Tool]:
             description="[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
             inputSchema={"type": "object", "properties": {}}
         ),
+        # MARKER_178.6.1: Un-deprecated — live fallback when MYCELIUM unavailable
         Tool(
             name="vetka_task_board",
-            # MARKER_177.4: Un-deprecated — fallback when MYCELIUM unavailable
-            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete). "
-                        "Use mycelium_task_board when MYCELIUM is available. "
-                        "This tool provides direct access as fallback.",
-            inputSchema={"type": "object", "properties": {
-                "action": {"type": "string", "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"], "description": "Operation to perform"},
-                "title": {"type": "string", "description": "Task title (for add)"},
-                "description": {"type": "string", "description": "Task description"},
-                "priority": {"type": "number", "description": "1=critical..5=someday"},
-                "phase_type": {"type": "string", "enum": ["build", "fix", "research"]},
-                "task_id": {"type": "string", "description": "Task ID (for get/update/remove/claim/complete)"},
-                "status": {"type": "string", "description": "New status (for update)"},
-                "filter_status": {"type": "string", "description": "Filter by status (for list)"},
-                "assigned_to": {"type": "string", "description": "Agent name"},
-                "agent_type": {"type": "string", "description": "Agent type"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-                "preset": {"type": "string", "description": "Pipeline preset"},
-            }, "required": ["action"]}
-        ),
-        # MARKER_177.9: MCC execution-aware session init
-        Tool(
-            name="mcc_session_init",
-            description="MCC execution-aware session init. Returns capability manifest, "
-                        "task context, workflow binding, runtime state, active tasks. "
-                        "Use instead of vetka_session_init when agent needs to DO WORK on a task.",
-            inputSchema={"type": "object", "properties": {
-                "agent_name": {"type": "string", "description": "Your agent name (opus, cursor, codex, dragon)"},
-                "agent_type": {"type": "string", "description": "Agent type (claude_code, cursor, mycelium)"},
-                "task_id": {"type": "string", "description": "Task ID to load context for (optional)"},
-            }}
+            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
+                        "description": "Operation to perform"
+                    },
+                    "title": {"type": "string", "description": "Task title (for add)"},
+                    "description": {"type": "string", "description": "Task description"},
+                    "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
+                    "priority": {"type": "number", "description": "1=critical..5=someday"},
+                    "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"]},
+                    "preset": {"type": "string", "description": "Pipeline preset"},
+                    "tags": {"type": "array", "items": {"type": "string"}},
+                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove/claim/complete)"},
+                    "status": {"type": "string", "description": "New status (for update)"},
+                    "filter_status": {"type": "string", "description": "Filter by status (for list)"},
+                    "assigned_to": {"type": "string", "description": "Agent name"},
+                    "agent_type": {"type": "string", "description": "Agent type"},
+                    "complexity": {"type": "string"},
+                    "dependencies": {"type": "array", "items": {"type": "string"}},
+                    "project_id": {"type": "string", "description": "Logical project ID"},
+                    "project_lane": {"type": "string", "description": "Specific project lane / MCC tab"},
+                    "architecture_docs": {"type": "array", "items": {"type": "string"}},
+                    "recon_docs": {"type": "array", "items": {"type": "string"}},
+                    "protocol_version": {"type": "string"},
+                    "require_closure_proof": {"type": "boolean"},
+                    "closure_tests": {"type": "array", "items": {"type": "string"}},
+                    "closure_files": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["action"]
+            }
         ),
         Tool(
             name="vetka_task_dispatch",
@@ -1685,17 +1690,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             except Exception as e:
                 return [TextContent(type="text", text=f"❌ Error in session_status: {e}")]
 
-        elif name == "mcc_session_init":
-            # MARKER_177.9: MCC execution-aware session init
-            try:
-                from src.mcp.tools.session_tools import handle_mcc_session_init
-                result = handle_mcc_session_init(arguments)
-                duration_ms = (time.time() - start_time) * 1000
-                await log_mcp_response(name, result, request_id, duration_ms)
-                return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
-            except Exception as e:
-                return [TextContent(type="text", text=f"❌ Error in mcc_session_init: {e}")]
-
         elif name == "vetka_research":
             # Compound research tool
             try:
@@ -1773,13 +1767,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             ))]
 
         elif name == "vetka_task_board":
-            # MARKER_177.4: Live fallback — delegates to same handler as mycelium_task_board
+            # MARKER_178.6.1: Live fallback — uses local task_board handler
             try:
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
-                return [TextContent(type="text", text=json.dumps(result, default=str))]
+                transport_note = "🔧 Transport: vetka_task_board (local fallback)"
+                return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
             except Exception as e:
-                return [TextContent(type="text", text=json.dumps({"success": False, "error": str(e)}))]
+                import logging
+                logging.getLogger("VETKA_MCP").error(f"vetka_task_board fallback failed: {e}")
+                return [TextContent(type="text", text=f"❌ vetka_task_board fallback error: {e}")]
 
         elif name == "vetka_task_dispatch":
             return [TextContent(type="text", text=(
