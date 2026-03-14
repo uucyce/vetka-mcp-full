@@ -1,32 +1,38 @@
 /**
- * MARKER_180.1: Panel Layout Store — Swedish wardrobe architecture.
- * Every panel can be docked, tabbed inside another panel, or floating.
+ * MARKER_181.3: Panel Layout Store — IKEA-Premiere architecture.
+ * Free windows: dock, tab, float, mini, minimize. No fixed zones.
  * Layout persists per project via layout_state.json.
  *
- * Architecture doc: VETKA_CUT_Interface_Architecture_v1.docx §1, §3, §10
+ * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
+ * Default: Source Monitor (left_top), Project (left_bottom),
+ *          Program Monitor (right_top), Inspector+Script+DAG tabs (right_bottom),
+ *          Timeline (bottom ~35%), StorySpace 3D (mini in Program Monitor)
  */
 import { create } from 'zustand';
 
-// ─── Panel IDs — the 7 core panels from Architecture doc §2 ───
+// ─── Panel IDs — core panels (Premiere-style naming) ───
 export type PanelId =
   | 'script'
   | 'dag_project'
+  | 'project'           // MARKER_181.3: Project panel (media bin + import)
   | 'program_monitor'
   | 'source_monitor'
   | 'timeline'
   | 'story_space_3d'
   | 'effects'
-  | 'inspector'; // inspector lives under source_monitor but is a separate panel
+  | 'inspector';
 
 export type PanelMode = 'docked' | 'tab' | 'floating';
 
-// ─── Dock positions in the CSS Grid (§3 default layout) ───
+// ─── Dock positions (IKEA-Premiere: left/right split + bottom) ───
 export type DockPosition =
-  | 'left'          // 220px column (Script / DAG project)
-  | 'center'        // flex column (Program monitor)
-  | 'right_top'     // 280px column top (Source monitor)
-  | 'right_bottom'  // 280px column bottom (Inspector)
-  | 'bottom';       // full-width strip (Timeline)
+  | 'left'          // unsplit left (backwards compat)
+  | 'left_top'      // Source Monitor (default)
+  | 'left_bottom'   // Project panel (default)
+  | 'center'        // backwards compat
+  | 'right_top'     // Program Monitor (default)
+  | 'right_bottom'  // Inspector + Script/DAG tabs (default)
+  | 'bottom';       // Timeline (full-width)
 
 // ─── Floating panel geometry ───
 export type FloatGeometry = {
@@ -53,43 +59,38 @@ export type PanelState = {
   miniParentId: PanelId | null;
 };
 
-// ─── Default layout from Architecture doc §3 ───
+// ─── Default layout: IKEA-Premiere (MARKER_181.3) ───
+// Source Monitor (left_top) | Program Monitor (right_top)
+// Project Panel (left_bottom) | Inspector + Script/DAG tabs (right_bottom)
+// Timeline (bottom, ~35% height)
 const DEFAULT_PANELS: PanelState[] = [
-  {
-    id: 'script',
-    mode: 'tab',
-    visible: true,
-    dockPosition: 'left',
-    tabParentId: null,
-    tabOrder: 0,
-    floatGeometry: null,
-    isMini: false,
-    miniParentId: null,
-  },
-  {
-    id: 'dag_project',
-    mode: 'tab',
-    visible: true,
-    dockPosition: 'left',
-    tabParentId: null,
-    tabOrder: 1,
-    floatGeometry: null,
-    isMini: false,
-    miniParentId: null,
-  },
-  {
-    id: 'program_monitor',
-    mode: 'docked',
-    visible: true,
-    dockPosition: 'center',
-    tabParentId: null,
-    tabOrder: 0,
-    floatGeometry: null,
-    isMini: false,
-    miniParentId: null,
-  },
+  // Left top: Source Monitor — raw clip preview
   {
     id: 'source_monitor',
+    mode: 'docked',
+    visible: true,
+    dockPosition: 'left_top',
+    tabParentId: null,
+    tabOrder: 0,
+    floatGeometry: null,
+    isMini: false,
+    miniParentId: null,
+  },
+  // Left bottom: Project panel — media bin + import
+  {
+    id: 'project',
+    mode: 'docked',
+    visible: true,
+    dockPosition: 'left_bottom',
+    tabParentId: null,
+    tabOrder: 0,
+    floatGeometry: null,
+    isMini: false,
+    miniParentId: null,
+  },
+  // Right top: Program Monitor — timeline playback
+  {
+    id: 'program_monitor',
     mode: 'docked',
     visible: true,
     dockPosition: 'right_top',
@@ -99,6 +100,7 @@ const DEFAULT_PANELS: PanelState[] = [
     isMini: false,
     miniParentId: null,
   },
+  // Right bottom: Inspector (with Script and DAG as tabs)
   {
     id: 'inspector',
     mode: 'docked',
@@ -111,6 +113,29 @@ const DEFAULT_PANELS: PanelState[] = [
     miniParentId: null,
   },
   {
+    id: 'script',
+    mode: 'tab',
+    visible: true,
+    dockPosition: 'right_bottom',
+    tabParentId: null,
+    tabOrder: 1,
+    floatGeometry: null,
+    isMini: false,
+    miniParentId: null,
+  },
+  {
+    id: 'dag_project',
+    mode: 'tab',
+    visible: true,
+    dockPosition: 'right_bottom',
+    tabParentId: null,
+    tabOrder: 2,
+    floatGeometry: null,
+    isMini: false,
+    miniParentId: null,
+  },
+  // Bottom: Timeline (full width, ~35% screen height)
+  {
     id: 'timeline',
     mode: 'docked',
     visible: true,
@@ -121,6 +146,7 @@ const DEFAULT_PANELS: PanelState[] = [
     isMini: false,
     miniParentId: null,
   },
+  // Floating mini: StorySpace 3D inside Program Monitor corner
   {
     id: 'story_space_3d',
     mode: 'floating',
@@ -128,14 +154,15 @@ const DEFAULT_PANELS: PanelState[] = [
     dockPosition: null,
     tabParentId: null,
     tabOrder: 0,
-    floatGeometry: { x: -128, y: -88, width: 120, height: 80 }, // bottom-right of program monitor (relative)
+    floatGeometry: { x: -128, y: -88, width: 120, height: 80 },
     isMini: true,
     miniParentId: 'program_monitor',
   },
+  // Hidden: Effects panel (user opens when needed)
   {
     id: 'effects',
     mode: 'docked',
-    visible: false, // hidden by default, user opens when needed
+    visible: false,
     dockPosition: null,
     tabParentId: null,
     tabOrder: 0,
@@ -147,16 +174,18 @@ const DEFAULT_PANELS: PanelState[] = [
 
 // ─── Grid column/row sizes (resizable) ───
 export type GridSizes = {
-  leftWidth: number;    // default 220px
+  leftWidth: number;    // default 260px
   rightWidth: number;   // default 280px
-  bottomHeight: number; // default 180px
-  rightSplit: number;   // 0-1, default 0.5 (50/50 split between source_monitor and inspector)
+  bottomHeight: number; // default 35vh (~35% screen height per arch doc §2.6)
+  leftSplit: number;    // 0-1, default 0.5 (Source Monitor top / Project bottom)
+  rightSplit: number;   // 0-1, default 0.5 (Program Monitor top / Inspector+tabs bottom)
 };
 
 const DEFAULT_GRID: GridSizes = {
-  leftWidth: 220,
+  leftWidth: 260,
   rightWidth: 280,
-  bottomHeight: 180,
+  bottomHeight: 280,    // ~35% of 800px viewport
+  leftSplit: 0.5,
   rightSplit: 0.5,
 };
 
@@ -202,7 +231,7 @@ export type SerializedLayout = {
 export const usePanelLayoutStore = create<PanelLayoutState>((set, get) => ({
   panels: [...DEFAULT_PANELS],
   grid: { ...DEFAULT_GRID },
-  activeTabByDock: { left: 'script' },
+  activeTabByDock: { right_bottom: 'inspector' },
 
   // ─── Detach: move panel to floating mode ───
   detach: (id) =>
@@ -345,7 +374,7 @@ export const usePanelLayoutStore = create<PanelLayoutState>((set, get) => ({
     set({
       panels: [...DEFAULT_PANELS],
       grid: { ...DEFAULT_GRID },
-      activeTabByDock: { left: 'script' },
+      activeTabByDock: { right_bottom: 'inspector' },
     }),
 
   // ─── Queries ───

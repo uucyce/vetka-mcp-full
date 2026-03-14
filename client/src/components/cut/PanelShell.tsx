@@ -7,8 +7,8 @@
  * Architecture doc §1: "Every panel can be a tab inside another panel
  * OR a standalone floating window. User drags to detach, drops to dock."
  */
-import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { usePanelLayoutStore, type PanelId, type PanelMode } from '../../store/usePanelLayoutStore';
+import { useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
+import { usePanelLayoutStore, type PanelId } from '../../store/usePanelLayoutStore';
 
 // ─── Monochrome SVG Icons (§11: stroke only, 1.5px, no fill) ───
 
@@ -150,6 +150,7 @@ const miniStyle = (x: number, y: number, w: number, h: number): CSSProperties =>
 const PANEL_LABELS: Record<PanelId, string> = {
   script: 'Script',
   dag_project: 'DAG Project',
+  project: 'Project',
   program_monitor: 'Program',
   source_monitor: 'Source',
   timeline: 'Timeline',

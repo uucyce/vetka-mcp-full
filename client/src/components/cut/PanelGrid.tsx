@@ -1,10 +1,10 @@
 /**
- * MARKER_180.3: PanelGrid — CSS Grid layout for VETKA CUT.
- * Default: left 220px | center flex | right 280px | bottom 180px
- * All borders resizable by dragging.
+ * MARKER_181.3: PanelGrid — CSS Grid layout for VETKA CUT (IKEA-Premiere).
  *
- * Architecture doc §3: "Three-column layout with timeline strip at bottom.
- * All panels resizable. Drag borders to resize."
+ * Default: left 260px (split top/bottom) | center flex | right 280px (split top/bottom) | bottom ~35%
+ * All borders resizable by dragging. Free windows, not fixed zones.
+ *
+ * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
  */
 import { useCallback, useRef, type CSSProperties, type ReactNode } from 'react';
 import { usePanelLayoutStore, type DockPosition } from '../../store/usePanelLayoutStore';
@@ -56,18 +56,19 @@ interface PanelGridProps {
 }
 
 /**
- * PanelGrid renders the 5-zone CSS Grid layout:
+ * PanelGrid renders the IKEA-Premiere layout:
  *
- *   ┌────────┬─────────────────┬──────────┐
- *   │  LEFT  │     CENTER      │  RIGHT   │
- *   │ 220px  │     flex        │  TOP     │
- *   │        │                 │  280px   │
- *   │        │                 ├──────────┤
- *   │        │                 │  RIGHT   │
- *   │        │                 │  BOTTOM  │
- *   ├────────┴─────────────────┴──────────┤
- *   │              BOTTOM (180px)          │
- *   └─────────────────────────────────────┘
+ *   ┌──────────┬─────────────────┬──────────┐
+ *   │  LEFT    │     CENTER      │  RIGHT   │
+ *   │  TOP     │  (Program Mon.) │  TOP     │
+ *   │(Src Mon.)│                 │(Prg Mon.)│
+ *   ├──────────┤                 ├──────────┤
+ *   │  LEFT    │                 │  RIGHT   │
+ *   │  BOTTOM  │                 │  BOTTOM  │
+ *   │(Project) │                 │(Insp/Tab)│
+ *   ├──────────┴─────────────────┴──────────┤
+ *   │          BOTTOM (~35% — Timeline)      │
+ *   └───────────────────────────────────────┘
  */
 export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProps) {
   const grid = usePanelLayoutStore((s) => s.grid);
@@ -107,7 +108,6 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     (e: React.PointerEvent) => {
       if (!rightResizeRef.current) return;
       const dx = e.clientX - rightResizeRef.current.startX;
-      // Right panel grows when dragging left (negative dx)
       setGridSize('rightWidth', Math.max(160, Math.min(600, rightResizeRef.current.startWidth - dx)));
     },
     [setGridSize],
@@ -125,8 +125,7 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     (e: React.PointerEvent) => {
       if (!bottomResizeRef.current) return;
       const dy = e.clientY - bottomResizeRef.current.startY;
-      // Bottom panel grows when dragging up (negative dy)
-      setGridSize('bottomHeight', Math.max(80, Math.min(500, bottomResizeRef.current.startHeight - dy)));
+      setGridSize('bottomHeight', Math.max(80, Math.min(600, bottomResizeRef.current.startHeight - dy)));
     },
     [setGridSize],
   );
@@ -137,7 +136,9 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     bottomResizeRef.current = null;
   }, []);
 
-  // Right column split (source_monitor top, inspector bottom)
+  // Column splits (top/bottom within each side column)
+  const leftTopH = `${grid.leftSplit * 100}%`;
+  const leftBottomH = `${(1 - grid.leftSplit) * 100}%`;
   const rightTopH = `${grid.rightSplit * 100}%`;
   const rightBottomH = `${(1 - grid.rightSplit) * 100}%`;
 
@@ -150,9 +151,22 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
     <div style={{ ...GRID_ROOT, ...gridTemplate, position: 'relative' }}>
       {/* Row 1: Left | resize | Center | resize | Right */}
 
-      {/* Left column */}
-      <div style={{ ...CELL, gridColumn: '1', gridRow: '1' }}>
-        {renderPanel('left')}
+      {/* Left column — split into top (Source Monitor) + bottom (Project) */}
+      <div style={{ ...CELL, gridColumn: '1', gridRow: '1', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ flex: leftTopH, overflow: 'hidden', minHeight: 0 }}>
+          {renderPanel('left_top')}
+        </div>
+        <div
+          style={{
+            height: 3,
+            cursor: 'row-resize',
+            background: '#1A1A1A',
+            flexShrink: 0,
+          }}
+        />
+        <div style={{ flex: leftBottomH, overflow: 'hidden', minHeight: 0 }}>
+          {renderPanel('left_bottom')}
+        </div>
       </div>
 
       {/* Left resize handle */}
@@ -163,7 +177,7 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
         onPointerUp={handleResizeUp}
       />
 
-      {/* Center column */}
+      {/* Center column — Program Monitor (future: can hold any docked panel) */}
       <div style={{ ...CELL, gridColumn: '3', gridRow: '1' }}>
         {renderPanel('center')}
       </div>
@@ -176,7 +190,7 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
         onPointerUp={handleResizeUp}
       />
 
-      {/* Right column — split into top (source) + bottom (inspector) */}
+      {/* Right column — split into top (Program Monitor) + bottom (Inspector + tabs) */}
       <div style={{ ...CELL, gridColumn: '5', gridRow: '1', display: 'flex', flexDirection: 'column' }}>
         <div style={{ flex: rightTopH, overflow: 'hidden', minHeight: 0 }}>
           {renderPanel('right_top')}

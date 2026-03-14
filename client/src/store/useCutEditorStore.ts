@@ -117,6 +117,7 @@ interface CutEditorState {
   // === Session / backend wiring ===
   sandboxRoot: string | null;
   projectId: string | null;
+  sourcePath: string | null;
   timelineId: string;
   refreshProjectState: (() => Promise<void>) | null;
 
@@ -173,6 +174,7 @@ interface CutEditorState {
   setEditorSession: (session: {
     sandboxRoot?: string | null;
     projectId?: string | null;
+    sourcePath?: string | null;
     timelineId?: string;
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
@@ -219,6 +221,7 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   // Session defaults
   sandboxRoot: null,
   projectId: null,
+  sourcePath: null,
   timelineId: 'main',
   refreshProjectState: null,
 
@@ -286,6 +289,7 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
     set((state) => ({
       sandboxRoot: session.sandboxRoot ?? state.sandboxRoot,
       projectId: session.projectId ?? state.projectId,
+      sourcePath: session.sourcePath ?? state.sourcePath,
       timelineId: session.timelineId ?? state.timelineId,
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,

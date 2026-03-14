@@ -9,14 +9,13 @@
  * Located in right_bottom dock position (below Source Monitor).
  * Updates reactively via usePanelSyncStore.
  */
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
-import { API_BASE } from '../../config/api.config';
+import { useMemo, type CSSProperties } from 'react';
 import { usePanelSyncStore, type SyncSceneContext } from '../../store/usePanelSyncStore';
 import CamelotWheel from './CamelotWheel';
 
 // ─── Types ───
 
-interface PulseData {
+export interface PulseData {
   camelot_key: string;
   energy: number;
   pendulum: number;

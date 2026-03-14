@@ -315,7 +315,6 @@ export default function CutEditorLayout({ inspector, sceneGraphSurface, debugVie
   const syncSurface = useCutEditorStore((s) => s.syncSurface);
   const markers = useCutEditorStore((s) => s.markers);
   const sceneGraphSurfaceMode = useCutEditorStore((s) => s.sceneGraphSurfaceMode);
-  const [timelineHeight] = useState(300);
   const [importSourcePath, setImportSourcePath] = useState('');
   const [importStatus, setImportStatus] = useState('');
   const [importProgress, setImportProgress] = useState<number | null>(null);

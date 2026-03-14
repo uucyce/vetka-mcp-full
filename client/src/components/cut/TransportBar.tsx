@@ -401,7 +401,7 @@ export default function TransportBar() {
       };
       if (!payload.success) {
         const knownError = payload.error === 'nothing_to_undo' || payload.error === 'nothing_to_redo';
-        showUndoToast(knownError ? 'info' : 'error', knownError ? payload.error.replaceAll('_', ' ') : payload.error || `${mode} failed`);
+        showUndoToast(knownError ? 'info' : 'error', knownError ? (payload.error || '').split('_').join(' ') : payload.error || `${mode} failed`);
         return;
       }
       await refreshProjectState?.();

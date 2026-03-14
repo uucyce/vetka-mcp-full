@@ -16,7 +16,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { usePanelSyncStore } from '../../store/usePanelSyncStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
 
 // ─── Types ───
 

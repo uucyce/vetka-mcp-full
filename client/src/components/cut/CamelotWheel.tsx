@@ -150,8 +150,6 @@ export default function CamelotWheel({
   size = SVG_SIZE,
   showNotes = false,
 }: CamelotWheelProps) {
-  const scale = size / SVG_SIZE;
-
   // Compatible keys: distance ≤ 1
   const compatibleKeys = useMemo(() => {
     if (!activeKey) return new Set<string>();

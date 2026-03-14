@@ -1,32 +1,26 @@
 /**
- * MARKER_180.4: CutEditorLayoutV2 — 7-panel NLE layout using PanelGrid + PanelShell.
+ * MARKER_181.3: CutEditorLayoutV2 — IKEA-Premiere NLE layout.
  *
- * Architecture doc §1-§3:
- * "Swedish Wardrobe: every panel detachable, resizable, dockable."
- * "Three-column layout with timeline strip at bottom."
+ * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
+ * "Free windows, not fixed zones." Default arrangement:
  *
- * This is the v2 layout that replaces the original 3-panel CutEditorLayout.
- * It wraps each existing panel component in PanelShell for tab/dock/float support,
- * and arranges them using PanelGrid's 5-zone CSS Grid.
- *
- * Panel mapping:
- *   Left column (tabs):  ScriptPanel + DAGProjectPanel
- *   Center:              VideoPreview (Program Monitor)
- *   Right top:           VideoPreview (Source Monitor — selected asset)
- *   Right bottom:        PulseInspector
- *   Bottom:              TransportBar + TimelineTabBar + TimelineTrackView + BPMTrack
- *   Floating:            StorySpace3D (mini, inside Program Monitor)
+ *   Left top:      Source Monitor (raw clip preview)
+ *   Left bottom:   Project Panel (media bin + import)
+ *   Center:        Program Monitor (timeline playback)
+ *   Right top:     Program Monitor (duplicate — or empty for now)
+ *   Right bottom:  Inspector + Script + DAG (tab group)
+ *   Bottom:        Timeline (Transport + TabBar + Tracks + BPM)
+ *   Floating:      StorySpace3D (mini, inside Program Monitor)
  */
 import { useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { usePanelLayoutStore, type DockPosition } from '../../store/usePanelLayoutStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { usePanelSyncStore } from '../../store/usePanelSyncStore';
 import PanelGrid from './PanelGrid';
 import PanelShell from './PanelShell';
 import ScriptPanel from './ScriptPanel';
-import DAGProjectPanel from './DAGProjectPanel';
 import VideoPreview from './VideoPreview';
 import PulseInspector from './PulseInspector';
+import ProjectPanel from './ProjectPanel';
 import TransportBar from './TransportBar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
@@ -61,28 +55,33 @@ interface CutEditorLayoutV2Props {
 
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   const panels = usePanelLayoutStore((s) => s.panels);
-  const getPanelsAtDock = usePanelLayoutStore((s) => s.getPanelsAtDock);
+  const activeTabByDock = usePanelLayoutStore((s) => s.activeTabByDock);
 
   // Editor store
   const zoom = useCutEditorStore((s) => s.zoom);
   const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
   const duration = useCutEditorStore((s) => s.duration);
   const timelineId = useCutEditorStore((s) => s.timelineId);
-  const selectedAssetPath = usePanelSyncStore((s) => s.selectedAssetPath);
 
-  // ─── Left column: Script + DAG as tabs ───
-  const renderLeft = useCallback(() => {
-    const leftPanels = getPanelsAtDock('left');
-    if (leftPanels.length === 0) return null;
-
+  // ─── Left top: Source Monitor — raw clip preview ───
+  const renderLeftTop = useCallback(() => {
     return (
-      <PanelShell panelId="script" title="Script / DAG">
-        <LeftTabContent scriptText={scriptText} />
+      <PanelShell panelId="source_monitor" title="Source Monitor">
+        <VideoPreview />
       </PanelShell>
     );
-  }, [getPanelsAtDock, scriptText]);
+  }, []);
 
-  // ─── Center: Program Monitor ───
+  // ─── Left bottom: Project Panel — media bin + import ───
+  const renderLeftBottom = useCallback(() => {
+    return (
+      <PanelShell panelId="project" title="Project">
+        <ProjectPanel />
+      </PanelShell>
+    );
+  }, []);
+
+  // ─── Center: Program Monitor — timeline playback ───
   const renderCenter = useCallback(() => {
     return (
       <PanelShell panelId="program_monitor" title="Program Monitor">
@@ -91,43 +90,26 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     );
   }, []);
 
-  // ─── Right top: Source Monitor ───
+  // ─── Right top: Program Monitor (secondary) ───
   const renderRightTop = useCallback(() => {
     return (
-      <PanelShell panelId="source_monitor" title="Source Monitor">
-        {selectedAssetPath ? (
-          <VideoPreview />
-        ) : (
-          <div
-            style={{
-              width: '100%',
-              height: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#444',
-              fontSize: 11,
-              fontFamily: 'Inter, system-ui, sans-serif',
-              background: '#1A1A1A',
-            }}
-          >
-            Select an asset in DAG or click a script line
-          </div>
-        )}
-      </PanelShell>
-    );
-  }, [selectedAssetPath]);
-
-  // ─── Right bottom: Inspector ───
-  const renderRightBottom = useCallback(() => {
-    return (
-      <PanelShell panelId="inspector" title="Inspector">
-        <PulseInspector />
+      <PanelShell panelId="program_monitor" title="Program Monitor">
+        <VideoPreview />
       </PanelShell>
     );
   }, []);
 
-  // ─── Bottom: Timeline area (Transport + TabBar + Tracks + BPM) ───
+  // ─── Right bottom: Inspector + Script + DAG tab group ───
+  const renderRightBottom = useCallback(() => {
+    const activeTab = activeTabByDock['right_bottom'] || 'inspector';
+    return (
+      <PanelShell panelId="inspector" title="Inspector">
+        <RightBottomTabContent activeTab={activeTab} scriptText={scriptText} />
+      </PanelShell>
+    );
+  }, [activeTabByDock, scriptText]);
+
+  // ─── Bottom: Timeline area ───
   const renderBottom = useCallback(() => {
     return (
       <div style={TIMELINE_AREA}>
@@ -151,8 +133,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const renderPanel = useCallback(
     (position: DockPosition): ReactNode => {
       switch (position) {
-        case 'left':
-          return renderLeft();
+        case 'left_top':
+          return renderLeftTop();
+        case 'left_bottom':
+          return renderLeftBottom();
         case 'center':
           return renderCenter();
         case 'right_top':
@@ -165,7 +149,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
           return null;
       }
     },
-    [renderLeft, renderCenter, renderRightTop, renderRightBottom, renderBottom],
+    [renderLeftTop, renderLeftBottom, renderCenter, renderRightTop, renderRightBottom, renderBottom],
   );
 
   // ─── Floating panels: StorySpace3D mini ───
@@ -178,7 +162,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         <StorySpace3D
           timelineId={timelineId}
           scriptText={scriptText}
-          mini={ssState.mode === 'floating'}
+          mini={ssState.isMini}
         />
       </PanelShell>
     );
@@ -191,22 +175,22 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   );
 }
 
-// ─── Left tab content: Script / DAG switch ───
+// ─── Right bottom tab content: Inspector / Script / DAG ───
 
-function LeftTabContent({ scriptText }: { scriptText: string }) {
-  // Internal tab state for script vs DAG
-  const [activeTab, setActiveTab] = useCutEditorStore.getState().timelineId
-    ? ['script', () => {}]
-    : ['script', () => {}];
-
-  // Use ScriptPanel's built-in tab system
-  return (
-    <ScriptPanel
-      scriptText={scriptText}
-      activeTab="script"
-      onTabChange={(tab) => {
-        // Tab change handled internally by ScriptPanel
-      }}
-    />
-  );
+function RightBottomTabContent({ activeTab, scriptText }: { activeTab: string; scriptText: string }) {
+  switch (activeTab) {
+    case 'script':
+      return (
+        <ScriptPanel
+          scriptText={scriptText}
+          activeTab="script"
+          onTabChange={() => {}}
+        />
+      );
+    case 'dag_project':
+      return <div style={{ color: '#666', padding: 12, fontSize: 11 }}>DAG View (coming soon)</div>;
+    case 'inspector':
+    default:
+      return <PulseInspector />;
+  }
 }

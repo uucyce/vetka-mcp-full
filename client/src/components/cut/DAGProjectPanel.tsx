@@ -31,7 +31,7 @@ import { usePanelSyncStore } from '../../store/usePanelSyncStore';
 
 // ─── Types ───
 
-interface DAGAssetNode {
+interface DAGAssetNodeData extends Record<string, unknown> {
   node_id: string;
   label: string;
   node_type: string;
@@ -45,6 +45,8 @@ interface DAGAssetNode {
   linked_scene_ids: string[];
 }
 
+type AssetNodeType = Node<DAGAssetNodeData, 'asset'>;
+
 interface DAGEdge {
   source: string;
   target: string;
@@ -53,7 +55,7 @@ interface DAGEdge {
 }
 
 interface DAGData {
-  nodes: DAGAssetNode[];
+  nodes: DAGAssetNodeData[];
   edges: DAGEdge[];
   clusters: Record<string, string[]>;
 }
@@ -73,7 +75,7 @@ const CLUSTER_CONFIG: Record<string, { label: string; color: string; icon: strin
 
 // ─── Custom Node Component ───
 
-function AssetNode({ data, selected }: NodeProps) {
+function AssetNode({ data, selected }: NodeProps<AssetNodeType>) {
   const activeSceneId = usePanelSyncStore((s) => s.activeSceneId);
 
   // Blue glow if linked to active script scene
@@ -180,9 +182,6 @@ function layoutNodes(dagData: DAGData): { nodes: Node[]; edges: Edge[] } {
     const clusterNodes = dagData.nodes.filter((n) => n.cluster === cluster);
     if (clusterNodes.length === 0) continue;
 
-    // Cluster header (using a special styled node)
-    const clusterCfg = CLUSTER_CONFIG[cluster] || CLUSTER_CONFIG.other;
-
     for (let i = 0; i < clusterNodes.length; i++) {
       const n = clusterNodes[i];
       nodes.push({
@@ -236,8 +235,8 @@ interface DAGProjectPanelProps {
 
 export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanelProps) {
   const [dagData, setDagData] = useState<DAGData | null>(null);
-  const [rfNodes, setRfNodes, onNodesChange] = useNodesState([]);
-  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([]);
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState([] as Node[]);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([] as Edge[]);
 
   const syncFromDAG = usePanelSyncStore((s) => s.syncFromDAG);
 
