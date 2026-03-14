@@ -45,7 +45,12 @@ class TestE2ETaskLifecycle:
             })
             assert result.get("success") is True, f"Claim failed: {result}"
 
-            result = handle_task_board({"action": "complete", "task_id": task_id})
+            # Pass commit_hash to test Case A (already committed) — avoids
+            # real git commit in test environment with dirty worktree
+            result = handle_task_board({
+                "action": "complete", "task_id": task_id,
+                "commit_hash": "test1234", "commit_message": "test commit"
+            })
             assert result.get("success") is True, f"Complete failed: {result}"
 
             result = handle_task_board({"action": "get", "task_id": task_id})

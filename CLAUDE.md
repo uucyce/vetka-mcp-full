@@ -119,10 +119,13 @@ Three agents work on ONE codebase through ONE TaskBoard:
 ```
 
 **CRITICAL: Step 5 is the ONLY step needed to finish.** One call does everything:
-`complete task` → auto `git add -A` → auto `git commit` (with task reference) → pre-commit hook updates digest → task marked done.
+- If changes exist: `complete` → stages changed files (scoped, not -A) → `git commit` → digest update → task done
+- If no changes: `complete` → task marked done (no commit — e.g., research tasks)
+- If already committed: pass `commit_hash` → task marked done with commit reference
 
 **You can optionally pass `commit_message` to customize the commit message.**
 If omitted, the commit message defaults to `"complete: {task title} [task:{task_id}]"`.
+If commit fails, task is NOT closed — agent must fix the issue and retry.
 
 **NEVER use raw `git commit`** — always close tasks via `vetka_task_board action=complete`.
 

@@ -17,13 +17,9 @@ TODO MARKER_126.11C: Add fourth tool:
 """
 
 import logging
-import subprocess
-from pathlib import Path
 from typing import Dict, Any
 
 logger = logging.getLogger("VETKA_MCP")
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 # ==========================================
@@ -195,34 +191,53 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         result = board.claim_task(task_id, agent_name, agent_type)
         return result
 
-    # MARKER_181.3: complete action — auto git commit + digest update
+    # MARKER_181.4: complete action — unified pipeline
+    # Flow: agent → complete → auto-commit (scoped) → digest → close task
+    # Same pattern as run_closure_protocol (task_board.py:1103)
     elif action == "complete":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for complete"}
 
-        # Get task info for commit message
         task = board.get_task(task_id)
-        task_title = task.get("title", "task") if task else "task"
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
 
-        # Auto-commit: stage all changes → commit with task reference
         commit_hash = arguments.get("commit_hash")
         commit_message = arguments.get("commit_message")
-        auto_commit_result = None
 
-        if not commit_hash:
-            # No commit provided — auto-create one
-            auto_msg = commit_message or f"complete: {task_title} [task:{task_id}]"
-            if f"[task:{task_id}]" not in auto_msg:
-                auto_msg += f" [task:{task_id}]"
-            auto_commit_result = _auto_git_commit(auto_msg)
-            if auto_commit_result.get("success"):
-                commit_hash = auto_commit_result["hash"]
-                commit_message = auto_msg
+        # Case A: agent already committed — just close
+        if commit_hash:
+            result = board.complete_task(task_id, commit_hash, commit_message)
+            return result
 
-        result = board.complete_task(task_id, commit_hash, commit_message)
-        if auto_commit_result:
-            result["auto_commit"] = auto_commit_result
+        # Case B/C: no commit yet — try auto-commit
+        auto = _try_auto_commit(task_id, task, commit_message)
+
+        # If commit attempted but FAILED → do NOT close task
+        if auto.get("attempted") and not auto.get("success"):
+            return {
+                "success": False,
+                "error": f"Auto-commit failed: {auto.get('error', 'unknown')}. Task NOT closed.",
+                "task_id": task_id,
+                "auto_commit": auto,
+            }
+
+        # Double-close protection: GitCommitTool._auto_complete_tasks() may
+        # have already closed this task via [task:tb_xxxx] in commit message
+        task_refreshed = board.get_task(task_id)
+        if task_refreshed and task_refreshed.get("status") == "done":
+            return {
+                "success": True,
+                "task_id": task_id,
+                "commit_hash": auto.get("hash"),
+                "note": "auto-closed by commit pipeline",
+                "auto_commit": auto,
+            }
+
+        # Close task (commit succeeded or nothing to commit)
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"))
+        result["auto_commit"] = auto
         return result
 
     # MARKER_130.C16B: active_agents action
@@ -234,52 +249,92 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": f"Unknown action: {action}"}
 
 
-def _auto_git_commit(message: str) -> Dict[str, Any]:
-    """MARKER_181.3: Auto git commit when completing a task.
-    Stages all changes → commits → pre-commit hook updates digest.
-    Returns {"success": bool, "hash": str} or {"success": False, "error": str}.
+
+def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> dict:
+    """MARKER_181.4: Auto-commit via GitCommitTool.execute().
+
+    Same pattern as run_closure_protocol (task_board.py:1103).
+    GitCommitTool.execute() IS the full pipeline: stage → commit → digest → auto-close.
+
+    Scoped staging: uses task.closure_files if declared, otherwise parses
+    git status --porcelain for actual changed files. Never git add -A.
+
+    Returns: {attempted, success, hash, message, error, note}
     """
+    import subprocess
+    from pathlib import Path
+
+    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+    # 1. Check if there are changes to commit
     try:
-        # Check if there are changes to commit
         status = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
         )
-        if not status.stdout.strip():
-            return {"success": False, "error": "nothing to commit", "hash": None}
-
-        # Stage all changes
-        subprocess.run(
-            ["git", "add", "-A"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
-        )
-
-        # Commit (pre-commit hook handles digest update)
-        result = subprocess.run(
-            ["git", "commit", "-m", message],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=30,
-        )
-        if result.returncode != 0:
-            err = result.stderr or result.stdout
-            if "nothing to commit" in err.lower():
-                return {"success": False, "error": "nothing to commit", "hash": None}
-            return {"success": False, "error": err[:200], "hash": None}
-
-        # Get commit hash
-        hash_result = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
-        )
-        commit_hash = hash_result.stdout.strip()
-
-        logger.info(f"[TaskBoard] Auto-commit {commit_hash}: {message[:60]}")
-        return {"success": True, "hash": commit_hash}
-
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "git timeout", "hash": None}
     except Exception as e:
-        logger.error(f"[TaskBoard] Auto-commit failed: {e}")
-        return {"success": False, "error": str(e)[:200], "hash": None}
+        return {"attempted": False, "success": False, "error": f"git status failed: {e}"}
+
+    if not status.stdout.strip():
+        # Case C: nothing to commit — OK for research tasks
+        return {"attempted": False, "success": True, "hash": None, "message": None,
+                "note": "nothing to commit"}
+
+    # 2. Determine scoped files (NOT git add -A)
+    closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+
+    if not closure_files:
+        # Fallback: parse git status --porcelain for actually changed files
+        # Format: "XY filename" where XY = 2 status chars + 1 space = 3 char prefix
+        # Do NOT strip before slicing — leading space is part of status format
+        changed = []
+        for line in status.stdout.splitlines():
+            if len(line) > 3:
+                filepath = line[3:].split(" -> ")[-1].strip()
+                if filepath:
+                    changed.append(filepath)
+        closure_files = changed
+
+    if not closure_files:
+        return {"attempted": False, "success": True, "hash": None,
+                "note": "no changed files found"}
+
+    # 3. Build commit message with [task:tb_xxxx]
+    task_title = task.get("title", "task")
+    auto_msg = commit_message or f"complete: {task_title} [task:{task_id}]"
+    if f"[task:{task_id}]" not in auto_msg:
+        auto_msg += f" [task:{task_id}]"
+
+    # 4. GitCommitTool.execute() — the ACTUAL pipeline
+    try:
+        from src.mcp.tools.git_tool import GitCommitTool
+
+        tool = GitCommitTool()
+        result = tool.execute({
+            "message": auto_msg,
+            "files": closure_files,
+            "dry_run": False,
+            "auto_push": False,
+        })
+    except Exception as e:
+        logger.error(f"[TaskBoard] _try_auto_commit failed: {e}")
+        return {"attempted": True, "success": False, "error": str(e)[:200]}
+
+    if not result.get("success"):
+        error = result.get("error", "unknown")
+        if "nothing to commit" in str(error).lower():
+            return {"attempted": False, "success": True, "hash": None,
+                    "note": "nothing to commit"}
+        return {"attempted": True, "success": False, "error": error, "message": auto_msg}
+
+    result_data = result.get("result", {})
+    logger.info(f"[TaskBoard] Auto-commit {result_data.get('hash')}: {auto_msg[:60]}")
+    return {
+        "attempted": True,
+        "success": True,
+        "hash": result_data.get("hash"),
+        "message": auto_msg,
+    }
 
 
 # ==========================================
