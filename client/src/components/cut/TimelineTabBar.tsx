@@ -1,7 +1,12 @@
 /**
- * MARKER_170.12.TIMELINE_TAB_BAR
+ * MARKER_170.12 + MARKER_180.14: Timeline Tab Bar with versioning.
  * Tab bar for multi-timeline support. Sits above the timeline area.
  * Premiere Pro-style: dark tabs with active indicator, + button to create.
+ *
+ * 180.14 additions:
+ * - Version badge on each tab (v01, v02, etc.)
+ * - Mode indicator (♩ music, ¶ script, ★ favorites, ✎ manual)
+ * - Safety: NEVER overwrites — always creates new versioned timeline.
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
@@ -71,20 +76,42 @@ const ADD_BTN: CSSProperties = {
   marginLeft: 4,
 };
 
-let tabCounter = 1;
+// MARKER_180.14: Mode icons
+const MODE_ICONS: Record<string, string> = {
+  favorites: '★',
+  script: '¶',
+  music: '♩',
+  manual: '✎',
+};
+
+const VERSION_BADGE: CSSProperties = {
+  fontSize: 7,
+  color: '#555',
+  fontFamily: '"JetBrains Mono", monospace',
+  marginLeft: 4,
+  padding: '0 3px',
+  background: '#1a1a1a',
+  borderRadius: 2,
+};
 
 export default function TimelineTabBar() {
   const tabs = useCutEditorStore((s) => s.timelineTabs);
   const activeIndex = useCutEditorStore((s) => s.activeTimelineTabIndex);
   const setActive = useCutEditorStore((s) => s.setActiveTimelineTab);
-  const addTab = useCutEditorStore((s) => s.addTimelineTab);
   const removeTab = useCutEditorStore((s) => s.removeTimelineTab);
+  const createVersioned = useCutEditorStore((s) => s.createVersionedTimeline);
+  const projectId = useCutEditorStore((s) => s.projectId);
 
   const handleAdd = () => {
-    tabCounter++;
-    const id = `timeline_${tabCounter}`;
-    addTab(id, `Timeline ${tabCounter}`);
+    // MARKER_180.14: Always create versioned timeline (§7.1 safety)
+    const name = projectId || 'project';
+    createVersionedTimeline(name, 'manual');
   };
+
+  // Wrapper for createVersionedTimeline that's accessible from store
+  function createVersionedTimeline(projectName: string, mode: string) {
+    createVersioned(projectName, mode);
+  }
 
   return (
     <div style={BAR_STYLE} data-testid="timeline-tab-bar">
@@ -95,7 +122,19 @@ export default function TimelineTabBar() {
           onClick={() => setActive(i)}
           title={tab.id}
         >
+          {/* Mode icon */}
+          {tab.mode && MODE_ICONS[tab.mode] && (
+            <span style={{ fontSize: 9, color: '#555', marginRight: 3 }}>
+              {MODE_ICONS[tab.mode]}
+            </span>
+          )}
           <span>{tab.label}</span>
+          {/* Version badge */}
+          {tab.version !== undefined && tab.version > 0 && (
+            <span style={VERSION_BADGE}>
+              v{tab.version.toString().padStart(2, '0')}
+            </span>
+          )}
           {tabs.length > 1 && (
             <button
               style={CLOSE_BTN}
@@ -110,7 +149,7 @@ export default function TimelineTabBar() {
           )}
         </div>
       ))}
-      <button style={ADD_BTN} onClick={handleAdd} title="New timeline">
+      <button style={ADD_BTN} onClick={handleAdd} title="New versioned timeline">
         +
       </button>
     </div>

@@ -51,15 +51,37 @@ export type SyncSurfaceItem = {
   confidence: number;
 };
 
+/**
+ * MARKER_180.20: Unified TimeMarker — combines editorial + PULSE data.
+ *
+ * Architecture doc §5.1: "Markers carry both editorial intent (favorite/comment/cam)
+ * AND PULSE analysis (camelot_key, energy, pendulum). This unifies the marker
+ * system so BPMTrack, Timeline, ScriptPanel, and StorySpace all read one type."
+ *
+ * Kind types: favorite | comment | cam | insight | chat | bpm_audio | bpm_visual | bpm_script | sync_point
+ */
+export type MarkerKind =
+  | 'favorite' | 'comment' | 'cam' | 'insight' | 'chat'
+  | 'bpm_audio' | 'bpm_visual' | 'bpm_script' | 'sync_point';
+
 export type TimeMarker = {
   marker_id: string;
-  kind: string;
+  kind: MarkerKind | string;        // unified kind (editorial + BPM)
   media_path: string;
   start_sec: number;
   end_sec: number;
   text?: string;
-  status?: string;
-  score?: number;
+  status?: string;                   // 'active' | 'archived'
+  score?: number;                    // confidence/priority 0-1
+  // MARKER_180.20: PULSE data (optional, filled by analysis)
+  camelot_key?: string;              // e.g. "8A"
+  energy?: number;                   // 0-1
+  pendulum?: number;                 // -1..+1
+  scene_id?: string;                 // linked scene
+  editorial_intent?: string;         // accent_cut, commentary_hold, etc.
+  sync_strength?: number;            // for sync_point kind: 0.67 or 1.0
+  sync_sources?: string[];           // for sync_point: ['audio','visual','script']
+  source_engine?: string;            // what generated this marker
 };
 
 interface CutEditorState {
@@ -98,9 +120,18 @@ interface CutEditorState {
   timelineId: string;
   refreshProjectState: (() => Promise<void>) | null;
 
-  // === Multi-timeline tabs (MARKER_170.12) ===
-  timelineTabs: Array<{ id: string; label: string }>;
+  // === Multi-timeline tabs (MARKER_170.12 + MARKER_180.14 versioning) ===
+  timelineTabs: Array<{
+    id: string;
+    label: string;
+    version?: number;        // MARKER_180.14: auto-increment version
+    createdAt?: number;      // ms timestamp
+    parentId?: string;       // which timeline this was derived from
+    mode?: string;           // 'favorites' | 'script' | 'music' | 'manual'
+  }>;
   activeTimelineTabIndex: number;
+  /** MARKER_180.14: global version counter for {project}_cut-{NN} naming */
+  nextTimelineVersion: number;
 
   // === Media status ===
   mediaError: string | null;
@@ -146,11 +177,13 @@ interface CutEditorState {
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
 
-  // Multi-timeline tab actions (MARKER_170.12)
+  // Multi-timeline tab actions (MARKER_170.12 + MARKER_180.14)
   addTimelineTab: (id: string, label: string) => void;
   removeTimelineTab: (index: number) => void;
   setActiveTimelineTab: (index: number) => void;
   renameTimelineTab: (index: number, label: string) => void;
+  /** MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1) */
+  createVersionedTimeline: (projectName: string, mode?: string) => string;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set) => ({
@@ -190,8 +223,9 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   refreshProjectState: null,
 
   // Multi-timeline defaults
-  timelineTabs: [{ id: 'main', label: 'Main' }],
+  timelineTabs: [{ id: 'main', label: 'Main', version: 0, createdAt: Date.now(), mode: 'manual' }],
   activeTimelineTabIndex: 0,
+  nextTimelineVersion: 1,
 
   // Media status
   mediaError: null,
@@ -282,4 +316,31 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
       if (tabs[index]) tabs[index] = { ...tabs[index], label };
       return { timelineTabs: tabs };
     }),
+
+  // MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1)
+  createVersionedTimeline: (projectName, mode = 'manual') => {
+    let newId = '';
+    set((state) => {
+      const version = state.nextTimelineVersion;
+      const versionStr = version.toString().padStart(2, '0');
+      const label = `${projectName}_cut-${versionStr}`;
+      newId = `tl_${label}_${Date.now()}`;
+      const currentTabId = state.timelineTabs[state.activeTimelineTabIndex]?.id;
+      const newTab = {
+        id: newId,
+        label,
+        version,
+        createdAt: Date.now(),
+        parentId: currentTabId,
+        mode,
+      };
+      return {
+        timelineTabs: [...state.timelineTabs, newTab],
+        activeTimelineTabIndex: state.timelineTabs.length,
+        timelineId: newId,
+        nextTimelineVersion: version + 1,
+      };
+    });
+    return newId;
+  },
 }));

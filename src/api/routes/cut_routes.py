@@ -6358,3 +6358,465 @@ async def cut_pulse_markers_to_story_space(
         "scene_count": len(scores),
         "points": points,
     }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_180.8 — BPM Markers endpoint
+# Returns all 3 BPM sources as timestamped arrays + computed sync points
+# Architecture doc §5.1, §5.2
+# ---------------------------------------------------------------------------
+
+
+class CutPulseBPMMarkersRequest(BaseModel):
+    """Request for BPM markers — needs timeline context."""
+
+    timeline_id: str = "main"
+    sandbox_root: str = ""
+    # Optional script text for script BPM calculation
+    script_text: str = ""
+    # Sync tolerance: how close beats must be to count as sync (seconds)
+    sync_tolerance_sec: float = 0.083  # ±2 frames at 24fps
+
+
+@router.post("/pulse/bpm-markers")
+async def cut_pulse_bpm_markers(
+    req: CutPulseBPMMarkersRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_180.8 — BPM markers for timeline track.
+
+    Returns 3 BPM sources + computed sync points (orange dots):
+    - audio_beats: from AudioBPM downbeats (green dots)
+    - visual_cuts: from VisualBPM scene boundaries (blue dots)
+    - script_events: from NarrativeBPM script analysis (white dots)
+    - sync_points: where all 3 coincide within tolerance (orange dots)
+
+    Architecture doc: VETKA_CUT_Interface_Architecture_v1.docx §5.1, §5.2
+    """
+    audio_beats: list[dict[str, Any]] = []
+    visual_cuts: list[dict[str, Any]] = []
+    script_events: list[dict[str, Any]] = []
+
+    # --- Audio BPM: get from partiture/enriched scene graph ---
+    store = CutProjectStore.get_instance()
+    scene_graph = store.load_scene_graph(req.timeline_id) if store else None
+
+    if scene_graph:
+        scene_nodes = [
+            n for n in scene_graph.get("nodes", [])
+            if n.get("node_type") == "scene"
+        ]
+        for node in scene_nodes:
+            pulse_data = node.get("metadata", {}).get("pulse_data", {})
+            # Audio beats from downbeats
+            if pulse_data.get("has_audio"):
+                audio_bpm_val = pulse_data.get("audio_bpm", 120)
+                start_sec = node.get("metadata", {}).get("start_sec", 0)
+                end_sec = node.get("metadata", {}).get("end_sec", start_sec + 10)
+                # Generate beat positions from BPM
+                if audio_bpm_val > 0:
+                    beat_interval = 60.0 / audio_bpm_val
+                    t = start_sec
+                    while t < end_sec:
+                        audio_beats.append({
+                            "sec": round(t, 3),
+                            "bpm": round(audio_bpm_val, 1),
+                            "source": "audio",
+                        })
+                        t += beat_interval
+
+            # Visual cuts from scene boundaries
+            if pulse_data.get("has_visual"):
+                start_sec = node.get("metadata", {}).get("start_sec", 0)
+                visual_cuts.append({
+                    "sec": round(start_sec, 3),
+                    "source": "visual",
+                })
+
+    # --- Script BPM: from script text analysis ---
+    if req.script_text:
+        analyzer = get_script_analyzer()
+        narrative_scenes = analyzer.analyze(req.script_text)
+        # Each scene transition is a script event
+        # Script BPM = events per minute (§5.3)
+        page_duration_sec = 60.0  # 1 page ≈ 60 seconds
+        for i, nbpm in enumerate(narrative_scenes):
+            event_sec = i * page_duration_sec / max(len(narrative_scenes), 1) * len(narrative_scenes)
+            # Rough time: distribute evenly for now (SRT bridge gives real times)
+            event_sec = i * page_duration_sec
+            script_events.append({
+                "sec": round(event_sec, 3),
+                "type": nbpm.dramatic_function,
+                "energy": round(nbpm.estimated_energy, 3),
+                "scene_id": nbpm.scene_id,
+                "source": "script",
+            })
+    elif scene_graph:
+        # Fall back to scene boundaries as script events
+        scene_nodes = [
+            n for n in scene_graph.get("nodes", [])
+            if n.get("node_type") == "scene"
+        ]
+        for node in scene_nodes:
+            start_sec = node.get("metadata", {}).get("start_sec", 0)
+            pulse_data = node.get("metadata", {}).get("pulse_data", {})
+            script_events.append({
+                "sec": round(start_sec, 3),
+                "type": pulse_data.get("dramatic_function", "unknown"),
+                "energy": round(pulse_data.get("energy", 0.5), 3),
+                "scene_id": node.get("node_id", ""),
+                "source": "script",
+            })
+
+    # --- Compute sync points (orange): where sources coincide ---
+    sync_points: list[dict[str, Any]] = []
+    tolerance = req.sync_tolerance_sec
+
+    # Collect all timestamps
+    audio_times = [b["sec"] for b in audio_beats]
+    visual_times = [v["sec"] for v in visual_cuts]
+    script_times = [s["sec"] for s in script_events]
+
+    # For each audio beat, check if visual AND script are nearby
+    for at in audio_times:
+        has_visual = any(abs(vt - at) <= tolerance for vt in visual_times)
+        has_script = any(abs(st - at) <= tolerance for st in script_times)
+        if has_visual and has_script:
+            sync_points.append({
+                "sec": round(at, 3),
+                "strength": 1.0,
+                "sources": ["audio", "visual", "script"],
+            })
+        elif has_visual or has_script:
+            # Partial sync — 2 of 3 sources
+            sources = ["audio"]
+            if has_visual:
+                sources.append("visual")
+            if has_script:
+                sources.append("script")
+            sync_points.append({
+                "sec": round(at, 3),
+                "strength": 0.67,
+                "sources": sources,
+            })
+
+    # Also check visual×script pairs that have no audio
+    for vt in visual_times:
+        has_audio = any(abs(at - vt) <= tolerance for at in audio_times)
+        if has_audio:
+            continue  # already handled above
+        has_script = any(abs(st - vt) <= tolerance for st in script_times)
+        if has_script:
+            sync_points.append({
+                "sec": round(vt, 3),
+                "strength": 0.67,
+                "sources": ["visual", "script"],
+            })
+
+    # Deduplicate sync points within tolerance
+    deduped_sync: list[dict[str, Any]] = []
+    for sp in sorted(sync_points, key=lambda x: x["sec"]):
+        if not deduped_sync or abs(sp["sec"] - deduped_sync[-1]["sec"]) > tolerance:
+            deduped_sync.append(sp)
+        elif sp["strength"] > deduped_sync[-1]["strength"]:
+            deduped_sync[-1] = sp  # keep the stronger one
+
+    return {
+        "success": True,
+        "schema_version": "pulse_bpm_markers_v1",
+        "audio_beats": audio_beats,
+        "audio_beat_count": len(audio_beats),
+        "visual_cuts": visual_cuts,
+        "visual_cut_count": len(visual_cuts),
+        "script_events": script_events,
+        "script_event_count": len(script_events),
+        "sync_points": deduped_sync,
+        "sync_point_count": len(deduped_sync),
+        "sync_tolerance_sec": tolerance,
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_180.13 — PULSE Auto-Montage endpoint
+# Architecture doc §7: 3 modes, always new timeline, never overwrite
+# ---------------------------------------------------------------------------
+
+
+class CutPulseAutoMontageRequest(BaseModel):
+    """Request for auto-montage."""
+
+    mode: str = "favorites"  # "favorites" | "script" | "music"
+    project_name: str = "project"
+    version: int = 1
+    sandbox_root: str = ""
+    timeline_id: str = "main"
+    # Mode-specific params
+    script_text: str = ""  # for script mode
+    order_by: str = "time"  # for favorites mode: "time" | "energy" | "script"
+    # Music mode
+    music_bpm: float = 120.0
+    music_key: str = "8B"
+    music_camelot_key: str = "8B"
+
+
+@router.post("/pulse/auto-montage")
+async def cut_pulse_auto_montage(
+    req: CutPulseAutoMontageRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_180.13 — PULSE Auto-Montage: 3 modes, always creates new timeline.
+
+    Modes:
+    - favorites: Assembles from favorite markers in marker bundle
+    - script: Matches script scenes to available materials
+    - music: Matches materials to music track via Camelot/mood
+
+    Architecture doc §7.1 SAFETY: "NEVER overwrite existing work."
+    """
+    from src.services.pulse_auto_montage import (
+        FavoriteMarker,
+        MaterialAsset,
+        get_auto_montage,
+    )
+    from src.services.pulse_conductor import AudioBPM
+
+    engine = get_auto_montage()
+
+    if req.mode == "favorites":
+        # Load markers from project store
+        store = CutProjectStore.get_instance()
+        marker_bundle = store.load_time_marker_bundle() if store else None
+
+        markers: list[FavoriteMarker] = []
+        if marker_bundle:
+            for item in marker_bundle.get("items", []):
+                if item.get("kind") == "favorite" and item.get("status", "active") != "archived":
+                    markers.append(FavoriteMarker(
+                        marker_id=item.get("marker_id", ""),
+                        media_path=item.get("media_path", ""),
+                        start_sec=item.get("start_sec", 0),
+                        end_sec=item.get("end_sec", 0),
+                        score=item.get("score", 1.0),
+                        text=item.get("text", ""),
+                    ))
+
+        result = engine.assemble_favorites(
+            markers=markers,
+            project_name=req.project_name,
+            version=req.version,
+            order_by=req.order_by,
+        )
+
+    elif req.mode == "script":
+        # Gather materials from scene graph
+        store = CutProjectStore.get_instance()
+        scene_graph = store.load_scene_graph(req.timeline_id) if store else None
+
+        materials: list[MaterialAsset] = []
+        if scene_graph:
+            for node in scene_graph.get("nodes", []):
+                if node.get("node_type") in ("clip", "take", "asset"):
+                    meta = node.get("metadata", {})
+                    pulse = meta.get("pulse_data", {})
+                    materials.append(MaterialAsset(
+                        asset_id=node.get("node_id", ""),
+                        source_path=meta.get("source_path", ""),
+                        duration_sec=meta.get("duration_sec", 30.0),
+                        camelot_key=pulse.get("camelot_key", ""),
+                        energy=pulse.get("energy", 0.5),
+                        pendulum=pulse.get("pendulum_position", 0.0),
+                        scene_id=meta.get("scene_id", ""),
+                    ))
+
+        result = engine.assemble_from_script(
+            script_text=req.script_text,
+            materials=materials,
+            project_name=req.project_name,
+            version=req.version,
+        )
+
+    elif req.mode == "music":
+        # Build AudioBPM from request
+        music = AudioBPM(
+            bpm=req.music_bpm,
+            key=req.music_key,
+            camelot_key=req.music_camelot_key,
+        )
+
+        # Gather materials
+        store = CutProjectStore.get_instance()
+        scene_graph = store.load_scene_graph(req.timeline_id) if store else None
+
+        materials_m: list[MaterialAsset] = []
+        if scene_graph:
+            for node in scene_graph.get("nodes", []):
+                if node.get("node_type") in ("clip", "take", "asset"):
+                    meta = node.get("metadata", {})
+                    pulse = meta.get("pulse_data", {})
+                    materials_m.append(MaterialAsset(
+                        asset_id=node.get("node_id", ""),
+                        source_path=meta.get("source_path", ""),
+                        duration_sec=meta.get("duration_sec", 30.0),
+                        camelot_key=pulse.get("camelot_key", ""),
+                        energy=pulse.get("energy", 0.5),
+                        pendulum=pulse.get("pendulum_position", 0.0),
+                    ))
+
+        result = engine.assemble_from_music(
+            music_audio=music,
+            materials=materials_m,
+            project_name=req.project_name,
+            version=req.version,
+        )
+
+    else:
+        return {"success": False, "error": f"Unknown mode: {req.mode}. Use 'favorites', 'script', or 'music'."}
+
+    return {
+        "success": True,
+        "schema_version": "pulse_auto_montage_v1",
+        **result.to_dict(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_180.17 — DAG Project endpoint
+# Returns project asset DAG: nodes by cluster, edges by usage in script
+# Architecture doc §2.2, §8
+# ---------------------------------------------------------------------------
+
+# Cluster types from Architecture doc §2.2
+_DAG_CLUSTER_TYPES = {
+    "character", "location", "take", "dub",
+    "music", "sfx", "graphics", "other",
+}
+
+
+def _classify_asset_cluster(node: dict) -> str:
+    """Classify a scene graph node into a DAG cluster type."""
+    node_type = node.get("node_type", "")
+    meta = node.get("metadata", {})
+    tags = meta.get("tags", [])
+    source_path = meta.get("source_path", "")
+    label = node.get("label", "").lower()
+
+    # By node_type
+    if node_type in ("character", "person"):
+        return "character"
+    if node_type in ("location", "place", "scene"):
+        return "location"
+    if node_type in ("take", "clip"):
+        return "take"
+    if node_type in ("dub", "voiceover"):
+        return "dub"
+
+    # By file extension
+    if source_path:
+        ext = source_path.rsplit(".", 1)[-1].lower() if "." in source_path else ""
+        if ext in ("mp3", "wav", "aac", "flac", "ogg"):
+            if any(t in tags for t in ["sfx", "sound_effect", "foley"]):
+                return "sfx"
+            return "music"
+        if ext in ("png", "jpg", "jpeg", "svg", "psd", "ai"):
+            return "graphics"
+
+    # By tags
+    if any(t in tags for t in ["character", "person", "actor"]):
+        return "character"
+    if any(t in tags for t in ["location", "set", "place"]):
+        return "location"
+    if any(t in tags for t in ["music", "score", "soundtrack"]):
+        return "music"
+    if any(t in tags for t in ["sfx", "foley", "sound"]):
+        return "sfx"
+    if any(t in tags for t in ["graphic", "title", "overlay"]):
+        return "graphics"
+
+    return "other"
+
+
+@router.get("/project/dag/{timeline_id}")
+async def cut_project_dag(
+    timeline_id: str = "main",
+) -> dict[str, Any]:
+    """
+    MARKER_180.17 — DAG Project: asset graph organized by clusters.
+
+    Returns nodes grouped by cluster type (Characters, Locations, Takes,
+    Music, SFX, Graphics) with edges showing asset-to-scene connections.
+    Nodes linked to the active script line glow blue (computed by frontend).
+
+    Architecture doc §2.2: "Material organized by clusters"
+    Architecture doc §8: "DAG as universal view mode"
+    """
+    store = CutProjectStore.get_instance()
+    scene_graph = store.load_scene_graph(timeline_id) if store else None
+
+    if not scene_graph:
+        return {
+            "success": True,
+            "schema_version": "cut_project_dag_v1",
+            "node_count": 0,
+            "edge_count": 0,
+            "clusters": {},
+            "nodes": [],
+            "edges": [],
+        }
+
+    raw_nodes = scene_graph.get("nodes", [])
+    raw_edges = scene_graph.get("edges", [])
+
+    # Build DAG nodes with cluster classification
+    dag_nodes: list[dict] = []
+    clusters: dict[str, list[str]] = {ct: [] for ct in _DAG_CLUSTER_TYPES}
+
+    for node in raw_nodes:
+        cluster = _classify_asset_cluster(node)
+        node_id = node.get("node_id", "")
+        meta = node.get("metadata", {})
+        pulse_data = meta.get("pulse_data", {})
+
+        dag_node = {
+            "node_id": node_id,
+            "label": node.get("label", node_id),
+            "node_type": node.get("node_type", "unknown"),
+            "cluster": cluster,
+            "source_path": meta.get("source_path", ""),
+            "duration_sec": meta.get("duration_sec"),
+            "start_sec": meta.get("start_sec"),
+            "end_sec": meta.get("end_sec"),
+            "thumbnail_url": meta.get("poster_url", ""),
+            # PULSE data for inspector
+            "camelot_key": pulse_data.get("camelot_key", ""),
+            "pendulum": pulse_data.get("pendulum_position", 0),
+            "energy": pulse_data.get("energy", 0.5),
+            "dramatic_function": pulse_data.get("dramatic_function", ""),
+            # Linked scenes (for blue glow on active script line)
+            "linked_scene_ids": meta.get("linked_scenes", []),
+        }
+        dag_nodes.append(dag_node)
+        clusters[cluster].append(node_id)
+
+    # Build edges (asset→scene, scene→scene, etc.)
+    dag_edges: list[dict] = []
+    for edge in raw_edges:
+        dag_edges.append({
+            "source": edge.get("source", ""),
+            "target": edge.get("target", ""),
+            "edge_type": edge.get("edge_type", "link"),
+            "label": edge.get("label", ""),
+        })
+
+    # Remove empty clusters
+    clusters = {k: v for k, v in clusters.items() if v}
+
+    return {
+        "success": True,
+        "schema_version": "cut_project_dag_v1",
+        "node_count": len(dag_nodes),
+        "edge_count": len(dag_edges),
+        "clusters": clusters,
+        "cluster_summary": {k: len(v) for k, v in clusters.items()},
+        "nodes": dag_nodes,
+        "edges": dag_edges,
+    }
