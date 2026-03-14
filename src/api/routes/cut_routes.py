@@ -61,6 +61,21 @@ from src.services.pulse_energy_critics import (
     list_genre_profiles,
 )
 from src.services.pulse_timeline_bridge import get_pulse_timeline_bridge
+from src.services.pulse_srt_bridge import (
+    srt_to_narrative_bpm,
+    srt_to_narrative_bpm_with_timing,
+    parse_subtitles,
+)
+from src.services.pulse_story_space import (
+    TrianglePosition,
+    StorySpacePoint,
+    compute_triangle_energies,
+    chaos_index,
+    scores_to_story_space,
+    genre_to_triangle,
+    interpolate_critic_weights,
+    markers_to_story_space_points,
+)
 from src.services.cut_project_store import (
     CutProjectStore,
     build_cut_bootstrap_profile,
@@ -5759,4 +5774,379 @@ async def cut_pulse_energy_critics_calibrated(
         "schema_version": "pulse_energy_critics_calibrated_v1",
         "scene_count": len(scores),
         **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE Triangle + StorySpace3D endpoints — Phase 179 Sprint 5
+# MARKER_179.14_TRIANGLE_STORYSPACE_ENDPOINTS
+# ---------------------------------------------------------------------------
+
+
+class CutPulseTriangleEnergiesRequest(BaseModel):
+    """Request for McKee Triangle-calibrated energy critics."""
+    script_text: str
+    arch: float | None = None
+    mini: float | None = None
+    anti: float | None = None
+    genre: str | None = None
+
+
+@router.post("/pulse/triangle-energies")
+async def cut_pulse_triangle_energies(
+    req: CutPulseTriangleEnergiesRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — McKee Triangle-calibrated energy critics.
+
+    Replaces discrete genre calibration with continuous barycentric interpolation.
+    If arch/mini/anti provided, uses explicit triangle position.
+    If genre provided, maps genre → triangle position.
+    If neither, infers from scores' scales.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    # Determine triangle position
+    triangle = None
+    if req.arch is not None and req.mini is not None and req.anti is not None:
+        triangle = TrianglePosition(arch=req.arch, mini=req.mini, anti=req.anti)
+    elif req.genre:
+        triangle = genre_to_triangle(req.genre)
+    # else: inferred inside compute_triangle_energies
+
+    result = compute_triangle_energies(scores, triangle=triangle)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_triangle_energies_v1",
+        "scene_count": len(scores),
+        **result,
+    }
+
+
+@router.get("/pulse/triangle-weights")
+async def cut_pulse_triangle_weights(
+    arch: float = 0.5,
+    mini: float = 0.3,
+    anti: float = 0.2,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Preview interpolated critic weights for a triangle position.
+
+    Pure computation, no script required. Useful for UI sliders.
+    """
+    triangle = TrianglePosition(arch=arch, mini=mini, anti=anti)
+    weights = interpolate_critic_weights(triangle)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_triangle_weights_v1",
+        "triangle": triangle.to_dict(),
+        "dominant": triangle.dominant,
+        "mckee_height": round(triangle.mckee_height, 3),
+        "weights": weights,
+    }
+
+
+class CutPulseChaosIndexRequest(BaseModel):
+    """Request for chaos index computation."""
+    script_text: str
+
+
+@router.post("/pulse/chaos-index")
+async def cut_pulse_chaos_index(
+    req: CutPulseChaosIndexRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Compute chaos index (6th energy critic).
+
+    Measures unpredictability of transitions: key jumps, pendulum variance,
+    energy direction reversals. High chaos = antiplot territory.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if len(scores) < 3:
+        return {
+            "success": True,
+            "schema_version": "pulse_chaos_index_v1",
+            "chaos_index": 0.0,
+            "scene_count": len(scores),
+            "note": "Need at least 3 scenes to compute chaos index",
+        }
+
+    ci = chaos_index(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_chaos_index_v1",
+        "chaos_index": ci,
+        "scene_count": len(scores),
+        "interpretation": (
+            "low_chaos" if ci < 0.3
+            else "moderate_chaos" if ci < 0.6
+            else "high_chaos"
+        ),
+    }
+
+
+class CutPulseStorySpaceRequest(BaseModel):
+    """Request for StorySpace3D point generation."""
+    script_text: str
+
+
+@router.post("/pulse/story-space")
+async def cut_pulse_story_space(
+    req: CutPulseStorySpaceRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Generate StorySpace3D points for frontend visualization.
+
+    Each scene becomes a point in 3D space:
+    - X/Y: Camelot wheel angle (horizontal plane)
+    - Z: McKee triangle height (archplot=1, antiplot=0)
+    - Color: pendulum position (-1..+1)
+    - Size: energy level
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    points = scores_to_story_space(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_story_space_v1",
+        "scene_count": len(points),
+        "points": [p.to_dict() for p in points],
+    }
+
+
+@router.post("/pulse/story-space/{timeline_id}")
+async def cut_pulse_story_space_from_timeline(
+    timeline_id: str,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Generate StorySpace3D points from existing timeline scene graph.
+
+    Reads enriched scene graph (must be enriched first via /pulse/enrich-*),
+    reconstructs PulseScores, and converts to StorySpacePoints.
+    """
+    store = CutProjectStore.get_instance()
+    scene_graph = store.load_scene_graph(timeline_id)
+    if not scene_graph:
+        return {"success": False, "error": f"No scene graph for timeline {timeline_id}"}
+
+    # Reconstruct PulseScores from enriched scene graph
+    from src.services.pulse_conductor import PulseScore
+    scene_nodes = [
+        n for n in scene_graph.get("nodes", [])
+        if n.get("node_type") == "scene"
+    ]
+
+    scores = []
+    for node in scene_nodes:
+        pd = node.get("metadata", {}).get("pulse_data", {})
+        if pd:
+            score = PulseScore(
+                scene_id=node.get("node_id", ""),
+                camelot_key=pd.get("camelot_key", "8B"),
+                scale=pd.get("scale", "Ionian"),
+                pendulum_position=pd.get("pendulum_position", 0.0),
+                dramatic_function=pd.get("dramatic_function", ""),
+                energy_profile=pd.get("energy_profile", ""),
+                counterpoint_pair=pd.get("counterpoint_pair", ""),
+                confidence=pd.get("confidence", 0.0),
+                alignment=pd.get("alignment", "sync"),
+                itten_colors=pd.get("itten_colors", []),
+                music_genres=pd.get("music_genres", []),
+            )
+            scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No enriched scenes found — run /pulse/enrich-* first"}
+
+    points = scores_to_story_space(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_story_space_v1",
+        "timeline_id": timeline_id,
+        "scene_count": len(points),
+        "points": [p.to_dict() for p in points],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE SRT → NarrativeBPM Bridge — Phase 179 Sprint 5
+# MARKER_179.15_SRT_NARRATIVE_BRIDGE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseSrtAnalyzeRequest(BaseModel):
+    """Request to analyze SRT/VTT subtitle content."""
+    srt_content: str
+    gap_threshold_sec: float = 3.0
+    max_scene_duration_sec: float = 120.0
+
+
+@router.post("/pulse/srt-to-narrative")
+async def cut_pulse_srt_to_narrative(
+    req: CutPulseSrtAnalyzeRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.15 — Parse SRT/VTT subtitles → NarrativeBPM scenes.
+
+    Groups subtitle blocks into scenes by timing gaps, then analyzes
+    each scene for dramatic function, pendulum, and energy.
+    Returns scenes with timing metadata for timeline alignment.
+    """
+    results = srt_to_narrative_bpm_with_timing(
+        content=req.srt_content,
+        gap_threshold_sec=req.gap_threshold_sec,
+        max_scene_duration_sec=req.max_scene_duration_sec,
+    )
+
+    return {
+        "success": True,
+        "schema_version": "pulse_srt_narrative_v1",
+        "scene_count": len(results),
+        "scenes": results,
+    }
+
+
+@router.post("/pulse/srt-to-story-space")
+async def cut_pulse_srt_to_story_space(
+    req: CutPulseSrtAnalyzeRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.15 — SRT/VTT → full PULSE pipeline → StorySpace3D points.
+
+    End-to-end: parse subtitles → NarrativeBPM → PulseScore → StorySpacePoint[].
+    Ready for Three.js visualization.
+    """
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = srt_to_narrative_bpm(
+        content=req.srt_content,
+        gap_threshold_sec=req.gap_threshold_sec,
+        max_scene_duration_sec=req.max_scene_duration_sec,
+    )
+
+    if not narrative_scenes:
+        return {"success": False, "error": "No scenes detected in SRT content"}
+
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    points = scores_to_story_space(scores)
+
+    # Also compute chaos index for the whole sequence
+    ci = chaos_index(scores) if len(scores) >= 3 else 0.0
+
+    return {
+        "success": True,
+        "schema_version": "pulse_srt_story_space_v1",
+        "scene_count": len(points),
+        "chaos_index": ci,
+        "points": [p.to_dict() for p in points],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE Favorite Marker → StorySpacePoint — Phase 179 Sprint 5
+# MARKER_179.20_MARKER_STORYSPACE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseMarkerStorySpaceRequest(BaseModel):
+    """Request to map markers to StorySpace3D points."""
+    script_text: str
+    sandbox_root: str
+    kind_filter: str = "favorite"
+
+
+@router.post("/pulse/markers-to-story-space")
+async def cut_pulse_markers_to_story_space(
+    req: CutPulseMarkerStorySpaceRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.20 — Map favorite markers to StorySpace3D points.
+
+    1. Load marker bundle from project store
+    2. Filter by kind (default: favorite)
+    3. Score script via PULSE conductor
+    4. Align each marker to nearest scene
+    5. Return StorySpacePoints with marker metadata
+    """
+    # Load markers
+    store = CutProjectStore(req.sandbox_root)
+    marker_bundle = store.load_time_marker_bundle()
+    if not marker_bundle:
+        return {"success": False, "error": "No marker bundle found"}
+
+    items = marker_bundle.get("items", [])
+    filtered = [
+        m for m in items
+        if m.get("kind") == req.kind_filter
+        and m.get("status", "active") != "archived"
+    ]
+
+    if not filtered:
+        return {
+            "success": True,
+            "schema_version": "pulse_marker_story_space_v1",
+            "marker_count": 0,
+            "points": [],
+            "note": f"No active '{req.kind_filter}' markers found",
+        }
+
+    # Score script
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    # Map markers to story space
+    points = markers_to_story_space_points(filtered, scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_marker_story_space_v1",
+        "marker_count": len(points),
+        "scene_count": len(scores),
+        "points": points,
     }

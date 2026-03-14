@@ -508,3 +508,108 @@ def genre_to_triangle(genre: str) -> TrianglePosition:
     """
     key = genre.lower().replace(" ", "_").replace("-", "_")
     return MCKEE_GENRE_TRIANGLES.get(key, TrianglePosition(0.5, 0.3, 0.2))
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.20 — Favorite Marker → StorySpacePoint mapping
+# ---------------------------------------------------------------------------
+
+def markers_to_story_space_points(
+    markers: List[Dict[str, Any]],
+    scores: List[PulseScore],
+    scene_timings: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    """
+    Map favorite markers to StorySpacePoints by aligning each marker
+    to the nearest scene in the PulseScore list.
+
+    Args:
+        markers: List of cut_time_marker_v1 dicts (with start_sec, kind, etc.)
+        scores: PulseScore list for the film
+        scene_timings: Optional list of {scene_id, start_sec, end_sec} for precise alignment.
+                       If absent, markers are mapped to scenes by index proportion.
+
+    Returns list of dicts with marker info + StorySpacePoint data.
+    """
+    if not scores:
+        return []
+
+    matrix = get_cinema_matrix()
+    points: List[Dict[str, Any]] = []
+
+    # Build scene time ranges if available
+    time_ranges: List[Tuple[float, float]] = []
+    if scene_timings:
+        for st in scene_timings:
+            time_ranges.append((
+                float(st.get("start_sec", 0)),
+                float(st.get("end_sec", st.get("start_sec", 0))),
+            ))
+
+    for marker in markers:
+        marker_time = float(marker.get("start_sec", 0))
+        marker_kind = marker.get("kind", "")
+
+        # Find nearest scene
+        scene_idx = _find_nearest_scene(marker_time, scores, time_ranges)
+        score = scores[scene_idx]
+
+        # Build StorySpacePoint
+        row = matrix.get_by_scale(score.scale)
+        if row:
+            tri = TrianglePosition(row.triangle_arch, row.triangle_mini, row.triangle_anti)
+        else:
+            tri = TrianglePosition(0.5, 0.3, 0.2)
+
+        angle = _CAMELOT_ANGLES.get(score.camelot_key, 0)
+
+        ssp = StorySpacePoint(
+            camelot_key=score.camelot_key,
+            camelot_angle=float(angle),
+            triangle=tri,
+            pendulum=score.pendulum_position,
+            energy=score.narrative_bpm.estimated_energy if score.narrative_bpm else 0.5,
+            confidence=score.confidence,
+            scene_index=scene_idx,
+            scene_label=f"Scene {scene_idx + 1}",
+            scale=score.scale,
+        )
+
+        points.append({
+            "marker_id": marker.get("marker_id", ""),
+            "marker_kind": marker_kind,
+            "marker_time_sec": marker_time,
+            "marker_label": marker.get("label", ""),
+            "marker_score": marker.get("score", 1.0),
+            "aligned_scene_index": scene_idx,
+            "aligned_scene_id": score.scene_id,
+            **ssp.to_dict(),
+        })
+
+    return points
+
+
+def _find_nearest_scene(
+    time_sec: float,
+    scores: List[PulseScore],
+    time_ranges: List[Tuple[float, float]],
+) -> int:
+    """Find the scene index nearest to the given time."""
+    if time_ranges:
+        # Precise: find scene whose time range contains the marker
+        for i, (start, end) in enumerate(time_ranges):
+            if start <= time_sec <= end:
+                return i
+        # Fallback: find closest start time
+        best_idx = 0
+        best_dist = abs(time_ranges[0][0] - time_sec)
+        for i, (start, _) in enumerate(time_ranges):
+            dist = abs(start - time_sec)
+            if dist < best_dist:
+                best_dist = dist
+                best_idx = i
+        return min(best_idx, len(scores) - 1)
+    else:
+        # No timing: distribute markers proportionally across scenes
+        # This is a rough fallback
+        return min(int(time_sec) % len(scores), len(scores) - 1)
