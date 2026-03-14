@@ -37,7 +37,45 @@ from src.services.cut_marker_bundle_service import (
     hybrid_merge_slices,
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_montage_ranker import MontageRanker, ScoredClip
+from src.services.cut_proxy_worker import ProxyWorker, ProxyResult
+from src.services.cut_scene_detector import (
+    SceneBoundary,
+    detect_scene_boundaries,
+    group_clips_into_scenes,
+)
+from src.services.cut_timeline_events import CutTimelineEventEmitter
 from src.services.cut_undo_redo import CutUndoRedoService, build_op_label
+from src.services.pulse_cinema_matrix import get_cinema_matrix
+from src.services.pulse_camelot_engine import get_camelot_engine
+from src.services.pulse_conductor import (
+    get_pulse_conductor,
+    NarrativeBPM,
+    VisualBPM,
+    AudioBPM,
+)
+from src.services.pulse_script_analyzer import get_script_analyzer
+from src.services.pulse_energy_critics import (
+    compute_all_energies,
+    compute_calibrated_energies,
+    list_genre_profiles,
+)
+from src.services.pulse_timeline_bridge import get_pulse_timeline_bridge
+from src.services.pulse_srt_bridge import (
+    srt_to_narrative_bpm,
+    srt_to_narrative_bpm_with_timing,
+    parse_subtitles,
+)
+from src.services.pulse_story_space import (
+    TrianglePosition,
+    StorySpacePoint,
+    compute_triangle_energies,
+    chaos_index,
+    scores_to_story_space,
+    genre_to_triangle,
+    interpolate_critic_weights,
+    markers_to_story_space_points,
+)
 from src.services.cut_project_store import (
     CutProjectStore,
     build_cut_bootstrap_profile,
@@ -158,6 +196,7 @@ class CutPlayerLabMarkerImportRequest(BaseModel):
     provisional_events: list[PlayerLabProvisionalEventImportItem] = Field(default_factory=list)
 
 
+
 class CutMontagePromoteMarkerRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -244,6 +283,19 @@ class CutApplyWithMarkersRequest(BaseModel):
     track_id: str = ""
     media_path: str = ""
     slice_config: CutMusicSyncSliceConfig = Field(default_factory=CutMusicSyncSliceConfig)
+
+
+class CutSceneDetectApplyRequest(BaseModel):
+    """MARKER_173.3 — Request model for scene-detect-and-apply."""
+    sandbox_root: str
+    project_id: str
+    timeline_id: str = "main"
+    source_paths: list[str] = Field(default_factory=list, description="Media files to run scene detection on. If empty, uses all clips from the timeline.")
+    threshold: float = Field(default=0.3, ge=0.05, le=0.95, description="Histogram diff threshold for scene boundary detection (lower = more sensitive)")
+    interval_sec: float = Field(default=1.0, ge=0.1, le=10.0, description="Sampling interval in seconds")
+    max_duration_sec: float = Field(default=300.0, ge=10.0, le=3600.0, description="Max duration per file to analyse")
+    lane_id: str = Field(default="scenes", description="Lane to create detected scene clips on")
+    update_scene_graph: bool = Field(default=True, description="Also update the scene graph with detected scenes")
 
 
 def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
@@ -1042,6 +1094,141 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                     "source": source,
                 }
             )
+            continue
+
+        # MARKER_173.2 — ripple_delete: remove clip, shift subsequent clips left
+        if op_type == "ripple_delete":
+            clip_id = str(op.get("clip_id") or "")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            gap = clip_dur
+            # Remove the clip
+            source_lane["clips"] = [c for c in source_lane.get("clips", []) if str(c.get("clip_id") or "") != clip_id]
+            # Shift all subsequent clips left by the gap
+            for c in source_lane.get("clips", []):
+                c_start = float(c.get("start_sec") or 0.0)
+                if c_start > clip_start:
+                    c["start_sec"] = max(0.0, round(c_start - gap, 4))
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "lane_id": str(source_lane.get("lane_id") or ""), "gap_sec": gap})
+            continue
+
+        # MARKER_173.2 — insert_at: insert clip at timecode, push subsequent clips right
+        if op_type == "insert_at":
+            lane_id = str(op.get("lane_id") or "")
+            start_sec = float(op.get("start_sec"))
+            source_path = str(op.get("source_path") or "")
+            duration_sec = float(op.get("duration_sec") or 0.0)
+            clip_id = str(op.get("clip_id") or f"clip_{uuid4().hex[:8]}")
+            if start_sec < 0:
+                raise ValueError("start_sec must be >= 0")
+            if duration_sec <= 0:
+                raise ValueError("duration_sec must be > 0")
+            target_lane = _find_lane(state, lane_id)
+            if target_lane is None:
+                raise ValueError(f"lane not found: {lane_id}")
+            # Push subsequent clips right
+            for c in target_lane.get("clips", []):
+                c_start = float(c.get("start_sec") or 0.0)
+                if c_start >= start_sec:
+                    c["start_sec"] = round(c_start + duration_sec, 4)
+            # Insert new clip
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": source_path,
+                "start_sec": start_sec,
+                "duration_sec": duration_sec,
+            }
+            target_lane.setdefault("clips", []).append(new_clip)
+            target_lane["clips"] = sorted(target_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "lane_id": lane_id,
+                "start_sec": start_sec, "duration_sec": duration_sec, "source_path": source_path,
+            })
+            continue
+
+        # MARKER_173.2 — overwrite_at: place clip at timecode, no shift
+        if op_type == "overwrite_at":
+            lane_id = str(op.get("lane_id") or "")
+            start_sec = float(op.get("start_sec"))
+            source_path = str(op.get("source_path") or "")
+            duration_sec = float(op.get("duration_sec") or 0.0)
+            clip_id = str(op.get("clip_id") or f"clip_{uuid4().hex[:8]}")
+            if start_sec < 0:
+                raise ValueError("start_sec must be >= 0")
+            if duration_sec <= 0:
+                raise ValueError("duration_sec must be > 0")
+            target_lane = _find_lane(state, lane_id)
+            if target_lane is None:
+                raise ValueError(f"lane not found: {lane_id}")
+            end_sec = start_sec + duration_sec
+            # Remove any clips fully within the overwrite range
+            target_lane["clips"] = [
+                c for c in target_lane.get("clips", [])
+                if not (float(c.get("start_sec") or 0.0) >= start_sec
+                        and float(c.get("start_sec") or 0.0) + float(c.get("duration_sec") or 0.0) <= end_sec)
+            ]
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": source_path,
+                "start_sec": start_sec,
+                "duration_sec": duration_sec,
+            }
+            target_lane.setdefault("clips", []).append(new_clip)
+            target_lane["clips"] = sorted(target_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "lane_id": lane_id,
+                "start_sec": start_sec, "duration_sec": duration_sec, "source_path": source_path,
+            })
+            continue
+
+        # MARKER_173.2 — split_at: split a clip at a given time into two clips
+        if op_type == "split_at":
+            clip_id = str(op.get("clip_id") or "")
+            split_sec = float(op.get("split_sec"))
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            clip_end = clip_start + clip_dur
+            if split_sec <= clip_start or split_sec >= clip_end:
+                raise ValueError(
+                    f"split_sec {split_sec} must be within clip range ({clip_start}, {clip_end})"
+                )
+            # Create two clips from one
+            left_dur = round(split_sec - clip_start, 4)
+            right_dur = round(clip_end - split_sec, 4)
+            right_id = f"{clip_id}_R{uuid4().hex[:4]}"
+
+            # Modify original clip to be the left half
+            clip["duration_sec"] = left_dur
+
+            # Create right half
+            right_clip = {
+                "clip_id": right_id,
+                "source_path": str(clip.get("source_path") or ""),
+                "start_sec": split_sec,
+                "duration_sec": right_dur,
+            }
+            # Copy optional fields
+            if "in_point_sec" in clip:
+                in_point = float(clip.get("in_point_sec") or 0.0)
+                clip_in = in_point
+                right_clip["in_point_sec"] = round(in_point + left_dur, 4)
+            if "sync" in clip:
+                right_clip["sync"] = dict(clip["sync"])
+
+            source_lane.setdefault("clips", []).append(right_clip)
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id, "split_sec": split_sec,
+                "left_id": clip_id, "right_id": right_id,
+                "left_duration": left_dur, "right_duration": right_dur,
+            })
             continue
 
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
@@ -2115,6 +2302,7 @@ def _player_lab_marker_to_apply_request(
         },
         source_engine="player_lab_provisional",
     )
+
 
 
 def _default_editorial_intent_for_marker(marker: dict[str, Any]) -> str:
@@ -4202,6 +4390,7 @@ async def cut_import_player_lab_markers(body: CutPlayerLabMarkerImportRequest) -
     }
 
 
+
 @router.post("/montage/promote-marker")
 async def cut_montage_promote_marker(body: CutMontagePromoteMarkerRequest) -> dict[str, Any]:
     """
@@ -4557,6 +4746,18 @@ async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
     }
     if undo_info:
         result["undo_info"] = undo_info
+
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_edit(
+            str(body.project_id), str(body.timeline_id),
+            applied_ops, int(updated_state.get("revision") or 0),
+            author=str(body.author or "cut_mcp"),
+        ))
+    except Exception:
+        pass  # non-fatal
+
     return result
 
 
@@ -4652,6 +4853,17 @@ async def cut_undo(body: CutUndoRedoRequest) -> dict[str, Any]:
     }
     store.append_timeline_edit_event(edit_event)
 
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_undo(
+            str(body.project_id), str(body.timeline_id),
+            result["entry"]["label"], int(restore_state.get("revision") or 0),
+            result["undo_depth"], result["redo_depth"],
+        ))
+    except Exception:
+        pass
+
     return {
         "success": True,
         "schema_version": "cut_undo_v1",
@@ -4705,6 +4917,17 @@ async def cut_redo(body: CutUndoRedoRequest) -> dict[str, Any]:
     }
     store.append_timeline_edit_event(edit_event)
 
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_redo(
+            str(body.project_id), str(body.timeline_id),
+            result["entry"]["label"], int(updated_state.get("revision") or 0),
+            result["undo_depth"], result["redo_depth"],
+        ))
+    except Exception:
+        pass
+
     return {
         "success": True,
         "schema_version": "cut_redo_v1",
@@ -4731,4 +4954,1407 @@ async def cut_undo_stack(
     return {
         "success": True,
         **undo_service.get_stack_info(),
+    }
+
+
+@router.post("/scene-detect-and-apply")
+async def cut_scene_detect_and_apply(body: CutSceneDetectApplyRequest) -> dict[str, Any]:
+    """
+    MARKER_173.3 — Scene detection → timeline auto-apply.
+
+    Runs histogram-based scene boundary detection on source media files,
+    creates clips at detected boundary points on a dedicated lane,
+    and optionally updates the scene graph with detected scenes.
+
+    Returns detected boundaries, created clips, and updated scene graph.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return {"success": False, "error": "timeline_not_ready"}
+
+    # ── Discover source media paths ──────────────────────────
+    source_paths: list[str] = list(body.source_paths) if body.source_paths else []
+    if not source_paths:
+        # Collect all unique source_path values from existing clips
+        seen: set[str] = set()
+        for lane in timeline_state.get("lanes", []):
+            for clip in lane.get("clips", []):
+                sp = str(clip.get("source_path") or "").strip()
+                if sp and sp not in seen:
+                    source_paths.append(sp)
+                    seen.add(sp)
+    if not source_paths:
+        return {"success": False, "error": "no_source_media", "detail": "No media files to analyse."}
+
+    # Resolve relative paths against sandbox_root
+    resolved_paths: list[str] = []
+    for sp in source_paths:
+        p = Path(sp)
+        if not p.is_absolute():
+            p = Path(body.sandbox_root) / sp
+        resolved_paths.append(str(p))
+
+    # ── Run scene detection on each source ───────────────────
+    all_boundaries: list[dict[str, Any]] = []
+    for media_path in resolved_paths:
+        if not os.path.isfile(media_path):
+            logger.warning("Scene detect: skipping missing file %s", media_path)
+            continue
+        boundaries = detect_scene_boundaries(
+            media_path,
+            interval_sec=body.interval_sec,
+            threshold=body.threshold,
+            max_duration_sec=body.max_duration_sec,
+        )
+        for b in boundaries:
+            all_boundaries.append({
+                "time_sec": b.time_sec,
+                "diff_score": b.diff_score,
+                "method": b.method,
+                "source_path": media_path,
+            })
+
+    # Sort boundaries by time
+    all_boundaries.sort(key=lambda b: b["time_sec"])
+
+    # ── Create clips on the target lane ──────────────────────
+    lane_id = body.lane_id or "scenes"
+    target_lane: dict[str, Any] | None = None
+    for lane in timeline_state.get("lanes", []):
+        if str(lane.get("lane_id") or "") == lane_id:
+            target_lane = lane
+            break
+
+    if target_lane is None:
+        # Create the lane if it doesn't exist
+        target_lane = {
+            "lane_id": lane_id,
+            "type": "scene_detect",
+            "clips": [],
+        }
+        timeline_state.setdefault("lanes", []).append(target_lane)
+
+    # Build clip segments from boundaries
+    # Each source file gets its own set of scene clips
+    created_clips: list[dict[str, Any]] = []
+    scene_counter = 0
+    for media_path in resolved_paths:
+        if not os.path.isfile(media_path):
+            continue
+        # Get boundaries for this source file
+        file_boundaries = [b for b in all_boundaries if b["source_path"] == media_path]
+        boundary_times = [b["time_sec"] for b in file_boundaries]
+
+        # Determine total duration from existing clips or probe
+        total_dur = 0.0
+        for lane in timeline_state.get("lanes", []):
+            for clip in lane.get("clips", []):
+                if str(clip.get("source_path") or "") == media_path or str(clip.get("source_path") or "").endswith(os.path.basename(media_path)):
+                    clip_end = float(clip.get("start_sec") or 0) + float(clip.get("duration_sec") or 0)
+                    total_dur = max(total_dur, clip_end)
+        if total_dur <= 0:
+            total_dur = body.max_duration_sec  # fallback
+
+        # Create scene segments: [0, b1), [b1, b2), ... [bN, total)
+        seg_starts = [0.0] + boundary_times
+        seg_ends = boundary_times + [total_dur]
+
+        for i in range(len(seg_starts)):
+            scene_counter += 1
+            seg_start = seg_starts[i]
+            seg_end = seg_ends[i]
+            seg_dur = round(seg_end - seg_start, 4)
+            if seg_dur <= 0:
+                continue
+            clip_id = f"scene_{scene_counter:03d}"
+            new_clip = {
+                "clip_id": clip_id,
+                "source_path": media_path,
+                "start_sec": round(seg_start, 4),
+                "duration_sec": seg_dur,
+                "scene_id": f"scene_{scene_counter:02d}",
+                "auto_detected": True,
+            }
+            target_lane["clips"].append(new_clip)
+            created_clips.append(new_clip)
+
+    # Sort clips on target lane by start_sec
+    target_lane["clips"] = sorted(
+        target_lane.get("clips", []),
+        key=lambda c: float(c.get("start_sec") or 0),
+    )
+
+    # ── Update scene graph ───────────────────────────────────
+    scene_graph_updates: list[dict[str, Any]] = []
+    if body.update_scene_graph:
+        scene_graph = store.load_scene_graph()
+        if scene_graph is None:
+            scene_graph = {
+                "schema_version": "cut_scene_graph_v1",
+                "project_id": str(body.project_id),
+                "graph_id": "main",
+                "nodes": [],
+                "edges": [],
+                "updated_at": _utc_now_iso(),
+            }
+        existing_node_ids = {
+            str(n.get("node_id") or "") for n in scene_graph.get("nodes", [])
+        }
+        prev_scene_node_id: str | None = None
+        for clip in created_clips:
+            scene_id = str(clip.get("scene_id") or "")
+            if scene_id and scene_id not in existing_node_ids:
+                scene_node = {
+                    "node_id": scene_id,
+                    "node_type": SCENE_GRAPH_NODE_SCENE,
+                    "label": scene_id.replace("_", " ").title(),
+                    "record_ref": None,
+                    "metadata": {
+                        "timeline_id": str(body.timeline_id),
+                        "lane_id": lane_id,
+                        "clip_id": str(clip.get("clip_id") or ""),
+                        "source_path": str(clip.get("source_path") or ""),
+                        "start_sec": clip.get("start_sec", 0.0),
+                        "duration_sec": clip.get("duration_sec", 0.0),
+                        "auto_detected": True,
+                    },
+                }
+                scene_graph["nodes"].append(scene_node)
+                existing_node_ids.add(scene_id)
+                scene_graph_updates.append({"added_node": scene_id})
+
+                # Add "follows" edge from previous scene
+                if prev_scene_node_id:
+                    edge = {
+                        "source": prev_scene_node_id,
+                        "target": scene_id,
+                        "edge_type": SCENE_GRAPH_EDGE_FOLLOWS,
+                        "metadata": {"auto_detected": True},
+                    }
+                    scene_graph.setdefault("edges", []).append(edge)
+                prev_scene_node_id = scene_id
+
+        scene_graph["updated_at"] = _utc_now_iso()
+        store.save_scene_graph(scene_graph)
+
+    # ── Bump revision and save timeline ──────────────────────
+    timeline_state["revision"] = int(timeline_state.get("revision") or 0) + 1
+    timeline_state["updated_at"] = _utc_now_iso()
+    store.save_timeline_state(timeline_state)
+
+    # MARKER_173.4 — emit real-time event
+    try:
+        _emitter = CutTimelineEventEmitter.get_instance()
+        asyncio.ensure_future(_emitter.emit_scene_detected(
+            str(body.project_id), str(body.timeline_id),
+            len(all_boundaries), len(created_clips), lane_id,
+        ))
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "schema_version": "cut_scene_detect_v1",
+        "boundaries": all_boundaries,
+        "boundary_count": len(all_boundaries),
+        "created_clips": created_clips,
+        "clip_count": len(created_clips),
+        "lane_id": lane_id,
+        "scene_graph_updates": scene_graph_updates,
+        "source_paths_analysed": [p for p in resolved_paths if os.path.isfile(p)],
+        "threshold": body.threshold,
+        "interval_sec": body.interval_sec,
+    }
+
+
+@router.get("/montage/suggestions")
+async def cut_montage_suggestions(
+    sandbox_root: str,
+    project_id: str,
+    timeline_id: str = "main",
+    limit: int = 10,
+    min_score: float = 0.05,
+) -> dict[str, Any]:
+    """
+    MARKER_173.5 — Montage suggestion ranking.
+
+    Returns scored clip suggestions from all sources (markers, decisions),
+    ranked by weighted signal fusion (transcript conf × energy × sync × marker × intent × recency).
+    Pure math — <5ms execution.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Load markers and decisions
+    marker_bundle = store.load_time_marker_bundle()
+    markers: list[dict[str, Any]] = []
+    if marker_bundle and isinstance(marker_bundle, dict):
+        markers = marker_bundle.get("markers", [])
+    elif isinstance(marker_bundle, list):
+        markers = marker_bundle
+
+    montage_state = store.load_montage_state()
+    decisions: list[dict[str, Any]] = []
+    if montage_state and isinstance(montage_state, dict):
+        decisions = montage_state.get("decisions", [])
+
+    ranker = MontageRanker(min_score=min_score)
+    scored_clips = ranker.rank_clips(markers, decisions, limit=limit)
+
+    suggestions = []
+    for clip in scored_clips:
+        suggestions.append({
+            "clip_id": clip.clip_id,
+            "source_path": clip.source_path,
+            "start_sec": clip.start_sec,
+            "end_sec": clip.end_sec,
+            "duration_sec": clip.duration_sec,
+            "score": clip.score,
+            "confidence": clip.confidence,
+            "editorial_intent": clip.editorial_intent,
+            "reasoning": clip.reasoning,
+            "source_signals": clip.source_signals,
+            "marker_id": clip.marker_id,
+        })
+
+    return {
+        "success": True,
+        "schema_version": "cut_montage_suggestions_v1",
+        "suggestions": suggestions,
+        "total": len(suggestions),
+        "limit": limit,
+        "min_score": min_score,
+        "marker_count": len(markers),
+        "decision_count": len(decisions),
+    }
+
+
+class CutProxyGenerateRequest(BaseModel):
+    """MARKER_173.6 — Proxy generation request."""
+    sandbox_root: str
+    project_id: str
+    source_paths: list[str] = Field(default_factory=list, description="Media files to proxy. If empty, uses all clips from timeline.")
+    resolution: str = Field(default="720p", description="Proxy resolution: 720p, 480p, 360p")
+    force: bool = Field(default=False, description="Force regeneration even if proxy exists")
+
+
+@router.post("/proxy/generate")
+async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
+    """
+    MARKER_173.6 — Generate proxy files for timeline clips.
+
+    Creates lightweight 720p/480p/360p H.264 proxies for faster scrubbing.
+    Skips if fresh proxy already exists. Stores in cut_runtime/proxies/.
+    """
+    from src.services.cut_proxy_worker import PROXY_480P, PROXY_360P
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Select resolution preset
+    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
+    spec = spec_map.get(body.resolution)
+
+    # Discover source paths
+    source_paths = list(body.source_paths)
+    if not source_paths:
+        timeline_state = store.load_timeline_state()
+        if timeline_state:
+            seen: set[str] = set()
+            for lane in timeline_state.get("lanes", []):
+                for clip in lane.get("clips", []):
+                    sp = str(clip.get("source_path") or "").strip()
+                    if sp and sp not in seen:
+                        source_paths.append(sp)
+                        seen.add(sp)
+
+    if not source_paths:
+        return {"success": False, "error": "no_source_media"}
+
+    # Resolve relative paths
+    resolved: list[str] = []
+    for sp in source_paths:
+        p = Path(sp)
+        if not p.is_absolute():
+            p = Path(body.sandbox_root) / sp
+        resolved.append(str(p))
+
+    worker = ProxyWorker(body.sandbox_root, spec=spec, force=body.force)
+    results = worker.generate_batch(resolved)
+
+    proxy_results = []
+    for r in results:
+        proxy_results.append({
+            "source_path": r.source_path,
+            "proxy_path": r.proxy_path,
+            "success": r.success,
+            "skipped": r.skipped,
+            "error": r.error,
+            "duration_sec": r.duration_sec,
+            "source_size_bytes": r.source_size_bytes,
+            "proxy_size_bytes": r.proxy_size_bytes,
+        })
+
+    return {
+        "success": True,
+        "schema_version": "cut_proxy_generate_v1",
+        "results": proxy_results,
+        "total": len(proxy_results),
+        "generated": sum(1 for r in results if r.success and not r.skipped),
+        "skipped": sum(1 for r in results if r.skipped),
+        "failed": sum(1 for r in results if not r.success),
+        "resolution": body.resolution,
+    }
+
+
+@router.get("/proxy/list")
+async def cut_proxy_list(sandbox_root: str, project_id: str) -> dict[str, Any]:
+    """
+    MARKER_173.6 — List generated proxy files.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    worker = ProxyWorker(sandbox_root)
+    proxies = worker.list_proxies()
+    return {
+        "success": True,
+        "schema_version": "cut_proxy_list_v1",
+        "proxies": proxies,
+        "total": len(proxies),
+    }
+
+
+@router.get("/proxy/path")
+async def cut_proxy_path(sandbox_root: str, source_path: str) -> dict[str, Any]:
+    """
+    MARKER_173.6 — Get proxy path for a source file (if exists).
+    """
+    worker = ProxyWorker(sandbox_root)
+    proxy = worker.get_proxy_path(source_path)
+    if proxy:
+        return {"success": True, "proxy_path": proxy, "exists": True}
+    return {"success": True, "proxy_path": None, "exists": False}
+
+
+# ===================================================================
+# PULSE Conductor endpoints — Phase 179 Sprint 1
+# MARKER_179.5_PULSE_ENDPOINTS
+# ===================================================================
+
+
+class CutPulseScoreSceneRequest(BaseModel):
+    """Request to score a single scene via PULSE conductor."""
+    scene_id: str = "sc_0"
+    # Narrative signal (optional)
+    script_text: str | None = None
+    dramatic_function: str | None = None
+    pendulum_position: float | None = None
+    suggested_scale: str | None = None
+    # Visual signal (optional)
+    cuts_per_minute: float | None = None
+    motion_intensity: float | None = None
+    # Audio signal (optional)
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+class CutPulseScoreFilmRequest(BaseModel):
+    """Request to score an entire film from script text."""
+    script_text: str
+    # Optional audio context for the whole film
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+class CutPulseCamelotPathRequest(BaseModel):
+    """Request to analyze a Camelot key path."""
+    keys: list[str]  # e.g. ["8A", "9A", "3B", "8A"]
+
+
+class CutPulseCamelotSuggestRequest(BaseModel):
+    """Request to suggest next Camelot key."""
+    current_key: str
+    target_pendulum: float = 0.0
+    prefer_dramatic: bool = False
+
+
+@router.get("/pulse/matrix")
+async def cut_pulse_matrix() -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get the full cinema matrix (Scale → Genre → Cinema Scene).
+    """
+    matrix = get_cinema_matrix()
+    return {
+        "success": True,
+        "schema_version": "pulse_cinema_matrix_v1",
+        "scales": matrix.to_dict_list(),
+        "total": len(matrix.all_scales()),
+    }
+
+
+@router.get("/pulse/matrix/{scale_name}")
+async def cut_pulse_matrix_by_scale(scale_name: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get a single row from the cinema matrix by scale name.
+    """
+    matrix = get_cinema_matrix()
+    row = matrix.get_by_scale(scale_name)
+    if not row:
+        raise HTTPException(404, f"Scale '{scale_name}' not found in cinema matrix")
+    return {
+        "success": True,
+        "scale": row.scale,
+        "cinema_genre": row.cinema_genre,
+        "cinema_scene_types": row.cinema_scene_types,
+        "dramatic_function": row.dramatic_function,
+        "pendulum_position": row.pendulum_position,
+        "counterpoint_pair": row.counterpoint_pair,
+        "energy_profile": row.energy_profile,
+        "itten_colors": row.itten_colors,
+        "music_genres": row.music_genres,
+        "confidence": row.confidence,
+        "camelot_region": row.camelot_region,
+    }
+
+
+@router.post("/pulse/score-scene")
+async def cut_pulse_score_scene(req: CutPulseScoreSceneRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Score a single scene via PULSE conductor.
+
+    Accepts narrative, visual, and/or audio signals.
+    If script_text provided, runs script analyzer first.
+    """
+    conductor = get_pulse_conductor()
+
+    # Build narrative signal
+    narrative = None
+    if req.script_text:
+        analyzer = get_script_analyzer()
+        narrative = analyzer.analyze_single(req.script_text, req.scene_id)
+    elif req.dramatic_function or req.pendulum_position is not None:
+        narrative = NarrativeBPM(
+            scene_id=req.scene_id,
+            dramatic_function=req.dramatic_function or "Unknown",
+            pendulum_position=req.pendulum_position or 0.0,
+            estimated_energy=0.5,
+            suggested_scale=req.suggested_scale or "",
+            confidence=0.7,
+        )
+
+    # Build visual signal
+    visual = None
+    if req.cuts_per_minute is not None or req.motion_intensity is not None:
+        visual = VisualBPM(
+            scene_id=req.scene_id,
+            cuts_per_minute=req.cuts_per_minute or 0.0,
+            motion_intensity=req.motion_intensity or 0.5,
+            confidence=0.6,
+        )
+
+    # Build audio signal
+    audio = None
+    if req.audio_bpm is not None or req.audio_camelot_key:
+        engine = get_camelot_engine()
+        camelot = req.audio_camelot_key or ""
+        if not camelot and req.audio_key:
+            camelot = engine.key_from_musical(req.audio_key) or ""
+        audio = AudioBPM(
+            bpm=req.audio_bpm or 120.0,
+            key=req.audio_key or "",
+            camelot_key=camelot,
+            confidence=0.8,
+        )
+
+    score = conductor.score_scene(req.scene_id, narrative, visual, audio)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_score_v1",
+        "score": score.to_dict(),
+    }
+
+
+@router.post("/pulse/score-film")
+async def cut_pulse_score_film(req: CutPulseScoreFilmRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Score an entire film from script text.
+
+    Parses script into scenes, runs PULSE conductor on each,
+    returns the full partiture with Camelot path analysis.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_bpms = analyzer.analyze(req.script_text)
+
+    # Build audio context if provided
+    audio = None
+    if req.audio_bpm is not None or req.audio_camelot_key:
+        engine = get_camelot_engine()
+        camelot = req.audio_camelot_key or ""
+        if not camelot and req.audio_key:
+            camelot = engine.key_from_musical(req.audio_key) or ""
+        audio = AudioBPM(
+            bpm=req.audio_bpm or 120.0,
+            key=req.audio_key or "",
+            camelot_key=camelot,
+            confidence=0.8,
+        )
+
+    scenes = []
+    for nbpm in narrative_bpms:
+        scenes.append({
+            "scene_id": nbpm.scene_id,
+            "narrative": nbpm,
+            "audio": audio,  # same audio context for whole film
+        })
+
+    partiture = conductor.score_film(scenes)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_partiture_v1",
+        "partiture": partiture.to_dict(),
+    }
+
+
+@router.post("/pulse/analyze-script")
+async def cut_pulse_analyze_script(
+    script_text: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Analyze script text and extract NarrativeBPM for each scene.
+
+    Returns scene breakdown with dramatic functions, pendulum positions,
+    and suggested scales.
+    """
+    if not script_text:
+        raise HTTPException(400, "script_text is required")
+
+    analyzer = get_script_analyzer()
+    results = analyzer.analyze(script_text)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_narrative_v1",
+        "scenes": [
+            {
+                "scene_id": r.scene_id,
+                "dramatic_function": r.dramatic_function,
+                "pendulum_position": r.pendulum_position,
+                "estimated_energy": r.estimated_energy,
+                "keywords": r.keywords,
+                "suggested_scale": r.suggested_scale,
+                "confidence": r.confidence,
+            }
+            for r in results
+        ],
+        "total_scenes": len(results),
+    }
+
+
+@router.post("/pulse/camelot/path")
+async def cut_pulse_camelot_path(req: CutPulseCamelotPathRequest) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Analyze a Camelot key path for harmonic smoothness.
+    """
+    engine = get_camelot_engine()
+    try:
+        path = engine.plan_path(req.keys)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "schema_version": "pulse_camelot_path_v1",
+        "keys": path.keys,
+        "total_distance": path.total_distance,
+        "max_jump": path.max_jump,
+        "smoothness": round(path.smoothness, 3),
+        "transitions": [
+            {
+                "from": t.from_key,
+                "to": t.to_key,
+                "distance": t.distance,
+                "quality": t.quality,
+            }
+            for t in path.transitions
+        ],
+    }
+
+
+@router.get("/pulse/camelot/distance")
+async def cut_pulse_camelot_distance(key_a: str, key_b: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get harmonic distance between two Camelot keys.
+    """
+    engine = get_camelot_engine()
+    try:
+        d = engine.distance(key_a, key_b)
+        c = engine.compatibility(key_a, key_b)
+        q = engine.transition_quality(key_a, key_b)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "key_a": key_a,
+        "key_b": key_b,
+        "distance": d,
+        "compatibility": c,
+        "quality": q,
+    }
+
+
+@router.get("/pulse/camelot/neighbors")
+async def cut_pulse_camelot_neighbors(key: str) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Get harmonically compatible neighbors for a key.
+    """
+    engine = get_camelot_engine()
+    try:
+        nbrs = engine.neighbors(key)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "key": key,
+        "neighbors": nbrs,
+        "musical_key": engine.musical_from_key(key),
+    }
+
+
+@router.post("/pulse/camelot/suggest-next")
+async def cut_pulse_camelot_suggest_next(
+    req: CutPulseCamelotSuggestRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.5 — Suggest next Camelot key based on target pendulum.
+    """
+    engine = get_camelot_engine()
+    try:
+        suggestions = engine.suggest_next(
+            req.current_key,
+            req.target_pendulum,
+            prefer_dramatic=req.prefer_dramatic,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    return {
+        "success": True,
+        "current_key": req.current_key,
+        "target_pendulum": req.target_pendulum,
+        "suggestions": [
+            {"key": k, "score": s, "musical_key": engine.musical_from_key(k)}
+            for k, s in suggestions
+        ],
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.6_ENERGY_CRITICS_ENDPOINT
+# ---------------------------------------------------------------------------
+
+
+class CutPulseEnergyCriticsRequest(BaseModel):
+    """Request to compute energy critics for a film from script text."""
+    script_text: str
+    # Optional per-scene audio overrides
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+@router.post("/pulse/energy-critics")
+async def cut_pulse_energy_critics(req: CutPulseEnergyCriticsRequest) -> dict[str, Any]:
+    """
+    MARKER_179.6 — Compute all 5 energy critics for a film.
+
+    Takes script text, scores each scene via PULSE conductor,
+    then runs all energy critics on the resulting PulseScore sequence.
+
+    Returns individual critic energies + weighted total.
+    Lower total = better overall montage compatibility.
+    """
+    if not req.script_text:
+        raise HTTPException(400, "script_text is required")
+
+    conductor = get_pulse_conductor()
+    analyzer = get_script_analyzer()
+
+    # Analyze script into scenes
+    narrative_scenes = analyzer.analyze(req.script_text)
+
+    # Score each scene
+    scores = []
+    for nbpm in narrative_scenes:
+        # Build optional audio signal
+        audio = None
+        if req.audio_bpm is not None or req.audio_camelot_key:
+            engine = get_camelot_engine()
+            camelot = req.audio_camelot_key or ""
+            if not camelot and req.audio_key:
+                camelot = engine.key_from_musical(req.audio_key) or ""
+            audio = AudioBPM(
+                bpm=req.audio_bpm or 120.0,
+                key=req.audio_key or "",
+                camelot_key=camelot,
+                confidence=0.6,
+            )
+
+        score = conductor.score_scene(
+            scene_id=nbpm.scene_id,
+            narrative=nbpm,
+            audio=audio,
+        )
+        scores.append(score)
+
+    # Compute energy critics
+    energies = compute_all_energies(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_energy_critics_v1",
+        "energies": energies,
+        "scene_count": len(scores),
+        "interpretation": {
+            "total_label": _energy_label(energies["total"]),
+            "advice": _energy_advice(energies),
+        },
+    }
+
+
+def _energy_label(total: float) -> str:
+    """Human-readable label for total energy."""
+    if total < 0.2:
+        return "excellent_harmony"
+    elif total < 0.35:
+        return "good_balance"
+    elif total < 0.5:
+        return "moderate_tension"
+    elif total < 0.7:
+        return "high_tension"
+    else:
+        return "extreme_conflict"
+
+
+def _energy_advice(energies: Dict[str, float]) -> list[str]:
+    """Generate actionable advice based on individual critic values."""
+    advice = []
+    if energies.get("pendulum_balance", 0) > 0.6:
+        advice.append("Pendulum is monotonous — consider adding scenes with opposite emotional charge")
+    if energies.get("camelot_proximity", 0) > 0.5:
+        advice.append("Key transitions are jarring — try inserting bridge scenes with adjacent Camelot keys")
+    if energies.get("music_scene_sync", 0) > 0.5:
+        advice.append("Music-scene alignment shows frequent counterpoint — verify it's intentional")
+    if energies.get("script_visual_match", 0) > 0.5:
+        advice.append("Visual pacing doesn't match script energy — check cut density and motion intensity")
+    if energies.get("energy_contour", 0) > 0.5:
+        advice.append("Energy contour is spiky — smooth transitions between high/low energy scenes")
+    if not advice:
+        advice.append("Montage rhythm looks healthy — energy distribution is balanced")
+    return advice
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.10_PULSE_TIMELINE_BRIDGE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseEnrichScriptRequest(BaseModel):
+    """Enrich scene graph from script text."""
+    timeline_id: str
+    script_text: str
+
+
+@router.post("/pulse/enrich-from-script/{timeline_id}")
+async def cut_pulse_enrich_from_script(
+    timeline_id: str,
+    script_text: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Analyze script and attach PULSE data to scene graph nodes.
+
+    Matches script scenes to scene graph nodes by index.
+    Returns enriched scene count and partiture summary.
+    """
+    if not script_text:
+        raise HTTPException(400, "script_text is required")
+
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    enriched = bridge.enrich_from_script(scene_graph, script_text)
+
+    # Save back
+    store.set_scene_graph(timeline_id, enriched)
+
+    # Compute partiture
+    partiture = bridge.compute_partiture(enriched)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_enrich_v1",
+        "enriched_scenes": partiture["scene_count"],
+        "tonic_key": partiture["tonic_key"],
+        "tonic_musical": partiture["tonic_musical"],
+        "energy_critics": partiture["energy_critics"],
+        "camelot_path": partiture["camelot_path"],
+    }
+
+
+@router.post("/pulse/enrich-from-timeline/{timeline_id}")
+async def cut_pulse_enrich_from_timeline(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Extract visual signals from timeline clips and enrich scene graph.
+
+    Computes cuts_per_minute and motion_intensity from clip data.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    timeline_state = store.get_timeline_state(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+    if not timeline_state:
+        raise HTTPException(404, f"No timeline state for {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    enriched = bridge.enrich_from_timeline(scene_graph, timeline_state)
+
+    store.set_scene_graph(timeline_id, enriched)
+    partiture = bridge.compute_partiture(enriched)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_enrich_v1",
+        "enriched_scenes": partiture["scene_count"],
+        "energy_critics": partiture["energy_critics"],
+    }
+
+
+@router.get("/pulse/partiture/{timeline_id}")
+async def cut_pulse_partiture(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Get full film partiture from enriched scene graph.
+
+    Returns scores, camelot path, energy critics, tonic key.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    partiture = bridge.compute_partiture(scene_graph)
+
+    return {
+        "success": True,
+        **partiture,
+    }
+
+
+@router.get("/pulse/scene-summary/{timeline_id}")
+async def cut_pulse_scene_summary(timeline_id: str) -> dict[str, Any]:
+    """
+    MARKER_179.10 — Compact PULSE summary for all scenes.
+
+    Returns per-scene camelot_key, pendulum, dramatic_function for frontend overlay.
+    """
+    store = CutProjectStore.current()
+    if not store:
+        raise HTTPException(400, "No CUT project loaded")
+
+    scene_graph = store.get_scene_graph(timeline_id)
+    if not scene_graph:
+        raise HTTPException(404, f"No scene graph for timeline {timeline_id}")
+
+    bridge = get_pulse_timeline_bridge()
+    summary = bridge.get_scene_pulse_summary(scene_graph)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_scene_summary_v1",
+        "scenes": summary,
+        "total": len(summary),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_179.12_GENRE_CALIBRATION_ENDPOINTS
+# ---------------------------------------------------------------------------
+
+
+@router.get("/pulse/genre-profiles")
+async def cut_pulse_genre_profiles() -> dict[str, Any]:
+    """
+    MARKER_179.12 — List all available genre calibration profiles.
+    """
+    return {
+        "success": True,
+        "profiles": list_genre_profiles(),
+        "total": len(list_genre_profiles()),
+    }
+
+
+class CutPulseCalibratedRequest(BaseModel):
+    """Request for genre-calibrated energy critics."""
+    script_text: str
+    genre: str = "drama"
+    audio_bpm: float | None = None
+    audio_key: str | None = None
+    audio_camelot_key: str | None = None
+
+
+@router.post("/pulse/energy-critics-calibrated")
+async def cut_pulse_energy_critics_calibrated(
+    req: CutPulseCalibratedRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.12 — Genre-aware energy critics with calibration.
+
+    Same as /pulse/energy-critics but applies genre-specific multipliers.
+    High raw scores that are normal for the genre get reduced.
+
+    Validated on: Nights of Cabiria (art_house), Mad Max (action),
+    Mulholland Drive (surreal) — Grok 179.0A research.
+    """
+    if not req.script_text:
+        raise HTTPException(400, "script_text is required")
+
+    conductor = get_pulse_conductor()
+    analyzer = get_script_analyzer()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        audio = None
+        if req.audio_bpm is not None or req.audio_camelot_key:
+            engine = get_camelot_engine()
+            camelot = req.audio_camelot_key or ""
+            if not camelot and req.audio_key:
+                camelot = engine.key_from_musical(req.audio_key) or ""
+            audio = AudioBPM(
+                bpm=req.audio_bpm or 120.0,
+                key=req.audio_key or "",
+                camelot_key=camelot,
+                confidence=0.6,
+            )
+        score = conductor.score_scene(
+            scene_id=nbpm.scene_id,
+            narrative=nbpm,
+            audio=audio,
+        )
+        scores.append(score)
+
+    result = compute_calibrated_energies(scores, genre=req.genre)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_energy_critics_calibrated_v1",
+        "scene_count": len(scores),
+        **result,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE Triangle + StorySpace3D endpoints — Phase 179 Sprint 5
+# MARKER_179.14_TRIANGLE_STORYSPACE_ENDPOINTS
+# ---------------------------------------------------------------------------
+
+
+class CutPulseTriangleEnergiesRequest(BaseModel):
+    """Request for McKee Triangle-calibrated energy critics."""
+    script_text: str
+    arch: float | None = None
+    mini: float | None = None
+    anti: float | None = None
+    genre: str | None = None
+
+
+@router.post("/pulse/triangle-energies")
+async def cut_pulse_triangle_energies(
+    req: CutPulseTriangleEnergiesRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — McKee Triangle-calibrated energy critics.
+
+    Replaces discrete genre calibration with continuous barycentric interpolation.
+    If arch/mini/anti provided, uses explicit triangle position.
+    If genre provided, maps genre → triangle position.
+    If neither, infers from scores' scales.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    # Determine triangle position
+    triangle = None
+    if req.arch is not None and req.mini is not None and req.anti is not None:
+        triangle = TrianglePosition(arch=req.arch, mini=req.mini, anti=req.anti)
+    elif req.genre:
+        triangle = genre_to_triangle(req.genre)
+    # else: inferred inside compute_triangle_energies
+
+    result = compute_triangle_energies(scores, triangle=triangle)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_triangle_energies_v1",
+        "scene_count": len(scores),
+        **result,
+    }
+
+
+@router.get("/pulse/triangle-weights")
+async def cut_pulse_triangle_weights(
+    arch: float = 0.5,
+    mini: float = 0.3,
+    anti: float = 0.2,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Preview interpolated critic weights for a triangle position.
+
+    Pure computation, no script required. Useful for UI sliders.
+    """
+    triangle = TrianglePosition(arch=arch, mini=mini, anti=anti)
+    weights = interpolate_critic_weights(triangle)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_triangle_weights_v1",
+        "triangle": triangle.to_dict(),
+        "dominant": triangle.dominant,
+        "mckee_height": round(triangle.mckee_height, 3),
+        "weights": weights,
+    }
+
+
+class CutPulseChaosIndexRequest(BaseModel):
+    """Request for chaos index computation."""
+    script_text: str
+
+
+@router.post("/pulse/chaos-index")
+async def cut_pulse_chaos_index(
+    req: CutPulseChaosIndexRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Compute chaos index (6th energy critic).
+
+    Measures unpredictability of transitions: key jumps, pendulum variance,
+    energy direction reversals. High chaos = antiplot territory.
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if len(scores) < 3:
+        return {
+            "success": True,
+            "schema_version": "pulse_chaos_index_v1",
+            "chaos_index": 0.0,
+            "scene_count": len(scores),
+            "note": "Need at least 3 scenes to compute chaos index",
+        }
+
+    ci = chaos_index(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_chaos_index_v1",
+        "chaos_index": ci,
+        "scene_count": len(scores),
+        "interpretation": (
+            "low_chaos" if ci < 0.3
+            else "moderate_chaos" if ci < 0.6
+            else "high_chaos"
+        ),
+    }
+
+
+class CutPulseStorySpaceRequest(BaseModel):
+    """Request for StorySpace3D point generation."""
+    script_text: str
+
+
+@router.post("/pulse/story-space")
+async def cut_pulse_story_space(
+    req: CutPulseStorySpaceRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Generate StorySpace3D points for frontend visualization.
+
+    Each scene becomes a point in 3D space:
+    - X/Y: Camelot wheel angle (horizontal plane)
+    - Z: McKee triangle height (archplot=1, antiplot=0)
+    - Color: pendulum position (-1..+1)
+    - Size: energy level
+    """
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    points = scores_to_story_space(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_story_space_v1",
+        "scene_count": len(points),
+        "points": [p.to_dict() for p in points],
+    }
+
+
+@router.post("/pulse/story-space/{timeline_id}")
+async def cut_pulse_story_space_from_timeline(
+    timeline_id: str,
+) -> dict[str, Any]:
+    """
+    MARKER_179.14 — Generate StorySpace3D points from existing timeline scene graph.
+
+    Reads enriched scene graph (must be enriched first via /pulse/enrich-*),
+    reconstructs PulseScores, and converts to StorySpacePoints.
+    """
+    store = CutProjectStore.get_instance()
+    scene_graph = store.load_scene_graph(timeline_id)
+    if not scene_graph:
+        return {"success": False, "error": f"No scene graph for timeline {timeline_id}"}
+
+    # Reconstruct PulseScores from enriched scene graph
+    from src.services.pulse_conductor import PulseScore
+    scene_nodes = [
+        n for n in scene_graph.get("nodes", [])
+        if n.get("node_type") == "scene"
+    ]
+
+    scores = []
+    for node in scene_nodes:
+        pd = node.get("metadata", {}).get("pulse_data", {})
+        if pd:
+            score = PulseScore(
+                scene_id=node.get("node_id", ""),
+                camelot_key=pd.get("camelot_key", "8B"),
+                scale=pd.get("scale", "Ionian"),
+                pendulum_position=pd.get("pendulum_position", 0.0),
+                dramatic_function=pd.get("dramatic_function", ""),
+                energy_profile=pd.get("energy_profile", ""),
+                counterpoint_pair=pd.get("counterpoint_pair", ""),
+                confidence=pd.get("confidence", 0.0),
+                alignment=pd.get("alignment", "sync"),
+                itten_colors=pd.get("itten_colors", []),
+                music_genres=pd.get("music_genres", []),
+            )
+            scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No enriched scenes found — run /pulse/enrich-* first"}
+
+    points = scores_to_story_space(scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_story_space_v1",
+        "timeline_id": timeline_id,
+        "scene_count": len(points),
+        "points": [p.to_dict() for p in points],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE SRT → NarrativeBPM Bridge — Phase 179 Sprint 5
+# MARKER_179.15_SRT_NARRATIVE_BRIDGE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseSrtAnalyzeRequest(BaseModel):
+    """Request to analyze SRT/VTT subtitle content."""
+    srt_content: str
+    gap_threshold_sec: float = 3.0
+    max_scene_duration_sec: float = 120.0
+
+
+@router.post("/pulse/srt-to-narrative")
+async def cut_pulse_srt_to_narrative(
+    req: CutPulseSrtAnalyzeRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.15 — Parse SRT/VTT subtitles → NarrativeBPM scenes.
+
+    Groups subtitle blocks into scenes by timing gaps, then analyzes
+    each scene for dramatic function, pendulum, and energy.
+    Returns scenes with timing metadata for timeline alignment.
+    """
+    results = srt_to_narrative_bpm_with_timing(
+        content=req.srt_content,
+        gap_threshold_sec=req.gap_threshold_sec,
+        max_scene_duration_sec=req.max_scene_duration_sec,
+    )
+
+    return {
+        "success": True,
+        "schema_version": "pulse_srt_narrative_v1",
+        "scene_count": len(results),
+        "scenes": results,
+    }
+
+
+@router.post("/pulse/srt-to-story-space")
+async def cut_pulse_srt_to_story_space(
+    req: CutPulseSrtAnalyzeRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.15 — SRT/VTT → full PULSE pipeline → StorySpace3D points.
+
+    End-to-end: parse subtitles → NarrativeBPM → PulseScore → StorySpacePoint[].
+    Ready for Three.js visualization.
+    """
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = srt_to_narrative_bpm(
+        content=req.srt_content,
+        gap_threshold_sec=req.gap_threshold_sec,
+        max_scene_duration_sec=req.max_scene_duration_sec,
+    )
+
+    if not narrative_scenes:
+        return {"success": False, "error": "No scenes detected in SRT content"}
+
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    points = scores_to_story_space(scores)
+
+    # Also compute chaos index for the whole sequence
+    ci = chaos_index(scores) if len(scores) >= 3 else 0.0
+
+    return {
+        "success": True,
+        "schema_version": "pulse_srt_story_space_v1",
+        "scene_count": len(points),
+        "chaos_index": ci,
+        "points": [p.to_dict() for p in points],
+    }
+
+
+# ---------------------------------------------------------------------------
+# PULSE Favorite Marker → StorySpacePoint — Phase 179 Sprint 5
+# MARKER_179.20_MARKER_STORYSPACE
+# ---------------------------------------------------------------------------
+
+
+class CutPulseMarkerStorySpaceRequest(BaseModel):
+    """Request to map markers to StorySpace3D points."""
+    script_text: str
+    sandbox_root: str
+    kind_filter: str = "favorite"
+
+
+@router.post("/pulse/markers-to-story-space")
+async def cut_pulse_markers_to_story_space(
+    req: CutPulseMarkerStorySpaceRequest,
+) -> dict[str, Any]:
+    """
+    MARKER_179.20 — Map favorite markers to StorySpace3D points.
+
+    1. Load marker bundle from project store
+    2. Filter by kind (default: favorite)
+    3. Score script via PULSE conductor
+    4. Align each marker to nearest scene
+    5. Return StorySpacePoints with marker metadata
+    """
+    # Load markers
+    store = CutProjectStore(req.sandbox_root)
+    marker_bundle = store.load_time_marker_bundle()
+    if not marker_bundle:
+        return {"success": False, "error": "No marker bundle found"}
+
+    items = marker_bundle.get("items", [])
+    filtered = [
+        m for m in items
+        if m.get("kind") == req.kind_filter
+        and m.get("status", "active") != "archived"
+    ]
+
+    if not filtered:
+        return {
+            "success": True,
+            "schema_version": "pulse_marker_story_space_v1",
+            "marker_count": 0,
+            "points": [],
+            "note": f"No active '{req.kind_filter}' markers found",
+        }
+
+    # Score script
+    analyzer = get_script_analyzer()
+    conductor = get_pulse_conductor()
+
+    narrative_scenes = analyzer.analyze(req.script_text)
+    scores = []
+    for nbpm in narrative_scenes:
+        score = conductor.score_scene(scene_id=nbpm.scene_id, narrative=nbpm)
+        scores.append(score)
+
+    if not scores:
+        return {"success": False, "error": "No scenes detected in script"}
+
+    # Map markers to story space
+    points = markers_to_story_space_points(filtered, scores)
+
+    return {
+        "success": True,
+        "schema_version": "pulse_marker_story_space_v1",
+        "marker_count": len(points),
+        "scene_count": len(scores),
+        "points": points,
     }

@@ -113,16 +113,80 @@ Three agents work on ONE codebase through ONE TaskBoard:
 1. GET TASK:    mycelium_task_board action=list filter_status=pending
 2. CLAIM:       mycelium_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
 3. TRACK START: mycelium_track_started task_id=<id> title=<title> source=<agent>
-4. DO WORK:     Edit files, run tests, commit via vetka_git_commit
-5. TRACK DONE:  mycelium_track_done marker=<id> description=<what_done> source=<agent>
-6. COMPLETE:    mycelium_task_board action=complete task_id=<id>
+4. DO WORK:     Edit files, run tests
+5. COMMIT:      vetka_git_commit message="phase{N}.{M}: description [task:{task_id}]"
+                → Auto-triggers: digest update + task auto-complete + push (on main)
+6. VERIFY:      Check task was auto-completed, or manually: mycelium_task_board action=complete task_id=<id>
 ```
+
+**CRITICAL: Step 5 is the key step.** A properly formatted commit message auto-closes tasks.
+Steps 5→6 replace the old manual `track_done` + `complete` — those are now optional fallbacks.
+
+### Commit Message Format (for auto-complete)
+
+The commit message MUST contain one of these patterns to auto-close a task:
+
+| Pattern | Example | Match Type |
+|---------|---------|------------|
+| `task_id` directly | `phase170.12: Multi-timeline [task:tb_1773363530_4]` | Direct ID match |
+| `tb_xxxx` anywhere | `fix transport bar tb_1773363530_4` | Direct ID match |
+| Task tag | `phase129.C13: Scout artifacts` | Tag match (C13) |
+| MARKER pattern | `MARKER_130.6: Pipeline retry` | Tag/title match |
+| ≥3 title keywords | `Multi-timeline tab support` (if task title has those words) | Keyword match |
+
+**Best practice:** Always include `[task:tb_xxxx]` at the end of the first line. This is 100% reliable.
+
+### Git Hooks Flow (automatic, invisible to agents)
+
+```
+Agent calls vetka_git_commit
+  │
+  ├─► PRE-COMMIT HOOK (.git/hooks/pre-commit)
+  │   └─ Runs scripts/update_project_digest.py
+  │   └─ Updates data/project_digest.json (system status, git info, phase)
+  │   └─ Auto-stages the digest file
+  │
+  ├─► GIT COMMIT (actual commit happens)
+  │
+  ├─► POST-COMMIT HOOK (.git/hooks/post-commit)
+  │   └─ Auto-pushes to origin (ONLY on main branch)
+  │   └─ Disabled in worktrees or via VETKA_NO_AUTO_PUSH=1
+  │
+  └─► vetka_git_commit POST-PROCESSING (in MCP tool)
+      └─ Lightweight digest patch (commit hash + dirty flag)
+      └─ task_board.auto_complete_by_commit(hash, message)
+      └─ Returns: { digest_updated, auto_completed_tasks }
+```
+
+**Agents do NOT need to manually update digest or close tasks** — the hooks handle everything.
+
+### Worktree Environment
+
+When working in a git worktree (Codex, isolated branches):
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `VETKA_NO_AUTO_PUSH=1` | Disable post-commit auto-push | Not set (push enabled on main) |
+
+Worktrees share `.git/hooks/` with the main repo — pre-commit digest update works everywhere.
+Post-commit auto-push only fires on `main` branch, so worktree branches are safe.
+
+**Port allocation for worktrees:**
+
+| Agent | Vite Port | Backend Port |
+|-------|-----------|-------------|
+| Main repo | 3001 | 5001 |
+| Worktree (Codex) | 3003+ | shared 5001 |
+
+Set port in `.claude/launch.json` per worktree to avoid conflicts.
 
 ### Rules
 - Check `assigned_to` field — only take tasks assigned to you or unassigned
 - NEVER modify files assigned to another agent (check OPUS_STATUS.md coordination notes)
 - After completing a task, check if new tasks appeared (board may update)
 - If blocked, update task status to `hold` and note the blocker in description
+- **ALWAYS include `[task:tb_xxxx]` in commit messages** for auto-close to work
+- **NEVER use `git commit` directly** — always use `vetka_git_commit` (triggers hooks + auto-close)
 
 ### File Ownership & Conflict Prevention (Phase 170+)
 
@@ -188,5 +252,6 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 1. ALWAYS call `vetka_session_init` FIRST
 2. Use MARKER_XXX.Y convention for code comments
 3. Tests: `python -m pytest tests/ -v`
-4. Commit via `vetka_git_commit` MCP tool (updates digest automatically)
+4. Commit via `vetka_git_commit` with `[task:tb_xxxx]` in message (auto-closes task + updates digest)
 5. NO new UI panels/buttons — use existing UI, add functions only
+6. ALL work goes through TaskBoard: create task → claim → work → commit with task ID → auto-close

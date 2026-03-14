@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "cut_music_sync_result_v1.schema.json",
   "title": "VETKA CUT Music Sync Result V1",
+  "description": "Beat grid, phrase markers, and montage cue points derived from a music track.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,23 +32,27 @@
     },
     "music_path": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Absolute path to the music track file"
     },
     "tempo": {
       "type": "object",
       "additionalProperties": false,
       "required": ["bpm", "confidence"],
       "properties": {
-        "bpm": { "type": "number", "minimum": 1 },
-        "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        "bpm": { "type": "number", "minimum": 0 },
+        "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+        "time_signature": { "type": "string", "default": "4/4" }
       }
     },
     "downbeats": {
       "type": "array",
+      "description": "Ordered timestamps of detected downbeats in seconds",
       "items": { "type": "number", "minimum": 0 }
     },
     "phrases": {
       "type": "array",
+      "description": "Musical phrases/sections with energy and label",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -56,31 +61,46 @@
           "phrase_id": { "type": "string", "minLength": 1 },
           "start_sec": { "type": "number", "minimum": 0 },
           "end_sec": { "type": "number", "minimum": 0 },
-          "label": { "type": "string", "minLength": 1 },
-          "energy": { "type": "number", "minimum": 0, "maximum": 1 }
+          "energy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Relative energy level (0=quiet, 1=peak)"
+          },
+          "label": {
+            "type": "string",
+            "description": "Section label: intro, verse, chorus, bridge, drop, outro, etc."
+          }
         }
       }
     },
     "cue_points": {
       "type": "array",
+      "description": "Recommended montage cut anchor points",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["cue_id", "start_sec", "end_sec", "label", "cue_type", "confidence", "energy"],
+        "required": ["cue_id", "time_sec", "kind", "strength"],
         "properties": {
           "cue_id": { "type": "string", "minLength": 1 },
-          "start_sec": { "type": "number", "minimum": 0 },
-          "end_sec": { "type": "number", "minimum": 0 },
-          "label": { "type": "string", "minLength": 1 },
-          "cue_type": { "type": "string", "minLength": 1 },
-          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
-          "energy": { "type": "number", "minimum": 0, "maximum": 1 }
+          "time_sec": { "type": "number", "minimum": 0 },
+          "kind": {
+            "type": "string",
+            "enum": ["downbeat", "phrase_start", "phrase_end", "drop", "transient", "silence"]
+          },
+          "strength": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "How strongly this point recommends a cut (0=weak, 1=strong)"
+          }
         }
       }
     },
     "derived_from": {
       "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "description": "Analysis method used: onset_detection_v1, beat_tracking_v1, etc."
     },
     "generated_at": {
       "type": "string",

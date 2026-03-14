@@ -4,6 +4,7 @@
  * Shows VU-style vertical bars with peak hold.
  */
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
+import { IconAudioBars } from './icons/CutIcons';
 
 const METER_BG: CSSProperties = {
   display: 'flex',
@@ -200,7 +201,7 @@ export default function AudioLevelMeter({
             color: '#333',
           }}
         >
-          ♪
+          <IconAudioBars size={10} color="#333" />
         </div>
       )}
     </div>

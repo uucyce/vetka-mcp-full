@@ -1,0 +1,187 @@
+<style>
+#c3d{width:100%;height:520px;cursor:grab;touch-action:none}
+#c3d:active{cursor:grabbing}
+.leg{display:flex;flex-wrap:wrap;gap:6px 16px;margin:8px 0 0;font-size:12px;color:var(--color-text-secondary)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:4px;vertical-align:middle}
+.ctrl{display:flex;align-items:center;gap:12px;margin:6px 0 0;font-size:13px;color:var(--color-text-secondary)}
+</style>
+<canvas id="c3d"></canvas>
+<div class="ctrl">
+  <label>Rotate</label>
+  <input type="range" id="rot" min="0" max="628" value="45" style="flex:1">
+  <label>Tilt</label>
+  <input type="range" id="tilt" min="10" max="160" value="55" style="width:100px">
+</div>
+<div class="leg">
+  <span><span class="dot" style="background:#E24B4A"></span>Archplot (top)</span>
+  <span><span class="dot" style="background:#378ADD"></span>Miniplot (bottom-left)</span>
+  <span><span class="dot" style="background:#7F77DD"></span>Antiplot (bottom-right)</span>
+  <span><span class="dot" style="background:#EF9F27"></span>Camelot wheel (horizontal)</span>
+  <span><span class="dot" style="background:#5DCAA5"></span>Film DAG trajectory</span>
+</div>
+<script>
+const cv=document.getElementById('c3d');
+const ctx=cv.getContext('2d');
+const dark=matchMedia('(prefers-color-scheme:dark)').matches;
+const txtC=dark?'rgba(220,218,210,':'rgba(40,40,38,';
+const gridC=dark?'rgba(180,178,169,0.15)':'rgba(100,100,95,0.12)';
+
+let W,H,cx,cy;
+function resize(){
+  const r=cv.parentElement.getBoundingClientRect();
+  W=r.width;H=520;
+  cv.width=W*devicePixelRatio;cv.height=H*devicePixelRatio;
+  cv.style.width=W+'px';cv.style.height=H+'px';
+  ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  cx=W/2;cy=H/2;
+}
+resize();
+
+let angleY=0.45,angleX=0.55;
+const rotS=document.getElementById('rot');
+const tiltS=document.getElementById('tilt');
+rotS.oninput=()=>{angleY=rotS.value/100;draw()};
+tiltS.oninput=()=>{angleX=tiltS.value/100;draw()};
+
+function project(x,y,z){
+  const cosY=Math.cos(angleY),sinY=Math.sin(angleY);
+  const cosX=Math.cos(angleX),sinX=Math.sin(angleX);
+  let x1=x*cosY-z*sinY;
+  let z1=x*sinY+z*cosY;
+  let y1=y*cosX-z1*sinX;
+  let z2=y*sinX+z1*cosX;
+  const s=500/(500+z2);
+  return[cx+x1*s,cy+y1*s,z2,s];
+}
+
+function line3d(x1,y1,z1,x2,y2,z2,color,w){
+  const[px1,py1]=project(x1,y1,z1);
+  const[px2,py2]=project(x2,y2,z2);
+  ctx.beginPath();ctx.moveTo(px1,py1);ctx.lineTo(px2,py2);
+  ctx.strokeStyle=color;ctx.lineWidth=w||1;ctx.stroke();
+}
+
+function dot3d(x,y,z,color,r,label,labelOff){
+  const[px,py,pz,s]=project(x,y,z);
+  ctx.beginPath();ctx.arc(px,py,r*s,0,Math.PI*2);
+  ctx.fillStyle=color;ctx.fill();
+  if(label){
+    ctx.font='500 '+(12*s)+'px "Anthropic Sans",sans-serif';
+    ctx.fillStyle=txtC+(0.85)+')';
+    ctx.textAlign='center';
+    const offy=labelOff||-(r*s+8);
+    ctx.fillText(label,px,py+offy);
+  }
+}
+
+const camelotColors=['#E8593C','#F2A623','#FCDE5A','#5DCE5D','#2BAA7E','#3B8BD4','#5B4ABF','#8B4ABF','#BF4A8B','#D44A5E','#D4694A','#D4924A'];
+const camelotLabels=['1B C','2B G','3B D','4B A','5B E','6B B','7B F#','8B Db','9B Ab','10B Eb','11B Bb','12B F'];
+
+const cabScene=[
+  {name:'Pushed off cliff',angle:120,tri_z:0.3,pend:-0.9,col:'#378ADD'},
+  {name:'False redemption',angle:270,tri_z:0.35,pend:-0.6,col:'#378ADD'},
+  {name:'Meeting Giorgio',angle:240,tri_z:0.5,pend:0.4,col:'#5DCAA5'},
+  {name:'Humiliation',angle:90,tri_z:0.3,pend:-0.8,col:'#378ADD'},
+  {name:'Rain / alone',angle:0,tri_z:0.25,pend:-1.0,col:'#7F77DD'},
+  {name:'Tears + smile',angle:210,tri_z:0.45,pend:0.7,col:'#5DCAA5'},
+];
+
+const R=120;
+const triH=180;
+
+function draw(){
+  ctx.clearRect(0,0,W,H);
+
+  for(let i=0;i<12;i++){
+    const a1=i*Math.PI/6;
+    const a2=(i+1)*Math.PI/6;
+    const x1=R*Math.cos(a1),z1=R*Math.sin(a1);
+    const x2=R*Math.cos(a2),z2=R*Math.sin(a2);
+    line3d(x1,60,z1,x2,60,z2,gridC,1);
+    dot3d(x1,60,z1,camelotColors[i],4,camelotLabels[i],14);
+  }
+
+  for(let r=40;r<=R;r+=40){
+    ctx.beginPath();
+    let first=true;
+    for(let a=0;a<=Math.PI*2;a+=0.1){
+      const[px,py]=project(r*Math.cos(a),60,r*Math.sin(a));
+      if(first){ctx.moveTo(px,py);first=false}else ctx.lineTo(px,py);
+    }
+    ctx.strokeStyle=gridC;ctx.lineWidth=0.5;ctx.stroke();
+  }
+
+  const[bpx,bpy]=project(0,60,0);
+  ctx.font='500 11px "Anthropic Sans",sans-serif';
+  ctx.fillStyle='#EF9F27';ctx.textAlign='center';
+  ctx.fillText('BPM',bpx,bpy+4);
+
+  const archY=-triH;
+  const miniX=-100,miniY=60,miniZ=-60;
+  const antiX=100,antiY=60,antiZ=-60;
+
+  line3d(0,archY,0,miniX,miniY,miniZ,'rgba(200,200,190,0.25)',0.8);
+  line3d(0,archY,0,antiX,antiY,antiZ,'rgba(200,200,190,0.25)',0.8);
+  line3d(miniX,miniY,miniZ,antiX,antiY,antiZ,'rgba(200,200,190,0.25)',0.8);
+
+  dot3d(0,archY,0,'#E24B4A',7,'Archplot',-18);
+  const[apx,apy]=project(0,archY,0);
+  ctx.font='400 10px "Anthropic Sans",sans-serif';
+  ctx.fillStyle=txtC+'0.5)';
+  ctx.fillText('Pentatonic / Symphony',apx,apy-6);
+
+  dot3d(miniX,miniY,miniZ,'#378ADD',7,'Miniplot',-18);
+  const[mpx,mpy]=project(miniX,miniY,miniZ);
+  ctx.fillText('Dorian / Nocturne',mpx,mpy-6);
+
+  dot3d(antiX,antiY,antiZ,'#7F77DD',7,'Antiplot',-18);
+  const[ppx,ppy]=project(antiX,antiY,antiZ);
+  ctx.fillText('Chromatic / Atonal',ppx,ppy-6);
+
+  line3d(0,archY,0,0,60,0,'rgba(200,200,190,0.12)',0.5);
+  line3d(-R-20,60,0,R+20,60,0,'rgba(200,200,190,0.08)',0.5);
+  line3d(0,60,-R-20,0,60,R+20,'rgba(200,200,190,0.08)',0.5);
+
+  const[axTop]=project(0,archY-30,0);
+  const[axBot]=project(0,90,0);
+
+  for(let i=0;i<cabScene.length;i++){
+    const sc=cabScene[i];
+    const a=sc.angle*Math.PI/180;
+    const r=R*0.6;
+    const sx=r*Math.cos(a);
+    const sz=r*Math.sin(a);
+    const sy=60-(sc.tri_z*triH);
+
+    if(i>0){
+      const prev=cabScene[i-1];
+      const pa=prev.angle*Math.PI/180;
+      const pr=R*0.6;
+      line3d(
+        pr*Math.cos(pa),60-(prev.tri_z*triH),pr*Math.sin(pa),
+        sx,sy,sz,
+        '#5DCAA5',1.5
+      );
+    }
+
+    const pendC=sc.pend>0?'#5DCAA5':'#378ADD';
+    dot3d(sx,sy,sz,pendC,5,sc.name,16);
+  }
+
+  const[lx,ly]=project(R+30,60,R+10);
+  ctx.font='400 10px "Anthropic Sans",sans-serif';
+  ctx.fillStyle=txtC+'0.4)';
+  ctx.textAlign='left';
+  ctx.fillText('horizontal = Camelot (key, mood)',lx,ly);
+  ctx.fillText('vertical = McKee (form, structure)',lx,ly+14);
+  ctx.fillText('path = DAG (film trajectory)',lx,ly+28);
+}
+
+draw();
+
+let dragging=false,lastX=0,lastY=0;
+cv.onpointerdown=e=>{dragging=true;lastX=e.clientX;lastY=e.clientY;cv.setPointerCapture(e.pointerId)};
+cv.onpointermove=e=>{if(!dragging)return;const dx=e.clientX-lastX,dy=e.clientY-lastY;angleY+=dx*0.008;angleX+=dy*0.008;angleX=Math.max(0.1,Math.min(1.6,angleX));lastX=e.clientX;lastY=e.clientY;rotS.value=Math.round(angleY*100);tiltS.value=Math.round(angleX*100);draw()};
+cv.onpointerup=()=>{dragging=false};
+window.addEventListener('resize',()=>{resize();draw()});
+</script>
