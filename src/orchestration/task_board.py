@@ -23,7 +23,6 @@ import logging
 import os
 import re
 import asyncio
-import hashlib
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -46,7 +45,6 @@ PRIORITY_SOMEDAY = 5
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
 # MARKER_130.C16A: Added "claimed" status for multi-agent support
 VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold"}
-VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
@@ -122,7 +120,7 @@ class TaskBoard:
             "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
             "default_preset": "dragon_silver"
         }
-        self.integrity_warning: str = ""
+        self._last_update_error: str = ""
         self._load()
 
     # ==========================================
@@ -137,20 +135,6 @@ class TaskBoard:
                     data = json.loads(path.read_text())
                     self.tasks = data.get("tasks", {})
                     self.settings = data.get("settings", self.settings)
-                    meta = data.get("_meta") if isinstance(data.get("_meta"), dict) else {}
-                    expected_sig = str(meta.get("integrity_sig") or "").strip()
-                    actual_sig = self._compute_integrity_sig(self.tasks, self.settings)
-                    if expected_sig and expected_sig != actual_sig:
-                        self.integrity_warning = "task_board_signature_mismatch"
-                        self.settings["_integrity_warning"] = self.integrity_warning
-                        logger.warning("[TaskBoard] Integrity signature mismatch — board may have been edited outside protocol")
-                    elif not expected_sig and self.tasks:
-                        self.integrity_warning = "task_board_signature_missing"
-                        self.settings["_integrity_warning"] = self.integrity_warning
-                        logger.warning("[TaskBoard] Integrity signature missing — legacy or out-of-band write detected")
-                    else:
-                        self.integrity_warning = ""
-                        self.settings.pop("_integrity_warning", None)
                     logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from {path}")
                     self._backfill_modules()
                     return
@@ -173,30 +157,16 @@ class TaskBoard:
             self._save(action="backfill_modules")
             logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
 
-    @staticmethod
-    def _compute_integrity_sig(tasks: Dict[str, Dict[str, Any]], settings: Dict[str, Any]) -> str:
-        payload = {
-            "tasks": tasks,
-            "settings": {k: v for k, v in settings.items() if not str(k).startswith("_")},
-        }
-        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
     def _save(self, action: str = "update"):
         """Save task board to disk with sandbox fallback."""
-        runtime_settings = {k: v for k, v in self.settings.items() if not str(k).startswith("_")}
-        integrity_sig = self._compute_integrity_sig(self.tasks, runtime_settings)
         data = {
             "_meta": {
                 "version": "1.0",
                 "phase": "121",
-                "updated": datetime.now().isoformat(),
-                "integrity_sig": integrity_sig,
-                "last_writer": "task_board_runtime",
-                "last_action": str(action or "update"),
+                "updated": datetime.now().isoformat()
             },
             "tasks": self.tasks,
-            "settings": runtime_settings
+            "settings": self.settings
         }
         content = json.dumps(data, indent=2, default=str, ensure_ascii=False)
 
@@ -285,55 +255,6 @@ class TaskBoard:
             if text:
                 out.append(text)
         return out
-
-    @staticmethod
-    def _normalize_doc_refs(items: Any) -> List[str]:
-        if isinstance(items, str):
-            text = items.strip()
-            return [text] if text else []
-        if not isinstance(items, list):
-            return []
-        out: List[str] = []
-        seen = set()
-        for item in items:
-            text = str(item or "").strip()
-            if not text or text in seen:
-                continue
-            seen.add(text)
-            out.append(text)
-        return out
-
-    @staticmethod
-    def _normalize_phase_type(phase_type: Optional[str]) -> str:
-        value = str(phase_type or "build").strip().lower()
-        if value in VALID_PHASE_TYPES:
-            return value
-        raise ValueError(f"Invalid phase_type '{phase_type}'. Expected one of: {sorted(VALID_PHASE_TYPES)}")
-
-    def _normalize_protocol_fields(
-        self,
-        *,
-        architecture_docs: Any,
-        recon_docs: Any,
-        protocol_version: Optional[str],
-        require_closure_proof: bool,
-        closure_tests: Any,
-        closure_files: Any,
-    ) -> Dict[str, Any]:
-        docs = self._normalize_doc_refs(architecture_docs)
-        recon = self._normalize_doc_refs(recon_docs)
-        tests = self._normalize_test_commands(closure_tests)
-        files = self._normalize_doc_refs(closure_files)
-        proof_required = bool(require_closure_proof or tests)
-        protocol = protocol_version or (DEFAULT_PROTOCOL_VERSION if (proof_required or docs or recon) else None)
-        return {
-            "architecture_docs": docs,
-            "recon_docs": recon,
-            "protocol_version": protocol,
-            "require_closure_proof": proof_required,
-            "closure_tests": tests,
-            "closure_files": files,
-        }
 
     async def _run_closure_tests(self, commands: List[str]) -> List[Dict[str, Any]]:
         results: List[Dict[str, Any]] = []
@@ -513,6 +434,15 @@ class TaskBoard:
         roadmap_node_id: Optional[str] = None,
         roadmap_lane: Optional[str] = None,
         roadmap_title: Optional[str] = None,
+        project_id: Optional[str] = None,
+        project_lane: Optional[str] = None,
+        parent_task_id: Optional[str] = None,
+        architecture_docs: Optional[List[str]] = None,
+        recon_docs: Optional[List[str]] = None,
+        protocol_version: Optional[str] = None,
+        require_closure_proof: bool = False,
+        closure_tests: Optional[List[str]] = None,
+        closure_files: Optional[List[str]] = None,
         ownership_scope: Optional[str] = None,
         allowed_paths: Optional[List[str]] = None,
         owner_agent: Optional[str] = None,
@@ -524,15 +454,6 @@ class TaskBoard:
         touch_policy: Optional[str] = None,
         overlap_risk: Optional[str] = None,
         depends_on_docs: Optional[List[str]] = None,
-        project_id: Optional[str] = None,
-        project_lane: Optional[str] = None,
-        parent_task_id: Optional[str] = None,
-        architecture_docs: Optional[List[str]] = None,
-        recon_docs: Optional[List[str]] = None,
-        protocol_version: Optional[str] = None,
-        require_closure_proof: bool = False,
-        closure_tests: Optional[List[str]] = None,
-        closure_files: Optional[List[str]] = None,
     ) -> str:
         """Add a new task to the board.
 
@@ -555,15 +476,6 @@ class TaskBoard:
         """
         task_id = _generate_task_id()
         priority = max(1, min(5, priority))  # Clamp 1-5
-        phase_type = self._normalize_phase_type(phase_type)
-        protocol_fields = self._normalize_protocol_fields(
-            architecture_docs=architecture_docs,
-            recon_docs=recon_docs,
-            protocol_version=protocol_version,
-            require_closure_proof=require_closure_proof,
-            closure_tests=closure_tests,
-            closure_files=closure_files,
-        )
 
         task_payload = {
             "id": task_id,
@@ -612,28 +524,28 @@ class TaskBoard:
             "roadmap_node_id": roadmap_node_id,
             "roadmap_lane": roadmap_lane,
             "roadmap_title": roadmap_title,
-            "ownership_scope": ownership_scope,
-            "allowed_paths": self._normalize_doc_refs(allowed_paths),
-            "owner_agent": owner_agent,
-            "completion_contract": self._normalize_doc_refs(completion_contract),
-            "verification_agent": verification_agent,
-            "blocked_paths": self._normalize_doc_refs(blocked_paths),
-            "forbidden_scopes": self._normalize_doc_refs(forbidden_scopes),
-            "worktree_hint": worktree_hint,
-            "touch_policy": touch_policy,
-            "overlap_risk": overlap_risk,
-            "depends_on_docs": self._normalize_doc_refs(depends_on_docs),
             "project_id": project_id,
             "project_lane": project_lane or project_id,
             "parent_task_id": parent_task_id,
-            "architecture_docs": protocol_fields["architecture_docs"],
-            "recon_docs": protocol_fields["recon_docs"],
-            "protocol_version": protocol_fields["protocol_version"],
-            "require_closure_proof": protocol_fields["require_closure_proof"],
-            "closure_tests": protocol_fields["closure_tests"],
-            "closure_files": protocol_fields["closure_files"],
+            "architecture_docs": architecture_docs or [],
+            "recon_docs": recon_docs or [],
+            "protocol_version": protocol_version or (DEFAULT_PROTOCOL_VERSION if require_closure_proof else None),
+            "require_closure_proof": bool(require_closure_proof),
+            "closure_tests": self._normalize_test_commands(closure_tests),
+            "closure_files": [str(f) for f in (closure_files or []) if str(f).strip()],
+            "ownership_scope": str(ownership_scope or "").strip(),
+            "allowed_paths": [str(path) for path in (allowed_paths or []) if str(path).strip()],
+            "owner_agent": str(owner_agent or "").strip(),
+            "completion_contract": [str(item) for item in (completion_contract or []) if str(item).strip()],
+            "verification_agent": str(verification_agent or "").strip(),
+            "blocked_paths": [str(path) for path in (blocked_paths or []) if str(path).strip()],
+            "forbidden_scopes": [str(scope) for scope in (forbidden_scopes or []) if str(scope).strip()],
+            "worktree_hint": str(worktree_hint or "").strip(),
+            "touch_policy": str(touch_policy or "").strip(),
+            "overlap_risk": str(overlap_risk or "").strip(),
+            "depends_on_docs": [str(path) for path in (depends_on_docs or []) if str(path).strip()],
             "closure_subtask": {
-                "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
+                "status": "pending" if require_closure_proof else "not_required",
                 "tests": [],
                 "finished_at": None,
             },
@@ -717,6 +629,7 @@ class TaskBoard:
         """
         task = self.tasks.get(task_id)
         if not task:
+            self._last_update_error = "task_not_found"
             logger.warning(f"[TaskBoard] Task {task_id} not found for update")
             return False
 
@@ -726,42 +639,41 @@ class TaskBoard:
         history_agent_name = updates.pop("_history_agent_name", "")
         history_agent_type = updates.pop("_history_agent_type", "")
         history_extra = updates.pop("_history_extra", None)
+        actor_agent = str(updates.pop("_actor_agent", "") or "").strip()
 
         old_status = str(task.get("status") or "")
         new_status = str(updates.get("status") or old_status)
+        self._last_update_error = ""
 
         # Validate status if being updated
         if "status" in updates:
             if updates["status"] not in VALID_STATUSES:
+                self._last_update_error = "invalid_status"
                 logger.warning(f"[TaskBoard] Invalid status: {updates['status']}")
                 return False
-        if "phase_type" in updates:
-            try:
-                updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
-            except ValueError as e:
-                logger.warning(f"[TaskBoard] {e}")
+
+            owner_agent = str(task.get("owner_agent") or "").strip()
+            verification_agent = str(task.get("verification_agent") or "").strip()
+            if actor_agent and owner_agent and actor_agent != owner_agent and actor_agent != verification_agent:
+                self._last_update_error = "owner_agent_mismatch"
+                logger.warning(
+                    f"[TaskBoard] Governance blocked status update for {task_id}: actor={actor_agent} owner={owner_agent}"
+                )
                 return False
 
-        protocol_update_keys = {"architecture_docs", "recon_docs", "protocol_version", "require_closure_proof", "closure_tests", "closure_files"}
-        if any(key in updates for key in protocol_update_keys):
-            protocol_fields = self._normalize_protocol_fields(
-                architecture_docs=updates.get("architecture_docs", task.get("architecture_docs")),
-                recon_docs=updates.get("recon_docs", task.get("recon_docs")),
-                protocol_version=updates.get("protocol_version", task.get("protocol_version")),
-                require_closure_proof=bool(updates.get("require_closure_proof", task.get("require_closure_proof"))),
-                closure_tests=updates.get("closure_tests", task.get("closure_tests")),
-                closure_files=updates.get("closure_files", task.get("closure_files")),
-            )
-            updates.update(protocol_fields)
-            if "closure_subtask" not in updates:
-                current = task.get("closure_subtask") if isinstance(task.get("closure_subtask"), dict) else {}
-                if current.get("status") not in {"done", "manual_override"}:
-                    updates["closure_subtask"] = {
-                        **current,
-                        "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
-                        "tests": current.get("tests", []),
-                        "finished_at": current.get("finished_at"),
-                    }
+            if str(updates["status"]) == "done":
+                contract = [str(item).strip().lower() for item in list(task.get("completion_contract") or []) if str(item).strip()]
+                next_result_summary = str(updates.get("result_summary") or task.get("result_summary") or "").strip()
+                next_completed_at = str(updates.get("completed_at") or task.get("completed_at") or "").strip()
+                if contract:
+                    if not next_result_summary:
+                        self._last_update_error = "completion_contract_missing_result_summary"
+                        logger.warning(f"[TaskBoard] Governance blocked done transition for {task_id}: missing result_summary")
+                        return False
+                    if not next_completed_at:
+                        self._last_update_error = "completion_contract_missing_completed_at"
+                        logger.warning(f"[TaskBoard] Governance blocked done transition for {task_id}: missing completed_at")
+                        return False
 
         # MARKER_137.S1_4: Allow adding 'result' field even if not present
         # MARKER_151.12A: Added result_status for user feedback (applied/rejected/rework)
@@ -774,12 +686,12 @@ class TaskBoard:
                           "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
                           "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
                           "roadmap_id", "roadmap_node_id", "roadmap_lane", "roadmap_title",
-                          "ownership_scope", "allowed_paths", "owner_agent", "completion_contract",
-                          "verification_agent", "blocked_paths", "forbidden_scopes", "worktree_hint",
-                          "touch_policy", "overlap_risk", "depends_on_docs",
                           "project_id", "project_lane", "parent_task_id", "architecture_docs",
                           "recon_docs", "protocol_version", "require_closure_proof", "closure_tests",
-                          "closure_files", "closure_subtask", "closed_by", "closed_at",
+                          "closure_files", "ownership_scope", "allowed_paths", "owner_agent",
+                          "completion_contract", "verification_agent", "blocked_paths",
+                          "forbidden_scopes", "worktree_hint", "touch_policy", "overlap_risk",
+                          "depends_on_docs", "closure_subtask", "closed_by", "closed_at",
                           "closure_proof", "status_history"}
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
@@ -798,6 +710,13 @@ class TaskBoard:
             )
 
         self._save(action="updated")
+        try:
+            if str(task.get("roadmap_node_id") or "").strip():
+                from src.services.roadmap_task_sync import sync_task_status_to_roadmap
+
+                sync_task_status_to_roadmap(task, tasks=list(self.tasks.values()))
+        except Exception:
+            pass
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
@@ -1011,6 +930,41 @@ class TaskBoard:
             "commit_hash": commit_hash,
             "commit_message": commit_message[:50] if commit_message else None,
         })
+
+        # MARKER_177.6: Auto-update tracker + digest on every complete_task()
+        # Previously only run_closure_protocol() called tracker — now atomic.
+        # Note: on_task_completed() is async but has zero awaits inside,
+        # so we call the sync internals directly to avoid event loop issues.
+        try:
+            from src.services.task_tracker import (
+                _load_tracker, _save_tracker, _update_digest_with_task
+            )
+            _title = task.get("title", task_id)
+            _source = str(closed_by or task.get("assigned_to") or "task_board")
+
+            tracker = _load_tracker()
+            entry = {
+                "task_id": task_id,
+                "title": _title[:200],
+                "status": "done",
+                "source": _source,
+                "completed_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "stats": {
+                    "commit_hash": commit_hash,
+                },
+            }
+            tracker["completed"].append(entry)
+            tracker["in_progress"] = [
+                t for t in tracker["in_progress"]
+                if t.get("task_id") != task_id
+            ]
+            tracker["completed"] = tracker["completed"][-100:]
+            _save_tracker(tracker)
+
+            _update_digest_with_task(_title, "done", _source)
+            logger.info(f"[TaskBoard] Tracker+digest updated for {task_id}")
+        except Exception as e:
+            logger.warning(f"[TaskBoard] Tracker update failed for {task_id}: {e}")
 
         logger.info(f"[TaskBoard] Task {task_id} completed" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
@@ -1385,9 +1339,24 @@ class TaskBoard:
     #     """Agent releases task after completion."""
     #     pass
     #
-    # def get_claimable_tasks(self, limit: int = 5) -> List[Dict]:
-    #     """Returns pending tasks ready for claiming. For session_init."""
-    #     pass
+    def get_claimable_tasks(self, limit: int = 5) -> List[Dict]:
+        """MARKER_177.2: Returns pending/queued tasks ready for claiming.
+        Used by session_init to show agents what's available.
+        Returns slim dicts sorted by priority (lowest = highest priority)."""
+        claimable = []
+        for task in self.tasks.values():
+            if task.get("status") in ("pending", "queued"):
+                claimable.append({
+                    "id": task["id"],
+                    "title": task.get("title", ""),
+                    "priority": task.get("priority", 50),
+                    "phase_type": task.get("phase_type", ""),
+                    "preset": task.get("preset", ""),
+                    "assigned_to": task.get("assigned_to", ""),
+                    "tags": task.get("tags", []),
+                })
+        claimable.sort(key=lambda t: t["priority"])
+        return claimable[:limit]
 
     # ==========================================
     # STATISTICS (MARKER_126.0B)
@@ -1717,7 +1686,6 @@ class TaskBoard:
         Format heuristics:
         - Lines with "баг" / "fix" / "исправ" → phase_type="fix", priority=2
         - Lines with "research" / "исследов" / "выяснить" → phase_type="research", priority=3
-        - Lines with "test" / "pytest" / "e2e" → phase_type="test", priority=3
         - Other lines → phase_type="build", priority=3
 
         Args:
@@ -1753,9 +1721,6 @@ class TaskBoard:
                 priority = PRIORITY_HIGH
             elif any(w in line_lower for w in ["research", "исследов", "выяснить", "diagnose", "узнать"]):
                 phase_type = "research"
-                priority = PRIORITY_MEDIUM
-            elif any(w in line_lower for w in ["test", "pytest", "e2e", "spec", "smoke"]):
-                phase_type = "test"
                 priority = PRIORITY_MEDIUM
             elif any(w in line_lower for w in ["нужно сделать", "добавить", "add", "create", "implement"]):
                 phase_type = "build"

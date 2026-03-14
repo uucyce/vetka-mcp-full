@@ -71,11 +71,19 @@ def _check_mycelium(timeout_s: float = 0.5) -> TransportStatus:
 
 
 def _check_rest(timeout_s: float = 0.5) -> TransportStatus:
-    """Check if VETKA REST API is reachable on port 5001."""
+    """Check if VETKA REST API is reachable on port 5001.
+
+    MARKER_177.7: Use socket check instead of HTTP request.
+    HTTP calls can deadlock when MCP bridge runs inside the same process as FastAPI,
+    or timeout too aggressively on cold starts. Socket connect is non-blocking and safe.
+    """
     try:
-        resp = urlopen(f"http://127.0.0.1:5001/api/health", timeout=timeout_s)
-        return TransportStatus.AVAILABLE if resp.status == 200 else TransportStatus.UNAVAILABLE
-    except (URLError, OSError, Exception):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(timeout_s)
+        result = sock.connect_ex(("127.0.0.1", 5001))
+        sock.close()
+        return TransportStatus.AVAILABLE if result == 0 else TransportStatus.UNAVAILABLE
+    except Exception:
         return TransportStatus.UNAVAILABLE
 
 
@@ -88,11 +96,6 @@ def _check_file() -> TransportStatus:
     except Exception:
         pass
     return TransportStatus.UNAVAILABLE
-
-
-def build_manifest(timeout_s: float = 0.5) -> CapabilityManifest:
-    """Alias for build_capability_manifest — used by session_tools."""
-    return build_capability_manifest(timeout_s)
 
 
 def build_capability_manifest(timeout_s: float = 0.5) -> CapabilityManifest:
