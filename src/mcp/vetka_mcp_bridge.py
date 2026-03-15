@@ -1677,7 +1677,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 await log_mcp_response(name, result, request_id, duration_ms)
                 return [TextContent(type="text", text=json.dumps(result, indent=2, ensure_ascii=False))]
             except Exception as e:
-                return [TextContent(type="text", text=f"❌ Error in session_init: {e}")]
+                import traceback as _tb
+                tb_str = _tb.format_exc()
+                return [TextContent(type="text", text=f"❌ Error in session_init: {e}\n\nTraceback:\n{tb_str}")]
 
         elif name == "vetka_session_status":
             # Get current session status
@@ -2565,6 +2567,7 @@ async def main():
     # Register signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGHUP, signal_handler)  # MARKER_181.6.12: Terminal close → graceful shutdown
 
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)

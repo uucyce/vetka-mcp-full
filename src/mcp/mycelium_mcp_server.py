@@ -990,6 +990,7 @@ async def main():
     """Run MYCELIUM MCP server (stdio mode)."""
     signal.signal(signal.SIGINT, _signal_handler)
     signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGHUP, _signal_handler)  # MARKER_181.6.12: Terminal close → graceful shutdown
 
     logger.info("Starting MYCELIUM MCP server v129.6")
 

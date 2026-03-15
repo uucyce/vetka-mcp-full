@@ -1351,6 +1351,11 @@ class TaskBoard:
         tasks.sort(key=lambda t: (t["priority"], t["created_at"]))
         return tasks
 
+    # MARKER_181.5.6: Backwards-compatible alias (used by dag_aggregator, agent_pipeline, tests)
+    def list_tasks(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Alias for get_queue() — backwards compatibility."""
+        return self.get_queue(status=status)
+
     def get_board_summary(self) -> Dict[str, Any]:
         """Get summary counts of tasks by status.
 

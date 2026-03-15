@@ -35,7 +35,7 @@ MARKER_109_1_VIEWPORT_INJECT: Phase 109.1 - Dynamic Context Injection
 from typing import Dict, Any, Optional
 import time
 import asyncio
-import json
+import json as _json  # MARKER_181.5.4: Prevent shadowing in async call chain
 from pathlib import Path
 from .base_tool import BaseMCPTool
 
@@ -60,7 +60,7 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
     try:
         if DIGEST_PATH.exists():
             with open(DIGEST_PATH, 'r') as f:
-                digest = json.load(f)
+                digest = _json.load(f)
 
             # Return condensed version for MCP context
             return {
@@ -314,13 +314,14 @@ class SessionInitTool(BaseMCPTool):
         try:
             from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
             board = TaskBoard(TASK_BOARD_FILE)
-            pending = [t for t in board.list_tasks() if t.get("status") == "pending"]
-            in_progress = [t for t in board.list_tasks() if t.get("status") == "in_progress"]
+            # MARKER_181.5.6: Fixed list_tasks() → get_queue() (method was renamed)
+            pending = board.get_queue(status="pending")
+            in_progress = board.get_queue(status="in_progress")
             context["task_board_summary"] = {
                 "pending_count": len(pending),
                 "in_progress_count": len(in_progress),
-                "top_pending": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
-                "in_progress": [{"task_id": t["task_id"], "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]]
+                "top_pending": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
+                "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]]
             }
         except Exception as e:
             import logging

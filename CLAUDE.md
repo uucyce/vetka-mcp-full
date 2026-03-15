@@ -92,7 +92,7 @@ Key insights applied:
 - **Auto context reset** (MARKER_117.5B): STM resets after 10 subtasks to prevent drift
 - **GPT-5.2 option** (MARKER_117.5C): `dragon_gold_gpt` preset for extended autonomous work
 
-## Current Phase: 171
+## Current Phase: 101
 See `data/project_digest.json` for latest status.
 Config: `data/templates/model_presets.json` — team presets & tier map.
 MCP config: `.mcp.json` — both VETKA and MYCELIUM servers.
