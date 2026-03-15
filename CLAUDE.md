@@ -29,9 +29,17 @@ START
   │       │         vetka_task_board action=claim task_id=<id> assigned_to=<agent>
   │       │         → DO WORK → vetka_task_board action=complete task_id=<id>
   │       │
-  │       └─ NO  → CREATE a task first:
-  │                 vetka_task_board action=add title="..." priority=N phase_type=...
+  │       └─ NO  → **DUPLICATE CHECK (MANDATORY):**
+  │                 1. vetka_task_board action=list → scan ALL pending/hold tasks
+  │                 2. Search for keywords from your new task title
+  │                 3. If overlapping task exists → UPDATE it (new title/description), don't create new
+  │                 4. If truly no match → CREATE a task:
+  │                    vetka_task_board action=add title="..." priority=N phase_type=...
   │                 → Claim → DO WORK → Complete
+  │
+  │       ⚠️ NEVER create a task without scanning the board first.
+  │       Duplicate tasks = confusion for all agents. Old task from phase 173
+  │       that covers same feature as your phase 185 task = REUSE IT.
   │
   └─ NEVER skip to coding. NEVER use raw git commit.
 ```
@@ -237,6 +245,29 @@ Post-commit auto-push only fires on `main` branch, so worktree branches are safe
 | Worktree (Codex) | 3003+ | shared 5001 |
 
 Set port in `.claude/launch.json` per worktree to avoid conflicts.
+
+### Worktree Content Rules (MANDATORY)
+
+**Worktree = CODE ONLY. Shared docs = MAIN ONLY.**
+
+| Content Type | Where to Create | Why |
+|--------------|----------------|-----|
+| Source code (*.ts, *.tsx, *.py) | Worktree branch ✅ | Isolated dev, merge later |
+| Tests (tests/*) | Worktree branch ✅ | Part of code changes |
+| Roadmap docs (docs/*_ph/*) | **MAIN branch ONLY** ❌ never worktree | All agents must see them |
+| CLAUDE.md, MEMORY.md | **MAIN branch ONLY** ❌ never worktree | Shared config for all agents |
+| Task board (data/task_board.json) | Via MCP only (auto on main) | Single source of truth |
+| Handoff docs | **MAIN branch ONLY** ❌ never worktree | Cross-session continuity |
+
+**Why:** A doc created on worktree branch `claude/loving-wescoff` is **invisible** to:
+- Other Claude Code sessions on `main`
+- Cursor/Codex agents on their own branches
+- The user in Finder (unless they checkout that branch)
+
+**If you need to create a shared doc while in a worktree:**
+1. Write the file
+2. `git stash` → `git checkout main` → `git stash pop` → `git add` → `git commit` → `git checkout -` → `git stash pop`
+3. Or: ask the user to merge/cherry-pick the doc commit to main
 
 ### Rules
 - Check `assigned_to` field — only take tasks assigned to you or unassigned
