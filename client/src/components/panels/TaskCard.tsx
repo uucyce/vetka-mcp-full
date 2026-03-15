@@ -15,6 +15,7 @@
 
 import { useState, useCallback, useEffect, memo } from 'react';
 import { DiffViewer } from './DiffViewer';  // MARKER_128.4B
+import { VerificationChecklist } from '../mcc/VerificationChecklist';  // MARKER_183.8B
 
 export interface PipelineStatsData {
   preset?: string;
@@ -140,6 +141,8 @@ const STATUS_DEF: Record<string, StatusDef> = {
   failed:    { shape: 'x',     color: '#a66',    label: 'failed' },
   cancelled: { shape: 'bar',   color: '#555',    label: 'cancelled' },
   hold:      { shape: 'bar',   color: '#a98',    label: 'hold' },
+  // MARKER_183.8B: Verification gate status
+  pending_user_approval: { shape: 'pulse', color: '#c8c8c8', glow: 'rgba(200,200,200,0.25)', label: 'verify' },
 };
 
 // Phase type: minimal monochrome symbols (no emoji)
@@ -288,6 +291,9 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
 
   // MARKER_128.4B: View mode for subtask results (code vs diff)
   const [subtaskViewMode, setSubtaskViewMode] = useState<Record<number, 'code' | 'diff'>>({});
+
+  // MARKER_183.8B: Verification checklist state
+  const [showVerification, setShowVerification] = useState(false);
 
   // MARKER_128.9A: Keyboard event handlers
   useEffect(() => {
@@ -439,7 +445,58 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
     }
   }, [results, task.id, applyingAll, updateResultStatus]);
 
-  const hasPipelineResults = task.status === 'done' || task.status === 'failed';
+  // MARKER_183.8B: Verification handlers — approve / reject / override
+  const handleVerifyApprove = useCallback(async (taskId: string) => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/task-board`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', task_id: taskId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowVerification(false);
+      } else {
+        console.error('Approve failed:', data.error || data.message);
+      }
+    } catch (err) {
+      console.error('Approve error:', err);
+    }
+  }, []);
+
+  const handleVerifyReject = useCallback(async (taskId: string, feedback: string) => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/task-board`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update', task_id: taskId, status: 'pending', description: `[REJECTED] ${feedback}` }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowVerification(false);
+      }
+    } catch (err) {
+      console.error('Reject error:', err);
+    }
+  }, []);
+
+  const handleVerifyOverride = useCallback(async (taskId: string, reason: string) => {
+    try {
+      const res = await fetch(`http://localhost:5001/api/task-board`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'complete', task_id: taskId, manual_override: true, override_reason: reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowVerification(false);
+      }
+    } catch (err) {
+      console.error('Override error:', err);
+    }
+  }, []);
+
+  const hasPipelineResults = task.status === 'done' || task.status === 'failed' || task.status === 'pending_user_approval';  // MARKER_183.8B
 
   const prio = PRIORITY_STYLE[task.priority] || PRIORITY_STYLE[5];
   const phaseSymbol = PHASE_SYMBOL[task.phase_type] || '·';
@@ -1083,6 +1140,46 @@ export const TaskCard = memo(function TaskCard({ task, isSelected, onPriorityCha
             </div>
           )}
         </div>
+      )}
+
+      {/* MARKER_183.8B: Verification gate — show button + checklist for pending_user_approval */}
+      {task.status === 'pending_user_approval' && !showVerification && (
+        <div style={{ marginTop: 6, padding: '6px 0' }}>
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowVerification(true); }}
+            style={{
+              width: '100%',
+              padding: '6px 12px',
+              background: 'rgba(200,200,200,0.1)',
+              border: '1px solid #555',
+              borderRadius: 4,
+              color: '#ccc',
+              fontSize: 11,
+              fontFamily: 'monospace',
+              cursor: 'pointer',
+              letterSpacing: 0.3,
+            }}
+          >
+            ▸ Open Verification Gate
+          </button>
+        </div>
+      )}
+
+      {task.status === 'pending_user_approval' && showVerification && (
+        <VerificationChecklist
+          taskId={task.id}
+          taskTitle={task.title}
+          closureProof={task.stats ? {
+            pipeline_success: task.stats.success,
+            verifier_confidence: task.stats.verifier_avg_confidence,
+            commit_hash: task.commit_hash,
+          } : undefined}
+          closureFiles={[]}
+          onApprove={handleVerifyApprove}
+          onReject={handleVerifyReject}
+          onOverride={handleVerifyOverride}
+          onClose={() => setShowVerification(false)}
+        />
       )}
     </div>
   );
