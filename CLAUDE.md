@@ -9,6 +9,52 @@ If using ToolSearch, use exact name: `select:mcp__vetka__vetka_session_init`.
 
 **If MCP unavailable:** Read `docs/182_ph_MCC_git/HANDOFF_SESSION_3.md` for latest project state.
 
+## WORK ENTRY PROTOCOL (MANDATORY)
+
+**ZERO naked commits.** Every line of code MUST trace to a task on the board.
+
+### Before ANY code change — follow this decision tree:
+
+```
+START
+  │
+  ├─ Is there a Roadmap doc for this phase?
+  │   ├─ NO  → Create roadmap: docs/{phase}_ph/ROADMAP_{phase}.md
+  │   │         (links to architecture docs, Grok research, handoff)
+  │   │         Then generate tasks from it → task board
+  │   │
+  │   └─ YES → Are there tasks on the board for this work?
+  │       │
+  │       ├─ YES → Claim an existing task:
+  │       │         vetka_task_board action=claim task_id=<id> assigned_to=<agent>
+  │       │         → DO WORK → vetka_task_board action=complete task_id=<id>
+  │       │
+  │       └─ NO  → CREATE a task first:
+  │                 vetka_task_board action=add title="..." priority=N phase_type=...
+  │                 → Claim → DO WORK → Complete
+  │
+  └─ NEVER skip to coding. NEVER use raw git commit.
+```
+
+### Task granularity rules:
+- **Big feature (>30 min):** Roadmap doc → multiple tasks → claim one at a time
+- **Small fix (<30 min):** Create 1 task → claim → fix → complete
+- **Research/investigation:** Create task with `phase_type=research` → complete (no commit needed)
+
+### Commit flow (the ONLY allowed path):
+```
+vetka_task_board action=complete task_id=<id>
+  → auto-stages changed files
+  → auto-commits with [task:tb_xxxx]
+  → pre-commit hook updates digest
+  → post-commit hook pushes (on main)
+  → task marked done
+```
+
+**Why this matters:** Every commit → task → roadmap → phase. Full audit trail.
+Multi-agent coordination depends on this. REFLEX eval_delta depends on this.
+Break the chain = lose traceability = lose the ability to learn from past runs.
+
 ## Architecture
 - **Stack:** Tauri (Rust) + React (TypeScript) + Python FastAPI backend
 - **Backend:** FastAPI + SocketIO on port 5001
@@ -262,8 +308,8 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 
 ## Rules
 1. ALWAYS call `vetka_session_init` FIRST
-2. Use MARKER_XXX.Y convention for code comments
-3. Tests: `python -m pytest tests/ -v`
-4. **Close tasks via `vetka_task_board action=complete task_id=<id>`** — this auto-commits, updates digest, and closes the task in one step. NEVER use raw `git commit`.
-5. NO new UI panels/buttons — use existing UI, add functions only
-6. ALL work goes through TaskBoard: create task → claim → work → **complete task** (auto-commit)
+2. **Follow WORK ENTRY PROTOCOL** — no code without a task, no commit without task closure (see above)
+3. Use MARKER_XXX.Y convention for code comments
+4. Tests: `python -m pytest tests/ -v`
+5. **Close tasks via `vetka_task_board action=complete task_id=<id>`** — this auto-commits, updates digest, and closes the task in one step. NEVER use raw `git commit`.
+6. NO new UI panels/buttons — use existing UI, add functions only
