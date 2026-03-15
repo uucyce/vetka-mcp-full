@@ -274,6 +274,111 @@ class TaskBoard:
         history = task.get("status_history")
         return list(history) if isinstance(history, list) else []
 
+    # MARKER_183.5: failure_history + eval_delta quality gate
+    def record_failure(
+        self,
+        task_id: str,
+        *,
+        verifier_feedback: Optional[Dict[str, Any]] = None,
+        pipeline_stats: Optional[Dict[str, Any]] = None,
+        issues: Optional[List[str]] = None,
+        tier_used: str = "",
+    ) -> Dict[str, Any]:
+        """Record a pipeline failure and reset task to pending for retry.
+
+        Appends a failure record to task.failure_history so the next pipeline
+        run (new coder) gets full context of what went wrong.
+
+        Returns dict with success status and attempt number.
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        history = task.get("failure_history", [])
+        if not isinstance(history, list):
+            history = []
+
+        attempt = len(history) + 1
+        record: Dict[str, Any] = {
+            "attempt": attempt,
+            "timestamp": datetime.now().isoformat(),
+            "tier_used": tier_used,
+        }
+        if verifier_feedback:
+            record["verifier_confidence"] = verifier_feedback.get("confidence", 0)
+            record["issues"] = verifier_feedback.get("issues", [])[:10]
+            record["suggestions"] = verifier_feedback.get("suggestions", [])[:5]
+            record["severity"] = verifier_feedback.get("severity", "unknown")
+        if pipeline_stats:
+            record["verifier_avg_confidence"] = pipeline_stats.get("verifier_avg_confidence", 0)
+            record["subtasks_completed"] = pipeline_stats.get("subtasks_completed", 0)
+            record["subtasks_total"] = pipeline_stats.get("subtasks_total", 0)
+            record["duration_s"] = pipeline_stats.get("duration_s", 0)
+        if issues:
+            record.setdefault("issues", []).extend(issues[:10])
+
+        history.append(record)
+        # Keep last 5 attempts to avoid bloat
+        history = history[-5:]
+
+        self.update_task(
+            task_id,
+            status="pending",
+            failure_history=history,
+            assigned_to=None,  # release — new coder picks up
+            _history_event="failure_recorded",
+            _history_source="eval_delta",
+            _history_reason=f"attempt {attempt} failed, reset to pending for retry",
+        )
+
+        logger.info(f"[TaskBoard] Task {task_id} failure #{attempt} recorded, reset to pending")
+        return {"success": True, "attempt": attempt, "task_id": task_id}
+
+    @staticmethod
+    def compute_eval_score(pipeline_stats: Dict[str, Any]) -> Dict[str, Any]:
+        """Compute eval_delta score and verdict from pipeline stats.
+
+        Returns: {"eval_score": float, "eval_verdict": str}
+        Verdict: "improved" (≥0.65), "neutral" (0.35-0.65), "regressed" (<0.35)
+        """
+        # No data → neutral baseline
+        if not pipeline_stats or (
+            "verifier_avg_confidence" not in pipeline_stats
+            and "subtasks_total" not in pipeline_stats
+        ):
+            return {"eval_score": 0.5, "eval_verdict": "neutral"}
+
+        score = 0.5  # baseline = neutral
+
+        # Verifier confidence (±0.3) — biggest signal
+        confidence = pipeline_stats.get("verifier_avg_confidence", 0.75)
+        score += (confidence - 0.75) * 1.2  # 0.75 = threshold
+
+        # Completion ratio (±0.2)
+        total = pipeline_stats.get("subtasks_total", 0) or 1
+        completed = pipeline_stats.get("subtasks_completed", 0)
+        if total > 0:
+            ratio = completed / total
+            score += (ratio - 0.8) * 1.0  # 80% completion = neutral
+
+        # Retries penalty (max -0.1)
+        # Not always available, degrade gracefully
+        retries = pipeline_stats.get("retries", 0)
+        if retries:
+            score -= min(0.1, retries * 0.03)
+
+        score = max(0.0, min(1.0, score))
+
+        if score >= 0.65:
+            verdict = "improved"
+        elif score >= 0.35:
+            verdict = "neutral"
+        else:
+            verdict = "regressed"
+
+        return {"eval_score": round(score, 3), "eval_verdict": verdict}
+
     @staticmethod
     def _normalize_test_commands(commands: Any) -> List[str]:
         if isinstance(commands, str):
@@ -786,6 +891,7 @@ class TaskBoard:
                           "closure_files", "closure_subtask", "closed_by", "closed_at",
                           "closure_proof", "status_history",
                           "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
+                          "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
                           }
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
@@ -1902,6 +2008,27 @@ class TaskBoard:
                 if task.get("description") and task["description"] != task["title"]:
                     task_text += f"\n\n{task['description']}"
 
+                # MARKER_183.5: Inject failure_history so new coder learns from past attempts
+                failure_history = task.get("failure_history", [])
+                if failure_history:
+                    task_text += "\n\n--- PREVIOUS FAILURE HISTORY ---\n"
+                    task_text += f"This task has failed {len(failure_history)} previous attempt(s).\n"
+                    task_text += "Learn from these errors — do NOT repeat the same approach.\n\n"
+                    for rec in failure_history[-3:]:  # last 3 attempts max
+                        task_text += f"Attempt #{rec.get('attempt', '?')} (tier: {rec.get('tier_used', '?')}):\n"
+                        issues = rec.get("issues", [])
+                        if issues:
+                            for iss in issues[:5]:
+                                task_text += f"  - {iss}\n"
+                        suggestions = rec.get("suggestions", [])
+                        if suggestions:
+                            task_text += f"  Suggestions: {'; '.join(str(s)[:80] for s in suggestions[:3])}\n"
+                        conf = rec.get("verifier_confidence") or rec.get("verifier_avg_confidence")
+                        if conf:
+                            task_text += f"  Confidence: {conf}\n"
+                        task_text += "\n"
+                    task_text += "--- END FAILURE HISTORY ---\n"
+
                 try:
                     # Execute pipeline
                     result = await pipeline.execute(task_text, task["phase_type"])
@@ -1950,41 +2077,51 @@ class TaskBoard:
                         "closure": closure_result,
                     }
 
-                self.update_task(
-                    task_id,
-                    status="done" if completed else "failed",
-                    completed_at=datetime.now().isoformat(),
-                    _history_event="pipeline_done" if completed else "pipeline_failed",
-                    _history_source="dispatch",
-                    _history_reason="pipeline finished" if completed else "pipeline returned failed status",
-                    _history_agent_name=str(task.get("assigned_to") or ""),
-                    _history_agent_type=str(task.get("agent_type") or ""),
-                )
+                if completed:
+                    self.update_task(
+                        task_id,
+                        status="done",
+                        completed_at=datetime.now().isoformat(),
+                        _history_event="pipeline_done",
+                        _history_source="dispatch",
+                        _history_reason="pipeline finished",
+                        _history_agent_name=str(task.get("assigned_to") or ""),
+                        _history_agent_type=str(task.get("agent_type") or ""),
+                    )
+                    # MARKER_183.5: Compute eval_delta for successful runs
+                    eval_result = TaskBoard.compute_eval_score(pipeline_results.get("stats", {}))
+                    logger.info(f"[TaskBoard] Task {task_id} done — eval: {eval_result}")
+                else:
+                    # MARKER_183.5: Record failure + reset to pending for retry
+                    # Extract verifier feedback from pipeline results
+                    stats = pipeline_results.get("stats", {})
+                    self.record_failure(
+                        task_id,
+                        pipeline_stats=stats,
+                        tier_used=pipeline.preset_name or "",
+                    )
+                    eval_result = TaskBoard.compute_eval_score(stats)
 
-                logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'failed'}")
+                logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'pending (retry)'}")
 
                 return {
                     "success": completed,
                     "task_id": task_id,
                     "pipeline_task_id": result.get("task_id"),
-                    "status": "done" if completed else "failed",
+                    "status": "done" if completed else "pending",
                     "tier_used": pipeline.preset_name,
                     "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0)
+                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                    "eval_delta": eval_result,
                 }
 
             except Exception as e:
                 logger.error(f"[TaskBoard] Dispatch failed for {task_id}: {e}")
-                self.update_task(
+                # MARKER_183.5: Record failure with error context, reset to pending
+                self.record_failure(
                     task_id,
-                    status="failed",
-                    completed_at=datetime.now().isoformat(),
-                    result_summary=f"Dispatch error: {str(e)[:200]}",
-                    _history_event="dispatch_error",
-                    _history_source="dispatch",
-                    _history_reason=str(e)[:300],
-                    _history_agent_name=str(task.get("assigned_to") or ""),
-                    _history_agent_type=str(task.get("agent_type") or ""),
+                    issues=[f"Dispatch exception: {str(e)[:200]}"],
+                    tier_used=task.get("preset", ""),
                 )
                 return {"success": False, "task_id": task_id, "error": str(e)}
 
