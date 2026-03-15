@@ -25,6 +25,7 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+import { TimelinePopup } from './TimelinePopup';  // MARKER_183.9B
 import { TaskNode } from './nodes/TaskNode';
 import { AgentNode } from './nodes/AgentNode';
 import { SubtaskNode } from './nodes/SubtaskNode';
@@ -785,6 +786,13 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   const didApplyInitialCameraRef = useRef(false);
   const clickTimerRef = useRef<number | null>(null);
 
+  // MARKER_183.9B: Timeline popup state
+  const [timelineTarget, setTimelineTarget] = useState<{
+    taskId: string;
+    title?: string;
+    pos: { x: number; y: number };
+  } | null>(null);
+
   // Keep nodes ref updated for imperative handle
   useEffect(() => {
     nodesRef.current = nodes;
@@ -1010,12 +1018,26 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
   );
 
   // MARKER_153.5D: Handle node double-click — Matryoshka drill-down
+  // MARKER_183.9B: Alt+double-click on task_overlay_ → show timeline popup
   const handleNodeDoubleClick = useCallback(
-    (_: React.MouseEvent, node: Node) => {
+    (event: React.MouseEvent, node: Node) => {
       if (clickTimerRef.current !== null) {
         window.clearTimeout(clickTimerRef.current);
         clickTimerRef.current = null;
       }
+
+      // MARKER_183.9B: Alt+dblclick on task overlay → timeline popup
+      if (event.altKey && node.id.startsWith('task_overlay_')) {
+        const taskId = node.id.replace('task_overlay_', '');
+        const rect = (event.target as HTMLElement).getBoundingClientRect();
+        setTimelineTarget({
+          taskId,
+          title: (node.data as any)?.label || (node.data as any)?.title || taskId,
+          pos: { x: rect.left + rect.width / 2, y: rect.bottom },
+        });
+        return;
+      }
+
       onNodeDoubleClick?.(node.id);
     },
     [onNodeDoubleClick]
@@ -1040,6 +1062,7 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
     onNodeSelectWithMode?.(null, { additive: false });
     onNodeSelect?.(null);
     onEdgeSelect?.(null);
+    setTimelineTarget(null);  // MARKER_183.9B: close timeline popup on pane click
     if (editMode && event.detail === 2) {
       onPaneDoubleClick?.({ x: event.clientX, y: event.clientY });
     }
@@ -1156,6 +1179,16 @@ export const DAGView = forwardRef<DAGViewRef, DAGViewProps>(function DAGView({
           }}
         />
       </ReactFlow>
+
+      {/* MARKER_183.9B: Timeline popup overlay */}
+      {timelineTarget && (
+        <TimelinePopup
+          taskId={timelineTarget.taskId}
+          taskTitle={timelineTarget.title}
+          position={timelineTarget.pos}
+          onClose={() => setTimelineTarget(null)}
+        />
+      )}
 
       {/* CSS animations for running nodes + fade-in */}
       {/* MARKER_135.4E: Fade-in animation for new nodes */}
