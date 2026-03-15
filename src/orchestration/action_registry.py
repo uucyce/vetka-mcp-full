@@ -26,6 +26,10 @@ DEFAULT_LOG_PATH = Path(__file__).resolve().parents[2] / "data" / "action_log.js
 MAX_ENTRIES = 10_000
 FLUSH_THRESHOLD = 50  # Flush buffer to disk every N entries
 
+# MARKER_183.4: Qdrant collection for semantic action search
+ACTIONS_COLLECTION = "VetkaActions"
+ACTIONS_VECTOR_SIZE = 768
+
 
 class ActionLogEntry:
     """Single action performed by an agent."""
@@ -107,10 +111,14 @@ class ActionRegistry:
     Trims to MAX_ENTRIES on flush to prevent unbounded growth.
     """
 
-    def __init__(self, storage_path: Optional[Path] = None):
+    def __init__(self, storage_path: Optional[Path] = None, qdrant_enabled: bool = True):
         self.storage_path = storage_path or DEFAULT_LOG_PATH
         self._buffer: List[ActionLogEntry] = []
         self._lock = threading.Lock()
+        # MARKER_183.4: Qdrant for semantic action search
+        self._qdrant_enabled = qdrant_enabled
+        self._qdrant = None
+        self._qdrant_initialized = False
 
     def log_action(
         self,
@@ -148,6 +156,32 @@ class ActionRegistry:
         """Write buffered actions to disk. Returns count flushed."""
         with self._lock:
             return self._flush_unlocked()
+
+    async def flush_async(self) -> int:
+        """Write buffered actions to disk + Qdrant. Returns count flushed.
+
+        MARKER_183.4: Async version that also writes to Qdrant.
+        """
+        with self._lock:
+            if not self._buffer:
+                return 0
+            entries = [e.to_dict() for e in self._buffer]
+            self._buffer.clear()
+
+        # Write to JSON (sync)
+        try:
+            existing = self._read_log()
+            existing.extend(entries)
+            if len(existing) > MAX_ENTRIES:
+                existing = existing[-MAX_ENTRIES:]
+            self._write_log(existing)
+        except Exception as e:
+            logger.error(f"[ActionRegistry] Async flush to JSON failed: {e}")
+
+        # Write to Qdrant (async)
+        qdrant_count = await self._write_to_qdrant(entries)
+        logger.debug(f"[ActionRegistry] Async flush: {len(entries)} to JSON, {qdrant_count} to Qdrant")
+        return len(entries)
 
     def _flush_unlocked(self) -> int:
         """Internal flush (caller must hold lock)."""
@@ -225,6 +259,193 @@ class ActionRegistry:
             "action_counts": action_counts,
             "agent_counts": agent_counts,
         }
+
+    # ── MARKER_183.4: Qdrant integration ────────────────────────────
+
+    def _ensure_qdrant(self) -> bool:
+        """Lazy init Qdrant client for action search."""
+        if self._qdrant_initialized:
+            return self._qdrant is not None
+        self._qdrant_initialized = True
+
+        if not self._qdrant_enabled:
+            return False
+
+        try:
+            from src.memory.qdrant_client import get_qdrant_client
+            client = get_qdrant_client()
+            if not client or not client.health_check():
+                logger.debug("[ActionRegistry] Qdrant not available")
+                return False
+
+            # Ensure collection exists
+            try:
+                from qdrant_client.models import Distance, VectorParams
+                client.client.create_collection(
+                    collection_name=ACTIONS_COLLECTION,
+                    vectors_config=VectorParams(size=ACTIONS_VECTOR_SIZE, distance=Distance.COSINE),
+                )
+                logger.info(f"[ActionRegistry] Created Qdrant collection {ACTIONS_COLLECTION}")
+            except Exception:
+                pass  # Already exists
+
+            self._qdrant = client
+            return True
+        except Exception as e:
+            logger.debug(f"[ActionRegistry] Qdrant init failed: {e}")
+            return False
+
+    async def _write_to_qdrant(self, entries: List[Dict[str, Any]]) -> int:
+        """Write action entries to Qdrant for semantic search.
+
+        Embeds: "{action} on {file}" for each entry.
+        Returns count of successfully written entries.
+        """
+        if not self._ensure_qdrant():
+            return 0
+
+        try:
+            from src.utils.embedding_service import get_embedding_async
+            from qdrant_client.models import PointStruct
+
+            points = []
+            for entry in entries:
+                text = f"{entry.get('action', '')} on {entry.get('file', '')} by {entry.get('agent', '')}"
+                vector = await get_embedding_async(text)
+                if not vector:
+                    continue
+
+                points.append(PointStruct(
+                    id=entry.get("id", uuid.uuid4().hex[:16]),
+                    vector=vector,
+                    payload={
+                        "run_id": entry.get("run_id"),
+                        "session_id": entry.get("session_id"),
+                        "task_id": entry.get("task_id"),
+                        "agent": entry.get("agent"),
+                        "action": entry.get("action"),
+                        "file": entry.get("file"),
+                        "result": entry.get("result"),
+                        "duration_ms": entry.get("duration_ms", 0),
+                        "timestamp": entry.get("timestamp"),
+                    },
+                ))
+
+            if points:
+                self._qdrant.client.upsert(
+                    collection_name=ACTIONS_COLLECTION,
+                    points=points,
+                )
+                logger.debug(f"[ActionRegistry] Wrote {len(points)} actions to Qdrant")
+
+            return len(points)
+        except Exception as e:
+            logger.debug(f"[ActionRegistry] Qdrant write failed: {e}")
+            return 0
+
+    async def search_actions(
+        self,
+        query: str,
+        limit: int = 10,
+        session_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        agent: Optional[str] = None,
+        action: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Semantic search on actions via Qdrant.
+
+        MARKER_183.5: Supports keyword filters + semantic query.
+        Falls back to JSON keyword search if Qdrant unavailable.
+        """
+        # Try Qdrant semantic search first
+        if self._ensure_qdrant() and query:
+            try:
+                from src.utils.embedding_service import get_embedding_async
+                vector = await get_embedding_async(query)
+                if vector:
+                    # Build filter
+                    must_conditions = []
+                    if session_id:
+                        from qdrant_client.models import FieldCondition, MatchValue
+                        must_conditions.append(FieldCondition(key="session_id", match=MatchValue(value=session_id)))
+                    if run_id:
+                        from qdrant_client.models import FieldCondition, MatchValue
+                        must_conditions.append(FieldCondition(key="run_id", match=MatchValue(value=run_id)))
+                    if agent:
+                        from qdrant_client.models import FieldCondition, MatchValue
+                        must_conditions.append(FieldCondition(key="agent", match=MatchValue(value=agent)))
+                    if action:
+                        from qdrant_client.models import FieldCondition, MatchValue
+                        must_conditions.append(FieldCondition(key="action", match=MatchValue(value=action)))
+
+                    query_filter = None
+                    if must_conditions:
+                        from qdrant_client.models import Filter
+                        query_filter = Filter(must=must_conditions)
+
+                    results = self._qdrant.client.search(
+                        collection_name=ACTIONS_COLLECTION,
+                        query_vector=vector,
+                        limit=limit,
+                        query_filter=query_filter,
+                    )
+
+                    return [
+                        {**r.payload, "score": round(r.score, 3)}
+                        for r in results
+                        if r.score > 0.2
+                    ]
+            except Exception as e:
+                logger.debug(f"[ActionRegistry] Qdrant search failed, falling back: {e}")
+
+        # Fallback: filter JSON log
+        return self._search_fallback(
+            query=query, limit=limit, session_id=session_id,
+            run_id=run_id, agent=agent, action=action, file_path=file_path,
+        )
+
+    def _search_fallback(
+        self,
+        query: str = "",
+        limit: int = 10,
+        session_id: Optional[str] = None,
+        run_id: Optional[str] = None,
+        agent: Optional[str] = None,
+        action: Optional[str] = None,
+        file_path: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """Filter JSON log by exact match + keyword overlap."""
+        entries = self._read_log()
+
+        # Apply exact filters
+        if session_id:
+            entries = [e for e in entries if e.get("session_id") == session_id]
+        if run_id:
+            entries = [e for e in entries if e.get("run_id") == run_id]
+        if agent:
+            entries = [e for e in entries if e.get("agent") == agent]
+        if action:
+            entries = [e for e in entries if e.get("action") == action]
+        if file_path:
+            entries = [e for e in entries if file_path in e.get("file", "")]
+
+        # Keyword scoring if query provided
+        if query:
+            query_words = set(query.lower().split())
+            scored = []
+            for e in entries:
+                text = f"{e.get('action', '')} {e.get('file', '')} {e.get('agent', '')}".lower()
+                text_words = set(text.split())
+                overlap = len(query_words & text_words)
+                if overlap > 0:
+                    e["score"] = round(overlap / max(len(query_words), 1), 3)
+                    scored.append(e)
+            scored.sort(key=lambda x: x.get("score", 0), reverse=True)
+            return scored[:limit]
+
+        # No query — return newest
+        return entries[-limit:]
 
     def _read_log(self) -> List[Dict[str, Any]]:
         """Read the action log from disk."""

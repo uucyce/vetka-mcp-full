@@ -55,6 +55,7 @@ _ROUTER_SPECS: List[Tuple[str, str, str]] = [
     ("voice_storage_router", ".voice_storage_routes", "router"),
     ("cut_router", ".cut_routes", "router"),
     ("reflex_router", ".reflex_routes", "router"),
+    ("actions_router", ".actions_routes", "router"),  # MARKER_183.5
 ]
 
 _ROUTER_MAP: Dict[str, Tuple[str, str]] = {
