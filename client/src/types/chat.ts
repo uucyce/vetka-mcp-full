@@ -10,7 +10,7 @@ export interface ChatMessage {
   id: string;
   workflow_id?: string;
   role: 'user' | 'assistant' | 'system';
-  agent?: 'PM' | 'Dev' | 'QA' | 'Architect' | 'Hostess';
+  agent?: 'PM' | 'Dev' | 'QA' | 'Architect' | 'Hostess' | 'MYCO';
   content: string;
   // MARKER_156.VOICE.S1_CONTRACT_TYPES: Voice messages are first-class chat timeline items.
   // MARKER_174.REFLEX_LIVE: Added 'reflex' type for tool selection visibility

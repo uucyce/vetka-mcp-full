@@ -2158,17 +2158,70 @@ export function ChatPanel({
     setTimeout(() => setChatIdCopied(false), 2000);
   }, [currentChatId]);
 
-  // Phase 54.4: Handle scanner events for Hostess with file type summary
+  // MARKER_181.7.8: Restored scanner event feedback (was gutted in b049bbe79)
+  // Changed Hostess → MYCO (proactive LLM-free assistant)
   const handleScannerEvent = useCallback((event: ScannerEvent) => {
+    let mycoMessage = '';
+
     switch (event.type) {
       case 'directory_added':
         // Save last scanned folder for context
         if (event.path) {
           setLastScannedFolder(event.path);
         }
+
+        // Build file type summary if available
+        let typeSummary = '';
+        if (event.fileTypes) {
+          const topTypes = Object.entries(event.fileTypes)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 3)
+            .map(([ext, count]) => `${count} .${ext}`)
+            .join(', ');
+          typeSummary = topTypes ? ` (${topTypes})` : '';
+        }
+
+        if (event.filesCount && event.filesCount > 1000) {
+          mycoMessage = `Wow! ${event.filesCount} files from "${event.path}"${typeSummary}! This is a serious project!`;
+        } else if (event.filesCount && event.filesCount > 100) {
+          mycoMessage = `Great! ${event.filesCount} files from "${event.path}"${typeSummary} added to your Vetka`;
+        } else if (event.filesCount && event.filesCount > 0) {
+          mycoMessage = `${event.filesCount} files from "${event.path}"${typeSummary}. Drop more folders to grow your tree!`;
+        } else {
+          mycoMessage = `"${event.path}" added! Files will be indexed.`;
+        }
+        break;
+
+      case 'directory_removed':
+        mycoMessage = 'Directory removed.';
+        break;
+
+      case 'scan_complete':
+        mycoMessage = 'Scan complete! Your tree is ready.';
+        break;
+
+      case 'scan_error':
+        mycoMessage = `${event.error || 'Something went wrong'}. Try dropping again?`;
+        break;
+
+      case 'files_dropped':
+        if (event.filesCount && event.path) {
+          mycoMessage = `Dropped ${event.filesCount} files from "${event.path}"`;
+        }
         break;
     }
-  }, []);
+
+    if (mycoMessage) {
+      addChatMessage({
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        agent: 'MYCO',
+        content: mycoMessage,
+        type: 'text',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }, [addChatMessage]);
 
   const scannerSourceContext = useMemo<'file' | 'cloud' | 'web' | 'social'>(() => {
     switch (scannerSource) {
@@ -3607,7 +3660,7 @@ export function ChatPanel({
         {/* Main content rail */}
         <div style={{ flex: 1, position: 'relative', minHeight: 0 }}>
           {activeTab === 'scanner' ? (
-            <div style={{ height: '100%', minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ height: '100%', minHeight: 0, overflow: 'auto' }}>
               <ScanPanel
                 onFileClick={(path) => {
                   console.log('[ChatPanel] Phase 92.5: onFileClick triggered, sending camera command to:', path);
@@ -3748,8 +3801,8 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Input - chat/group only; scanner uses unified lane as canonical entry */}
-        {activeTab !== 'scanner' && (
+        {/* MARKER_181.8.4: Input always visible — scanner must not hide it */}
+        {(
           <MessageInput
             value={input}
             onChange={setInput}

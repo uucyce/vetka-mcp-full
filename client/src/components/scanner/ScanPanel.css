@@ -9,6 +9,7 @@
 
 /* Phase 92.7: Unified with GroupCreator panel style */
 /* Phase 92.8: Removed max-height transition - was causing sluggish resize */
+/* MARKER_181.8.3: Allow shrinking + cap height so chat input stays visible */
 .scan-panel {
   position: relative;
   background: #0a0a0a;
@@ -19,7 +20,8 @@
   display: flex;
   flex-direction: column;
   min-height: 48px;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  max-height: 60vh;
   overflow: hidden;
 }
 

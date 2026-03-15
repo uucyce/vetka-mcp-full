@@ -648,6 +648,21 @@ async def stop_all_watchers(request: Request):
     }
 
 
+def _diagnose_embedding_failure() -> str:
+    """MARKER_181.10: Diagnose why embedding failed — surface real error."""
+    try:
+        import ollama
+        ollama.embeddings(model="embeddinggemma:300m", prompt="test")
+        return "Ollama OK but embedding returned None — check text content"
+    except ConnectionError:
+        return "Ollama not running (connection refused). Start with: ollama serve"
+    except Exception as e:
+        err = str(e)
+        if "not found" in err.lower():
+            return f"Embedding model not found: {err}. Run: ollama pull embeddinggemma:300m"
+        return f"Ollama error: {err}"
+
+
 @router.post("/index-file")
 async def index_single_file(req: IndexFileRequest, request: Request):
     """
@@ -786,12 +801,14 @@ async def index_single_file(req: IndexFileRequest, request: Request):
         # Get file stats
         stat = file_obj.stat()
 
-        # Generate embedding
-        embed_text = f"File: {file_obj.name}\n\n{content[:8000]}"
+        # MARKER_181.10: No truncation — chunked embedding handles any text length
+        embed_text = f"File: {file_obj.name}\n\n{content}"
         embedding = updater._get_embedding(embed_text)
 
         if not embedding:
-            raise HTTPException(status_code=500, detail="Failed to generate embedding")
+            diag = _diagnose_embedding_failure()
+            print(f"[Watcher] ❌ Embedding failed for {file_obj.name}: {diag}")
+            raise HTTPException(status_code=500, detail=f"Embedding failed for {file_obj.name}: {diag}")
 
         from qdrant_client.models import PointStruct
 

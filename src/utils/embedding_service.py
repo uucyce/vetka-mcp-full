@@ -198,6 +198,95 @@ class EmbeddingService:
                 results[idx] = await self.get_embedding_async(texts[idx])
             return results
 
+    def get_embedding_chunked(
+        self, text: str, max_chars: int = 3000, overlap: int = 500
+    ) -> Optional[List[float]]:
+        """MARKER_181.10: Embed full text via chunking + mean pooling.
+
+        For short text (≤ max_chars): single embedding call (fast path).
+        For long text: split into overlapping chunks, embed each, mean-pool vectors.
+
+        Returns a single embedding vector representing the ENTIRE document.
+        No data is lost — every chunk contributes to the final vector.
+        """
+        if not text or not text.strip():
+            return None
+
+        # Fast path
+        if len(text) <= max_chars:
+            return self.get_embedding(text)
+
+        from src.utils.text_chunker import chunk_text
+        chunks = chunk_text(text, max_chars=max_chars, overlap=overlap)
+
+        if not chunks:
+            return None
+
+        if len(chunks) == 1:
+            return self.get_embedding(chunks[0])
+
+        # Embed all chunks via batch for efficiency
+        embeddings = self.get_embedding_batch(chunks)
+
+        # Filter out None results
+        valid = [e for e in embeddings if e is not None]
+        if not valid:
+            logger.error(f"[EmbeddingService] All {len(chunks)} chunks failed to embed")
+            return None
+
+        if len(valid) < len(chunks):
+            logger.warning(
+                f"[EmbeddingService] {len(chunks) - len(valid)}/{len(chunks)} chunks failed, "
+                f"pooling {len(valid)} valid embeddings"
+            )
+
+        # Mean pooling: average all chunk vectors
+        dim = len(valid[0])
+        pooled = [0.0] * dim
+        for emb in valid:
+            for i in range(dim):
+                pooled[i] += emb[i]
+        for i in range(dim):
+            pooled[i] /= len(valid)
+
+        return pooled
+
+    async def get_embedding_chunked_async(
+        self, text: str, max_chars: int = 3000, overlap: int = 500
+    ) -> Optional[List[float]]:
+        """MARKER_181.10: Async version of chunked embedding."""
+        if not text or not text.strip():
+            return None
+
+        if len(text) <= max_chars:
+            return await self.get_embedding_async(text)
+
+        from src.utils.text_chunker import chunk_text
+        chunks = chunk_text(text, max_chars=max_chars, overlap=overlap)
+
+        if not chunks:
+            return None
+
+        if len(chunks) == 1:
+            return await self.get_embedding_async(chunks[0])
+
+        embeddings = await self.get_embedding_batch_async(chunks)
+        valid = [e for e in embeddings if e is not None]
+
+        if not valid:
+            logger.error(f"[EmbeddingService] All {len(chunks)} chunks failed to embed (async)")
+            return None
+
+        dim = len(valid[0])
+        pooled = [0.0] * dim
+        for emb in valid:
+            for i in range(dim):
+                pooled[i] += emb[i]
+        for i in range(dim):
+            pooled[i] /= len(valid)
+
+        return pooled
+
     def get_stats(self) -> dict:
         """Return cache statistics."""
         total = self._cache_hits + self._cache_misses
@@ -237,3 +326,8 @@ def get_embedding(text: str) -> Optional[List[float]]:
 async def get_embedding_async(text: str) -> Optional[List[float]]:
     """MARKER_118.1: Async convenience function — non-blocking embedding."""
     return await get_embedding_service().get_embedding_async(text)
+
+
+def get_embedding_chunked(text: str) -> Optional[List[float]]:
+    """MARKER_181.10: Chunked embedding — no data loss for long texts."""
+    return get_embedding_service().get_embedding_chunked(text)

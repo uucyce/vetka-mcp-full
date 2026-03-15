@@ -300,12 +300,14 @@ class QdrantIncrementalUpdater:
 
     def _get_embedding(self, text: str) -> Optional[List[float]]:
         """
-        Get embedding for text.
+        MARKER_181.10: Get embedding for text with chunking support.
 
         Uses provided embedding_fn or falls back to EmbeddingService.
+        For long texts: automatically chunks and mean-pools vectors.
+        No data is truncated — all content contributes to the embedding.
 
         Args:
-            text: Text to embed
+            text: Text to embed (any length)
 
         Returns:
             Embedding vector or None
@@ -313,10 +315,10 @@ class QdrantIncrementalUpdater:
         if self.embedding_fn:
             return self.embedding_fn(text)
 
-        # Fallback to EmbeddingService
+        # MARKER_181.10: Use chunked embedding — handles any text length
         try:
-            from src.utils.embedding_service import get_embedding
-            return get_embedding(text)
+            from src.utils.embedding_service import get_embedding_chunked
+            return get_embedding_chunked(text)
         except Exception as e:
             logger.error(f"[QdrantUpdater] Embedding error: {e}")
             return None
@@ -368,7 +370,8 @@ class QdrantIncrementalUpdater:
 
         # Read content and generate embedding
         content = self._read_file_content(file_path)
-        embed_text = f"File: {file_path.name}\n\n{content[:8000]}"
+        # MARKER_181.10: No truncation — _get_embedding handles chunking internally
+        embed_text = f"File: {file_path.name}\n\n{content}"
         embedding = self._get_embedding(embed_text)
 
         if not embedding:
@@ -521,7 +524,8 @@ class QdrantIncrementalUpdater:
                 break
 
             content = self._read_file_content(fp)
-            embed_text = f"File: {fp.name}\n\n{content[:8000]}"
+            # MARKER_181.10: No truncation — _get_embedding handles chunking
+            embed_text = f"File: {fp.name}\n\n{content}"
             embedding = self._get_embedding(embed_text)
 
             if not embedding:
