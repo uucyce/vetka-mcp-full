@@ -498,6 +498,7 @@ class TaskBoard:
         assigned_to: Optional[str] = None,  # MARKER_130.C16A
         agent_type: Optional[str] = None,   # MARKER_130.C16A
         created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
+        session_id: Optional[str] = None,          # MARKER_183.1: Heartbeat session ID
         source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
         source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
         module: Optional[str] = None,            # MARKER_155.2A: Roadmap module assignment
@@ -595,6 +596,8 @@ class TaskBoard:
             # MARKER_133.C33D: Client attribution
             "created_by": created_by,         # "claude-code", "cursor", "opencode", "heartbeat"
             # MARKER_152.3: Task provenance — trace back to originating chat
+            # MARKER_183.1: Session ID links all tasks from one heartbeat tick
+            "session_id": session_id,
             "source_chat_id": source_chat_id,   # VETKA chat UUID where task was created
             "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
             # MARKER_155.2A: Roadmap module assignment for drill-down filtering
@@ -770,7 +773,7 @@ class TaskBoard:
         # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
         # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1: Added workflow binding metadata fields
         ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status", "feedback",
-                          "source_chat_id", "source_group_id", "module",
+                          "session_id", "source_chat_id", "source_group_id", "module",
                           "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
                           "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
                           "roadmap_id", "roadmap_node_id", "roadmap_lane", "roadmap_title",
@@ -1356,6 +1359,14 @@ class TaskBoard:
         """Alias for get_queue() — backwards compatibility."""
         return self.get_queue(status=status)
 
+    # MARKER_183.1: Query tasks by heartbeat session
+    def get_tasks_for_session(self, session_id: str) -> List[Dict[str, Any]]:
+        """Get all tasks created in a specific heartbeat session."""
+        return [
+            t for t in self.tasks.values()
+            if t.get("session_id") == session_id
+        ]
+
     def get_board_summary(self) -> Dict[str, Any]:
         """Get summary counts of tasks by status.
 
@@ -1610,6 +1621,9 @@ class TaskBoard:
                 )
                 # MARKER_121.2: Tag pipeline with board task ID for callback
                 pipeline._board_task_id = task_id
+                # MARKER_183.1: Pass session_id from task to pipeline
+                if task.get("session_id"):
+                    pipeline._session_id = task["session_id"]
 
                 # MARKER_126.9E: Pass selected key to pipeline for preferred key routing
                 if selected_key:

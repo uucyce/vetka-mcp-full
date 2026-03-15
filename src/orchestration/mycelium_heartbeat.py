@@ -27,6 +27,7 @@ import time
 import logging
 import re
 import os
+import uuid
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass, asdict, field
@@ -659,12 +660,16 @@ async def heartbeat_tick(
         Tick result with new messages count, tasks found, tasks dispatched
     """
     tick_start = time.time()
+    # MARKER_183.1: Generate unique session_id per heartbeat tick
+    # Links all tasks created in this tick for ActionRegistry correlation
+    tick_session_id = f"sess_{int(tick_start * 1000)}_{uuid.uuid4().hex[:8]}"
+
     state = _load_state()
     config = _load_heartbeat_config()
     effective_profile = _effective_heartbeat_profile(config)
 
     logger.info(f"[Heartbeat] Tick #{state.total_ticks + 1} "
-                f"(last_msg: {state.last_message_id or 'none'}, monitor_all={monitor_all})")
+                f"(session={tick_session_id}, last_msg: {state.last_message_id or 'none'}, monitor_all={monitor_all})")
 
     # MARKER_140.MULTI_CHAT: Collect messages from all monitored chats
     # Per-chat last_message_id tracking (stored in state file under "chat_cursors")
@@ -738,6 +743,7 @@ async def heartbeat_tick(
         state.last_tick_time = tick_start
         run_record = {
             "tick": state.total_ticks,
+            "session_id": tick_session_id,  # MARKER_183.1
             "time": time.strftime("%Y-%m-%d %H:%M:%S"),
             "new_messages": 0,
             "tasks_found": 0,
@@ -753,6 +759,7 @@ async def heartbeat_tick(
         _save_state(state)
         return {
             "tick": state.total_ticks,
+            "session_id": tick_session_id,  # MARKER_183.1
             "new_messages": 0,
             "tasks_found": 0,
             "tasks_dispatched": 0,
@@ -837,6 +844,7 @@ async def heartbeat_tick(
                 source=f"heartbeat_{task.trigger}",
                 tags=[task.trigger],
                 created_by=f"heartbeat:{task.trigger}",  # MARKER_133.C33D
+                session_id=tick_session_id,  # MARKER_183.1: Link task to heartbeat session
             )
             logger.info(f"[Heartbeat] Task queued in board: {task_id}")
 
@@ -890,6 +898,7 @@ async def heartbeat_tick(
     # Keep last 20 runs
     run_record = {
         "tick": state.total_ticks,
+        "session_id": tick_session_id,  # MARKER_183.1
         "time": time.strftime("%Y-%m-%d %H:%M:%S"),
         "new_messages": new_count,
         "tasks_found": len(tasks),
@@ -907,6 +916,7 @@ async def heartbeat_tick(
 
     tick_result = {
         "tick": state.total_ticks,
+        "session_id": tick_session_id,  # MARKER_183.1
         "new_messages": new_count,
         "tasks_found": len(tasks),
         "tasks_dispatched": len(results),
