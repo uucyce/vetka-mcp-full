@@ -32,7 +32,7 @@ TASK_BOARD_SCHEMA = {
         "action": {
             "type": "string",
             # MARKER_130.C16B: Added claim, complete, active_agents actions
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -274,6 +274,27 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "active_agents":
         agents = board.get_active_agents()
         return {"success": True, "agents": agents, "count": len(agents)}
+
+    # MARKER_184.5: merge_request action — worktree → main merge via TaskBoard
+    elif action == "merge_request":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for merge_request"}
+
+        try:
+            import asyncio
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    result = pool.submit(
+                        asyncio.run, board.merge_request(task_id)
+                    ).result()
+            else:
+                result = loop.run_until_complete(board.merge_request(task_id))
+            return result
+        except Exception as e:
+            return {"success": False, "error": f"merge_request failed: {e}"}
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

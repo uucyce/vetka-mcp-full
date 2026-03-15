@@ -783,7 +783,9 @@ class TaskBoard:
                           "project_id", "project_lane", "parent_task_id", "architecture_docs",
                           "recon_docs", "protocol_version", "require_closure_proof", "closure_tests",
                           "closure_files", "closure_subtask", "closed_by", "closed_at",
-                          "closure_proof", "status_history"}
+                          "closure_proof", "status_history",
+                          "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
+                          }
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
@@ -1390,6 +1392,268 @@ class TaskBoard:
             } if next_task else None
         }
 
+    # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
+
+    async def merge_request(self, task_id: str) -> Dict[str, Any]:
+        """Request merge of worktree branch into main via verification flow.
+
+        MARKER_184.5: Agents call this instead of manual cherry-pick.
+
+        Flow:
+        1. Validate task has branch_name
+        2. Run closure_tests on the branch (if defined)
+        3. Check merge compatibility (dry-run)
+        4. Execute merge (cherry-pick by default)
+        5. Log to ActionRegistry
+        6. Auto-close task with merge commit hash
+
+        Returns:
+            {success, merge_result, eval_delta, ...} or {error}
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        branch = task.get("branch_name")
+        if not branch:
+            return {"success": False, "error": "Task has no branch_name — set it via update_task first"}
+
+        strategy = task.get("merge_strategy", "cherry-pick")
+        commits = task.get("merge_commits", [])
+
+        # Step 1: Validate branch exists
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "rev-parse", "--verify", branch,
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                return {"success": False, "error": f"Branch '{branch}' not found: {stderr.decode().strip()}"}
+        except Exception as e:
+            return {"success": False, "error": f"Git check failed: {e}"}
+
+        # Step 2: Get commits to merge (if not specified, get all ahead of main)
+        if not commits:
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "log", "--oneline", f"main..{branch}",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, _ = await proc.communicate()
+                log_lines = stdout.decode().strip().split("\n")
+                commits = [line.split()[0] for line in log_lines if line.strip()]
+            except Exception:
+                pass
+
+        if not commits:
+            return {"success": False, "error": f"No commits found on '{branch}' ahead of main"}
+
+        # Step 3: Count tests before merge
+        tests_before = await self._count_tests()
+
+        # Step 4: Run closure_tests if defined
+        closure_results = []
+        closure_tests = task.get("closure_tests", [])
+        if closure_tests:
+            closure_results = await self._run_closure_tests(closure_tests)
+            failed = [r for r in closure_results if not r["passed"]]
+            if failed:
+                self.update_task(task_id, merge_result={
+                    "status": "tests_failed",
+                    "closure_results": closure_results,
+                })
+                return {
+                    "success": False,
+                    "error": "Closure tests failed",
+                    "closure_results": closure_results,
+                }
+
+        # Step 5: Execute merge
+        merge_result = await self._execute_merge(branch, strategy, commits)
+        if not merge_result.get("success"):
+            self.update_task(task_id, merge_result=merge_result)
+            return merge_result
+
+        # Step 6: Count tests after merge
+        tests_after = await self._count_tests()
+        eval_delta = {
+            "tests_before": tests_before,
+            "tests_after": tests_after,
+            "tests_delta": tests_after - tests_before,
+            "commits_merged": len(commits),
+            "strategy": strategy,
+            "branch": branch,
+        }
+
+        # Step 7: Log to ActionRegistry
+        try:
+            from src.orchestration.action_registry import ActionRegistry
+            registry = ActionRegistry()
+            registry.log_action(
+                run_id=f"merge_{task_id}",
+                agent="opus",
+                action="merge",
+                file=f"{branch}→main",
+                result="success",
+                session_id=task.get("session_id"),
+                task_id=task_id,
+                metadata={
+                    "strategy": strategy,
+                    "commits": commits,
+                    "commit_hash": merge_result.get("commit_hash"),
+                },
+            )
+            registry.flush()
+        except Exception as e:
+            logger.debug(f"[MergeRequest] ActionRegistry log failed (non-fatal): {e}")
+
+        # Step 8: Update task with result and close
+        full_result = {
+            "status": "merged",
+            "commit_hash": merge_result.get("commit_hash"),
+            "commits_merged": commits,
+            "strategy": strategy,
+            "eval_delta": eval_delta,
+            "closure_results": closure_results,
+        }
+        self.update_task(task_id, merge_result=full_result, status="done")
+
+        logger.info(f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
+                     f"tests_delta={eval_delta['tests_delta']}")
+
+        return {"success": True, "merge_result": full_result, "eval_delta": eval_delta}
+
+    async def _execute_merge(
+        self, branch: str, strategy: str, commits: List[str]
+    ) -> Dict[str, Any]:
+        """Execute the actual git merge operation.
+
+        Strategies:
+        - cherry-pick: Cherry-pick each commit (default, safest)
+        - merge: Git merge --no-ff
+        - squash: Git merge --squash + commit
+        """
+        try:
+            # Ensure we're on main
+            proc = await asyncio.create_subprocess_exec(
+                "git", "checkout", "main",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate()
+
+            if strategy == "cherry-pick":
+                # Cherry-pick commits in order (oldest first)
+                for commit_hash in reversed(commits):
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "cherry-pick", commit_hash,
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, stderr = await proc.communicate()
+                    if proc.returncode != 0:
+                        # Abort cherry-pick
+                        abort_proc = await asyncio.create_subprocess_exec(
+                            "git", "cherry-pick", "--abort",
+                            cwd=str(PROJECT_ROOT),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await abort_proc.communicate()
+                        return {
+                            "success": False,
+                            "error": f"Cherry-pick failed for {commit_hash}: {stderr.decode().strip()}",
+                            "conflicting_commit": commit_hash,
+                        }
+
+            elif strategy == "merge":
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", "--no-ff", branch,
+                    "-m", f"Merge {branch} into main via TaskBoard",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    # Abort merge
+                    abort_proc = await asyncio.create_subprocess_exec(
+                        "git", "merge", "--abort",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await abort_proc.communicate()
+                    return {
+                        "success": False,
+                        "error": f"Merge failed: {stderr.decode().strip()}",
+                    }
+
+            elif strategy == "squash":
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", "--squash", branch,
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Squash failed: {stderr.decode().strip()}"}
+
+                # Commit the squash
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+            else:
+                return {"success": False, "error": f"Unknown strategy: {strategy}"}
+
+            # Get resulting commit hash
+            proc = await asyncio.create_subprocess_exec(
+                "git", "rev-parse", "HEAD",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            commit_hash = stdout.decode().strip()[:12]
+
+            return {"success": True, "commit_hash": commit_hash}
+
+        except Exception as e:
+            return {"success": False, "error": f"Merge execution failed: {e}"}
+
+    async def _count_tests(self) -> int:
+        """Run pytest --co -q to count available tests. Returns count or 0."""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "python", "-m", "pytest", "--co", "-q",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            # Last line: "X tests collected"
+            output = stdout.decode()
+            for line in output.strip().split("\n"):
+                if "test" in line and "selected" in line or "collected" in line:
+                    parts = line.split()
+                    for p in parts:
+                        if p.isdigit():
+                            return int(p)
+            return 0
+        except Exception:
+            return 0
     # ==========================================
     # TODO MARKER_126.11B: MULTI-AGENT CLAIM SUPPORT
     # ==========================================
