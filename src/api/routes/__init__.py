@@ -56,6 +56,7 @@ _ROUTER_SPECS: List[Tuple[str, str, str]] = [
     ("cut_router", ".cut_routes", "router"),
     ("reflex_router", ".reflex_routes", "router"),
     ("actions_router", ".actions_routes", "router"),  # MARKER_183.5
+    ("pipeline_history_router", ".pipeline_history", "router"),  # MARKER_183.11
 ]
 
 _ROUTER_MAP: Dict[str, Tuple[str, str]] = {

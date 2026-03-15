@@ -147,7 +147,8 @@ async def get_run_timeline(
     events = run.get("timeline_events", [])
 
     # Filter by role if specified
-    if role:
+    # MARKER_183.11: Use `is not None` — Query(None) objects are truthy when called directly
+    if role is not None:
         events = [e for e in events if e.get("role") == role]
 
     return {
