@@ -44,6 +44,19 @@ START
   └─ NEVER skip to coding. NEVER use raw git commit.
 ```
 
+### Task Board access rule (MANDATORY)
+
+**NEVER read or write `data/task_board.json` directly.** Always use MCP:
+- `vetka_task_board action=add` — create task
+- `vetka_task_board action=list` — read tasks
+- `vetka_task_board action=update` — modify task
+- `vetka_task_board action=remove` — delete task
+- `vetka_task_board action=complete` — close task (auto-commits)
+
+**Why:** Direct JSON edits bypass MCP validation, create incompatible schema,
+and produce tasks invisible to other agents. This already caused a bug where
+14 tasks were written to JSON but MCP couldn't find them.
+
 ### Task granularity rules:
 - **Big feature (>30 min):** Roadmap doc → multiple tasks → claim one at a time
 - **Small fix (<30 min):** Create 1 task → claim → fix → complete
