@@ -1,13 +1,8 @@
 # VETKA Project — Agent Instructions
 
 ## ON CONNECT (MANDATORY)
-ALWAYS call `mcp__vetka__vetka_session_init` as your FIRST action when starting a new conversation.
+ALWAYS call `vetka_session_init` as your FIRST action when starting a new conversation.
 This loads project context, current phase, user preferences, and recent state.
-
-**Important:** MCP tools use full namespace: `mcp__vetka__<tool>` and `mcp__mycelium__<tool>`.
-If using ToolSearch, use exact name: `select:mcp__vetka__vetka_session_init`.
-
-**If MCP unavailable:** Read `docs/182_ph_MCC_git/HANDOFF_SESSION_3.md` for latest project state.
 
 ## Architecture
 - **Stack:** Tauri (Rust) + React (TypeScript) + Python FastAPI backend
@@ -69,7 +64,7 @@ Grok Fast 4.1 = "The Last Samurai" — researcher in ALL tiers.
 
 ### MCP MYCELIUM (async, pipelines)
 - `mycelium_pipeline` — Run agent pipeline (non-blocking, streams to WS)
-- `mycelium_call_model` — Async LLM call (Grok, GPT, Claude, Gemini, Ollama)
+- `mycelium_call_model` — Async LLM call (Grok, GPT, Codex, Gemini, Ollama)
 - `mycelium_task_board` — Manage task queue
 - `mycelium_task_dispatch` — Dispatch tasks to pipeline
 - `mycelium_heartbeat_tick` — Scan chat for @dragon/@doctor tasks
@@ -88,7 +83,7 @@ Cursor's scaling agents research independently validates VETKA's architecture:
 | Planners spawn sub-planners recursively | Mycelium fractal: Architect → subtasks → sub-research |
 | Workers push independently, no integrator | Dragon coder/researcher — fire-and-forget + STM |
 | Different models for different roles | Триада: Kimi=architect, Grok=researcher, Qwen=coder |
-| Prompts matter more than harness | CLAUDE.md + pipeline_prompts.json = the magic |
+| Prompts matter more than harness | AGENTS.md + pipeline_prompts.json = the magic |
 | Fresh starts combat drift | vetka_session_init + STM auto-reset (MARKER_117.5B) |
 | Judge agent evaluates continuation | Verifier (GLM/Qwen-235b) in pipeline |
 
@@ -97,7 +92,7 @@ Key insights applied:
 - **Auto context reset** (MARKER_117.5B): STM resets after 10 subtasks to prevent drift
 - **GPT-5.2 option** (MARKER_117.5C): `dragon_gold_gpt` preset for extended autonomous work
 
-## Current Phase: 101
+## Current Phase: 171
 See `data/project_digest.json` for latest status.
 Config: `data/templates/model_presets.json` — team presets & tier map.
 MCP config: `.mcp.json` — both VETKA and MYCELIUM servers.
@@ -108,31 +103,24 @@ Three agents work on ONE codebase through ONE TaskBoard:
 
 | Agent | Type | Access | Tasks |
 |-------|------|--------|-------|
-| **Opus** (Claude Code) | claude_code | Full MCP (VETKA + MYCELIUM) | Architecture, pipeline, infra |
+| **Opus** (Codex) | Codex | Full MCP (VETKA + MYCELIUM) | Architecture, pipeline, infra |
 | **Cursor** (Opus 4.5) | cursor | Full MCP (VETKA + MYCELIUM) | Frontend, DAG viz, UI |
-| **Codex** (Claude Code worktree) | claude_code | Full MCP (VETKA + MYCELIUM) | Tests, cleanup, isolated modules |
+| **Codex** (Codex worktree) | Codex | Full MCP (VETKA + MYCELIUM) | Tests, cleanup, isolated modules |
 
 ### Task Lifecycle (ALL agents follow this)
 
 ```
-1. GET TASK:    vetka_task_board action=list filter_status=pending
-2. CLAIM:       vetka_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
+1. GET TASK:    mycelium_task_board action=list filter_status=pending
+2. CLAIM:       mycelium_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
 3. TRACK START: mycelium_track_started task_id=<id> title=<title> source=<agent>
 4. DO WORK:     Edit files, run tests
-5. COMPLETE:    vetka_task_board action=complete task_id=<id>
-                → Auto-triggers: git commit + digest update + push (on main)
+5. COMMIT:      vetka_git_commit message="phase{N}.{M}: description [task:{task_id}]"
+                → Auto-triggers: digest update + task auto-complete + push (on main)
+6. VERIFY:      Check task was auto-completed, or manually: mycelium_task_board action=complete task_id=<id>
 ```
 
-**CRITICAL: Step 5 is the ONLY step needed to finish.** One call does everything:
-- If changes exist: `complete` → stages changed files (scoped, not -A) → `git commit` → digest update → task done
-- If no changes: `complete` → task marked done (no commit — e.g., research tasks)
-- If already committed: pass `commit_hash` → task marked done with commit reference
-
-**You can optionally pass `commit_message` to customize the commit message.**
-If omitted, the commit message defaults to `"complete: {task title} [task:{task_id}]"`.
-If commit fails, task is NOT closed — agent must fix the issue and retry.
-
-**NEVER use raw `git commit`** — always close tasks via `vetka_task_board action=complete`.
+**CRITICAL: Step 5 is the key step.** A properly formatted commit message auto-closes tasks.
+Steps 5→6 replace the old manual `track_done` + `complete` — those are now optional fallbacks.
 
 ### Commit Message Format (for auto-complete)
 
@@ -190,7 +178,7 @@ Post-commit auto-push only fires on `main` branch, so worktree branches are safe
 | Main repo | 3001 | 5001 |
 | Worktree (Codex) | 3003+ | shared 5001 |
 
-Set port in `.claude/launch.json` per worktree to avoid conflicts.
+Set port in `.Codex/launch.json` per worktree to avoid conflicts.
 
 ### Rules
 - Check `assigned_to` field — only take tasks assigned to you or unassigned
@@ -198,7 +186,7 @@ Set port in `.claude/launch.json` per worktree to avoid conflicts.
 - After completing a task, check if new tasks appeared (board may update)
 - If blocked, update task status to `hold` and note the blocker in description
 - **ALWAYS include `[task:tb_xxxx]` in commit messages** for auto-close to work
-- **NEVER use `git commit` directly** — always close tasks via `vetka_task_board action=complete` (auto-commits + digest + close)
+- **NEVER use `git commit` directly** — always use `vetka_git_commit` (triggers hooks + auto-close)
 
 ### File Ownership & Conflict Prevention (Phase 170+)
 
@@ -238,13 +226,13 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 
 | Regiment | Model | Count | Role | Speed |
 |----------|-------|-------|------|-------|
-| Haiku Scouts | claude-haiku | 3-9 parallel | Recon: grep, read files, leave MARKERs | Fast (seconds) |
-| Sonnet Verifiers | claude-sonnet | 2-3 parallel | Cross-check Haiku findings, assess big picture | Medium |
+| Haiku Scouts | Codex-haiku | 3-9 parallel | Recon: grep, read files, leave MARKERs | Fast (seconds) |
+| Sonnet Verifiers | Codex-sonnet | 2-3 parallel | Cross-check Haiku findings, assess big picture | Medium |
 | Dragon Bronze | Qwen+Grok+Mimo | 4 roles | Quick build/fix for simple tasks | Fast, cheap |
 | Dragon Silver | Kimi+Grok+Qwen+GLM | 4 roles | Standard implementation | Balanced |
 | Dragon Gold | Kimi+Grok+Qwen+Qwen-235b | 4 roles | Complex/critical tasks | Best quality |
 | Grok (via user) | Grok 4.1 | 1 (relay) | Deep web research + codebase analysis | User relays |
-| Opus (you) | claude-opus | 1 | Architecture, final decisions, synthesis | Expensive — save budget |
+| Opus (you) | Codex-opus | 1 | Architecture, final decisions, synthesis | Expensive — save budget |
 
 ### Battle Plan (every task)
 
@@ -264,6 +252,6 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 1. ALWAYS call `vetka_session_init` FIRST
 2. Use MARKER_XXX.Y convention for code comments
 3. Tests: `python -m pytest tests/ -v`
-4. **Close tasks via `vetka_task_board action=complete task_id=<id>`** — this auto-commits, updates digest, and closes the task in one step. NEVER use raw `git commit`.
+4. Commit via `vetka_git_commit` with `[task:tb_xxxx]` in message (auto-closes task + updates digest)
 5. NO new UI panels/buttons — use existing UI, add functions only
-6. ALL work goes through TaskBoard: create task → claim → work → **complete task** (auto-commit)
+6. ALL work goes through TaskBoard: create task → claim → work → commit with task ID → auto-close

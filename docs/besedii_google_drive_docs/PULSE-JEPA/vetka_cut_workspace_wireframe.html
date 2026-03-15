@@ -1,0 +1,171 @@
+<style>
+*{box-sizing:border-box;margin:0}
+.ws{display:grid;grid-template-columns:220px 1fr 280px;grid-template-rows:auto 1fr 180px;gap:2px;height:600px;background:var(--color-border-tertiary);border-radius:var(--border-radius-lg);overflow:hidden;font-family:var(--font-sans);font-size:12px}
+.p{background:var(--color-background-primary);padding:8px;position:relative;overflow:hidden}
+.p .lab{font-size:11px;font-weight:500;color:var(--color-text-secondary);margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.tag{font-size:10px;padding:2px 6px;border-radius:4px;background:var(--color-background-secondary);color:var(--color-text-tertiary)}
+.p .desc{font-size:11px;color:var(--color-text-tertiary);line-height:1.5}
+.hl{color:var(--color-text-info);font-weight:500}
+.tl-row{display:flex;align-items:center;gap:4px;margin:2px 0}
+.tl-label{width:20px;font-size:10px;font-weight:500;text-align:right;flex-shrink:0}
+.tl-track{flex:1;height:14px;border-radius:3px;position:relative}
+.tl-clip{position:absolute;height:100%;border-radius:3px;top:0}
+.bpm-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:3px;vertical-align:middle}
+.tab-bar{display:flex;gap:1px;margin-bottom:6px}
+.tab{padding:3px 8px;font-size:10px;border-radius:4px 4px 0 0;background:var(--color-background-secondary);color:var(--color-text-tertiary);cursor:pointer}
+.tab.on{background:var(--color-background-primary);color:var(--color-text-primary);font-weight:500}
+.script-line{padding:4px 6px;border-left:2px solid transparent;font-size:11px;line-height:1.6;color:var(--color-text-secondary);cursor:pointer;border-radius:0 4px 4px 0;transition:all .15s}
+.script-line:hover{background:var(--color-background-secondary)}
+.script-line.active{border-left-color:var(--color-border-info);background:var(--color-background-info);color:var(--color-text-primary)}
+.script-time{font-size:9px;color:var(--color-text-tertiary);margin-right:6px;font-family:var(--font-mono)}
+.node-box{display:inline-block;padding:3px 8px;margin:2px;border-radius:4px;font-size:10px;border:0.5px solid var(--color-border-tertiary);color:var(--color-text-secondary)}
+.node-box.linked{border-color:var(--color-border-info);color:var(--color-text-info);background:var(--color-background-info)}
+.monitor{background:#111;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#555;font-size:11px;aspect-ratio:16/9;width:100%}
+.float-panel{position:absolute;bottom:8px;right:8px;width:120px;height:80px;border-radius:6px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--color-text-tertiary)}
+</style>
+
+<div class="ws">
+
+<div class="p" style="grid-row:1/3">
+  <div class="tab-bar">
+    <div class="tab on" onclick="showPanel('script')">Script</div>
+    <div class="tab" onclick="showPanel('dag')">DAG project</div>
+  </div>
+  <div id="panel-script">
+    <div class="lab">Script / timeline <span class="tag">Y = time</span></div>
+    <div class="script-line"><span class="script-time">00:00</span>EXT. Berlin wall - night</div>
+    <div class="script-line active"><span class="script-time">01:00</span>Rain on concrete. ANNA walks alone.</div>
+    <div class="script-line"><span class="script-time">02:15</span>She stops. Turns. Sees the light.</div>
+    <div class="script-line"><span class="script-time">03:30</span>INT. Underground club - continuous</div>
+    <div class="script-line"><span class="script-time">04:45</span>Music. Bodies. She finds MAX at the bar.</div>
+    <div class="script-line"><span class="script-time">06:00</span>"You're the one who sent the signal?"</div>
+    <div class="script-line"><span class="script-time">07:30</span>Flashback: the broadcast. Robots freeze.</div>
+    <div class="script-line"><span class="script-time">09:00</span>Back to club. Decision. She takes the mic.</div>
+    <div style="margin-top:12px">
+      <div class="lab">BPM indicators</div>
+      <div class="desc">
+        <span class="bpm-dot" style="background:#5DCAA5"></span>Audio BPM: 124 (Punch track)<br>
+        <span class="bpm-dot" style="background:#85B7EB"></span>Visual BPM: 96 (scene cuts)<br>
+        <span class="bpm-dot" style="background:#fff;border:1px solid #888"></span>Script BPM: 108 (events/page)
+      </div>
+    </div>
+  </div>
+  <div id="panel-dag" style="display:none">
+    <div class="lab">DAG project <span class="tag">material tree</span></div>
+    <div style="margin:4px 0">
+      <div class="node-box linked">Anna (character)</div>
+      <div class="node-box linked">Max (character)</div>
+      <div class="node-box">Robot-7 (character)</div>
+    </div>
+    <div style="margin:4px 0">
+      <div class="node-box linked">Berlin wall ext</div>
+      <div class="node-box linked">Underground club</div>
+      <div class="node-box">Rooftop</div>
+    </div>
+    <div style="margin:4px 0">
+      <div class="node-box">Take 1 (wide)</div>
+      <div class="node-box linked">Take 2 (close-up)</div>
+      <div class="node-box">Take 3 (handheld)</div>
+    </div>
+    <div style="margin:4px 0">
+      <div class="node-box linked">Punch.mp3</div>
+      <div class="node-box">Ambient rain.wav</div>
+    </div>
+    <div class="desc" style="margin-top:8px"><span class="hl">Blue = linked</span> to active script line</div>
+  </div>
+</div>
+
+<div class="p" style="position:relative">
+  <div class="lab">Program monitor <span class="tag">result</span></div>
+  <div class="monitor">01:00 — Anna walks in rain</div>
+  <div class="float-panel">Story Space<br>vectorscope</div>
+</div>
+
+<div class="p">
+  <div class="lab">Source monitor <span class="tag">raw material</span></div>
+  <div class="monitor" style="margin-bottom:8px">Take 2 close-up — Berlin wall</div>
+  <div class="lab">Inspector</div>
+  <div class="desc">
+    Camelot: <span class="hl">8A (Bbm)</span><br>
+    Scale: <span class="hl">Aeolian</span><br>
+    Pendulum: <span class="hl">-0.7</span><br>
+    Dramatic: <span class="hl">Grief / loneliness</span><br>
+    Energy: <span class="hl">low, building</span>
+  </div>
+</div>
+
+<div class="p" style="grid-column:1/4">
+  <div class="lab">Timeline <span class="tag">X = time, classic NLE</span></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+    <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-primary)">00:00</span>
+    <div style="flex:1;height:1px;background:var(--color-border-tertiary);position:relative">
+      <div style="position:absolute;left:0%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:12%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:25%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:37%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:50%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:62%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:75%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+      <div style="position:absolute;left:87%;top:-3px;width:1px;height:7px;background:var(--color-text-tertiary)"></div>
+    </div>
+    <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-text-tertiary)">09:00</span>
+  </div>
+
+  <div class="tl-row">
+    <span class="tl-label" style="color:#85B7EB">V1</span>
+    <div class="tl-track" style="background:var(--color-background-secondary)">
+      <div class="tl-clip" style="left:0%;width:15%;background:rgba(133,183,235,0.3);border:0.5px solid rgba(133,183,235,0.5)"></div>
+      <div class="tl-clip" style="left:18%;width:20%;background:rgba(133,183,235,0.3);border:0.5px solid rgba(133,183,235,0.5)"></div>
+      <div class="tl-clip" style="left:42%;width:12%;background:rgba(133,183,235,0.3);border:0.5px solid rgba(133,183,235,0.5)"></div>
+      <div class="tl-clip" style="left:58%;width:25%;background:rgba(133,183,235,0.3);border:0.5px solid rgba(133,183,235,0.5)"></div>
+    </div>
+  </div>
+
+  <div class="tl-row">
+    <span class="tl-label" style="color:#5DCAA5">A1</span>
+    <div class="tl-track" style="background:var(--color-background-secondary)">
+      <div class="tl-clip" style="left:0%;width:85%;background:rgba(93,202,165,0.2);border:0.5px solid rgba(93,202,165,0.4)"></div>
+    </div>
+  </div>
+
+  <div class="tl-row">
+    <span class="tl-label" style="color:#5DCAA5">A2</span>
+    <div class="tl-track" style="background:var(--color-background-secondary)">
+      <div class="tl-clip" style="left:0%;width:30%;background:rgba(93,202,165,0.15);border:0.5px solid rgba(93,202,165,0.3)"></div>
+      <div class="tl-clip" style="left:55%;width:28%;background:rgba(93,202,165,0.15);border:0.5px solid rgba(93,202,165,0.3)"></div>
+    </div>
+  </div>
+
+  <div class="tl-row">
+    <span class="tl-label" style="color:#EF9F27;font-size:9px">BPM</span>
+    <div class="tl-track" style="background:transparent;height:8px">
+      <div style="position:absolute;left:12%;top:2px;width:4px;height:4px;border-radius:50%;background:#5DCAA5" title="audio beat"></div>
+      <div style="position:absolute;left:15%;top:2px;width:4px;height:4px;border-radius:50%;background:#85B7EB" title="visual cut"></div>
+      <div style="position:absolute;left:25%;top:1px;width:5px;height:5px;border-radius:50%;background:#EF9F27" title="all 3 sync = strong beat"></div>
+      <div style="position:absolute;left:37%;top:2px;width:4px;height:4px;border-radius:50%;background:#5DCAA5"></div>
+      <div style="position:absolute;left:42%;top:2px;width:4px;height:4px;border-radius:50%;background:#85B7EB"></div>
+      <div style="position:absolute;left:50%;top:1px;width:5px;height:5px;border-radius:50%;background:#EF9F27" title="sync"></div>
+      <div style="position:absolute;left:58%;top:2px;width:4px;height:4px;border-radius:50%;background:#fff;border:1px solid #888" title="script event"></div>
+      <div style="position:absolute;left:62%;top:2px;width:4px;height:4px;border-radius:50%;background:#5DCAA5"></div>
+      <div style="position:absolute;left:75%;top:1px;width:5px;height:5px;border-radius:50%;background:#EF9F27" title="sync"></div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-top:4px;font-size:10px;color:var(--color-text-tertiary)">
+    <span><span class="bpm-dot" style="background:#5DCAA5"></span>Audio beat</span>
+    <span><span class="bpm-dot" style="background:#85B7EB"></span>Visual cut</span>
+    <span><span class="bpm-dot" style="background:#fff;border:1px solid #888"></span>Script event</span>
+    <span><span class="bpm-dot" style="background:#EF9F27"></span>All sync (strong beat)</span>
+  </div>
+</div>
+
+</div>
+
+<script>
+function showPanel(which){
+  document.getElementById('panel-script').style.display=which==='script'?'block':'none';
+  document.getElementById('panel-dag').style.display=which==='dag'?'block':'none';
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  event.target.classList.add('on');
+}
+</script>
