@@ -1098,6 +1098,21 @@ Respond with implementation plan or code."""
 
         logger.info(f"[VerifierMerge] Committed {len(valid_files)} files: {commit_hash[:8] if commit_hash else '?'}")
 
+        # MARKER_183.2: Extract and store learnings after successful merge
+        try:
+            from src.orchestration.resource_learnings import extract_and_store_learnings
+            learning_ids = await extract_and_store_learnings(
+                run_id=run_id,
+                task_id=task_id,
+                session_id=session_id,
+                files_committed=valid_files,
+                task_title=msg[:80],
+            )
+            logger.info(f"[VerifierMerge] Stored {len(learning_ids)} learnings")
+        except Exception as e:
+            logger.debug(f"[VerifierMerge] Learnings extraction skipped: {e}")
+        # MARKER_183.2_END
+
         return {
             "success": True,
             "commit_hash": commit_hash,
@@ -3639,6 +3654,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if feedback_context:
             user_content += f"\n\n{feedback_context[:600]}"
         # MARKER_135.FB_LOOP_B_END
+        # MARKER_183.2: Inject past learnings from Qdrant for informed planning
+        try:
+            from src.orchestration.resource_learnings import get_learnings_for_architect
+            import asyncio
+            learnings_ctx = await get_learnings_for_architect(task, limit=3)
+            if learnings_ctx:
+                user_content += f"\n\n{learnings_ctx}"
+        except Exception as e:
+            logger.debug(f"[Pipeline] Learnings injection skipped: {e}")
+        # MARKER_183.2_END
         # MARKER_152.12B: Inject pinned files so Architect knows user focus areas
         pinned_ctx = getattr(self, '_pinned_context', '')
         if pinned_ctx:
