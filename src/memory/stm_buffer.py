@@ -242,6 +242,16 @@ class STMBuffer:
         self._apply_decay()
         return list(self._buffer)
 
+    def get_entries_for_session(self, session_id: str) -> List[STMEntry]:
+        """Get all entries with a specific session_id in metadata.
+
+        MARKER_183.3: Enables querying STM by pipeline session.
+        """
+        return [
+            e for e in self._buffer
+            if e.metadata and e.metadata.get("session_id") == session_id
+        ]
+
     def clear(self) -> None:
         """Clear all entries from buffer."""
         self._buffer.clear()

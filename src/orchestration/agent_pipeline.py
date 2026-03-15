@@ -2181,7 +2181,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 f"{len(self.stm)} subtasks [{', '.join(markers)}]. "
                 f"{'; '.join(previews)}"
             )[:500]
-            stm.add_message(summary, source="pipeline")
+            # MARKER_183.3: Include session_id + run_id in STM metadata
+            stm.add_message(summary, source="pipeline", metadata={
+                "session_id": getattr(self, '_session_id', None),
+                "run_id": getattr(self, '_run_id', None),
+                "task_id": task_id,
+                "phase_type": phase_type,
+            })
             logger.info(f"[Pipeline] Bridged STM summary to global STMBuffer ({len(summary)} chars)")
         except Exception as e:
             logger.warning(f"[Pipeline] STM bridge failed (non-fatal): {e}")

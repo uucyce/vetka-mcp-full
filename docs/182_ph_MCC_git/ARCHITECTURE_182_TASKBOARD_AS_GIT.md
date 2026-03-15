@@ -564,6 +564,120 @@ Query capability: "Get all actions in session_xxx"
 
 ---
 
+## Eval Delta — Numeric Quality Gate (Phase 183.5)
+
+**Inspiration:** Karpathy's autoresearch uses `eval_score_delta` to decide whether an autonomous run improved the project. VETKA needs the same: a numeric **"did it get better?"** signal after each pipeline run.
+
+### Concept
+
+After each Verifier merge, compute `eval_delta` — a composite score measuring the net impact of the run:
+
+```python
+EvalDelta = {
+    "run_id": str,
+    "task_id": str,
+    "session_id": str,
+    "timestamp": ISO8601,
+
+    # Core metrics
+    "tests_delta": int,           # Tests passed after − before (e.g., +3, −1)
+    "tests_total": int,           # Total tests after merge
+    "lines_delta": int,           # Lines of code ± (net)
+    "files_changed": int,         # Number of files touched
+
+    # Quality signals
+    "verifier_confidence": float, # 0.0–1.0 from Verifier
+    "lint_issues_delta": int,     # Lint warnings ± (negative = improved)
+    "type_errors_delta": int,     # Type errors ± (negative = improved)
+
+    # Timing
+    "pipeline_duration_s": float, # How long the pipeline took
+    "retries": int,               # Number of Verifier retries needed
+
+    # Composite score (weighted)
+    "eval_score": float,          # 0.0–1.0 composite
+    "eval_verdict": str,          # "improved" | "neutral" | "regressed"
+}
+```
+
+### Composite Score Formula
+
+```python
+def compute_eval_score(delta: EvalDelta) -> float:
+    """Weighted composite: higher = better run."""
+    score = 0.5  # baseline = neutral
+
+    # Tests: biggest weight (±0.3)
+    if delta["tests_delta"] > 0:
+        score += min(0.3, delta["tests_delta"] * 0.05)
+    elif delta["tests_delta"] < 0:
+        score -= min(0.3, abs(delta["tests_delta"]) * 0.1)  # penalty heavier
+
+    # Verifier confidence (±0.2)
+    score += (delta["verifier_confidence"] - 0.75) * 0.8  # 0.75 = threshold
+
+    # Retries penalty (−0.1 max)
+    score -= min(0.1, delta["retries"] * 0.03)
+
+    # Lint/type improvements (±0.1)
+    if delta["lint_issues_delta"] < 0:
+        score += 0.05
+    if delta["type_errors_delta"] < 0:
+        score += 0.05
+
+    return max(0.0, min(1.0, score))
+```
+
+### Verdict Thresholds
+
+| Score | Verdict | Action |
+|-------|---------|--------|
+| ≥ 0.65 | `improved` | Auto-continue to next task in session |
+| 0.35–0.65 | `neutral` | Continue but flag for user review |
+| < 0.35 | `regressed` | **HALT** autonomous pipeline, notify user |
+
+### Integration Points
+
+1. **After Verifier merge** (`verify_and_merge()` in `agent_pipeline.py`):
+   - Run `pytest --tb=no -q` before and after → `tests_delta`
+   - Compute `eval_delta` → store in task result
+   - Store in Qdrant (collection `VetkaEvalDeltas`) for trend analysis
+
+2. **Autonomous continuation gate** (`dispatch_next()` in `task_board.py`):
+   - If `eval_verdict == "regressed"` → do NOT auto-dispatch next task
+   - Emit `pipeline:eval_halt` event to DevPanel
+   - User must explicitly approve continuation
+
+3. **Resource Learnings** (`extract_and_store_learnings()` in `resource_learnings.py`):
+   - Include `eval_score` in learning metadata
+   - Low-score runs generate "pitfall" learnings automatically
+   - High-score patterns fed back to Architect for future planning
+
+4. **Trend Dashboard** (`/api/analytics/eval-trend`):
+   - Time series of eval_scores per session/agent
+   - Detect: is agent X regressing over time? Flag for model swap
+
+### Storage
+
+```python
+# In pipeline_history.json, per run:
+{
+    "run_id": "run_...",
+    "eval_delta": { ... },  # Full EvalDelta object
+    "eval_score": 0.72,     # Quick access
+    "eval_verdict": "improved"
+}
+
+# In Qdrant: collection VetkaEvalDeltas (vector = task description embedding)
+# Enables: "find runs similar to this task that regressed" → avoid pitfalls
+```
+
+### Why This Matters
+
+Without eval_delta, autonomous pipelines are **blind** — they execute tasks sequentially without knowing if each step improved or worsened the project. eval_delta is the **gate** that prevents runaway regressions in autonomous mode (multiple @dragon tasks in a session).
+
+---
+
 ## References
 
 - Phase 182 Memory: `/Users/danilagulin/.claude/projects/.../memory/phase182_taskboard_as_git.md`
