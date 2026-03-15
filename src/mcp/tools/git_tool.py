@@ -19,7 +19,23 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from .base_tool import BaseMCPTool
 
-PROJECT_ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
+# MARKER_178.FIX_HARDCODE: Resolve PROJECT_ROOT dynamically (worktree-safe)
+def _resolve_git_root() -> Path:
+    """Resolve to git toplevel, works in both main repo and worktrees."""
+    fallback = Path(__file__).resolve().parents[3]  # src/mcp/tools/ → 3 levels up
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(fallback),
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            return Path(result.stdout.strip())
+    except Exception:
+        pass
+    return fallback
+
+PROJECT_ROOT = _resolve_git_root()
 DIGEST_PATH = PROJECT_ROOT / "data" / "project_digest.json"
 
 
@@ -188,7 +204,12 @@ class GitCommitTool(BaseMCPTool):
                         timeout=10
                     )
                     if result.returncode != 0:
-                        return {"success": False, "error": f"Failed to stage {f}: {result.stderr}", "result": None}
+                        # MARKER_178.FIX: Skip files that no longer exist
+                        # (already committed in previous attempt, or deleted)
+                        stderr = result.stderr or ""
+                        if "did not match any files" in stderr or "pathspec" in stderr:
+                            continue  # Not fatal — proceed with next file
+                        return {"success": False, "error": f"Failed to stage {f}: {stderr}", "result": None}
             else:
                 result = subprocess.run(
                     ["git", "add", "-A"],

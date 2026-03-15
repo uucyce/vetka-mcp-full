@@ -213,11 +213,18 @@ def reflex_verifier(
     verifier_passed: bool,
     phase_type: str = "research",
     agent_role: str = "coder",
+    # MARKER_182.REFLEX: Enhanced params for run/session tracking
+    run_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    verifier_confidence: float = 0.0,
 ) -> int:
     """MARKER_172.P4.IP5 — Close feedback loop after verification.
 
     Called by agent_pipeline after verifier returns.
     Links verifier outcome to all tools used in the subtask.
+
+    MARKER_182.REFLEX: Enhanced with run_id/session_id tracking.
+    When ActionRegistry is available, also logs tool→action mappings.
 
     Returns:
         Number of feedback entries recorded.
@@ -239,8 +246,30 @@ def reflex_verifier(
 
         if count > 0:
             status = "PASS" if verifier_passed else "FAIL"
-            logger.info("[REFLEX IP-5] Verifier %s → %d tools feedback for %s",
-                        status, count, subtask_id)
+            logger.info("[REFLEX IP-5] Verifier %s → %d tools feedback for %s (run=%s, conf=%.2f)",
+                        status, count, subtask_id, run_id or "?", verifier_confidence)
+
+        # MARKER_182.REFLEX: Log to ActionRegistry if run_id provided
+        if run_id:
+            try:
+                from src.orchestration.action_registry import ActionRegistry
+                registry = ActionRegistry()
+                registry.log_action(
+                    run_id=run_id,
+                    agent="reflex",
+                    action="feedback",
+                    file=f"IP-5/{subtask_id}",
+                    result="success" if verifier_passed else "failed",
+                    session_id=session_id,
+                    metadata={
+                        "tools_used": tools_used[:20],
+                        "verifier_confidence": verifier_confidence,
+                        "feedback_count": count,
+                    },
+                )
+            except Exception:
+                pass  # Non-fatal
+
         return count
 
     except Exception as e:

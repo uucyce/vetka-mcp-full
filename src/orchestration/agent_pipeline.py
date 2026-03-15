@@ -213,6 +213,12 @@ class AgentPipeline:
         self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
         # MARKER_152.4: Timeline events for pipeline drill-down visualization
         self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
+        # MARKER_182.RUNID: Unique run ID per pipeline execution (set in execute())
+        self._run_id: Optional[str] = None
+        # MARKER_182.SESSIONID: Session ID linking related tasks (passed from heartbeat)
+        self._session_id: Optional[str] = None
+        # MARKER_182.3: ActionRegistry for logging all agent actions
+        self._action_registry = None  # Lazy init in execute()
         # MARKER_172.P4.FC_EXECS: Last FC tool executions for REFLEX feedback
         self._last_fc_tool_executions: List[Dict] = []
         # MARKER_172.P5.OBSERVE + MARKER_173.P1: REFLEX observability counters
@@ -980,6 +986,126 @@ Respond with implementation plan or code."""
             return default_pass
     # MARKER_122.2_END
 
+    # MARKER_182.VERIFIER_MERGE: Merge all actions from a run into a single git commit
+    @staticmethod
+    async def verify_and_merge(
+        run_id: str,
+        task_id: str,
+        session_id: Optional[str] = None,
+        commit_message: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Verifier role: merge all agent actions into one clean git commit.
+
+        Called AFTER user approval of task result + closure tests passed.
+        Reads ActionRegistry for the run, collects edited files, commits.
+
+        Returns:
+            {"success": bool, "commit_hash": str, "files_committed": list, "error": str}
+        """
+        import subprocess
+
+        try:
+            from src.orchestration.action_registry import ActionRegistry
+            registry = ActionRegistry()
+        except Exception as e:
+            return {"success": False, "error": f"ActionRegistry unavailable: {e}"}
+
+        # 1. Get all edit/create actions for this run
+        edited_files = registry.get_edit_files_for_run(run_id)
+        if not edited_files:
+            # Check: maybe actions weren't logged (backward compat)
+            return {"success": True, "commit_hash": None,
+                    "files_committed": [], "note": "No tracked edits for this run"}
+
+        # 2. Verify files exist on disk
+        from pathlib import Path
+        project_root = Path(__file__).resolve().parents[2]
+        try:
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                cwd=str(project_root), capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                project_root = Path(result.stdout.strip())
+        except Exception:
+            pass
+
+        valid_files = []
+        for f in edited_files:
+            fpath = project_root / f if not Path(f).is_absolute() else Path(f)
+            if fpath.exists():
+                valid_files.append(f)
+            else:
+                logger.warning(f"[VerifierMerge] File not found (skipping): {f}")
+
+        if not valid_files:
+            return {"success": True, "commit_hash": None,
+                    "files_committed": [], "note": "All tracked files already committed or missing"}
+
+        # 3. Prepare commit message
+        msg = commit_message or f"phase182: task {task_id} completed [run:{run_id}]"
+        if f"[task:{task_id}]" not in msg and f"[run:{run_id}]" not in msg:
+            msg += f" [task:{task_id}]"
+
+        # 4. MARKER_182.GITPREP: Stage files
+        for f in valid_files:
+            stage_result = subprocess.run(
+                ["git", "add", f],
+                cwd=str(project_root), capture_output=True, text=True, timeout=10
+            )
+            if stage_result.returncode != 0:
+                stderr = stage_result.stderr or ""
+                # MARKER_178.FIX: Skip already-committed files
+                if "did not match any files" in stderr or "pathspec" in stderr:
+                    continue
+                return {"success": False, "error": f"Failed to stage {f}: {stderr}"}
+
+        # 5. MARKER_182.GITCOMMIT: One clean commit
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", msg],
+            cwd=str(project_root), capture_output=True, text=True, timeout=30
+        )
+
+        if commit_result.returncode != 0:
+            stderr = commit_result.stderr or ""
+            if "nothing to commit" in stderr.lower() or "nothing to commit" in (commit_result.stdout or "").lower():
+                return {"success": True, "commit_hash": None,
+                        "files_committed": valid_files, "note": "Nothing to commit (already up to date)"}
+            return {"success": False, "error": f"Git commit failed: {stderr}"}
+
+        # 6. Get commit hash
+        hash_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=str(project_root), capture_output=True, text=True, timeout=5
+        )
+        commit_hash = hash_result.stdout.strip() if hash_result.returncode == 0 else None
+
+        # 7. Log merge action to ActionRegistry
+        registry.log_action(
+            run_id=run_id,
+            agent="verifier",
+            action="commit",
+            file=msg[:200],
+            result="success",
+            session_id=session_id,
+            task_id=task_id,
+            metadata={
+                "commit_hash": commit_hash,
+                "files_committed": valid_files,
+            },
+        )
+        registry.flush()
+
+        logger.info(f"[VerifierMerge] Committed {len(valid_files)} files: {commit_hash[:8] if commit_hash else '?'}")
+
+        return {
+            "success": True,
+            "commit_hash": commit_hash,
+            "commit_message": msg,
+            "files_committed": valid_files,
+            "run_id": run_id,
+        }
+
     # MARKER_122.3_START: Retry coder with verifier feedback
     # MARKER_149.RETRY_FIX: Save first attempt + inject into retry context
     async def _retry_coder(self, subtask, verifier_result: Dict, phase_type: str,
@@ -1205,6 +1331,22 @@ Respond with implementation plan or code."""
             "duration_s": round(duration_s, 2),
             "subtask_idx": subtask_idx,
         })
+
+        # MARKER_182.3: Log timeline events to ActionRegistry
+        if self._action_registry and self._run_id:
+            try:
+                self._action_registry.log_action(
+                    run_id=self._run_id,
+                    agent=role,
+                    action=event,
+                    file=detail[:200] if detail else f"{role}/{event}",
+                    result="success" if event not in ("fail", "verify_fail") else "failed",
+                    session_id=self._session_id,
+                    duration_ms=int(duration_s * 1000),
+                    metadata={"subtask_idx": subtask_idx, "source": "timeline"},
+                )
+            except Exception:
+                pass  # Non-fatal
 
     # MARKER_152.12: Fetch pinned files context for pipeline injection
     async def _fetch_pinned_context(self) -> str:
@@ -2323,6 +2465,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """
         # Create task
         task_id = f"task_{int(time.time())}"
+
+        # MARKER_182.RUNID: Generate unique run_id for this execution
+        import secrets as _secrets
+        run_ts = int(time.time() * 1000)
+        run_suffix = _secrets.token_hex(4)
+        self._run_id = f"run_{run_ts}_{task_id[-8:]}_{run_suffix}"
+
+        # MARKER_182.3: Initialize ActionRegistry for this run
+        try:
+            from src.orchestration.action_registry import ActionRegistry
+            self._action_registry = ActionRegistry()
+        except Exception as _ar_err:
+            logger.warning(f"[Pipeline] ActionRegistry init failed (non-fatal): {_ar_err}")
+            self._action_registry = None
+
         pipeline_task = PipelineTask(
             task_id=task_id,
             task=task,
@@ -2722,7 +2879,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_135.FB_LOOP_C_END
 
                 final_report = {
-                    "run_id": task_id,
+                    "run_id": self._run_id or task_id,
+                    "session_id": self._session_id,  # MARKER_182.SESSIONID
                     "task": task[:200],
                     "summary": f"Completed {completed}/{total} subtasks",
                     "quality_score": quality if quality else pipeline_stats.get("verifier_avg_confidence", 0),
@@ -2737,12 +2895,21 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "subtasks_completed": completed,
                     "retries": retries_total,
                     "tier_upgrades": tier_up,
+                    "timeline_events": self._timeline_events,  # MARKER_182.5: Persist timeline
                 }
                 save_report(final_report)
                 logger.info(f"[Feedback] Final report saved: {task_id}")
             except Exception as fb_err:
                 logger.error(f"[Feedback] Final report save failed: {fb_err}")
             # MARKER_134.FEEDBACK_B_END
+
+            # MARKER_182.3: Flush ActionRegistry at end of pipeline
+            if self._action_registry:
+                try:
+                    flushed = self._action_registry.flush()
+                    logger.info(f"[ActionRegistry] Flushed {flushed} actions for run {self._run_id}")
+                except Exception as ar_err:
+                    logger.warning(f"[ActionRegistry] Flush failed (non-fatal): {ar_err}")
 
             # MARKER_117.5A: Event-driven wakeup after pipeline completion
             # Cursor insight: "Planners should wake when tasks complete"

@@ -26,8 +26,56 @@ import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Add project root to path
-PROJECT_ROOT = Path(__file__).parent.parent
+# MARKER_178.FIX_WORKTREE: Detect worktree and resolve to main repo for digest
+def _resolve_project_root() -> Path:
+    """Resolve PROJECT_ROOT to main repo even when running in a worktree.
+
+    In a git worktree, __file__ is under .claude/worktrees/<name>/scripts/,
+    but project_digest.json lives in the main repo's data/ directory.
+    We use `git rev-parse --show-toplevel` to get the actual repo root,
+    then check commondir to find the main repo if we're in a worktree.
+    """
+    script_root = Path(__file__).parent.parent
+
+    try:
+        # Get the toplevel of wherever we are (worktree or main)
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=str(script_root),
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode == 0:
+            toplevel = Path(result.stdout.strip())
+
+            # Check if this is a worktree by looking at .git file (not dir)
+            git_path = toplevel / ".git"
+            if git_path.is_file():
+                # .git is a file pointing to main repo — read commondir
+                commondir_result = subprocess.run(
+                    ["git", "rev-parse", "--git-common-dir"],
+                    cwd=str(toplevel),
+                    capture_output=True, text=True, timeout=5
+                )
+                if commondir_result.returncode == 0:
+                    common_git = Path(commondir_result.stdout.strip())
+                    if not common_git.is_absolute():
+                        common_git = (toplevel / common_git).resolve()
+                    # Main repo root = parent of .git directory
+                    main_root = common_git.parent
+                    if (main_root / "data").exists():
+                        return main_root
+
+            # Not a worktree, or worktree detection failed — use toplevel
+            if (toplevel / "data").exists():
+                return toplevel
+    except Exception:
+        pass
+
+    # Fallback: script-relative path
+    return script_root
+
+
+PROJECT_ROOT = _resolve_project_root()
 sys.path.insert(0, str(PROJECT_ROOT))
 
 DIGEST_PATH = PROJECT_ROOT / "data" / "project_digest.json"

@@ -49,11 +49,17 @@ def append_run(
     files_created: list = None,
     subtasks_completed: int = 0,
     subtasks_total: int = 0,
+    # MARKER_182.5: New fields for timeline persistence + run tracking
+    run_id: Optional[str] = None,
+    session_id: Optional[str] = None,
+    timeline_events: list = None,
 ):
     """Append a pipeline run record to history."""
     history = _load_history()
     record = {
-        "run_id": f"run_{int(time.time())}_{task_id[-8:]}",
+        # MARKER_182.RUNID: Use provided run_id or generate one
+        "run_id": run_id or f"run_{int(time.time())}_{task_id[-8:]}",
+        "session_id": session_id,  # MARKER_182.SESSIONID
         "task_id": task_id,
         "task_title": task_title[:200],
         "preset": preset,
@@ -68,6 +74,8 @@ def append_run(
         "tokens_in": tokens_in,
         "tokens_out": tokens_out,
         "files_created": (files_created or [])[:20],
+        # MARKER_182.5: Persist timeline events from pipeline
+        "timeline_events": (timeline_events or [])[:200],  # Cap at 200 events
         "timestamp": time.time(),
         "timestamp_human": time.strftime("%Y-%m-%d %H:%M:%S"),
     }
@@ -114,6 +122,41 @@ async def get_pipeline_history(
             "total_llm_calls": sum(r.get("llm_calls", 0) for r in history),
         },
         "runs": history,
+    }
+
+
+# MARKER_182.TIMELINE_API: Get timeline events for a specific run
+@router.get("/history/{run_id}/timeline")
+async def get_run_timeline(
+    run_id: str,
+    role: Optional[str] = Query(None, description="Filter by role: architect, scout, coder, verifier"),
+):
+    """Get timeline events for a specific pipeline run."""
+    history = _load_history()
+
+    # Find run by run_id
+    run = None
+    for r in history:
+        if r.get("run_id") == run_id:
+            run = r
+            break
+
+    if not run:
+        return {"success": False, "error": f"Run {run_id} not found"}
+
+    events = run.get("timeline_events", [])
+
+    # Filter by role if specified
+    if role:
+        events = [e for e in events if e.get("role") == role]
+
+    return {
+        "success": True,
+        "run_id": run_id,
+        "task_id": run.get("task_id"),
+        "session_id": run.get("session_id"),
+        "total_events": len(events),
+        "timeline_events": events,
     }
 
 

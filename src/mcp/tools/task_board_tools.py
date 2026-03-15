@@ -211,7 +211,37 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             result = board.complete_task(task_id, commit_hash, commit_message)
             return result
 
-        # Case B/C: no commit yet — try auto-commit
+        # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
+        task_result = task.get("result") or {}
+        run_id = task_result.get("run_id") if isinstance(task_result, dict) else None
+        session_id = task_result.get("session_id") if isinstance(task_result, dict) else None
+
+        if run_id and run_id.startswith("run_"):
+            try:
+                import asyncio
+                from src.orchestration.agent_pipeline import AgentPipeline
+                merge_result = asyncio.get_event_loop().run_until_complete(
+                    AgentPipeline.verify_and_merge(
+                        run_id=run_id,
+                        task_id=task_id,
+                        session_id=session_id,
+                        commit_message=commit_message,
+                    )
+                )
+                if merge_result.get("success") and merge_result.get("commit_hash"):
+                    # Verifier merge succeeded — close task
+                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"))
+                    result["verifier_merge"] = merge_result
+                    return result
+                # If no commit_hash but success (nothing to commit) — fall through to legacy
+                if merge_result.get("success"):
+                    logger.info(f"[TaskBoard] Verifier merge: {merge_result.get('note', 'nothing to merge')}")
+                else:
+                    logger.warning(f"[TaskBoard] Verifier merge failed: {merge_result.get('error')}, falling back to legacy")
+            except Exception as vm_err:
+                logger.warning(f"[TaskBoard] Verifier merge exception (falling back): {vm_err}")
+
+        # Case B/C: no commit yet — try auto-commit (legacy path)
         auto = _try_auto_commit(task_id, task, commit_message)
 
         # If commit attempted but FAILED → do NOT close task
@@ -265,6 +295,31 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> di
     from pathlib import Path
 
     PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
+    # MARKER_178.FIX_INDEXLOCK: Clean stale index.lock before git operations
+    # After a failed commit, index.lock can remain and block all git operations
+    try:
+        git_dir_result = subprocess.run(
+            ["git", "rev-parse", "--git-dir"],
+            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+        )
+        if git_dir_result.returncode == 0:
+            git_dir = Path(git_dir_result.stdout.strip())
+            if not git_dir.is_absolute():
+                git_dir = PROJECT_ROOT / git_dir
+            lock_file = git_dir / "index.lock"
+            if lock_file.exists():
+                # Check if lock is stale (older than 60 seconds)
+                import time
+                lock_age = time.time() - lock_file.stat().st_mtime
+                if lock_age > 60:
+                    lock_file.unlink()
+                    logger.warning(f"[TaskBoard] Removed stale index.lock (age: {lock_age:.0f}s)")
+                else:
+                    return {"attempted": False, "success": False,
+                            "error": f"Git index.lock exists (age: {lock_age:.0f}s). Another git operation in progress."}
+    except Exception:
+        pass  # Non-fatal — proceed with commit attempt
 
     # 1. Check if there are changes to commit
     try:
