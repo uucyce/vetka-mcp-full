@@ -678,6 +678,117 @@ Without eval_delta, autonomous pipelines are **blind** — they execute tasks se
 
 ---
 
+## Worktree → Main Merge via TaskBoard (Phase 184.5)
+
+**Gap identified:** Agents (Opus, Codex) работают в git worktrees, коммитят на ветках, но merge в main идёт **мимо TaskBoard** (ручной cherry-pick/merge). Это противоречит принципу "TaskBoard = новый Git" — **все** изменения должны проходить через TaskBoard с верификацией.
+
+### Текущее состояние
+
+| Что есть | Где | Проблема |
+|----------|-----|----------|
+| `playground_manager.py` merge | `src/orchestration/playground_manager.py:630` | Только для playground worktrees, не для agent worktrees |
+| `verify_and_merge()` | `src/orchestration/agent_pipeline.py` | Только для pipeline results (ActionRegistry → git), не для branch merge |
+| TaskBoard `complete` | `src/orchestration/task_board.py` | Auto-commit на текущей ветке, не cross-branch merge |
+
+### Целевой flow: Worktree Merge через TaskBoard
+
+```
+Agent (Opus/Codex) работает в worktree на ветке claude/branch-name
+    ↓
+Коммитит изменения на ветке (обычный git commit)
+    ↓
+Создаёт/обновляет TaskBoard task с:
+    - branch_name: "claude/branch-name"
+    - merge_commits: ["abc1234", "def5678"]  # коммиты для merge
+    - merge_strategy: "cherry-pick" | "merge" | "squash"
+    - closure_tests: ["pytest tests/test_xxx.py"]
+    ↓
+vetka_task_board action=merge_request task_id=tb_xxx
+    ↓
+┌──────────────────────────────────────────────────┐
+│ VERIFICATION (same as pipeline results):          │
+│ 1. Run closure_tests on worktree branch           │
+│ 2. Check for conflicts with main                  │
+│ 3. Compute eval_delta (tests before/after)        │
+│ 4. Show VerificationChecklist to user (Phase 183) │
+│ 5. User approves → merge executes                 │
+│ 6. Auto-close task + ActionRegistry log           │
+└──────────────────────────────────────────────────┘
+```
+
+### Новый action: `merge_request`
+
+```python
+# In task_board.py — new action
+def merge_request(self, task_id: str) -> Dict[str, Any]:
+    """Request merge of worktree branch into main via verification flow.
+
+    MARKER_184.5: Worktree → main merge through TaskBoard.
+
+    Steps:
+    1. Validate task has branch_name + merge_commits
+    2. Run closure_tests on the branch
+    3. Check merge compatibility (git merge --no-commit --no-ff, then abort)
+    4. If clean: set status = "pending_user_approval"
+    5. On user approval: execute merge strategy
+    6. Log to ActionRegistry + auto-close task
+    """
+    task = self.tasks.get(task_id)
+    if not task:
+        return {"error": f"Task {task_id} not found"}
+
+    branch = task.get("branch_name")
+    strategy = task.get("merge_strategy", "cherry-pick")
+    commits = task.get("merge_commits", [])
+
+    if not branch:
+        return {"error": "Task has no branch_name — cannot merge"}
+
+    # ... verification + merge logic
+```
+
+### Новые поля в TaskCard
+
+```python
+# Added to ADDABLE_FIELDS in task_board.py:
+"branch_name",       # worktree branch name
+"merge_commits",     # list of commit hashes to merge
+"merge_strategy",    # "cherry-pick" | "merge" | "squash"
+"merge_result",      # after merge: {commit_hash, files_merged, conflicts}
+```
+
+### Интеграция с playground_manager.py
+
+`playground_manager.py` уже имеет 3 стратегии merge (copy, cherry-pick, merge). Вместо дублирования — **делегировать** merge execution в playground_manager, но **контроль** через TaskBoard:
+
+```python
+# In task_board.py merge_request():
+from src.orchestration.playground_manager import PlaygroundManager
+
+pm = PlaygroundManager()
+result = await pm.promote_to_main(
+    playground_id=None,  # not a playground, direct branch
+    branch_name=branch,
+    strategy=strategy,
+    files=task.get("closure_files"),
+)
+```
+
+### Почему это критично СЕЙЧАС
+
+Мы строим MCC (Phases 182-184) используя worktrees. Каждая сессия:
+1. Opus/Codex работает в worktree → коммитит на ветке
+2. Cherry-pick в main — **вручную, мимо TaskBoard**
+3. Нет верификации, нет eval_delta, нет audit trail
+
+Это "сапожник без сапог" — система координации агентов не координирует собственную сборку. `merge_request` закрывает этот гэп.
+
+### Приоритет
+
+**P1** — нужно до завершения Phase 184, иначе вся работа в worktrees идёт мимо системы которую мы строим.
+
+---
+
 ## References
 
 - Phase 182 Memory: `/Users/danilagulin/.claude/projects/.../memory/phase182_taskboard_as_git.md`

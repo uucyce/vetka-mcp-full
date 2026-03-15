@@ -403,6 +403,81 @@ Integration:
 
 ---
 
+## Phase 184.5: Worktree → Main Merge via TaskBoard (2-3 hours)
+
+**Goal:** Agent worktree branches merge into main through TaskBoard — with verification, eval_delta, and audit trail. Closes the "сапожник без сапог" gap.
+
+**Architecture:** `docs/182_ph_MCC_git/ARCHITECTURE_182_TASKBOARD_AS_GIT.md` (section "Worktree → Main Merge via TaskBoard")
+
+### Checklist
+
+#### Backend: TaskBoard merge_request action
+- [ ] **184.5.1 New fields in TaskCard**
+  - [ ] File: `src/orchestration/task_board.py`
+  - [ ] Add to ADDABLE_FIELDS: `branch_name`, `merge_commits`, `merge_strategy`, `merge_result`
+  - [ ] Validate: branch_name must exist in git
+  - [ ] Tests: Verify fields stored correctly
+
+- [ ] **184.5.2 TaskBoard.merge_request() method**
+  - [ ] File: `src/orchestration/task_board.py` (NEW method)
+  - [ ] MARKER_184.5: Accept task_id, validate branch_name + merge_commits
+  - [ ] Step 1: Run closure_tests on branch (reuse `_run_closure_tests()`)
+  - [ ] Step 2: Check merge compatibility (`git merge --no-commit --no-ff` + abort)
+  - [ ] Step 3: Set status = "pending_user_approval" if clean
+  - [ ] Step 4: On approval → delegate to playground_manager.promote_to_main()
+  - [ ] Step 5: Log merge to ActionRegistry
+  - [ ] Step 6: Auto-close task with merge commit hash
+  - [ ] Error: If conflicts → status = "merge_conflict", show conflicting files
+  - [ ] Tests: `test_phase184_worktree_merge.py` (8-10 tests)
+
+- [ ] **184.5.3 API endpoint for merge_request**
+  - [ ] File: `src/api/routes/task_routes.py` (NEW endpoint)
+  - [ ] `POST /tasks/{task_id}/merge-request`
+  - [ ] Triggers TaskBoard.merge_request()
+  - [ ] Returns: merge status, conflicts (if any), verification checklist data
+  - [ ] Tests: Verify endpoint returns correct data
+
+- [ ] **184.5.4 MCP tool: vetka_task_board action=merge_request**
+  - [ ] File: MCP VETKA handler for task_board
+  - [ ] New action: `merge_request` → calls TaskBoard.merge_request()
+  - [ ] Agents can call: `vetka_task_board action=merge_request task_id=tb_xxx`
+  - [ ] Tests: Verify MCP tool works
+
+#### Integration with existing systems
+- [ ] **184.5.5 playground_manager.py: Accept non-playground branches**
+  - [ ] File: `src/orchestration/playground_manager.py` (modify promote_to_main)
+  - [ ] Currently requires playground_id — make branch_name sufficient
+  - [ ] Reuse existing cherry-pick/merge/squash strategies
+  - [ ] Tests: Verify non-playground branch merge works
+
+- [ ] **184.5.6 eval_delta integration**
+  - [ ] Run pytest before merge, run pytest after merge → compute tests_delta
+  - [ ] Store eval_delta in merge_result
+  - [ ] If regressed → halt, don't auto-close
+
+### Summary: Phase 184.5
+```
+Backend:
+  ☐ TaskCard accepts branch_name, merge_commits, merge_strategy
+  ☐ TaskBoard.merge_request() method implemented
+  ☐ POST /tasks/{id}/merge-request endpoint
+  ☐ MCP tool: vetka_task_board action=merge_request
+  ☐ playground_manager accepts non-playground branches
+  ☐ eval_delta computed on merge
+
+Tests:
+  ☐ test_phase184_worktree_merge.py (10+ tests)
+  ☐ Full flow: agent commit on branch → merge_request → verify → merge → auto-close
+
+Integration:
+  ☐ Opus/Codex can merge worktree via TaskBoard
+  ☐ Verification checklist shown before merge
+  ☐ ActionRegistry logs merge action
+  ☐ No more manual cherry-pick
+```
+
+---
+
 ## Workflow Order (User-Facing)
 
 This is the intended user experience after all 3 phases:
