@@ -45,7 +45,8 @@ PRIORITY_SOMEDAY = 5
 # Valid statuses
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
 # MARKER_130.C16A: Added "claimed" status for multi-agent support
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold"}
+# MARKER_183.10: Added "pending_user_approval" — verification gate before merge
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold", "pending_user_approval"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
