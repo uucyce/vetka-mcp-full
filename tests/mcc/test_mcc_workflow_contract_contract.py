@@ -128,7 +128,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
             source="test_fixture",
         ),
     }
-    monkeypatch.setattr("src.elisya.llm_model_registry.get_llm_registry", lambda: _FakeLLMRegistry(profiles))
+    monkeypatch.setattr(
+        "src.elisya.llm_model_registry.get_llm_registry",
+        lambda: _FakeLLMRegistry(profiles),
+    )
 
     fake_models = {
         model_id: SimpleNamespace(
@@ -151,7 +154,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     }
     monkeypatch.setattr(
         "src.services.model_registry.get_model_registry",
-        lambda: SimpleNamespace(_models=fake_models, _detect_capabilities=lambda model_id: []),
+        lambda: SimpleNamespace(
+            _models=fake_models, _detect_capabilities=lambda model_id: []
+        ),
     )
 
     app = FastAPI()
@@ -159,7 +164,9 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     return TestClient(app)
 
 
-def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_policy(client: TestClient) -> None:
+def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_policy(
+    client: TestClient,
+) -> None:
     resp = client.get("/api/mcc/workflow-contract/g3_localguys")
     assert resp.status_code == 200
     data = resp.json()
@@ -169,7 +176,14 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
     contract = data["contract"]
     assert contract["workflow_family"] == "g3_localguys"
     assert contract["roles"] == ["coder", "verifier"]
-    assert contract["steps"] == ["recon", "plan", "execute", "verify", "review", "finalize"]
+    assert contract["steps"] == [
+        "recon",
+        "plan",
+        "execute",
+        "verify",
+        "review",
+        "finalize",
+    ]
     assert contract["execution_mode"] == "staged_state_machine"
     assert contract["sandbox_policy"]["mode"] == "playground_only"
     assert contract["write_opt_ins"] == {
@@ -183,9 +197,23 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
     assert contract["max_turns"] == 13
     assert "playground" in contract["idle_nudge_template"].lower()
     assert contract["operator_method"]["method"] == "g3"
-    assert contract["operator_method"]["command_template"] == "localguys run g3 --task {task_id}"
-    assert contract["stage_tool_policy"]["recon"] == ["context", "search", "artifacts", "stats"]
-    assert contract["stage_tool_policy"]["verify"] == ["context", "tests", "artifacts", "git_diff", "stats"]
+    assert (
+        contract["operator_method"]["command_template"]
+        == "localguys run g3 --task {task_id}"
+    )
+    assert contract["stage_tool_policy"]["recon"] == [
+        "context",
+        "search",
+        "artifacts",
+        "stats",
+    ]
+    assert contract["stage_tool_policy"]["verify"] == [
+        "context",
+        "tests",
+        "artifacts",
+        "git_diff",
+        "stats",
+    ]
 
     coder_models = contract["model_policy"]["coder"]["preferred_models"]
     assert [row["model_id"] for row in coder_models] == ["qwen3:8b", "qwen2.5:7b"]
@@ -215,7 +243,9 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
     assert catalog["phi4-mini:latest"]["prompt_style"] == "router_tiny_v1"
 
 
-def test_task_workflow_contract_resolution_uses_task_binding(client: TestClient) -> None:
+def test_task_workflow_contract_resolution_uses_task_binding(
+    client: TestClient,
+) -> None:
     resp = client.get("/api/mcc/tasks/tb_local_1/workflow-contract")
     assert resp.status_code == 200
     data = resp.json()
@@ -235,7 +265,9 @@ def test_task_workflow_contract_resolution_uses_task_binding(client: TestClient)
     ]
 
 
-def test_workflow_contract_fetch_returns_patchchain_localguys_playbook_contract(client: TestClient) -> None:
+def test_workflow_contract_fetch_returns_patchchain_localguys_playbook_contract(
+    client: TestClient,
+) -> None:
     resp = client.get("/api/mcc/workflow-contract/patchchain_localguys")
     assert resp.status_code == 200
     data = resp.json()
@@ -265,7 +297,12 @@ def test_workflow_contract_fetch_returns_patchchain_localguys_playbook_contract(
         "idle_nudge_loop": True,
     }
     assert contract["stage_tool_policy"]["recon"] == ["context", "artifacts"]
-    assert contract["stage_tool_policy"]["verify"] == ["context", "tests", "artifacts", "git_diff"]
+    assert contract["stage_tool_policy"]["verify"] == [
+        "context",
+        "tests",
+        "artifacts",
+        "git_diff",
+    ]
     assert contract["write_opt_ins"] == {
         "task_board": False,
         "edit_file": True,
@@ -287,7 +324,9 @@ def test_unknown_workflow_contract_returns_404(client: TestClient) -> None:
     assert "workflow contract" in resp.json()["detail"].lower()
 
 
-def test_localguys_operator_methods_catalog_is_deterministic(client: TestClient) -> None:
+def test_localguys_operator_methods_catalog_is_deterministic(
+    client: TestClient,
+) -> None:
     resp = client.get("/api/mcc/localguys/operator-methods")
     assert resp.status_code == 200
     data = resp.json()
@@ -296,7 +335,10 @@ def test_localguys_operator_methods_catalog_is_deterministic(client: TestClient)
     assert data["count"] == 11
     methods = {row["workflow_family"]: row for row in data["methods"]}
     assert methods["dragons_localguys"]["method"] == "dragons"
-    assert methods["dragons_localguys"]["command_template"] == "localguys run dragons --task {task_id}"
+    assert (
+        methods["dragons_localguys"]["command_template"]
+        == "localguys run dragons --task {task_id}"
+    )
     assert methods["refactor_localguys"]["method"] == "refactor"
     assert methods["patchchain_localguys"]["method"] == "patchchain"
     assert methods["patchchain_localguys"]["source_family"] == "local_patch_chain"
@@ -327,14 +369,27 @@ def test_localguys_operator_methods_catalog_is_deterministic(client: TestClient)
             ["scout", "coder", "verifier"],
             ["recon", "execute", "verify", "review", "finalize"],
             True,
-            ["facts.json", "patch.diff", "test_output.txt", "review.json", "final_report.json"],
+            [
+                "facts.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "final_report.json",
+            ],
         ),
         (
             "testonly_localguys",
             ["scout", "coder", "verifier"],
             ["recon", "plan", "execute", "verify", "finalize"],
             True,
-            ["facts.json", "plan.json", "patch.diff", "test_output.txt", "review.json", "final_report.json"],
+            [
+                "facts.json",
+                "plan.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "final_report.json",
+            ],
         ),
         (
             "docs_localguys",
@@ -348,28 +403,66 @@ def test_localguys_operator_methods_catalog_is_deterministic(client: TestClient)
             ["researcher", "architect", "coder", "verifier"],
             ["recon", "research", "plan", "execute", "verify", "review", "finalize"],
             True,
-            ["facts.json", "plan.json", "patch.diff", "test_output.txt", "review.json", "final_report.json"],
+            [
+                "facts.json",
+                "plan.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "final_report.json",
+            ],
         ),
         (
             "dragons_localguys",
             ["scout", "architect", "coder", "verifier"],
             ["recon", "plan", "execute", "verify", "review", "finalize"],
             True,
-            ["facts.json", "plan.json", "patch.diff", "test_output.txt", "review.json", "final_report.json"],
+            [
+                "facts.json",
+                "plan.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "final_report.json",
+            ],
         ),
         (
             "refactor_localguys",
             ["scout", "architect", "coder", "verifier"],
             ["recon", "research", "plan", "execute", "verify", "review", "finalize"],
             True,
-            ["facts.json", "plan.json", "patch.diff", "test_output.txt", "review.json", "final_report.json"],
+            [
+                "facts.json",
+                "plan.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "final_report.json",
+            ],
         ),
         (
             "bmad_localguys",
             ["scout", "researcher", "architect", "coder", "verifier", "approval"],
-            ["recon", "research", "plan", "execute", "verify", "review", "approve", "finalize"],
+            [
+                "recon",
+                "research",
+                "plan",
+                "execute",
+                "verify",
+                "review",
+                "approve",
+                "finalize",
+            ],
             True,
-            ["facts.json", "plan.json", "patch.diff", "test_output.txt", "review.json", "approval.json", "final_report.json"],
+            [
+                "facts.json",
+                "plan.json",
+                "patch.diff",
+                "test_output.txt",
+                "review.json",
+                "approval.json",
+                "final_report.json",
+            ],
         ),
     ],
 )
@@ -391,6 +484,44 @@ def test_supported_localguys_workflow_families_resolve_contracts(
     assert contract["roles"] == roles
     assert contract["steps"] == steps
     assert contract["sandbox_policy"]["mode"] == "playground_only"
-    assert contract["completion_policy"]["requires_verifier_pass"] is requires_verifier_pass
+    assert (
+        contract["completion_policy"]["requires_verifier_pass"]
+        is requires_verifier_pass
+    )
     assert contract["artifact_contract"]["required"] == required_artifacts
     assert "qwen3:8b" in {row["model_id"] for row in contract["local_model_catalog"]}
+
+
+def test_local_model_catalog_includes_reflex_decay_fields(client: TestClient) -> None:
+    """MARKER_177.BG-002: Verify reflex_decay fields are included in local_model_catalog."""
+    resp = client.get("/api/mcc/workflow-contract/g3_localguys")
+    assert resp.status_code == 200
+    data = resp.json()
+    contract = data["contract"]
+    catalog = contract["local_model_catalog"]
+
+    coder_entry = next((m for m in catalog if m["model_id"] == "qwen3:8b"), None)
+    assert coder_entry is not None, "qwen3:8b should be in catalog"
+    assert "fc_reliability" in coder_entry, "fc_reliability field missing"
+    assert "max_tools" in coder_entry, "max_tools field missing"
+    assert "prefer_simple" in coder_entry, "prefer_simple field missing"
+    assert isinstance(coder_entry["fc_reliability"], float), (
+        "fc_reliability should be float"
+    )
+    assert isinstance(coder_entry["max_tools"], int), "max_tools should be int"
+    assert isinstance(coder_entry["prefer_simple"], bool), (
+        "prefer_simple should be bool"
+    )
+
+    verifier_entry = next(
+        (m for m in catalog if m["model_id"] == "deepseek-r1:8b"), None
+    )
+    assert verifier_entry is not None, "deepseek-r1:8b should be in catalog"
+    assert "fc_reliability" in verifier_entry
+    assert "max_tools" in verifier_entry
+    assert "prefer_simple" in verifier_entry
+
+    assert coder_entry["fc_reliability"] == 0.82, (
+        "qwen3:8b fc_reliability should be 0.82"
+    )
+    assert coder_entry["max_tools"] == 8, "qwen3:8b max_tools should be 8"
