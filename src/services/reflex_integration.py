@@ -327,11 +327,18 @@ def reflex_for_role(
 
 # ─── IP-6: Session Init recommendations ─────────────────────────
 
-def reflex_session(session_data: Dict[str, Any], phase_type: str = "research") -> List[Dict]:
-    """MARKER_172.P4.IP6 — Get broad recommendations for session_init.
+def reflex_session(
+    session_data: Dict[str, Any],
+    phase_type: str = "research",
+    agent_type: str = "",
+) -> List[Dict]:
+    """MARKER_172.P4.IP6 + MARKER_186.3 — Get broad recommendations for session_init.
 
     Called by session_tools._execute_async() to include tool recommendations
     in the session init response.
+
+    MARKER_186.3: Now accepts agent_type for agent-aware scoring.
+    Auto-generates task_text from recent git changes for meaningful semantic match.
 
     Returns:
         List of {tool_id, score, reason} dicts.
@@ -342,7 +349,12 @@ def reflex_session(session_data: Dict[str, Any], phase_type: str = "research") -
     try:
         from src.services.reflex_scorer import get_reflex_scorer
         scorer = get_reflex_scorer()
-        scored = scorer.recommend_for_session(session_data, phase_type=phase_type, top_n=10)
+        scored = scorer.recommend_for_session(
+            session_data,
+            phase_type=phase_type,
+            top_n=10,
+            agent_type=agent_type,
+        )
 
         # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)
         scored = _apply_preferences(scored)

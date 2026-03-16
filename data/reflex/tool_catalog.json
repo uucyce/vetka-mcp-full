@@ -4,12 +4,12 @@
   "generator": "scripts/generate_reflex_catalog.py",
   "marker": "MARKER_172.P1.CATALOG",
   "stats": {
-    "total_tools": 92,
+    "total_tools": 94,
     "by_namespace": {
       "vetka": 40,
       "internal": 10,
       "mycelium": 24,
-      "cut": 18
+      "cut": 20
     },
     "by_kind": {
       "file_op": 4,
@@ -24,7 +24,8 @@
       "context": 4,
       "memory": 2,
       "llm": 2,
-      "artifact": 4
+      "artifact": 4,
+      "test": 2
     }
   },
   "deprecated_aliases": {
@@ -3562,6 +3563,108 @@
       "deprecated_aliases": [],
       "active": true,
       "source": "cut_routes.py"
+    },
+    {
+      "tool_id": "playwright_e2e_smoke",
+      "namespace": "cut",
+      "kind": "test",
+      "description": "Run Playwright E2E smoke tests for VETKA CUT client UI. Validates layout, playback, scene graph, NLE export, and visual regressions.",
+      "intent_tags": [
+        "test",
+        "verify",
+        "e2e",
+        "smoke",
+        "ui",
+        "visual",
+        "regression",
+        "playwright"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*.tsx",
+          "*.css",
+          "*.ts"
+        ],
+        "phase_types": [
+          "build",
+          "fix"
+        ],
+        "keywords": [
+          "component",
+          "layout",
+          "panel",
+          "editor",
+          "cut",
+          "scene",
+          "timeline",
+          "playback",
+          "preview",
+          "transport",
+          "ui"
+        ]
+      },
+      "cost": {
+        "latency_ms": 30000,
+        "tokens": 0,
+        "risk_level": "read_only"
+      },
+      "permission": "EXECUTE",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "scripts/run_playwright_smoke.sh"
+    },
+    {
+      "tool_id": "claude_in_chrome_visual_check",
+      "namespace": "cut",
+      "kind": "test",
+      "description": "Use Claude in Chrome MCP to take real browser screenshots and verify UI visually. Best for Three.js/WebGL and interactive components that Playwright snapshots can't capture.",
+      "intent_tags": [
+        "visual",
+        "screenshot",
+        "verify",
+        "browser",
+        "3d",
+        "webgl",
+        "feedback"
+      ],
+      "trigger_patterns": {
+        "file_types": [
+          "*.tsx",
+          "*.css",
+          "*.glsl"
+        ],
+        "phase_types": [
+          "build",
+          "fix"
+        ],
+        "keywords": [
+          "three",
+          "3d",
+          "webgl",
+          "canvas",
+          "viewport",
+          "visual",
+          "css",
+          "style",
+          "animation",
+          "layout"
+        ]
+      },
+      "cost": {
+        "latency_ms": 5000,
+        "tokens": 500,
+        "risk_level": "read_only"
+      },
+      "permission": "READ",
+      "roles": [
+        "all"
+      ],
+      "deprecated_aliases": [],
+      "active": true,
+      "source": "mcp__Claude_in_Chrome__computer"
     }
   ]
 }
