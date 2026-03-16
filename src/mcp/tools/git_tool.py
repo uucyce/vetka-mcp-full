@@ -179,6 +179,8 @@ class GitCommitTool(BaseMCPTool):
         files = arguments.get("files", [])
         dry_run = arguments.get("dry_run", True)
         auto_push = arguments.get("auto_push", False)  # MARKER_GIT_AUTO_PUSH: Auto-push after commit
+        # MARKER_188.2: cwd override for worktree auto-commit
+        git_root = Path(arguments["cwd"]) if arguments.get("cwd") else PROJECT_ROOT
 
         if dry_run:
             return {
@@ -198,7 +200,7 @@ class GitCommitTool(BaseMCPTool):
                 for f in files:
                     result = subprocess.run(
                         ["git", "add", f],
-                        cwd=str(PROJECT_ROOT),
+                        cwd=str(git_root),
                         capture_output=True,
                         text=True,
                         timeout=10
@@ -213,7 +215,7 @@ class GitCommitTool(BaseMCPTool):
             else:
                 result = subprocess.run(
                     ["git", "add", "-A"],
-                    cwd=str(PROJECT_ROOT),
+                    cwd=str(git_root),
                     capture_output=True,
                     text=True,
                     timeout=10
@@ -224,7 +226,7 @@ class GitCommitTool(BaseMCPTool):
             # Commit
             result = subprocess.run(
                 ["git", "commit", "-m", message],
-                cwd=str(PROJECT_ROOT),
+                cwd=str(git_root),
                 capture_output=True,
                 text=True,
                 timeout=30
@@ -238,7 +240,7 @@ class GitCommitTool(BaseMCPTool):
             # Get commit hash
             commit_hash = subprocess.run(
                 ["git", "rev-parse", "HEAD"],
-                cwd=str(PROJECT_ROOT),
+                cwd=str(git_root),
                 capture_output=True,
                 text=True,
                 timeout=5

@@ -66,6 +66,8 @@ TASK_BOARD_SCHEMA = {
         "commit_message": {"type": "string", "description": "Commit message (for complete)"},
         # MARKER_186.4: Branch name for worktree-aware completion
         "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
+        # MARKER_188.2: Worktree path for auto-commit from worktree context
+        "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree."},
     },
     "required": ["action"]
 }
@@ -210,8 +212,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         commit_message = arguments.get("commit_message")
 
         # MARKER_186.4: Detect current git branch for worktree-aware status
-        # Prefer explicit branch from caller (agent knows its own branch)
-        current_branch = arguments.get("branch") or _detect_git_branch()
+        # MARKER_188.2: Use worktree_path as cwd for git operations
+        worktree_path = arguments.get("worktree_path")
+        current_branch = arguments.get("branch") or _detect_git_branch(cwd=worktree_path)
 
         # Case A: agent already committed — just close
         if commit_hash:
@@ -249,7 +252,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 logger.warning(f"[TaskBoard] Verifier merge exception (falling back): {vm_err}")
 
         # Case B/C: no commit yet — try auto-commit (legacy path)
-        auto = _try_auto_commit(task_id, task, commit_message)
+        # MARKER_188.2: Pass worktree_path for correct cwd in git operations
+        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path)
 
         # If commit attempted but FAILED → do NOT close task
         if auto.get("attempted") and not auto.get("success"):
@@ -316,15 +320,17 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 
-def _detect_git_branch() -> str:
-    """MARKER_186.4: Detect current git branch. Works in worktrees."""
+def _detect_git_branch(cwd: str = None) -> str:
+    """MARKER_186.4: Detect current git branch. Works in worktrees.
+    MARKER_188.2: Accept cwd override for worktree context.
+    """
     import subprocess
     from pathlib import Path
-    project_root = Path(__file__).resolve().parents[3]
+    git_cwd = cwd or str(Path(__file__).resolve().parents[3])
     try:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
-            cwd=str(project_root), capture_output=True, text=True, timeout=5,
+            cwd=git_cwd, capture_output=True, text=True, timeout=5,
         )
         if result.returncode == 0 and result.stdout.strip():
             return result.stdout.strip()
@@ -333,8 +339,9 @@ def _detect_git_branch() -> str:
     return "main"  # fallback — assume main
 
 
-def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> dict:
+def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None) -> dict:
     """MARKER_181.4: Auto-commit via GitCommitTool.execute().
+    MARKER_188.2: Accept cwd override for worktree auto-commit.
 
     Same pattern as run_closure_protocol (task_board.py:1103).
     GitCommitTool.execute() IS the full pipeline: stage → commit → digest → auto-close.
@@ -347,7 +354,7 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> di
     import subprocess
     from pathlib import Path
 
-    PROJECT_ROOT = Path(__file__).resolve().parents[3]
+    PROJECT_ROOT = Path(cwd) if cwd else Path(__file__).resolve().parents[3]
 
     # MARKER_178.FIX_INDEXLOCK: Clean stale index.lock before git operations
     # After a failed commit, index.lock can remain and block all git operations
@@ -418,12 +425,15 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> di
         from src.mcp.tools.git_tool import GitCommitTool
 
         tool = GitCommitTool()
-        result = tool.execute({
+        exec_args = {
             "message": auto_msg,
             "files": closure_files,
             "dry_run": False,
             "auto_push": False,
-        })
+        }
+        if cwd:
+            exec_args["cwd"] = cwd
+        result = tool.execute(exec_args)
     except Exception as e:
         logger.error(f"[TaskBoard] _try_auto_commit failed: {e}")
         return {"attempted": True, "success": False, "error": str(e)[:200]}
