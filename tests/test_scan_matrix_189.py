@@ -235,3 +235,147 @@ class TestProbeClipDuration:
         from src.api.routes.cut_routes import _probe_clip_duration
         mock_probe.return_value = {"available": False, "error": "not found"}
         assert _probe_clip_duration("/tmp/test.mp4") == 0.0
+
+
+# ── 189.4: Enriched scene assembly ──
+
+
+class TestEnrichedTimelineState:
+    """Tests for _build_initial_timeline_state with scan matrix data."""
+
+    def _make_project(self, source_path: str) -> dict[str, Any]:
+        return {"project_id": "test", "source_path": source_path}
+
+    def _make_store_mock(self, media_index: dict | None = None, scan_matrix: dict | None = None):
+        store = MagicMock()
+        store.load_media_index.return_value = media_index
+        store.load_scan_matrix_result.return_value = scan_matrix
+        return store
+
+    @patch("src.api.routes.cut_routes.quick_scan_cut_source")
+    def test_multi_segment_creates_multiple_clips(self, mock_scan):
+        from src.api.routes.cut_routes import _build_initial_timeline_state
+        mock_scan.return_value = {"stats": {}, "signals": {}}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a fake video file
+            video_path = os.path.join(tmpdir, "interview.mp4")
+            with open(video_path, "wb") as f:
+                f.write(b"\x00" * 100)
+
+            media_index = {
+                "files": {video_path: {"duration_sec": 30.0, "media_type": "video"}}
+            }
+            scan_matrix = {
+                "items": [{
+                    "source_path": video_path,
+                    "video_scan": {
+                        "segments": [
+                            {"segment_id": "seg_001", "start_sec": 0.0, "end_sec": 10.0, "duration_sec": 10.0},
+                            {"segment_id": "seg_002", "start_sec": 10.0, "end_sec": 20.0, "duration_sec": 10.0},
+                            {"segment_id": "seg_003", "start_sec": 20.0, "end_sec": 30.0, "duration_sec": 10.0},
+                        ],
+                        "thumbnail_paths": ["/tmp/t1.jpg", "/tmp/t2.jpg", "/tmp/t3.jpg"],
+                    },
+                    "audio_scan": {"waveform_bins": [0.1, 0.2, 0.3]},
+                }]
+            }
+            store = self._make_store_mock(media_index, scan_matrix)
+            project = self._make_project(tmpdir)
+
+            result = _build_initial_timeline_state(project, "main", store=store)
+
+            video_clips = result["lanes"][0]["clips"]
+            assert len(video_clips) == 3  # one per segment
+            assert video_clips[0]["scene_id"] == "seg_001"
+            assert video_clips[1]["scene_id"] == "seg_002"
+            assert video_clips[2]["scene_id"] == "seg_003"
+            # Real durations
+            assert video_clips[0]["duration_sec"] == 10.0
+            # Timeline cursor advances
+            assert video_clips[1]["start_sec"] == 10.0
+            assert video_clips[2]["start_sec"] == 20.0
+            # Source in/out for sub-clips
+            assert video_clips[0]["source_in"] == 0.0
+            assert video_clips[0]["source_out"] == 10.0
+            # Thumbnails attached
+            assert video_clips[0]["thumbnail_path"] == "/tmp/t1.jpg"
+
+    @patch("src.api.routes.cut_routes.quick_scan_cut_source")
+    @patch("src.api.routes.cut_routes._probe_clip_duration")
+    def test_no_scan_matrix_falls_back(self, mock_probe, mock_scan):
+        from src.api.routes.cut_routes import _build_initial_timeline_state
+        mock_scan.return_value = {"stats": {}, "signals": {}}
+        mock_probe.return_value = 15.0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            video_path = os.path.join(tmpdir, "clip.mp4")
+            with open(video_path, "wb") as f:
+                f.write(b"\x00" * 100)
+
+            store = self._make_store_mock(None, None)
+            project = self._make_project(tmpdir)
+
+            result = _build_initial_timeline_state(project, "main", store=store)
+
+            video_clips = result["lanes"][0]["clips"]
+            assert len(video_clips) == 1
+            assert video_clips[0]["duration_sec"] == 15.0
+            assert video_clips[0]["scene_id"].startswith("scene_")
+
+
+class TestEnrichedSceneGraph:
+    """Tests for _build_initial_scene_graph with scanner edges."""
+
+    def test_scanner_edges_injected(self):
+        from src.api.routes.cut_routes import _build_initial_scene_graph
+
+        project = {"project_id": "test"}
+        timeline_state = {
+            "timeline_id": "main",
+            "lanes": [{
+                "lane_id": "video_main",
+                "lane_type": "video_main",
+                "clips": [{
+                    "clip_id": "clip_0001",
+                    "record_id": "rec_0001",
+                    "scene_id": "seg_001",
+                    "take_id": "take_0001",
+                    "start_sec": 0.0,
+                    "duration_sec": 10.0,
+                    "source_path": "/tmp/test.mp4",
+                }],
+            }],
+        }
+        store = MagicMock()
+        store.load_scan_matrix_result.return_value = {
+            "items": [{
+                "source_path": "/tmp/test.mp4",
+                "video_scan": {
+                    "edges": [
+                        {"source": "test:seg_001", "target": "test:seg_002",
+                         "channel": "temporal", "confidence": 0.9,
+                         "evidence": ["sequential"], "source_type": "video", "target_type": "video"},
+                    ],
+                },
+                "audio_scan": {"edges": []},
+            }]
+        }
+
+        graph = _build_initial_scene_graph(project, timeline_state, "main", store=store)
+
+        scanner_edges = [e for e in graph["edges"] if e["edge_id"].startswith("edge_scanner_")]
+        assert len(scanner_edges) == 1
+        assert scanner_edges[0]["source"] == "test:seg_001"
+        assert scanner_edges[0]["target"] == "test:seg_002"
+        assert scanner_edges[0]["metadata"]["channel"] == "temporal"
+
+    def test_no_store_no_crash(self):
+        from src.api.routes.cut_routes import _build_initial_scene_graph
+
+        project = {"project_id": "test"}
+        timeline_state = {"timeline_id": "main", "lanes": []}
+
+        graph = _build_initial_scene_graph(project, timeline_state, "main", store=None)
+        assert graph["schema_version"] == "cut_scene_graph_v1"
+        assert isinstance(graph["edges"], list)
