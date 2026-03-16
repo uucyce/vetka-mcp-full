@@ -213,8 +213,22 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         # MARKER_186.4: Detect current git branch for worktree-aware status
         # MARKER_188.2: Use worktree_path as cwd for git operations
+        # MARKER_188.3: Auto-infer worktree_path from branch= if not explicit
         worktree_path = arguments.get("worktree_path")
-        current_branch = arguments.get("branch") or _detect_git_branch(cwd=worktree_path)
+        current_branch = arguments.get("branch")
+
+        # Auto-detect worktree_path from branch name (claude/<name> → .claude/worktrees/<name>)
+        if not worktree_path and current_branch and current_branch.startswith("claude/"):
+            from pathlib import Path
+            _main_root = Path(__file__).resolve().parents[3]
+            wt_name = current_branch.split("/", 1)[1]
+            candidate = _main_root / ".claude" / "worktrees" / wt_name
+            if candidate.exists():
+                worktree_path = str(candidate)
+                logger.info(f"[TaskBoard] Auto-detected worktree_path from branch: {worktree_path}")
+
+        if not current_branch:
+            current_branch = _detect_git_branch(cwd=worktree_path)
 
         # Case A: agent already committed — just close
         if commit_hash:
