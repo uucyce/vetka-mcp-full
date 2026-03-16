@@ -537,6 +537,21 @@ class TaskBoard:
         )
         return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
 
+    @staticmethod
+    def _detect_current_branch() -> str:
+        """MARKER_186.4: Detect current git branch. Works in worktrees."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except Exception:
+            pass
+        return "main"  # fallback
+
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
         """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
         MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
@@ -1096,8 +1111,10 @@ class TaskBoard:
         if proof_error:
             return {"success": False, "error": proof_error, "task_id": task_id}
 
-        # MARKER_186.4: Determine final status based on branch
-        is_worktree = branch is not None and branch != "main"
+        # MARKER_186.4: Auto-detect branch if not provided
+        if branch is None:
+            branch = self._detect_current_branch()
+        is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 
         update = {
