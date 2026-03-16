@@ -46,7 +46,10 @@ PRIORITY_SOMEDAY = 5
 # MARKER_125.1B: Added "hold" — Doctor triage puts abstract tasks on hold for human approval
 # MARKER_130.C16A: Added "claimed" status for multi-agent support
 # MARKER_183.10: Added "pending_user_approval" — verification gate before merge
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "failed", "cancelled", "hold", "pending_user_approval"}
+# MARKER_186.4: Added "done_worktree" / "done_main" — worktree-aware lifecycle
+#   done_worktree = committed on branch, pending merge to main
+#   done_main = merged to main (or committed directly on main)
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -1057,13 +1060,20 @@ class TaskBoard:
         closed_by: Optional[str] = None,
         manual_override: bool = False,
         override_reason: Optional[str] = None,
+        branch: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
+
+        MARKER_186.4: Worktree-aware completion.
+        If branch is provided and is not 'main', status = done_worktree.
+        If branch is 'main' or None (legacy), status = done_main.
+        'done' is kept as alias for done_main for backward compat.
 
         Args:
             task_id: Task identifier
             commit_hash: Git commit hash that completed this task
             commit_message: First line of commit message
+            branch: Git branch name (auto-detected if None)
 
         Returns:
             Result dict with success/error
@@ -1086,8 +1096,12 @@ class TaskBoard:
         if proof_error:
             return {"success": False, "error": proof_error, "task_id": task_id}
 
+        # MARKER_186.4: Determine final status based on branch
+        is_worktree = branch is not None and branch != "main"
+        final_status = "done_worktree" if is_worktree else "done_main"
+
         update = {
-            "status": "done",
+            "status": final_status,
             "completed_at": datetime.now().isoformat(),
             "closed_at": datetime.now().isoformat(),
             "closed_by": closed_by or task.get("assigned_to"),
@@ -1124,9 +1138,35 @@ class TaskBoard:
             "commit_message": commit_message[:50] if commit_message else None,
         })
 
-        logger.info(f"[TaskBoard] Task {task_id} completed" +
+        branch_info = f" on {branch}" if branch else ""
+        logger.info(f"[TaskBoard] Task {task_id} → {final_status}{branch_info}" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
-        return {"success": True, "task_id": task_id, "commit_hash": commit_hash}
+        return {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
+
+    def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None) -> Dict[str, Any]:
+        """MARKER_186.4: Transition done_worktree → done_main after merge.
+
+        Called when a worktree branch is merged to main.
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        if task.get("status") not in ("done_worktree", "done"):
+            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree"}
+
+        update: Dict[str, Any] = {"status": "done_main"}
+        if merge_commit_hash:
+            update["commit_hash"] = merge_commit_hash
+
+        self.update_task(
+            task_id,
+            **update,
+            _history_event="promoted_to_main",
+            _history_source="task_board",
+            _history_reason="worktree branch merged to main",
+        )
+        logger.info(f"[TaskBoard] Task {task_id} promoted: done_worktree → done_main")
+        return {"success": True, "task_id": task_id, "status": "done_main"}
 
     async def run_closure_protocol(
         self,

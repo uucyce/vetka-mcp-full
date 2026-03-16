@@ -317,11 +317,15 @@ class SessionInitTool(BaseMCPTool):
             # MARKER_181.5.6: Fixed list_tasks() → get_queue() (method was renamed)
             pending = board.get_queue(status="pending")
             in_progress = board.get_queue(status="in_progress")
+            # MARKER_186.4: Count tasks awaiting merge (done_worktree)
+            done_worktree = board.get_queue(status="done_worktree")
             context["task_board_summary"] = {
                 "pending_count": len(pending),
                 "in_progress_count": len(in_progress),
+                "done_worktree_count": len(done_worktree),
                 "top_pending": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
-                "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]]
+                "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]],
+                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]]
             }
         except Exception as e:
             import logging
@@ -406,6 +410,9 @@ class SessionInitTool(BaseMCPTool):
             if tb.get("in_progress_count", 0) > 0:
                 items = ", ".join(t["title"][:30] for t in tb.get("in_progress", [])[:2])
                 next_steps.append(f"In progress: {items}")
+            # MARKER_186.4: Warn about tasks awaiting merge
+            if tb.get("done_worktree_count", 0) > 0:
+                next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=promote_to_main")
 
             # From REFLEX
             recs = context.get("reflex_recommendations", [])

@@ -32,7 +32,8 @@ TASK_BOARD_SCHEMA = {
         "action": {
             "type": "string",
             # MARKER_130.C16B: Added claim, complete, active_agents actions
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request"],
+            # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -192,8 +193,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return result
 
     # MARKER_181.4: complete action — unified pipeline
-    # Flow: agent → complete → auto-commit (scoped) → digest → close task
-    # Same pattern as run_closure_protocol (task_board.py:1103)
+    # MARKER_186.4: worktree-aware completion — detect branch, set done_worktree/done_main
+    # Flow: agent → complete → detect branch → auto-commit (scoped) → digest → close task
     elif action == "complete":
         task_id = arguments.get("task_id")
         if not task_id:
@@ -206,9 +207,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         commit_hash = arguments.get("commit_hash")
         commit_message = arguments.get("commit_message")
 
+        # MARKER_186.4: Detect current git branch for worktree-aware status
+        current_branch = _detect_git_branch()
+
         # Case A: agent already committed — just close
         if commit_hash:
-            result = board.complete_task(task_id, commit_hash, commit_message)
+            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -230,7 +234,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if merge_result.get("success") and merge_result.get("commit_hash"):
                     # Verifier merge succeeded — close task
-                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"))
+                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch)
                     result["verifier_merge"] = merge_result
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
@@ -266,7 +270,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Close task (commit succeeded or nothing to commit)
-        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"))
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch)
         result["auto_commit"] = auto
         return result
 
@@ -296,9 +300,34 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}
 
+    # MARKER_186.4: promote_to_main — transition done_worktree → done_main after merge
+    elif action == "promote_to_main":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for promote_to_main"}
+        merge_commit_hash = arguments.get("commit_hash")
+        return board.promote_to_main(task_id, merge_commit_hash)
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
+
+
+def _detect_git_branch() -> str:
+    """MARKER_186.4: Detect current git branch. Works in worktrees."""
+    import subprocess
+    from pathlib import Path
+    project_root = Path(__file__).resolve().parents[3]
+    try:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=str(project_root), capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except Exception:
+        pass
+    return "main"  # fallback — assume main
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None) -> dict:
