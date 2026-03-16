@@ -299,8 +299,10 @@ class TestSTMDecay:
         # Recent: weight *= (1 - 0.2 * (0 / 60)) = 1.0
         assert abs(recent.weight - 1.0) < 0.01
 
-        # Old: weight *= (1 - 0.2 * (120 / 60)) = 1 * (1 - 0.4) = 0.6
-        assert abs(old.weight - 0.6) < 0.01
+        # MARKER_187.5: Exponential decay: weight *= exp(-0.2 * 2) = exp(-0.4) ≈ 0.6703
+        import math
+        expected = math.exp(-0.2 * 2)  # ~0.6703
+        assert abs(old.weight - expected) < 0.01
 
     def test_decay_respects_min_weight(self):
         """Decay stops at min_weight."""
@@ -861,3 +863,124 @@ class TestSTMEdgeCases:
 
         context = buffer.get_context(max_items=1)
         assert len(context[0].content) == 100000
+
+
+# ─── Phase 187.5: New feature tests ──────────────────────────────
+
+class TestExponentialDecay:
+    """MARKER_187.5: Exponential decay retains weight longer than linear."""
+
+    def test_exponential_decay_10_minutes(self):
+        """After 10 min with rate=0.1: exp(-0.1*10) ≈ 0.37 (not 0.0 like linear)."""
+        import math
+        buffer = STMBuffer(decay_rate=0.1, min_weight=0.0)
+        entry = STMEntry(
+            content="test",
+            timestamp=datetime.now() - timedelta(minutes=10),
+            weight=1.0,
+        )
+        buffer._buffer.append(entry)
+        buffer._apply_decay()
+        expected = math.exp(-0.1 * 10)  # ~0.3679
+        assert abs(entry.weight - expected) < 0.01
+
+    def test_exponential_never_reaches_zero(self):
+        """Even after 60 min, weight > 0 (unlike linear which goes negative)."""
+        import math
+        buffer = STMBuffer(decay_rate=0.1, min_weight=0.0)
+        entry = STMEntry(
+            content="old",
+            timestamp=datetime.now() - timedelta(minutes=60),
+            weight=1.0,
+        )
+        buffer._buffer.append(entry)
+        buffer._apply_decay()
+        assert entry.weight > 0.0
+        expected = math.exp(-0.1 * 60)  # ~0.0025
+        assert abs(entry.weight - expected) < 0.001
+
+    def test_surprise_slows_exponential_decay(self):
+        """Surprise entry with score=1.0 decays 30% slower."""
+        import math
+        buffer = STMBuffer(decay_rate=0.1, min_weight=0.0)
+        normal = STMEntry(content="normal", timestamp=datetime.now() - timedelta(minutes=5), weight=1.0, surprise_score=0.0)
+        surprise = STMEntry(content="surprise", timestamp=datetime.now() - timedelta(minutes=5), weight=1.0, surprise_score=1.0)
+        buffer._buffer.append(normal)
+        buffer._buffer.append(surprise)
+        buffer._apply_decay()
+        # normal: exp(-0.1 * 5) = 0.6065
+        # surprise: effective_rate = 0.1 * (1 - 1.0 * 0.3) = 0.07, exp(-0.07 * 5) = 0.7047
+        assert surprise.weight > normal.weight
+
+
+class TestRehearsal:
+    """MARKER_187.5: Rehearsal resets entry timestamp to keep it fresh."""
+
+    def test_rehearse_resets_timestamp(self):
+        buffer = STMBuffer()
+        old_time = datetime.now() - timedelta(minutes=5)
+        buffer._buffer.append(STMEntry(content="important context", timestamp=old_time))
+        before = buffer._buffer[0].timestamp
+        buffer.rehearse("important")
+        after = buffer._buffer[0].timestamp
+        assert after > before
+
+    def test_rehearse_keeps_weight_high(self):
+        """After rehearsal, decay starts from 0 age again."""
+        import math
+        buffer = STMBuffer(decay_rate=0.1, min_weight=0.0)
+        entry = STMEntry(content="key concept", timestamp=datetime.now() - timedelta(minutes=10), weight=1.0)
+        buffer._buffer.append(entry)
+        buffer._apply_decay()
+        decayed_weight = entry.weight  # should be ~0.37
+
+        # Rehearse — resets timestamp
+        buffer.rehearse("key concept")
+        buffer._apply_decay()
+        # After rehearsal, age ≈ 0 so decay ≈ 1.0, weight stays same
+        assert entry.weight >= decayed_weight * 0.99
+
+    def test_rehearse_returns_false_on_miss(self):
+        buffer = STMBuffer()
+        buffer.add_message("hello world")
+        assert buffer.rehearse("nonexistent") is False
+
+    def test_rehearse_case_insensitive(self):
+        buffer = STMBuffer()
+        buffer.add_message("Hello World")
+        assert buffer.rehearse("hello") is True
+
+
+class TestAdaptiveMaxlen:
+    """MARKER_187.5: STM maxlen scales with model context window."""
+
+    def test_small_model_gets_small_buffer(self):
+        buffer = STMBuffer(model_context_length=4096)
+        assert buffer.max_size == 6
+
+    def test_medium_model_gets_default_buffer(self):
+        buffer = STMBuffer(model_context_length=16384)
+        assert buffer.max_size == 10
+
+    def test_large_model_gets_large_buffer(self):
+        buffer = STMBuffer(model_context_length=128000)
+        assert buffer.max_size == 15
+
+    def test_boundary_8k(self):
+        assert STMBuffer(model_context_length=8192).max_size == 6
+
+    def test_boundary_32k(self):
+        assert STMBuffer(model_context_length=32768).max_size == 10
+
+    def test_boundary_above_32k(self):
+        assert STMBuffer(model_context_length=32769).max_size == 15
+
+    def test_explicit_max_size_overrides(self):
+        """Explicit max_size takes priority over model_context_length."""
+        buffer = STMBuffer(max_size=20, model_context_length=4096)
+        assert buffer.max_size == 20
+
+    def test_no_context_uses_default(self):
+        """No model_context_length → default from config (10)."""
+        buffer = STMBuffer()
+        assert buffer.max_size == 10

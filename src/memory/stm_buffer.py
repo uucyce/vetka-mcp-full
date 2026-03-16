@@ -11,8 +11,10 @@ Integrates with HOPE for quick context and CAM for surprise events.
 @used_by langgraph_nodes.py, cam_engine.py, hope_enhancer.py, useStore.ts
 
 MARKER-99-01: STM decay formula - weight *= (1 - decay_rate * (age_seconds / 60))
+MARKER_187.5: Exponential decay + rehearsal + adaptive maxlen (Phase 187)
 """
 
+import math
 import os
 import threading
 from collections import deque
@@ -39,6 +41,13 @@ class STMConfig:
     surprise_preserve_coeff: float = float(os.getenv("VETKA_STM_SURPRISE_PRESERVE", "0.3"))
     hope_weight: float = float(os.getenv("VETKA_STM_HOPE_WEIGHT", "1.2"))
     hope_truncate: int = int(os.getenv("VETKA_STM_HOPE_TRUNCATE", "500"))
+
+    # MARKER_187.5: Adaptive maxlen from model context_length
+    # Caller passes context_length from LLMModelRegistry.get_profile()
+    # STM scales: small model (≤8k) → 6 entries, large (>32k) → 15
+    stm_size_small: int = 6    # ≤8k context
+    stm_size_medium: int = 10  # ≤32k context
+    stm_size_large: int = 15   # >32k context
 
 
 @dataclass
@@ -105,7 +114,8 @@ class STMBuffer:
         max_size: int = None,
         decay_rate: float = None,
         min_weight: float = None,
-        config: STMConfig = None
+        config: STMConfig = None,
+        model_context_length: int = 0,
     ):
         """
         Initialize STM buffer.
@@ -115,15 +125,38 @@ class STMBuffer:
             decay_rate: Weight decay per minute (0.1 = 10% per minute)
             min_weight: Minimum weight before entry is considered stale
             config: Optional STMConfig with env var overrides
+            model_context_length: MARKER_187.5 — from LLMModelRegistry for adaptive maxlen
         """
         cfg = config or STMConfig()
         self._config = cfg
-        self.max_size = max_size if max_size is not None else cfg.max_size
+
+        # MARKER_187.5: Adaptive maxlen from model context window
+        # Caller gets context_length from LLMModelRegistry.get_profile()
+        if max_size is not None:
+            self.max_size = max_size
+        elif model_context_length > 0:
+            self.max_size = self._maxlen_from_context(model_context_length, cfg)
+        else:
+            self.max_size = cfg.max_size
+
         self.decay_rate = decay_rate if decay_rate is not None else cfg.decay_rate
         self.min_weight = min_weight if min_weight is not None else cfg.min_weight
         self._buffer: deque[STMEntry] = deque(maxlen=self.max_size)
 
-        logger.debug(f"STMBuffer initialized: max_size={self.max_size}, decay_rate={self.decay_rate}")
+        logger.debug(f"STMBuffer initialized: max_size={self.max_size}, decay_rate={self.decay_rate}, model_ctx={model_context_length}")
+
+    @staticmethod
+    def _maxlen_from_context(context_length: int, cfg: STMConfig) -> int:
+        """MARKER_187.5: Derive STM buffer size from model context window.
+
+        Small models (≤8k) can't fit much STM in prompt → fewer entries.
+        Large models (>32k) have room → more entries for richer context.
+        """
+        if context_length <= 8192:
+            return cfg.stm_size_small     # 6
+        elif context_length <= 32768:
+            return cfg.stm_size_medium    # 10
+        return cfg.stm_size_large         # 15
 
     def add(self, entry: STMEntry) -> None:
         """
@@ -257,41 +290,48 @@ class STMBuffer:
         self._buffer.clear()
         logger.debug("STM buffer cleared")
 
+    def rehearse(self, content_substring: str) -> bool:
+        """MARKER_187.5: Rehearsal — reset timestamp on re-accessed entry.
+
+        When an entry is accessed again, its age resets to 0, keeping it fresh.
+        Returns True if a matching entry was found and rehearsed.
+        """
+        needle = content_substring.lower()
+        for entry in self._buffer:
+            if needle in entry.content.lower():
+                entry.timestamp = datetime.now()
+                logger.debug(f"STM rehearsal: refreshed entry (source={entry.source})")
+                return True
+        return False
+
     def _apply_decay(self) -> None:
         """
         Reduce weights of older items based on age.
 
-        MARKER-99-01: Decay formula with adaptive surprise preservation
-        base_decay = weight * (1 - decay_rate * (age_seconds / 60))
+        MARKER_187.5: Exponential decay replaces linear decay (Phase 187).
+        Old: weight *= (1 - decay_rate * age_minutes)  → goes to 0 at 10 min
+        New: weight *= exp(-decay_rate * age_minutes)   → gradual, never zero
 
         FIX_99.2: Surprise items decay slower (0.3 soft coefficient)
-        - surprise_score=0 → full decay (preservation=1.0)
-        - surprise_score=1 → 30% slower decay (preservation=1.3)
-
-        NOTE: Only applies decay when decay_factor < 1.0 to prevent weight inflation
+        - surprise_score=0 → full decay rate
+        - surprise_score=1 → 30% slower decay (effective_rate *= 0.7)
         """
         now = datetime.now()
         for entry in self._buffer:
-            age_seconds = (now - entry.timestamp).total_seconds()
-            base_decay = self.decay_rate * (age_seconds / 60)
+            age_minutes = (now - entry.timestamp).total_seconds() / 60.0
 
-            # Only apply decay if there's actual decay to apply
-            if base_decay <= 0:
+            if age_minutes <= 0:
                 continue
 
-            decay_factor = 1 - base_decay
-
-            # FIX_99.2: Adaptive surprise preservation (soft coefficient 0.3)
-            # High-surprise items decay 30% slower to maintain important context
-            # This reduces the decay amount, not multiplies the weight
+            # FIX_99.2: Surprise preservation — reduce effective decay rate
             coeff = self._config.surprise_preserve_coeff
-            surprise_preservation = 1.0 + (entry.surprise_score * coeff)
+            effective_rate = self.decay_rate * (1.0 - entry.surprise_score * coeff)
+            effective_rate = max(0.0, effective_rate)  # Clamp
 
-            # Apply surprise preservation to reduce decay impact
-            adjusted_decay = decay_factor + (1 - decay_factor) * (entry.surprise_score * coeff)
-            adjusted_decay = max(0, min(1.0, adjusted_decay))  # Clamp to [0, 1]
+            # MARKER_187.5: Exponential decay — gradual, never hits zero
+            decay_factor = math.exp(-effective_rate * age_minutes)
 
-            entry.weight = max(self.min_weight, entry.weight * adjusted_decay)
+            entry.weight = max(self.min_weight, entry.weight * decay_factor)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize entire buffer for state persistence."""
@@ -329,14 +369,19 @@ _stm_lock = threading.Lock()
 _global_stm: Optional[STMBuffer] = None
 
 
-def get_stm_buffer() -> STMBuffer:
-    """Get or create global STM buffer instance (thread-safe)."""
+def get_stm_buffer(model_context_length: int = 0) -> STMBuffer:
+    """Get or create global STM buffer instance (thread-safe).
+
+    MARKER_187.5: Pass model_context_length on first call for adaptive maxlen.
+    Subsequent calls ignore the parameter (singleton already created).
+    Caller gets context_length from: await get_llm_registry().get_profile(model_id)
+    """
     global _global_stm
     if _global_stm is None:
         with _stm_lock:
             if _global_stm is None:
-                _global_stm = STMBuffer()
-                logger.info("Global STM buffer initialized")
+                _global_stm = STMBuffer(model_context_length=model_context_length)
+                logger.info(f"Global STM buffer initialized (max_size={_global_stm.max_size})")
     return _global_stm
 
 
