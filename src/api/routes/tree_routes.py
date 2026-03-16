@@ -1523,9 +1523,9 @@ async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
 
     # MARKER_137.6F: ENGRAM user preference sync (non-critical).
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
+        from src.memory.aura_store import get_aura_store
 
-        engram = get_engram_user_memory()
+        aura = get_aura_store()
         user_id = (
             request.headers.get("x-user-id")
             or request.headers.get("x-session-user")
@@ -1533,7 +1533,7 @@ async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
             or "danila"
         ).strip() or "danila"
 
-        highlights = engram.get_preference(user_id, "project_highlights", "highlights")
+        highlights = aura.get_preference(user_id, "project_highlights", "highlights")
         if not isinstance(highlights, dict):
             highlights = {}
 
@@ -1548,7 +1548,7 @@ async def set_node_favorite(body: NodeFavoriteRequest, request: Request):
             favorites = [p for p in favorites if p != path]
 
         highlights["favorite_nodes"] = favorites[-2000:]
-        engram.set_preference(
+        aura.set_preference(
             user_id,
             "project_highlights",
             "highlights",

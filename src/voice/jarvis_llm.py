@@ -213,7 +213,7 @@ class JarvisLLM:
 
     def _get_enricher(self):
         """Lazy load JARVISPromptEnricher"""
-        # FIX_104.7: Engram now uses integer IDs for Qdrant REST API
+        # FIX_104.7: AURA now uses integer IDs for Qdrant REST API
         if self._enricher is None:
             try:
                 from src.memory.jarvis_prompt_enricher import get_jarvis_enricher
@@ -699,41 +699,41 @@ async def get_jarvis_context(
     except Exception as e:
         logger.warning(f"[JarvisContext] STM unavailable: {e}")
 
-    # FIX_104.7: Engram now uses integer IDs for Qdrant REST API (re-enabled)
-    # User preferences from Engram memory (for personalized responses)
+    # FIX_104.7: AURA now uses integer IDs for Qdrant REST API (re-enabled)
+    # User preferences from AURA memory (for personalized responses)
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
 
         # Get communication style preferences (affects response tone)
-        formality = engram.get_preference(user_id, "communication_style", "formality")
+        formality = aura.get_preference(user_id, "communication_style", "formality")
         if formality is not None:
             context["formality"] = formality
-            logger.debug(f"[JarvisContext] Engram formality: {formality}")
+            logger.debug(f"[JarvisContext] AURA formality: {formality}")
 
-        preferred_language = engram.get_preference(user_id, "communication_style", "preferred_language")
+        preferred_language = aura.get_preference(user_id, "communication_style", "preferred_language")
         if isinstance(preferred_language, str) and preferred_language.strip().lower() in {"ru", "en", "auto"}:
             context["preferred_language"] = preferred_language.strip().lower()
-            logger.debug(f"[JarvisContext] Engram preferred_language: {context['preferred_language']}")
+            logger.debug(f"[JarvisContext] AURA preferred_language: {context['preferred_language']}")
 
-        prefers_russian = engram.get_preference(user_id, "communication_style", "prefers_russian")
+        prefers_russian = aura.get_preference(user_id, "communication_style", "prefers_russian")
         if isinstance(prefers_russian, bool):
             context["prefers_russian"] = prefers_russian
-            logger.debug(f"[JarvisContext] Engram prefers_russian: {prefers_russian}")
+            logger.debug(f"[JarvisContext] AURA prefers_russian: {prefers_russian}")
 
-        last_assistant_language = engram.get_preference(user_id, "communication_style", "last_assistant_language")
+        last_assistant_language = aura.get_preference(user_id, "communication_style", "last_assistant_language")
         if isinstance(last_assistant_language, str) and last_assistant_language.strip().lower() in {"ru", "en"}:
             context["last_assistant_language"] = last_assistant_language.strip().lower()
-            logger.debug(f"[JarvisContext] Engram last_assistant_language: {context['last_assistant_language']}")
+            logger.debug(f"[JarvisContext] AURA last_assistant_language: {context['last_assistant_language']}")
 
-        user_name = engram.get_preference(user_id, "communication_style", "user_name")
+        user_name = aura.get_preference(user_id, "communication_style", "user_name")
         if isinstance(user_name, str):
             user_name = user_name.strip()
             if user_name:
                 context["user_name"] = user_name
-                logger.debug(f"[JarvisContext] Engram user_name present")
+                logger.debug(f"[JarvisContext] AURA user_name present")
     except Exception as e:
-        logger.warning(f"[JarvisContext] Engram unavailable: {e}")
+        logger.warning(f"[JarvisContext] AURA unavailable: {e}")
 
     # CAM summary from current transcript
     try:

@@ -9,14 +9,14 @@ compressed user preferences, recent states, and CAM activations.
 Uses ELISION compression to reduce token usage by 40-60%.
 
 Features:
-- Engram user preference loading (hot RAM cache + cold Qdrant)
+- AURA user preference loading (hot RAM cache + cold Qdrant)
 - MCP state manager integration for persistence
 - JARVIS prompt enricher for context compression
 - Async/sync execution support
 
 @status: active
 @phase: 108
-@depends: src/mcp/tools/base_tool.py, src/memory/engram_user_memory.py, src/mcp/state/mcp_state_manager.py, src/memory/jarvis_prompt_enricher.py
+@depends: src/mcp/tools/base_tool.py, src/memory/aura_store.py, src/mcp/state/mcp_state_manager.py, src/memory/jarvis_prompt_enricher.py
 @used_by: src/mcp/vetka_mcp_bridge.py, src/mcp/tools/__init__.py
 
 MARKER_MCP_CHAT_READY: Phase 108.1 - Unified MCP-Chat ID linking
@@ -92,7 +92,7 @@ class SessionInitTool(BaseMCPTool):
         return (
             "Initialize MCP session with fat context including PROJECT DIGEST. "
             "Returns: current phase info, key achievements, pending items, system status, "
-            "user preferences from Engram, recent states, and CAM activations. "
+            "user preferences from AURA, recent states, and CAM activations. "
             "Returns compressed context via ELISION for efficient LLM consumption. "
             "IMPORTANT: Call this at the start of EVERY conversation to get project state!"
         )
@@ -222,11 +222,11 @@ class SessionInitTool(BaseMCPTool):
             if agent_focus_all:
                 context["_all_agent_focus"] = agent_focus_all  # full map for debug
 
-        # Get user preferences from Engram
+        # Get user preferences from AURA
         try:
-            from src.memory.engram_user_memory import get_engram_user_memory
-            engram = get_engram_user_memory()
-            prefs = engram.get_user_preferences(user_id)
+            from src.memory.aura_store import get_aura_store
+            aura = get_aura_store()
+            prefs = aura.get_user_preferences(user_id)
             if prefs:
                 # Convert UserPreferences dataclass to dict safely
                 context["user_preferences"] = {

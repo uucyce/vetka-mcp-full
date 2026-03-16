@@ -6,7 +6,7 @@ Hierarchical vector storage for VetkaTree with Triple Write atomicity
 @status active
 @phase 108
 @depends time, json, uuid, logging, dataclasses, datetime, qdrant_client
-@used_by engram_user_memory.py, hybrid_search.py, file_watcher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py, shared_tools.py, llm_call_tool.py, message_utils.py, semantic_routes.py, watcher_routes.py, mcp_state_manager.py, trash.py, replay_buffer.py, session_tools.py
+@used_by aura_store.py, hybrid_search.py, file_watcher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py, shared_tools.py, llm_call_tool.py, message_utils.py, semantic_routes.py, watcher_routes.py, mcp_state_manager.py, trash.py, replay_buffer.py, session_tools.py
 
 MARKER_QDRANT_CHAT_INDEX: Phase 103.7 - VetkaGroupChat collection
 - Collection name: 'VetkaGroupChat' (COLLECTION_NAMES['chat'])
@@ -749,7 +749,7 @@ class QdrantVetkaClient:
                 vectors_config = VectorParams(size=size, distance=Distance[distance.upper()])
         return self.client.create_collection(collection_name=collection_name, vectors_config=vectors_config, **kwargs)
 
-    # MARKER_118.5: scroll + retrieve proxies — EngramUserMemory needs these
+    # MARKER_118.5: scroll + retrieve proxies — AuraStore needs these
     def scroll(self, collection_name: str, limit: int = 100, **kwargs):
         """Proxy to underlying Qdrant client scroll"""
         if not self.client:

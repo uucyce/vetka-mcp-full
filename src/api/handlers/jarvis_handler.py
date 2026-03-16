@@ -1082,10 +1082,10 @@ def _remember_user_language_preference(user_id: str, lang_hint: str) -> None:
     Persist language preference to Engram so Jarvis keeps RU/EN consistently.
     """
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
         prefers_russian = (lang_hint == "ru")
-        engram.set_preference(
+        aura.set_preference(
             user_id=user_id,
             category="communication_style",
             key="prefers_russian",
@@ -1098,10 +1098,10 @@ def _remember_user_language_preference(user_id: str, lang_hint: str) -> None:
 
 def _remember_last_assistant_language(user_id: str, response_text: str) -> None:
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
         lang = _detect_language_hint(response_text)
-        engram.set_preference(
+        aura.set_preference(
             user_id=user_id,
             category="communication_style",
             key="last_assistant_language",

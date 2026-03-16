@@ -816,11 +816,11 @@ async def put_favorites(body: FavoritesUpdate):
 
     # MARKER_152.FIX3_ENGRAM: Fire-and-forget write to ENGRAM
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
-        if engram:
-            engram.set_preference("danila", "tool_usage_patterns", "favorite_keys", body.keys, confidence=0.9)
-            engram.set_preference("danila", "tool_usage_patterns", "favorite_models", body.models, confidence=0.9)
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
+        if aura:
+            aura.set_preference("danila", "tool_usage_patterns", "favorite_keys", body.keys, confidence=0.9)
+            aura.set_preference("danila", "tool_usage_patterns", "favorite_models", body.models, confidence=0.9)
     except Exception as e:
         print(f"[FAVORITES] ENGRAM write failed (non-fatal): {e}")
 

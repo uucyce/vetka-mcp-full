@@ -947,6 +947,11 @@ async def list_tools() -> list[Tool]:
                     "require_closure_proof": {"type": "boolean"},
                     "closure_tests": {"type": "array", "items": {"type": "string"}},
                     "closure_files": {"type": "array", "items": {"type": "string"}},
+                    # MARKER_188.5: Worktree-aware completion fields
+                    "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
+                    "commit_message": {"type": "string", "description": "Commit message (for complete)"},
+                    "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
+                    "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Auto-inferred from branch= if omitted."},
                 },
                 "required": ["action"]
             }
@@ -1559,11 +1564,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             category = arguments.get("category", "all")
 
             try:
-                from src.memory.engram_user_memory import EngramUserMemory
+                from src.memory.aura_store import AuraStore
                 from src.memory.qdrant_client import get_qdrant_client
 
                 qdrant = get_qdrant_client()
-                memory = EngramUserMemory(qdrant)
+                memory = AuraStore(qdrant)
 
                 if category == "all":
                     prefs = memory.get_all_preferences(user_id)
@@ -1574,7 +1579,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     "user_id": user_id,
                     "category": category,
                     "preferences": prefs if prefs else {},
-                    "source": "engram_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
+                    "source": "aura_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
                 }
 
                 duration_ms = (time.time() - start_time) * 1000

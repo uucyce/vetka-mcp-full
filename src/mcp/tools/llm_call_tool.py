@@ -1,7 +1,7 @@
 """MCP Tool: vetka_call_model - Universal LLM call through VETKA infrastructure.
 
 Calls any LLM model through VETKA's provider registry (Grok, GPT, Claude, Gemini, Ollama, OpenRouter).
-Supports context injection from VETKA sources (files, session state, Engram preferences, CAM, semantic search).
+Supports context injection from VETKA sources (files, session state, AURA preferences, CAM, semantic search).
 
 Features:
 - Multi-provider support via provider_registry.call_model_v2
@@ -20,7 +20,7 @@ Supported models:
 
 @status: active
 @phase: 96
-@depends: src/mcp/tools/base_tool.py, src/elisya/provider_registry.py, src/utils/unified_key_manager.py, src/memory (elision, engram_user_memory, qdrant_client), src/orchestration/cam_engine.py, src/search/hybrid_search.py, src/initialization/components_init.py (socketio)
+@depends: src/mcp/tools/base_tool.py, src/elisya/provider_registry.py, src/utils/unified_key_manager.py, src/memory (elision, aura_store, qdrant_client), src/orchestration/cam_engine.py, src/search/hybrid_search.py, src/initialization/components_init.py (socketio)
 @used_by: src/mcp/vetka_mcp_bridge.py
 """
 
@@ -185,7 +185,7 @@ class LLMCallTool(BaseMCPTool):
                         },
                         "include_prefs": {
                             "type": "boolean",
-                            "description": "Include user preferences from Engram memory",
+                            "description": "Include user preferences from AURA memory",
                             "default": False
                         },
                         "include_cam": {
@@ -488,19 +488,19 @@ class LLMCallTool(BaseMCPTool):
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Session state error: {e}")
 
-        # 3. User preferences from Engram
+        # 3. User preferences from AURA
         if inject_config.get("include_prefs"):
             try:
-                from src.memory.engram_user_memory import EngramUserMemory
+                from src.memory.aura_store import AuraStore
                 from src.memory.qdrant_client import get_qdrant_client
                 qdrant = get_qdrant_client()
-                memory = EngramUserMemory(qdrant)
+                memory = AuraStore(qdrant)
                 prefs = memory.get_all_preferences("danila")  # Default user
                 if prefs:
                     import json
                     context_parts.append(f"### User Preferences\n```json\n{json.dumps(prefs, indent=2, ensure_ascii=False)[:1500]}\n```")
             except Exception as e:
-                logger.warning(f"[INJECT_CONTEXT] Engram error: {e}")
+                logger.warning(f"[INJECT_CONTEXT] AURA error: {e}")
 
         # 4. CAM active nodes
         if inject_config.get("include_cam"):

@@ -422,13 +422,13 @@ def _batch_get_engram_scores(file_paths: List[str], user_id: str = "default") ->
     """
     scores = {}
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
+        from src.memory.aura_store import get_aura_store
 
-        engram = get_engram_user_memory()
-        if not engram:
+        aura = get_aura_store()
+        if not aura:
             return {path: 0.5 for path in file_paths}
 
-        prefs = engram.get_user_preferences(user_id)
+        prefs = aura.get_user_preferences(user_id)
         if not prefs:
             return {path: 0.5 for path in file_paths}
 

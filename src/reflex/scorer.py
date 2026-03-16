@@ -10,7 +10,7 @@ Signals (Phase 187.3 rebalanced — see docs/186_memory/GROK_RESEARCH_ANSWERS.md
   1. Semantic match      (intent_tags vs task keywords)       weight: 0.22
   2. CAM surprise        (novelty boost from surprise_detector) weight: 0.12  + sparse boost ×1.5
   3. Feedback score      (CORTEX historical success, 0.5 default) weight: 0.18
-  4. ENGRAM preference   (user tool_usage_patterns)           weight: 0.07
+  4. AURA preference     (user tool_usage_patterns)           weight: 0.07
   5. STM relevance       (working memory recency)             weight: 0.15
   6. Phase match         (fix/build/research alignment)       weight: 0.18
   7. HOPE LOD match      (zoom level → tool granularity)      weight: 0.05  + sparse boost ×1.5
@@ -45,7 +45,7 @@ _W = {
     "semantic":  float(os.getenv("REFLEX_SEMANTIC_WEIGHT",  "0.22")),
     "cam":       float(os.getenv("REFLEX_CAM_WEIGHT",       "0.12")),
     "feedback":  float(os.getenv("REFLEX_FEEDBACK_WEIGHT",  "0.18")),
-    "engram":    float(os.getenv("REFLEX_ENGRAM_WEIGHT",    "0.07")),
+    "aura":      float(os.getenv("REFLEX_AURA_WEIGHT",      "0.07")),
     "stm":       float(os.getenv("REFLEX_STM_WEIGHT",       "0.15")),
     "phase":     float(os.getenv("REFLEX_PHASE_WEIGHT",     "0.18")),
     "hope":      float(os.getenv("REFLEX_HOPE_WEIGHT",      "0.05")),
@@ -86,7 +86,7 @@ class ReflexContext:
     # CAM surprise score (0.0-1.0, from surprise_detector)
     cam_surprise: float = 0.0
 
-    # ENGRAM user preferences: tool_usage_patterns
+    # AURA user preferences: tool_usage_patterns
     # Dict of {tool_id: usage_count} or similar
     user_tool_prefs: Dict[str, float] = field(default_factory=dict)
 
@@ -128,7 +128,7 @@ class ReflexContext:
             subtask: Subtask dataclass (from agent_pipeline.py)
             stm_items: Recent STM buffer contents
             cam_surprise: CAM surprise score for current context
-            user_tool_prefs: ENGRAM tool usage patterns
+            user_tool_prefs: AURA tool usage patterns
             feedback_scores: CORTEX per-tool historical scores
             hope_level: Current HOPE LOD level
             mgc_stats: MGC cache statistics
@@ -184,7 +184,7 @@ class ReflexContext:
         else:
             hope_level = "MID"
 
-        # Extract user tool preferences from ENGRAM
+        # Extract user tool preferences from AURA
         user_prefs = session_data.get("user_preferences", {})
         tool_prefs: Dict[str, float] = {}
         if isinstance(user_prefs, dict) and user_prefs.get("has_preferences"):
@@ -234,7 +234,7 @@ class ReflexScorer:
 
         Args:
             weights: Override default signal weights. Keys: semantic, cam,
-                     feedback, engram, stm, phase, hope, mgc.
+                     feedback, aura, stm, phase, hope, mgc.
         """
         self._weights = dict(_W)
         if weights:
@@ -307,7 +307,7 @@ class ReflexScorer:
             "semantic":  self._semantic_match(tool, context),
             "cam":       self._cam_relevance(tool, context),
             "feedback":  self._feedback_score(tool, context),
-            "engram":    self._engram_preference(tool, context),
+            "aura":      self._aura_preference(tool, context),
             "stm":       self._stm_relevance(tool, context),
             "phase":     self._phase_match(tool, context),
             "hope":      self._hope_lod_match(tool, context),
@@ -387,8 +387,8 @@ class ReflexScorer:
             return min(1.0, max(0.0, context.feedback_scores[tool_id]))
         return _DEFAULT_FEEDBACK_SCORE
 
-    def _engram_preference(self, tool: Any, context: ReflexContext) -> float:
-        """Signal 4: User preference from ENGRAM tool_usage_patterns.
+    def _aura_preference(self, tool: Any, context: ReflexContext) -> float:
+        """Signal 4: User preference from AURA tool_usage_patterns.
 
         Frequently used tools score higher. Normalized to 0-1.
         """

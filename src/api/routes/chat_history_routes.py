@@ -480,8 +480,8 @@ async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Reques
 
         # MARKER_137.5A: ENGRAM user-preference sync (non-blocking and optional).
         try:
-            from src.memory.engram_user_memory import get_engram_user_memory
-            engram = get_engram_user_memory()
+            from src.memory.aura_store import get_aura_store
+            aura = get_aura_store()
             user_id = (
                 request.headers.get("x-user-id")
                 or request.headers.get("x-session-user")
@@ -489,7 +489,7 @@ async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Reques
                 or "danila"
             ).strip() or "danila"
 
-            highlights = engram.get_preference(user_id, "project_highlights", "highlights")
+            highlights = aura.get_preference(user_id, "project_highlights", "highlights")
             if not isinstance(highlights, dict):
                 highlights = {}
 
@@ -505,7 +505,7 @@ async def set_chat_favorite(chat_id: str, data: FavoriteRequest, request: Reques
 
             highlights["favorite_chats"] = favorites[-200:]
             highlights["favorite_chats_updated_at"] = datetime.now().isoformat()
-            engram.set_preference(
+            aura.set_preference(
                 user_id,
                 "project_highlights",
                 "highlights",

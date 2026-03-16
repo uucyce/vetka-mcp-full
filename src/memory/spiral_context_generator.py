@@ -7,7 +7,7 @@ Implements Pi-spiral progressive disclosure for LLM context.
 @file spiral_context_generator.py
 @status active
 @phase 108.7
-@depends elision.py, engram_user_memory.py, hope_enhancer.py
+@depends elision.py, aura_store.py, hope_enhancer.py
 @used_by orchestrator_with_elisya.py, vetka_mcp_bridge.py, session_tools.py
 
 MARKER_108_7_SPIRAL_CONTEXT: Spiral context generation

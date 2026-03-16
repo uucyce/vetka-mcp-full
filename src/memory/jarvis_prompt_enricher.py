@@ -5,7 +5,7 @@ Model-agnostic prompt enrichment with user preferences and context compression
 @file jarvis_prompt_enricher.py
 @status active
 @phase 98
-@depends json, logging, datetime, dataclasses, engram_user_memory.py, elision.py, hope_enhancer.py
+@depends json, logging, datetime, dataclasses, aura_store.py, elision.py, hope_enhancer.py
 @used_by session_tools.py, orchestrator (via API handlers)
 
 FIX_98.2: Added HOPE (Hierarchical Optimized Processing) integration.
@@ -35,7 +35,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 from dataclasses import dataclass, field
 
-from .engram_user_memory import EngramUserMemory, get_engram_user_memory
+from .aura_store import AuraStore, get_aura_store
 from .elision import get_elision_compressor, ElisionCompressor, ElisionResult
 
 logger = logging.getLogger(__name__)
@@ -95,17 +95,17 @@ class JARVISPromptEnricher:
 
     def __init__(
         self,
-        engram_memory: Optional[EngramUserMemory] = None,
+        aura_store: Optional[AuraStore] = None,
         elision_config: Optional[ElisionConfig] = None
     ):
         """
         Initialize JARVIS Prompt Enricher with ELISION support.
 
         Args:
-            engram_memory: EngramUserMemory instance (uses singleton if None)
+            aura_store: AuraStore instance (uses singleton if None)
             elision_config: ELISION compression configuration
         """
-        self.memory = engram_memory or get_engram_user_memory()
+        self.memory = aura_store or get_aura_store()
         self.elision_config = elision_config or ElisionConfig()
         self._elision_compressor: Optional[ElisionCompressor] = None
 
@@ -678,14 +678,14 @@ _enricher_instance: Optional[JARVISPromptEnricher] = None
 
 
 def get_jarvis_enricher(
-    engram_memory: Optional[EngramUserMemory] = None,
+    aura_store: Optional[AuraStore] = None,
     elision_config: Optional[ElisionConfig] = None,
 ) -> JARVISPromptEnricher:
     """
     Factory function - returns singleton JARVISPromptEnricher.
 
     Args:
-        engram_memory: EngramUserMemory instance
+        aura_store: AuraStore instance
         elision_config: ELISION compression configuration
 
     Returns:
@@ -694,7 +694,7 @@ def get_jarvis_enricher(
     global _enricher_instance
 
     if _enricher_instance is None:
-        _enricher_instance = JARVISPromptEnricher(engram_memory, elision_config)
+        _enricher_instance = JARVISPromptEnricher(aura_store, elision_config)
 
     return _enricher_instance
 

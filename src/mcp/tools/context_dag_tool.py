@@ -9,7 +9,7 @@ It collects context from multiple sources:
 - Pinned files (user selections)
 - Chat history (recent conversations)
 - CAM activations (context-aware memory)
-- Engram preferences (user communication style)
+- AURA preferences (user communication style)
 
 Then applies ELISION compression to fit ~500 token budget.
 
@@ -44,7 +44,7 @@ TOKEN_BUDGET = {
     "pins": 50,               # Pinned files
     "recent_chats": 100,      # Chat history digest
     "cam_activations": 60,    # Active memory nodes
-    "engram_prefs": 60,       # User preferences
+    "aura_prefs": 60,         # User preferences
 }
 
 
@@ -64,7 +64,7 @@ class ContextDAGTool(BaseMCPTool):
         return (
             "Assemble context DAG from ALL sources into ~500 token digest. "
             "Includes: viewport, pinned files, chat history, CAM activations, "
-            "Engram preferences. Applies ELISION compression. "
+            "AURA preferences. Applies ELISION compression. "
             "Returns hyperlinks [→ label] for lazy expansion via other MCP tools."
         )
 
@@ -177,7 +177,7 @@ class ContextDAGTool(BaseMCPTool):
         """
         Collect raw context from all sources.
 
-        Returns dict with keys: project_digest, viewport, pins, chats, cam, engram
+        Returns dict with keys: project_digest, viewport, pins, chats, cam, aura
         """
         contexts = {}
 
@@ -215,11 +215,11 @@ class ContextDAGTool(BaseMCPTool):
         except Exception as e:
             contexts["cam"] = {"error": str(e)}
 
-        # === Engram Preferences ===
+        # === AURA Preferences ===
         try:
-            contexts["engram"] = await self._get_user_preferences()
+            contexts["aura"] = await self._get_user_preferences()
         except Exception as e:
-            contexts["engram"] = {"error": str(e)}
+            contexts["aura"] = {"error": str(e)}
 
         return contexts
 
@@ -307,23 +307,23 @@ class ContextDAGTool(BaseMCPTool):
 
     async def _get_user_preferences(self, user_id: str = "danila") -> Dict[str, Any]:
         """
-        Get user preferences from Engram memory.
+        Get user preferences from AURA memory.
 
         Returns communication style, workflow preferences, etc.
         """
         try:
-            from src.memory.engram_user_memory import EngramUserMemory
+            from src.memory.aura_store import AuraStore
             from src.memory.qdrant_client import get_qdrant_client
 
             qdrant = get_qdrant_client()
-            memory = EngramUserMemory(qdrant)
+            memory = AuraStore(qdrant)
 
             prefs = memory.get_all_preferences(user_id)
 
             return {
                 "user_id": user_id,
                 "preferences": prefs if prefs else {},
-                "source": "engram_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
+                "source": "aura_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
             }
         except Exception as e:
             return {
@@ -428,15 +428,15 @@ class ContextDAGTool(BaseMCPTool):
             summaries["cam_activations"] = f"[→ cam] {summary}" if include_hyperlinks else summary
             hyperlinks["cam"] = "vetka_get_memory_summary"
 
-        # === Engram Preferences ===
-        engram = contexts.get("engram", {})
-        if engram and not engram.get("error"):
-            prefs = engram.get("preferences", {})
+        # === AURA Preferences ===
+        aura = contexts.get("aura", {})
+        if aura and not aura.get("error"):
+            prefs = aura.get("preferences", {})
             style = prefs.get("communication_style", {}).get("value", "unknown")
             workflow = prefs.get("workflow", {}).get("value", "unknown")
 
             summary = f"Style: {style}, workflow: {workflow}"
-            summaries["engram_prefs"] = f"[→ prefs] {summary}" if include_hyperlinks else summary
+            summaries["aura_prefs"] = f"[→ prefs] {summary}" if include_hyperlinks else summary
             hyperlinks["prefs"] = "vetka_get_user_preferences"
 
         # === Apply ELISION compression if level >= 2 ===
@@ -512,7 +512,7 @@ def register_context_dag_tool(tool_list: List[Dict[str, Any]]):
         "description": (
             "Assemble context DAG from ALL sources into ~500 token digest. "
             "Includes: viewport, pinned files, chat history, CAM activations, "
-            "Engram preferences. Applies ELISION compression. "
+            "AURA preferences. Applies ELISION compression. "
             "Returns hyperlinks [→ label] for lazy expansion via other MCP tools."
         ),
         "parameters": {

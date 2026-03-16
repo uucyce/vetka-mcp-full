@@ -135,26 +135,22 @@ async def test_get_tools_for_agent():
         return False
 
 
-async def test_engram_functions():
-    """Test 4: Test Engram lookup functions"""
-    print("\n🧠 Test 4: Engram Functions")
+async def test_aura_functions():
+    """Test 4: Test Aura lookup functions"""
+    print("\n🧠 Test 4: Aura Functions")
     print("=" * 50)
 
     try:
-        from src.memory.engram_user_memory import engram_lookup, enhanced_engram_lookup
+        from src.memory.aura_store import aura_lookup
 
         # Test basic lookup (Level 1)
-        result = await engram_lookup("test query")
-        print(f"✅ Basic engram_lookup executed: {result is not None}")
-
-        # Test enhanced lookup (Level 2)
-        result2 = await enhanced_engram_lookup("test query", level=2)
-        print(f"✅ Enhanced engram_lookup executed: {result2 is not None}")
+        result = await aura_lookup("test query")
+        print(f"✅ Basic aura_lookup executed: {result is not None}")
 
         return True
 
     except Exception as e:
-        print(f"❌ Engram functions test failed: {e}")
+        print(f"❌ Aura functions test failed: {e}")
         return False
 
 
@@ -190,7 +186,7 @@ async def main():
         ("CAM Tools Registration", test_cam_tools_registration),
         ("Agent Permissions", test_agent_permissions),
         ("Enhanced get_tools_for_agent", test_get_tools_for_agent),
-        ("Engram Functions", test_engram_functions),
+        ("Aura Functions", test_aura_functions),
         ("Orchestrator Integration", test_orchestrator_integration),
     ]
 
