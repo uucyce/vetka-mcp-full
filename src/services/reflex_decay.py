@@ -36,14 +36,15 @@ logger = logging.getLogger(__name__)
 # ─── Phase-Specific Half-Lives (days) ────────────────────────────
 
 PHASE_HALF_LIFE: Dict[str, float] = {
-    "research": 45.0,   # Research tools stay relevant longer (exploration)
-    "fix": 14.0,        # Fix tools decay fast (context-specific patches)
-    "build": 30.0,      # Build tools — moderate retention
-    "*": 30.0,          # Default fallback
+    "research": 45.0,  # Research tools stay relevant longer (exploration)
+    "fix": 14.0,  # Fix tools decay fast (context-specific patches)
+    "build": 30.0,  # Build tools — moderate retention
+    "*": 30.0,  # Default fallback
 }
 
 
 # ─── Decay Configuration ────────────────────────────────────────
+
 
 @dataclass
 class DecayConfig:
@@ -58,13 +59,16 @@ class DecayConfig:
         min_half_life: Floor to prevent ultra-fast decay.
         max_half_life: Ceiling to prevent tools from never decaying.
     """
-    phase_half_lives: Dict[str, float] = field(default_factory=lambda: dict(PHASE_HALF_LIFE))
+
+    phase_half_lives: Dict[str, float] = field(
+        default_factory=lambda: dict(PHASE_HALF_LIFE)
+    )
     success_boost_threshold: float = 0.8
     success_boost_multiplier: float = 2.0
     failure_threshold: float = 0.3
     failure_multiplier: float = 0.5
-    min_half_life: float = 7.0      # 1 week minimum
-    max_half_life: float = 90.0     # 3 months maximum
+    min_half_life: float = 7.0  # 1 week minimum
+    max_half_life: float = 90.0  # 3 months maximum
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -75,6 +79,7 @@ class DecayConfig:
 
 
 # ─── Model Profiles ─────────────────────────────────────────────
+
 
 @dataclass
 class ModelProfile:
@@ -87,11 +92,12 @@ class ModelProfile:
         prefer_simple: Whether model performs better with simpler tool schemas.
         score_boost: Global score adjustment applied to all tools for this model.
     """
+
     model_name: str = ""
     fc_reliability: float = 0.8
     max_tools: int = 15
     prefer_simple: bool = False
-    score_boost: float = 0.0       # Global adjustment (-0.2 to +0.2)
+    score_boost: float = 0.0  # Global adjustment (-0.2 to +0.2)
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -211,6 +217,25 @@ MODEL_PROFILES: Dict[str, ModelProfile] = {
         max_tools=1,
         prefer_simple=True,
     ),
+    # MARKER_177.A2.1: New localguys models (2026-03)
+    "gemma3:4b": ModelProfile(
+        model_name="gemma3:4b",
+        fc_reliability=0.72,
+        max_tools=5,
+        prefer_simple=True,
+    ),
+    "gemma3:12b": ModelProfile(
+        model_name="gemma3:12b",
+        fc_reliability=0.81,
+        max_tools=9,
+        prefer_simple=True,
+    ),
+    "mistral-nemo": ModelProfile(
+        model_name="mistral-nemo",
+        fc_reliability=0.84,
+        max_tools=12,
+        prefer_simple=False,
+    ),
 }
 
 DEFAULT_PROFILE = ModelProfile(
@@ -222,6 +247,7 @@ DEFAULT_PROFILE = ModelProfile(
 
 
 # ─── Decay Engine ────────────────────────────────────────────────
+
 
 class ReflexDecayEngine:
     """MARKER_173.P5.ENGINE — Computes adaptive decay weights.
@@ -310,6 +336,7 @@ class ReflexDecayEngine:
 
 # ─── Model Profile Lookup ───────────────────────────────────────
 
+
 def get_model_profile(model_name: str) -> ModelProfile:
     """Get scoring profile for a specific model.
 
@@ -349,6 +376,7 @@ def get_all_model_profiles() -> Dict[str, Dict[str, Any]]:
 
 
 # ─── Convenience: Decay Summary ─────────────────────────────────
+
 
 def get_decay_summary() -> Dict[str, Any]:
     """Get human-readable summary of decay configuration.
