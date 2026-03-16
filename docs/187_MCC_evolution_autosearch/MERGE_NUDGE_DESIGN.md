@@ -60,6 +60,60 @@ REFLEX score calculation
 **Эволюция: Вариант B** заменяет A когда REFLEX scoring стабилен и нужна гранулярность.
 Не нужны оба одновременно — B supersedes A.
 
+## Вариант C: Merge Gate — блокировка случайного мержа (защита)
+
+Варианты A и B — про "напомнить смержить". Вариант C — обратная задача: **не дать смержить непроверенное**.
+
+**Проблема:** Агент или пользователь делает `git merge claude/X` — а ветка содержит код который решили переделать, или таск ещё не approved. Мерж проходит, мусор в main.
+
+**Суть:** `pre-merge-commit` git hook проверяет TaskBoard перед мержем worktree ветки.
+
+```
+git merge claude/stupefied-torvalds
+  → pre-merge-commit hook fires
+    → query task_board: есть ли tasks для этой ветки?
+      → all done_worktree + merge_approved? → OK, merge proceeds
+      → any pending/in_progress? → BLOCK: "Branch has 2 unfinished tasks"
+      → any done_worktree без merge_approved? → WARN: "1 task not yet approved for merge"
+```
+
+**Реализация:**
+```bash
+# .git/hooks/pre-merge-commit
+MERGE_BRANCH=$(git log -1 --format=%s MERGE_HEAD 2>/dev/null | grep -oP "claude/\S+")
+if [ -n "$MERGE_BRANCH" ]; then
+  # Query task_board for branch tasks
+  python3 scripts/check_merge_gate.py "$MERGE_BRANCH"
+  # Exit non-zero to block merge
+fi
+```
+
+**scripts/check_merge_gate.py:**
+- Reads `data/task_board.json` (or calls MCP)
+- Filters tasks where `branch == $MERGE_BRANCH` or commit on that branch
+- Checks: all tasks `done_worktree`? Any `pending`/`in_progress`?
+- Optional: check `merge_approved` field (new TaskBoard field)
+- stdout message for agent, exit code 0 (allow) or 1 (block)
+
+**TaskBoard расширение:**
+- Новое поле `merge_approved: bool` (default: false)
+- `vetka_task_board action=update task_id=X merge_approved=true` — user/QA approves
+- Или автоматически: если task `done_worktree` > 24h без reject → auto-approve
+
+**Уровни строгости:**
+1. **Soft (рекомендуется):** warn но не блокирует (`exit 0` всегда, только stdout)
+2. **Medium:** блокирует если есть pending tasks, warn на unapproved
+3. **Strict:** блокирует всё без `merge_approved: true`
+
+**Плюсы:** Защита от мусора в main, интеграция с TaskBoard lifecycle.
+**Минусы:** Требует `check_merge_gate.py`, новое поле в TaskBoard, может раздражать при быстром workflow.
+
+## Рекомендация
+
+**Старт: Вариант A** (merge nudge) + **Вариант C soft** (merge gate warning). Оба — shell хуки, минимум кода.
+**Эволюция: Вариант B** (REFLEX) + **Вариант C medium** (blocking gate).
+Не нужны все одновременно — A→B замена, C дополняет любой из них.
+
 ## Файлы
 
 | Вариант | Файл | Изменение |
@@ -68,3 +122,6 @@ REFLEX score calculation
 | B | `data/reflex/tool_catalog.json` | +1 tool `merge_to_main` |
 | B | `src/reflex/scoring.py` (или где scoring) | +branch_maturity signal |
 | B | `src/mcp/tools/task_board_tools.py` | query done_worktree by branch |
+| C | `.git/hooks/pre-merge-commit` | merge gate check |
+| C | `scripts/check_merge_gate.py` | TaskBoard query + validation |
+| C | `src/mcp/tools/task_board_tools.py` | +merge_approved field |
