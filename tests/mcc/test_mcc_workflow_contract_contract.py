@@ -525,3 +525,41 @@ def test_local_model_catalog_includes_reflex_decay_fields(client: TestClient) ->
         "qwen3:8b fc_reliability should be 0.82"
     )
     assert coder_entry["max_tools"] == 8, "qwen3:8b max_tools should be 8"
+
+
+def test_model_policy_unified_system() -> None:
+    """MARKER_177.A1.1: Test unified ModelPolicy system."""
+    from src.services.model_policy import (
+        get_unified_policy,
+        get_all_policies,
+        LOCALGUYS_CATALOG,
+    )
+
+    # Test single model
+    policy = get_unified_policy("qwen3:8b")
+    assert policy.model_id == "qwen3:8b"
+    assert policy.fc_reliability == 0.82
+    assert policy.max_tools == 8
+    assert policy.tool_budget_class == "low-medium"  # auto-derived
+    assert "coder" in policy.role_fit
+
+    # Test auto-derivation
+    assert policy.context_class == "medium"  # from context_length
+    assert policy.latency_class == "balanced"  # from output_tps
+
+    # Test all policies
+    all_pols = get_all_policies()
+    assert len(all_pols) == len(LOCALGUYS_CATALOG)
+    assert len(all_pols) == 11
+
+    # Test catalog includes all expected models
+    model_ids = [p["model_id"] for p in all_pols]
+    assert "qwen3:8b" in model_ids
+    assert "deepseek-r1:8b" in model_ids
+    assert "gemma3:4b" in model_ids  # new model
+    assert "mistral-nemo" in model_ids  # new model
+
+    # Test deepseek-r1 auto-derivation
+    ds_policy = get_unified_policy("deepseek-r1:8b")
+    assert ds_policy.tool_budget_class == "low"  # fc=0.74 < 0.75
+    assert "verifier" in ds_policy.role_fit
