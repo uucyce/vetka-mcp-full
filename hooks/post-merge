@@ -1,0 +1,64 @@
+#!/bin/bash
+# Post-merge hook: Auto-promote done_worktree tasks to done_main
+#
+# MARKER_189.0: When a worktree branch is merged to main, any tasks
+# referenced in the merged commits via [task:tb_xxxx] should be
+# promoted from done_worktree → done_main.
+#
+# Disable by setting VETKA_NO_TASK_PROMOTE=1
+
+if [ "$VETKA_NO_TASK_PROMOTE" = "1" ]; then
+    echo "[post-merge] Task promotion disabled (VETKA_NO_TASK_PROMOTE=1)"
+    exit 0
+fi
+
+# Only run on main branch
+BRANCH=$(git branch --show-current 2>/dev/null)
+if [ "$BRANCH" != "main" ]; then
+    exit 0
+fi
+
+# Get the merge commit hash
+MERGE_COMMIT=$(git rev-parse HEAD)
+
+# Extract task IDs from the merged commits
+# ORIG_HEAD is set by git merge to point to the pre-merge HEAD
+# So HEAD..ORIG_HEAD gives us nothing; we need ORIG_HEAD..HEAD for new commits
+TASK_IDS=$(git log ORIG_HEAD..HEAD --format="%s %b" 2>/dev/null | grep -oE '\[task:tb_[0-9_]+\]' | sed 's/\[task://;s/\]//' | sort -u)
+
+if [ -z "$TASK_IDS" ]; then
+    exit 0
+fi
+
+echo "[post-merge] Found task IDs to promote: $TASK_IDS"
+
+# Find the project root (where data/task_board.json lives)
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
+if [ -z "$REPO_ROOT" ]; then
+    echo "[post-merge] Cannot find repo root"
+    exit 0
+fi
+
+# Run Python to promote tasks
+python3 -c "
+import sys
+sys.path.insert(0, '$REPO_ROOT')
+
+from src.orchestration.task_board import TaskBoard
+
+board = TaskBoard()
+task_ids = '''$TASK_IDS'''.strip().split()
+merge_hash = '$MERGE_COMMIT'
+
+for tid in task_ids:
+    tid = tid.strip()
+    if not tid:
+        continue
+    result = board.promote_to_main(tid, merge_commit_hash=merge_hash)
+    if result.get('success'):
+        print(f'  [post-merge] {tid} promoted to done_main')
+    else:
+        print(f'  [post-merge] {tid} skip: {result.get(\"error\", \"unknown\")}')
+" 2>&1
+
+exit 0
