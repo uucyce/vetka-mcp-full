@@ -219,3 +219,17 @@ export const IconAudioBars = memo((props: IconProps) => {
   );
 });
 IconAudioBars.displayName = 'IconAudioBars';
+
+/** Scissors — scene detection / cut point */
+export const IconScissors = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <circle cx="4" cy="4" r="2" stroke={d.color} strokeWidth="1.3" />
+      <circle cx="4" cy="12" r="2" stroke={d.color} strokeWidth="1.3" />
+      <line x1="5.5" y1="5.5" x2="14" y2="12" stroke={d.color} strokeWidth="1.3" strokeLinecap="round" />
+      <line x1="5.5" y1="10.5" x2="14" y2="4" stroke={d.color} strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+});
+IconScissors.displayName = 'IconScissors';
