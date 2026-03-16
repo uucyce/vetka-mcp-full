@@ -58,12 +58,14 @@ TASK_BOARD_SCHEMA = {
         # For "get", "update", "remove", "claim", "complete":
         "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "failed", "cancelled"]},
+        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled"]},
         # For "list":
         "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
         # For "complete":
         "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
         "commit_message": {"type": "string", "description": "Commit message (for complete)"},
+        # MARKER_186.4: Branch name for worktree-aware completion
+        "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
     },
     "required": ["action"]
 }
@@ -208,7 +210,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         commit_message = arguments.get("commit_message")
 
         # MARKER_186.4: Detect current git branch for worktree-aware status
-        current_branch = _detect_git_branch()
+        # Prefer explicit branch from caller (agent knows its own branch)
+        current_branch = arguments.get("branch") or _detect_git_branch()
 
         # Case A: agent already committed — just close
         if commit_hash:
