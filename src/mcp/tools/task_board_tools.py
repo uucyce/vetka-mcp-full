@@ -216,7 +216,6 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_188.3: Auto-infer worktree_path from branch= if not explicit
         worktree_path = arguments.get("worktree_path")
         current_branch = arguments.get("branch")
-        logger.warning(f"[TaskBoard:DEBUG] complete called: branch={current_branch!r}, worktree_path={worktree_path!r}, all_keys={list(arguments.keys())}")
 
         # Auto-detect worktree_path from branch name (claude/<name> → .claude/worktrees/<name>)
         if not worktree_path and current_branch and current_branch.startswith("claude/"):
