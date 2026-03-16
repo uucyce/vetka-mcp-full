@@ -1,0 +1,837 @@
+Keyboard Shortcuts for Avid Editors
+
+(Media Composer, Newscutter, and Symphony)
+
+Audio
+
+Bin
+
+Capturing
+
+Editing
+
+Effect Mode
+Playing & Marking
+Timeline
+
+Trim Mode
+
+Note: 36 = Command Key
+
+Alt + click Pan slider
+
+Option + click Pan slider
+
+Snaps to Mid in Audio Mix tool
+
+Alt + click Volume slider
+
+Option + click Volume slider
+
+Snaps to 0 cB in Audio EQ and Audio
+tools
+
+Alt + click Audio Track
+Monitor button
+
+Option + click Audio Track
+Monitor button
+
+Selects track for audio scrub
+monitoring
+
+Alt + click Track Solo button
+(Automation Gain tool)
+
+or
+
+Alt + number (1 to 8) at top
+of keyboard
+
+Option + click Track Solo
+button (Automation Gain tool)
+or
+
+Option + number (1 to 8) at
+top of keyboard
+
+Mutes selected track (1 to 8)
+
+Alt + drag keyframe
+
+Option + drag keyframe
+
+Moves selected audio keyframe
+horizontally in Timeline
+
+Alt + click digital scrub
+parameters in Composer
+monitorOption + click digital
+scrub parameters in
+Composer monitor
+
+Option + click digital scrub
+parameters in Composer
+monitor
+
+Opens Audio Settings dialog box
+
+Ctrl +N ob N Creates a new bin
+Selects all items in the active bin or the Project Window,
+alias # +A if selected
+Ctrl + W ab +W Closes open windows, bins or dialog boxes
+Prints the selected bin in whatever view you have
+Gud IP 3 +P selected (Text, Frame or Script View)
+Ctrl + D ab +#D Duplicates selected clip(s), sequence(s), or title(s)
+. Creates a Group Clip from selected Master Clips or Sub
+Shift + Ctrl +G 36 + shinec Clips
+First, select clips or sequences in the bin, then use this
+Ctrl +1 a6 +| shortcut to open the Console window, which will display
+
+useful information
+
+Shift + Ctrl + click
+Clip Menu
+
+Shift + Ctrl + click
+Clip Menu
+
+Hold down these shortcut keys, then click on the Clip
+Menu. By holding down these keys, you have changed
+the Relink selection to Unlink
+
+Alt + drag clips
+between bins
+
+Option + drag clips
+between bins
+
+Makes a copy of the clip.
+
+Ctrl + Alt + Click
+
+as + Click
+
+Using the shortcut, click on the Clip (the icon in Text
+View or the frame image in Frame View or Script View)
+or the Sequence Icon. This will create a pop-up window
+of information about the selected item.
+
+When in Frame View or Script View, this shortcut will
+
+Cth +L a6 +L increase the size of the Clip Frame images.
+
+Ctrl +K 3e When in Frame View or Script View, this shortcut will
++K decrease the size of the Clip Frame images.
+
+Ctrl + T 9f + When in Frame View, this shortcut will make the Clip
+
+Frame images align to an invisible grid. A good way to
+
+remember this shortcut is to think that "T" stands for
+"Tidy-up."
+
+While capturing (but not Batch Capturing), pressing F1 will mark the In-Point of a
+
+F1 subclip. If you press F1 at a later time (before pressing the F2 key) the in-Point
+will be updated.
+
+FD While capturing (but not Batch Capturing), pressing F2 will mark the Out-Point of
+a subclip.
+
+F3 Adds a Red locator to the clip
+
+4 When in Capture Mode, F4 begins the capture.
+When in Log Mode, F4 logs a Master Clip to the bin.
+
+F5 Adds a Red locator to the clip
+
+F6 Adds a Green locator to the clip
+
+F7 Adds a Blue locator to the clip
+
+F8 Adds a Cyan locator to the clip
+
+FQ Adds a Magenta locator to the clip
+
+F10 Adds a Yellow locator to the clip
+
+F11 Adds a Black locator to the clip
+
+F12 Adds a White locator to the clip
+
+Ctrl + Z
+
+Ctrl +R
+Ctrl + C
+
+Ctrl + V
+
+Alt + double-click
+on a Clip,
+Sequence, or Title
+icon in a bin
+
+Alt + click on either
+the Source Monitor
+or Record Monitor
+
+Alt + drag a clip (or
+multiple clips) into
+the Record monitor
+
+Shift + drag a clip
+(or multiple clips)
+
+d6 +7
+d6 +R
+36 +c
+
+36 +V
+
+Option + [2] ay
+
+Option +
+
+Option + [24]
+Option + double-
+click on a Clip,
+
+Sequence, or Title
+icon in a bin
+
+Option + click on
+either the Source
+Monitor or Record
+Monitor
+
+Option + drag a clip
+(or multiple clips)
+into the Record
+monitor
+
+Shift + drag a clip (or
+multiple clips) into
+
+Performs an Undo of a previous editing operation such
+as Mark In or Splice.
+
+Performs an Redo of a previous editing operation such
+as Mark In or Splice.
+
+Copies the material between a Mark In and Mark Out on
+the selected tracks.
+
+Pastes copied material onto the same tracks from which
+it was copied, at the point at which you Mark In.
+
+Copies the material between a Mark In and Mark Out on
+the selected tracks, and places it not just into the
+Clipboard, but into the Source Window. This makes it
+very quick an easy to copy material and then be able to
+edit it onto *any* appropriate track in your sequence.
+
+Lifts the material between a Mark In and Mark Out on
+the selected tracks, and places it immediately into the
+Source Window.
+
+Extracts the material between a Mark In and Mark Out
+on the selected tracks, and places it immediately into the
+Source Window.
+
+Opens the selected item(s) in a pop-up monitor.
+
+Changes the cursor/pointer to a hand-icon. You can now
+drag a subclip or a subsequence to a bin.
+
+The clip(s) will be Spliced into your Sequence at the
+Mark In position.
+
+The clip(s) will be Overwritten into your Sequence at the
+Mark In position.
+into the Record
+
+the Record monitor
+
+monitor
+With either the Source Monitor or the Record Monitor
+selected, use this shortcut to enlarge the image.
+
+Cth +L Pan
+With the Timeline active, use this shortcut to enlarge the
+track width for selected tracks.
+With either the Source Monitor or the Record Monitor
+selected, use this shortcut to reduce the image.
+
+Ctrl +K ob ek
+
+With the Timeline active, use this shortcut to reduce the
+track width for selected tracks.
+
+At; =
+
+Opt + Ka
+
+Ignores the Track Selectors and places an In and Out
+Mark based on the two nearest transitions to the blue
+Position Indicator.
+
+Esc
+
+Esc
+
+Toggles between making the Source and Record
+monitors active.
+
+Ctrl + Apostrophe
+
+3 + Apostrophe
+
+Sends selected window back to its default location.
+
+Alt +
+
+Option +
+
+Creates an Add Edit only in tracks with filler.
+
+Tab (in Effect
+Editor)
+
+Tab (in Effect Editor)
+
+Moves from one active slider to next.
+
+Shift + Left or
+Right Arrow
+
+Shift + Left or Right
+Arrow
+
+Moves 10 units on a slider instead of 1 unit.
+
+Alt + drag corner,
+side, or center of
+wire frame
+
+Option + drag
+corner, side, or
+center of wire frame
+
+Displays the image as you move it, rather than
+displaying just a wire frame outline.
+
+Alt + drag
+keyframe
+
+Ctrl +A
+
+Select segment +
+Delete key
+
+Select a segment,
+and then Alt +
+double-click an
+Effect in the Effect
+Palette or an Effect
+Template in a bin.
+
+Ctrl + Alt + click
+and drag video
+image (with image
+zoomed in)
+
+Press P while
+rendering
+
+Press T while
+rendering
+
+Ctrl + . (period)
+
+Click anywhere in
+the Timecode track
+
+Option + drag
+keyframe
+
+db +A
+
+Select segment +
+Delete key
+
+Select a segment,
+and then Option +
+double-click an
+Effect in the Effect
+Palette or an Effect
+Template in a bin.
+
+36 + Option + click
+and drag video
+image (with image
+zoomed in)
+
+Press P while
+rendering
+
+Press T while
+rendering
+
+36 + . (period)
+
+Click anywhere in
+the Timecode track
+
+Grab an active keyframe in the Keyframe Position Bar
+and move it earlier or later in time. Be sure you get the
+
+“hand icon" before you attempt to move a
+keyframe.
+
+With the Keyframe Position Bar active, this will select all
+the keyframes.
+
+Removes an effect.
+
+This allows you to add an effect to a segment that
+already has an effect on it, creating a "Nest." This also
+allows you to place one effect over multiple segments
+that are selected. Using Alt/Opt + Double-click is what
+Avid calls "Auto Nesting."
+
+Changes the Arrow/cursor pointer to the Hand pointer
+
+thy for moving an enlarged video image around in the
+Record Monitor. This is also useful for moving the
+working area around when using the Advanced
+Keyframe features or when using the Speed and
+Position Graphs in the Timewarp Motion Effect Editor
+Window.
+
+Renders to the last drive selected, without bringing up
+the render dialog box.
+
+Displays the percentage of the render that is complete.
+
+Displays render time completed and an estimated total
+render time.
+
+Stops the render process and displays a dialog box
+asking if you would like to keep the already rendered
+portion or not. Keeping the rendered portion means that
+the next time you render that effect it will pick up where
+you left off.
+
+This will quickly take you out of Effect Mode and return
+you to Source/Record Mode. Note: this shortcut does
+not work in Avid Xpress Pro.
+Alt + Opt +
+[>] cn [>] cn Steps forward or backward 10 frames.
+or or
+Alt + Opt +
+[>] [a] ; [a] Steps forward or backward 1 field.
+or or
+In the Position Bar (underneath the Source and Record
+Alt + Opt + monitors), you can grab the marks with the “hand icon”
+[2] or i) or i) and move them earlier or later. NOTE: this works
+only one mark ata time.
+Alt + Opt +
+or or
+Alt + Opt +
+[2] L«] L«] Goes to Mark In or Mark Out
+or or
+7 7 Mark an In and an Out and use this shortcut to loop the
+Alt + Ctrl + playback until stopping it.
+
+Press either of these keys multiple times and you will
+speed up, much like shifting gears. The speeds are as
+follows:
+
+1st press = 30fps
+
+2nd press = 60fps
+
+3rd press = 90fps
+
+4th press = 150fps
+
+5th press = 240fps
+
+NOTE: use the key to stop the playback at any
+
+time.
+
+NOTE: This shortcut also works when in Trim Mode.
+
+Alt +
+
+Opt +
+
+While speeding along, using the shortcut directly above
+this one, use Opt/Alt + Play Forward or Play Reverse to
+"down shift" or "up shift" the speed without having to
+
+come to a complete stop as when using the Pause key.
+
+Holding
+
+and then Holding
+
+Holding
+
+and then Holding
+
+This will scrub the audio forward or reverse at just 8fps.
+
+NOTE: This shortcut also works when in Trim Mode.
+
+Holding
+
+and then Tapping
+
+Holding
+
+and then Tapping
+
+This will scrub the audio forward or reverse just one
+frame ata time.
+
+NOTE: This shortcut also works when in Trim Mode.
+
+Ctrl + click near a
+transition in the
+Timeline
+
+36 + click neara
+transition in the
+Timeline
+
+Snaps the blue position indicator to the "head frame"
+(the first frame) of a segment. It also makes the blue
+position indicator snap to Mark In points or to the next
+audio keyframe.
+
+Ctrl + Alt click near
+a transition in the
+Timeline
+
+ob + Opt click near
+a transition in the
+Timeline
+
+Snaps the blue position indicator to the "tail frame" (the
+last frame) of a segment. It also makes the blue position
+indicator snap to Mark In points or to the next audio
+keyframe.
+
+Ctrl +L
+
+36 +1
+
+Increases the height of selected track(s).
+
+Ctrl + K
+
++k
+
+Decreases the height of selected track(s).
+
+Ctrl + drag
+
+Ctrl + [or ] (left or
+right bracket)
+
+Ctrl + F
+
+Ctrl + ¥
+
+Ctrl + U
+
+Alt + Ctrl + Y
+
+Alt + Ctrl + U
+
+Ctrl + click on
+
+video or audio
+monitor icon in
+track selector
+
+panel
+
+Shift + click
+segments when in
+Segment Mode or
+Effect Mode
+
+Ctrl + drag a
+segment when in
+Segment Mode
+
+Opt + drag
+
+a +[ or ] (left or
+right bracket)
+
+$8.
+
+db +y
+
+db + U
+Opt + ob +Y
+
+Opt + a6 +U
+
+3 + click on video
+or audio monitor icon
+in track selector
+panel
+
+Shift + click
+segments when in
+Segment Mode or
+Effect Mode
+
+3 +draga
+
+segment when in
+Segment Mode
+
+Hold down the Option key (Mac) or the
+Control key (PC), then place your cursor
+between two tracks. The resize icon will
+appear. Now when you hold the mouse
+button down you make the track wider or
+
+narrower.
+
+Shows more or less detail in the Timeline. "More Detail"
+and "Less Detail" are also selections from the Timeline
+Fast Menu, if you'd like to map these functions to your
+keyboard. Common locations to map these functions to
+are the up arrow and down arrow keys.
+
+Opens the "Find" dialog box. This allows you to search
+the timeline for clip names, source (tape) names that are
+displayed, text in locators, etc.
+
+Adds a new video track.
+
+Adds a new audio track.
+
+Opens a dialog box which allows you to add a
+specifically numbered audio or video track.
+
+Opens a dialog box which allows you to add a
+specifically numbered audio or video track.
+
+Monitor
+Icon
+
+Solo
+Track
+
+lob
+NOTE: you may "solo" up to 16 audio tracks at one time,
+however you may only solo 1 video track at a time.
+
+Allows you to select multiple segments.
+
+Snaps the "head" of the selected segment(s) to a
+transition (that occurs on any track in the Timeline), as
+well as to Mark In, Mark Out and the blue position
+indicator.
+Alt + Ctrl + drag a
+segment when in
+Segment Mode
+
+Shift + Ctrl + drag
+up or down
+
+Lasso one or more
+segments
+
+Alt + Lasso one or
+more segments
+
+Lasso a transition
+Alt + Lasso
+
+Lasso one or more
+segments
+
+Alt + Lasso
+
+Ctrl +A
+
+Shift + Ctrl +A
+
+Opt + a6 +draga
+segment when in
+Segment Mode
+
+Ctrl + drag up or
+down
+
+Lasso one or more
+segments
+
+Ctrl + Lasso one or
+more segments
+
+Lasso a transition
+Ctrl + Lasso
+
+Lasso one or more
+segments
+
+Ctrl + Lasso
+
+ob +A
+
+Shift + a6 +A
+
+Snaps the "tail" of the selected segment(s) to a transition
+(that occurs on any track in the Timeline), as well as to
+Mark In, Mark Out and the blue position indicator.
+
+Allows you to move segments to a higher or lower track
+without letting them move left or right, and thus getting
+out of sync.
+
+You must begin by clicking in the Timeline Window (the
+area with no tracks), then lasso the segments by going
+from LEFT to RIGHT, making sure your lasso totally
+surrounds the desired segments. This will place you into
+Segment Mode, specifically the last one you used during
+that session.
+
+Same as above, except you can now lasso segments
+inside the timeline tracks.
+
+You must begin by clicking in the Timeline Window (the
+area with no tracks), then lasso only a transition (on one
+or multiple tracks) making sure your lasso totally
+surrounds the desired transition(s). This will place you
+into Trim Mode.
+
+Same as above, except you can now lasso transitions
+inside the timeline tracks.
+
+You must begin by clicking in the Timeline Window (the
+area with no tracks), then lasso just one segment per
+track by going from RIGHT to LEFT, making sure your
+lasso totally surrounds the desired segments. This will
+place you into Trim Mode, specifically the "Slip" function
+of trimming.
+
+Same as above, except you can now lasso segments
+inside the timeline tracks.
+
+Selects all tracks
+
+De-selects all tracks
+
+Performs a match-frame, but does not remove
+previously placed Mark In or Mark out points.
+Alt + i
+
+Opt + i
+
+For the clip on the top-most selected track, this opens
+the bin in which that clip resides (if located within the
+project).
+
+Ctrl +/
+(forward slash)
+
+36 +
+
+(forward slash)
+
+Displays the entire Sequence in the Timeline Window.
+
+Allows the editor to select an area of the timeline to
+
+Cti+M 3a +M "Zoom" into. The smaller the slection, the greater the
+magnification.
+After using the "Zoom" shortcut above, this shortcut
+
+Ctrl + J a6 +J allows the editor to return to the previously used timeline
+
+magnification.
+
+Alt +
+
+Opt +
+
+Ignores the track selector panel configuration and will
+jump to the previous or next transition in the Timeline.
+
+Alt + Drag
+
+Opt + Drag
+
+When in a Single Roller Trim configuration, this allows
+
+the user to SHORTEN segments without getting out of
+sync. It does this by replacing the trimmed footage with
+Filler.
+
+NOTE: Sync Locks must be disabled for this to work.
+
+After exiting Trim mode, this places the editor back in
+Trim Mode and into the Trim Roller configuration that
+was last used.
+
+First, select the Composer Window, a Bin, the Timeline
+or the Capture Tool, then use this shortcut to quickly
+- open the related settings. To open the Trim settings, you
+
+Ctrl + = (equals) 36 + = (equals) must be in Trim Mode AND make sure that the
+Composer window is active (rather than the Timeline
+window).
+
+Ctrl +0 ah rf) Opens or selects the Timeline window
+
+Ctrl +1 ob +4 Audio tool
+
+Ctrl +2 3 > Avid Calculator
+
+Ctrl +3 ob 3 Command Pallette
+
+Ctrl + 4 ae 4 Composer window
+
+Ctrl +5 ob. 5 Media Creation
+
+Ctr +6 ae 6 Console
+
+Ctrl +7 ob. 7 Capture Tool
+
+Ctrl +8 S63 Effects Pallette
+
+Ctrl +9 ob. 9 Project window
+
+Ctrl + Shift + Right
+Click a Master Clip
+
+es + Shift + Clip
+Menu
+
+Changes the Relink option to Unlink, allowing the Media
+Files to become Unlinked from the Master Clip.
+
+Holding Alt +
+selecting a Project
++ hitting Delete key
+
+Holding Option +
+selecting a Project +
+hitting Delete key
+
+Deletes a Project (Project folder and everything within it)
+from a system. Does NOT delete the associated media.
+
+*With thanks to Benjamin Hershleder at Moviola
+

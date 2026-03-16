@@ -1,0 +1,149 @@
+Premiere Pro Keyboard Shortcuts: Mac
+
+TOOLS
+
+<
+
+Selection Tool
+A Track Select Forward Tool
+Shift-A Track Select Backward Tool
+
+B_ Ripple Edit Tool
+
+N_ Rolling Edit Tool
+
+R_ Rate Stretch Tool
+
+C_ Razor Tool
+
+Y Slip Tool
+
+U_ Slide Tool
+
+H_ Hand Tool
+
+Z Zoom Tool
+
+T Type Tool
+GENERAL
+Import Cmd-|
+Export Media Cmd-M
+Create New Project Cmd-Opt-N
+Create New Sequence Cmd-N
+INTERFACE
+Reveal or Focus on Project Panel Shift-1
+Reveal or Focus on Source Panel Shift-2
+Reveal or Focus on Timeline Panel Shift-3
+Reveal or Focus on Program Panel Shift-4
+Reveal or Focus on Effect Controls Pamela... Shift-5
+Reveal or Focus on Effects Panel Shift-7
+
+Maximize/Restore Panel Size
+
+Maximize/Restore Panel SIZ@ ccc
+
+ZOOMING
+
+Zoom In Time Ruler.
+
+Hover Cursor Over Panel-Tilde(~)
+Double-Click Panel Name
+
+Plus (+)
+
+Zoom Out Time Ruler
+
+Zoom to Fit Timeline
+
+Minus (-)
+Backslash (\)
+
+WORKING IN THE PROJECT PANEL
+
+New Bin Cmd-B
+New Bin From Selection Shift-B
+Find Cmd-F
+Import Double-Click Any Empty Area
+Select Object Above Up Arrow
+Select Object Below Down Arrow
+Expand Highlighted Bin... Right Arrow or Cmd-Up Arrow
+Close Highlighted Bin uss Left Arrow or Cmd-Down Arrow
+PREVIEWING
+
+Play/Stop Toggle Spacebar
+Play Backwards J
+Pause K
+Play Forwards L
+Fast Reverse JJ
+Fast Forward LL
+Step Backwards 1 Frame Left Arrow
+Step Forwards 1 Frame Right Arrow
+
+Step Backwards 5 Frame
+
+Shift-Left Arrow
+
+Step Forwards 5 Frame
+
+Shift-Right Arrow
+
+NOBLEDESKTOP.COM
+
+NOBLE DESKTOP — NEW YORK, NY
+
+@ noble
+
+Go To In Point Shift-I
+Go To Out Point Shift-O
+Play In to Out Opt-k
+Play Around Playhead Shift-K
+WORKING WITH THE TIMELINE
+
+Add Marker M
+Add Marker & Open Dialog. MM
+Go To Next Marker. Shift-M
+Go To Previous Marker Cmd-Shift-M
+Mark In Point |
+Mark Out Point oO
+Clear In Option-I
+Clear Out Option-O
+Clear In and Out Option-x
+Go to Next Edit Point Down Arrow
+Go to Previous Edit Point Up Arrow
+
+Nudge Clip Forward 1 Frame.. ... Option-Period (.)
+
+or Cmd-Right Arrow
+
+Nudge Clip Back 1 Frame... Option-Comma (,)
+
+or Cmd-Left Arrow
+Nudge Clip by 5 Frames uss Add Shift to the above keystrokes
+Insert From Source Comma({,)
+Overwrite From Source Period(.)
+Snap Playhead ON TiMeline ..ccssoceseeecsessssees Hold Shift While Dragging
+Mark Selection Slash (/)
+Mark Clip Under Playhead x
+Find in Timeline Cmd-F
+
+Select Next Clip in Track Cmd-Up Arrow
+
+Select Previous Clip in Track oe ccccceeeeseeeseeeeeeeeeees Cmd-Down Arrow
+Nudge Clip Up 1 Track Opt—Up Arrow
+Nudge Clip DOWN 1 Track ..ecsssssssssseeesseeesenssssseenesseessee Opt-Down Arrow
+Toggle Snapping S
+WORKING WITH CLIPS
+
+Unlink A/V Clip Cmd-L
+Make Subclip Cmd-U
+Enable/Disable Clip Cmd-Shift-E
+Group Clips. Cmd-G
+Ungroup Cmd-Shift-G
+Open Speed/Duration Dialog Cmd-R
+Edit Original Cmd-E
+
+Cmd-Shift-H
+
+Get Properties for Selection
+
+COPYRIGHT © 2022-2023 NOBLE DESKTOP
