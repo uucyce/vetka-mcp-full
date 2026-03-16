@@ -239,6 +239,13 @@ MYCELIUM_TOOLS = [
                 "require_closure_proof": {"type": "boolean"},
                 "closure_tests": {"type": "array"},
                 "closure_files": {"type": "array"},
+                # MARKER_188.5: Worktree-aware completion fields
+                "assigned_to": {"type": "string", "description": "Agent name"},
+                "agent_type": {"type": "string", "description": "Agent type"},
+                "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
+                "commit_message": {"type": "string", "description": "Commit message (for complete)"},
+                "branch": {"type": "string", "description": "Git branch name (for complete). Auto-infers worktree_path from claude/* branches."},
+                "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Auto-inferred from branch= if omitted."},
             },
             "required": ["action"],
         },

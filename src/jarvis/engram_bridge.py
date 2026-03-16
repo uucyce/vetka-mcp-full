@@ -1,5 +1,5 @@
-# MARKER_138.S2_2_ENGRAM_BRIDGE
-"""Jarvis bridge to Engram memory and prompt enrichment."""
+# MARKER_138.S2_2_AURA_BRIDGE
+"""Jarvis bridge to AURA memory and prompt enrichment."""
 
 from __future__ import annotations
 
@@ -8,7 +8,11 @@ from typing import Any, Dict, Optional
 
 
 class JarvisEngramBridge:
-    """Collects compact user context for Jarvis MCP requests."""
+    """Collects compact user context for Jarvis MCP requests.
+
+    Uses AURA store (src.memory.aura_store) for user preferences
+    and JarvisPromptEnricher for context enrichment.
+    """
 
     def __init__(self, enricher=None, memory=None):
         self._enricher = enricher
@@ -43,8 +47,8 @@ class JarvisEngramBridge:
                 ],
             )
 
-            focus = memory.get_preference(user_id, "project_highlights", "current_project")
-            detail = memory.get_preference(user_id, "communication_style", "detail_level")
+            focus = memory.get_preference("default", user_id, "project_highlights", "current_project")
+            detail = memory.get_preference("default", user_id, "communication_style", "detail_level")
 
             return {
                 "user_id": user_id,
