@@ -734,14 +734,13 @@ def _infer_capability_values(model_id: str, model_registry: Any) -> List[str]:
 async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
     from src.elisya.llm_model_registry import get_llm_registry
     from src.services.model_registry import get_model_registry
-    from src.services.reflex_decay import get_model_profile as get_reflex_model_profile
+    from src.services.model_policy import get_unified_policy
 
     llm_profile = await get_llm_registry().get_profile(model_id)
     model_registry = get_model_registry()
     entry = getattr(model_registry, "_models", {}).get(model_id)
-    policy = dict(_LOCALGUYS_MODEL_MATRIX.get(model_id, {}))
 
-    reflex_profile = get_reflex_model_profile(model_id)
+    policy_obj = get_unified_policy(model_id)
 
     provider = (
         str(
@@ -752,6 +751,10 @@ async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
         or "unknown"
     )
     entry_type = str(getattr(getattr(entry, "type", None), "value", "") or "").strip()
+
+    # Get workflow_usage from legacy matrix (for backward compatibility)
+    legacy_policy = dict(_LOCALGUYS_MODEL_MATRIX.get(model_id, {}))
+
     return {
         "model_id": str(model_id),
         "provider": provider,
@@ -767,13 +770,14 @@ async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
         "available": bool(getattr(entry, "available", True)),
         "model_type": entry_type or ("local" if provider == "ollama" else "unknown"),
         "capabilities": _infer_capability_values(model_id, model_registry),
-        "role_fit": list(policy.get("role_fit") or []),
-        "prompt_style": str(policy.get("prompt_style") or "").strip(),
-        "tool_budget_class": str(policy.get("tool_budget_class") or "").strip(),
-        "workflow_usage": list(policy.get("workflow_usage") or []),
-        "fc_reliability": float(getattr(reflex_profile, "fc_reliability", 0.8)),
-        "max_tools": int(getattr(reflex_profile, "max_tools", 15)),
-        "prefer_simple": bool(getattr(reflex_profile, "prefer_simple", False)),
+        # From unified ModelPolicy
+        "role_fit": policy_obj.role_fit,
+        "prompt_style": str(legacy_policy.get("prompt_style") or "").strip(),
+        "tool_budget_class": policy_obj.tool_budget_class,
+        "workflow_usage": list(legacy_policy.get("workflow_usage") or []),
+        "fc_reliability": policy_obj.fc_reliability,
+        "max_tools": policy_obj.max_tools,
+        "prefer_simple": policy_obj.prefer_simple,
     }
 
 

@@ -224,7 +224,7 @@ def test_workflow_contract_fetch_returns_g3_localguys_with_exact_local_model_pol
 
     verifier_models = contract["model_policy"]["verifier"]["preferred_models"]
     assert [row["model_id"] for row in verifier_models] == ["deepseek-r1:8b"]
-    assert verifier_models[0]["tool_budget_class"] == "low-medium"
+    assert verifier_models[0]["tool_budget_class"] == "low"  # auto-derived from fc=0.74
     assert "reasoning" in verifier_models[0]["capabilities"]
 
     catalog = {row["model_id"]: row for row in contract["local_model_catalog"]}
