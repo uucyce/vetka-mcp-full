@@ -1,31 +1,28 @@
 # PHASE 177 — localguys Model Policy Matrix
 
-Date: 2026-03-12
-Status: planning
-Tag: `localguys`
+**Date:** 2026-03-12  
+**Updated:** 2026-03-17  
+**Status:** ⚠️ DEPRECATED — Auto-generated from code  
+**Tag:** `localguys`
 
-## Purpose
-This matrix defines how real local models participate in MCC workflows.
-It is not only about capability labels; it is the operational policy layer used for role assignment, preprompt sizing, tool budget, and failure expectations.
+> **IMPORTANT:** This document is deprecated. All policies are now auto-generated from `src/services/model_policy.py`.  
+> See: `docs/177_MCC_local/ROADMAP_MODEL_POLICY_UNIFICATION_2026-03-17.md`
 
-## Source layers to merge
-- `LLMModelRegistry` -> context length, speed, provider, source
-- `ModelRegistry` -> local/cloud type and capabilities
-- `reflex_decay` profiles -> FC reliability, max tools, schema simplicity preference
+---
 
-## Policy fields
-- `model_id`
-- `provider`
-- `role_fit`
-- `capabilities`
-- `context_class`
-- `latency_class`
-- `tool_budget_class`
-- `prompt_style`
-- `risk_notes`
-- `workflow_usage`
+## History
 
-## Matrix
+- 2026-03-12: Initial manual matrix created
+- 2026-03-17: **Superseded by unified ModelPolicy system**
+  - Source of truth: `src/services/model_policy.py`
+  - Auto-derives: tool_budget_class, role_fit, context_class, latency_class
+  - Merges: LLMModelRegistry + reflex_decay
+
+---
+
+## Legacy Matrix (Outdated — Do Not Edit)
+
+This table is kept for reference only. Values may be outdated.
 
 | model_id | role_fit | capabilities | prompt_style | tool_budget_class | workflow_usage |
 |---|---|---|---|---|---|
@@ -40,78 +37,45 @@ It is not only about capability labels; it is the operational policy layer used 
 | `gemma3:12b` | heavier generalist | chat, reasoning-lite | bounded tasks only | medium | optional hybrid use |
 | `mistral-nemo:latest` | general fallback | chat, broad text work | explicit contract, low autonomy | medium | docs/support fallback |
 
-## Context classes
+---
+
+## Current Implementation
+
+See: `src/services/model_policy.py`
+
+```python
+from src.services.model_policy import get_unified_policy, get_all_policies
+
+# Get policy for single model
+policy = get_unified_policy("qwen3:8b")
+print(policy.to_dict())
+
+# Get all policies
+all_policies = get_all_policies()
+```
+
+### Auto-Derived Fields
+
+| Field | Source | Logic |
+|-------|--------|-------|
+| `tool_budget_class` | reflex_decay | fc ≥ 0.85 → medium, ≥ 0.75 → low-medium, < 0.75 → low |
+| `role_fit` | model_policy.py | Hardcoded mapping per model_id |
+| `context_class` | LLMModelRegistry | ≤8k → small, ≤32k → medium, >32k → large |
+| `latency_class` | LLMModelRegistry | output_tps > 80 → fast, > 40 → balanced, else slow |
+
+---
+
+## Context classes (Reference)
+
 - `small`: <= 8k effective working context
 - `medium`: 8k-32k effective working context
 - `large`: > 32k effective working context
 
-Initial assumptions for localguys:
-- `qwen3:8b` -> `medium`
-- `qwen2.5:7b` -> `medium`
-- `deepseek-r1:8b` -> `medium`
-- `phi4-mini:latest` -> `small`
-- `qwen2.5vl:3b` -> `small`
+---
 
-## Latency classes
-- `fast`: router/scout-level response speed
-- `balanced`: acceptable for executor loop
-- `slow`: only for gated review or non-interactive jobs
+## References
 
-Initial assumptions:
-- `phi4-mini:latest` -> `fast`
-- `qwen2.5:3b` -> `fast`
-- `qwen3:8b` -> `balanced`
-- `qwen2.5:7b` -> `balanced`
-- `deepseek-r1:8b` -> `balanced` leaning slow due to reasoning verbosity
-
-## Prompt styles
-### `coder_compact_v1`
-For `qwen3:8b`, `qwen2.5:7b`
-- file allowlist first
-- expected output artifact first
-- no long theory
-- explicit step order
-- must report concrete edits and verify commands
-
-### `verifier_attack_v1`
-For `deepseek-r1:8b`
-- review diff and tests, not the whole universe
-- mandatory verdict fields
-- must emit blocking issues or pass
-- capped iterations
-
-### `router_tiny_v1`
-For `phi4-mini:latest`
-- classify only
-- no large summaries
-- single JSON output
-
-### `visual_scout_v1`
-For `qwen2.5vl:3b`
-- visual diff / screenshot questions only
-- no code patch ownership
-
-## Tool budget classes
-- `low`: 1-4 tool calls per step
-- `medium`: 3-8 tool calls per step
-- `high`: 6-12 tool calls per step
-
-Initial mapping:
-- `qwen3:8b` -> `medium`
-- `qwen2.5:7b` -> `medium`
-- `deepseek-r1:8b` -> `low-medium`
-- `phi4-mini:latest` -> `low`
-- `qwen2.5vl:3b` -> `low`
-
-## Policy decisions
-1. Local executor models must never run without playground lock.
-2. Local verifier models must never be optional in `g3_localguys`.
-3. Visual models do not own code patches.
-4. Embedding models are not conversation agents.
-5. Small models must receive shorter prompts and fewer tools, not just weaker expectations.
-
-## Gaps to close in code
-- map real Ollama IDs to explicit policy instead of fallback matching
-- expose merged profile through MCC API
-- include policy snapshot in workflow contract response
-- record chosen policy in run artifacts and TaskBoard proof
+- Unified system: `docs/177_MCC_local/ROADMAP_MODEL_POLICY_UNIFICATION_2026-03-17.md`
+- Implementation: `src/services/model_policy.py`
+- reflex_decay: `src/services/reflex_decay.py`
+- LLM registry: `src/elisya/llm_model_registry.py`
