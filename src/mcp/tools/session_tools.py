@@ -331,6 +331,23 @@ class SessionInitTool(BaseMCPTool):
             import logging
             logging.getLogger(__name__).warning(f"TaskBoard load failed: {e}")
 
+        # MARKER_187.2: semantic_recall — inject past learnings from Qdrant
+        try:
+            from src.orchestration.resource_learnings import get_learnings_for_architect
+            # Build query from digest + top pending task
+            tb = context.get("task_board_summary", {})
+            digest_summary = context.get("project_digest", {}).get("summary", "")
+            top_task = (tb.get("top_pending") or [{}])[0].get("title", "") if tb.get("top_pending") else ""
+            in_prog = (tb.get("in_progress") or [{}])[0].get("title", "") if tb.get("in_progress") else ""
+            query_parts = [p for p in [digest_summary, top_task, in_prog] if p]
+            if query_parts:
+                recall_query = " | ".join(query_parts)
+                lessons = await get_learnings_for_architect(recall_query, limit=5)
+                if lessons:
+                    context["semantic_lessons"] = lessons
+        except Exception:
+            pass  # Qdrant unavailable — graceful fallback, no block
+
         # MARKER_178.1.2: Recent commits
         try:
             import subprocess
