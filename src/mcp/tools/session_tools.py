@@ -63,6 +63,7 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
                 digest = _json.load(f)
 
             # Return condensed version for MCP context
+            # MARKER_187.7: Include full agent_focus for per-agent filtering downstream
             return {
                 "phase": digest.get("current_phase", {}),
                 "summary": digest.get("summary", {}).get("headline", ""),
@@ -71,7 +72,8 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
                 "system": digest.get("system_status", {}),
                 "instructions": digest.get("agent_instructions", {}),
                 "last_updated": digest.get("last_updated"),
-                "recent_fixes": [f.get("id") for f in digest.get("recent_fixes", [])[:5]]
+                "recent_fixes": [f.get("id") for f in digest.get("recent_fixes", [])[:5]],
+                "agent_focus": digest.get("agent_focus", {}),
             }
     except Exception:
         pass
@@ -215,6 +217,10 @@ class SessionInitTool(BaseMCPTool):
             # Add agent instructions to top-level for easy access
             if project_digest.get("instructions"):
                 context["agent_instructions"] = project_digest["instructions"]
+            # MARKER_187.7: Per-agent focus — extract only this agent's section
+            agent_focus_all = project_digest.get("agent_focus", {})
+            if agent_focus_all:
+                context["_all_agent_focus"] = agent_focus_all  # full map for debug
 
         # Get user preferences from Engram
         try:
@@ -398,6 +404,12 @@ class SessionInitTool(BaseMCPTool):
                 context["reflex_recommendations"] = reflex_recs
         except Exception:
             pass  # REFLEX errors never block session init
+
+        # MARKER_187.7: Inject per-agent focus after agent_type is resolved
+        if agent_type and context.get("_all_agent_focus"):
+            my_focus = context["_all_agent_focus"].get(agent_type)
+            if my_focus:
+                context["my_focus"] = my_focus
 
         # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
         try:

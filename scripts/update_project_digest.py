@@ -465,6 +465,82 @@ def git_push(remote: str = "origin", branch: str = None) -> bool:
         return False
 
 
+def _build_agent_focus() -> dict:
+    """MARKER_187.7: Build per-agent focus from git log + task_board.
+
+    Returns dict keyed by agent_type with last_completed, hot_files, priority_task.
+    Data sources:
+      - git log --since=24h: recent commits → hot_files per author
+      - task_board.json: claimed/pending tasks → priority_task per assigned_to
+    """
+    focus = {}
+
+    # 1. Hot files from git log (last 24h)
+    # Agent detection: commit message [task:tb_...] = claude_code (TaskBoard workflow)
+    #                  branch claude/* = claude_code
+    #                  Co-authored-by patterns for cursor/codex
+    try:
+        result = subprocess.run(
+            ["git", "log", "--since=24 hours ago", "--format=COMMIT|%s", "--name-only"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, timeout=10,
+        )
+        if result.returncode == 0:
+            current_agent = "claude_code"  # default: most commits come from Claude Code
+            current_msg = ""
+            for line in result.stdout.splitlines():
+                if line.startswith("COMMIT|"):
+                    current_msg = line[7:].strip()
+                    # Infer agent from commit message patterns
+                    if "[cursor]" in current_msg.lower():
+                        current_agent = "cursor"
+                    elif "[codex]" in current_msg.lower():
+                        current_agent = "codex"
+                    else:
+                        current_agent = "claude_code"
+                    focus.setdefault(current_agent, {
+                        "last_completed": "",
+                        "hot_files": [],
+                        "priority_task": None,
+                    })
+                    if current_msg and not focus[current_agent]["last_completed"]:
+                        focus[current_agent]["last_completed"] = current_msg[:80]
+                elif line.strip() and current_agent:
+                    files = focus.get(current_agent, {}).get("hot_files", [])
+                    if line.strip() not in files and len(files) < 10:
+                        files.append(line.strip())
+    except Exception:
+        pass
+
+    # 2. Priority task from task_board.json (claimed/running tasks per agent)
+    ASSIGNED_MAP = {"opus": "claude_code", "cursor": "cursor", "codex": "codex", "grok": "grok"}
+    try:
+        tb_path = PROJECT_ROOT / "data" / "task_board.json"
+        if tb_path.exists():
+            with open(tb_path, "r") as f:
+                tb = json.load(f)
+            for task in tb.get("tasks", []):
+                assigned = (task.get("assigned_to") or "").lower()
+                status = task.get("status", "")
+                if status not in ("claimed", "running"):
+                    continue
+                agent_type = ASSIGNED_MAP.get(assigned, task.get("agent_type", "claude_code"))
+                entry = focus.setdefault(agent_type, {
+                    "last_completed": "",
+                    "hot_files": [],
+                    "priority_task": None,
+                })
+                if entry["priority_task"] is None:
+                    entry["priority_task"] = {
+                        "id": task.get("id"),
+                        "title": task.get("title", "")[:60],
+                        "status": status,
+                    }
+    except Exception:
+        pass
+
+    return focus
+
+
 def update_digest(
     phase_number: int = None,
     phase_subphase: str = None,
@@ -556,6 +632,10 @@ def update_digest(
     digest["git"] = git_info
     print(f"  Git: {git_info['branch']}@{git_info['commit']}" +
           (" (dirty)" if git_info['dirty'] else ""))
+
+    # MARKER_187.7: Build per-agent focus section
+    digest["agent_focus"] = _build_agent_focus()
+    print(f"  Agent focus: {list(digest['agent_focus'].keys())}")
 
     save_digest(digest)
 
