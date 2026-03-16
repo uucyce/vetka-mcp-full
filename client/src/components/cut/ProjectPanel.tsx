@@ -1,13 +1,13 @@
 /**
- * MARKER_181.3: ProjectPanel — Premiere-style Project panel (media bin + import).
+ * MARKER_188.1: ProjectPanel — Premiere-style Project panel (media bin + import).
  *
  * Architecture: Standard NLE layout places the Project panel at bottom-left.
  * This panel manages imported media assets, organized by bins (buckets).
  *
  * Import methods (matching Premiere Pro):
- * 1. Drag & drop files/folders into the panel
- * 2. Paste an absolute path + click Import
- * 3. Double-click empty area to trigger import
+ * 1. Cmd+I hotkey (via 'cut:trigger-import' custom event from TransportBar)
+ * 2. Double-click dropzone to open native file picker
+ * 3. Drag & drop files/folders into the panel (future: Tauri native)
  *
  * Terminology follows Premiere Pro conventions:
  * - "Project" panel (not "Source Browser")
@@ -38,6 +38,8 @@ const BIN_ORDER: BinDef[] = [
   { key: 'documents',   label: 'Documents',    icon: '≡' },
   { key: 'other',       label: 'Other',        icon: '●' },
 ];
+
+const MEDIA_ACCEPT = 'video/*,audio/*,image/*,.mov,.mp4,.avi,.mkv,.webm,.m4a,.wav,.mp3,.flac,.aac,.ogg,.jpg,.jpeg,.png,.tiff,.bmp,.webp';
 
 interface ProjectItem extends ThumbnailItem {
   binKey: BinKey;
@@ -76,48 +78,18 @@ const IMPORT_AREA: CSSProperties = {
 const DROPZONE: CSSProperties = {
   border: '1px dashed #2f2f2f',
   borderRadius: 4,
-  padding: '10px 12px',
+  padding: '14px 12px',
   textAlign: 'center',
   fontSize: 10,
   color: '#555',
   cursor: 'pointer',
   transition: 'border-color 0.2s, background 0.2s',
-  marginBottom: 6,
-};
-
-const INPUT_ROW: CSSProperties = {
-  display: 'flex',
-  gap: 4,
-  alignItems: 'center',
-};
-
-const PATH_INPUT: CSSProperties = {
-  flex: 1,
-  background: '#111',
-  border: '1px solid #222',
-  borderRadius: 3,
-  color: '#ccc',
-  fontSize: 10,
-  padding: '4px 6px',
-  outline: 'none',
-  fontFamily: '"JetBrains Mono", monospace',
-};
-
-const IMPORT_BTN: CSSProperties = {
-  background: '#1A1A1A',
-  border: '1px solid #333',
-  borderRadius: 3,
-  color: '#aaa',
-  fontSize: 10,
-  padding: '4px 10px',
-  cursor: 'pointer',
-  whiteSpace: 'nowrap',
 };
 
 const STATUS_LINE: CSSProperties = {
   fontSize: 9,
   color: '#555',
-  marginTop: 4,
+  marginTop: 6,
 };
 
 const BIN_LIST: CSSProperties = {
@@ -167,6 +139,17 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
+function inferFolderPath(files: FileList | null): string {
+  if (!files || files.length === 0) return '';
+  const first = files[0] as File & { path?: string; webkitRelativePath?: string };
+  // Tauri/Electron: native path available
+  if (typeof first.path === 'string' && first.path) {
+    return first.path.replace(/[\\/][^\\/]+$/, '');
+  }
+  // Browser: no native path, return empty
+  return '';
+}
+
 function classifyItem(item: ThumbnailItem, laneTypesByPath: Map<string, Set<string>>): ProjectItem {
   const lower = item.source_path.toLowerCase();
   const laneTypes = laneTypesByPath.get(item.source_path) ?? new Set();
@@ -197,7 +180,6 @@ export default function ProjectPanel() {
   // Store selectors
   const storeSandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const projectId = useCutEditorStore((s) => s.projectId);
-  const sourcePath = useCutEditorStore((s) => s.sourcePath);
   const refreshProjectState = useCutEditorStore((s) => s.refreshProjectState);
   const setEditorSession = useCutEditorStore((s) => s.setEditorSession);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
@@ -207,26 +189,25 @@ export default function ProjectPanel() {
   const setSelectedClip = useCutEditorStore((s) => s.setSelectedClip);
 
   // Local state
-  const [importPath, setImportPath] = useState('');
   const [importStatus, setImportStatus] = useState('');
   const [importProgress, setImportProgress] = useState<number | null>(null);
   const [importing, setImporting] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [collapsedBins, setCollapsedBins] = useState<Set<string>>(new Set());
-  const folderInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Pre-fill from URL param / store
-  useEffect(() => {
-    if (sourcePath && !importPath) {
-      setImportPath(sourcePath);
-    }
-  }, [sourcePath, importPath]);
+  // ─── Open file picker ───
+  const openFilePicker = useCallback(() => {
+    if (importing) return;
+    fileInputRef.current?.click();
+  }, [importing]);
 
-  // webkitdirectory
+  // ─── Listen for Cmd+I from TransportBar hotkey ───
   useEffect(() => {
-    const input = folderInputRef.current as (HTMLInputElement & { webkitdirectory?: boolean }) | null;
-    if (input) input.webkitdirectory = true;
-  }, []);
+    const handler = () => openFilePicker();
+    window.addEventListener('cut:trigger-import', handler);
+    return () => window.removeEventListener('cut:trigger-import', handler);
+  }, [openFilePicker]);
 
   // ─── Job polling ───
   const pollJob = useCallback(async (jobId: string) => {
@@ -249,7 +230,7 @@ export default function ProjectPanel() {
   const startImport = useCallback(async (path: string) => {
     const trimmed = path.trim();
     if (!trimmed) {
-      setImportStatus('Enter an absolute path to import.');
+      setImportStatus('No media path could be determined.');
       return;
     }
 
@@ -290,9 +271,8 @@ export default function ProjectPanel() {
 
       await pollJob(payload.job_id);
       await refreshProjectState?.();
-      setImportStatus(`Imported ${labelForPath(trimmed)} — ${thumbnails.length || '?'} clips`);
+      setImportStatus(`Imported ${labelForPath(trimmed)}`);
       setImportProgress(1);
-      // Store source path for session
       setEditorSession({ sourcePath: trimmed });
     } catch (err) {
       setImportStatus(err instanceof Error ? err.message : 'Import failed');
@@ -300,7 +280,23 @@ export default function ProjectPanel() {
     } finally {
       setImporting(false);
     }
-  }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession, thumbnails.length]);
+  }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
+
+  // ─── File input handler ───
+  const handleFileSelect = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+
+    // Try native path (Tauri/Electron)
+    const folderPath = inferFolderPath(files);
+    if (folderPath) {
+      void startImport(folderPath);
+      return;
+    }
+
+    // Browser mode: upload files to backend
+    // TODO (188.2): implement POST /api/cut/import-files for browser upload
+    setImportStatus(`Selected ${files.length} files — upload endpoint coming in 188.2`);
+  }, [startImport]);
 
   // ─── Build clip list from thumbnails + lanes ───
   const laneTypesByPath = new Map<string, Set<string>>();
@@ -367,7 +363,7 @@ export default function ProjectPanel() {
 
       {/* Import area */}
       <div style={IMPORT_AREA}>
-        {/* Dropzone */}
+        {/* Dropzone — double-click opens file picker */}
         <div
           style={{
             ...DROPZONE,
@@ -380,70 +376,40 @@ export default function ProjectPanel() {
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            // Browser File API doesn't expose native paths reliably
-            // User should paste absolute path
-            setImportStatus('Drop detected — paste the absolute folder path below.');
+            handleFileSelect(e.dataTransfer.files);
           }}
-          onDoubleClick={() => folderInputRef.current?.click()}
+          onDoubleClick={openFilePicker}
         >
-          Drop media here or double-click to browse
+          {importing
+            ? `Importing... ${importProgress != null ? `${Math.round(importProgress * 100)}%` : ''}`
+            : 'Double-click or press ⌘I to import media'}
         </div>
 
-        {/* Path input + Import button */}
-        <div style={INPUT_ROW}>
-          <input
-            style={PATH_INPUT}
-            placeholder="/path/to/media/folder"
-            value={importPath}
-            onChange={(e) => setImportPath(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && importPath.trim()) {
-                void startImport(importPath);
-              }
-            }}
-          />
-          <button
-            type="button"
-            style={{ ...IMPORT_BTN, opacity: importing ? 0.5 : 1 }}
-            disabled={importing || !importPath.trim()}
-            onClick={() => void startImport(importPath)}
-          >
-            Import
-          </button>
-        </div>
-
-        {/* Hidden folder picker */}
+        {/* Hidden file picker — accepts media files */}
         <input
-          ref={folderInputRef}
+          ref={fileInputRef}
           type="file"
           multiple
+          accept={MEDIA_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => {
-            const files = e.target.files;
-            if (files && files.length > 0) {
-              // Try to extract native path (Electron/Tauri only)
-              const f = files[0] as File & { path?: string };
-              if (f.path) {
-                const dir = f.path.replace(/[\\/][^\\/]+$/, '');
-                setImportPath(dir);
-                void startImport(dir);
-              } else {
-                setImportStatus('Folder picker does not expose native path in this runtime. Paste an absolute path.');
-              }
-            }
+            handleFileSelect(e.target.files);
+            // Reset so re-selecting same files works
+            e.target.value = '';
           }}
         />
 
         {/* Status */}
-        <div style={{
-          ...STATUS_LINE,
-          color: importStatus.includes('fail') || importStatus.includes('error')
-            ? '#f87171'
-            : importStatus.includes('Import') ? '#93c5fd' : '#555',
-        }}>
-          {importStatus || (storeSandboxRoot ? 'Sandbox ready' : 'Import media to create project')}
-          {importProgress != null && importProgress < 1 ? ` ${Math.round(importProgress * 100)}%` : ''}
-        </div>
+        {importStatus && (
+          <div style={{
+            ...STATUS_LINE,
+            color: importStatus.toLowerCase().includes('fail') || importStatus.toLowerCase().includes('error')
+              ? '#f87171'
+              : '#93c5fd',
+          }}>
+            {importStatus}
+          </div>
+        )}
       </div>
 
       {/* Bin list (media clips organized by type) */}
@@ -518,7 +484,7 @@ export default function ProjectPanel() {
             No clips imported
             <br />
             <span style={{ fontSize: 10, color: '#444' }}>
-              Import a media folder to start editing
+              ⌘I or double-click above to import media
             </span>
           </div>
         )}

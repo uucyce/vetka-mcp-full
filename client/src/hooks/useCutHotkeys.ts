@@ -55,6 +55,8 @@ export type CutHotkeyAction =
   // View
   | 'zoomIn'
   | 'zoomOut'
+  // Project
+  | 'importMedia'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -112,6 +114,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // View
   zoomIn:            '=',
   zoomOut:           '-',
+  // Project
+  importMedia:       'Cmd+i',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -154,6 +158,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // View
   zoomIn:            'Cmd+=',
   zoomOut:           'Cmd+-',
+  // Project
+  importMedia:       'Cmd+i',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -328,6 +334,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
   { action: 'zoomOut', label: 'Zoom Out', group: 'View' },
+  // Project
+  { action: 'importMedia', label: 'Import Media', group: 'Project' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },

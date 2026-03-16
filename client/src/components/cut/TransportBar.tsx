@@ -479,6 +479,7 @@ export default function TransportBar() {
     },
     zoomIn:           () => setZoom(zoom * 1.3),
     zoomOut:          () => setZoom(zoom / 1.3),
+    importMedia:      () => window.dispatchEvent(new CustomEvent('cut:trigger-import')),
     sceneDetect:      () => handleSceneDetect(),
     toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
   }), [
