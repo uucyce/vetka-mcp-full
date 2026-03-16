@@ -18,7 +18,9 @@
     "tauri:dev:cut:opus": "tauri dev --config src-tauri/tauri.opus.conf.json",
     "tauri:build:cut:opus": "tauri build --config src-tauri/tauri.opus.conf.json",
     "dev:mcc": "VITE_MODE=mcc vite",
-    "build:mcc": "VITE_MODE=mcc vite build"
+    "build:mcc": "VITE_MODE=mcc vite build",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep smoke --workers=1"
   },
   "dependencies": {
     "@codemirror/lang-javascript": "^6.2.4",

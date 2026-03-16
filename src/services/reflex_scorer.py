@@ -59,6 +59,97 @@ _MEDIUM_MODEL_CONTEXT = 32768    # ≤32k → standard palette
 # >32k → full palette
 
 
+def _infer_context_from_git() -> tuple:
+    """MARKER_186.3: Scan recent git changes to build task_text and mgc_stats.
+
+    Returns (task_text, mgc_stats) where task_text is a synthetic description
+    built from recently changed file extensions and directories.
+    """
+    import subprocess
+
+    task_keywords: list = []
+    mgc_stats: Dict[str, Any] = {}
+
+    try:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "HEAD~5", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+            cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        )
+        if result.returncode != 0:
+            return "", {}
+
+        files = [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+        if not files:
+            return "", {}
+
+        # Count file types for MGC stats
+        ext_counts: Dict[str, int] = {}
+        for f in files:
+            ext = os.path.splitext(f)[1].lower()
+            ext_counts[ext] = ext_counts.get(ext, 0) + 1
+
+        # Build synthetic task_text from file extensions
+        ext_to_keywords = {
+            ".tsx": ["component", "ui", "layout", "react", "visual"],
+            ".ts": ["typescript", "logic", "ui"],
+            ".css": ["style", "css", "visual", "layout"],
+            ".py": ["python", "backend", "api", "test"],
+            ".json": ["config", "data"],
+            ".sh": ["script", "automation"],
+            ".spec.cjs": ["test", "e2e", "playwright", "smoke"],
+            ".spec.ts": ["test", "e2e", "playwright"],
+        }
+
+        for ext, count in ext_counts.items():
+            kws = ext_to_keywords.get(ext, [])
+            task_keywords.extend(kws)
+
+        # Add directory-based hints
+        dir_keywords = {
+            "client/e2e": ["test", "e2e", "playwright"],
+            "client/src": ["ui", "component", "frontend"],
+            "src/api": ["api", "backend", "route"],
+            "src/orchestration": ["pipeline", "orchestration"],
+            "src/services": ["service", "backend"],
+        }
+        for f in files:
+            for dir_prefix, kws in dir_keywords.items():
+                if f.startswith(dir_prefix):
+                    task_keywords.extend(kws)
+                    break
+
+        # Deduplicate
+        task_keywords = list(dict.fromkeys(task_keywords))
+
+        # MGC stats: treat recently changed files as "hot" gen0
+        ui_file_count = ext_counts.get(".tsx", 0) + ext_counts.get(".ts", 0) + ext_counts.get(".css", 0)
+        mgc_stats = {
+            "gen0_size": len(files),
+            "gen0_max": 100,
+            "hit_rate": min(1.0, ui_file_count / max(1, len(files))),
+        }
+
+    except Exception:
+        pass
+
+    return " ".join(task_keywords), mgc_stats
+
+
+def _agent_type_to_role(agent_type: str) -> str:
+    """MARKER_186.3: Map agent_type to agent_role for tool filtering."""
+    mapping = {
+        "claude_code": "all",      # Opus/Claude Code = full access
+        "cursor": "coder",         # Cursor = frontend coder
+        "codex": "coder",          # Codex = isolated coder
+        "dragon": "coder",         # Dragon pipeline = coder
+        "dragon_bronze": "coder",
+        "dragon_silver": "coder",
+        "dragon_gold": "coder",
+    }
+    return mapping.get(agent_type, "coder")
+
+
 @dataclass
 class ReflexContext:
     """
@@ -157,8 +248,12 @@ class ReflexContext:
         feedback_scores: Optional[Dict[str, float]] = None,
         model_context_length: int = 128000,
         model_output_tps: float = 50.0,
+        agent_type: str = "",
     ) -> "ReflexContext":
         """Build ReflexContext from vetka_session_init response.
+
+        MARKER_186.3: Enhanced with agent_type and auto-generated task_text
+        from recent git changes when task_text is empty.
 
         Args:
             session_data: Result dict from vetka_session_init
@@ -167,6 +262,7 @@ class ReflexContext:
             feedback_scores: CORTEX scores (may not be loaded at session start)
             model_context_length: From LLMModelRegistry
             model_output_tps: Model speed
+            agent_type: Agent type: "claude_code", "cursor", "dragon", etc.
         """
         # Extract viewport zoom → HOPE level
         viewport = session_data.get("viewport", {})
@@ -182,23 +278,31 @@ class ReflexContext:
         user_prefs = session_data.get("user_preferences", {})
         tool_prefs: Dict[str, float] = {}
         if isinstance(user_prefs, dict) and user_prefs.get("has_preferences"):
-            # Try to extract tool_usage_patterns from preferences
-            comm_style = session_data.get("communication_style", {})
-            # tool_usage_patterns would be in a dedicated field
             tool_prefs = user_prefs.get("tool_usage_patterns", {})
+
+        # MARKER_186.3: Auto-generate task_text from recent git changes
+        # when no explicit task is given. This gives semantic match signal
+        # something to work with instead of returning flat 0.0 for all tools.
+        mgc_stats: Dict[str, Any] = {}
+        if not task_text:
+            task_text, mgc_stats = _infer_context_from_git()
+
+        # MARKER_186.3: Map agent_type to agent_role for role-based filtering
+        agent_role = _agent_type_to_role(agent_type)
 
         return ReflexContext(
             task_text=task_text,
             phase_type=phase_type,
-            agent_role="coder",
+            agent_role=agent_role,
             cam_surprise=0.0,  # Not available at session start
             user_tool_prefs=tool_prefs,
             stm_items=[],  # STM empty at session start
             hope_level=hope_level,
-            mgc_stats={},
+            mgc_stats=mgc_stats,
             feedback_scores=feedback_scores or {},
             model_context_length=model_context_length,
             model_output_tps=model_output_tps,
+            extra={"agent_type": agent_type} if agent_type else {},
         )
 
 
@@ -648,16 +752,29 @@ class ReflexScorer:
         session_data: Dict[str, Any],
         phase_type: str = "research",
         top_n: int = 10,
+        agent_type: str = "",
     ) -> List[ScoredTool]:
         """Recommend tools for session_init response (IP-6).
 
+        MARKER_186.3: Enhanced with agent_type and auto-context from git.
         Builds ReflexContext from session data, returns broad recommendations.
         """
         if not REFLEX_ENABLED:
             return []
 
+        # Load feedback scores for better scoring
+        feedback_scores: Dict[str, float] = {}
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            feedback_scores = get_reflex_feedback().get_scores_bulk(phase_type)
+        except Exception:
+            pass
+
         context = ReflexContext.from_session(
-            session_data, phase_type=phase_type
+            session_data,
+            phase_type=phase_type,
+            feedback_scores=feedback_scores,
+            agent_type=agent_type,
         )
 
         try:

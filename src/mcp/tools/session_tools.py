@@ -355,10 +355,24 @@ class SessionInitTool(BaseMCPTool):
             import logging
             logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
 
-        # MARKER_172.P4.IP6: REFLEX session recommendations (called AFTER tasks/commits/capabilities)
+        # MARKER_172.P4.IP6 + MARKER_186.3: REFLEX session recommendations
+        # Enhanced with agent_type inference for agent-aware scoring
         try:
             from src.services.reflex_integration import reflex_session
-            reflex_recs = reflex_session(context)
+            # MARKER_186.3: Infer agent_type from user_id or environment
+            agent_type = context.get("_agent_type", "")
+            if not agent_type:
+                uid = context.get("user_id", "default")
+                if "opus" in uid.lower() or "claude" in uid.lower():
+                    agent_type = "claude_code"
+                elif "cursor" in uid.lower():
+                    agent_type = "cursor"
+                elif "codex" in uid.lower():
+                    agent_type = "codex"
+                else:
+                    # Default: assume Claude Code when called via MCP
+                    agent_type = "claude_code"
+            reflex_recs = reflex_session(context, agent_type=agent_type)
             if reflex_recs:
                 context["reflex_recommendations"] = reflex_recs
         except Exception:
