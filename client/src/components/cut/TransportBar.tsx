@@ -3,13 +3,14 @@
  * Play/Pause, timecode display, playback rate, zoom slider.
  * Keyboard shortcuts: Space=play/pause, J/K/L=shuttle, Left/Right=step.
  */
-import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import {
   IconSkipStart, IconPlay, IconPause, IconSkipEnd,
   IconExport, IconSpinner, IconCheck,
-  IconLayoutNLE, IconWrench,
+  IconLayoutNLE, IconWrench, IconScissors,
 } from './icons/CutIcons';
 
 const BAR_STYLE: CSSProperties = {
@@ -181,6 +182,7 @@ export default function TransportBar() {
   const pause = useCutEditorStore((s) => s.pause);
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
   const [exportFormat, setExportFormat] = useState<'premiere' | 'fcpxml'>('premiere');
+  const [sceneDetectStatus, setSceneDetectStatus] = useState<'idle' | 'detecting' | 'done' | 'error'>('idle');
   const [undoStack, setUndoStack] = useState<UndoStackInfo>({
     undo_depth: 0,
     redo_depth: 0,
@@ -288,6 +290,45 @@ export default function TransportBar() {
   const cycleExportFormat = useCallback(() => {
     setExportFormat((f) => (f === 'premiere' ? 'fcpxml' : 'premiere'));
   }, []);
+
+  // MARKER_185.1: Scene Detection — calls POST /cut/scene-detect-and-apply
+  const handleSceneDetect = useCallback(async () => {
+    if (!sandboxRoot || !projectId) return;
+    if (sceneDetectStatus === 'detecting') return; // prevent double-click
+    setSceneDetectStatus('detecting');
+    showUndoToast('info', 'Detecting scenes…');
+    try {
+      const res = await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          threshold: 0.3,
+          interval_sec: 1.0,
+          lane_id: 'scenes',
+          update_scene_graph: true,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSceneDetectStatus('done');
+        showUndoToast('success', `${data.boundary_count ?? 0} scene boundaries detected`);
+        await refreshProjectState?.();
+        setTimeout(() => setSceneDetectStatus('idle'), 3000);
+      } else {
+        setSceneDetectStatus('error');
+        showUndoToast('error', `Scene detect failed: ${data.error || data.message || 'unknown'}`);
+        setTimeout(() => setSceneDetectStatus('idle'), 3000);
+      }
+    } catch (err) {
+      console.error('[CUT] Scene detect error:', err);
+      setSceneDetectStatus('error');
+      showUndoToast('error', `Scene detect error: ${err instanceof Error ? err.message : 'network'}`);
+      setTimeout(() => setSceneDetectStatus('idle'), 3000);
+    }
+  }, [sandboxRoot, projectId, timelineId, sceneDetectStatus, showUndoToast, refreshProjectState]);
 
   // Cycle playback rate
   const cycleRate = useCallback(() => {
@@ -415,110 +456,38 @@ export default function TransportBar() {
     [projectId, refreshProjectState, refreshUndoStack, sandboxRoot, showUndoToast, timelineId]
   );
 
-  // Keyboard shortcuts
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Skip if typing in an input
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
-
-      const run = async () => {
-        if ((e.metaKey || e.ctrlKey) && (e.key === 'z' || e.key === 'Z')) {
-          e.preventDefault();
-          e.stopPropagation();
-          await runUndoAction(e.shiftKey ? 'redo' : 'undo');
-          return;
-        }
-        switch (e.code) {
-        case 'Space':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'KeyK':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'KeyJ': // Rewind 5 sec
-          e.preventDefault();
-          seek(Math.max(0, currentTime - 5));
-          break;
-        case 'KeyL': // Forward 5 sec
-          e.preventDefault();
-          seek(Math.min(duration, currentTime + 5));
-          break;
-        case 'ArrowLeft': // Frame step back
-          e.preventDefault();
-          pause();
-          seek(Math.max(0, currentTime - 1 / 25));
-          break;
-        case 'ArrowRight': // Frame step forward
-          e.preventDefault();
-          pause();
-          seek(Math.min(duration, currentTime + 1 / 25));
-          break;
-        case 'Home':
-          e.preventDefault();
-          seek(0);
-          break;
-        case 'End':
-          e.preventDefault();
-          seek(duration);
-          break;
-        case 'Equal': // + zoom in
-        case 'NumpadAdd':
-          e.preventDefault();
-          setZoom(zoom * 1.3);
-          break;
-        case 'Minus': // - zoom out
-        case 'NumpadSubtract':
-          e.preventDefault();
-          setZoom(zoom / 1.3);
-          break;
-        case 'KeyI':
-          e.preventDefault();
-          setMarkIn(currentTime);
-          break;
-        case 'KeyO':
-          e.preventDefault();
-          setMarkOut(currentTime);
-          break;
-        case 'KeyM':
-          e.preventDefault();
-          await createMarker('favorite', '');
-          break;
-        case 'KeyC': {
-          e.preventDefault();
-          const text = window.prompt('Comment marker text', 'CUT note') || '';
-          await createMarker('comment', text);
-          break;
-        }
-        case 'Backspace':
-        case 'Delete':
-          e.preventDefault();
-          await removeSelectedClip();
-          break;
-        }
-      };
-      void run().catch((error) => {
-        console.error('[CUT] shortcut failed:', error);
-      });
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [
-    createMarker,
-    currentTime,
-    duration,
-    pause,
-    removeSelectedClip,
-    runUndoAction,
-    seek,
-    setMarkIn,
-    setMarkOut,
-    setZoom,
-    togglePlay,
-    zoom,
+  // MARKER_185.7: Centralized hotkey registry (Premiere / FCP7 / Custom presets)
+  const hotkeyHandlers: CutHotkeyHandlers = useMemo(() => ({
+    playPause:        () => togglePlay(),
+    stop:             () => { pause(); },
+    shuttleBack:      () => seek(Math.max(0, currentTime - 5)),
+    shuttleForward:   () => seek(Math.min(duration, currentTime + 5)),
+    frameStepBack:    () => { pause(); seek(Math.max(0, currentTime - 1 / 25)); },
+    frameStepForward: () => { pause(); seek(Math.min(duration, currentTime + 1 / 25)); },
+    goToStart:        () => seek(0),
+    goToEnd:          () => seek(duration),
+    cyclePlaybackRate: () => cycleRate(),
+    markIn:           () => setMarkIn(currentTime),
+    markOut:          () => setMarkOut(currentTime),
+    undo:             () => runUndoAction('undo'),
+    redo:             () => runUndoAction('redo'),
+    deleteClip:       () => removeSelectedClip(),
+    addMarker:        () => createMarker('favorite', ''),
+    addComment:       async () => {
+      const text = window.prompt('Comment marker text', 'CUT note') || '';
+      await createMarker('comment', text);
+    },
+    zoomIn:           () => setZoom(zoom * 1.3),
+    zoomOut:          () => setZoom(zoom / 1.3),
+    sceneDetect:      () => handleSceneDetect(),
+    toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
+  }), [
+    togglePlay, pause, seek, currentTime, duration, cycleRate,
+    setMarkIn, setMarkOut, runUndoAction, removeSelectedClip,
+    createMarker, setZoom, zoom, handleSceneDetect, setViewMode, viewMode,
   ]);
+
+  const { labelFor } = useCutHotkeys({ handlers: hotkeyHandlers });
 
   return (
     <div data-testid="cut-transport-bar" style={{ ...BAR_STYLE, position: 'relative' }}>
@@ -537,7 +506,7 @@ export default function TransportBar() {
         </div>
       )}
       {/* Skip to start */}
-      <button style={BTN_STYLE} onClick={() => seek(0)} title="Go to start (Home)">
+      <button style={BTN_STYLE} onClick={() => seek(0)} title={`Go to start (${labelFor('goToStart')})`}>
         <IconSkipStart size={14} />
       </button>
 
@@ -545,13 +514,13 @@ export default function TransportBar() {
       <button
         style={isPlaying ? BTN_ACTIVE : BTN_STYLE}
         onClick={togglePlay}
-        title="Play/Pause (Space)"
+        title={`Play/Pause (${labelFor('playPause')})`}
       >
         {isPlaying ? <IconPause size={14} /> : <IconPlay size={14} />}
       </button>
 
       {/* Skip to end */}
-      <button style={BTN_STYLE} onClick={() => seek(duration)} title="Go to end (End)">
+      <button style={BTN_STYLE} onClick={() => seek(duration)} title={`Go to end (${labelFor('goToEnd')})`}>
         <IconSkipEnd size={14} />
       </button>
 
@@ -600,7 +569,7 @@ export default function TransportBar() {
         disabled={!undoStack.can_undo}
         title={
           undoStack.can_undo
-            ? `Undo ${undoStack.labels[0]?.label || 'edit'} (Cmd/Ctrl+Z)`
+            ? `Undo ${undoStack.labels[0]?.label || 'edit'} (${labelFor('undo')})`
             : 'Nothing to undo'
         }
       >
@@ -613,10 +582,28 @@ export default function TransportBar() {
         style={undoStack.can_redo ? BTN_STYLE : { ...BTN_STYLE, opacity: 0.35, cursor: 'default' }}
         onClick={() => void runUndoAction('redo')}
         disabled={!undoStack.can_redo}
-        title={undoStack.can_redo ? 'Redo last undone edit (Cmd/Ctrl+Shift+Z)' : 'Nothing to redo'}
+        title={undoStack.can_redo ? `Redo last undone edit (${labelFor('redo')})` : 'Nothing to redo'}
       >
         ↷
         <span style={UNDO_BADGE_STYLE}>{undoStack.redo_depth}</span>
+      </button>
+
+      <div style={SEPARATOR} />
+
+      {/* MARKER_185.1: Scene Detection button */}
+      <button
+        data-testid="cut-scene-detect-button"
+        style={{
+          ...BTN_STYLE,
+          opacity: sandboxRoot && projectId ? 1 : 0.3,
+          color: sceneDetectStatus === 'done' ? '#22c55e' : sceneDetectStatus === 'error' ? '#ef4444' : '#ccc',
+        }}
+        onClick={() => void handleSceneDetect()}
+        disabled={!sandboxRoot || !projectId || sceneDetectStatus === 'detecting'}
+        title={`Detect Scenes (${labelFor('sceneDetect')})`}
+      >
+        {sceneDetectStatus === 'detecting' ? <IconSpinner size={14} /> : <IconScissors size={14} />}
+        <span style={{ marginLeft: 4, fontSize: 10 }}>Scenes</span>
       </button>
 
       {/* Spacer */}

@@ -103,15 +103,24 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     );
   }, []);
 
-  // ─── Right bottom: Inspector + Script + DAG tab group ───
+  // ─── Right bottom: Inspector + Script + DAG tab group (MARKER_181.13) ───
+  const setActiveTab = usePanelLayoutStore((s) => s.setActiveTab);
+  const activeRightBottomTab = activeTabByDock['right_bottom'] || 'inspector';
+  const handleTabChange = useCallback(
+    (tab: string) => setActiveTab('right_bottom', tab as import('../../store/usePanelLayoutStore').PanelId),
+    [setActiveTab],
+  );
   const renderRightBottom = useCallback(() => {
-    const activeTab = activeTabByDock['right_bottom'] || 'inspector';
     return (
       <PanelShell panelId="inspector" title="Inspector">
-        <RightBottomTabContent activeTab={activeTab} scriptText={scriptText} />
+        <RightBottomTabbedPanel
+          activeTab={activeRightBottomTab}
+          scriptText={scriptText}
+          onTabChange={handleTabChange}
+        />
       </PanelShell>
     );
-  }, [activeTabByDock, scriptText]);
+  }, [activeRightBottomTab, scriptText, handleTabChange]);
 
   // ─── Bottom: Timeline area ───
   const renderBottom = useCallback(() => {
@@ -181,7 +190,71 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   );
 }
 
-// ─── Right bottom tab content: Inspector / Script / DAG ───
+// ─── MARKER_181.13: Right bottom tab bar + content ───
+
+const TAB_BAR_STYLE: CSSProperties = {
+  display: 'flex',
+  alignItems: 'stretch',
+  height: 26,
+  background: '#0a0a0a',
+  borderBottom: '1px solid #1a1a1a',
+  flexShrink: 0,
+  userSelect: 'none',
+};
+
+const TAB_ITEM_BASE: CSSProperties = {
+  padding: '0 12px',
+  fontSize: 11,
+  fontFamily: 'system-ui',
+  cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  borderRight: '1px solid #1a1a1a',
+  transition: 'background 0.1s, color 0.1s',
+};
+
+const RIGHT_BOTTOM_TABS: { id: 'inspector' | 'script' | 'dag_project'; label: string }[] = [
+  { id: 'inspector', label: 'Inspector' },
+  { id: 'script', label: 'Script' },
+  { id: 'dag_project', label: 'DAG' },
+];
+
+function RightBottomTabbedPanel({ activeTab, scriptText, onTabChange }: {
+  activeTab: string;
+  scriptText: string;
+  onTabChange: (tab: string) => void;
+}) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Tab bar */}
+      <div style={TAB_BAR_STYLE}>
+        {RIGHT_BOTTOM_TABS.map((tab) => {
+          const isActive = tab.id === activeTab;
+          return (
+            <div
+              key={tab.id}
+              data-testid={`cut-tab-${tab.id}`}
+              onClick={() => onTabChange(tab.id)}
+              style={{
+                ...TAB_ITEM_BASE,
+                background: isActive ? '#1a1a1a' : 'transparent',
+                color: isActive ? '#fff' : '#666',
+                borderBottom: isActive ? '2px solid #3b82f6' : '2px solid transparent',
+                fontWeight: isActive ? 600 : 400,
+              }}
+            >
+              {tab.label}
+            </div>
+          );
+        })}
+      </div>
+      {/* Tab content */}
+      <div style={{ flex: 1, overflow: 'auto' }}>
+        <RightBottomTabContent activeTab={activeTab} scriptText={scriptText} />
+      </div>
+    </div>
+  );
+}
 
 function RightBottomTabContent({ activeTab, scriptText }: { activeTab: string; scriptText: string }) {
   switch (activeTab) {
