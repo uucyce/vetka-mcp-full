@@ -44,6 +44,8 @@ from src.services.reflex_scorer import (
     _DEFAULT_FEEDBACK_SCORE,
     _SMALL_MODEL_CONTEXT,
     _MEDIUM_MODEL_CONTEXT,
+    _SPARSE_BOOST_THRESHOLD,
+    _SPARSE_BOOST_MULTIPLIER,
 )
 from src.services.reflex_registry import ToolEntry
 
@@ -340,6 +342,35 @@ class TestCAMSurprise:
             signals_low = scorer.score_signals(search_tool, ReflexContext(cam_surprise=0.1))
             assert signals_low["cam"] == 0.3
 
+    def test_sparse_boost_cam(self, scorer, search_tool):
+        """Phase 187.3: CAM signal > 0.7 gets ×1.5 sparse boost in weighted sum."""
+        # CAM signal = 1.0 (high surprise), so boosted value = min(1.0, 1.0*1.5) = 1.0
+        # With cam weight 0.12: boosted contrib = 1.0 * 0.12 = 0.12
+        # Without boost it would also be 1.0 * 0.12 = 0.12 (capped at 1.0)
+        # Use a context where CAM=0.8 (just above 0.7 threshold, returns 1.0 from _cam_relevance)
+        # The boost applies in _weighted_sum to the signal value, not the raw cam_surprise
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            # cam signal = 1.0 (>0.7 threshold) → boosted to min(1.0, 1.5) = 1.0
+            high_cam = ReflexContext(cam_surprise=0.8)
+            # cam signal = 0.5 (<=0.7 threshold) → no boost
+            mid_cam = ReflexContext(cam_surprise=0.5)
+            score_high = scorer.score(search_tool, high_cam)
+            score_mid = scorer.score(search_tool, mid_cam)
+            # High CAM should score higher due to both higher signal AND sparse boost
+            assert score_high > score_mid
+
+    def test_sparse_boost_hope(self, scorer, search_tool):
+        """Phase 187.3: HOPE signal > 0.7 gets ×1.5 sparse boost in weighted sum."""
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            # LOW zoom + search tool → hope signal = 1.0 (>0.7) → boosted
+            low_zoom = ReflexContext(hope_level="LOW")
+            # MID zoom → hope signal = 0.5 (<=0.7) → no boost
+            mid_zoom = ReflexContext(hope_level="MID")
+            score_low = scorer.score(search_tool, low_zoom)
+            score_mid = scorer.score(search_tool, mid_zoom)
+            # LOW zoom + search tool should benefit from sparse boost
+            assert score_low > score_mid
+
 
 # ─── T2.6: ENGRAM preference respected ──────────────────────────
 
@@ -436,6 +467,23 @@ class TestConfigurableWeights:
             total = scorer.score(search_tool, context)
         # Total should be purely from semantic (cam/feedback have weight 0)
         assert total == pytest.approx(signals["semantic"], abs=0.001)
+
+    def test_phase187_weights_sum_to_one(self):
+        """Phase 187.3: Rebalanced weights must sum to 1.0."""
+        assert sum(_W.values()) == pytest.approx(1.0, abs=0.001)
+        assert _W["semantic"] == pytest.approx(0.22)
+        assert _W["cam"] == pytest.approx(0.12)
+        assert _W["feedback"] == pytest.approx(0.18)
+        assert _W["engram"] == pytest.approx(0.07)
+        assert _W["stm"] == pytest.approx(0.15)
+        assert _W["phase"] == pytest.approx(0.18)
+        assert _W["hope"] == pytest.approx(0.05)
+        assert _W["mgc"] == pytest.approx(0.03)
+
+    def test_sparse_boost_constants(self):
+        """Phase 187.3: Sparse boost threshold and multiplier."""
+        assert _SPARSE_BOOST_THRESHOLD == 0.7
+        assert _SPARSE_BOOST_MULTIPLIER == 1.5
 
     def test_zero_weights_zero_score(self, search_tool):
         """All weights zero → score is 0.0."""

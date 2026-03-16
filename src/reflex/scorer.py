@@ -6,15 +6,15 @@ MARKER_172.P2.SCORER
 Layer 2 of REFLEX (Reactive Execution & Function Linking EXchange).
 Pure math scoring on 8 memory signals → ranked tool recommendations in <5ms.
 
-Signals:
-  1. Semantic match      (intent_tags vs task keywords)       weight: 0.30
-  2. CAM surprise        (novelty boost from surprise_detector) weight: 0.15
-  3. Feedback score      (CORTEX historical success, 0.5 default) weight: 0.15
-  4. ENGRAM preference   (user tool_usage_patterns)           weight: 0.10
-  5. STM relevance       (working memory recency)             weight: 0.10
-  6. Phase match         (fix/build/research alignment)       weight: 0.10
-  7. HOPE LOD match      (zoom level → tool granularity)      weight: 0.05
-  8. MGC cache heat      (Gen0 hot files → relevant tools)    weight: 0.05
+Signals (Phase 187.3 rebalanced — see docs/186_memory/GROK_RESEARCH_ANSWERS.md):
+  1. Semantic match      (intent_tags vs task keywords)       weight: 0.22
+  2. CAM surprise        (novelty boost from surprise_detector) weight: 0.12  + sparse boost ×1.5
+  3. Feedback score      (CORTEX historical success, 0.5 default) weight: 0.18
+  4. ENGRAM preference   (user tool_usage_patterns)           weight: 0.07
+  5. STM relevance       (working memory recency)             weight: 0.15
+  6. Phase match         (fix/build/research alignment)       weight: 0.18
+  7. HOPE LOD match      (zoom level → tool granularity)      weight: 0.05  + sparse boost ×1.5
+  8. MGC cache heat      (Gen0 hot files → relevant tools)    weight: 0.03
 
 NO LLM calls. NO external API. Pure in-memory scoring.
 
@@ -38,17 +38,23 @@ logger = logging.getLogger(__name__)
 # MARKER_178.1.6: REFLEX enabled by default (Phase 178)
 REFLEX_ENABLED = os.getenv("REFLEX_ENABLED", "true").lower() in ("true", "1", "yes")
 
-# --- MARKER_172.P2.CONTEXT: Configurable weights via env vars ---
+# --- MARKER_187.3: Rebalanced weights (Phase 187) ---
+# See docs/186_memory/GROK_RESEARCH_ANSWERS.md for rationale.
+# Σ = 1.00. Semantic down, phase+stm+feedback up, mgc kept at 0.03 (Opus: don't zero).
 _W = {
-    "semantic":  float(os.getenv("REFLEX_SEMANTIC_WEIGHT",  "0.30")),
-    "cam":       float(os.getenv("REFLEX_CAM_WEIGHT",       "0.15")),
-    "feedback":  float(os.getenv("REFLEX_FEEDBACK_WEIGHT",  "0.15")),
-    "engram":    float(os.getenv("REFLEX_ENGRAM_WEIGHT",    "0.10")),
-    "stm":       float(os.getenv("REFLEX_STM_WEIGHT",       "0.10")),
-    "phase":     float(os.getenv("REFLEX_PHASE_WEIGHT",     "0.10")),
+    "semantic":  float(os.getenv("REFLEX_SEMANTIC_WEIGHT",  "0.22")),
+    "cam":       float(os.getenv("REFLEX_CAM_WEIGHT",       "0.12")),
+    "feedback":  float(os.getenv("REFLEX_FEEDBACK_WEIGHT",  "0.18")),
+    "engram":    float(os.getenv("REFLEX_ENGRAM_WEIGHT",    "0.07")),
+    "stm":       float(os.getenv("REFLEX_STM_WEIGHT",       "0.15")),
+    "phase":     float(os.getenv("REFLEX_PHASE_WEIGHT",     "0.18")),
     "hope":      float(os.getenv("REFLEX_HOPE_WEIGHT",      "0.05")),
-    "mgc":       float(os.getenv("REFLEX_MGC_WEIGHT",       "0.05")),
+    "mgc":       float(os.getenv("REFLEX_MGC_WEIGHT",       "0.03")),
 }
+
+# MARKER_187.3: Sparse signal boost — amplify strong CAM/HOPE signals
+_SPARSE_BOOST_THRESHOLD = 0.7
+_SPARSE_BOOST_MULTIPLIER = 1.5
 
 # Default feedback score when no history exists (cold start)
 _DEFAULT_FEEDBACK_SCORE = 0.5
@@ -309,10 +315,17 @@ class ReflexScorer:
         }
 
     def _weighted_sum(self, signals: Dict[str, float]) -> float:
-        """Weighted sum of all signals. Result is 0.0-1.0."""
+        """Weighted sum of all signals with sparse signal boost. Result is 0.0-1.0.
+
+        MARKER_187.3: CAM and HOPE signals > 0.7 get ×1.5 multiplier
+        to reward strong sparse signals that would otherwise be drowned out.
+        """
         total = 0.0
         for key, value in signals.items():
             weight = self._weights.get(key, 0.0)
+            # Phase 187 sparse boost: amplify strong CAM/HOPE signals
+            if key in ("cam", "hope") and value > _SPARSE_BOOST_THRESHOLD:
+                value = min(1.0, value * _SPARSE_BOOST_MULTIPLIER)
             total += value * weight
         return min(1.0, max(0.0, total))
 
