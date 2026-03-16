@@ -10,7 +10,7 @@ Learning System + JARVIS Memory Integration
 Tests:
 - Phase 76.1: Replay Buffer, Workflow Counter
 - Phase 76.2: HOPE Integration
-- Phase 76.3: User Preferences, Engram Memory, JARVIS Enricher
+- Phase 76.3: User Preferences, Aura Memory, JARVIS Enricher
 """
 
 import pytest
@@ -280,23 +280,23 @@ class TestUserPreferences:
 
 
 # ============================================
-# PHASE 76.3: ENGRAM USER MEMORY TESTS
+# PHASE 76.3: AURA STORE TESTS
 # ============================================
 
-class TestEngramUserMemory:
-    """Tests for Engram User Memory (Phase 76.3)."""
+class TestAuraStore:
+    """Tests for Aura Store (Phase 76.3)."""
 
-    def test_engram_memory_import(self):
-        """Test that EngramUserMemory can be imported."""
-        from src.memory.engram_user_memory import EngramUserMemory, get_engram_user_memory
-        assert EngramUserMemory is not None
-        assert get_engram_user_memory is not None
+    def test_aura_store_import(self):
+        """Test that AuraStore can be imported."""
+        from src.memory.aura_store import AuraStore, get_aura_store
+        assert AuraStore is not None
+        assert get_aura_store is not None
 
-    def test_engram_memory_ram_only_mode(self):
-        """Test EngramUserMemory in RAM-only mode."""
-        from src.memory.engram_user_memory import EngramUserMemory
+    def test_aura_store_ram_only_mode(self):
+        """Test AuraStore in RAM-only mode."""
+        from src.memory.aura_store import AuraStore
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
 
         # Set preference
         memory.set_preference('ram_user', 'communication_style', 'formality', 0.2)
@@ -308,11 +308,11 @@ class TestEngramUserMemory:
         # Check RAM cache
         assert 'ram_user' in memory.ram_cache
 
-    def test_engram_memory_stats(self):
+    def test_aura_store_stats(self):
         """Test stats method."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
 
         stats = memory.get_stats()
         assert 'ram_cache_size' in stats
@@ -336,10 +336,10 @@ class TestUserMemoryUpdater:
     @pytest.mark.asyncio
     async def test_updater_communication_style(self):
         """Test communication style detection."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
         from src.memory.user_memory_updater import UserMemoryUpdater
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
         updater = UserMemoryUpdater(engram_memory=memory)
 
         # Casual message
@@ -362,10 +362,10 @@ class TestUserMemoryUpdater:
     @pytest.mark.asyncio
     async def test_updater_viewport_pattern(self):
         """Test viewport pattern tracking."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
         from src.memory.user_memory_updater import UserMemoryUpdater
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
         updater = UserMemoryUpdater(engram_memory=memory)
 
         # Track zoom levels
@@ -427,10 +427,10 @@ class TestJARVISPromptEnricher:
 
     def test_enricher_basic_enrichment(self):
         """Test basic prompt enrichment."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
         from src.memory.jarvis_prompt_enricher import JARVISPromptEnricher
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
 
         # Set some preferences
         memory.set_preference('enrich_user', 'communication_style', 'formality', 0.2)
@@ -449,10 +449,10 @@ class TestJARVISPromptEnricher:
 
     def test_enricher_token_estimate(self):
         """Test token estimation."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
         from src.memory.jarvis_prompt_enricher import JARVISPromptEnricher
 
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
         memory.set_preference('token_user', 'communication_style', 'formality', 0.3)
 
         enricher = JARVISPromptEnricher(engram_memory=memory)
@@ -500,7 +500,7 @@ class TestPhase76Integration:
 
         # Phase 76.3
         from src.memory.user_memory import UserPreferences, create_user_preferences
-        from src.memory.engram_user_memory import EngramUserMemory, get_engram_user_memory
+        from src.memory.aura_store import AuraStore, get_aura_store
         from src.memory.user_memory_updater import UserMemoryUpdater, get_user_memory_updater
         from src.memory.jarvis_prompt_enricher import JARVISPromptEnricher, get_jarvis_enricher
 
@@ -510,12 +510,12 @@ class TestPhase76Integration:
     @pytest.mark.asyncio
     async def test_full_jarvis_flow(self):
         """Test full JARVIS memory flow: update -> store -> enrich."""
-        from src.memory.engram_user_memory import EngramUserMemory
+        from src.memory.aura_store import AuraStore
         from src.memory.user_memory_updater import UserMemoryUpdater
         from src.memory.jarvis_prompt_enricher import JARVISPromptEnricher
 
         # Initialize components (RAM-only mode)
-        memory = EngramUserMemory(qdrant_client=None)
+        memory = AuraStore(qdrant_client=None)
         updater = UserMemoryUpdater(engram_memory=memory)
         enricher = JARVISPromptEnricher(engram_memory=memory)
 

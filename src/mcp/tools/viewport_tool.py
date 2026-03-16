@@ -13,7 +13,7 @@ in the 3D visualization, allowing for context-aware responses.
 
 @status: active
 @phase: 109.1
-@depends: base_tool, mcp_server, engram_user_memory, cam_engine
+@depends: base_tool, mcp_server, aura_store, cam_engine
 @used_by: session_tools, mcp_bridge
 """
 
@@ -196,7 +196,7 @@ class ViewportDetailTool(BaseMCPTool):
         """
         Fallback: Get viewport information from user preferences.
 
-        This uses the Engram user memory system to retrieve viewport patterns
+        This uses the AURA user memory system to retrieve viewport patterns
         that the CAM engine has learned about the user's viewing habits.
 
         Args:
@@ -206,7 +206,7 @@ class ViewportDetailTool(BaseMCPTool):
             Synthetic viewport state based on user preferences, or None
         """
         try:
-            from src.memory.engram_user_memory import get_engram_user_memory
+            from src.memory.aura_store import get_aura_store
 
             # Derive user_id from session_id or use default
             user_id = "default"
@@ -215,11 +215,11 @@ class ViewportDetailTool(BaseMCPTool):
                 if len(parts) > 1:
                     user_id = parts[1]
 
-            engram = get_engram_user_memory()
+            aura = get_aura_store()
 
-            # Try to get viewport patterns from Engram
-            zoom_pref = engram.get_preference(user_id, "viewport_patterns", "zoom_levels")
-            focus_pref = engram.get_preference(user_id, "viewport_patterns", "focus_areas")
+            # Try to get viewport patterns from AURA
+            zoom_pref = aura.get_preference(user_id, "viewport_patterns", "zoom_levels")
+            focus_pref = aura.get_preference(user_id, "viewport_patterns", "focus_areas")
 
             # Build synthetic viewport state from preferences
             return {

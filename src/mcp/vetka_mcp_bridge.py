@@ -1559,11 +1559,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             category = arguments.get("category", "all")
 
             try:
-                from src.memory.engram_user_memory import EngramUserMemory
+                from src.memory.aura_store import AuraStore
                 from src.memory.qdrant_client import get_qdrant_client
 
                 qdrant = get_qdrant_client()
-                memory = EngramUserMemory(qdrant)
+                memory = AuraStore(qdrant)
 
                 if category == "all":
                     prefs = memory.get_all_preferences(user_id)
@@ -1574,7 +1574,7 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     "user_id": user_id,
                     "category": category,
                     "preferences": prefs if prefs else {},
-                    "source": "engram_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
+                    "source": "aura_ram_cache" if memory.ram_cache.get(user_id) else "qdrant"
                 }
 
                 duration_ms = (time.time() - start_time) * 1000

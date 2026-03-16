@@ -437,10 +437,10 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                 loop = asyncio.get_event_loop()
 
                 def _get_prefs_sync():
-                    from src.memory.engram_user_memory import EngramUserMemory
+                    from src.memory.aura_store import AuraStore
                     from src.memory.qdrant_client import get_qdrant_client
                     qdrant = get_qdrant_client()
-                    memory = EngramUserMemory(qdrant)
+                    memory = AuraStore(qdrant)
                     return memory.get_all_preferences("danila")
 
                 prefs = await asyncio.wait_for(
@@ -454,9 +454,9 @@ class LLMCallToolAsync(BaseAsyncMCPTool):
                         f"{json.dumps(prefs, indent=2, ensure_ascii=False)[:1500]}\n```"
                     )
             except asyncio.TimeoutError:
-                logger.warning("[MYCELIUM INJECT] Engram prefs timed out (3s)")
+                logger.warning("[MYCELIUM INJECT] AURA prefs timed out (3s)")
             except Exception as e:
-                logger.warning(f"[MYCELIUM INJECT] Engram error: {e}")
+                logger.warning(f"[MYCELIUM INJECT] AURA error: {e}")
 
         # 4. CAM active nodes
         if inject_config.get("include_cam"):

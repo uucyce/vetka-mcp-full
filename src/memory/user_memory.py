@@ -5,7 +5,7 @@ Dataclasses for JARVIS Memory personalization layer
 @file user_memory.py
 @status ACTIVE
 @phase Phase 76.3 - JARVIS Memory Layer
-@calledBy engram_user_memory.py, jarvis_prompt_enricher.py
+@calledBy aura_store.py, jarvis_prompt_enricher.py
 @lastAudit 2026-01-20
 
 Schema categories (from Grok #2 Research):

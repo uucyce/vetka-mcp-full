@@ -3632,12 +3632,12 @@ async def get_layout_preferences(
     Stored as viewport_patterns.dag_layout_profiles (no raw coordinates).
     """
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
-        if not engram:
-            return {"success": False, "error": "ENGRAM unavailable", "profile": None}
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
+        if not aura:
+            return {"success": False, "error": "AURA unavailable", "profile": None}
 
-        profiles = engram.get_preference(user_id, "viewport_patterns", "dag_layout_profiles") or {}
+        profiles = aura.get_preference(user_id, "viewport_patterns", "dag_layout_profiles") or {}
         if not isinstance(profiles, dict):
             profiles = {}
         if scope_key:
@@ -3661,12 +3661,12 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
         raise HTTPException(status_code=400, detail="profile must be object")
 
     try:
-        from src.memory.engram_user_memory import get_engram_user_memory
-        engram = get_engram_user_memory()
-        if not engram:
-            raise HTTPException(status_code=503, detail="ENGRAM unavailable")
+        from src.memory.aura_store import get_aura_store
+        aura = get_aura_store()
+        if not aura:
+            raise HTTPException(status_code=503, detail="AURA unavailable")
 
-        profiles = engram.get_preference(req.user_id, "viewport_patterns", "dag_layout_profiles") or {}
+        profiles = aura.get_preference(req.user_id, "viewport_patterns", "dag_layout_profiles") or {}
         if not isinstance(profiles, dict):
             profiles = {}
 
@@ -3700,7 +3700,7 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
         next_profile["updated_at"] = req.profile.get("updated_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         profiles[scope_key] = next_profile
-        engram.set_preference(
+        aura.set_preference(
             req.user_id,
             "viewport_patterns",
             "dag_layout_profiles",

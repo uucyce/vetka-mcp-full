@@ -2772,22 +2772,22 @@ Please provide a helpful response based on the file content shown above.""",
             # Step 1: Try Engram O(1) lookup first (fastest)
             if scope in ["all", "engram"]:
                 try:
-                    from src.memory.engram_user_memory import engram_lookup
+                    from src.memory.aura_store import aura_lookup
 
-                    engram_results = await engram_lookup(query)
+                    aura_results = await aura_lookup(query)
 
-                    if engram_results and len(engram_results) > 0:
+                    if aura_results and len(aura_results) > 0:
                         print(
-                            f"[CAM_SEARCH] Engram O(1) hit: {len(engram_results)} results"
+                            f"[CAM_SEARCH] Aura O(1) hit: {len(aura_results)} results"
                         )
                         return {
-                            "results": engram_results[:limit],
-                            "source": "engram_o1",
+                            "results": aura_results[:limit],
+                            "source": "aura_o1",
                             "query": query,
-                            "total_found": len(engram_results),
+                            "total_found": len(aura_results),
                         }
                 except Exception as e:
-                    print(f"[CAM_SEARCH] Engram lookup failed: {e}")
+                    print(f"[CAM_SEARCH] Aura lookup failed: {e}")
 
             # Step 2: Fallback to Qdrant with CAM pre-filter
             if scope in ["all", "qdrant", "memory"]:

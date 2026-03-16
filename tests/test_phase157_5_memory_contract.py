@@ -24,7 +24,7 @@ def test_get_jarvis_context_includes_memory_contract(monkeypatch):
         def get_context(self, max_items=5):
             return [Entry("user", "Привет"), Entry("agent", "Здравствуйте")]
 
-    class FakeEngram:
+    class FakeAura:
         def get_preference(self, user_id, category, key):
             mapping = {
                 ("communication_style", "formality"): 0.5,
@@ -36,10 +36,10 @@ def test_get_jarvis_context_includes_memory_contract(monkeypatch):
             return mapping.get((category, key))
 
     fake_stm_mod = types.SimpleNamespace(get_stm_buffer=lambda: FakeSTM())
-    fake_engram_mod = types.SimpleNamespace(get_engram_user_memory=lambda: FakeEngram())
+    fake_aura_mod = types.SimpleNamespace(get_aura_store=lambda: FakeAura())
     fake_elision_mod = types.SimpleNamespace(compress_context=lambda payload, level=2: str(payload))
     monkeypatch.setitem(sys.modules, "src.memory.stm_buffer", fake_stm_mod)
-    monkeypatch.setitem(sys.modules, "src.memory.engram_user_memory", fake_engram_mod)
+    monkeypatch.setitem(sys.modules, "src.memory.aura_store", fake_aura_mod)
     monkeypatch.setitem(sys.modules, "src.memory.elision", fake_elision_mod)
 
     ctx = jl.asyncio.run(jl.get_jarvis_context("u1", "привет"))
@@ -98,7 +98,7 @@ def test_get_jarvis_context_state_key_retrieval(monkeypatch):
         def get_context(self, max_items=5):
             return []
 
-    class FakeEngram:
+    class FakeAura:
         def get_preference(self, user_id, category, key):
             return None
 
@@ -115,11 +115,11 @@ def test_get_jarvis_context_state_key_retrieval(monkeypatch):
         }
 
     fake_stm_mod = types.SimpleNamespace(get_stm_buffer=lambda: FakeSTM())
-    fake_engram_mod = types.SimpleNamespace(get_engram_user_memory=lambda: FakeEngram())
+    fake_aura_mod = types.SimpleNamespace(get_aura_store=lambda: FakeAura())
     fake_myco_bridge = types.SimpleNamespace(retrieve_myco_hidden_context=fake_retrieve_myco_hidden_context)
 
     monkeypatch.setitem(sys.modules, "src.memory.stm_buffer", fake_stm_mod)
-    monkeypatch.setitem(sys.modules, "src.memory.engram_user_memory", fake_engram_mod)
+    monkeypatch.setitem(sys.modules, "src.memory.aura_store", fake_aura_mod)
     monkeypatch.setitem(sys.modules, "src.services.myco_memory_bridge", fake_myco_bridge)
 
     extra = {

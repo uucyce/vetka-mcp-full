@@ -7,7 +7,7 @@ MARKER_162.P3.MYCO.NO_UI_MEMORY_SURFACE.V1
 
 Hidden MYCO memory bridge:
 - internal docs/readme indexing via triple-write
-- ENGRAM user payload extraction
+- AURA user payload extraction
 - recent task snapshot across MCC projects
 - lightweight local fastpath metadata for MYCO quick answers
 """
@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 import re
 
-from src.memory.engram_user_memory import get_engram_user_memory
+from src.memory.aura_store import get_aura_store
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "data"
@@ -675,8 +675,8 @@ def build_myco_memory_payload(
     """
     Build MYCO hidden memory payload (backend/runtime only).
     """
-    engram = get_engram_user_memory()
-    prefs = engram.get_all_preferences(user_id) or {}
+    aura = get_aura_store()
+    prefs = aura.get_all_preferences(user_id) or {}
     manifest = _load_json(MANIFEST_PATH)
     recent = _recent_tasks_by_project(limit_per_project=3)
     digest = _load_project_digest()
@@ -726,10 +726,10 @@ def persist_myco_runtime_facts(
 ) -> Dict[str, Any]:
     """
     MARKER_162.P3.P2.MYCO.ENGRAM_PERSIST_RUNTIME_FACTS.V1
-    Persist lightweight MYCO runtime facts in ENGRAM-safe fields.
+    Persist lightweight MYCO runtime facts in AURA-safe fields.
     """
-    engram = get_engram_user_memory()
-    prefs = engram.get_all_preferences(user_id) or {}
+    aura = get_aura_store()
+    prefs = aura.get_all_preferences(user_id) or {}
     focus_obj = dict(focus or {})
     recent = _recent_tasks_by_project(limit_per_project=3)
     multi = _multitask_stats()
@@ -784,42 +784,42 @@ def persist_myco_runtime_facts(
         time_of_day["myco_last_focus"] = focus_label
 
     if current_project:
-        engram.set_preference(
+        aura.set_preference(
             user_id,
             "project_highlights",
             "current_project",
             current_project,
             confidence=0.9,
         )
-    engram.set_preference(
+    aura.set_preference(
         user_id,
         "project_highlights",
         "priorities",
         priorities,
         confidence=0.75,
     )
-    engram.set_preference(
+    aura.set_preference(
         user_id,
         "project_highlights",
         "highlights",
         highlights,
         confidence=0.75,
     )
-    engram.set_preference(
+    aura.set_preference(
         user_id,
         "tool_usage_patterns",
         "shortcuts",
         tool_shortcuts,
         confidence=0.7,
     )
-    engram.set_preference(
+    aura.set_preference(
         user_id,
         "tool_usage_patterns",
         "patterns",
         tool_patterns,
         confidence=0.7,
     )
-    engram.set_preference(
+    aura.set_preference(
         user_id,
         "temporal_patterns",
         "time_of_day",
@@ -828,7 +828,7 @@ def persist_myco_runtime_facts(
     )
     if multi.get("active", 0) > 0:
         tool_patterns["myco_multitask_active"] = str(int(multi.get("active", 0)))
-        engram.set_preference(
+        aura.set_preference(
             user_id,
             "tool_usage_patterns",
             "patterns",

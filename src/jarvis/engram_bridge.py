@@ -22,8 +22,8 @@ class JarvisEngramBridge:
 
     def _get_memory(self):
         if self._memory is None:
-            from src.memory.engram_user_memory import get_engram_user_memory
-            self._memory = get_engram_user_memory()
+            from src.memory.aura_store import get_aura_store
+            self._memory = get_aura_store()
         return self._memory
 
     async def build_context(self, user_id: str, request: str) -> Dict[str, Any]:

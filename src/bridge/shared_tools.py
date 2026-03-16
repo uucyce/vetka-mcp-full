@@ -1303,7 +1303,7 @@ class UserPreferencesTool(MemoryTool):
     Cold preferences are retrieved from Qdrant with semantic search.
 
     Source: vetka_mcp_bridge.py lines 901-930
-    Internal: src/memory/engram_user_memory.py
+    Internal: src/memory/aura_store.py
 
     Arguments:
         user_id (str): User identifier (default: 'danila')
@@ -1333,13 +1333,13 @@ class UserPreferencesTool(MemoryTool):
             return True
 
         try:
-            from src.memory.engram_user_memory import EngramUserMemory
+            from src.memory.aura_store import AuraStore
             from src.memory.qdrant_client import get_qdrant_client
 
             qdrant_wrapper = get_qdrant_client()
             if qdrant_wrapper and hasattr(qdrant_wrapper, 'client'):
                 self._qdrant = qdrant_wrapper.client
-            self._memory = EngramUserMemory(self._qdrant)
+            self._memory = AuraStore(self._qdrant)
             return True
         except ImportError:
             return False
@@ -1363,7 +1363,7 @@ class UserPreferencesTool(MemoryTool):
             # Initialize memory lazily
             if not self._init_memory():
                 return {
-                    "error": "Engram memory not available (module not initialized)",
+                    "error": "Aura store not available (module not initialized)",
                     "user_id": user_id,
                     "category": category,
                     "preferences": {},
@@ -1384,7 +1384,7 @@ class UserPreferencesTool(MemoryTool):
                     prefs = {}
 
             # Determine source
-            source = "engram_ram_cache" if self._memory.ram_cache.get(user_id) else "qdrant"
+            source = "aura_ram_cache" if self._memory.ram_cache.get(user_id) else "qdrant"
 
             return {
                 "user_id": user_id,

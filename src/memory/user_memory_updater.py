@@ -21,7 +21,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from collections import Counter
 
-from .engram_user_memory import EngramUserMemory, get_engram_user_memory
+from .aura_store import AuraStore, get_aura_store
 from .user_memory import UserPreferences
 
 logger = logging.getLogger(__name__)
@@ -53,14 +53,14 @@ class UserMemoryUpdater:
     # Confirmation threshold (ask user after N consistent patterns)
     CONFIRM_THRESHOLD = 5
 
-    def __init__(self, engram_memory: Optional[EngramUserMemory] = None):
+    def __init__(self, aura_store: Optional[AuraStore] = None):
         """
         Initialize User Memory Updater.
 
         Args:
-            engram_memory: EngramUserMemory instance (uses singleton if None)
+            aura_store: AuraStore instance (uses singleton if None)
         """
-        self.memory = engram_memory or get_engram_user_memory()
+        self.memory = aura_store or get_aura_store()
         self.pending_confirmations: Dict[str, List[Dict]] = {}  # user_id → [patterns to confirm]
 
     async def update_viewport_pattern(
@@ -616,13 +616,13 @@ _updater_instance: Optional[UserMemoryUpdater] = None
 
 
 def get_user_memory_updater(
-    engram_memory: Optional[EngramUserMemory] = None
+    aura_store: Optional[AuraStore] = None
 ) -> UserMemoryUpdater:
     """
     Factory function - returns singleton UserMemoryUpdater.
 
     Args:
-        engram_memory: EngramUserMemory instance
+        aura_store: AuraStore instance
 
     Returns:
         UserMemoryUpdater singleton instance
@@ -630,6 +630,6 @@ def get_user_memory_updater(
     global _updater_instance
 
     if _updater_instance is None:
-        _updater_instance = UserMemoryUpdater(engram_memory)
+        _updater_instance = UserMemoryUpdater(aura_store)
 
     return _updater_instance

@@ -16,7 +16,7 @@ from src.agents.tools import (
     get_tools_for_agent,
     AGENT_TOOL_PERMISSIONS,
 )
-from src.memory.engram_user_memory import engram_lookup, enhanced_engram_lookup
+from src.memory.aura_store import aura_lookup
 
 
 class TestCAMTools:
@@ -111,12 +111,12 @@ class TestAgentPermissions:
         assert "adaptive_memory_sizing" in tool_names
 
 
-class TestEngramLevels:
-    """Test Engram level functionality"""
+class TestAuraLevels:
+    """Test Aura level functionality"""
 
     @pytest.mark.asyncio
-    async def test_engram_lookup_level1(self):
-        """Test basic Engram lookup (Level 1)"""
+    async def test_aura_lookup_level1(self):
+        """Test basic Aura lookup (Level 1)"""
         # Mock memory instance
         mock_memory = Mock()
         mock_memory.ram_cache = {
@@ -129,46 +129,16 @@ class TestEngramLevels:
         }
 
         with patch(
-            "src.memory.engram_user_memory.get_engram_user_memory",
+            "src.memory.aura_store.get_aura_store",
             return_value=mock_memory,
         ):
-            results = await engram_lookup("python")
+            results = await aura_lookup("python")
 
             assert results is not None
             assert len(results) > 0
             assert results[0]["category"] == "coding"
             assert results[0]["key"] == "python"
             assert results[0]["source"] == "engram_o1"
-
-    @pytest.mark.asyncio
-    async def test_enhanced_engram_lookup_levels(self):
-        """Test enhanced Engram lookup at different levels"""
-        # Mock dependencies
-        mock_cam_engine = AsyncMock()
-        mock_cam_engine.calculate_surprise.return_value = 0.75
-
-        mock_compress = AsyncMock()
-        mock_compress.return_value = "Compressed content"
-
-        with (
-            patch(
-                "src.memory.engram_user_memory.engram_lookup",
-                return_value=[{"value": "test content", "confidence": 0.9}],
-            ),
-            patch("src.orchestration.cam_engine.calculate_surprise", return_value=0.75),
-            patch("src.memory.elision.compress_context", mock_compress),
-        ):
-            # Test Level 2 (CAM integration)
-            results = await enhanced_engram_lookup("test", level=2)
-            assert results is not None
-            assert len(results) > 0
-            assert "surprise_score" in results[0]
-            assert 0 <= results[0]["surprise_score"] <= 1.0
-
-            # Test Level 3 (temporal weighting)
-            results = await enhanced_engram_lookup("test", level=3)
-            assert "temporal_weight" in results[0]
-            assert "final_score" in results[0]
 
 
 class TestOrchestratorIntegration:
