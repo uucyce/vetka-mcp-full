@@ -139,6 +139,14 @@ Three agents, ONE codebase, ONE TaskBoard:
 Worktree docs are invisible to other agents and the user.
 Need a shared doc from worktree? Ask the user to cherry-pick it to main.
 
+**⚠️ Task completion from worktree — MANDATORY:**
+MCP server runs on main repo, so `_detect_git_branch()` always returns `main`.
+**You MUST pass `branch` explicitly:**
+```
+vetka_task_board action=complete task_id=<id> branch=claude/<worktree-name>
+```
+This sets status to `done_worktree` instead of `done`. Without `branch=`, the task wrongly closes as `done` on main.
+
 **Ports:** Main = 3001/5001. Worktrees = 3003+/shared 5001.
 
 ## Methodology (Opus = Commander)
