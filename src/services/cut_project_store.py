@@ -153,6 +153,14 @@ class CutProjectPaths:
     def montage_state_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "montage_state.latest.json")
 
+    @property
+    def scan_matrix_result_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "scan_matrix_result.latest.json")
+
+    @property
+    def media_index_path(self) -> str:
+        return os.path.join(self.runtime_state_dir, "media_index.latest.json")
+
 
 class CutProjectStore:
     """
@@ -348,6 +356,19 @@ class CutProjectStore:
         if not self._validate_montage_state_payload(payload):
             raise ValueError("Invalid cut_montage_state_v1 payload")
         self._atomic_write_json(self.paths.montage_state_path, payload)
+
+    # MARKER_189.2 — Scan Matrix persistence
+    def load_scan_matrix_result(self) -> dict[str, Any] | None:
+        return self._load_json(self.paths.scan_matrix_result_path)
+
+    def save_scan_matrix_result(self, result: dict[str, Any]) -> None:
+        self._atomic_write_json(self.paths.scan_matrix_result_path, dict(result or {}))
+
+    def load_media_index(self) -> dict[str, Any] | None:
+        return self._load_json(self.paths.media_index_path)
+
+    def save_media_index(self, index: dict[str, Any]) -> None:
+        self._atomic_write_json(self.paths.media_index_path, dict(index or {}))
 
     def append_time_marker_edit_event(self, event: dict[str, Any]) -> None:
         payload = dict(event or {})

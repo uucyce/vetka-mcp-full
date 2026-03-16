@@ -287,6 +287,18 @@ class CutAudioSyncRequest(BaseModel):
     method: Literal["peaks+correlation", "correlation", "peak_only"] = "peaks+correlation"
 
 
+class CutScanMatrixRequest(BaseModel):
+    """MARKER_189.2 — Request model for scan-matrix-async."""
+    sandbox_root: str
+    project_id: str
+    limit: int = Field(default=24, ge=1, le=128)
+    waveform_bins: int = Field(default=120, ge=16, le=512)
+    max_thumbs_per_file: int = Field(default=12, ge=1, le=48)
+    run_stt: bool = True
+    scene_threshold: float = Field(default=0.3, ge=0.05, le=0.95)
+    scene_interval_sec: float = Field(default=1.0, ge=0.25, le=5.0)
+
+
 class CutPauseSliceRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -464,17 +476,35 @@ def _infer_cut_asset_kind(modality: str, lane_type: str) -> str:
     return "media"
 
 
-def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str) -> dict[str, Any]:
+def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, store: CutProjectStore | None = None) -> dict[str, Any]:
     source_path = str(project.get("source_path") or "").strip()
     scan = quick_scan_cut_source(source_path, limit=5000)
     source_root = source_path
     lanes: list[dict[str, Any]] = []
+
+    # MARKER_189.2: Load media_index for real durations (from scan-matrix-async)
+    media_index_files: dict[str, dict[str, Any]] = {}
+    # MARKER_189.4: Load scan_matrix for scene segments + waveforms + thumbnails
+    scan_matrix_items: dict[str, dict[str, Any]] = {}  # keyed by source_path
+    if store is not None:
+        mi = store.load_media_index()
+        if mi and isinstance(mi.get("files"), dict):
+            media_index_files = mi["files"]
+        smr = store.load_scan_matrix_result()
+        if smr and isinstance(smr.get("items"), list):
+            for item in smr["items"]:
+                sp = str(item.get("source_path", ""))
+                if sp:
+                    scan_matrix_items[sp] = item
 
     video_lane = {"lane_id": "video_main", "lane_type": "video_main", "clips": []}
     audio_lane = {"lane_id": "audio_sync", "lane_type": "audio_sync", "clips": []}
     video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
     audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
     clip_counter = 0
+    timeline_cursor = 0.0  # running position on timeline
+    global_scene_counter = 0
+    scene_ids_used: list[str] = []
 
     if os.path.isdir(source_root):
         for path in sorted(os.scandir(source_root), key=lambda e: e.name.lower()):
@@ -483,27 +513,87 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str) -> 
             ext = os.path.splitext(path.name)[1].lower()
             if ext not in video_ext and ext not in audio_ext:
                 continue
-            clip_counter += 1
-            clip = {
-                "clip_id": f"clip_{clip_counter:04d}",
-                "record_id": f"record_{clip_counter:04d}",
-                "scene_id": "scene_01",
-                "take_id": f"take_{clip_counter:04d}",
-                "start_sec": float(max(0, clip_counter - 1)) * 5.0,
-                "duration_sec": 5.0,
-                "source_path": path.path,
-                "sync": None,
-            }
-            if ext in video_ext:
-                video_lane["clips"].append(clip)
+
+            # MARKER_189.2: Resolve real duration from media_index → ffprobe fallback → 5.0
+            mi_entry = media_index_files.get(path.path) or {}
+            full_duration = float(mi_entry.get("duration_sec") or 0)
+            if full_duration <= 0:
+                full_duration = _probe_clip_duration(path.path)
+            if full_duration <= 0:
+                full_duration = 5.0  # ultimate fallback
+
+            # MARKER_189.4: Use scanner segments to create per-segment clips
+            sm_item = scan_matrix_items.get(path.path) or {}
+            video_scan = sm_item.get("video_scan") or {}
+            audio_scan = sm_item.get("audio_scan") or {}
+            segments = video_scan.get("segments") or []
+            thumbnail_paths = video_scan.get("thumbnail_paths") or []
+            waveform_bins = audio_scan.get("waveform_bins") or []
+
+            if ext in video_ext and len(segments) > 1:
+                # Multi-segment video: create one clip per detected scene segment
+                for seg_idx, seg in enumerate(segments):
+                    clip_counter += 1
+                    global_scene_counter += 1
+                    seg_start = float(seg.get("start_sec", 0))
+                    seg_end = float(seg.get("end_sec", 0))
+                    seg_dur = float(seg.get("duration_sec", 0)) or (seg_end - seg_start)
+                    if seg_dur <= 0:
+                        continue
+                    scene_id = str(seg.get("segment_id", "")) or f"scene_{global_scene_counter:02d}"
+                    if scene_id not in scene_ids_used:
+                        scene_ids_used.append(scene_id)
+                    thumb = ""
+                    if seg_idx < len(thumbnail_paths):
+                        thumb = thumbnail_paths[seg_idx]
+                    clip = {
+                        "clip_id": f"clip_{clip_counter:04d}",
+                        "record_id": f"record_{clip_counter:04d}",
+                        "scene_id": scene_id,
+                        "take_id": f"take_{clip_counter:04d}",
+                        "start_sec": round(timeline_cursor, 3),
+                        "duration_sec": round(seg_dur, 3),
+                        "source_path": path.path,
+                        "source_in": round(seg_start, 3),
+                        "source_out": round(seg_end, 3),
+                        "sync": None,
+                        "thumbnail_path": thumb,
+                    }
+                    timeline_cursor += seg_dur
+                    video_lane["clips"].append(clip)
             else:
-                audio_lane["clips"].append(clip)
+                # Single-segment or audio-only: one clip per file
+                clip_counter += 1
+                global_scene_counter += 1
+                scene_id = f"scene_{global_scene_counter:02d}"
+                if scene_id not in scene_ids_used:
+                    scene_ids_used.append(scene_id)
+                thumb = thumbnail_paths[0] if thumbnail_paths else ""
+                clip = {
+                    "clip_id": f"clip_{clip_counter:04d}",
+                    "record_id": f"record_{clip_counter:04d}",
+                    "scene_id": scene_id,
+                    "take_id": f"take_{clip_counter:04d}",
+                    "start_sec": round(timeline_cursor, 3),
+                    "duration_sec": round(full_duration, 3),
+                    "source_path": path.path,
+                    "sync": None,
+                    "thumbnail_path": thumb,
+                }
+                if waveform_bins:
+                    clip["waveform_bins"] = waveform_bins
+                timeline_cursor += full_duration
+                if ext in video_ext:
+                    video_lane["clips"].append(clip)
+                else:
+                    audio_lane["clips"].append(clip)
 
     if video_lane["clips"]:
         lanes.append(video_lane)
     if audio_lane["clips"]:
         lanes.append(audio_lane)
 
+    first_scene = scene_ids_used[0] if scene_ids_used else ""
     return {
         "schema_version": "cut_timeline_state_v1",
         "project_id": str(project.get("project_id") or ""),
@@ -513,7 +603,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str) -> 
         "lanes": lanes,
         "selection": {
             "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],
-            "scene_ids": ["scene_01"] if lanes else [],
+            "scene_ids": [first_scene] if first_scene else [],
         },
         "view": {
             "zoom": 1.0,
@@ -527,7 +617,8 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str) -> 
 
 
 def _build_initial_scene_graph(
-    project: dict[str, Any], timeline_state: dict[str, Any], graph_id: str
+    project: dict[str, Any], timeline_state: dict[str, Any], graph_id: str,
+    *, store: CutProjectStore | None = None,
 ) -> dict[str, Any]:
     nodes: list[dict[str, Any]] = []
     edges: list[dict[str, Any]] = []
@@ -611,13 +702,8 @@ def _build_initial_scene_graph(
             asset_counter += 1
             asset_node_id = f"asset_{asset_counter:04d}"
             asset_label = os.path.basename(source_path) or asset_node_id
-            nodes.append(
-                {
-                    "node_id": asset_node_id,
-                    "node_type": SCENE_GRAPH_NODE_ASSET,
-                    "label": asset_label,
-                    "record_ref": record_id,
-                    "metadata": {
+            # MARKER_189.4: Enrich asset metadata with thumbnail + waveform refs
+            asset_meta: dict[str, Any] = {
                         "scene_id": scene_id,
                         "take_id": take_id,
                         "clip_id": clip_id,
@@ -628,7 +714,19 @@ def _build_initial_scene_graph(
                         "lane_type": lane_type,
                         "asset_kind": _infer_cut_asset_kind(modality, lane_type),
                         "modality": modality,
-                    },
+            }
+            if clip.get("thumbnail_path"):
+                asset_meta["thumbnail_path"] = clip["thumbnail_path"]
+            if clip.get("source_in") is not None:
+                asset_meta["source_in"] = clip["source_in"]
+                asset_meta["source_out"] = clip.get("source_out", 0.0)
+            nodes.append(
+                {
+                    "node_id": asset_node_id,
+                    "node_type": SCENE_GRAPH_NODE_ASSET,
+                    "label": asset_label,
+                    "record_ref": record_id,
+                    "metadata": asset_meta,
                 }
             )
             edges.append(
@@ -659,6 +757,34 @@ def _build_initial_scene_graph(
                 "weight": 1.0,
             }
         )
+
+    # MARKER_189.4: Inject scanner SignalEdge[] as semantic_match edges
+    if store is not None:
+        smr = store.load_scan_matrix_result()
+        if smr and isinstance(smr.get("items"), list):
+            scanner_edge_counter = 0
+            for item in smr["items"]:
+                for scan_key in ("video_scan", "audio_scan"):
+                    scan_data = item.get(scan_key) or {}
+                    for edge in scan_data.get("edges") or []:
+                        scanner_edge_counter += 1
+                        edge_type = SCENE_GRAPH_EDGE_SEMANTIC_MATCH
+                        channel = str(edge.get("channel", ""))
+                        if channel == "temporal":
+                            edge_type = SCENE_GRAPH_EDGE_FOLLOWS
+                        edges.append({
+                            "edge_id": f"edge_scanner_{scanner_edge_counter:04d}",
+                            "edge_type": edge_type,
+                            "source": str(edge.get("source", "")),
+                            "target": str(edge.get("target", "")),
+                            "weight": float(edge.get("confidence", 0.5)),
+                            "metadata": {
+                                "channel": channel,
+                                "evidence": edge.get("evidence", []),
+                                "source_type": edge.get("source_type", ""),
+                                "target_type": edge.get("target_type", ""),
+                            },
+                        })
 
     for scene_id, scene_node in scenes.items():
         metadata = scene_node["metadata"]
@@ -2345,6 +2471,17 @@ def _probe_ffprobe_metadata(path: Path) -> dict[str, Any]:
         return {"available": True, "error": f"ffprobe_exception: {exc}"}
 
 
+def _probe_clip_duration(media_path: str) -> float:
+    """MARKER_189.2 — Quick ffprobe duration for a single clip. Returns 0.0 on failure."""
+    result = _probe_ffprobe_metadata(Path(media_path))
+    try:
+        metadata = result.get("metadata") or {}
+        fmt = metadata.get("format") or {}
+        return float(fmt.get("duration") or 0)
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def _collect_export_material(
     *,
     store: CutProjectStore,
@@ -2829,8 +2966,8 @@ def _run_cut_scene_assembly_job(job_id: str, body: CutSceneAssemblyRequest) -> N
                 },
             )
             return
-        timeline_state = _build_initial_timeline_state(project, body.timeline_id)
-        scene_graph = _build_initial_scene_graph(project, timeline_state, body.graph_id)
+        timeline_state = _build_initial_timeline_state(project, body.timeline_id, store=store)
+        scene_graph = _build_initial_scene_graph(project, timeline_state, body.graph_id, store=store)
         store.save_timeline_state(timeline_state)
         store.save_scene_graph(scene_graph)
         job_store.update_job(
@@ -3492,6 +3629,167 @@ def _run_cut_audio_sync_job(job_id: str, body: CutAudioSyncRequest) -> None:
             progress=1.0,
             error={
                 "code": "audio_sync_exception",
+                "message": str(exc),
+                "recoverable": False,
+            },
+        )
+
+
+def _run_cut_scan_matrix_job(job_id: str, body: CutScanMatrixRequest) -> None:
+    """MARKER_189.2 — Background job: run VideoScanner + AudioScanner on all media files."""
+    from src.scanners.video_scanner import scan_video, VIDEO_EXTENSIONS
+    from src.scanners.audio_scanner import scan_audio, AUDIO_EXTENSIONS
+
+    job_store = get_cut_mcp_job_store()
+    job_store.update_job(job_id, state="running", progress=0.05)
+    try:
+        store = CutProjectStore(body.sandbox_root)
+        project = store.load_project()
+        if project is None or str(project.get("project_id") or "") != str(body.project_id):
+            job_store.update_job(
+                job_id,
+                state="error",
+                progress=1.0,
+                error={
+                    "code": "project_not_found",
+                    "message": "CUT project not found for scan matrix.",
+                    "recoverable": True,
+                },
+            )
+            return
+
+        source_root = str(project.get("source_path") or "")
+        media_paths = _discover_worker_media_files(source_root, int(body.limit))
+
+        if not media_paths:
+            job_store.update_job(
+                job_id,
+                state="done",
+                progress=1.0,
+                result={"success": True, "scan_results": [], "media_index": {}},
+            )
+            return
+
+        scan_results: list[dict[str, Any]] = []
+        media_index: dict[str, dict[str, Any]] = {}
+        total = max(1, len(media_paths))
+        thumb_dir = os.path.join(body.sandbox_root, "runtime_state", "thumbs")
+
+        for idx, media_path in enumerate(media_paths):
+            # Check cancel
+            current_job = job_store.get_job(job_id)
+            if current_job and bool(current_job.get("cancel_requested")):
+                job_store.update_job(job_id, state="cancelled", progress=1.0)
+                return
+
+            ext = os.path.splitext(media_path)[1].lower()
+            is_video = ext in VIDEO_EXTENSIONS
+            is_audio = ext in AUDIO_EXTENSIONS
+
+            file_result: dict[str, Any] = {
+                "source_path": media_path,
+                "video_scan": None,
+                "audio_scan": None,
+            }
+
+            # Run VideoScanner on video files
+            if is_video:
+                vs = scan_video(
+                    media_path,
+                    thumbnail_dir=thumb_dir,
+                    max_thumbs=int(body.max_thumbs_per_file),
+                    scene_interval_sec=body.scene_interval_sec,
+                    scene_threshold=body.scene_threshold,
+                )
+                file_result["video_scan"] = vs.to_dict()
+
+                # Also run AudioScanner on the video (for waveform + STT)
+                audio_meta = vs.metadata  # reuse ffprobe metadata
+                aus = scan_audio(
+                    media_path,
+                    waveform_bins=int(body.waveform_bins),
+                    run_stt=body.run_stt,
+                    metadata=audio_meta,
+                )
+                file_result["audio_scan"] = aus.to_dict()
+
+                # Build media_index entry
+                meta = vs.metadata
+                media_index[media_path] = {
+                    "duration_sec": meta.duration_sec if meta else 0.0,
+                    "codec": meta.codec if meta else "",
+                    "width": meta.width if meta else 0,
+                    "height": meta.height if meta else 0,
+                    "fps": meta.fps if meta else 0.0,
+                    "media_type": "video",
+                    "segments_count": len(vs.segments),
+                    "transcript_count": len(aus.transcript),
+                    "thumbnail_count": len(vs.thumbnail_paths),
+                    "extraction_status": vs.extraction_status,
+                }
+            elif is_audio:
+                aus = scan_audio(
+                    media_path,
+                    waveform_bins=int(body.waveform_bins),
+                    run_stt=body.run_stt,
+                )
+                file_result["audio_scan"] = aus.to_dict()
+                media_index[media_path] = {
+                    "duration_sec": aus.metadata.duration_sec if aus.metadata else 0.0,
+                    "media_type": "audio",
+                    "transcript_count": len(aus.transcript),
+                    "extraction_status": aus.extraction_status,
+                }
+
+            scan_results.append(file_result)
+            progress = 0.05 + 0.90 * (idx + 1) / total
+            job_store.update_job(job_id, progress=round(progress, 3))
+
+        # Save scan matrix result + media index
+        scan_matrix_payload = {
+            "schema_version": "cut_scan_matrix_result_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "items": scan_results,
+            "file_count": len(scan_results),
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_scan_matrix_result(scan_matrix_payload)
+
+        media_index_payload = {
+            "schema_version": "cut_media_index_v1",
+            "project_id": str(project.get("project_id") or ""),
+            "files": media_index,
+            "generated_at": _utc_now_iso(),
+        }
+        store.save_media_index(media_index_payload)
+
+        # MARKER_189.3: Triple memory write (Qdrant + JSON montage sheet)
+        from src.services.cut_triple_write import cut_triple_write
+        triple_result = cut_triple_write(
+            scan_results,
+            project_id=str(project.get("project_id") or ""),
+            sandbox_root=str(body.sandbox_root),
+        )
+
+        job_store.update_job(
+            job_id,
+            state="done",
+            progress=1.0,
+            result={
+                "success": True,
+                "file_count": len(scan_results),
+                "media_index_path": store.paths.media_index_path,
+                "scan_matrix_path": store.paths.scan_matrix_result_path,
+                "triple_write": triple_result,
+            },
+        )
+    except Exception as exc:
+        job_store.update_job(
+            job_id,
+            state="error",
+            progress=1.0,
+            error={
+                "code": "scan_matrix_exception",
                 "message": str(exc),
                 "recoverable": False,
             },
@@ -4246,6 +4544,55 @@ async def cut_audio_sync_async(body: CutAudioSyncRequest) -> dict[str, Any]:
         },
     )
     thread = threading.Thread(target=_run_cut_audio_sync_job, args=(str(job["job_id"]), body), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_mcp_job_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
+@router.post("/worker/scan-matrix-async")
+async def cut_scan_matrix_async(body: CutScanMatrixRequest) -> dict[str, Any]:
+    """
+    MARKER_189.2.SCAN_MATRIX_ASYNC
+    Run VideoScanner + AudioScanner on all media files in the project.
+    Extracts: ffprobe metadata, scene boundaries, thumbnails, waveforms, STT.
+    Saves: scan_matrix_result.latest.json + media_index.latest.json.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return _worker_job_error("project_not_found", "CUT project not found for scan matrix.")
+    if _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) >= _SANDBOX_BACKGROUND_LIMIT:
+        return _worker_job_error(
+            "worker_backpressure_limit",
+            "CUT worker queue is saturated for this sandbox. Wait for active jobs to finish.",
+        )
+    duplicate_job = _find_active_duplicate_job(
+        job_type="scan_matrix",
+        project_id=str(body.project_id),
+        sandbox_root=str(body.sandbox_root),
+    )
+    if duplicate_job is not None:
+        return _worker_job_error(
+            "duplicate_job_active",
+            "A scan matrix job is already active for this CUT project.",
+            existing_job=duplicate_job,
+        )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job(
+        "scan_matrix",
+        {
+            "project_id": str(body.project_id),
+            "sandbox_root": str(body.sandbox_root),
+            "limit": int(body.limit),
+            "run_stt": bool(body.run_stt),
+            "task_type": "scan_matrix",
+        },
+    )
+    thread = threading.Thread(target=_run_cut_scan_matrix_job, args=(str(job["job_id"]), body), daemon=True)
     thread.start()
     return {
         "success": True,
