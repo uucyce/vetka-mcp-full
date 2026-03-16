@@ -19,7 +19,7 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.api.routes.artifact_routes import (
@@ -3965,6 +3965,49 @@ async def cut_bootstrap_async(body: CutBootstrapRequest) -> dict[str, Any]:
         "schema_version": "cut_mcp_job_v1",
         "job_id": str(job["job_id"]),
         "job": job,
+    }
+
+
+@router.post("/import-files")
+async def cut_import_files(
+    files: list[UploadFile] = File(...),
+    sandbox_root: str = Form(""),
+    project_name: str = Form("imported"),
+) -> dict[str, Any]:
+    """
+    MARKER_188.2: Browser file upload → save to sandbox/imported/ folder.
+    Returns source_path for use with bootstrap-async pipeline.
+    """
+    if not files:
+        return {"success": False, "error": {"message": "No files uploaded"}}
+
+    # Determine target directory
+    sandbox = sandbox_root.strip() or f"/tmp/cut_sandbox_{uuid4().hex[:8]}"
+    import_dir = Path(sandbox) / "imported"
+    import_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_count = 0
+    for upload_file in files:
+        if not upload_file.filename:
+            continue
+        # Sanitize filename: keep basename only
+        safe_name = Path(upload_file.filename).name
+        target = import_dir / safe_name
+        try:
+            content = await upload_file.read()
+            target.write_bytes(content)
+            saved_count += 1
+        except Exception as exc:
+            logger.warning("Failed to save uploaded file %s: %s", safe_name, exc)
+
+    if saved_count == 0:
+        return {"success": False, "error": {"message": "No files could be saved"}}
+
+    return {
+        "success": True,
+        "source_path": str(import_dir),
+        "saved_count": saved_count,
+        "sandbox_root": sandbox,
     }
 
 

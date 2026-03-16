@@ -209,24 +209,29 @@ export default function ProjectPanel() {
     return () => window.removeEventListener('cut:trigger-import', handler);
   }, [openFilePicker]);
 
-  // ─── Job polling ───
-  const pollJob = useCallback(async (jobId: string) => {
+  // ─── Job polling — returns the completed job result ───
+  const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
     for (let attempt = 0; attempt < 80; attempt++) {
       const res = await fetch(`${API_BASE}/cut/job/${encodeURIComponent(jobId)}`);
-      if (!res.ok) throw new Error(`Import job failed: HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`Job failed: HTTP ${res.status}`);
       const payload = (await res.json()) as {
-        job?: { state?: string; progress?: number; error?: { message?: string } | null };
+        job?: {
+          state?: string;
+          progress?: number;
+          result?: Record<string, unknown>;
+          error?: { message?: string } | null;
+        };
       };
       const state = String(payload.job?.state || '');
       setImportProgress(typeof payload.job?.progress === 'number' ? payload.job.progress : null);
-      if (state === 'done') return;
+      if (state === 'done') return payload.job?.result || {};
       if (state === 'error') throw new Error(payload.job?.error?.message || 'Import failed');
       await new Promise((r) => setTimeout(r, 250));
     }
     throw new Error('Import timed out');
   }, []);
 
-  // ─── Start import (bootstrap-async) ───
+  // ─── Start import: bootstrap → scene-assembly → refresh ───
   const startImport = useCallback(async (path: string) => {
     const trimmed = path.trim();
     if (!trimmed) {
@@ -243,10 +248,11 @@ export default function ProjectPanel() {
 
     setImporting(true);
     setImportProgress(0);
-    setImportStatus(`Importing ${labelForPath(trimmed)}...`);
+    setImportStatus(`Scanning ${labelForPath(trimmed)}...`);
 
     try {
-      const res = await fetch(`${API_BASE}/cut/bootstrap-async`, {
+      // Step 1: Bootstrap — scan folder, create project
+      const bootstrapRes = await fetch(`${API_BASE}/cut/bootstrap-async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -258,22 +264,54 @@ export default function ProjectPanel() {
           create_project_if_missing: true,
         }),
       });
-      if (!res.ok) throw new Error(`Import failed: HTTP ${res.status}`);
+      if (!bootstrapRes.ok) throw new Error(`Bootstrap failed: HTTP ${bootstrapRes.status}`);
 
-      const payload = (await res.json()) as {
+      const bootstrapPayload = (await bootstrapRes.json()) as {
+        success?: boolean;
+        job_id?: string;
+        project?: { project_id?: string };
+        error?: { message?: string } | null;
+      };
+      if (!bootstrapPayload.success || !bootstrapPayload.job_id) {
+        throw new Error(bootstrapPayload.error?.message || 'Bootstrap did not start');
+      }
+
+      const bootstrapResult = await pollJob(bootstrapPayload.job_id);
+      setImportProgress(0.4);
+
+      // Extract project_id from bootstrap job result
+      const resultProject = bootstrapResult?.project as { project_id?: string } | undefined;
+      const pid = resultProject?.project_id || projectId || labelForPath(trimmed);
+      setEditorSession({ sourcePath: trimmed, projectId: pid });
+
+      // Step 2: Scene assembly — build timeline lanes + clips from scanned files
+      setImportStatus(`Building timeline for ${labelForPath(trimmed)}...`);
+      const assemblyRes = await fetch(`${API_BASE}/cut/scene-assembly-async`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: pid,
+          timeline_id: 'main',
+          graph_id: 'main',
+        }),
+      });
+      if (!assemblyRes.ok) throw new Error(`Scene assembly failed: HTTP ${assemblyRes.status}`);
+
+      const assemblyPayload = (await assemblyRes.json()) as {
         success?: boolean;
         job_id?: string;
         error?: { message?: string } | null;
       };
-      if (!payload.success || !payload.job_id) {
-        throw new Error(payload.error?.message || 'Import job did not start');
+      if (assemblyPayload.success && assemblyPayload.job_id) {
+        await pollJob(assemblyPayload.job_id);
       }
+      setImportProgress(0.8);
 
-      await pollJob(payload.job_id);
+      // Step 3: Refresh project state → populates thumbnails + lanes in store
       await refreshProjectState?.();
       setImportStatus(`Imported ${labelForPath(trimmed)}`);
       setImportProgress(1);
-      setEditorSession({ sourcePath: trimmed });
     } catch (err) {
       setImportStatus(err instanceof Error ? err.message : 'Import failed');
       setImportProgress(null);
@@ -281,6 +319,60 @@ export default function ProjectPanel() {
       setImporting(false);
     }
   }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
+
+  // ─── Upload files to backend (browser mode — no native paths) ───
+  const uploadAndImport = useCallback(async (files: FileList) => {
+    setImporting(true);
+    setImportProgress(0);
+    setImportStatus(`Uploading ${files.length} files...`);
+
+    try {
+      // Upload via multipart form
+      const formData = new FormData();
+      for (let i = 0; i < files.length; i++) {
+        formData.append('files', files[i]);
+      }
+      // Pass sandbox hint so backend knows where to save
+      let sandboxRoot = storeSandboxRoot;
+      if (!sandboxRoot) {
+        sandboxRoot = `/tmp/cut_sandbox_${Date.now()}`;
+        setEditorSession({ sandboxRoot });
+      }
+      formData.append('sandbox_root', sandboxRoot);
+      formData.append('project_name', projectId || 'imported');
+
+      const uploadRes = await fetch(`${API_BASE}/cut/import-files`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!uploadRes.ok) {
+        // Fallback: if endpoint doesn't exist yet, tell user
+        if (uploadRes.status === 404 || uploadRes.status === 405) {
+          setImportStatus('Browser file upload not yet supported. Use Tauri app or paste a folder path in the URL.');
+          setImportProgress(null);
+          return;
+        }
+        throw new Error(`Upload failed: HTTP ${uploadRes.status}`);
+      }
+
+      const uploadPayload = (await uploadRes.json()) as {
+        success?: boolean;
+        source_path?: string;
+        error?: { message?: string } | null;
+      };
+      if (!uploadPayload.success || !uploadPayload.source_path) {
+        throw new Error(uploadPayload.error?.message || 'Upload failed');
+      }
+
+      // Now run the normal import pipeline on the uploaded folder
+      void startImport(uploadPayload.source_path);
+    } catch (err) {
+      setImportStatus(err instanceof Error ? err.message : 'Upload failed');
+      setImportProgress(null);
+      setImporting(false);
+    }
+  }, [storeSandboxRoot, projectId, setEditorSession, startImport]);
 
   // ─── File input handler ───
   const handleFileSelect = useCallback((files: FileList | null) => {
@@ -293,10 +385,9 @@ export default function ProjectPanel() {
       return;
     }
 
-    // Browser mode: upload files to backend
-    // TODO (188.2): implement POST /api/cut/import-files for browser upload
-    setImportStatus(`Selected ${files.length} files — upload endpoint coming in 188.2`);
-  }, [startImport]);
+    // Browser mode: upload files then import
+    void uploadAndImport(files);
+  }, [startImport, uploadAndImport]);
 
   // ─── Build clip list from thumbnails + lanes ───
   const laneTypesByPath = new Map<string, Set<string>>();
