@@ -50,7 +50,9 @@ def _sandbox_source_mtime(path: str) -> float:
 
 
 def _norm_abs(path: str) -> str:
-    return os.path.realpath(os.path.abspath(os.path.expanduser(str(path or "").strip())))
+    return os.path.realpath(
+        os.path.abspath(os.path.expanduser(str(path or "").strip()))
+    )
 
 
 def _paths_overlap_or_nested(path_a: str, path_b: str) -> bool:
@@ -88,11 +90,19 @@ def _find_registry_path_conflict(candidate_path: str) -> tuple[bool, str]:
             existing_source = str(row.get("source_path") or "").strip()
             existing_workspace = str(row.get("workspace_path") or "").strip()
             existing_scope = str(row.get("context_scope_path") or "").strip()
-            for existing in (existing_sandbox, existing_workspace, existing_scope, existing_source):
+            for existing in (
+                existing_sandbox,
+                existing_workspace,
+                existing_scope,
+                existing_source,
+            ):
                 if not existing:
                     continue
                 if _paths_overlap_or_nested(candidate, existing):
-                    return True, f"path overlaps with existing project '{pname}' ({pid})"
+                    return (
+                        True,
+                        f"path overlaps with existing project '{pname}' ({pid})",
+                    )
     except Exception:
         return False, ""
     return False, ""
@@ -106,7 +116,8 @@ async def _get_sandbox_status_cached(config: "ProjectConfig") -> dict:
         cached_status is not None
         and _sandbox_status_cache.get("sandbox_path") == config.sandbox_path
         and float(_sandbox_status_cache.get("source_mtime", 0.0)) == float(source_mtime)
-        and (now - float(_sandbox_status_cache.get("ts", 0.0))) <= _SANDBOX_STATUS_TTL_SEC
+        and (now - float(_sandbox_status_cache.get("ts", 0.0)))
+        <= _SANDBOX_STATUS_TTL_SEC
     ):
         return cached_status
 
@@ -171,13 +182,22 @@ def _resolve_project_scope_path(base_scope: str, requested_path: str) -> str:
     candidate = str(requested_path or "").strip()
     if not candidate:
         return base_scope
-    resolved = _norm_abs(candidate) if os.path.isabs(candidate) else _norm_abs(os.path.join(base_scope, candidate))
+    resolved = (
+        _norm_abs(candidate)
+        if os.path.isabs(candidate)
+        else _norm_abs(os.path.join(base_scope, candidate))
+    )
     if os.path.commonpath([base_scope, resolved]) != base_scope:
-        raise HTTPException(status_code=400, detail=f"path must be inside active project scope: {base_scope}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"path must be inside active project scope: {base_scope}",
+        )
     return resolved
 
 
-def _build_directory_tree(abs_path: str, root_scope: str, *, depth: int, limit: int) -> Dict[str, Any]:
+def _build_directory_tree(
+    abs_path: str, root_scope: str, *, depth: int, limit: int
+) -> Dict[str, Any]:
     target = _norm_abs(abs_path)
     root = _norm_abs(root_scope)
     if not os.path.isdir(target):
@@ -188,7 +208,9 @@ def _build_directory_tree(abs_path: str, root_scope: str, *, depth: int, limit: 
         if rel == ".":
             rel = ""
         node: Dict[str, Any] = {
-            "name": os.path.basename(current.rstrip(os.sep)) or os.path.basename(root.rstrip(os.sep)) or current,
+            "name": os.path.basename(current.rstrip(os.sep))
+            or os.path.basename(root.rstrip(os.sep))
+            or current,
             "path": rel,
             "kind": "directory",
             "children": [],
@@ -197,7 +219,13 @@ def _build_directory_tree(abs_path: str, root_scope: str, *, depth: int, limit: 
         if remaining_depth <= 0:
             return node
         try:
-            entries = sorted(os.scandir(current), key=lambda item: (not item.is_dir(follow_symlinks=False), item.name.lower()))
+            entries = sorted(
+                os.scandir(current),
+                key=lambda item: (
+                    not item.is_dir(follow_symlinks=False),
+                    item.name.lower(),
+                ),
+            )
         except Exception:
             node["error"] = "unreadable"
             return node
@@ -210,11 +238,13 @@ def _build_directory_tree(abs_path: str, root_scope: str, *, depth: int, limit: 
             if entry.is_dir(follow_symlinks=False):
                 node["children"].append(_walk(child_abs, remaining_depth - 1))
             else:
-                node["children"].append({
-                    "name": entry.name,
-                    "path": child_rel,
-                    "kind": "file",
-                })
+                node["children"].append(
+                    {
+                        "name": entry.name,
+                        "path": child_rel,
+                        "kind": "file",
+                    }
+                )
         return node
 
     return _walk(target, max(1, int(depth)))
@@ -274,7 +304,11 @@ def _detect_saved_workflow_bank(row: Dict[str, Any]) -> str:
     if explicit_bank in {"saved", "n8n", "comfyui", "imported"}:
         return explicit_bank
 
-    imported_from = str(meta.get("imported_from") or meta.get("import_format") or "").strip().lower()
+    imported_from = (
+        str(meta.get("imported_from") or meta.get("import_format") or "")
+        .strip()
+        .lower()
+    )
     if imported_from == "n8n":
         return "n8n"
     if imported_from.startswith("comfyui"):
@@ -294,13 +328,17 @@ def _normalize_workflow_catalog_row(bank: str, row: Dict[str, Any]) -> Dict[str,
         family = ""
         if isinstance(family_meta, dict):
             family = str(family_meta.get("family") or "").strip()
-        tags = [str(t).strip() for t in list(row.get("task_types") or []) if str(t).strip()]
+        tags = [
+            str(t).strip() for t in list(row.get("task_types") or []) if str(t).strip()
+        ]
         tags = sorted(dict.fromkeys(tags))
         return {
             "bank": "core",
             "id": str(row.get("key") or row.get("id") or "").strip(),
             "key": str(row.get("key") or row.get("id") or "").strip(),
-            "title": str(row.get("name") or row.get("id") or row.get("key") or "Untitled").strip(),
+            "title": str(
+                row.get("name") or row.get("id") or row.get("key") or "Untitled"
+            ).strip(),
             "family": family or "core_library",
             "source": "core_library",
             "description": str(row.get("description") or "").strip(),
@@ -315,9 +353,7 @@ def _normalize_workflow_catalog_row(bank: str, row: Dict[str, Any]) -> Dict[str,
     family = ""
     if isinstance(meta, dict):
         family = str(
-            meta.get("workflow_family")
-            or meta.get("template_family")
-            or ""
+            meta.get("workflow_family") or meta.get("template_family") or ""
         ).strip()
     return {
         "bank": normalized_bank,
@@ -336,8 +372,14 @@ def _normalize_workflow_catalog_row(bank: str, row: Dict[str, Any]) -> Dict[str,
 
 
 def _build_workflow_catalog_payload() -> Dict[str, Any]:
-    core_rows = [_normalize_workflow_catalog_row("core", row) for row in _list_core_workflow_templates()]
-    saved_rows = [_normalize_workflow_catalog_row("saved", row) for row in _list_saved_workflow_templates()]
+    core_rows = [
+        _normalize_workflow_catalog_row("core", row)
+        for row in _list_core_workflow_templates()
+    ]
+    saved_rows = [
+        _normalize_workflow_catalog_row("saved", row)
+        for row in _list_saved_workflow_templates()
+    ]
     workflows = core_rows + saved_rows
     bank_order = ["core", "saved", "n8n", "comfyui", "imported"]
     bank_labels = {
@@ -392,15 +434,20 @@ def _select_heuristic_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
             ]
         ).strip(),
     )
-    workflow_id = str(selection.get("workflow_key") or "bmad_default").strip() or "bmad_default"
+    workflow_id = (
+        str(selection.get("workflow_key") or "bmad_default").strip() or "bmad_default"
+    )
     template = WorkflowTemplateLibrary.get_template(workflow_id) or {}
-    family_meta = ((template.get("metadata") or {}).get("workflow_family") or {})
+    family_meta = (template.get("metadata") or {}).get("workflow_family") or {}
     family = str(family_meta.get("family") or workflow_id).strip() or workflow_id
     return {
         "workflow_bank": "core",
         "workflow_id": workflow_id,
         "workflow_family": family,
-        "team_profile": str(task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver",
+        "team_profile": str(
+            task.get("team_profile") or task.get("preset") or "dragon_silver"
+        ).strip()
+        or "dragon_silver",
         "selection_origin": "heuristic",
     }
 
@@ -414,12 +461,15 @@ def _resolve_task_workflow_binding(task: Dict[str, Any]) -> Dict[str, Any]:
     explicit_workflow_bank = str(task.get("workflow_bank") or "").strip()
     explicit_workflow_family = str(task.get("workflow_family") or "").strip()
     explicit_selection_origin = str(task.get("workflow_selection_origin") or "").strip()
-    explicit_team_profile = str(task.get("team_profile") or task.get("preset") or "").strip()
+    explicit_team_profile = str(
+        task.get("team_profile") or task.get("preset") or ""
+    ).strip()
 
     if explicit_workflow_id and (
         explicit_workflow_bank
         or explicit_workflow_family
-        or explicit_selection_origin in {"user-selected", "saved-task-binding", "restored"}
+        or explicit_selection_origin
+        in {"user-selected", "saved-task-binding", "restored"}
     ):
         return {
             "workflow_bank": explicit_workflow_bank or "core",
@@ -650,7 +700,11 @@ _LOCALGUYS_OPERATOR_METHODS: Dict[str, Dict[str, str]] = {
 
 
 def _infer_capability_values(model_id: str, model_registry: Any) -> List[str]:
-    entry = getattr(model_registry, "_models", {}).get(model_id) if model_registry is not None else None
+    entry = (
+        getattr(model_registry, "_models", {}).get(model_id)
+        if model_registry is not None
+        else None
+    )
     if entry is not None:
         caps = []
         for cap in list(getattr(entry, "capabilities", []) or []):
@@ -662,7 +716,11 @@ def _infer_capability_values(model_id: str, model_registry: Any) -> List[str]:
 
     model_lower = str(model_id or "").lower()
     caps = ["chat"]
-    if "coder" in model_lower or "code" in model_lower or model_lower.startswith("qwen"):
+    if (
+        "coder" in model_lower
+        or "code" in model_lower
+        or model_lower.startswith("qwen")
+    ):
         caps.append("code")
     if "vl" in model_lower or "vision" in model_lower:
         caps.append("vision")
@@ -676,25 +734,35 @@ def _infer_capability_values(model_id: str, model_registry: Any) -> List[str]:
 async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
     from src.elisya.llm_model_registry import get_llm_registry
     from src.services.model_registry import get_model_registry
+    from src.services.reflex_decay import get_model_profile as get_reflex_model_profile
 
     llm_profile = await get_llm_registry().get_profile(model_id)
     model_registry = get_model_registry()
     entry = getattr(model_registry, "_models", {}).get(model_id)
     policy = dict(_LOCALGUYS_MODEL_MATRIX.get(model_id, {}))
 
-    provider = str(
-        getattr(entry, "provider", "")
-        or getattr(llm_profile, "provider", "")
-        or ("ollama" if ":" in model_id and "/" not in model_id else "unknown")
-    ).strip() or "unknown"
+    reflex_profile = get_reflex_model_profile(model_id)
+
+    provider = (
+        str(
+            getattr(entry, "provider", "")
+            or getattr(llm_profile, "provider", "")
+            or ("ollama" if ":" in model_id and "/" not in model_id else "unknown")
+        ).strip()
+        or "unknown"
+    )
     entry_type = str(getattr(getattr(entry, "type", None), "value", "") or "").strip()
     return {
         "model_id": str(model_id),
         "provider": provider,
         "source": str(getattr(llm_profile, "source", "") or "").strip() or "fallback",
         "context_length": int(getattr(llm_profile, "context_length", 0) or 0),
-        "output_tokens_per_second": float(getattr(llm_profile, "output_tokens_per_second", 0.0) or 0.0),
-        "input_tokens_per_second": float(getattr(llm_profile, "input_tokens_per_second", 0.0) or 0.0),
+        "output_tokens_per_second": float(
+            getattr(llm_profile, "output_tokens_per_second", 0.0) or 0.0
+        ),
+        "input_tokens_per_second": float(
+            getattr(llm_profile, "input_tokens_per_second", 0.0) or 0.0
+        ),
         "ttft_ms": float(getattr(llm_profile, "ttft_ms", 0.0) or 0.0),
         "available": bool(getattr(entry, "available", True)),
         "model_type": entry_type or ("local" if provider == "ollama" else "unknown"),
@@ -703,11 +771,17 @@ async def _build_local_model_descriptor(model_id: str) -> Dict[str, Any]:
         "prompt_style": str(policy.get("prompt_style") or "").strip(),
         "tool_budget_class": str(policy.get("tool_budget_class") or "").strip(),
         "workflow_usage": list(policy.get("workflow_usage") or []),
+        "fc_reliability": float(getattr(reflex_profile, "fc_reliability", 0.8)),
+        "max_tools": int(getattr(reflex_profile, "max_tools", 15)),
+        "prefer_simple": bool(getattr(reflex_profile, "prefer_simple", False)),
     }
 
 
 async def _build_local_model_catalog() -> List[Dict[str, Any]]:
-    return [await _build_local_model_descriptor(model_id) for model_id in _LOCALGUYS_CATALOG_IDS]
+    return [
+        await _build_local_model_descriptor(model_id)
+        for model_id in _LOCALGUYS_CATALOG_IDS
+    ]
 
 
 async def _build_model_group(model_ids: List[str]) -> List[Dict[str, Any]]:
@@ -718,7 +792,9 @@ def _build_stage_tool_policy(
     steps: List[str],
     allowed_tools: List[str],
 ) -> Dict[str, List[str]]:
-    allowed = list(dict.fromkeys(str(tool).strip() for tool in allowed_tools if str(tool).strip()))
+    allowed = list(
+        dict.fromkeys(str(tool).strip() for tool in allowed_tools if str(tool).strip())
+    )
     default_map = {
         "recon": ["context", "search", "artifacts", "stats"],
         "research": ["context", "search", "artifacts", "stats"],
@@ -774,7 +850,15 @@ async def _build_localguys_contract(
     write_opt_ins: Optional[Dict[str, bool]] = None,
 ) -> Dict[str, Any]:
     operator_method = dict(_LOCALGUYS_OPERATOR_METHODS.get(workflow_family, {}))
-    effective_allowed_tools = allowed_tools or ["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"]
+    effective_allowed_tools = allowed_tools or [
+        "context",
+        "tasks",
+        "artifacts",
+        "stats",
+        "search",
+        "tests",
+        "git_diff",
+    ]
     effective_write_opt_ins = {
         "task_board": False,
         "edit_file": True,
@@ -782,7 +866,9 @@ async def _build_localguys_contract(
         "main_tree_write": False,
     }
     if isinstance(write_opt_ins, dict):
-        effective_write_opt_ins.update({str(key): bool(value) for key, value in write_opt_ins.items()})
+        effective_write_opt_ins.update(
+            {str(key): bool(value) for key, value in write_opt_ins.items()}
+        )
     return {
         "workflow_family": workflow_family,
         "version": "v1",
@@ -809,7 +895,8 @@ async def _build_localguys_contract(
             "If blocked, write the blocker into artifacts and stop instead of widening scope."
         ),
         "failure_policy": {
-            "stop_on": failure_stop_on or [
+            "stop_on": failure_stop_on
+            or [
                 "budget_exhausted",
                 "playground_missing",
                 "verifier_blocked",
@@ -838,7 +925,9 @@ async def _resolve_g3_localguys_contract() -> Dict[str, Any]:
         steps=["recon", "plan", "execute", "verify", "review", "finalize"],
         model_policy={
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 24000,
@@ -883,7 +972,9 @@ async def _resolve_ralph_localguys_contract() -> Dict[str, Any]:
         model_policy={
             "coder": {
                 "preferred_models": await _build_model_group(["qwen3:8b"]),
-                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "fallback_models": await _build_model_group(
+                    ["qwen2.5:7b", "qwen2.5:3b"]
+                ),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 18000,
             },
@@ -928,7 +1019,9 @@ async def _resolve_quickfix_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 12000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 20000,
@@ -976,7 +1069,9 @@ async def _resolve_testonly_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 12000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen2.5:7b", "qwen3:8b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen2.5:7b", "qwen3:8b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 20000,
@@ -1025,7 +1120,9 @@ async def _resolve_docs_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 10000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 16000,
@@ -1059,7 +1156,9 @@ async def _resolve_research_localguys_contract() -> Dict[str, Any]:
         model_policy={
             "researcher": {
                 "preferred_models": await _build_model_group(["qwen3:8b"]),
-                "fallback_models": await _build_model_group(["qwen2.5:7b", "phi4-mini:latest"]),
+                "fallback_models": await _build_model_group(
+                    ["qwen2.5:7b", "phi4-mini:latest"]
+                ),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 22000,
             },
@@ -1070,7 +1169,9 @@ async def _resolve_research_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 20000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 22000,
@@ -1121,13 +1222,17 @@ async def _resolve_dragons_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 14000,
             },
             "architect": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["phi4-mini:latest"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 20000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 22000,
@@ -1178,13 +1283,17 @@ async def _resolve_refactor_localguys_contract() -> Dict[str, Any]:
                 "max_context_chars": 16000,
             },
             "architect": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["deepseek-r1:8b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 24000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 24000,
@@ -1220,7 +1329,15 @@ async def _resolve_refactor_localguys_contract() -> Dict[str, Any]:
             "requires_final_report": True,
             "requires_allowlist_scope": True,
         },
-        allowed_tools=["context", "tasks", "artifacts", "stats", "search", "tests", "git_diff"],
+        allowed_tools=[
+            "context",
+            "tasks",
+            "artifacts",
+            "stats",
+            "search",
+            "tests",
+            "git_diff",
+        ],
     )
 
 
@@ -1231,8 +1348,12 @@ async def _resolve_patchchain_localguys_contract() -> Dict[str, Any]:
         steps=["recon", "execute", "verify", "finalize"],
         model_policy={
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3.5:latest", "qwen3:8b"]),
-                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3.5:latest", "qwen3:8b"]
+                ),
+                "fallback_models": await _build_model_group(
+                    ["qwen2.5:7b", "qwen2.5:3b"]
+                ),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 20000,
             },
@@ -1283,7 +1404,9 @@ async def _resolve_ownership_localguys_contract() -> Dict[str, Any]:
         steps=["recon", "execute", "verify", "finalize"],
         model_policy={
             "operator": {
-                "preferred_models": await _build_model_group(["qwen3.5:latest", "phi4-mini:latest"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3.5:latest", "phi4-mini:latest"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:7b"]),
                 "prompt_style": "router_tiny_v1",
                 "max_context_chars": 12000,
@@ -1335,7 +1458,16 @@ async def _resolve_bmad_localguys_contract() -> Dict[str, Any]:
     return await _build_localguys_contract(
         workflow_family="bmad_localguys",
         roles=["scout", "researcher", "architect", "coder", "verifier", "approval"],
-        steps=["recon", "research", "plan", "execute", "verify", "review", "approve", "finalize"],
+        steps=[
+            "recon",
+            "research",
+            "plan",
+            "execute",
+            "verify",
+            "review",
+            "approve",
+            "finalize",
+        ],
         model_policy={
             "scout": {
                 "preferred_models": await _build_model_group(["qwen2.5vl:3b"]),
@@ -1345,18 +1477,24 @@ async def _resolve_bmad_localguys_contract() -> Dict[str, Any]:
             },
             "researcher": {
                 "preferred_models": await _build_model_group(["qwen3:8b"]),
-                "fallback_models": await _build_model_group(["qwen2.5:7b", "qwen2.5:3b"]),
+                "fallback_models": await _build_model_group(
+                    ["qwen2.5:7b", "qwen2.5:3b"]
+                ),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 22000,
             },
             "architect": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["deepseek-r1:8b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 22000,
             },
             "coder": {
-                "preferred_models": await _build_model_group(["qwen3:8b", "qwen2.5:7b"]),
+                "preferred_models": await _build_model_group(
+                    ["qwen3:8b", "qwen2.5:7b"]
+                ),
                 "fallback_models": await _build_model_group(["qwen2.5:3b"]),
                 "prompt_style": "coder_compact_v1",
                 "max_context_chars": 24000,
@@ -1461,11 +1599,15 @@ def _get_roadmap_node_snapshot(node_id: str) -> Dict[str, Any]:
     return {}
 
 
-def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def _derive_attached_task_payload(
+    body: Dict[str, Any], *, existing_task: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     requested_project_id = str(body.get("project_id") or "").strip()
     active_config = _resolve_project_config(requested_project_id)
     active_project_id = str(getattr(active_config, "project_id", "") or "").strip()
-    node_id = str(body.get("node_id") or body.get("roadmap_node_id") or active_project_id or "").strip()
+    node_id = str(
+        body.get("node_id") or body.get("roadmap_node_id") or active_project_id or ""
+    ).strip()
     node_label = str(body.get("node_label") or node_id or "Attached task").strip()
     node_path = str(body.get("node_path") or "").strip()
     graph_kind = str(body.get("node_graph_kind") or "").strip().lower()
@@ -1489,8 +1631,14 @@ def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Option
         roadmap_node.get("file_patterns"),
         roadmap_node.get("files"),
     )
-    affected_nodes = _merge_unique_lists(body.get("affected_node_ids"), [node_id] if node_id else [])
-    tags = _merge_unique_lists(body.get("tags"), ["anchored_task"], [f"roadmap:{roadmap_node_id}"] if roadmap_node_id else [])
+    affected_nodes = _merge_unique_lists(
+        body.get("affected_node_ids"), [node_id] if node_id else []
+    )
+    tags = _merge_unique_lists(
+        body.get("tags"),
+        ["anchored_task"],
+        [f"roadmap:{roadmap_node_id}"] if roadmap_node_id else [],
+    )
 
     explicit_phase = str(body.get("phase_type") or "").strip().lower()
     if explicit_phase:
@@ -1504,8 +1652,14 @@ def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Option
     else:
         phase_type = "build"
 
-    title = str(body.get("title") or "").strip() or f"Attached: {roadmap_title or node_label}"[:100]
-    description = str(body.get("description") or "").strip() or f"Attached to {roadmap_title or node_label}"
+    title = (
+        str(body.get("title") or "").strip()
+        or f"Attached: {roadmap_title or node_label}"[:100]
+    )
+    description = (
+        str(body.get("description") or "").strip()
+        or f"Attached to {roadmap_title or node_label}"
+    )
     preset = str(body.get("preset") or "").strip()
     if not preset and isinstance(existing_task, dict):
         preset = str(existing_task.get("preset") or "").strip()
@@ -1522,18 +1676,32 @@ def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Option
     payload = {
         "title": title,
         "description": description,
-        "priority": int(body.get("priority", existing_task.get("priority", 3) if isinstance(existing_task, dict) else 3) or 3),
+        "priority": int(
+            body.get(
+                "priority",
+                existing_task.get("priority", 3)
+                if isinstance(existing_task, dict)
+                else 3,
+            )
+            or 3
+        ),
         "phase_type": phase_type,
         "preset": preset,
         "tags": tags,
         "module": node_path or roadmap_node_id or node_id,
         "primary_node_id": node_id,
         "affected_nodes": affected_nodes,
-        "workflow_id": str(body.get("workflow_id") or f"wf_attach_{int(time.time() * 1000)}").strip(),
+        "workflow_id": str(
+            body.get("workflow_id") or f"wf_attach_{int(time.time() * 1000)}"
+        ).strip(),
         "team_profile": preset,
-        "task_origin": str(body.get("task_origin") or "mcc_attached").strip() or "mcc_attached",
+        "task_origin": str(body.get("task_origin") or "mcc_attached").strip()
+        or "mcc_attached",
         "source": str(body.get("source") or "mcc_attached").strip() or "mcc_attached",
-        "workflow_selection_origin": str(body.get("workflow_selection_origin") or "mcc_attached").strip() or "mcc_attached",
+        "workflow_selection_origin": str(
+            body.get("workflow_selection_origin") or "mcc_attached"
+        ).strip()
+        or "mcc_attached",
         "project_id": project_id,
         "project_lane": lane or project_id,
         "roadmap_id": roadmap_id,
@@ -1544,18 +1712,30 @@ def _derive_attached_task_payload(body: Dict[str, Any], *, existing_task: Option
         "closure_files": closure_files,
     }
     if isinstance(existing_task, dict):
-        payload["architecture_docs"] = _merge_unique_lists(existing_task.get("architecture_docs"), docs)
-        payload["closure_files"] = _merge_unique_lists(existing_task.get("closure_files"), closure_files)
-        payload["affected_nodes"] = _merge_unique_lists(existing_task.get("affected_nodes"), affected_nodes)
+        payload["architecture_docs"] = _merge_unique_lists(
+            existing_task.get("architecture_docs"), docs
+        )
+        payload["closure_files"] = _merge_unique_lists(
+            existing_task.get("closure_files"), closure_files
+        )
+        payload["affected_nodes"] = _merge_unique_lists(
+            existing_task.get("affected_nodes"), affected_nodes
+        )
         payload["tags"] = _merge_unique_lists(existing_task.get("tags"), tags)
     return payload
 
 
-def _save_session_state(project_id: str, state: "SessionState", window_session_id: str = "") -> bool:
+def _save_session_state(
+    project_id: str, state: "SessionState", window_session_id: str = ""
+) -> bool:
     try:
         from src.services.mcc_project_registry import save_session_for_project
 
-        return bool(save_session_for_project(project_id, state, window_session_id=window_session_id))
+        return bool(
+            save_session_for_project(
+                project_id, state, window_session_id=window_session_id
+            )
+        )
     except Exception:
         return bool(state.save())
 
@@ -1563,6 +1743,7 @@ def _save_session_state(project_id: str, state: "SessionState", window_session_i
 # ──────────────────────────────────────────────────────────────
 # Request/Response models
 # ──────────────────────────────────────────────────────────────
+
 
 class InitResponse(BaseModel):
     has_project: bool
@@ -1574,15 +1755,17 @@ class InitResponse(BaseModel):
     hidden_count: int = 0
     projects: List[Dict[str, Any]] = []
 
+
 class ProjectInitRequest(BaseModel):
-    source_type: str       # "local" | "git" | "empty"
-    source_path: str       # absolute path or git URL
+    source_type: str  # "local" | "git" | "empty"
+    source_path: str  # absolute path or git URL
     execution_mode: str = "playground"
     project_kind: str = "user"
-    sandbox_path: str = "" # optional absolute path for playground/sandbox root
+    sandbox_path: str = ""  # optional absolute path for playground/sandbox root
     # MARKER_161.9.MULTIPROJECT.NAMING.API_CONTRACT.V1
-    project_name: str = "" # optional user-facing project name (tab + display)
+    project_name: str = ""  # optional user-facing project name (tab + display)
     quota_gb: int = 10
+
 
 class ProjectInitResponse(BaseModel):
     success: bool
@@ -1597,6 +1780,7 @@ class ProjectInitResponse(BaseModel):
 
 class ProjectActivateRequest(BaseModel):
     project_id: str
+
 
 class StateRequest(BaseModel):
     level: str = "roadmap"
@@ -1615,7 +1799,9 @@ class MCCTaskUpdateRequest(BaseModel):
     phase_type: Optional[str] = None
     priority: Optional[int] = None
     tags: Optional[List[str]] = None
-    workflow_family: Optional[str] = None  # MARKER_175B: User-selected workflow template
+    workflow_family: Optional[str] = (
+        None  # MARKER_175B: User-selected workflow template
+    )
     project_id: Optional[str] = None
     project_lane: Optional[str] = None
     architecture_docs: Optional[List[str]] = None
@@ -1653,10 +1839,15 @@ class MCCAttachedTaskRequest(BaseModel):
 # GET /api/mcc/init — Load project config + session state
 # ──────────────────────────────────────────────────────────────
 
+
 @router.get("/init", response_model=InitResponse)
 async def mcc_init(
-    project_id: str = Query("", description="Optional project_id to resolve for this window"),
-    window_session_id: str = Query("", description="Optional per-window MCC session id"),
+    project_id: str = Query(
+        "", description="Optional project_id to resolve for this window"
+    ),
+    window_session_id: str = Query(
+        "", description="Optional per-window MCC session id"
+    ),
 ):
     """
     Called on frontend mount. Returns:
@@ -1670,7 +1861,10 @@ async def mcc_init(
     requested_project_id = str(project_id or "").strip()
     requested_window_session_id = str(window_session_id or "").strip()
     try:
-        from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects
+        from src.services.mcc_project_registry import (
+            ensure_registry_bootstrap,
+            list_projects,
+        )
 
         ensure_registry_bootstrap()
         listing = list_projects(always_include_project_id=requested_project_id)
@@ -1681,7 +1875,8 @@ async def mcc_init(
     if config is None:
         return InitResponse(
             has_project=False,
-            active_project_id=requested_project_id or str(listing.get("active_project_id", "")),
+            active_project_id=requested_project_id
+            or str(listing.get("active_project_id", "")),
             window_session_id=requested_window_session_id,
             updated_at=str(listing.get("updated_at", "")),
             hidden_count=int(listing.get("hidden_count", 0) or 0),
@@ -1690,6 +1885,7 @@ async def mcc_init(
 
     state = _load_session_state(config.project_id, requested_window_session_id)
     from dataclasses import asdict
+
     return InitResponse(
         has_project=True,
         project_config=asdict(config),
@@ -1705,6 +1901,7 @@ async def mcc_init(
 # ──────────────────────────────────────────────────────────────
 # POST /api/mcc/state — Save session state
 # ──────────────────────────────────────────────────────────────
+
 
 @router.post("/state")
 async def save_state(req: StateRequest):
@@ -1726,7 +1923,9 @@ async def save_state(req: StateRequest):
             raise HTTPException(status_code=500, detail="Failed to save session state")
         return {"ok": True}
 
-    if not _save_session_state(config.project_id, state, str(req.window_session_id or "").strip()):
+    if not _save_session_state(
+        config.project_id, state, str(req.window_session_id or "").strip()
+    ):
         raise HTTPException(status_code=500, detail="Failed to save session state")
     return {"ok": True}
 
@@ -1735,24 +1934,33 @@ async def save_state(req: StateRequest):
 # GET /api/mcc/state — Get current session state
 # ──────────────────────────────────────────────────────────────
 
+
 @router.get("/state")
 async def get_state(
-    project_id: str = Query("", description="Optional explicit project_id for state resolution"),
-    window_session_id: str = Query("", description="Optional per-window MCC session id"),
+    project_id: str = Query(
+        "", description="Optional explicit project_id for state resolution"
+    ),
+    window_session_id: str = Query(
+        "", description="Optional per-window MCC session id"
+    ),
 ):
     """Get current session state for Zustand hydration."""
     config = _resolve_project_config(project_id)
     if config is None:
         state = SessionState.load()
     else:
-        state = _load_session_state(config.project_id, str(window_session_id or "").strip())
+        state = _load_session_state(
+            config.project_id, str(window_session_id or "").strip()
+        )
     from dataclasses import asdict
+
     return asdict(state)
 
 
 # ──────────────────────────────────────────────────────────────
 # POST /api/mcc/project/init — First-time project setup
 # ──────────────────────────────────────────────────────────────
+
 
 @router.post("/project/init", response_model=ProjectInitResponse)
 async def project_init(req: ProjectInitRequest):
@@ -1773,7 +1981,9 @@ async def project_init(req: ProjectInitRequest):
     # Support "skip source" flow by creating an empty temporary source folder.
     req_source_type = str(req.source_type or "").strip().lower()
     req_source_path = str(req.source_path or "").strip()
-    req_execution_mode = str(req.execution_mode or "playground").strip().lower() or "playground"
+    req_execution_mode = (
+        str(req.execution_mode or "playground").strip().lower() or "playground"
+    )
     req_project_kind = str(req.project_kind or "user").strip().lower() or "user"
     effective_source_type = req_source_type
     effective_source_path = req_source_path
@@ -1781,7 +1991,9 @@ async def project_init(req: ProjectInitRequest):
     if req_source_type == "empty":
         temp_source = tempfile.mkdtemp(prefix="mycelium_empty_source_")
         try:
-            with open(os.path.join(temp_source, "README.md"), "w", encoding="utf-8") as f:
+            with open(
+                os.path.join(temp_source, "README.md"), "w", encoding="utf-8"
+            ) as f:
                 f.write("# New Project\n")
         except Exception:
             pass
@@ -1813,7 +2025,9 @@ async def project_init(req: ProjectInitRequest):
             errors.append(f"Source path not found: {effective_source_path}")
         elif not os.path.isdir(effective_source_path):
             errors.append(f"Source path is not a directory: {effective_source_path}")
-        elif config.execution_mode == "playground" and _paths_overlap_or_nested(effective_source_path, config.sandbox_path):
+        elif config.execution_mode == "playground" and _paths_overlap_or_nested(
+            effective_source_path, config.sandbox_path
+        ):
             errors.append(
                 "sandbox_path must be isolated from source_path (no equal/nested paths)"
             )
@@ -1838,6 +2052,7 @@ async def project_init(req: ProjectInitRequest):
             # shutil.copytree needs dst to not exist, so remove first
             if os.path.exists(config.sandbox_path):
                 shutil.rmtree(config.sandbox_path)
+
             # MARKER_161.8.MULTIPROJECT.API.TOLERANT_LOCAL_COPY.V1
             # Some large trees mutate during copy (generated datasets, transient artifacts).
             # Do best-effort copy and skip files that vanish mid-flight.
@@ -1852,8 +2067,14 @@ async def project_init(req: ProjectInitRequest):
                 effective_source_path,
                 config.sandbox_path,
                 ignore=shutil.ignore_patterns(
-                    'node_modules', '.git', '__pycache__', '*.pyc',
-                    'dist', 'build', '.next', 'target',
+                    "node_modules",
+                    ".git",
+                    "__pycache__",
+                    "*.pyc",
+                    "dist",
+                    "build",
+                    ".next",
+                    "target",
                 ),
                 copy_function=_copy2_best_effort,
                 ignore_dangling_symlinks=True,
@@ -1862,9 +2083,18 @@ async def project_init(req: ProjectInitRequest):
         elif materialize_playground and effective_source_type == "git":
             # Git clone — shallow
             import subprocess
+
             result = subprocess.run(
-                ["git", "clone", "--depth=1", effective_source_path, config.sandbox_path],
-                capture_output=True, text=True, timeout=120,
+                [
+                    "git",
+                    "clone",
+                    "--depth=1",
+                    effective_source_path,
+                    config.sandbox_path,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0:
                 return ProjectInitResponse(
@@ -1936,12 +2166,17 @@ async def project_init(req: ProjectInitRequest):
 
 
 @router.get("/projects/list")
-async def list_projects(include_hidden: bool = Query(False, description="Include non-user projects")):
+async def list_projects(
+    include_hidden: bool = Query(False, description="Include non-user projects"),
+):
     """
     MARKER_161.7.MULTIPROJECT.API.PROJECTS_LIST.V1
     List project registry summaries and active project pointer.
     """
-    from src.services.mcc_project_registry import ensure_registry_bootstrap, list_projects as _list
+    from src.services.mcc_project_registry import (
+        ensure_registry_bootstrap,
+        list_projects as _list,
+    )
 
     ensure_registry_bootstrap()
     result = _list(include_hidden=bool(include_hidden))
@@ -1969,8 +2204,11 @@ async def activate_project(req: ProjectActivateRequest):
 # DELETE /api/mcc/project — Remove project config (allows reconfigure)
 # ──────────────────────────────────────────────────────────────
 
+
 @router.delete("/project")
-async def delete_project(project_id: str = Query("", description="Optional explicit project_id")):
+async def delete_project(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     Delete project config. Does NOT delete sandbox (use DELETE /api/mcc/sandbox).
     Allows reconfiguring with a new project.
@@ -1982,7 +2220,9 @@ async def delete_project(project_id: str = Query("", description="Optional expli
 
     if config is not None:
         try:
-            from src.services.mcc_project_registry import remove_project as _remove_project
+            from src.services.mcc_project_registry import (
+                remove_project as _remove_project,
+            )
 
             _remove_project(str(config.project_id))
             deleted.append(f"registry:{config.project_id}")
@@ -2001,6 +2241,7 @@ async def delete_project(project_id: str = Query("", description="Optional expli
 # MARKER_153.2B: Sandbox management endpoints
 # ──────────────────────────────────────────────────────────────
 
+
 class SandboxStatusResponse(BaseModel):
     exists: bool
     sandbox_path: str = ""
@@ -2013,7 +2254,9 @@ class SandboxStatusResponse(BaseModel):
 
 
 @router.get("/sandbox/status", response_model=SandboxStatusResponse)
-async def sandbox_status(project_id: str = Query("", description="Optional explicit project_id")):
+async def sandbox_status(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     Get sandbox disk usage and quota status.
     Used by SandboxDropdown to show [Sandbox ✓ 2.1/10GB] or [No Sandbox].
@@ -2053,7 +2296,9 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
         try:
             shutil.rmtree(config.sandbox_path)
         except OSError as e:
-            raise HTTPException(status_code=500, detail=f"Failed to delete sandbox: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Failed to delete sandbox: {e}"
+            )
 
     # Recreate from source
     try:
@@ -2067,15 +2312,24 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
                 config.source_path,
                 config.sandbox_path,
                 ignore=shutil.ignore_patterns(
-                    'node_modules', '.git', '__pycache__', '*.pyc',
-                    'dist', 'build', '.next', 'target',
+                    "node_modules",
+                    ".git",
+                    "__pycache__",
+                    "*.pyc",
+                    "dist",
+                    "build",
+                    ".next",
+                    "target",
                 ),
             )
         elif config.source_type == "git":
             import subprocess
+
             result = subprocess.run(
                 ["git", "clone", "--depth=1", config.source_path, config.sandbox_path],
-                capture_output=True, text=True, timeout=120,
+                capture_output=True,
+                text=True,
+                timeout=120,
             )
             if result.returncode != 0:
                 raise HTTPException(
@@ -2096,7 +2350,9 @@ async def sandbox_recreate(req: SandboxRecreateRequest):
 
 
 @router.delete("/sandbox")
-async def delete_sandbox(project_id: str = Query("", description="Optional explicit project_id")):
+async def delete_sandbox(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     Delete sandbox directory (but keep project config).
     Sandbox can be recreated via POST /api/mcc/sandbox/recreate.
@@ -2117,7 +2373,10 @@ async def delete_sandbox(project_id: str = Query("", description="Optional expli
 
 
 @router.patch("/sandbox/quota")
-async def update_quota(quota_gb: int, project_id: str = Query("", description="Optional explicit project_id")):
+async def update_quota(
+    quota_gb: int,
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """Update project quota (1-100 GB)."""
     if quota_gb < 1 or quota_gb > 100:
         raise HTTPException(status_code=400, detail="quota_gb must be 1-100")
@@ -2141,8 +2400,11 @@ async def update_quota(quota_gb: int, project_id: str = Query("", description="O
 # MARKER_153.4F: Roadmap, Workflow Templates, Prefetch
 # ──────────────────────────────────────────────────────────────
 
+
 @router.get("/roadmap")
-async def get_roadmap(project_id: str = Query("", description="Optional explicit project_id")):
+async def get_roadmap(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     Get the project roadmap DAG.
     Returns the saved roadmap or generates one if absent.
@@ -2189,7 +2451,9 @@ async def get_condensed_graph(
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
-        raise HTTPException(status_code=400, detail=f"Invalid scope_path: {resolved_scope}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid scope_path: {resolved_scope}"
+        )
 
     try:
         result = await asyncio.to_thread(
@@ -2203,11 +2467,15 @@ async def get_condensed_graph(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build condensed graph: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to build condensed graph: {e}"
+        )
 
 
 @router.post("/roadmap/generate")
-async def generate_roadmap(project_id: str = Query("", description="Optional explicit project_id")):
+async def generate_roadmap(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """Regenerate roadmap from current sandbox state."""
     from src.services.roadmap_generator import RoadmapGenerator
 
@@ -2216,7 +2484,9 @@ async def generate_roadmap(project_id: str = Query("", description="Optional exp
         raise HTTPException(status_code=404, detail="No project configured")
 
     if not config.sandbox_exists():
-        raise HTTPException(status_code=400, detail="Sandbox not found. Create sandbox first.")
+        raise HTTPException(
+            status_code=400, detail="Sandbox not found. Create sandbox first."
+        )
 
     dag = await RoadmapGenerator.analyze_project(config)
     return {"ok": True, "node_count": len(dag.nodes), "edge_count": len(dag.edges)}
@@ -2226,6 +2496,7 @@ async def generate_roadmap(project_id: str = Query("", description="Optional exp
 async def list_workflows():
     """List all available workflow templates."""
     from src.services.architect_prefetch import WorkflowTemplateLibrary
+
     return {"templates": WorkflowTemplateLibrary.list_templates()}
 
 
@@ -2251,9 +2522,20 @@ async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
 
     updates = body.model_dump(exclude_none=True)
     allowed_fields = {
-        "title", "description", "preset", "phase_type", "priority", "tags", "workflow_family",
-        "project_id", "project_lane", "architecture_docs", "recon_docs",
-        "closure_tests", "closure_files", "require_closure_proof",
+        "title",
+        "description",
+        "preset",
+        "phase_type",
+        "priority",
+        "tags",
+        "workflow_family",
+        "project_id",
+        "project_lane",
+        "architecture_docs",
+        "recon_docs",
+        "closure_tests",
+        "closure_files",
+        "require_closure_proof",
     }
     updates = {key: value for key, value in updates.items() if key in allowed_fields}
     if not updates:
@@ -2261,7 +2543,9 @@ async def update_mcc_task(task_id: str, body: MCCTaskUpdateRequest):
 
     ok = board.update_task(task_id, **updates)
     if not ok:
-        raise HTTPException(status_code=500, detail=f"Failed to update task '{task_id}'")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update task '{task_id}'"
+        )
 
     return {
         "success": True,
@@ -2293,7 +2577,9 @@ async def attach_mcc_task_to_node(task_id: str, body: MCCAttachedTaskRequest):
     updates = _derive_attached_task_payload(body.model_dump(), existing_task=task)
     ok = board.update_task(task_id, **updates)
     if not ok:
-        raise HTTPException(status_code=500, detail=f"Failed to attach task '{task_id}'")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to attach task '{task_id}'"
+        )
     return {
         "success": True,
         "task_id": task_id,
@@ -2314,7 +2600,9 @@ async def submit_mcc_task_feedback(task_id: str, body: MCCTaskFeedbackRequest):
 
     action = str(body.action or "redo").strip().lower()
     if action not in {"redo", "approve", "reject"}:
-        raise HTTPException(status_code=400, detail="action must be redo, approve, or reject")
+        raise HTTPException(
+            status_code=400, detail="action must be redo, approve, or reject"
+        )
 
     updates: Dict[str, Any] = {
         "feedback": str(body.feedback or "").strip(),
@@ -2325,7 +2613,9 @@ async def submit_mcc_task_feedback(task_id: str, body: MCCTaskFeedbackRequest):
 
     ok = board.update_task(task_id, **updates)
     if not ok:
-        raise HTTPException(status_code=500, detail=f"Failed to update feedback for task '{task_id}'")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update feedback for task '{task_id}'"
+        )
 
     return {
         "success": True,
@@ -2359,7 +2649,9 @@ async def reject_task_result(task_id: str, body: dict = Body(...)):
     feedback = body.get("feedback", "")
     old_desc = task.get("description", "")
     new_desc = f"{old_desc}\n\n[USER FEEDBACK]: {feedback}" if feedback else old_desc
-    board.update_task(task_id, result_status="rejected", status="pending", description=new_desc)
+    board.update_task(
+        task_id, result_status="rejected", status="pending", description=new_desc
+    )
     updated = board.get_task(task_id)
     return {"success": True, "task": updated}
 
@@ -2378,10 +2670,14 @@ async def create_tasks_from_roadmap_node(
     from src.services.roadmap_task_sync import generate_task_payloads_from_roadmap_node
 
     config = _resolve_project_config(project_id)
-    resolved_project_id = str(getattr(config, "project_id", "") or str(project_id or "").strip())
+    resolved_project_id = str(
+        getattr(config, "project_id", "") or str(project_id or "").strip()
+    )
     dag = RoadmapDAG.load_for_project(resolved_project_id)
     if dag is None:
-        raise HTTPException(status_code=404, detail="No roadmap found. Generate roadmap first.")
+        raise HTTPException(
+            status_code=404, detail="No roadmap found. Generate roadmap first."
+        )
 
     # Find the target node in the roadmap DAG
     target_node = None
@@ -2393,7 +2689,9 @@ async def create_tasks_from_roadmap_node(
             break
 
     if not target_node:
-        raise HTTPException(status_code=404, detail=f"Roadmap node '{node_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Roadmap node '{node_id}' not found"
+        )
 
     active_project_id = str(resolved_project_id or getattr(dag, "project_id", "") or "")
     board = _get_task_board_instance()
@@ -2438,7 +2736,14 @@ async def create_tasks_from_roadmap_node(
         )
         created_tasks.append(sub_id)
 
-    return {"success": True, "tasks": created_tasks, "count": len(created_tasks), "node_id": node_id}
+    return {
+        "success": True,
+        "tasks": created_tasks,
+        "count": len(created_tasks),
+        "node_id": node_id,
+    }
+
+
 # MARKER_176.1B_END
 
 
@@ -2473,13 +2778,26 @@ async def update_task_workflow_binding(task_id: str, body: "WorkflowBindingReque
     updates = {
         "workflow_id": workflow_id,
         "workflow_bank": str(body.workflow_bank or "core").strip() or "core",
-        "workflow_family": str(body.workflow_family or workflow_id).strip() or workflow_id,
-        "workflow_selection_origin": str(body.selection_origin or "user-selected").strip() or "user-selected",
-        "team_profile": str(body.team_profile or task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver",
+        "workflow_family": str(body.workflow_family or workflow_id).strip()
+        or workflow_id,
+        "workflow_selection_origin": str(
+            body.selection_origin or "user-selected"
+        ).strip()
+        or "user-selected",
+        "team_profile": str(
+            body.team_profile
+            or task.get("team_profile")
+            or task.get("preset")
+            or "dragon_silver"
+        ).strip()
+        or "dragon_silver",
     }
     ok = board.update_task(task_id, **updates)
     if not ok:
-        raise HTTPException(status_code=500, detail=f"Failed to update task '{task_id}' workflow binding")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to update task '{task_id}' workflow binding",
+        )
     next_task = board.get_task(task_id) or {**task, **updates}
     return {
         "success": True,
@@ -2492,7 +2810,9 @@ async def update_task_workflow_binding(task_id: str, body: "WorkflowBindingReque
 async def get_workflow_contract(workflow_family: str):
     contract = await _resolve_workflow_contract(workflow_family)
     if contract is None:
-        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow contract '{workflow_family}' not found"
+        )
     return {
         "success": True,
         "workflow_family": str(contract.get("workflow_family") or workflow_family),
@@ -2547,10 +2867,18 @@ async def get_localguys_benchmark_summary(
     model_counts = dict(run_summary.get("model_counts") or {})
     runtime_counts: Dict[str, int] = {}
     runtime_counts["localguys"] = int(run_summary.get("count") or 0)
-    runtime_total = int(run_summary.get("avg_runtime_ms") or 0) * int(run_summary.get("count") or 0)
-    missing_total = float(run_summary.get("avg_artifact_missing_count") or 0.0) * int(run_summary.get("count") or 0)
-    required_total = float(run_summary.get("avg_required_artifact_count") or 0.0) * int(run_summary.get("count") or 0)
-    success_total = float(run_summary.get("success_rate") or 0.0) * int(run_summary.get("count") or 0)
+    runtime_total = int(run_summary.get("avg_runtime_ms") or 0) * int(
+        run_summary.get("count") or 0
+    )
+    missing_total = float(run_summary.get("avg_artifact_missing_count") or 0.0) * int(
+        run_summary.get("count") or 0
+    )
+    required_total = float(run_summary.get("avg_required_artifact_count") or 0.0) * int(
+        run_summary.get("count") or 0
+    )
+    success_total = float(run_summary.get("success_rate") or 0.0) * int(
+        run_summary.get("count") or 0
+    )
 
     merged_recent = list(run_summary.get("recent_runs") or [])
     for row in benchmark_rows:
@@ -2573,7 +2901,9 @@ async def get_localguys_benchmark_summary(
         "runtime_counts": runtime_counts,
         "avg_runtime_ms": int(runtime_total / count) if count else 0,
         "avg_artifact_missing_count": round(missing_total / count, 2) if count else 0.0,
-        "avg_required_artifact_count": round(required_total / count, 2) if count else 0.0,
+        "avg_required_artifact_count": round(required_total / count, 2)
+        if count
+        else 0.0,
         "success_rate": round(success_total / count, 2) if count else 0.0,
         "recent_runs": sorted(
             merged_recent,
@@ -2604,10 +2934,14 @@ async def get_task_workflow_contract(task_id: str):
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
     binding = _resolve_task_workflow_binding(task)
-    workflow_family = str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+    workflow_family = str(
+        binding.get("workflow_family") or binding.get("workflow_id") or ""
+    ).strip()
     contract = await _resolve_workflow_contract(workflow_family)
     if contract is None:
-        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow contract '{workflow_family}' not found"
+        )
     return {
         "success": True,
         "task_id": task_id,
@@ -2627,9 +2961,15 @@ async def get_task_context_packet(task_id: str):
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
 
     binding = _resolve_task_workflow_binding(task)
-    workflow_family = str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+    workflow_family = str(
+        binding.get("workflow_family") or binding.get("workflow_id") or ""
+    ).strip()
     contract = await _resolve_workflow_contract(workflow_family)
-    history = board.get_task_history(task_id) if hasattr(board, "get_task_history") else list(task.get("status_history") or [])
+    history = (
+        board.get_task_history(task_id)
+        if hasattr(board, "get_task_history")
+        else list(task.get("status_history") or [])
+    )
     latest_run = get_localguys_run_registry().get_latest_for_task(task_id)
     packet = build_task_context_packet(
         task,
@@ -2653,16 +2993,26 @@ def _validate_localguys_run_update(
     if body.status is not None and str(body.status).strip() not in allowed_statuses:
         raise HTTPException(status_code=400, detail="invalid localguys run status")
 
-    steps = [str(step).strip() for step in list(contract.get("steps") or []) if str(step).strip()]
+    steps = [
+        str(step).strip()
+        for step in list(contract.get("steps") or [])
+        if str(step).strip()
+    ]
     if body.current_step is not None and str(body.current_step).strip() not in steps:
         raise HTTPException(status_code=400, detail="invalid localguys run step")
 
-    roles = [str(role).strip() for role in list(contract.get("roles") or []) if str(role).strip()]
+    roles = [
+        str(role).strip()
+        for role in list(contract.get("roles") or [])
+        if str(role).strip()
+    ]
     if body.active_role is not None and str(body.active_role).strip() not in roles:
         raise HTTPException(status_code=400, detail="invalid localguys run role")
 
 
-def _build_localguys_runtime_guard(run: Dict[str, Any], contract: Dict[str, Any]) -> Dict[str, Any]:
+def _build_localguys_runtime_guard(
+    run: Dict[str, Any], contract: Dict[str, Any]
+) -> Dict[str, Any]:
     current_step = str(run.get("current_step") or "").strip()
     metadata = dict(run.get("metadata") or {})
     stage_tool_policy = dict(contract.get("stage_tool_policy") or {})
@@ -2670,12 +3020,18 @@ def _build_localguys_runtime_guard(run: Dict[str, Any], contract: Dict[str, Any]
     max_turns = int(contract.get("max_turns") or 0)
     turn_count = max(0, int(metadata.get("turn_count") or 0))
     return {
-        "workflow_family": str(contract.get("workflow_family") or run.get("workflow_family") or "").strip(),
+        "workflow_family": str(
+            contract.get("workflow_family") or run.get("workflow_family") or ""
+        ).strip(),
         "current_step": current_step,
-        "allowed_tools": list(stage_tool_policy.get(current_step) or contract.get("allowed_tools") or []),
+        "allowed_tools": list(
+            stage_tool_policy.get(current_step) or contract.get("allowed_tools") or []
+        ),
         "write_opt_ins": write_opt_ins,
         "verification_target": str(contract.get("verification_target") or "").strip(),
-        "sandbox_mode": str((contract.get("sandbox_policy") or {}).get("mode") or "").strip(),
+        "sandbox_mode": str(
+            (contract.get("sandbox_policy") or {}).get("mode") or ""
+        ).strip(),
         "max_turns": max_turns,
         "turn_count": turn_count,
         "remaining_turns": max(0, max_turns - turn_count) if max_turns > 0 else 0,
@@ -2693,7 +3049,9 @@ def _prepare_localguys_runtime_metadata(
     metadata = dict(run.get("metadata") or {})
     current_step = str(body.current_step or run.get("current_step") or "").strip()
     stage_tool_policy = dict(contract.get("stage_tool_policy") or {})
-    allowed_tools = _normalize_str_list(stage_tool_policy.get(current_step) or contract.get("allowed_tools") or [])
+    allowed_tools = _normalize_str_list(
+        stage_tool_policy.get(current_step) or contract.get("allowed_tools") or []
+    )
     used_tools = _normalize_str_list(incoming.get("used_tools"))
     disallowed_tools = [tool for tool in used_tools if tool not in allowed_tools]
     if disallowed_tools:
@@ -2704,7 +3062,9 @@ def _prepare_localguys_runtime_metadata(
 
     write_opt_ins = dict(contract.get("write_opt_ins") or {})
     write_attempts = _normalize_str_list(incoming.get("write_attempts"))
-    disallowed_writes = [scope for scope in write_attempts if not bool(write_opt_ins.get(scope))]
+    disallowed_writes = [
+        scope for scope in write_attempts if not bool(write_opt_ins.get(scope))
+    ]
     if disallowed_writes:
         raise HTTPException(
             status_code=400,
@@ -2715,7 +3075,9 @@ def _prepare_localguys_runtime_metadata(
     turn_count = max(0, int(metadata.get("turn_count") or 0)) + turn_increment
     max_turns = int(contract.get("max_turns") or 0)
     if max_turns > 0 and turn_count > max_turns:
-        raise HTTPException(status_code=400, detail=f"max_turns_exceeded:{turn_count}/{max_turns}")
+        raise HTTPException(
+            status_code=400, detail=f"max_turns_exceeded:{turn_count}/{max_turns}"
+        )
 
     if turn_increment > 0:
         incoming["turn_count"] = turn_count
@@ -2725,7 +3087,9 @@ def _prepare_localguys_runtime_metadata(
 
 
 @router.post("/tasks/{task_id}/localguys-run")
-async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = Body(default=None)):
+async def start_localguys_run(
+    task_id: str, body: "LocalguysRunStartRequest" = Body(default=None)
+):
     board = _get_task_board_instance()
     task = board.get_task(task_id)
     if not task:
@@ -2735,13 +3099,25 @@ async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = B
     binding = _resolve_task_workflow_binding(task)
     workflow_family = (
         str(body.workflow_family or "").strip()
-        or str(binding.get("workflow_family") or binding.get("workflow_id") or "").strip()
+        or str(
+            binding.get("workflow_family") or binding.get("workflow_id") or ""
+        ).strip()
     )
     contract = await _resolve_workflow_contract(workflow_family)
     if contract is None:
-        raise HTTPException(status_code=404, detail=f"Workflow contract '{workflow_family}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow contract '{workflow_family}' not found"
+        )
 
-    preset = str(body.preset or task.get("team_profile") or task.get("preset") or "dragon_silver").strip() or "dragon_silver"
+    preset = (
+        str(
+            body.preset
+            or task.get("team_profile")
+            or task.get("preset")
+            or "dragon_silver"
+        ).strip()
+        or "dragon_silver"
+    )
     task_description = (
         str(body.task_description or "").strip()
         or str(task.get("description") or task.get("title") or "").strip()
@@ -2755,7 +3131,9 @@ async def start_localguys_run(task_id: str, body: "LocalguysRunStartRequest" = B
             source_branch=source_branch,
         )
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"playground creation failed: {exc}") from exc
+        raise HTTPException(
+            status_code=503, detail=f"playground creation failed: {exc}"
+        ) from exc
 
     registry = _get_localguys_run_registry()
     run = registry.create_run(
@@ -2785,7 +3163,9 @@ async def get_latest_localguys_run(task_id: str):
     registry = _get_localguys_run_registry()
     run = registry.get_latest_for_task(task_id)
     if run is None:
-        raise HTTPException(status_code=404, detail=f"No localguys run found for task '{task_id}'")
+        raise HTTPException(
+            status_code=404, detail=f"No localguys run found for task '{task_id}'"
+        )
     contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     return {
         "success": True,
@@ -2800,7 +3180,9 @@ async def get_localguys_run(run_id: str):
     registry = _get_localguys_run_registry()
     run = registry.get_run(run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Localguys run '{run_id}' not found"
+        )
     contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     return {
         "success": True,
@@ -2814,13 +3196,19 @@ async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
     registry = _get_localguys_run_registry()
     run = registry.get_run(run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Localguys run '{run_id}' not found"
+        )
 
     contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     if contract is None:
-        raise HTTPException(status_code=404, detail="Workflow contract for localguys run not found")
+        raise HTTPException(
+            status_code=404, detail="Workflow contract for localguys run not found"
+        )
     _validate_localguys_run_update(body, contract)
-    update_metadata = _prepare_localguys_runtime_metadata(body, run=run, contract=contract)
+    update_metadata = _prepare_localguys_runtime_metadata(
+        body, run=run, contract=contract
+    )
 
     updated = registry.update_run(
         run_id,
@@ -2832,7 +3220,9 @@ async def update_localguys_run(run_id: str, body: "LocalguysRunUpdateRequest"):
         metadata=update_metadata,
     )
     if updated is None:
-        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Localguys run '{run_id}' not found"
+        )
 
     if str(body.status or "").strip() == "done":
         manifest = registry.validate_required_artifacts(run_id)
@@ -2865,12 +3255,20 @@ async def write_localguys_artifact(
     registry = _get_localguys_run_registry()
     run = registry.get_run(run_id)
     if run is None:
-        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Localguys run '{run_id}' not found"
+        )
     contract = await _resolve_workflow_contract(str(run.get("workflow_family") or ""))
     if contract is None:
-        raise HTTPException(status_code=404, detail="Workflow contract for localguys run not found")
-    if not bool((contract.get("write_opt_ins") or {}).get("playground_artifacts", True)):
-        raise HTTPException(status_code=400, detail="write_scope_not_allowed:playground_artifacts")
+        raise HTTPException(
+            status_code=404, detail="Workflow contract for localguys run not found"
+        )
+    if not bool(
+        (contract.get("write_opt_ins") or {}).get("playground_artifacts", True)
+    ):
+        raise HTTPException(
+            status_code=400, detail="write_scope_not_allowed:playground_artifacts"
+        )
     artifact = registry.write_artifact(
         run_id,
         artifact_name,
@@ -2878,7 +3276,9 @@ async def write_localguys_artifact(
         metadata=body.metadata,
     )
     if artifact is None:
-        raise HTTPException(status_code=404, detail=f"Localguys run '{run_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Localguys run '{run_id}' not found"
+        )
     run = registry.get_run(run_id)
     return {
         "success": True,
@@ -2892,9 +3292,12 @@ async def write_localguys_artifact(
 async def get_workflow(workflow_key: str):
     """Get a specific workflow template by key."""
     from src.services.architect_prefetch import WorkflowTemplateLibrary
+
     tpl = WorkflowTemplateLibrary.get_template(workflow_key)
     if tpl is None:
-        raise HTTPException(status_code=404, detail=f"Workflow template '{workflow_key}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Workflow template '{workflow_key}' not found"
+        )
     return tpl
 
 
@@ -3009,6 +3412,7 @@ class BuildDesignFromArrayRequest(BaseModel):
     MARKER_161.TRM.API.BUILD_FROM_ARRAY_INPUT.V1:
     Phase-161 extension point for TRM adapter policy over arbitrary record/relation arrays.
     """
+
     scope_name: str = "array_scope"
     records: List[Dict[str, Any]] = []
     relations: List[Dict[str, Any]] = []
@@ -3050,6 +3454,7 @@ class CreateDagVersionRequest(BaseModel):
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     Persist DAG build variant for compare/select workflow.
     """
+
     project_id: str = ""
     dag_payload: Dict[str, Any]
     name: str = ""
@@ -3084,6 +3489,7 @@ class DagAutoCompareRequest(BaseModel):
     MARKER_155.ARCHITECT_BUILD.DAG_COMPARE.API.V1
     Auto-run several DAG variants and rank them by scorecard.
     """
+
     project_id: str = ""
     source_kind: str = "scope"  # scope|array
     scope_path: str = ""
@@ -3149,7 +3555,9 @@ def _dedupe_keep_order(items: List[str]) -> List[str]:
     return out
 
 
-def _with_trm_contract_meta(result: Dict[str, Any], trm_profile: str, trm_policy: Dict[str, Any]) -> Dict[str, Any]:
+def _with_trm_contract_meta(
+    result: Dict[str, Any], trm_profile: str, trm_policy: Dict[str, Any]
+) -> Dict[str, Any]:
     """
     MARKER_161.TRM.CONFIG.CONTRACT.V1
     W1 contract extension only:
@@ -3159,7 +3567,10 @@ def _with_trm_contract_meta(result: Dict[str, Any], trm_profile: str, trm_policy
     """
     out = dict(result or {})
     if isinstance(out.get("trm_meta"), dict):
-        out["graph_source"] = str(out.get("graph_source") or ("trm_refined" if bool(out["trm_meta"].get("applied")) else "baseline"))
+        out["graph_source"] = str(
+            out.get("graph_source")
+            or ("trm_refined" if bool(out["trm_meta"].get("applied")) else "baseline")
+        )
         return out
 
     policy = resolve_trm_policy(trm_profile=trm_profile, trm_policy=trm_policy)
@@ -3231,8 +3642,16 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
     if config is None:
         raise HTTPException(status_code=404, detail="No project configured")
 
-    sandbox_scope = _norm_abs(str(config.sandbox_path or "").strip()) if str(config.sandbox_path or "").strip() else ""
-    source_scope = _norm_abs(str(config.source_path or "").strip()) if str(config.source_path or "").strip() else ""
+    sandbox_scope = (
+        _norm_abs(str(config.sandbox_path or "").strip())
+        if str(config.sandbox_path or "").strip()
+        else ""
+    )
+    source_scope = (
+        _norm_abs(str(config.source_path or "").strip())
+        if str(config.source_path or "").strip()
+        else ""
+    )
     # MARKER_165.MCC.CONTEXT_SEARCH.ACTIVE_SCOPE_FALLBACK.V1
     # Prefer sandbox, but gracefully fallback to source when sandbox was not materialized yet.
     base_scope = ""
@@ -3246,7 +3665,9 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
     resolved_scope = str(req.scope_path or "").strip()
     resolved_scope = _norm_abs(resolved_scope) if resolved_scope else base_scope
     if not os.path.isdir(resolved_scope):
-        raise HTTPException(status_code=400, detail=f"Invalid scope_path: {resolved_scope}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid scope_path: {resolved_scope}"
+        )
 
     # MARKER_165.MCC.CONTEXT_SEARCH.SCOPE_GUARD.V1
     # Prevent scope escape outside active project boundary.
@@ -3257,7 +3678,9 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
         )
 
     safe_limit = max(1, min(int(req.limit or 20), 100))
-    mode = "filename" if str(req.mode or "").strip().lower() == "filename" else "keyword"
+    mode = (
+        "filename" if str(req.mode or "").strip().lower() == "filename" else "keyword"
+    )
     payload = await asyncio.to_thread(
         search_files,
         query=str(req.query or ""),
@@ -3296,7 +3719,9 @@ async def mcc_scoped_file_search(req: MCCScopedFileSearchRequest):
 @router.get("/directory-tree")
 async def get_mcc_directory_tree(
     project_id: str = Query("", description="Optional explicit project_id"),
-    path: str = Query("", description="Directory path relative to active project scope"),
+    path: str = Query(
+        "", description="Directory path relative to active project scope"
+    ),
     depth: int = Query(4, ge=1, le=8),
     limit: int = Query(200, ge=1, le=1000),
 ):
@@ -3341,7 +3766,9 @@ async def predict_graph_overlay(req: PredictGraphRequest):
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
-        raise HTTPException(status_code=400, detail=f"Invalid scope_path: {resolved_scope}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid scope_path: {resolved_scope}"
+        )
 
     max_nodes = max(50, min(int(req.max_nodes), 5000))
     max_predicted_edges = max(0, min(int(req.max_predicted_edges), 2000))
@@ -3366,12 +3793,18 @@ async def predict_graph_overlay(req: PredictGraphRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build predictive overlay: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to build predictive overlay: {e}"
+        )
 
 
-@router.get("/graph/predict/runtime-health", response_model=PredictRuntimeHealthResponse)
+@router.get(
+    "/graph/predict/runtime-health", response_model=PredictRuntimeHealthResponse
+)
 async def predict_graph_runtime_health(
-    runtime_module: str = Query("src.services.jepa_runtime", description="Runtime module path"),
+    runtime_module: str = Query(
+        "src.services.jepa_runtime", description="Runtime module path"
+    ),
     force: bool = Query(False, description="Force health probe, bypass short cache"),
 ):
     """
@@ -3385,11 +3818,17 @@ async def predict_graph_runtime_health(
         mod = importlib.import_module(module_path)
         health_fn = getattr(mod, "runtime_health", None)
         if not callable(health_fn):
-            raise HTTPException(status_code=400, detail=f"runtime module has no runtime_health(): {module_path}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"runtime module has no runtime_health(): {module_path}",
+            )
 
         data = health_fn(bool(force))  # type: ignore[misc]
         if not isinstance(data, dict):
-            raise HTTPException(status_code=500, detail=f"invalid runtime health payload from: {module_path}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"invalid runtime health payload from: {module_path}",
+            )
 
         return PredictRuntimeHealthResponse(
             ok=bool(data.get("ok")),
@@ -3430,7 +3869,9 @@ async def build_design_graph(req: BuildDesignGraphRequest):
     resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope))
 
     if not os.path.isdir(resolved_scope):
-        raise HTTPException(status_code=400, detail=f"Invalid scope_path: {resolved_scope}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid scope_path: {resolved_scope}"
+        )
 
     try:
         result = await asyncio.to_thread(
@@ -3454,7 +3895,9 @@ async def build_design_graph(req: BuildDesignGraphRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build design graph: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to build design graph: {e}"
+        )
 
 
 @router.post("/graph/build-design/from-array")
@@ -3489,7 +3932,9 @@ async def build_design_graph_from_array(req: BuildDesignFromArrayRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to build design graph from array: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to build design graph from array: {e}"
+        )
 
 
 @router.post("/dag-versions/create")
@@ -3515,11 +3960,15 @@ async def create_dag_version(req: CreateDagVersionRequest):
         )
         return {"success": True, "project_id": project_id, "version": result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create DAG version: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to create DAG version: {e}"
+        )
 
 
 @router.get("/dag-versions/list")
-async def list_dag_versions(project_id: str = Query("", description="Optional explicit project_id")):
+async def list_dag_versions(
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     List DAG version summaries for current project.
@@ -3535,7 +3984,10 @@ async def list_dag_versions(project_id: str = Query("", description="Optional ex
 
 
 @router.get("/dag-versions/{version_id}")
-async def get_dag_version(version_id: str, project_id: str = Query("", description="Optional explicit project_id")):
+async def get_dag_version(
+    version_id: str,
+    project_id: str = Query("", description="Optional explicit project_id"),
+):
     """
     MARKER_155.ARCHITECT_BUILD.DAG_VERSIONS.API.V1
     Get full DAG version payload by ID for current project.
@@ -3546,7 +3998,9 @@ async def get_dag_version(version_id: str, project_id: str = Query("", descripti
     try:
         result = await asyncio.to_thread(_get, project_id, str(version_id))
         if not result:
-            raise HTTPException(status_code=404, detail=f"DAG version not found: {version_id}")
+            raise HTTPException(
+                status_code=404, detail=f"DAG version not found: {version_id}"
+            )
         return {"success": True, "project_id": project_id, "version": result}
     except HTTPException:
         raise
@@ -3571,7 +4025,9 @@ async def set_primary_dag_version(version_id: str, req: SetPrimaryDagVersionRequ
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to set primary DAG version: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to set primary DAG version: {e}"
+        )
 
 
 @router.post("/dag-versions/auto-compare")
@@ -3591,9 +4047,16 @@ async def auto_compare_dag_versions(req: DagAutoCompareRequest):
         if not resolved_scope and config is not None:
             # MARKER_161.9.MULTIPROJECT.ISOLATION.SANDBOX_SCOPE_DEFAULT.V1
             resolved_scope = str(config.sandbox_path or config.source_path or "")
-        resolved_scope = os.path.abspath(os.path.expanduser(resolved_scope)) if resolved_scope else ""
+        resolved_scope = (
+            os.path.abspath(os.path.expanduser(resolved_scope))
+            if resolved_scope
+            else ""
+        )
         if not resolved_scope or not os.path.isdir(resolved_scope):
-            raise HTTPException(status_code=400, detail=f"Invalid scope_path for source_kind=scope: {resolved_scope}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid scope_path for source_kind=scope: {resolved_scope}",
+            )
 
     try:
         variants_payload = [
@@ -3618,7 +4081,9 @@ async def auto_compare_dag_versions(req: DagAutoCompareRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to auto-compare DAG variants: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to auto-compare DAG variants: {e}"
+        )
 
 
 @router.get("/layout/preferences")
@@ -3633,18 +4098,28 @@ async def get_layout_preferences(
     """
     try:
         from src.memory.aura_store import get_aura_store
+
         aura = get_aura_store()
         if not aura:
             return {"success": False, "error": "AURA unavailable", "profile": None}
 
-        profiles = aura.get_preference(user_id, "viewport_patterns", "dag_layout_profiles") or {}
+        profiles = (
+            aura.get_preference(user_id, "viewport_patterns", "dag_layout_profiles")
+            or {}
+        )
         if not isinstance(profiles, dict):
             profiles = {}
         if scope_key:
-            return {"success": True, "profile": profiles.get(scope_key), "scope_key": scope_key}
+            return {
+                "success": True,
+                "profile": profiles.get(scope_key),
+                "scope_key": scope_key,
+            }
         return {"success": True, "profiles": profiles}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to read layout preferences: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to read layout preferences: {e}"
+        )
 
 
 @router.post("/layout/preferences")
@@ -3662,15 +4137,21 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
 
     try:
         from src.memory.aura_store import get_aura_store
+
         aura = get_aura_store()
         if not aura:
             raise HTTPException(status_code=503, detail="AURA unavailable")
 
-        profiles = aura.get_preference(req.user_id, "viewport_patterns", "dag_layout_profiles") or {}
+        profiles = (
+            aura.get_preference(req.user_id, "viewport_patterns", "dag_layout_profiles")
+            or {}
+        )
         if not isinstance(profiles, dict):
             profiles = {}
 
-        prev = profiles.get(scope_key) if isinstance(profiles.get(scope_key), dict) else {}
+        prev = (
+            profiles.get(scope_key) if isinstance(profiles.get(scope_key), dict) else {}
+        )
         next_profile = dict(prev)
 
         prev_samples = int(prev.get("sample_count") or 0)
@@ -3680,7 +4161,9 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
         def _blend(key: str, default: float = 0.0) -> float:
             pv = float(prev.get(key, default))
             nv = float(req.profile.get(key, pv))
-            return ((pv * prev_samples) + (nv * incoming_samples)) / max(1, total_samples)
+            return ((pv * prev_samples) + (nv * incoming_samples)) / max(
+                1, total_samples
+            )
 
         for key in (
             "vertical_separation_bias",
@@ -3694,10 +4177,14 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
             if key in req.profile:
                 next_profile[key] = req.profile.get(key)
             elif key not in next_profile:
-                next_profile[key] = "focus_only" if key == "focus_overlay_preference" else "pin_first"
+                next_profile[key] = (
+                    "focus_only" if key == "focus_overlay_preference" else "pin_first"
+                )
 
         next_profile["sample_count"] = total_samples
-        next_profile["updated_at"] = req.profile.get("updated_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        next_profile["updated_at"] = req.profile.get("updated_at") or time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()
+        )
 
         profiles[scope_key] = next_profile
         aura.set_preference(
@@ -3712,12 +4199,15 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update layout preferences: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update layout preferences: {e}"
+        )
 
 
 # ──────────────────────────────────────────────────────────────
 # MARKER_162.P3: MYCO hidden memory + context bridge
 # ──────────────────────────────────────────────────────────────
+
 
 @router.post("/myco/hidden-index/reindex")
 async def myco_hidden_index_reindex(req: MycoHiddenReindexRequest):
@@ -3830,6 +4320,7 @@ async def workflow_myco_hint(req: WorkflowMycoHintRequest):
 # MARKER_153.7B: Architect Captain — Recommendations
 # ──────────────────────────────────────────────────────────────
 
+
 @router.get("/captain/recommend")
 async def get_recommendation():
     """
@@ -3892,4 +4383,5 @@ async def get_project_progress():
     Get overall project progress (modules completed, active, pending).
     """
     from src.services.architect_captain import ArchitectCaptain
+
     return ArchitectCaptain.get_progress()
