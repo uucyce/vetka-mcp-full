@@ -61,6 +61,8 @@ TASK_BOARD_SCHEMA = {
         "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled"]},
         # For "list":
         "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
+        # MARKER_190.DOC_GATE: Force-create task without docs (bypass doc gate)
+        "force_no_docs": {"type": "boolean", "description": "Bypass doc requirement gate. Use only when truly no relevant docs exist."},
         # For "complete":
         "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
         "commit_message": {"type": "string", "description": "Commit message (for complete)"},
@@ -71,6 +73,94 @@ TASK_BOARD_SCHEMA = {
     },
     "required": ["action"]
 }
+
+
+def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
+    """MARKER_190.DOC_GATE: Search docs/ for files matching task title keywords.
+
+    Returns list of relative doc paths ranked by relevance.
+
+    Strategy priority:
+    1. vetka_search_semantic (REST call to localhost:5001) — our own RRF/hybrid stack
+    2. Fallback: keyword glob search in docs/ by filename — zero dependencies
+    """
+    from pathlib import Path
+
+    project_root = Path(__file__).resolve().parents[3]
+    docs_dir = project_root / "docs"
+    if not docs_dir.exists():
+        return []
+
+    # Strategy 1: vetka_search_semantic via REST (same as MCP tool uses)
+    try:
+        import urllib.request
+        import urllib.parse
+        import json as _json
+
+        params = urllib.parse.urlencode({"q": title, "limit": limit * 4, "mode": "hybrid"})
+        url = f"http://localhost:5001/api/search/hybrid?{params}"
+        req = urllib.request.Request(url, method="GET")
+        req.add_header("Accept", "application/json")
+
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+
+        results = data.get("results", [])
+        if results:
+            suggestions = []
+            for item in results:
+                path = item.get("path") or item.get("file_path", "")
+                if not path:
+                    continue
+                try:
+                    rel = str(Path(path).relative_to(project_root))
+                except ValueError:
+                    rel = path
+                if rel.startswith("docs/") and rel.endswith(".md"):
+                    suggestions.append(rel)
+                if len(suggestions) >= limit:
+                    break
+            if suggestions:
+                logger.debug(f"[DocGate] vetka_search found {len(suggestions)} docs for: {title[:50]}")
+                hybrid_results = suggestions
+            else:
+                hybrid_results = []
+    except Exception as e:
+        logger.debug(f"[DocGate] vetka_search unavailable ({e}), falling back to glob")
+        hybrid_results = []
+
+    # Strategy 2: keyword glob search in docs/ (complements hybrid with filename matching)
+    import re
+    keywords = [w.lower() for w in re.split(r'[\s:_\-—/]+', title) if len(w) >= 3]
+    stop_words = {"bug", "fix", "arch", "the", "for", "and", "with", "new", "add", "test", "task",
+                   "при", "что", "как", "это", "все", "нет", "без", "или", "показывают", "одно"}
+    keywords = [k for k in keywords if k not in stop_words]
+
+    if not keywords:
+        return []
+
+    suggestions = []
+    for md_file in sorted(docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+        name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
+        score = sum(1 for k in keywords if k in name_lower)
+        if score > 0:
+            try:
+                rel = str(md_file.relative_to(project_root))
+            except ValueError:
+                rel = str(md_file)
+            suggestions.append((score, rel))
+
+    suggestions.sort(key=lambda x: x[0], reverse=True)
+    glob_results = [path for _, path in suggestions[:limit]]
+
+    # Merge: glob first (exact filename match), then hybrid (semantic), deduplicate
+    seen = set()
+    merged = []
+    for path in glob_results + hybrid_results:
+        if path not in seen:
+            seen.add(path)
+            merged.append(path)
+    return merged[:limit]
 
 
 def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -93,6 +183,30 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "title is required for add"}
         payload = dict(arguments)
         payload["source"] = "mcp"
+
+        # MARKER_190.DOC_GATE: Universal doc requirement for all task types
+        # Every task must have at least one architecture_doc or recon_doc.
+        # If missing: search docs/ by title, suggest matches, REJECT until attached.
+        # force_no_docs=true bypasses (for truly novel tasks with no prior docs).
+        arch_docs = [d for d in (payload.get("architecture_docs") or []) if str(d).strip()]
+        recon_docs = [d for d in (payload.get("recon_docs") or []) if str(d).strip()]
+        force_no_docs = bool(payload.pop("force_no_docs", False))
+
+        if not arch_docs and not recon_docs and not force_no_docs:
+            # Build search query from title + tags for better relevance
+            tags = payload.get("tags") or []
+            search_query = title + " " + " ".join(str(t) for t in tags)
+            suggested = _suggest_docs_for_title(search_query)
+            return {
+                "success": False,
+                "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
+                         "Attach a doc or pass force_no_docs=true to bypass.",
+                "doc_gate": True,
+                "suggested_docs": suggested,
+                "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
+                        "Use force_no_docs=true ONLY if no relevant docs exist.",
+            }
+
         try:
             payload = apply_task_profile_defaults(payload)
         except ValueError as exc:
