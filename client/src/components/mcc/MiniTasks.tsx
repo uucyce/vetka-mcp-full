@@ -23,6 +23,24 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: '#555',
 };
 
+// MARKER_189.3B: Agent type short labels for compact badge
+const AGENT_SHORT: Record<string, string> = {
+  claude_code: 'CC',
+  cursor: 'Cu',
+  mycelium: 'My',
+  grok: 'Gk',
+  human: 'Hu',
+};
+
+// MARKER_189.3A: Project badge color based on project_id hash
+function projectColor(pid: string): string {
+  if (!pid) return 'transparent';
+  let h = 0;
+  for (let i = 0; i < pid.length; i++) h = ((h << 5) - h + pid.charCodeAt(i)) | 0;
+  const hue = ((h % 360) + 360) % 360;
+  return `hsl(${hue}, 35%, 45%)`;
+}
+
 const HEARTBEAT_INTERVAL_PRESETS = [
   { label: '10m', value: 600 },
   { label: '30m', value: 1800 },
@@ -262,6 +280,18 @@ function TasksCompact() {
               >
                 {task.title}
               </span>
+              {/* MARKER_189.3A: project badge */}
+              {task.project_id && (
+                <span style={{ color: projectColor(task.project_id), fontSize: 6, flexShrink: 0, border: `1px solid ${projectColor(task.project_id)}`, borderRadius: 2, padding: '0 3px', lineHeight: '12px' }}>
+                  {task.project_id}
+                </span>
+              )}
+              {/* MARKER_189.3B: agent_type badge */}
+              {task.agent_type && (
+                <span style={{ color: '#7a7a7a', fontSize: 6, flexShrink: 0, background: 'rgba(255,255,255,0.04)', borderRadius: 2, padding: '0 2px', lineHeight: '12px' }}>
+                  {AGENT_SHORT[task.agent_type] || task.agent_type}
+                </span>
+              )}
               {task.assigned_to && (
                 <span style={{ color: '#8d8d8d', fontSize: 7, flexShrink: 0 }}>
                   {task.assigned_to}
@@ -398,6 +428,12 @@ function TasksExpanded() {
                   {task.title}
                 </span>
                 <span style={{ color: '#7b7b7b', fontSize: 8 }}>P{task.priority}</span>
+                {/* MARKER_189.3A: project badge (expanded) */}
+                {task.project_id && (
+                  <span style={{ color: projectColor(task.project_id), fontSize: 7, border: `1px solid ${projectColor(task.project_id)}`, borderRadius: 2, padding: '0 4px', lineHeight: '14px' }}>
+                    {task.project_id}{task.project_lane ? `/${task.project_lane}` : ''}
+                  </span>
+                )}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4 }}>
                 <span style={{ color: '#6f6f6f', fontSize: 8 }}>{task.status}</span>
