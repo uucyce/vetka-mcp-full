@@ -149,11 +149,15 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={TRANSPORT_BTN} onClick={handleSkipStart} title="Go to start">
           <IconSkipStart size={14} />
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleStepBack} title="Step back 1 frame">◄</button>
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame">
+          <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
+        </button>
         <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleStepForward} title="Step forward 1 frame">►</button>
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame">
+          <span style={{ fontFamily: 'monospace' }}>{'▸|'}</span>
+        </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipEnd} title="Go to end">
           <IconSkipEnd size={14} />
         </button>
