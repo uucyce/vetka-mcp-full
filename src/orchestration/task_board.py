@@ -669,6 +669,7 @@ class TaskBoard:
         require_closure_proof: bool = False,
         closure_tests: Optional[List[str]] = None,
         closure_files: Optional[List[str]] = None,
+        implementation_hints: Optional[str] = None,  # MARKER_191.6: Algorithm/approach guidance
     ) -> str:
         """Add a new task to the board.
 
@@ -770,6 +771,8 @@ class TaskBoard:
             "require_closure_proof": protocol_fields["require_closure_proof"],
             "closure_tests": protocol_fields["closure_tests"],
             "closure_files": protocol_fields["closure_files"],
+            # MARKER_191.6: Structured task guidance
+            "implementation_hints": implementation_hints or "",
             "closure_subtask": {
                 "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
                 "tests": [],
@@ -921,6 +924,7 @@ class TaskBoard:
                           "closure_proof", "status_history",
                           "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
                           "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
+                          "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
                           }
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
