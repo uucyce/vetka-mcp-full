@@ -202,7 +202,28 @@ Depth convention:
 
 1. `truck-driver` в manual export path иногда флапает по `sourceRasterReady`; в gated flow обычно проходит за счет retry.
 2. Risk model пока first-pass (box/z-based), не full geometry graph.
-3. Нет ещё auto-remediation: система пишет risk, но не предлагает автоматически лучшие motion/overscan параметры.
+3. Final render presets только что формализованы, но ещё не прогнаны как полноценный regression pack на всех sample.
+
+## Update 2026-03-19 — PARALLAX v1.3 Final Render Presets
+
+- В `photo_parallax_render_preview_multiplate.py` добавлены named presets:
+  - `web`: `1280x720`, `25 fps`, `libx264`, `crf 24`
+  - `social`: `1920x1080`, `30 fps`, `libx264`, `crf 20`
+  - `quality`: `2560x1440`, `25 fps`, `libx264`, `crf 18`
+- Summary/report теперь содержат:
+  - `preset`
+  - `render_settings`
+  - `video.codec_name`
+  - `video.bit_rate`
+  - `file_size_bytes`
+  - `validation.status/reasons`
+- Для `web` и `social` summary автоматически пишется в отдельные поддиректории, чтобы не перетирать `quality`:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/web`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/social`
+- Shell wrapper печатает:
+  - `MARKER_180.PARALLAX.MULTIPLATE_RENDER.PRESET`
+  - `MARKER_180.PARALLAX.MULTIPLATE_RENDER.DIR`
+  - `MARKER_180.PARALLAX.MULTIPLATE_RENDER.SUMMARY`
 
 ## 8) Быстрый старт для нового чата
 

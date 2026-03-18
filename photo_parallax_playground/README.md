@@ -29,6 +29,24 @@ Gated batch QA summary lives at:
 photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json
 ```
 
+Multi-plate preview presets:
+
+```bash
+/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_multiplate.sh \
+  --plate-export-root /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated \
+  --outdir /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated \
+  --preset web \
+  --sample hover-politsia
+```
+
+Preset summaries land in:
+
+```text
+photo_parallax_playground/output/render_preview_multiplate_qwen_gated/render_preview_multiplate_summary.json
+photo_parallax_playground/output/render_preview_multiplate_qwen_gated/web/render_preview_multiplate_summary.json
+photo_parallax_playground/output/render_preview_multiplate_qwen_gated/social/render_preview_multiplate_summary.json
+```
+
 ## Review Probe
 
 ```bash

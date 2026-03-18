@@ -14,6 +14,40 @@ from typing import Any
 from photo_parallax_subject_plate_bakeoff import save_json
 
 
+RENDER_PRESETS: dict[str, dict[str, Any]] = {
+    "web": {
+        "out_width": 1280,
+        "out_height": 720,
+        "output_fps": 25,
+        "codec": "libx264",
+        "crf": 24,
+        "supersample": 1.25,
+        "internal_fps": 25,
+        "tmix_frames": 1,
+    },
+    "social": {
+        "out_width": 1920,
+        "out_height": 1080,
+        "output_fps": 30,
+        "codec": "libx264",
+        "crf": 20,
+        "supersample": 1.5,
+        "internal_fps": 50,
+        "tmix_frames": 3,
+    },
+    "quality": {
+        "out_width": 2560,
+        "out_height": 1440,
+        "output_fps": 25,
+        "codec": "libx264",
+        "crf": 18,
+        "supersample": 2.0,
+        "internal_fps": 50,
+        "tmix_frames": 3,
+    },
+}
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render preview_multiplate.mp4 from exported plate assets.")
     parser.add_argument(
@@ -37,6 +71,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--supersample", type=float, default=2.0, help="Internal render supersampling factor.")
     parser.add_argument("--internal-fps", type=int, default=50, help="Internal render fps before final downsample.")
     parser.add_argument("--tmix-frames", type=int, default=3, help="Temporal mix frame count.")
+    parser.add_argument("--preset", choices=sorted(RENDER_PRESETS.keys()), default="quality", help="Named output preset.")
+    parser.add_argument("--out-width", type=int, help="Optional override for output width.")
+    parser.add_argument("--out-height", type=int, help="Optional override for output height.")
+    parser.add_argument("--output-fps", type=int, help="Optional override for final output fps.")
     return parser.parse_args()
 
 
@@ -53,7 +91,7 @@ def ffprobe_stream(path: Path) -> dict[str, Any]:
             "-select_streams",
             "v:0",
             "-show_entries",
-            "stream=width,height,r_frame_rate,duration,nb_frames",
+            "stream=codec_name,width,height,r_frame_rate,duration,nb_frames,bit_rate",
             "-of",
             "json",
             str(path),
@@ -65,11 +103,28 @@ def ffprobe_stream(path: Path) -> dict[str, Any]:
     payload = json.loads(result.stdout)
     stream = payload["streams"][0]
     return {
+        "codec_name": stream.get("codec_name"),
         "width": int(stream["width"]),
         "height": int(stream["height"]),
         "r_frame_rate": stream.get("r_frame_rate"),
         "duration": float(stream.get("duration", 0.0)),
         "nb_frames": stream.get("nb_frames"),
+        "bit_rate": stream.get("bit_rate"),
+    }
+
+
+def resolve_render_settings(args: argparse.Namespace) -> dict[str, Any]:
+    preset = dict(RENDER_PRESETS[args.preset])
+    return {
+        "name": args.preset,
+        "out_width": args.out_width or preset["out_width"],
+        "out_height": args.out_height or preset["out_height"],
+        "output_fps": args.output_fps or preset["output_fps"],
+        "codec": args.codec if args.codec != "libx264" or args.preset == "quality" else preset["codec"],
+        "crf": args.crf if args.crf != 18 or args.preset == "quality" else preset["crf"],
+        "supersample": args.supersample if args.supersample != 2.0 or args.preset == "quality" else preset["supersample"],
+        "internal_fps": args.internal_fps if args.internal_fps != 50 or args.preset == "quality" else preset["internal_fps"],
+        "tmix_frames": args.tmix_frames if args.tmix_frames != 3 or args.preset == "quality" else preset["tmix_frames"],
     }
 
 
@@ -133,6 +188,9 @@ def plate_motion_expr(profile: dict[str, Any], plate: dict[str, Any], axis: str)
 def build_filter_complex(
     layout: dict[str, Any],
     manifest: dict[str, Any],
+    output_width: int,
+    output_height: int,
+    output_fps: int,
     supersample: float,
     internal_fps: int,
     tmix_frames: int,
@@ -208,17 +266,21 @@ def build_filter_complex(
 
     last = f"[layer{len(ordered)}]"
     chain.append(
-        f"{last}fps={working_fps},scale=w={source_w}:h={source_h}:flags=lanczos,format=yuv420p[composite]"
+        f"{last}fps={working_fps},"
+        f"scale=w={source_w}:h={source_h}:flags=lanczos,"
+        f"scale=w={output_width}:h={output_height}:force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"pad={output_width}:{output_height}:(ow-iw)/2:(oh-ih)/2:color=black,"
+        "format=yuv420p[composite]"
     )
     if tmix_frames and tmix_frames > 1:
         weights = " ".join(["1"] * tmix_frames)
-        chain.append(f"[composite]tmix=frames={tmix_frames}:weights='{weights}',fps={profile['fps']}[v]")
+        chain.append(f"[composite]tmix=frames={tmix_frames}:weights='{weights}',fps={output_fps}[v]")
     else:
-        chain.append(f"[composite]fps={profile['fps']}[v]")
+        chain.append(f"[composite]fps={output_fps}[v]")
     return ";".join(chain), ordered_clean, ordered
 
 
-def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersample: float, internal_fps: int, tmix_frames: int) -> dict[str, Any]:
+def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> dict[str, Any]:
     manifest = load_json(sample_dir / "plate_export_manifest.json")
     layout = load_json(sample_dir / "plate_layout.json")
     output_path = out_dir / "preview_multiplate.mp4"
@@ -230,7 +292,17 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
     inputs = [*clean_inputs, sample_dir / manifest["files"]["backgroundRgba"]]
     background_meta = ffprobe_stream(inputs[-1])
     asset_scale = float(layout["source"]["width"]) / max(1.0, float(background_meta["width"]))
-    filter_complex, ordered_clean, ordered = build_filter_complex(layout, manifest, supersample, internal_fps, tmix_frames, asset_scale)
+    filter_complex, ordered_clean, ordered = build_filter_complex(
+        layout,
+        manifest,
+        settings["out_width"],
+        settings["out_height"],
+        settings["output_fps"],
+        settings["supersample"],
+        settings["internal_fps"],
+        settings["tmix_frames"],
+        asset_scale,
+    )
     routed_clean_count = sum(
         1
         for plate in layout["plates"]
@@ -254,9 +326,9 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
             "-t",
             str(layout["camera"]["durationSec"]),
             "-c:v",
-            codec,
+            settings["codec"],
             "-crf",
-            str(crf),
+            str(settings["crf"]),
             "-preset",
             "slower",
             "-pix_fmt",
@@ -277,6 +349,15 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
     )
 
     video = ffprobe_stream(output_path)
+    file_size_bytes = output_path.stat().st_size
+    validation_reasons: list[str] = []
+    validation_status = "pass"
+    if not layout.get("cameraSafe", {}).get("ok", False):
+        validation_status = "caution"
+        validation_reasons.append("camera-safe gate is not fully satisfied")
+    if video["duration"] <= 0:
+        validation_status = "fail"
+        validation_reasons.append("render duration is invalid")
     report = {
         "sample": manifest["sampleId"],
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
@@ -286,15 +367,22 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
         "plate_layout_path": str(sample_dir / "plate_layout.json"),
         "plate_manifest_path": str(sample_dir / "plate_export_manifest.json"),
         "video": video,
+        "file_size_bytes": file_size_bytes,
+        "preset": settings["name"],
+        "render_settings": settings,
         "rendered_plate_count": len(ordered),
         "special_clean_count": len(ordered_clean),
         "routed_clean_count": routed_clean_count,
         "camera_safe": layout.get("cameraSafe", {}),
         "routing": layout.get("routing", {}),
         "transition_count": len(layout.get("transitions", [])),
-        "internal_fps": internal_fps,
-        "tmix_frames": tmix_frames,
-        "supersample": supersample,
+        "internal_fps": settings["internal_fps"],
+        "tmix_frames": settings["tmix_frames"],
+        "supersample": settings["supersample"],
+        "validation": {
+            "status": validation_status,
+            "reasons": validation_reasons,
+        },
     }
     save_json(report_path, report)
     return report
@@ -303,7 +391,12 @@ def render_case(sample_dir: Path, out_dir: Path, codec: str, crf: int, supersamp
 def main() -> None:
     args = parse_args()
     export_root = Path(args.plate_export_root)
+    settings = resolve_render_settings(args)
     outdir = Path(args.outdir)
+    if args.preset != "quality" and Path(args.outdir).name == "render_preview_multiplate":
+        outdir = outdir / settings["name"]
+    if args.preset != "quality" and Path(args.outdir).name == "render_preview_multiplate_qwen_gated":
+        outdir = outdir / settings["name"]
     allowed = set(args.samples or [])
     sample_dirs = [path for path in sorted(export_root.iterdir()) if path.is_dir() and (not allowed or path.name in allowed)]
     if not sample_dirs:
@@ -311,13 +404,22 @@ def main() -> None:
 
     entries: list[dict[str, Any]] = []
     for sample_dir in sample_dirs:
-        report = render_case(sample_dir, outdir / sample_dir.name, args.codec, args.crf, args.supersample, args.internal_fps, args.tmix_frames)
+        report = render_case(sample_dir, outdir / sample_dir.name, settings)
         entries.append(report)
+
+    validation_counts = {"pass": 0, "caution": 0, "fail": 0}
+    for entry in entries:
+        status = entry.get("validation", {}).get("status", "fail")
+        validation_counts[status] = validation_counts.get(status, 0) + 1
 
     summary = {
         "created_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "plate_export_root": str(export_root),
         "outdir": str(outdir),
+        "preset": settings["name"],
+        "render_settings": settings,
+        "overall_status": "fail" if validation_counts["fail"] else ("caution" if validation_counts["caution"] else "pass"),
+        "validation_counts": validation_counts,
         "entries": entries,
         "count": len(entries),
     }
