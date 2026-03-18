@@ -68,6 +68,9 @@ export interface TaskData {
   workflow_id?: string;
   team_profile?: string;
   task_origin?: 'architect' | 'chat' | 'manual' | 'system' | string;
+  // MARKER_189.1: MCC Project binding fields
+  project_id?: string;
+  project_lane?: string;
 }
 
 // MARKER_127.0B: Pipeline results data structure
