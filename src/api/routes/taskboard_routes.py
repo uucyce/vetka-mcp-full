@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, HTTPException, Query
 
 from src.orchestration.taskboard_adapters import get_taskboard_adapter
 from src.services.roadmap_task_sync import apply_task_profile_defaults
+from src.services.mcc_project_registry import list_projects
 
 router = APIRouter(prefix="/api/taskboard", tags=["taskboard"])
 
@@ -175,6 +176,16 @@ async def update_task(task_id: str, body: Dict[str, Any] = Body(...)) -> Dict[st
             raise HTTPException(status_code=409, detail=last_error)
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
     return {"success": True, "adapter": adapter.adapter_name, "task": task}
+
+
+# MARKER_189.2A: Project list for auto-complete in task creation
+@router.get("/projects")
+async def list_registered_projects(
+    include_hidden: bool = Query(False),
+) -> Dict[str, Any]:
+    """Return registered MCC projects for task→project binding autocomplete."""
+    result = list_projects(include_hidden=include_hidden)
+    return {"success": True, "projects": result.get("projects", []), "active_project_id": result.get("active_project_id", "")}
 
 
 @router.get("/{task_id}")
