@@ -31,9 +31,20 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger("VETKA_TASK_BOARD")
 
 # MARKER_121.1: Task Board storage
-TASK_BOARD_FILE = Path(__file__).parent.parent.parent / "data" / "task_board.json"
+# MARKER_189.11: Resolve to main repo root — safe from worktree cwd confusion.
+# Priority: VETKA_MAIN_REPO env > git rev-parse > __file__-relative
+def _resolve_main_repo_root() -> Path:
+    """Find the main repo root, even when called from a worktree."""
+    env_root = os.environ.get("VETKA_MAIN_REPO")
+    if env_root and Path(env_root).is_dir():
+        return Path(env_root)
+    # __file__-relative: works when task_board.py lives in main repo (always true via .mcp.json)
+    return Path(__file__).resolve().parent.parent.parent
+
+_MAIN_ROOT = _resolve_main_repo_root()
+TASK_BOARD_FILE = _MAIN_ROOT / "data" / "task_board.json"
 _TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
-PROJECT_ROOT = TASK_BOARD_FILE.parent.parent
+PROJECT_ROOT = _MAIN_ROOT
 
 # Priority levels
 PRIORITY_CRITICAL = 1
