@@ -4,25 +4,24 @@
  * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
  * "Free windows, not fixed zones." Default arrangement:
  *
- *   Left top:      Project Panel (media bin + import)
- *   Left bottom:   DAG Project
+ *   Left:          Tabbed panel (Project | Script | DAG)
  *   Center:        Source Monitor (raw clip preview + MonitorTransport)
  *   Right:         Program Monitor (full column + MonitorTransport)
  *   Bottom:        Timeline (TimelineToolbar + TabBar + Tracks + BPM)
  */
-import { useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { usePanelLayoutStore, type DockPosition } from '../../store/usePanelLayoutStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import PanelGrid from './PanelGrid';
 import PanelShell from './PanelShell';
 import VideoPreview from './VideoPreview';
 import ProjectPanel from './ProjectPanel';
+import ScriptPanel from './ScriptPanel';
 import MonitorTransport from './MonitorTransport';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
-// StorySpace3D — removed from layout, will be separate panel
 
 // ─── Styles ───
 
@@ -63,23 +62,56 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
 
-  // ─── Left top: Project Panel — media bin + import ───
+  // ─── Left column: tabbed panel (Project | Script | DAG) ───
+  const [leftTab, setLeftTab] = useState<'project' | 'script' | 'dag'>('project');
+
   const renderLeftTop = useCallback(() => {
     return (
-      <PanelShell panelId="project" title={`Project: ${projectId || 'cut'} (${thumbnails.length} clips)`}>
-        <ProjectPanel />
+      <PanelShell panelId="project" title="Project">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Tab bar */}
+          <div style={{
+            display: 'flex',
+            height: 24,
+            background: '#0a0a0a',
+            borderBottom: '1px solid #1a1a1a',
+            flexShrink: 0,
+          }}>
+            {(['project', 'script', 'dag'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setLeftTab(tab)}
+                style={{
+                  background: leftTab === tab ? '#1a1a1a' : 'none',
+                  color: leftTab === tab ? '#ccc' : '#555',
+                  border: 'none',
+                  borderBottom: leftTab === tab ? '2px solid #4a9eff' : '2px solid transparent',
+                  padding: '0 12px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  fontFamily: 'system-ui',
+                }}
+              >
+                {tab === 'project' ? 'Project' : tab === 'script' ? 'Script' : 'DAG'}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {leftTab === 'project' && <ProjectPanel />}
+            {leftTab === 'script' && <ScriptPanel scriptText={scriptText} />}
+            {leftTab === 'dag' && (
+              <div style={{ color: '#555', padding: 12, fontSize: 11 }}>
+                DAG Project (Phase 2)
+              </div>
+            )}
+          </div>
+        </div>
       </PanelShell>
     );
-  }, [projectId, thumbnails.length]);
+  }, [leftTab, scriptText, projectId, thumbnails.length]);
 
-  // ─── Left bottom: DAG Project ───
-  const renderLeftBottom = useCallback(() => {
-    return (
-      <PanelShell panelId="dag_project" title="DAG">
-        <div style={{ color: '#666', padding: 12, fontSize: 11 }}>DAG Project (coming with Phase 2)</div>
-      </PanelShell>
-    );
-  }, []);
+  const renderLeftBottom = useCallback(() => null, []);
 
   // ─── Center: Source Monitor — raw clip preview (large area) ───
   // Phase 3 (CUT-3.2) will add feed="source" prop to VideoPreview
