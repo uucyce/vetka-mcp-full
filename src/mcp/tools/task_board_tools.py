@@ -38,7 +38,7 @@ TASK_BOARD_SCHEMA = {
         },
         # For "add":
         "title": {"type": "string", "description": "Task title (required for add)"},
-        "description": {"type": "string", "description": "Detailed task description"},
+        "description": {"type": "string", "description": "Detailed task description — free text for context, problem statement, approach"},
         "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
         "priority": {"type": "number", "description": "1=critical, 2=high, 3=medium, 4=low, 5=someday"},
         "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"], "description": "Task type"},
@@ -50,8 +50,12 @@ TASK_BOARD_SCHEMA = {
         "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
         "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
         "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
-        "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Commands required for closure proof"},
-        "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit"},
+        # MARKER_191.6: Structured task fields — discoverable by agents at tool discovery time
+        "allowed_paths": {"type": "array", "items": {"type": "string"}, "description": "Target files/directories this task should modify. Also serves as ownership guard — agent should not touch files outside this list. Example: ['src/orchestration/task_board.py', 'src/mcp/tools/']"},
+        "completion_contract": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria checklist. Each item = one verifiable condition the agent must satisfy. Example: ['API returns 200 on valid input', 'unit tests pass', 'no console errors in browser']"},
+        "implementation_hints": {"type": "string", "description": "Algorithm hints, approach notes, or technical guidance for the implementing agent. Free text. Example: 'Use re.search with word boundary, not substring match. Check _commit_matches_task for the pattern.'"},
+        "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Shell commands required for closure proof. Example: ['python -m pytest tests/test_task_board.py -v', 'python -c \"import ast; ast.parse(open(f).read())\"']"},
+        "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit at task completion. If set, only these files are staged."},
         # MARKER_130.C16B: Agent assignment fields
         "assigned_to": {"type": "string", "description": "Agent name: opus, cursor, dragon, grok"},
         "agent_type": {"type": "string", "description": "Agent type: claude_code, cursor, mycelium, grok, human"},
@@ -234,6 +238,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 task_origin=payload.get("task_origin"),
                 workflow_selection_origin=payload.get("workflow_selection_origin"),
                 completion_contract=payload.get("completion_contract"),
+                allowed_paths=payload.get("allowed_paths"),
+                implementation_hints=payload.get("implementation_hints"),
                 depends_on_docs=payload.get("depends_on_docs"),
             )
         except ValueError as exc:
@@ -299,7 +305,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         for field in ["title", "description", "priority", "phase_type", "complexity",
                        "preset", "status", "tags", "dependencies", "project_id",
                        "project_lane", "architecture_docs", "recon_docs",
-                       "closure_tests", "closure_files"]:
+                       "closure_tests", "closure_files",
+                       "allowed_paths", "completion_contract", "implementation_hints"]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 
