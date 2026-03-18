@@ -27,6 +27,7 @@ Gated batch QA summary lives at:
 
 ```text
 photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json
 ```
 
 Multi-plate preview presets:

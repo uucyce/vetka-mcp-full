@@ -27,6 +27,18 @@ python3 "$ROOT/scripts/photo_parallax_render_preview_multiplate.py" \
   --outdir "$GATED_RENDER_ROOT" \
   "${ARGS[@]}"
 
+python3 "$ROOT/scripts/photo_parallax_render_preview_multiplate.py" \
+  --plate-export-root "$GATED_EXPORT_ROOT" \
+  --outdir "$GATED_RENDER_ROOT" \
+  --preset web \
+  "${ARGS[@]}"
+
+python3 "$ROOT/scripts/photo_parallax_render_preview_multiplate.py" \
+  --plate-export-root "$GATED_EXPORT_ROOT" \
+  --outdir "$GATED_RENDER_ROOT" \
+  --preset social \
+  "${ARGS[@]}"
+
 python3 "$ROOT/scripts/photo_parallax_compare_qwen_multiplate.py" \
   --manual-render-root "$LAB/output/render_preview_multiplate" \
   --qwen-render-root "$GATED_RENDER_ROOT" \
@@ -40,7 +52,17 @@ python3 "$ROOT/scripts/photo_parallax_build_gated_batch_qa.py" \
   --outdir "$GATED_QA_ROOT" \
   "${ARGS[@]}"
 
+python3 "$ROOT/scripts/photo_parallax_build_regression_quality_pack.py" \
+  --qa-summary "$GATED_QA_ROOT/gated_batch_qa_summary.json" \
+  --compare-summary "$GATED_COMPARE_ROOT/render_compare_qwen_multiplate_summary.json" \
+  --preset-summary "$GATED_RENDER_ROOT/render_preview_multiplate_summary.json" \
+  --preset-summary "$GATED_RENDER_ROOT/web/render_preview_multiplate_summary.json" \
+  --preset-summary "$GATED_RENDER_ROOT/social/render_preview_multiplate_summary.json" \
+  --outdir "$GATED_COMPARE_ROOT" \
+  "${ARGS[@]}"
+
 echo "MARKER_180.PARALLAX.QWEN_GATED_FLOW.EXPORT_ROOT=$GATED_EXPORT_ROOT"
 echo "MARKER_180.PARALLAX.QWEN_GATED_FLOW.RENDER_ROOT=$GATED_RENDER_ROOT"
 echo "MARKER_180.PARALLAX.QWEN_GATED_FLOW.COMPARE_SUMMARY=$GATED_COMPARE_ROOT/render_compare_qwen_multiplate_summary.json"
 echo "MARKER_180.PARALLAX.QWEN_GATED_FLOW.QA_SUMMARY=$GATED_QA_ROOT/gated_batch_qa_summary.json"
+echo "MARKER_180.PARALLAX.QWEN_GATED_FLOW.REGRESSION_SUMMARY=$GATED_COMPARE_ROOT/regression_quality_summary.json"

@@ -225,6 +225,22 @@ Depth convention:
   - `MARKER_180.PARALLAX.MULTIPLATE_RENDER.DIR`
   - `MARKER_180.PARALLAX.MULTIPLATE_RENDER.SUMMARY`
 
+## Update 2026-03-19 — PARALLAX v1.4 Regression Quality Pack
+
+- Введён release-level aggregator:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_build_regression_quality_pack.py`
+- Он агрегирует:
+  - `gated_batch_qa_summary.json`
+  - `render_compare_qwen_multiplate_summary.json`
+  - preset summaries для `quality`, `web`, `social`
+- Новый итоговый артефакт:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json`
+- На каждый sample пишется:
+  - `status = pass/caution/fail`
+  - `reasons`
+  - `preset_renders`
+  - `evidence` с `manual vs gated-qwen` путями (`compare_sheet`, `compare_video`, mid-frames, preview paths)
+
 ## 8) Быстрый старт для нового чата
 
 1. Прочитать:
