@@ -1,4 +1,9 @@
 /**
+ * @deprecated MARKER_CUT_0.3: Replaced by MonitorTransport.tsx + TimelineToolbar.tsx.
+ * MonitorTransport renders under each monitor (Source/Program).
+ * TimelineToolbar renders above timeline tracks (snap, zoom only).
+ * This file kept for reference — will be removed after full migration.
+ *
  * MARKER_170.NLE.TRANSPORT: Transport controls bar for CUT NLE.
  * Play/Pause, timecode display, playback rate, zoom slider.
  * Keyboard shortcuts: Space=play/pause, J/K/L=shuttle, Left/Right=step.

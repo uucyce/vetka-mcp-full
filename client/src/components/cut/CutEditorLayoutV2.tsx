@@ -9,7 +9,7 @@
  *   Center:        Source Monitor (raw clip preview — full VideoPreview)
  *   Right top:     Program Monitor (ONLY ONE — timeline playback)
  *   Right bottom:  Inspector + Script + DAG (tab group)
- *   Bottom:        Timeline (Transport + TabBar + Tracks + BPM)
+ *   Bottom:        Timeline (TimelineToolbar + TabBar + Tracks + BPM)
  *   Floating:      StorySpace3D (mini, inside Program Monitor)
  */
 import { useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
@@ -21,7 +21,8 @@ import ScriptPanel from './ScriptPanel';
 import VideoPreview from './VideoPreview';
 import PulseInspector from './PulseInspector';
 import ProjectPanel from './ProjectPanel';
-import TransportBar from './TransportBar';
+import MonitorTransport from './MonitorTransport';
+import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
@@ -94,7 +95,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'NO CLIP';
     return (
       <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
-        <VideoPreview />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <VideoPreview />
+          </div>
+          <MonitorTransport feed="source" />
+        </div>
       </PanelShell>
     );
   }, [activeMediaPath]);
@@ -103,7 +109,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const renderRightTop = useCallback(() => {
     return (
       <PanelShell panelId="program_monitor" title="Program Monitor">
-        <VideoPreview />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <VideoPreview />
+          </div>
+          <MonitorTransport feed="program" />
+        </div>
       </PanelShell>
     );
   }, []);
@@ -132,7 +143,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     return (
       <PanelShell panelId="timeline" title={`Timeline: ${timelineId} (${thumbnails.length} clips)`}>
         <div style={TIMELINE_AREA}>
-          <TransportBar />
+          <TimelineToolbar />
           <TimelineTabBar />
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <TimelineTrackView />
