@@ -251,15 +251,19 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 if not str(t.get("project_id") or "").strip()
                 or str(t.get("project_id") or "").strip() == filter_project
             ]
-        # MARKER_189.13: Dynamic limit + count/returned/truncated metadata
-        max_limit = min(int(arguments.get("limit") or 40), 100)
+        # MARKER_189.13 + MARKER_191.4: Dynamic limit; no limit when filtering by project
         total = len(tasks)
-        page = tasks[:max_limit]
+        if filter_project and not arguments.get("limit"):
+            # Filtered query without explicit limit → return all matches
+            page = tasks
+        else:
+            max_limit = min(int(arguments.get("limit") or 40), 100)
+            page = tasks[:max_limit]
         return {
             "success": True,
             "count": total,
             "returned": len(page),
-            "truncated": total > max_limit,
+            "truncated": total > len(page),
             "tasks": [
                 {
                     "id": t["id"],
