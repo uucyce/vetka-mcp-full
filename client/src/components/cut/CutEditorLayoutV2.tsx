@@ -4,10 +4,10 @@
  * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
  * "Free windows, not fixed zones." Default arrangement:
  *
- *   Left top:      Source Monitor (raw clip preview)
+ *   Left top:      Source info (compact clip name)
  *   Left bottom:   Project Panel (media bin + import)
- *   Center:        Program Monitor (timeline playback)
- *   Right top:     Program Monitor (duplicate — or empty for now)
+ *   Center:        Source Monitor (raw clip preview — full VideoPreview)
+ *   Right top:     Program Monitor (ONLY ONE — timeline playback)
  *   Right bottom:  Inspector + Script + DAG (tab group)
  *   Bottom:        Timeline (Transport + TabBar + Tracks + BPM)
  *   Floating:      StorySpace3D (mini, inside Program Monitor)
@@ -66,12 +66,15 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
 
-  // ─── Left top: Source Monitor — raw clip preview ───
+  // ─── Left top: Source Monitor (compact) — clip info, full preview in Center ───
   const renderLeftTop = useCallback(() => {
     const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'No clip';
     return (
       <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
-        <VideoPreview />
+        <div style={{ color: '#666', padding: 12, fontSize: 11, textAlign: 'center' }}>
+          <div style={{ marginBottom: 8, color: '#888' }}>SOURCE: {clipName}</div>
+          <div>Full preview in center panel</div>
+        </div>
       </PanelShell>
     );
   }, [activeMediaPath]);
@@ -85,16 +88,18 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     );
   }, [projectId, thumbnails.length]);
 
-  // ─── Center: Program Monitor — timeline playback ───
+  // ─── Center: Source Monitor — raw clip preview (large area) ───
+  // Phase 3 (CUT-3.2) will add feed="source" prop to VideoPreview
   const renderCenter = useCallback(() => {
+    const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'NO CLIP';
     return (
-      <PanelShell panelId="program_monitor" title="Program Monitor">
+      <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
         <VideoPreview />
       </PanelShell>
     );
-  }, []);
+  }, [activeMediaPath]);
 
-  // ─── Right top: Program Monitor (secondary) ───
+  // ─── Right top: Program Monitor (ONLY ONE — timeline playback) ───
   const renderRightTop = useCallback(() => {
     return (
       <PanelShell panelId="program_monitor" title="Program Monitor">

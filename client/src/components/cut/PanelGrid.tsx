@@ -60,8 +60,8 @@ interface PanelGridProps {
  *
  *   ┌──────────┬─────────────────┬──────────┐
  *   │  LEFT    │     CENTER      │  RIGHT   │
- *   │  TOP     │  (Program Mon.) │  TOP     │
- *   │(Src Mon.)│                 │(Prg Mon.)│
+ *   │  TOP     │ (Source Monitor)│  TOP     │
+ *   │(Src info)│                 │(Prg Mon.)│
  *   ├──────────┤                 ├──────────┤
  *   │  LEFT    │                 │  RIGHT   │
  *   │  BOTTOM  │                 │  BOTTOM  │
