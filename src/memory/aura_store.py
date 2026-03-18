@@ -306,14 +306,39 @@ class AuraStore:
         # Try Qdrant
         return self._qdrant_get_full(user_id)
 
+    # MARKER_187.11: ENGRAM L1 promotion threshold
+    ENGRAM_PROMOTE_THRESHOLD = 5
+
     def _increment_usage(self, user_id: str, category: str, key: str):
-        """Track usage count for offload decision."""
+        """Track usage count for offload decision + ENGRAM L1 promotion."""
         if user_id not in self.usage_counts:
             self.usage_counts[user_id] = {}
 
         pref_key = f"{category}.{key}"
         current = self.usage_counts[user_id].get(pref_key, 0)
-        self.usage_counts[user_id][pref_key] = current + 1
+        new_count = current + 1
+        self.usage_counts[user_id][pref_key] = new_count
+
+        # MARKER_187.11: Auto-promote to ENGRAM L1 at threshold
+        if new_count == self.ENGRAM_PROMOTE_THRESHOLD and category == "tool_usage_patterns":
+            self._promote_to_engram(user_id, category, key)
+
+    def _promote_to_engram(self, user_id: str, category: str, key: str):
+        """MARKER_187.11: Promote frequent AURA pattern to ENGRAM L1 cache."""
+        try:
+            from src.memory.engram_cache import get_engram_cache, EngramCache
+            cache = get_engram_cache()
+            engram_key = EngramCache.make_key("*", "*", "tool_select", "*")
+            # Use more specific key with the actual preference key
+            engram_key = f"*::*::tool_select::{key}"
+            # Check if already exists
+            if engram_key not in cache._cache:
+                value = f"User frequently uses {key} (auto-promoted from AURA, count>={self.ENGRAM_PROMOTE_THRESHOLD})"
+                cache.put(engram_key, value, category="tool_select",
+                          source_learning_id=f"aura:{user_id}:{category}.{key}")
+                logger.info(f"[AuraStore] Promoted to ENGRAM L1: {key} (count={self.ENGRAM_PROMOTE_THRESHOLD})")
+        except Exception as e:
+            logger.debug(f"[AuraStore] ENGRAM L1 promotion failed: {e}")
 
     def _maybe_offload_to_ram(
         self, agent_type: str, user_id: str, category: str, key: str, value: Any

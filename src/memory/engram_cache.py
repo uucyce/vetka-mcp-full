@@ -52,6 +52,9 @@ class EngramEntry:
     created_at: float = field(default_factory=time.time)
     last_hit: float = field(default_factory=time.time)
     source_learning_id: Optional[str] = None
+    # MARKER_187.10: Demotion tracking
+    was_presented: bool = False
+    presented_at: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -153,6 +156,60 @@ class EngramCache:
             entry.last_hit = time.time()
             return entry
         return None
+
+    # ============ MARKER_187.10: Demotion ============
+
+    def mark_presented(self, key: str) -> bool:
+        """Mark entry as presented to agent during session."""
+        entry = self._cache.get(key)
+        if entry:
+            entry.was_presented = True
+            entry.presented_at = time.time()
+            self._save()
+            return True
+        return False
+
+    def get_presented(self) -> List[EngramEntry]:
+        """Get all entries presented in current session (was_presented=True)."""
+        return [e for e in self._cache.values() if e.was_presented]
+
+    def demote_if_ignored(self, key: str, task_succeeded: bool) -> bool:
+        """
+        Demote entry from L1 if agent ignored the advice AND task succeeded.
+
+        Logic:
+        - Entry was presented but agent didn't follow it
+        - Task succeeded anyway → lesson may be stale → demote
+        - Task failed → lesson was correct → keep it
+        - category="danger" → NEVER demote
+
+        Returns True if demoted.
+        """
+        entry = self._cache.get(key)
+        if not entry:
+            return False
+        if not entry.was_presented:
+            return False
+        if entry.category == "danger":
+            logger.debug(f"[ENGRAM L1] Skipping demotion for danger entry: {key}")
+            return False
+        if task_succeeded:
+            del self._cache[key]
+            self._save()
+            logger.info(f"[ENGRAM L1] Demoted (ignored + succeeded): {key}")
+            return True
+        # Task failed → lesson was right, boost it
+        entry.hit_count += 1
+        entry.was_presented = False
+        self._save()
+        return False
+
+    def reset_presented(self):
+        """Reset all was_presented flags (call at session end)."""
+        for entry in self._cache.values():
+            entry.was_presented = False
+            entry.presented_at = None
+        self._save()
 
     def find_pair_warnings(self, filename: str) -> List[EngramEntry]:
         """Find all pair entries involving this file. Returns partner warnings."""

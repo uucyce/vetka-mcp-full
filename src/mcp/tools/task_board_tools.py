@@ -17,9 +17,96 @@ TODO MARKER_126.11C: Add fourth tool:
 """
 
 import logging
-from typing import Dict, Any
+import os
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 logger = logging.getLogger("VETKA_MCP")
+
+
+# MARKER_191.7: Resolve project root for doc file reading
+def _resolve_project_root() -> Path:
+    """Find the main repo root for resolving doc paths."""
+    env_root = os.environ.get("VETKA_MAIN_REPO")
+    if env_root and Path(env_root).is_dir():
+        return Path(env_root)
+    return Path(__file__).resolve().parent.parent.parent
+
+
+_PROJECT_ROOT = _resolve_project_root()
+
+
+def _load_docs_content_sync(
+    task: Dict[str, Any],
+    budget: int = 65536,
+    per_doc: int = 16384,
+) -> str:
+    """MARKER_191.7: Read architecture_docs + recon_docs file contents synchronously.
+
+    Used by claim/get actions to inject doc content into MCP response.
+    MCP agents (Claude Code, Desktop, Cursor) don't go through dispatch_task,
+    so they need docs content at claim/get time.
+
+    Args:
+        task: Task dict with architecture_docs/recon_docs fields
+        budget: Total chars budget (default 64KB)
+        per_doc: Per-document char cap (default 16KB)
+
+    Returns:
+        Formatted docs string, or empty string if no docs
+    """
+    doc_paths = []
+    for field in ("architecture_docs", "recon_docs"):
+        for doc_ref in (task.get(field) or []):
+            doc_ref = str(doc_ref).strip()
+            if doc_ref:
+                doc_paths.append((field, doc_ref))
+
+    if not doc_paths:
+        return ""
+
+    sections = []
+    total_chars = 0
+    docs_included = 0
+    docs_skipped = []
+
+    for field, doc_ref in doc_paths:
+        if total_chars >= budget:
+            docs_skipped.append(doc_ref)
+            continue
+
+        full_path = _PROJECT_ROOT / doc_ref
+        if not full_path.exists():
+            full_path = _PROJECT_ROOT / doc_ref.lstrip("/")
+        if not full_path.exists():
+            docs_skipped.append(f"{doc_ref} (not found)")
+            continue
+
+        try:
+            content = full_path.read_text(encoding="utf-8", errors="replace")
+            if len(content) > per_doc:
+                content = content[:per_doc] + f"\n... [truncated, {len(content)} total chars]"
+
+            remaining = budget - total_chars
+            if len(content) > remaining:
+                content = content[:remaining] + "\n... [budget exceeded]"
+
+            sections.append(f"### {doc_ref} ({field})\n{content}")
+            total_chars += len(content)
+            docs_included += 1
+        except Exception as e:
+            docs_skipped.append(f"{doc_ref} (error: {e})")
+
+    if not sections:
+        return ""
+
+    header = f"--- DOCS ({docs_included} files"
+    if docs_skipped:
+        header += f", {len(docs_skipped)} skipped"
+    header += ") ---\n"
+    footer = "\n--- END DOCS ---"
+
+    return header + "\n\n".join(sections) + footer
 
 
 # ==========================================
@@ -295,7 +382,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         task = board.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
-        return {"success": True, "task": task}
+        # MARKER_191.7: Auto-inject docs content for MCP agents
+        docs = _load_docs_content_sync(task)
+        result = {"success": True, "task": task}
+        if docs:
+            result["docs_content"] = docs
+        return result
 
     elif action == "update":
         task_id = arguments.get("task_id")
@@ -330,6 +422,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": True, **summary}
 
     # MARKER_130.C16B: claim action
+    # MARKER_191.7: Enhanced claim — returns full task + docs content
     elif action == "claim":
         task_id = arguments.get("task_id")
         if not task_id:
@@ -337,6 +430,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         agent_name = arguments.get("assigned_to", "unknown")
         agent_type = arguments.get("agent_type", "unknown")
         result = board.claim_task(task_id, agent_name, agent_type)
+        # Inject full task + docs on successful claim
+        if result.get("success"):
+            task = board.get_task(task_id)
+            if task:
+                result["task"] = task
+                docs = _load_docs_content_sync(task)
+                if docs:
+                    result["docs_content"] = docs
         return result
 
     # MARKER_181.4: complete action — unified pipeline
