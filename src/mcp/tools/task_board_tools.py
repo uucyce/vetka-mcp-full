@@ -242,6 +242,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "list":
         filter_status = arguments.get("filter_status")
         tasks = board.get_queue(status=filter_status)
+        # MARKER_189.10C: Filter by project_id if provided
+        filter_project = str(arguments.get("project_id") or "").strip()
+        if filter_project:
+            tasks = [
+                t for t in tasks
+                if not str(t.get("project_id") or "").strip()
+                or str(t.get("project_id") or "").strip() == filter_project
+            ]
         return {
             "success": True,
             "count": len(tasks),
@@ -254,7 +262,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     "phase_type": t["phase_type"],
                     "complexity": t["complexity"],
                     "source": t.get("source", ""),
-                    "assigned_tier": t.get("assigned_tier")
+                    "assigned_tier": t.get("assigned_tier"),
+                    "project_id": t.get("project_id", ""),
                 }
                 for t in tasks[:20]  # Limit to 20 for readability
             ]

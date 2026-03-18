@@ -263,6 +263,7 @@ async def analytics_context():
 async def analytics_dag_tasks(
     limit: int = Query(50, ge=1, le=200, description="Max tasks to include"),
     status_filter: Optional[str] = Query(None, description="Filter by status"),
+    project_id: str = Query("", description="Filter by project_id (MARKER_189.10B)"),
 ):
     """Task DAG nodes + edges for ReactFlow visualization.
 
@@ -304,6 +305,15 @@ async def analytics_dag_tasks(
         if status_filter:
             sorted_tasks = [
                 (tid, t) for tid, t in sorted_tasks if t.get("status") == status_filter
+            ]
+
+        # MARKER_189.10B: Filter by project_id (show matching + unassigned)
+        _scoped_pid = str(project_id or "").strip()
+        if _scoped_pid:
+            sorted_tasks = [
+                (tid, t) for tid, t in sorted_tasks
+                if not str(t.get("project_id") or "").strip()
+                or str(t.get("project_id") or "").strip() == _scoped_pid
             ]
 
         task_ids = {tid for tid, _ in sorted_tasks}

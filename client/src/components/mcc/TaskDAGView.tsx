@@ -25,6 +25,7 @@ import { NOLAN_PALETTE } from '../../utils/dagLayout';
 import { TaskDAGNode } from './nodes/TaskDAGNode';
 // MARKER_176.15: Centralized MCC API config import.
 import { ANALYTICS_API } from '../../config/api.config';
+import { useMCCStore } from '../../store/useMCCStore';
 
 
 const nodeTypes = { taskNode: TaskDAGNode };
@@ -92,11 +93,14 @@ export function TaskDAGView({
   const [rawEdges, setRawEdges] = useState<Edge[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // MARKER_189.10B: Project-scoped DAG
+  const activeProjectId = useMCCStore((s) => s.activeProjectId);
 
   // Fetch task DAG data
   const fetchDAG = useCallback(async () => {
     try {
-      const res = await fetch(`${ANALYTICS_API}/dag/tasks?limit=50`);
+      const pidQs = activeProjectId ? `&project_id=${encodeURIComponent(activeProjectId)}` : '';
+      const res = await fetch(`${ANALYTICS_API}/dag/tasks?limit=50${pidQs}`);
       if (!res.ok) {
         setError(`API ${res.status}`);
         return;
@@ -130,7 +134,7 @@ export function TaskDAGView({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeProjectId]);
 
   // Fetch on mount + event-driven refresh
   useEffect(() => {

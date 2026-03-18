@@ -1054,6 +1054,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       if (!res.ok) return false;
       set({ activeProjectId: pid });
       await get().initMCC(pid);
+      // MARKER_189.10A: Refresh tasks after project switch
+      await get().fetchTasks();
       get().announceProjectRegistryChanged(pid, 'activate');
       return true;
     } catch (err) {
