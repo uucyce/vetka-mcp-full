@@ -7816,3 +7816,36 @@ async def cut_project_dag(
         "nodes": dag_nodes,
         "edges": dag_edges,
     }
+
+
+# ─── MARKER_CUT_1.2: Script parse endpoint ───
+
+@router.post("/script/parse")
+async def cut_script_parse(body: dict) -> dict:
+    """
+    Parse screenplay text into SceneChunks with chronological timing.
+
+    Input: {"text": "INT. CAFE - DAY\n..."}
+    Output: {"success": true, "chunks": [...], "total_duration_sec": N, "page_count": N}
+
+    MVP: plain text only. Fountain/FDX/PDF/DOCX = Phase 2.
+    """
+    from src.services.screenplay_timing import parse_screenplay, get_total_duration, get_total_pages
+    from dataclasses import asdict
+
+    text = body.get("text", "")
+    if not text or not text.strip():
+        return {
+            "success": True,
+            "chunks": [],
+            "total_duration_sec": 0.0,
+            "page_count": 0.0,
+        }
+
+    chunks = parse_screenplay(text)
+    return {
+        "success": True,
+        "chunks": [asdict(c) for c in chunks],
+        "total_duration_sec": get_total_duration(chunks),
+        "page_count": get_total_pages(chunks),
+    }
