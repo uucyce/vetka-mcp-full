@@ -347,6 +347,24 @@ class TaskBoard:
         )
 
         logger.info(f"[TaskBoard] Task {task_id} failure #{attempt} recorded, reset to pending")
+
+        # MARKER_187.12: Feed failure into memory subsystems (non-blocking)
+        try:
+            from src.memory.failure_feedback import record_failure_feedback
+            failed_tools = []
+            if verifier_feedback:
+                failed_tools = verifier_feedback.get("failed_tools", [])
+            record_failure_feedback(
+                task_id=task_id,
+                error_summary="; ".join(issues[:3]) if issues else "pipeline failure",
+                failed_tools=failed_tools,
+                tier_used=tier_used,
+                attempt=attempt,
+                severity=verifier_feedback.get("severity", "major") if verifier_feedback else "major",
+            )
+        except Exception as e:
+            logger.debug(f"[TaskBoard] Failure feedback skipped: {e}")
+
         return {"success": True, "attempt": attempt, "task_id": task_id}
 
     @staticmethod

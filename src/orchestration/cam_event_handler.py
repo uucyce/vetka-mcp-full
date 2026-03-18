@@ -37,6 +37,7 @@ class CAMEventType(Enum):
     CHAT_FAVORITED = "chat_favorited"
     WORKFLOW_COMPLETED = "workflow_completed"
     PERIODIC_MAINTENANCE = "periodic_maintenance"
+    PIPELINE_FAILED = "pipeline_failed"  # MARKER_187.12: Failure feedback loop
 
 
 @dataclass
@@ -123,6 +124,8 @@ class CAMEventHandler:
                 result = await self._handle_workflow_complete(event.payload)
             elif event.event_type == CAMEventType.PERIODIC_MAINTENANCE:
                 result = await self._run_maintenance()
+            elif event.event_type == CAMEventType.PIPELINE_FAILED:
+                result = await self._handle_pipeline_failure(event.payload)
             else:
                 print(f"[CAM_EVENT] Unknown event type: {event.event_type}")
                 return {"status": "unknown_event", "event_type": str(event.event_type)}
@@ -262,6 +265,35 @@ class CAMEventHandler:
         print(f"[CAM_EVENT] Workflow {workflow_id} completed, running maintenance...")
 
         return await self._run_maintenance()
+
+    async def _handle_pipeline_failure(self, payload: Dict) -> Dict:
+        """
+        MARKER_187.12: Handle pipeline_failed event — feed failure into memory.
+
+        Calls failure_feedback.record_failure_feedback() which fans out to
+        STM (boosted weight), CORTEX (tool failure), and ENGRAM (pair warnings).
+
+        Args:
+            payload: {task_id, error, failed_tools, tier_used, severity, ...}
+        """
+        from src.memory.failure_feedback import record_failure_feedback
+
+        task_id = payload.get("task_id", "unknown")
+        error = payload.get("error", "unknown failure")
+
+        result = record_failure_feedback(
+            task_id=task_id,
+            error_summary=error,
+            failed_tools=payload.get("failed_tools"),
+            tier_used=payload.get("tier_used", ""),
+            phase_type=payload.get("phase_type", "build"),
+            attempt=payload.get("attempt", 1),
+            severity=payload.get("severity", "major"),
+            subtask_context=payload.get("subtask_context"),
+        )
+
+        print(f"[CAM_EVENT] Pipeline failure feedback for {task_id}: {result.get('stm', {}).get('status', 'skip')}")
+        return {"status": "failure_recorded", "task_id": task_id, "feedback": result}
 
     async def _handle_chat_favorited(self, payload: Dict) -> Dict:
         """
