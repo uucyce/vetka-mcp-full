@@ -1809,9 +1809,11 @@ async def get_task_board_api(project_id: str = "") -> Dict[str, Any]:
     tasks = board.get_queue()  # All tasks, sorted by priority
     scoped_project_id = str(project_id or "").strip()
     if scoped_project_id:
+        # MARKER_189.8: Show tasks for active project + unassigned tasks (no project_id)
         tasks = [
             task for task in tasks
-            if str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
+            if not str(task.get("project_id") or "").strip()
+            or str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
         ]
         summary = {
             "total": len(tasks),
@@ -2368,10 +2370,12 @@ async def get_active_agents_api(project_id: str = "") -> Dict[str, Any]:
     agents = board.get_active_agents()
     scoped_project_id = str(project_id or "").strip()
     if scoped_project_id:
+        # MARKER_189.8: Include unassigned tasks in agent scope
         allowed_task_ids = {
             str(task.get("id") or "")
             for task in board.get_queue()
-            if str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
+            if not str(task.get("project_id") or "").strip()
+            or str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
         }
         agents = [agent for agent in agents if str(agent.get("task_id") or "") in allowed_task_ids]
     return {"success": True, "agents": agents, "count": len(agents)}
