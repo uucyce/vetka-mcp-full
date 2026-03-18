@@ -89,6 +89,8 @@ _UPDATE_FIELDS = {
     "touch_policy",
     "overlap_risk",
     "depends_on_docs",
+    "project_id",
+    "project_lane",
     "feedback",
     "result_status",
     "result_summary",

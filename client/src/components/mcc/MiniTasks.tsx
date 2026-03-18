@@ -7,10 +7,11 @@
  * MARKER_155E.WF.EXEC.HEARTBEAT_TASK_PANEL_CONTROL.V1
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MiniWindow } from './MiniWindow';
 import { useMCCStore } from '../../store/useMCCStore';
 import { NOLAN_PALETTE } from '../../utils/dagLayout';
+import { API_BASE } from '../../config/api.config';
 import type { TaskData } from '../panels/TaskCard';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -343,6 +344,129 @@ function TasksCompact() {
   );
 }
 
+// MARKER_189.4A: Assign Projects modal for batch project assignment
+function AssignProjectsModal({ onClose }: { onClose: () => void }) {
+  const tasks = useMCCStore((s) => s.tasks);
+  const projectTabs = useMCCStore((s) => s.projectTabs);
+  const fetchTasks = useMCCStore((s) => s.fetchTasks);
+  const [selectedProject, setSelectedProject] = useState('');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [assigning, setAssigning] = useState(false);
+
+  const unmapped = useMemo(() => tasks.filter((t) => !t.project_id), [tasks]);
+
+  const toggleTask = useCallback((id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const selectAll = useCallback(() => {
+    setSelected(new Set(unmapped.map((t) => t.id)));
+  }, [unmapped]);
+
+  const assignAll = useCallback(async () => {
+    if (!selectedProject || selected.size === 0) return;
+    setAssigning(true);
+    try {
+      await Promise.all(
+        Array.from(selected).map((taskId) =>
+          fetch(`${API_BASE}/taskboard/${taskId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ project_id: selectedProject }),
+          })
+        )
+      );
+      await fetchTasks();
+      onClose();
+    } catch (err) {
+      console.error('[MCC] Batch assign failed:', err);
+    } finally {
+      setAssigning(false);
+    }
+  }, [selectedProject, selected, fetchTasks, onClose]);
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 9999,
+      background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+    }} onClick={onClose}>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#1a1a1e', border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+          borderRadius: 6, padding: 16, minWidth: 320, maxWidth: 480, maxHeight: '70vh',
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}
+      >
+        <div style={{ color: '#e0e0e0', fontSize: 11, fontWeight: 600 }}>Assign Projects</div>
+
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          <select
+            value={selectedProject}
+            onChange={(e) => setSelectedProject(e.target.value)}
+            style={{
+              flex: 1, background: 'rgba(255,255,255,0.05)', border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+              borderRadius: 3, color: '#ccc', fontSize: 9, padding: '4px 6px', fontFamily: 'monospace',
+            }}
+          >
+            <option value="">select project...</option>
+            {projectTabs.map((p: any) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.display_name || p.project_id}
+              </option>
+            ))}
+          </select>
+          <button onClick={selectAll} style={{
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`, borderRadius: 3,
+            background: 'rgba(255,255,255,0.06)', color: '#aaa', fontSize: 8, padding: '3px 8px', cursor: 'pointer',
+          }}>all</button>
+        </div>
+
+        <div style={{ flex: 1, minHeight: 0, maxHeight: 300, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {unmapped.length === 0 && (
+            <div style={{ color: '#666', fontSize: 9, padding: 8 }}>All tasks have a project assigned.</div>
+          )}
+          {unmapped.map((task) => (
+            <label key={task.id} style={{
+              display: 'flex', alignItems: 'center', gap: 6, padding: '3px 4px', cursor: 'pointer',
+              background: selected.has(task.id) ? 'rgba(255,255,255,0.05)' : 'transparent', borderRadius: 3,
+            }}>
+              <input type="checkbox" checked={selected.has(task.id)} onChange={() => toggleTask(task.id)} />
+              <span style={{ color: '#ccc', fontSize: 9, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {task.title}
+              </span>
+              <span style={{ color: '#666', fontSize: 7 }}>{task.status}</span>
+            </label>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={{
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`, borderRadius: 3,
+            background: 'transparent', color: '#888', fontSize: 9, padding: '4px 12px', cursor: 'pointer',
+          }}>cancel</button>
+          <button
+            onClick={assignAll}
+            disabled={!selectedProject || selected.size === 0 || assigning}
+            style={{
+              border: `1px solid ${NOLAN_PALETTE.borderDim}`, borderRadius: 3,
+              background: selectedProject && selected.size > 0 ? 'rgba(120,170,120,0.2)' : 'rgba(255,255,255,0.04)',
+              color: selectedProject && selected.size > 0 ? '#b9ddb9' : '#555',
+              fontSize: 9, padding: '4px 12px', cursor: 'pointer',
+            }}
+          >
+            {assigning ? 'assigning...' : `assign ${selected.size} tasks`}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TasksExpanded() {
   const tasks = useMCCStore((s) => s.tasks);
   const selectedTaskId = useMCCStore((s) => s.selectedTaskId);
@@ -350,6 +474,7 @@ function TasksExpanded() {
   const fetchTasks = useMCCStore((s) => s.fetchTasks);
 
   const [query, setQuery] = useState('');
+  const [showAssignModal, setShowAssignModal] = useState(false);
   const [status, setStatus] = useState<'all' | 'pending' | 'queued' | 'running' | 'done' | 'failed'>('all');
   const rowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -421,10 +546,23 @@ function TasksExpanded() {
           </button>
         ))}
         <AllProjectsToggle />
+        {/* MARKER_189.4A: Assign Projects button */}
+        <button
+          onClick={() => setShowAssignModal(true)}
+          style={{
+            border: `1px solid ${NOLAN_PALETTE.borderDim}`, borderRadius: 3,
+            background: 'rgba(255,255,255,0.04)', color: '#a9b2bc',
+            fontSize: 8, padding: '2px 6px', cursor: 'pointer',
+            textTransform: 'uppercase', letterSpacing: 0.3,
+          }}
+        >
+          assign
+        </button>
       </div>
 
       <SelectedTaskActions selectedTask={selectedTask} />
       <HeartbeatControls />
+      {showAssignModal && <AssignProjectsModal onClose={() => setShowAssignModal(false)} />}
 
       <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
         {filtered.map((task) => {
