@@ -1,0 +1,435 @@
+# VETKA MCP Tool Reference
+
+> Auto-generated from MCP schema definitions on 2026-03-18 06:20 UTC
+> Generator: `scripts/generate_mcp_docs.py` (MARKER_191.5)
+> Total tools: **31**
+
+## Table of Contents
+
+- [`vetka_approve_artifact`](#vetka-approve-artifact)
+- [`vetka_arc_suggest`](#vetka-arc-suggest)
+- [`vetka_call_model`](#vetka-call-model)
+- [`vetka_camera_focus`](#vetka-camera-focus)
+- [`vetka_edit_artifact`](#vetka-edit-artifact)
+- [`vetka_edit_file`](#vetka-edit-file)
+- [`vetka_get_chat_digest`](#vetka-get-chat-digest)
+- [`vetka_get_conversation_context`](#vetka-get-conversation-context)
+- [`vetka_get_knowledge_graph`](#vetka-get-knowledge-graph)
+- [`vetka_get_media_window_debug`](#vetka-get-media-window-debug)
+- [`vetka_get_memory_summary`](#vetka-get-memory-summary)
+- [`vetka_get_metrics`](#vetka-get-metrics)
+- [`vetka_get_tree`](#vetka-get-tree)
+- [`vetka_get_user_preferences`](#vetka-get-user-preferences)
+- [`vetka_git_commit`](#vetka-git-commit)
+- [`vetka_git_status`](#vetka-git-status)
+- [`vetka_health`](#vetka-health)
+- [`vetka_heartbeat_status`](#vetka-heartbeat-status)
+- [`vetka_heartbeat_tick`](#vetka-heartbeat-tick)
+- [`vetka_list_artifacts`](#vetka-list-artifacts)
+- [`vetka_list_files`](#vetka-list-files)
+- [`vetka_mycelium_pipeline`](#vetka-mycelium-pipeline)
+- [`vetka_read_file`](#vetka-read-file)
+- [`vetka_read_group_messages`](#vetka-read-group-messages)
+- [`vetka_reject_artifact`](#vetka-reject-artifact)
+- [`vetka_run_tests`](#vetka-run-tests)
+- [`vetka_search_files`](#vetka-search-files)
+- [`vetka_search_semantic`](#vetka-search-semantic)
+- [`vetka_send_message`](#vetka-send-message)
+- [`vetka_task_dispatch`](#vetka-task-dispatch)
+- [`vetka_task_import`](#vetka-task-import)
+
+---
+
+## `vetka_approve_artifact`
+
+Approve an artifact for deployment/integration. Marks artifact as approved in approval service. Use after reviewing generated code artifacts.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `artifact_id` | `string` | Yes | — | Artifact ID to approve |
+| `reason` | `string` | No | `Approved via MCP` | Approval reason (optional) |
+
+---
+
+## `vetka_arc_suggest`
+
+Generate ARC (Adaptive Reasoning Context) suggestions for workflow graphs. Uses abstraction and reasoning to find creative improvements, connections, and optimizations in workflow structures. Returns top-ranked transformation suggestions.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `context` | `string` | Yes | — | Task or problem context (human-readable description) |
+| `workflow_id` | `string` | No | `mcp_workflow` | Optional workflow ID for tracking (default: 'mcp_workflow') |
+| `graph_data` | `object` | No | — | Optional graph data with 'nodes' and 'edges' keys. If not provided, a minimal graph will be created from context. |
+| `num_candidates` | `integer` | No | `10` | Number of transformation candidates to generate (default: 10, range: 3-20) (min: 3, max: 20) |
+| `min_score` | `number` | No | `0.5` | Minimum quality score to include in results (0.0-1.0, default: 0.5) (min: 0.0, max: 1.0) |
+
+---
+
+## `vetka_call_model`
+
+Call any LLM model through VETKA infrastructure (Grok, GPT, Claude, Gemini, Ollama). Supports function calling for compatible models.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `model` | `string` | Yes | — | Model: grok-4, gpt-4o, claude-opus-4-5, gemini-2.0-flash, llama3.1:8b, etc. |
+| `messages` | `array[object]` | Yes | — | Chat messages [{role, content}] |
+| `temperature` | `number` | No | `0.7` | Temperature (0.0-2.0, default: 0.7) (min: 0.0, max: 2.0) |
+| `max_tokens` | `integer` | No | `4096` | Max tokens to generate (default: 4096) (min: 1) |
+| `tools` | `array[object]` | No | — | Optional function calling tools (OpenAI format) |
+| `inject_context` | `object` | No | — | Phase 55.2: Auto-inject VETKA context into system prompt. Saves tokens! |
+| `model_source` | `string` | No | — | Source provider for routing (e.g., 'polza', 'poe', 'openrouter'). Overrides auto-detection from model name. |
+
+---
+
+## `vetka_camera_focus`
+
+Move 3D camera to focus on a specific file, branch, or overview. Use to show user something important in the visualization. Requires active VETKA UI session.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `target` | `string` | Yes | — | File path (e.g., 'src/main.py'), branch name, or 'overview' for full tree |
+| `zoom` | `string` | No | `medium` | Zoom level Values: `close`, `medium`, `far` |
+| `highlight` | `boolean` | No | `true` | Highlight target with glow effect |
+
+---
+
+## `vetka_edit_artifact`
+
+Edit artifact content by artifact_id. Updates artifact file on disk. Use for modifying code artifacts generated by workflow agents.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `artifact_id` | `string` | Yes | — | Artifact ID (e.g., 'art_123', file path in artifacts/) |
+| `content` | `string` | Yes | — | New artifact content |
+| `reason` | `string` | No | `Manual edit via MCP` | Reason for edit (optional) |
+
+---
+
+## `vetka_edit_file`
+
+Edit or create a file. Creates backup before changes. Default: dry_run=true (preview only). Set dry_run=false to apply changes.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | File path (relative to project root, e.g., 'src/main.py') |
+| `content` | `string` | Yes | — | New file content |
+| `mode` | `string` | No | `write` | Write mode: 'write' replaces file, 'append' adds to end Values: `write`, `append` |
+| `create_dirs` | `boolean` | No | `false` | Create parent directories if they don't exist |
+| `dry_run` | `boolean` | No | `true` | Preview only (no actual write). Set to false to apply changes. |
+
+---
+
+## `vetka_get_chat_digest`
+
+Get chat digest for MCP context injection. Returns recent messages, agent logs, and summary for a specific chat. Use this to understand chat context efficiently.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `chat_id` | `string` | Yes | — | Chat UUID to get digest for |
+| `max_messages` | `integer` | No | `10` | Max recent messages to include (default: 10) |
+
+---
+
+## `vetka_get_conversation_context`
+
+Get ELISION-compressed conversation context. Use before responding to get relevant conversation history with 40-60% token savings. Returns compressed context suitable for prompt injection.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `group_id` | `string` | No | — | Group ID to get context from (optional) |
+| `max_messages` | `integer` | No | `20` | Max messages to include in context (default: 20) |
+| `compress` | `boolean` | No | `true` | Apply ELISION compression (default: true) |
+
+---
+
+## `vetka_get_knowledge_graph`
+
+Get VETKA knowledge graph structure showing relationships between code entities, concepts, and documents. Useful for understanding architecture and dependencies.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `format` | `string` | No | `summary` | Output format Values: `json`, `summary` |
+
+---
+
+## `vetka_get_media_window_debug`
+
+Get the latest detached media window debug snapshot. Shows native Tauri geometry, DOM wrapper geometry, toolbar size, video intrinsic size, and measured letterboxing.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | `string` | No | — | Optional exact media path filter |
+| `src` | `string` | No | — | Optional media source/name substring filter |
+
+---
+
+## `vetka_get_memory_summary`
+
+Get CAM (Context-Aware Memory) and Elisium compression summary. Returns: active memory nodes, compression stats, age distribution, quality scores. Use to understand what context is available and its quality level.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `include_stats` | `boolean` | No | `true` | Include compression statistics (default: true) |
+| `include_nodes` | `boolean` | No | `false` | Include list of active memory nodes (default: false) |
+
+---
+
+## `vetka_get_metrics`
+
+Get VETKA metrics and analytics. Shows system performance, query stats, and usage data.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `metric_type` | `string` | No | `dashboard` | Type of metrics to retrieve Values: `dashboard`, `agents`, `all` |
+
+---
+
+## `vetka_get_tree`
+
+Get VETKA 3D tree structure showing files and folders hierarchy. Useful for understanding project structure and navigating codebase.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `format` | `string` | No | `summary` | Output format: 'tree' for full structure, 'summary'/'simple' for stats only Values: `tree`, `summary`, `simple` |
+
+---
+
+## `vetka_get_user_preferences`
+
+Get user preferences from Engram memory. Returns hot preferences (frequently accessed) from RAM cache plus cold preferences from Qdrant. Use to personalize responses based on user's communication style, favorite topics, etc.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `user_id` | `string` | No | `danila` | User ID (default: 'danila') |
+| `category` | `string` | No | — | Preference category to fetch (optional, returns all if not specified) Values: `communication_style`, `viewport_patterns`, `code_preferences`, `topics`, `all` |
+
+---
+
+## `vetka_git_commit`
+
+Create a git commit. Default: dry_run=true (preview only). Set dry_run=false to actually commit.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `message` | `string` | Yes | — | Commit message (min 5 characters) |
+| `files` | `array[string]` | No | — | Files to stage (empty = all changed files) |
+| `dry_run` | `boolean` | No | `true` | Preview only. Set to false to commit. |
+
+---
+
+## `vetka_git_status`
+
+Get git status showing modified, staged, and untracked files. Also shows current branch and last commit.
+
+*No parameters*
+
+---
+
+## `vetka_health`
+
+Check VETKA server health and component status. Shows which components (Qdrant, metrics, model router, etc.) are available and healthy.
+
+*No parameters*
+
+---
+
+## `vetka_heartbeat_status`
+
+[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.
+
+*No parameters*
+
+---
+
+## `vetka_heartbeat_tick`
+
+[DEPRECATED] Use mycelium_heartbeat_tick instead. Moved to MCP MYCELIUM.
+
+*No parameters*
+
+---
+
+## `vetka_list_artifacts`
+
+List artifacts by status (pending, approved, rejected, all). Returns artifact metadata including file path, type, language, size, and approval status.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `status` | `string` | No | `all` | Filter by approval status (default: all) Values: `pending`, `approved`, `rejected`, `all` |
+| `limit` | `integer` | No | `50` | Max artifacts to return (default: 50) (min: 1, max: 200) |
+
+---
+
+## `vetka_list_files`
+
+List files in a directory or matching a pattern. Returns file paths with metadata.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | `string` | No | `.` | Directory path to list (default: project root) |
+| `pattern` | `string` | No | — | Glob pattern to filter files (e.g., '*.py', 'src/**/*.ts') |
+| `recursive` | `boolean` | No | `false` | Recursively list subdirectories |
+
+---
+
+## `vetka_mycelium_pipeline`
+
+[DEPRECATED] Use mycelium_pipeline instead. Pipeline tools moved to MCP MYCELIUM.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `task` | `string` | Yes | — | — |
+
+---
+
+## `vetka_read_file`
+
+Read file content from VETKA project. Returns full file content with line numbers.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `path` | `string` | Yes | — | Path to file (relative to project root, e.g., 'src/main.py') |
+
+---
+
+## `vetka_read_group_messages`
+
+Read messages from VETKA group chat. Use to see what other agents wrote.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `group_id` | `string` | No | `609c0d9a-b5bc-426b-b134-d693023bdac8` | Group ID (default: MCP log group) |
+| `limit` | `integer` | No | `10` | Max messages to return (default: 10) |
+
+---
+
+## `vetka_reject_artifact`
+
+Reject an artifact and provide feedback. Marks artifact as rejected in approval service. Include specific feedback for agent improvement.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `artifact_id` | `string` | Yes | — | Artifact ID to reject |
+| `feedback` | `string` | Yes | — | Rejection reason/feedback for improvement |
+
+---
+
+## `vetka_run_tests`
+
+Run pytest tests with output capture. Returns stdout/stderr/exit code.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `test_path` | `string` | No | `tests/` | Path to test file or directory |
+| `pattern` | `string` | No | — | Test name pattern (-k flag) |
+| `verbose` | `boolean` | No | `true` | Verbose output |
+| `timeout` | `integer` | No | `60` | Timeout in seconds (max 300) (min: 1, max: 300) |
+
+---
+
+## `vetka_search_files`
+
+Search for files by name or content pattern using ripgrep-style search. Fast full-text search across the codebase.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | Search query (file name or content pattern) |
+| `search_type` | `string` | No | `both` | Search in filenames, file content, or both Values: `filename`, `content`, `both` |
+| `limit` | `integer` | No | `20` | Max results (default: 20) |
+
+---
+
+## `vetka_search_semantic`
+
+Semantic search in VETKA knowledge base using Qdrant vector search. Search for concepts, ideas, or topics across all indexed documents.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `query` | `string` | Yes | — | Semantic search query (e.g., 'authentication logic', 'API error handling') |
+| `limit` | `integer` | No | `10` | Max results to return (default: 10, max: 50) (min: 1, max: 50) |
+
+---
+
+## `vetka_send_message`
+
+Send message from MCP to VETKA chat. Works with both regular chats and group chats. Use this to post updates, results, or notifications to VETKA UI.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `message` | `string` | Yes | — | Message content to send |
+| `chat_id` | `string` | Yes | — | Chat ID (for regular chats) or Group ID (for group chats) |
+| `sender` | `string` | No | `mcp_agent` | Sender ID (default: mcp_agent) |
+| `message_type` | `string` | No | `assistant` | Message type: assistant, user, system, error, chat Values: `assistant`, `user`, `system`, `error`, `chat` |
+| `is_group` | `boolean` | No | `false` | True for group chats, False for regular chats (default: False) |
+
+---
+
+## `vetka_task_dispatch`
+
+[DEPRECATED] Use mycelium_task_dispatch instead. Moved to MCP MYCELIUM.
+
+*No parameters*
+
+---
+
+## `vetka_task_import`
+
+[DEPRECATED] Use mycelium_task_import instead. Moved to MCP MYCELIUM.
+
+### Parameters
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `file_path` | `string` | Yes | — | — |
+
+---
