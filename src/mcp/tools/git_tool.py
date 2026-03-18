@@ -336,12 +336,10 @@ class GitCommitTool(BaseMCPTool):
     def _auto_complete_tasks(self, commit_hash: str, message: str) -> Optional[list]:
         """
         MARKER_130.C17B: Auto-complete tasks mentioned in commit message.
+        MARKER_191.1: Only closes tasks explicitly referenced via [task:tb_xxxx]
+        or direct tb_xxxx ID. Title keyword matching removed (false positive risk).
 
-        Called after successful commit to update TaskBoard. Matches:
-        - tb_xxxx (direct task ID)
-        - Phase 130.C16 patterns
-        - MARKER_130.C16A patterns
-        - Task title keywords
+        Called after successful commit to update TaskBoard.
         """
         try:
             from src.orchestration.task_board import get_task_board

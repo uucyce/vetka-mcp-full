@@ -766,10 +766,12 @@ class ReflexScorer:
         phase_type: str = "research",
         top_n: int = 10,
         agent_type: str = "",
+        current_task: Optional[Dict[str, Any]] = None,
     ) -> List[ScoredTool]:
         """Recommend tools for session_init response (IP-6).
 
         MARKER_186.3: Enhanced with agent_type and auto-context from git.
+        MARKER_191.3: Enhanced with current_task for task-aware semantic matching.
         Builds ReflexContext from session data, returns broad recommendations.
         """
         if not REFLEX_ENABLED:
@@ -783,8 +785,16 @@ class ReflexScorer:
         except Exception:
             pass
 
+        # MARKER_191.3: Extract task_text from current task for semantic matching
+        task_text = ""
+        if current_task:
+            title = current_task.get("title", "")
+            desc = current_task.get("description", "")
+            task_text = f"{title} {desc}".strip()
+
         context = ReflexContext.from_session(
             session_data,
+            task_text=task_text,
             phase_type=phase_type,
             feedback_scores=feedback_scores,
             agent_type=agent_type,
