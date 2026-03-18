@@ -2564,11 +2564,21 @@ async def create_mcc_attached_task(body: MCCAttachedTaskRequest):
     payload = _derive_attached_task_payload(body.model_dump())
     task_id = board.add_task(**payload)
     task = board.get_task(task_id)
-    return {
+    result = {
         "success": True,
         "task_id": task_id,
         "task": task or {"id": task_id, **payload},
     }
+    # MARKER_189.5A: Hint if project_id is unknown in registry
+    project_id = str(payload.get("project_id") or "").strip()
+    if project_id:
+        from src.services.mcc_project_registry import list_projects
+        known = list_projects(include_hidden=True)
+        if not any(str(p.get("project_id", "")) == project_id for p in known.get("projects", [])):
+            result["project_unknown"] = True
+            result["suggested_action"] = "create_project"
+            result["suggested_project_id"] = project_id
+    return result
 
 
 @router.post("/tasks/{task_id}/attach-node")

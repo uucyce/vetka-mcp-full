@@ -672,6 +672,13 @@ export const useMCCStore = create<MCCState>((set, get) => ({
       });
       if (res.ok) {
         const data = await res.json();
+        // MARKER_189.5A: Notify if project_id is unknown — suggest creating it
+        if (data.project_unknown) {
+          get().pushStreamEvent({
+            role: 'system',
+            content: `Project "${data.suggested_project_id || activeProjectId}" not found in registry. Consider creating it in MCC Settings.`,
+          });
+        }
         get().fetchTasks();
         return data.task_id || null;
       }

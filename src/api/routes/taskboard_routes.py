@@ -116,6 +116,18 @@ def _prepare_create_payload(body: Dict[str, Any]) -> Dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+# MARKER_189.5A: Check if project_id exists in registry
+def _check_project_known(project_id: str) -> bool:
+    """Return True if project_id is empty or exists in the registry."""
+    if not project_id:
+        return True
+    result = list_projects(include_hidden=True)
+    return any(
+        str(p.get("project_id", "")) == project_id
+        for p in result.get("projects", [])
+    )
+
+
 @router.post("/create")
 async def create_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     title = str(body.get("title") or "").strip()
@@ -128,7 +140,16 @@ async def create_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         task = await adapter.create_task(payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return {"success": True, "adapter": adapter.adapter_name, "task": task}
+
+    # MARKER_189.5A: Hint if project_id is unknown — let client prompt user to create it
+    project_id = str(payload.get("project_id") or "").strip()
+    project_known = _check_project_known(project_id)
+    result: Dict[str, Any] = {"success": True, "adapter": adapter.adapter_name, "task": task}
+    if project_id and not project_known:
+        result["project_unknown"] = True
+        result["suggested_action"] = "create_project"
+        result["suggested_project_id"] = project_id
+    return result
 
 
 @router.get("/list")
