@@ -498,13 +498,23 @@ class TaskBoard:
 
     # MARKER_192.2: Infer execution_mode from agent_type
     _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex"}
+    # MARKER_191.8: Also match by agent_name when agent_type is unknown
+    _MANUAL_AGENT_NAMES = {"opus", "cursor", "codex", "grok", "claude-code", "opencode"}
 
     @staticmethod
-    def _infer_execution_mode(agent_type: Optional[str]) -> str:
-        """Infer execution_mode from agent_type. Pipeline agents get 'pipeline', others get 'manual'."""
-        if not agent_type:
-            return "pipeline"  # conservative default
-        return "manual" if agent_type in TaskBoard._MANUAL_AGENT_TYPES else "pipeline"
+    @staticmethod
+    def _infer_execution_mode(agent_type: Optional[str], agent_name: Optional[str] = None) -> str:
+        """Infer execution_mode from agent_type or agent_name.
+
+        MARKER_191.8: Also checks agent_name when agent_type is unknown.
+        CLI agents (claude_code, cursor, codex) get 'manual' — they commit directly.
+        Pipeline agents (mycelium, dragon) get 'pipeline' — they need verifier proof.
+        """
+        if agent_type and agent_type in TaskBoard._MANUAL_AGENT_TYPES:
+            return "manual"
+        if agent_name and agent_name.lower() in TaskBoard._MANUAL_AGENT_NAMES:
+            return "manual"
+        return "pipeline"
 
     def _closure_threshold(self, task: Dict[str, Any]) -> float:
         try:
@@ -1104,16 +1114,17 @@ class TaskBoard:
         if task["status"] not in ("pending", "queued"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
 
-        # MARKER_192.2: Update execution_mode on claim if not explicitly set
-        inferred_mode = self._infer_execution_mode(agent_type)
+        # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
+        inferred_mode = self._infer_execution_mode(agent_type, agent_name)
         update_fields: Dict[str, Any] = {
             "status": "claimed",
             "assigned_to": agent_name,
             "agent_type": agent_type,
             "assigned_at": datetime.now().isoformat(),
         }
-        # Only set execution_mode if task doesn't have one or had no agent_type at creation
-        if not task.get("execution_mode") or task.get("execution_mode") == "pipeline" and not task.get("agent_type"):
+        # Set execution_mode if: (a) not set at all, or (b) was default "pipeline" but no agent claimed yet
+        if (not task.get("execution_mode")
+                or (task.get("execution_mode") == "pipeline" and not task.get("agent_type"))):
             update_fields["execution_mode"] = inferred_mode
 
         self.update_task(task_id,
