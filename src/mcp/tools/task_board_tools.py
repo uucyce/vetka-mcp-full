@@ -46,7 +46,7 @@ TASK_BOARD_SCHEMA = {
         "preset": {"type": "string", "description": "Pipeline preset override"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
         "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
-        "project_id": {"type": "string", "description": "Logical project ID for lane-aware multitask routing"},
+        "project_id": {"type": "string", "description": "Logical project ID. For add: assigns project. For list: filters tasks by project (shows matching + unassigned)."},
         "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
         "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
         "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
