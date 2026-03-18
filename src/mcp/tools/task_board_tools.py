@@ -249,13 +249,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "list":
         filter_status = arguments.get("filter_status")
         tasks = board.get_queue(status=filter_status)
-        # MARKER_189.10C: Filter by project_id if provided
+        # MARKER_192.1: Filter by project_id — exact match only
         filter_project = str(arguments.get("project_id") or "").strip()
         if filter_project:
             tasks = [
                 t for t in tasks
-                if not str(t.get("project_id") or "").strip()
-                or str(t.get("project_id") or "").strip() == filter_project
+                if str(t.get("project_id") or "").strip() == filter_project
             ]
         # MARKER_189.13 + MARKER_191.4: Dynamic limit; no limit when filtering by project
         total = len(tasks)
