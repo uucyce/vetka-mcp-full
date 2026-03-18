@@ -21,54 +21,46 @@ Localguys (Ollama 8B) получают таски через dispatch, но:
 ### 189.15: Auto-inject architecture_docs content при dispatch
 **Приоритет:** P1 (высокий импакт)
 **Сложность:** Средняя
+**Детальный рекон:** `RECON_189_AUTO_INJECT_ARCH_DOCS_2026-03-18.md`
 
-**Проблема:** Ollama 8B получает `architecture_docs: ["docs/190.../CUT_TARGET_ARCHITECTURE.md"]` — путь, не содержимое. Модель не умеет читать файлы сама.
+**Проблема:** Ollama 8B получает `architecture_docs` как path-строки, не содержимое.
+Evidence chain (code audit): task_board.py:655 хранит пути → roadmap_task_sync.py:186 пакует пути →
+architect_prefetch.py:517 считает кол-во → agent_pipeline.py:3720 вставляет строку путей →
+dispatch (task_board.py:2064) собирает `task_text = title + desc` → **docs content НИГДЕ не читается**.
 
-**Решение:** В `dispatch_task()` перед вызовом pipeline:
-1. Прочитать каждый файл из `architecture_docs[]` и `recon_docs[]`
-2. Обрезать до N токенов на файл (default: 2000 tokens ≈ 8KB)
-3. Обрезать суммарно до M токенов (default: 6000 tokens ≈ 24KB)
-4. Добавить в task description как секцию `## Architecture Context`
+**Решение:** Context Budget Guard — адаптивный inject с учётом модели:
 
-```python
-# В task_board.py: dispatch_task() или _prepare_dispatch_payload()
-def _inject_doc_context(task: dict, max_per_doc: int = 2000, max_total: int = 6000) -> str:
-    """Read architecture_docs + recon_docs, truncate, return context block."""
-    docs = list(task.get("architecture_docs") or []) + list(task.get("recon_docs") or [])
-    if not docs:
-        return ""
-    
-    sections = []
-    total_chars = 0
-    char_per_doc = max_per_doc * 4  # ~4 chars per token
-    char_total = max_total * 4
-    
-    for doc_path in docs:
-        full_path = PROJECT_ROOT / doc_path
-        if not full_path.exists():
-            sections.append(f"<!-- {doc_path}: NOT FOUND -->")
-            continue
-        try:
-            content = full_path.read_text(encoding="utf-8")[:char_per_doc]
-            if total_chars + len(content) > char_total:
-                content = content[:max(0, char_total - total_chars)]
-            if content:
-                sections.append(f"### {doc_path}\n{content}")
-                total_chars += len(content)
-        except Exception:
-            sections.append(f"<!-- {doc_path}: READ ERROR -->")
-    
-    if not sections:
-        return ""
-    return "\n\n## Architecture Context\n\n" + "\n\n---\n\n".join(sections)
-```
+1. **Injection point:** `task_board.py:dispatch_task()`, lines 2064-2066
+   ```python
+   task_text = f"{task['title']}\n\n{task.get('description', '')}"
+   # >>> INSERT HERE: doc context injection <<<
+   result = await pipeline.execute(task_text, task["phase_type"])
+   ```
 
-**Точка инжекта:** `task_board.py` → `dispatch_task()` или `_build_task_text()`
-Нужно найти где формируется текст для pipeline.
+2. **Context budget по модели** (через LLMModelRegistry):
+   ```
+   docs_budget = min(available * 0.5, context_length * 0.30)
+   ```
+   | Model | Context | 30% Budget | Docs fit |
+   |-------|---------|------------|----------|
+   | Ollama 8B | 8-32K | 2.4-9.6K | 1-3 docs MAX |
+   | Qwen 30B | 131K | ~39K | 10-15 docs |
+   | Claude Opus | 200K | ~60K | 20+ docs |
+
+3. **ELISION compression** (src/memory/elision.py) — 40-60% savings, уже используется в pipeline STM
+
+4. **Шаги имплементации:**
+   - `_load_task_docs(task)` — read files, return content
+   - `_estimate_docs_budget(preset)` — model context → budget
+   - Inject в task_text между desc и pipeline.execute()
+   - Truncation: per-doc cap → total cap → ELISION L2-3 → top-N docs
+   - Log: task_weight, docs_budget, docs_included, docs_truncated
 
 **Файлы:**
-- `src/orchestration/task_board.py` — dispatch_task, _build_task_text
-- Возможно: `src/orchestration/agent_pipeline.py` — если текст формируется там
+- `src/orchestration/task_board.py` — dispatch_task (injection point)
+- `src/elisya/llm_model_registry.py` — context_length per model
+- `src/memory/elision.py` — compression
+- `data/templates/model_presets.json` — tier → model mapping
 
 ---
 
