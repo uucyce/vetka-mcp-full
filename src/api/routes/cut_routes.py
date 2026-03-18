@@ -7849,3 +7849,42 @@ async def cut_script_parse(body: dict) -> dict:
         "total_duration_sec": get_total_duration(chunks),
         "page_count": get_total_pages(chunks),
     }
+
+
+# ─── MARKER_CUT_2.1: Apply script to project DAG ───
+
+@router.post("/project/apply-script")
+async def cut_apply_script_to_dag(body: dict) -> dict:
+    """
+    Parse screenplay text and create scene_chunk nodes in project DAG.
+
+    Input: {"sandbox_root": "...", "project_id": "...", "text": "INT. CAFE..."}
+    Output: {"success": true, "chunks_count": N, "dag_node_count": N, "dag_edge_count": N}
+    """
+    from src.services.screenplay_timing import parse_screenplay, get_total_duration, get_total_pages
+    from src.services.cut_project_store import CutProjectStore
+    from dataclasses import asdict
+
+    sandbox_root = body.get("sandbox_root", "")
+    project_id = body.get("project_id", "")
+    text = body.get("text", "")
+
+    if not sandbox_root or not project_id:
+        return {"success": False, "error": "sandbox_root and project_id required"}
+
+    if not text or not text.strip():
+        return {"success": True, "chunks_count": 0, "dag_node_count": 0, "dag_edge_count": 0}
+
+    chunks = parse_screenplay(text)
+    store = CutProjectStore(sandbox_root=sandbox_root, project_id=project_id)
+    graph = store.add_scene_chunks_to_dag(chunks)
+
+    return {
+        "success": True,
+        "chunks_count": len(chunks),
+        "chunks": [asdict(c) for c in chunks],
+        "total_duration_sec": get_total_duration(chunks),
+        "page_count": get_total_pages(chunks),
+        "dag_node_count": len(graph.get("nodes", [])),
+        "dag_edge_count": len(graph.get("edges", [])),
+    }
