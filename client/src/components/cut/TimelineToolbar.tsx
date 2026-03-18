@@ -2,106 +2,65 @@
  * MARKER_CUT_0.3: TimelineToolbar — minimal toolbar above timeline tracks.
  *
  * Contains ONLY:
- *   - Snap toggle (magnet icon, hotkey S)
- *   - Zoom slider (horizontal, thin)
- *   - Linked selection toggle (link icon)
+ *   - Snap toggle (magnet SVG icon, hotkey S)
  *
- * Nothing else. All other controls → hotkeys or menus.
+ * Zoom = hotkeys +/- or mouse wheel. No slider.
+ * Track height = mouse drag on track header or Shift+scroll.
  * Ref: CUT_NLE_UNIVERSAL_ACTION_REGISTRY.md
  */
-import { useCallback, type CSSProperties } from 'react';
+import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 
 const ROOT: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 8,
+  gap: 6,
   padding: '2px 12px',
   background: '#0a0a0a',
   borderBottom: '1px solid #1a1a1a',
-  height: 26,
+  height: 24,
   flexShrink: 0,
   userSelect: 'none',
 };
 
-const TOGGLE_BTN: CSSProperties = {
+const SNAP_BTN: CSSProperties = {
   background: 'none',
-  border: '1px solid #333',
-  color: '#666',
-  borderRadius: 3,
-  padding: '2px 8px',
+  border: 'none',
   cursor: 'pointer',
-  fontSize: 12,
-  lineHeight: 1,
+  padding: '2px 4px',
   display: 'flex',
   alignItems: 'center',
-  gap: 4,
-  height: 20,
+  borderRadius: 3,
 };
 
-const TOGGLE_ACTIVE: CSSProperties = {
-  ...TOGGLE_BTN,
-  background: '#1a1a1a',
-  color: '#fff',
-  border: '1px solid #444',
-};
-
-const ZOOM_LABEL: CSSProperties = {
-  fontSize: 9,
-  color: '#555',
-  textTransform: 'uppercase',
-  letterSpacing: 1,
-};
-
-const ZOOM_SLIDER: CSSProperties = {
-  width: 80,
-  height: 3,
-  appearance: 'none' as const,
-  background: '#333',
-  borderRadius: 2,
-  outline: 'none',
-  cursor: 'pointer',
-};
+function MagnetIcon({ active }: { active: boolean }) {
+  const color = active ? '#ccc' : '#444';
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M4 2v2h2V2H4zm6 0v2h2V2h-2zM4 4v4a4 4 0 008 0V4h-2v4a2 2 0 01-4 0V4H4z"
+        fill={color}
+      />
+    </svg>
+  );
+}
 
 export default function TimelineToolbar() {
-  const zoom = useCutEditorStore((s) => s.zoom);
-  const setZoom = useCutEditorStore((s) => s.setZoom);
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
 
-  // Linked selection state (local for now — will connect to store later)
-  const handleZoomChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setZoom(Number(e.target.value));
-    },
-    [setZoom],
-  );
-
   return (
     <div style={ROOT}>
-      {/* Snap toggle */}
       <button
-        style={snapEnabled ? TOGGLE_ACTIVE : TOGGLE_BTN}
+        style={{
+          ...SNAP_BTN,
+          background: snapEnabled ? '#1a1a1a' : 'none',
+        }}
         onClick={toggleSnap}
-        title="Snap to grid (S)"
+        title={`Snap ${snapEnabled ? 'ON' : 'OFF'} (S)`}
       >
-        Snap
+        <MagnetIcon active={snapEnabled} />
       </button>
-
-      {/* Zoom slider */}
-      <span style={ZOOM_LABEL}>Zoom</span>
-      <input
-        type="range"
-        min={10}
-        max={500}
-        step={5}
-        value={zoom}
-        onChange={handleZoomChange}
-        style={ZOOM_SLIDER}
-        title={`Zoom: ${zoom}px/sec`}
-      />
-
-      <div style={{ flex: 1 }} />
     </div>
   );
 }
