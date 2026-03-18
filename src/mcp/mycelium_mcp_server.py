@@ -60,6 +60,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
+# MARKER_191.2: Single source of truth for task board schema
+from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
+
 # MARKER_129.6: Logging
 logging.basicConfig(level=logging.INFO, format='[MYCELIUM] %(message)s')
 logger = logging.getLogger(__name__)
@@ -216,40 +219,12 @@ MYCELIUM_TOOLS = [
         },
     ),
     # --- Task Board ---
+    # MARKER_191.2: Schema imported from task_board_tools.py — single source of truth
     Tool(
         name="mycelium_task_board",
-        description="Manage Task Board: add/list/get/update/remove/summary. "
+        description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete/active_agents/merge_request/promote_to_main). "
                     "Priority queue for pipeline dispatch.",
-        inputSchema={
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "description": "Action: add, list, get, update, remove, summary"},
-                "title": {"type": "string"}, "description": {"type": "string"},
-                "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
-                "priority": {"type": "number"}, "phase_type": {"type": "string"},
-                "complexity": {"type": "string"}, "preset": {"type": "string"},
-                "tags": {"type": "array"}, "dependencies": {"type": "array"},
-                "task_id": {"type": "string"}, "status": {"type": "string"},
-                "filter_status": {"type": "string", "description": "Filter by status (for list)"},
-                "limit": {"type": "number", "description": "Max tasks to return in list (default: 40, max: 100)"},
-                "project_id": {"type": "string", "description": "Logical project ID. For add: assigns project. For list: filters tasks by project (shows matching + unassigned)."},
-                "project_lane": {"type": "string"},
-                "architecture_docs": {"type": "array"},
-                "recon_docs": {"type": "array"},
-                "protocol_version": {"type": "string"},
-                "require_closure_proof": {"type": "boolean"},
-                "closure_tests": {"type": "array"},
-                "closure_files": {"type": "array"},
-                # MARKER_188.5: Worktree-aware completion fields
-                "assigned_to": {"type": "string", "description": "Agent name"},
-                "agent_type": {"type": "string", "description": "Agent type"},
-                "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
-                "commit_message": {"type": "string", "description": "Commit message (for complete)"},
-                "branch": {"type": "string", "description": "Git branch name (for complete). Auto-infers worktree_path from claude/* branches."},
-                "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Auto-inferred from branch= if omitted."},
-            },
-            "required": ["action"],
-        },
+        inputSchema=TASK_BOARD_SCHEMA,
     ),
     Tool(
         name="mycelium_task_dispatch",
