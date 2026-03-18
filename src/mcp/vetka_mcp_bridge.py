@@ -354,12 +354,12 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "file_path": {
+                    "path": {
                         "type": "string",
                         "description": "Path to file (relative to project root, e.g., 'src/main.py')"
                     }
                 },
-                "required": ["file_path"]
+                "required": ["path"]
             }
         ),
         Tool(
@@ -1122,11 +1122,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_read_file":
             # Read file via REST
-            file_path = arguments.get("file_path", "")
+            file_path = arguments.get("path", "")
 
             response = await http_client.post(
                 "/api/files/read",
-                json={"file_path": file_path}
+                json={"path": file_path}
             )
 
         elif name == "vetka_get_tree":
