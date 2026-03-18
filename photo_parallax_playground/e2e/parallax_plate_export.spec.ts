@@ -2,6 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 
+const CONTRACT_VERSION = "1.0.0";
+
 function writeDataUrl(filePath: string, dataUrl: string | undefined) {
   if (!dataUrl || !dataUrl.startsWith("data:image/png;base64,")) return false;
   const base64 = dataUrl.slice("data:image/png;base64,".length);
@@ -30,6 +32,82 @@ type SourceReadinessDiagnostics = {
   finalState: Record<string, unknown> | null;
   snapshot: Record<string, unknown> | null;
 };
+
+function expectObjectKeys(value: unknown, keys: string[], label: string) {
+  expect(value, `${label} must be an object`).toBeTruthy();
+  expect(typeof value, `${label} must be an object`).toBe("object");
+  for (const key of keys) {
+    expect((value as Record<string, unknown>)[key], `${label}.${key} is required`).not.toBeUndefined();
+  }
+}
+
+function validatePlateLayoutContract(layout: Record<string, unknown>) {
+  expect(layout.contract_version).toBe(CONTRACT_VERSION);
+  expectObjectKeys(
+    layout,
+    ["contract_version", "sampleId", "source", "metrics", "camera", "cameraSafe", "routing", "transitions", "plates"],
+    "plate_layout",
+  );
+  expectObjectKeys(
+    layout.cameraSafe,
+    ["ok", "recommendedOverscanPct", "minSafeOverscanPct", "highestDisocclusionRisk", "worstTransitionRisk", "riskyPlateIds", "warning", "suggestion"],
+    "plate_layout.cameraSafe",
+  );
+  expectObjectKeys(
+    (layout.cameraSafe as Record<string, unknown>).suggestion,
+    ["overscanPct", "travelXPct", "travelYPct", "reason"],
+    "plate_layout.cameraSafe.suggestion",
+  );
+}
+
+function validatePlateExportManifest(manifest: Record<string, unknown>) {
+  expect(manifest.contract_version).toBe(CONTRACT_VERSION);
+  expectObjectKeys(manifest, ["contract_version", "sampleId", "files", "exportedPlates"], "plate_export_manifest");
+  expectObjectKeys(
+    manifest.files,
+    [
+      "plateStack",
+      "plateLayout",
+      "jobState",
+      "snapshot",
+      "readinessDiagnostics",
+      "compositeState",
+      "depthState",
+      "globalDepth",
+      "backgroundRgba",
+      "backgroundMask",
+      "compositeScreenshot",
+      "depthScreenshot",
+    ],
+    "plate_export_manifest.files",
+  );
+  const exportedPlates = manifest.exportedPlates as Array<Record<string, unknown>>;
+  expect(Array.isArray(exportedPlates), "plate_export_manifest.exportedPlates must be an array").toBeTruthy();
+  expect(exportedPlates.length, "plate_export_manifest.exportedPlates must not be empty").toBeGreaterThan(0);
+  for (const [index, plate] of exportedPlates.entries()) {
+    expectObjectKeys(
+      plate,
+      ["index", "id", "label", "role", "visible", "coverage", "z", "depthPriority", "cleanVariant", "files"],
+      `plate_export_manifest.exportedPlates[${index}]`,
+    );
+  }
+}
+
+function validateQwenPlateGateContract(gate: Record<string, unknown>, sampleId: string) {
+  expect(gate.contract_version).toBe(CONTRACT_VERSION);
+  expect(gate.sample_id).toBe(sampleId);
+  expectObjectKeys(
+    gate,
+    ["contract_version", "sample_id", "decision", "confidence", "metrics", "added_special_clean_variants", "reasons", "gated_plate_stack", "created_at"],
+    `qwen_plate_gate.${sampleId}`,
+  );
+  expectObjectKeys(
+    gate.metrics,
+    ["manual_visible_count", "qwen_visible_count", "manual_special_clean_count", "qwen_special_clean_count", "visible_overlap_ratio"],
+    `qwen_plate_gate.${sampleId}.metrics`,
+  );
+  expectObjectKeys(gate.gated_plate_stack, ["sampleId", "plates"], `qwen_plate_gate.${sampleId}.gated_plate_stack`);
+}
 
 test("export plate-wise png alpha and depth assets", async ({ page }) => {
   test.setTimeout(90000);
@@ -174,7 +252,9 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
   });
 
   expect(result.assets.sampleId).toBe(sampleId);
+  expect(result.assets.contract_version).toBe(CONTRACT_VERSION);
   expect(result.assets.layout.plates.length).toBeGreaterThan(0);
+  validatePlateLayoutContract(result.assets.layout as Record<string, unknown>);
 
   fs.writeFileSync(path.join(outputDir, "plate_stack.json"), JSON.stringify(result.assets.plateStack, null, 2), "utf8");
   fs.writeFileSync(path.join(outputDir, "plate_layout.json"), JSON.stringify(result.assets.layout, null, 2), "utf8");
@@ -216,32 +296,27 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
     };
   });
 
-  fs.writeFileSync(
-    path.join(outputDir, "plate_export_manifest.json"),
-    JSON.stringify(
-      {
-        sampleId,
-        files: {
-          plateStack: "plate_stack.json",
-          plateLayout: "plate_layout.json",
-          jobState: "plate_export_job_state.json",
-          snapshot: "plate_export_snapshot.json",
-          readinessDiagnostics: "plate_export_readiness_diagnostics.json",
-          compositeState: "plate_export_composite_state.json",
-          depthState: "plate_export_depth_state.json",
-          globalDepth: "global_depth_bw.png",
-          backgroundRgba: "background_rgba.png",
-          backgroundMask: "background_mask.png",
-          compositeScreenshot: "plate_export_composite.png",
-          depthScreenshot: "plate_export_depth.png",
-        },
-        exportedPlates,
-      },
-      null,
-      2,
-    ),
-    "utf8",
-  );
+  const manifest = {
+    contract_version: CONTRACT_VERSION,
+    sampleId,
+    files: {
+      plateStack: "plate_stack.json",
+      plateLayout: "plate_layout.json",
+      jobState: "plate_export_job_state.json",
+      snapshot: "plate_export_snapshot.json",
+      readinessDiagnostics: "plate_export_readiness_diagnostics.json",
+      compositeState: "plate_export_composite_state.json",
+      depthState: "plate_export_depth_state.json",
+      globalDepth: "global_depth_bw.png",
+      backgroundRgba: "background_rgba.png",
+      backgroundMask: "background_mask.png",
+      compositeScreenshot: "plate_export_composite.png",
+      depthScreenshot: "plate_export_depth.png",
+    },
+    exportedPlates,
+  };
+  validatePlateExportManifest(manifest as Record<string, unknown>);
+  fs.writeFileSync(path.join(outputDir, "plate_export_manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
 
   await page.setViewportSize({ width: 1720, height: 1200 });
   await page.locator(".stage-shell").screenshot({
@@ -256,4 +331,13 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
   await page.locator(".stage-shell").screenshot({
     path: path.join(outputDir, "plate_export_composite.png"),
   });
+});
+
+test("qwen plate gate fixtures satisfy v1 contract", async () => {
+  const gateDir = path.join(process.cwd(), "public", "qwen_plate_gates");
+  const sampleIds = ["hover-politsia", "keyboard-hands", "truck-driver"];
+  for (const sampleId of sampleIds) {
+    const gate = JSON.parse(fs.readFileSync(path.join(gateDir, `${sampleId}.json`), "utf8")) as Record<string, unknown>;
+    validateQwenPlateGateContract(gate, sampleId);
+  }
 });

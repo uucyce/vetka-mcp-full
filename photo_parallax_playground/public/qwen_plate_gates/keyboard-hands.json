@@ -1,4 +1,5 @@
 {
+  "contract_version": "1.0.0",
   "sample_id": "keyboard-hands",
   "decision": "keep-current-stack",
   "confidence": 0.5,

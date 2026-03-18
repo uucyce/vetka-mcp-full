@@ -211,6 +211,7 @@ type PlateLayoutLayer = {
 };
 
 type PlateAwareLayoutContract = {
+  contract_version: string;
   sampleId: string;
   source: {
     width: number;
@@ -317,6 +318,7 @@ type PlateExportAsset = {
 };
 
 type PlateExportAssetsContract = {
+  contract_version: string;
   sampleId: string;
   sourceUrl: string;
   globalDepthUrl: string;
@@ -442,6 +444,7 @@ type QwenPlatePlan = {
 };
 
 type QwenPlateGate = {
+  contract_version?: string;
   sample_id: string;
   decision: "keep-current-stack" | "enrich-current-stack" | "replace-current-stack";
   confidence: number;
@@ -459,6 +462,7 @@ type QwenPlateGate = {
 
 const JOB_STATE_STORAGE_KEY = "marker_180.photo_parallax.job_state";
 const REAL_DEPTH_BACKEND = "depth-pro";
+const PARALLAX_CONTRACT_VERSION = "1.0.0";
 
 function getRealDepthPreviewUrl(sampleId: string) {
   return `/depth_bakeoff/${REAL_DEPTH_BACKEND}/${sampleId}/depth_preview.png`;
@@ -1892,6 +1896,7 @@ function App() {
           : "reduce camera travel to keep plate disocclusion within safe range";
 
     return {
+      contract_version: PARALLAX_CONTRACT_VERSION,
       sampleId,
       source: {
         width: sample.width,
@@ -1953,6 +1958,7 @@ function App() {
     const layout = buildPlateLayoutContract();
     const layoutById = new Map(layout.plates.map((plate) => [plate.id, plate] as const));
     return {
+      contract_version: PARALLAX_CONTRACT_VERSION,
       sampleId,
       sourceUrl: `/samples/${sample.fileName}`,
       globalDepthUrl: proxyMaps.depthUrl,

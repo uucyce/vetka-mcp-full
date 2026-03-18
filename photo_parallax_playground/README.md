@@ -21,6 +21,8 @@ npm run test:e2e
 
 Open [http://127.0.0.1:1434](http://127.0.0.1:1434).
 
+Contract freeze for release work lives in [CONTRACTS_V1.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md).
+
 ## Review Probe
 
 ```bash

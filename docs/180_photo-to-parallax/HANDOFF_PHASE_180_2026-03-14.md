@@ -22,6 +22,9 @@
 Главный документ:  
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PHOTO_TO_PARALLAX_ARCHITECTURE_V1_2026-03-10.md`
 
+Актуальный operational release-документ с `2026-03-18`:
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_ARCHITECTURE_RELEASE_V1_2026-03-18.md`
+
 Ключевые сущности:
 
 - `plateStack` (UI + export contract)
