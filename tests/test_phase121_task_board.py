@@ -8,6 +8,7 @@ Tests:
 - TestTaskBoardSummary: board summary counts
 - TestMCPToolHandlers: MCP tool handler functions
 - TestHeartbeatBoard: @board trigger pattern, phase type map
+- TestExecutionModeGuard: MARKER_192.2 — manual vs pipeline closure proof
 """
 
 import json
@@ -527,3 +528,170 @@ class TestHeartbeatBoard:
         match = board_pattern.search("@board list")
         assert match is not None
         assert match.group(1).strip() == "list"
+
+
+# --- TestExecutionModeGuard (MARKER_192.2) ---
+
+class TestExecutionModeGuard:
+    """MARKER_192.2: execution_mode controls closure proof requirements.
+
+    Manual agents (claude_code, cursor, human) should only need commit_hash.
+    Pipeline agents (mycelium) need full proof: pipeline_success + verifier + tests.
+    """
+
+    def setup_method(self):
+        self.tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w")
+        self.tmp.write("{}")
+        self.tmp.flush()
+        self.board = TaskBoard(board_file=Path(self.tmp.name))
+
+    def teardown_method(self):
+        Path(self.tmp.name).unlink(missing_ok=True)
+
+    def test_infer_execution_mode_manual_agents(self):
+        """claude_code, cursor, human, grok, codex → manual."""
+        for agent_type in ("claude_code", "cursor", "human", "grok", "codex"):
+            assert TaskBoard._infer_execution_mode(agent_type) == "manual", f"{agent_type} should be manual"
+
+    def test_infer_execution_mode_pipeline_agents(self):
+        """mycelium and unknown → pipeline."""
+        assert TaskBoard._infer_execution_mode("mycelium") == "pipeline"
+        assert TaskBoard._infer_execution_mode(None) == "pipeline"
+        assert TaskBoard._infer_execution_mode("") == "pipeline"
+
+    def test_add_task_sets_execution_mode_from_agent_type(self):
+        """Task created with agent_type=claude_code gets execution_mode=manual."""
+        tid = self.board.add_task("Manual task", agent_type="claude_code")
+        task = self.board.get_task(tid)
+        assert task["execution_mode"] == "manual"
+
+    def test_add_task_defaults_to_pipeline(self):
+        """Task created without agent_type defaults to pipeline."""
+        tid = self.board.add_task("Pipeline task")
+        task = self.board.get_task(tid)
+        assert task["execution_mode"] == "pipeline"
+
+    def test_add_task_explicit_execution_mode(self):
+        """Explicit execution_mode overrides agent_type inference."""
+        tid = self.board.add_task("Forced manual", agent_type="mycelium", execution_mode="manual")
+        task = self.board.get_task(tid)
+        assert task["execution_mode"] == "manual"
+
+    def test_claim_sets_execution_mode_on_untyped_task(self):
+        """Claiming a task without agent_type sets execution_mode from claimer."""
+        tid = self.board.add_task("Unclaimed task")
+        task = self.board.get_task(tid)
+        assert task["execution_mode"] == "pipeline"  # default
+
+        self.board.claim_task(tid, "opus", "claude_code")
+        task = self.board.get_task(tid)
+        assert task["execution_mode"] == "manual"
+
+    def test_manual_closure_needs_only_commit_hash(self):
+        """Manual agent can close protocol task with just commit_hash."""
+        tid = self.board.add_task(
+            "Manual proof task",
+            agent_type="claude_code",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "opus", "claude_code")
+
+        result = self.board.complete_task(
+            tid,
+            commit_hash="abc123def",
+            commit_message="fix: something",
+            closure_proof={"commit_hash": "abc123def"},
+        )
+        assert result["success"] is True
+        task = self.board.get_task(tid)
+        assert task["status"] in ("done_main", "done_worktree")
+
+    def test_manual_closure_fails_without_commit_hash(self):
+        """Manual agent still needs commit_hash even with relaxed proof."""
+        tid = self.board.add_task(
+            "Manual no-hash task",
+            agent_type="claude_code",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "opus", "claude_code")
+
+        result = self.board.complete_task(
+            tid,
+            closure_proof={},  # no commit_hash
+        )
+        assert result["success"] is False
+        assert "commit_hash" in result["error"]
+
+    def test_pipeline_closure_fails_without_full_proof(self):
+        """Pipeline agent needs pipeline_success + verifier + tests."""
+        tid = self.board.add_task(
+            "Pipeline proof task",
+            agent_type="mycelium",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "dragon", "mycelium")
+
+        # Try with only commit_hash — should fail for pipeline mode
+        result = self.board.complete_task(
+            tid,
+            commit_hash="abc123def",
+            closure_proof={"commit_hash": "abc123def"},
+        )
+        assert result["success"] is False
+        assert "pipeline_success" in result["error"]
+
+    def test_execution_mode_override_at_complete(self):
+        """execution_mode can be overridden at complete time."""
+        tid = self.board.add_task(
+            "Override task",
+            agent_type="mycelium",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "dragon", "mycelium")
+
+        # Override to manual at complete time → should succeed with just commit_hash
+        result = self.board.complete_task(
+            tid,
+            commit_hash="abc123def",
+            closure_proof={"commit_hash": "abc123def"},
+            execution_mode="manual",
+        )
+        assert result["success"] is True
+
+    def test_manual_closure_validates_tests_if_provided(self):
+        """Manual mode still validates closure_proof.tests if they are present."""
+        tid = self.board.add_task(
+            "Manual with tests",
+            agent_type="claude_code",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "opus", "claude_code")
+
+        # Provide failing test in proof → should fail
+        result = self.board.complete_task(
+            tid,
+            closure_proof={
+                "commit_hash": "abc123def",
+                "tests": [{"name": "test_one", "passed": False}],
+            },
+        )
+        assert result["success"] is False
+        assert "tests must pass" in result["error"]
+
+    def test_manual_closure_passes_with_passing_tests(self):
+        """Manual mode accepts closure with commit_hash + passing tests."""
+        tid = self.board.add_task(
+            "Manual passing tests",
+            agent_type="claude_code",
+            require_closure_proof=True,
+        )
+        self.board.claim_task(tid, "opus", "claude_code")
+
+        result = self.board.complete_task(
+            tid,
+            closure_proof={
+                "commit_hash": "abc123def",
+                "tests": [{"name": "test_one", "passed": True}],
+            },
+        )
+        assert result["success"] is True
