@@ -57,6 +57,14 @@ from src.memory.surprise_detector import (
     STOPWORDS,
 )
 
+# Phase 187.8: ENGRAM L1 Cache (Deterministic O(1) Lookup)
+from src.memory.engram_cache import (
+    EngramCache,
+    EngramEntry,
+    get_engram_cache,
+    reset_engram_cache,
+)
+
 __all__ = [
     # STM Buffer
     "STMBuffer",
@@ -87,4 +95,9 @@ __all__ = [
     "compute_block_surprise",
     "get_compression_advice",
     "STOPWORDS",
+    # ENGRAM L1 Cache (Phase 187.8)
+    "EngramCache",
+    "EngramEntry",
+    "get_engram_cache",
+    "reset_engram_cache",
 ]
