@@ -17,6 +17,7 @@ import PanelShell from './PanelShell';
 import VideoPreview from './VideoPreview';
 import ProjectPanel from './ProjectPanel';
 import ScriptPanel from './ScriptPanel';
+import DAGProjectPanel from './DAGProjectPanel';
 import MonitorTransport from './MonitorTransport';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
@@ -100,11 +101,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
           <div style={{ flex: 1, overflow: 'hidden' }}>
             {leftTab === 'project' && <ProjectPanel />}
             {leftTab === 'script' && <ScriptPanel scriptText={scriptText} />}
-            {leftTab === 'dag' && (
-              <div style={{ color: '#555', padding: 12, fontSize: 11 }}>
-                DAG Project (Phase 2)
-              </div>
-            )}
+            {leftTab === 'dag' && <DAGProjectPanel />}
           </div>
         </div>
       </PanelShell>
