@@ -4,28 +4,25 @@
  * Architecture doc: PREMIERE_LAYOUT_ARCHITECTURE.md §4
  * "Free windows, not fixed zones." Default arrangement:
  *
- *   Left top:      Source Monitor (raw clip preview)
- *   Left bottom:   Project Panel (media bin + import)
- *   Center:        Program Monitor (timeline playback)
- *   Right top:     Program Monitor (duplicate — or empty for now)
- *   Right bottom:  Inspector + Script + DAG (tab group)
- *   Bottom:        Timeline (Transport + TabBar + Tracks + BPM)
- *   Floating:      StorySpace3D (mini, inside Program Monitor)
+ *   Left:          Tabbed panel (Project | Script | DAG)
+ *   Center:        Source Monitor (raw clip preview + MonitorTransport)
+ *   Right:         Program Monitor (full column + MonitorTransport)
+ *   Bottom:        Timeline (TimelineToolbar + TabBar + Tracks + BPM)
  */
-import { useCallback, useMemo, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useState, useMemo, type CSSProperties, type ReactNode } from 'react';
 import { usePanelLayoutStore, type DockPosition } from '../../store/usePanelLayoutStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import PanelGrid from './PanelGrid';
 import PanelShell from './PanelShell';
-import ScriptPanel from './ScriptPanel';
 import VideoPreview from './VideoPreview';
-import PulseInspector from './PulseInspector';
 import ProjectPanel from './ProjectPanel';
-import TransportBar from './TransportBar';
+import ScriptPanel from './ScriptPanel';
+import DAGProjectPanel from './DAGProjectPanel';
+import MonitorTransport from './MonitorTransport';
+import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
-import StorySpace3D from './StorySpace3D';
 
 // ─── Styles ───
 
@@ -55,7 +52,7 @@ interface CutEditorLayoutV2Props {
 
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   const panels = usePanelLayoutStore((s) => s.panels);
-  const activeTabByDock = usePanelLayoutStore((s) => s.activeTabByDock);
+  void panels; // keep for future panel visibility checks
 
   // Editor store
   const zoom = useCutEditorStore((s) => s.zoom);
@@ -66,68 +63,93 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
 
-  // ─── Left top: Source Monitor — raw clip preview ───
+  // ─── Left column: tabbed panel (Project | Script | DAG) ───
+  const [leftTab, setLeftTab] = useState<'project' | 'script' | 'dag'>('project');
+
   const renderLeftTop = useCallback(() => {
-    const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'No clip';
+    return (
+      <PanelShell panelId="project" title="Project">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Tab bar */}
+          <div style={{
+            display: 'flex',
+            height: 24,
+            background: '#0a0a0a',
+            borderBottom: '1px solid #1a1a1a',
+            flexShrink: 0,
+          }}>
+            {(['project', 'script', 'dag'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setLeftTab(tab)}
+                style={{
+                  background: leftTab === tab ? '#1a1a1a' : 'none',
+                  color: leftTab === tab ? '#ccc' : '#555',
+                  border: 'none',
+                  borderBottom: leftTab === tab ? '2px solid #4a9eff' : '2px solid transparent',
+                  padding: '0 12px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  fontFamily: 'system-ui',
+                }}
+              >
+                {tab === 'project' ? 'Project' : tab === 'script' ? 'Script' : 'DAG'}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {leftTab === 'project' && <ProjectPanel />}
+            {leftTab === 'script' && <ScriptPanel scriptText={scriptText} />}
+            {leftTab === 'dag' && <DAGProjectPanel />}
+          </div>
+        </div>
+      </PanelShell>
+    );
+  }, [leftTab, scriptText, projectId, thumbnails.length]);
+
+  const renderLeftBottom = useCallback(() => null, []);
+
+  // ─── Center: Source Monitor — raw clip preview (large area) ───
+  // Phase 3 (CUT-3.2) will add feed="source" prop to VideoPreview
+  const renderCenter = useCallback(() => {
+    const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'NO CLIP';
     return (
       <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
-        <VideoPreview />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <VideoPreview />
+          </div>
+          <MonitorTransport feed="source" />
+        </div>
       </PanelShell>
     );
   }, [activeMediaPath]);
 
-  // ─── Left bottom: Project Panel — media bin + import ───
-  const renderLeftBottom = useCallback(() => {
-    return (
-      <PanelShell panelId="project" title={`Project: ${projectId || 'cut'} (${thumbnails.length} clips)`}>
-        <ProjectPanel />
-      </PanelShell>
-    );
-  }, [projectId, thumbnails.length]);
-
-  // ─── Center: Program Monitor — timeline playback ───
-  const renderCenter = useCallback(() => {
-    return (
-      <PanelShell panelId="program_monitor" title="Program Monitor">
-        <VideoPreview />
-      </PanelShell>
-    );
-  }, []);
-
-  // ─── Right top: Program Monitor (secondary) ───
+  // ─── Right top: Program Monitor (ONLY ONE — timeline playback) ───
+  // StorySpace removed — was blocking Program Monitor. Will be a separate panel/tab.
   const renderRightTop = useCallback(() => {
     return (
       <PanelShell panelId="program_monitor" title="Program Monitor">
-        <VideoPreview />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            <VideoPreview />
+          </div>
+          <MonitorTransport feed="program" />
+        </div>
       </PanelShell>
     );
   }, []);
 
-  // ─── Right bottom: Inspector + Script + DAG tab group (MARKER_181.13) ───
-  const setActiveTab = usePanelLayoutStore((s) => s.setActiveTab);
-  const activeRightBottomTab = activeTabByDock['right_bottom'] || 'inspector';
-  const handleTabChange = useCallback(
-    (tab: string) => setActiveTab('right_bottom', tab as import('../../store/usePanelLayoutStore').PanelId),
-    [setActiveTab],
-  );
-  const renderRightBottom = useCallback(() => {
-    return (
-      <PanelShell panelId="inspector" title="Inspector">
-        <RightBottomTabbedPanel
-          activeTab={activeRightBottomTab}
-          scriptText={scriptText}
-          onTabChange={handleTabChange}
-        />
-      </PanelShell>
-    );
-  }, [activeRightBottomTab, scriptText, handleTabChange]);
+  // ─── Right bottom: empty (Inspector moved to Source Monitor tabs, Phase 3) ───
+  const renderRightBottom = useCallback(() => null, []);
 
   // ─── Bottom: Timeline area ───
   const renderBottom = useCallback(() => {
     return (
       <PanelShell panelId="timeline" title={`Timeline: ${timelineId} (${thumbnails.length} clips)`}>
         <div style={TIMELINE_AREA}>
-          <TransportBar />
+          <TimelineToolbar />
           <TimelineTabBar />
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <TimelineTrackView />
@@ -167,109 +189,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     [renderLeftTop, renderLeftBottom, renderCenter, renderRightTop, renderRightBottom, renderBottom],
   );
 
-  // ─── Floating panels: StorySpace3D mini ───
-  const storySpacePanel = useMemo(() => {
-    const ssState = panels.find((p) => p.id === 'story_space_3d');
-    if (!ssState?.visible) return null;
-
-    return (
-      <PanelShell panelId="story_space_3d" title="StorySpace 3D">
-        <StorySpace3D
-          timelineId={timelineId}
-          scriptText={scriptText}
-          mini={ssState.isMini}
-        />
-      </PanelShell>
-    );
-  }, [panels, timelineId, scriptText]);
-
   return (
     <div style={ROOT}>
-      <PanelGrid renderPanel={renderPanel} floatingPanels={storySpacePanel} />
+      <PanelGrid renderPanel={renderPanel} />
     </div>
   );
 }
 
-// ─── MARKER_181.13: Right bottom tab bar + content ───
-
-const TAB_BAR_STYLE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'stretch',
-  height: 26,
-  background: '#0a0a0a',
-  borderBottom: '1px solid #1a1a1a',
-  flexShrink: 0,
-  userSelect: 'none',
-};
-
-const TAB_ITEM_BASE: CSSProperties = {
-  padding: '0 12px',
-  fontSize: 11,
-  fontFamily: 'system-ui',
-  cursor: 'pointer',
-  display: 'flex',
-  alignItems: 'center',
-  borderRight: '1px solid #1a1a1a',
-  transition: 'background 0.1s, color 0.1s',
-};
-
-const RIGHT_BOTTOM_TABS: { id: 'inspector' | 'script' | 'dag_project'; label: string }[] = [
-  { id: 'inspector', label: 'Inspector' },
-  { id: 'script', label: 'Script' },
-  { id: 'dag_project', label: 'DAG' },
-];
-
-function RightBottomTabbedPanel({ activeTab, scriptText, onTabChange }: {
-  activeTab: string;
-  scriptText: string;
-  onTabChange: (tab: string) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Tab bar */}
-      <div style={TAB_BAR_STYLE}>
-        {RIGHT_BOTTOM_TABS.map((tab) => {
-          const isActive = tab.id === activeTab;
-          return (
-            <div
-              key={tab.id}
-              data-testid={`cut-tab-${tab.id}`}
-              onClick={() => onTabChange(tab.id)}
-              style={{
-                ...TAB_ITEM_BASE,
-                background: isActive ? '#1a1a1a' : 'transparent',
-                color: isActive ? '#fff' : '#666',
-                borderBottom: isActive ? '2px solid #3b82f6' : '2px solid transparent',
-                fontWeight: isActive ? 600 : 400,
-              }}
-            >
-              {tab.label}
-            </div>
-          );
-        })}
-      </div>
-      {/* Tab content */}
-      <div style={{ flex: 1, overflow: 'auto' }}>
-        <RightBottomTabContent activeTab={activeTab} scriptText={scriptText} />
-      </div>
-    </div>
-  );
-}
-
-function RightBottomTabContent({ activeTab, scriptText }: { activeTab: string; scriptText: string }) {
-  switch (activeTab) {
-    case 'script':
-      return (
-        <ScriptPanel
-          scriptText={scriptText}
-          activeTab="script"
-          onTabChange={() => {}}
-        />
-      );
-    case 'dag_project':
-      return <div style={{ color: '#666', padding: 12, fontSize: 11 }}>DAG View (coming soon)</div>;
-    case 'inspector':
-    default:
-      return <PulseInspector />;
-  }
-}
+// Inspector/Script/DAG tabs removed from layout (CUT-0.4 cleanup).
+// Inspector will be a tab inside Source Monitor area (Phase 3).
+// DAG Project moved to left_bottom.

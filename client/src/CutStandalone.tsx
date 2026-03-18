@@ -591,7 +591,7 @@ export default function CutStandalone() {
   const timecodeSyncItems = (projectState?.timecode_sync_result?.items as TimecodeSyncResultItem[] | undefined) || [];
   const syncSurfaceItems = (projectState?.sync_surface?.items as SyncSurfaceItem[] | undefined) || [];
   const timeMarkers = (projectState?.time_marker_bundle?.items as CutTimeMarker[] | undefined) || [];
-  // musicCueSummary removed — was used by CutEditorLayout V1 statusText prop
+
   const recentJobs = projectState?.recent_jobs || [];
   const activeJobs = projectState?.active_jobs || [];
   const fallbackQuestions = (projectState?.bootstrap_state?.last_stats as Record<string, unknown> | undefined) || null;

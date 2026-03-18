@@ -1244,27 +1244,7 @@ export default function TimelineTrackView() {
                     M
                   </button>
                 </div>
-                {/* MARKER_173.16.NLE.TRACK_VOLUME: vertical per-lane volume control with double-click reset. */}
-                <div style={TRACK_SLIDER_WRAP} title="Double-click reset lane volume to 100%">
-                  <input
-                    type="range"
-                    min={0}
-                    max={150}
-                    step={1}
-                    value={Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}
-                    onMouseDown={(event) => event.stopPropagation()}
-                    onDoubleClick={(event) => {
-                      event.stopPropagation();
-                      setLaneVolume(lane.lane_id, 1);
-                    }}
-                    onChange={(event) => {
-                      event.stopPropagation();
-                      setLaneVolume(lane.lane_id, Number(event.target.value) / 100);
-                    }}
-                    style={TRACK_SLIDER}
-                    title={`Lane volume ${Math.round((laneVolumes[lane.lane_id] ?? 1) * 100)}%`}
-                  />
-                </div>
+                {/* Volume slider removed (CUT-0.4 cleanup) — volume via context menu or hotkeys */}
               </div>
 
               <div

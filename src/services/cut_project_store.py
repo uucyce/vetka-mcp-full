@@ -223,6 +223,67 @@ class CutProjectStore:
             raise ValueError("Invalid cut_scene_graph_v1 payload")
         self._atomic_write_json(self.paths.scene_graph_path, payload)
 
+    def add_scene_chunks_to_dag(self, chunks: list) -> dict[str, Any]:
+        """
+        MARKER_CUT_2.1: Add SceneChunk objects as nodes to the project DAG.
+        Creates scene_chunk nodes + next_scene edges (spine chain).
+        Returns the updated scene graph.
+        """
+        from datetime import datetime, timezone
+
+        graph = self.load_scene_graph()
+        if graph is None:
+            graph = {
+                "schema_version": "cut_scene_graph_v1",
+                "project_id": self.project_id,
+                "graph_id": f"dag_{self.project_id}",
+                "revision": 0,
+                "nodes": [],
+                "edges": [],
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+        nodes: list[dict[str, Any]] = graph.get("nodes", [])
+        edges: list[dict[str, Any]] = graph.get("edges", [])
+
+        # Remove existing scene_chunk nodes + next_scene edges (re-parse replaces)
+        existing_chunk_ids = {n["node_id"] for n in nodes if n.get("node_type") == "scene_chunk"}
+        nodes = [n for n in nodes if n.get("node_type") != "scene_chunk"]
+        edges = [e for e in edges if e.get("edge_type") != "next_scene"]
+
+        # Add new scene_chunk nodes
+        for i, chunk in enumerate(chunks):
+            node = {
+                "node_id": chunk.chunk_id,
+                "node_type": "scene_chunk",
+                "label": chunk.scene_heading or f"Chunk {i + 1}",
+                "scene_heading": chunk.scene_heading,
+                "start_sec": chunk.start_sec,
+                "duration_sec": chunk.duration_sec,
+                "text": chunk.text,
+                "chunk_type": chunk.chunk_type,
+                "line_start": chunk.line_start,
+                "line_end": chunk.line_end,
+                "page_count": chunk.page_count,
+            }
+            nodes.append(node)
+
+            # Chain: SCN_01 → SCN_02 → SCN_03 (next_scene edges)
+            if i > 0:
+                edges.append({
+                    "source": chunks[i - 1].chunk_id,
+                    "target": chunk.chunk_id,
+                    "edge_type": "next_scene",
+                })
+
+        graph["nodes"] = nodes
+        graph["edges"] = edges
+        graph["revision"] = graph.get("revision", 0) + 1
+        graph["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+        self.save_scene_graph(graph)
+        return graph
+
     def append_timeline_edit_event(self, event: dict[str, Any]) -> None:
         payload = dict(event or {})
         os.makedirs(os.path.dirname(self.paths.timeline_edit_log_path), exist_ok=True)

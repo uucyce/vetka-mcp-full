@@ -1,18 +1,16 @@
 /**
- * MARKER_180.16: DAGProjectPanel — ReactFlow DAG view of project assets.
+ * MARKER_CUT_2.2: DAGProjectPanel — ReactFlow DAG with Y = film chronology.
  *
- * Architecture doc §2.2:
- * "DAG Project panel: material organized by clusters (Characters, Locations,
- *  Takes, Music, SFX, Graphics). Nodes linked to active script line glow blue."
+ * Script Spine = central vertical chain of scene_chunk nodes.
+ * Media nodes: video left, audio right of linked scene.
+ * Y-axis = start_sec * PX_PER_SEC (chronological).
  *
- * Architecture doc §8:
- * "DAG as universal view mode — everything is a DAG: project assets, scene graph,
- *  workflow steps, timeline structure."
- *
- * Shares left column with ScriptPanel as tab (controlled by parent).
  * Fetches from GET /api/cut/project/dag/{timeline_id}.
+ * Scene chunks created by POST /api/cut/project/apply-script (CUT-2.1).
+ *
+ * Ref: CUT_TARGET_ARCHITECTURE.md §2.2, CUT_DATA_MODEL.md
  */
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -31,132 +29,92 @@ import { usePanelSyncStore } from '../../store/usePanelSyncStore';
 
 // ─── Types ───
 
-interface DAGAssetNodeData extends Record<string, unknown> {
+interface DAGNodeData extends Record<string, unknown> {
   node_id: string;
   label: string;
   node_type: string;
-  cluster: string;
-  source_path: string;
+  scene_heading?: string;
+  start_sec?: number;
   duration_sec?: number;
-  camelot_key: string;
-  pendulum: number;
-  energy: number;
-  dramatic_function: string;
-  linked_scene_ids: string[];
+  cluster?: string;
+  source_path?: string;
+  camelot_key?: string;
+  energy?: number;
+  linked_scene_ids?: string[];
 }
 
-type AssetNodeType = Node<DAGAssetNodeData, 'asset'>;
+// ─── Layout constants ───
 
-interface DAGEdge {
-  source: string;
-  target: string;
-  edge_type: string;
-  label: string;
-}
+const PX_PER_SEC = 3; // pixels per second of film time
+const SPINE_X = 150;   // center X for spine nodes (will be adjusted by container)
+const MEDIA_OFFSET = 160; // horizontal offset for media nodes
 
-interface DAGData {
-  nodes: DAGAssetNodeData[];
-  edges: DAGEdge[];
-  clusters: Record<string, string[]>;
-}
+// ─── Custom Node: Scene Chunk (spine) ───
 
-// ─── Cluster visual config (§11 compliant: monochrome with subtle accent) ───
-
-const CLUSTER_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
-  character: { label: 'Characters', color: '#E24B4A', icon: '👤' },
-  location:  { label: 'Locations',  color: '#5DCAA5', icon: '📍' },
-  take:      { label: 'Takes',      color: '#4a9eff', icon: '🎬' },
-  dub:       { label: 'Dub',        color: '#EFA830', icon: '🎙' },
-  music:     { label: 'Music',      color: '#85B7EB', icon: '♩' },
-  sfx:       { label: 'SFX',        color: '#7F77DD', icon: '🔊' },
-  graphics:  { label: 'Graphics',   color: '#D94B8D', icon: '🖼' },
-  other:     { label: 'Other',      color: '#888',    icon: '●' },
-};
-
-// ─── Custom Node Component ───
-
-function AssetNode({ data, selected }: NodeProps<AssetNodeType>) {
+function SceneChunkNode({ data }: NodeProps<Node<DAGNodeData>>) {
   const activeSceneId = usePanelSyncStore((s) => s.activeSceneId);
-
-  // Blue glow if linked to active script scene
-  const isLinked = useMemo(() => {
-    if (!activeSceneId || !data.linked_scene_ids) return false;
-    return data.linked_scene_ids.includes(activeSceneId);
-  }, [activeSceneId, data.linked_scene_ids]);
-
-  const clusterCfg = CLUSTER_CONFIG[data.cluster] || CLUSTER_CONFIG.other;
+  const isActive = activeSceneId === data.node_id;
 
   return (
-    <div
-      style={{
-        background: '#1A1A1A',
-        border: `1px solid ${isLinked ? '#4a9eff' : selected ? '#E0E0E0' : '#333'}`,
-        borderRadius: 4,
-        padding: '6px 10px',
-        minWidth: 100,
-        maxWidth: 160,
-        fontSize: 10,
-        fontFamily: 'Inter, system-ui, sans-serif',
-        color: '#E0E0E0',
-        cursor: 'pointer',
-        boxShadow: isLinked ? '0 0 8px rgba(74, 158, 255, 0.3)' : 'none',
-        transition: 'border-color 0.2s, box-shadow 0.2s',
-      }}
-    >
-      {/* Handles */}
+    <div style={{
+      background: isActive ? '#1a2a3a' : '#141414',
+      border: `1px solid ${isActive ? '#4a9eff' : '#333'}`,
+      borderRadius: 4,
+      padding: '4px 8px',
+      minWidth: 100,
+      maxWidth: 140,
+      fontSize: 9,
+      fontFamily: 'Inter, system-ui, sans-serif',
+      color: '#ccc',
+      boxShadow: isActive ? '0 0 8px rgba(74, 158, 255, 0.3)' : 'none',
+    }}>
       <Handle type="target" position={Position.Top} style={{ background: '#555', width: 4, height: 4 }} />
       <Handle type="source" position={Position.Bottom} style={{ background: '#555', width: 4, height: 4 }} />
 
-      {/* Cluster badge */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 4,
-          marginBottom: 3,
-        }}
-      >
-        <span style={{ fontSize: 8, color: clusterCfg.color }}>{clusterCfg.icon}</span>
-        <span
-          style={{
-            fontSize: 7,
-            color: clusterCfg.color,
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            fontWeight: 600,
-          }}
-        >
-          {clusterCfg.label}
-        </span>
+      <div style={{ fontSize: 7, color: '#555', fontFamily: 'monospace', marginBottom: 2 }}>
+        {data.node_id}
       </div>
+      {data.scene_heading && (
+        <div style={{ fontWeight: 600, fontSize: 8, color: '#ccc', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+          {data.scene_heading}
+        </div>
+      )}
+      {data.start_sec != null && (
+        <div style={{ fontSize: 7, color: '#444', fontFamily: 'monospace', marginTop: 2 }}>
+          {formatTC(data.start_sec)}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      {/* Label */}
-      <div
-        style={{
-          fontSize: 10,
-          color: '#E0E0E0',
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-        }}
-      >
+// ─── Custom Node: Media asset ───
+
+function MediaAssetNode({ data }: NodeProps<Node<DAGNodeData>>) {
+  const activeSceneId = usePanelSyncStore((s) => s.activeSceneId);
+  const isLinked = data.linked_scene_ids?.includes(activeSceneId || '') ?? false;
+
+  return (
+    <div style={{
+      background: '#1A1A1A',
+      border: `1px solid ${isLinked ? '#4a9eff' : '#2a2a2a'}`,
+      borderRadius: 3,
+      padding: '3px 6px',
+      minWidth: 80,
+      maxWidth: 120,
+      fontSize: 8,
+      color: '#888',
+      boxShadow: isLinked ? '0 0 6px rgba(74, 158, 255, 0.2)' : 'none',
+    }}>
+      <Handle type="target" position={Position.Left} style={{ background: '#555', width: 3, height: 3 }} />
+      <Handle type="source" position={Position.Right} style={{ background: '#555', width: 3, height: 3 }} />
+
+      <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {data.label}
       </div>
-
-      {/* PULSE mini-bar */}
       {data.camelot_key && (
-        <div
-          style={{
-            display: 'flex',
-            gap: 6,
-            marginTop: 4,
-            fontSize: 8,
-            color: '#555',
-            fontFamily: '"JetBrains Mono", monospace',
-          }}
-        >
-          <span style={{ color: '#5DCAA5' }}>{data.camelot_key}</span>
-          <span>E:{((data.energy || 0) * 100).toFixed(0)}%</span>
+        <div style={{ fontSize: 7, color: '#5DCAA5', fontFamily: 'monospace', marginTop: 1 }}>
+          {data.camelot_key}
         </div>
       )}
     </div>
@@ -164,58 +122,117 @@ function AssetNode({ data, selected }: NodeProps<AssetNodeType>) {
 }
 
 const NODE_TYPES: NodeTypes = {
-  asset: AssetNode,
+  scene_chunk: SceneChunkNode,
+  asset: MediaAssetNode,
 };
 
-// ─── Layout: arrange nodes by cluster in columns ───
+// ─── Layout: Y = chronology, spine center ───
 
-function layoutNodes(dagData: DAGData): { nodes: Node[]; edges: Edge[] } {
-  const clusterOrder = ['character', 'location', 'take', 'dub', 'music', 'sfx', 'graphics', 'other'];
-  const COL_WIDTH = 180;
-  const ROW_HEIGHT = 70;
-  const CLUSTER_GAP = 30;
+function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[]): { rfNodes: Node[]; rfEdges: Edge[] } {
+  const rfNodes: Node[] = [];
 
-  const nodes: Node[] = [];
-  let colX = 0;
+  // Separate spine nodes from media nodes
+  const spineNodes = nodes.filter((n) => n.node_type === 'scene_chunk');
+  const mediaNodes = nodes.filter((n) => n.node_type !== 'scene_chunk');
 
-  for (const cluster of clusterOrder) {
-    const clusterNodes = dagData.nodes.filter((n) => n.cluster === cluster);
-    if (clusterNodes.length === 0) continue;
+  // Place spine nodes: center X, Y = start_sec * PX_PER_SEC
+  for (const n of spineNodes) {
+    rfNodes.push({
+      id: n.node_id,
+      type: 'scene_chunk',
+      position: {
+        x: SPINE_X,
+        y: (n.start_sec ?? 0) * PX_PER_SEC,
+      },
+      data: { ...n },
+    });
+  }
 
-    for (let i = 0; i < clusterNodes.length; i++) {
-      const n = clusterNodes[i];
-      nodes.push({
-        id: n.node_id,
+  // Place media nodes: left (video) or right (audio) of linked scene
+  const mediaByScene: Record<string, { left: DAGNodeData[]; right: DAGNodeData[] }> = {};
+
+  for (const m of mediaNodes) {
+    // Find linked scene via edges
+    const linkedEdge = edges.find(
+      (e) => (e.source === m.node_id || e.target === m.node_id) &&
+             (e.edge_type === 'has_media' || e.edge_type === 'contains'),
+    );
+    const sceneId = linkedEdge
+      ? (linkedEdge.source === m.node_id ? linkedEdge.target : linkedEdge.source)
+      : null;
+
+    if (sceneId) {
+      if (!mediaByScene[sceneId]) mediaByScene[sceneId] = { left: [], right: [] };
+      const cluster = m.cluster || '';
+      if (['music', 'sfx', 'dub'].includes(cluster)) {
+        mediaByScene[sceneId].right.push(m);
+      } else {
+        mediaByScene[sceneId].left.push(m);
+      }
+    } else {
+      // Unlinked media — place below all spine nodes
+      const lastSpine = spineNodes[spineNodes.length - 1];
+      const baseY = lastSpine ? (lastSpine.start_sec ?? 0) * PX_PER_SEC + 80 : 0;
+      rfNodes.push({
+        id: m.node_id,
         type: 'asset',
-        position: { x: colX, y: i * ROW_HEIGHT + 10 },
-        data: {
-          label: n.label,
-          cluster: n.cluster,
-          camelot_key: n.camelot_key,
-          energy: n.energy,
-          pendulum: n.pendulum,
-          linked_scene_ids: n.linked_scene_ids,
-          source_path: n.source_path,
-          node_id: n.node_id,
-        },
+        position: { x: SPINE_X + MEDIA_OFFSET, y: baseY + rfNodes.length * 40 },
+        data: { ...m },
+      });
+    }
+  }
+
+  // Place linked media around their scene nodes
+  for (const [sceneId, sides] of Object.entries(mediaByScene)) {
+    const sceneNode = spineNodes.find((n) => n.node_id === sceneId);
+    if (!sceneNode) continue;
+    const sceneY = (sceneNode.start_sec ?? 0) * PX_PER_SEC;
+
+    // Left side (video/takes)
+    for (let i = 0; i < sides.left.length; i++) {
+      const m = sides.left[i];
+      rfNodes.push({
+        id: m.node_id,
+        type: 'asset',
+        position: { x: SPINE_X - MEDIA_OFFSET, y: sceneY + i * 35 },
+        data: { ...m },
       });
     }
 
-    colX += COL_WIDTH + CLUSTER_GAP;
+    // Right side (audio/music/sfx)
+    for (let i = 0; i < sides.right.length; i++) {
+      const m = sides.right[i];
+      rfNodes.push({
+        id: m.node_id,
+        type: 'asset',
+        position: { x: SPINE_X + MEDIA_OFFSET, y: sceneY + i * 35 },
+        data: { ...m },
+      });
+    }
   }
 
   // Edges
-  const edges: Edge[] = dagData.edges.map((e, i) => ({
+  const rfEdges: Edge[] = edges.map((e, i) => ({
     id: `e_${i}`,
     source: e.source,
     target: e.target,
-    type: 'default',
-    style: { stroke: '#333', strokeWidth: 1 },
-    animated: e.edge_type === 'sync',
-    label: undefined,
+    type: e.edge_type === 'next_scene' ? 'default' : 'default',
+    style: {
+      stroke: e.edge_type === 'next_scene' ? '#4a9eff' : '#333',
+      strokeWidth: e.edge_type === 'next_scene' ? 2 : 1,
+    },
+    animated: false,
   }));
 
-  return { nodes, edges };
+  return { rfNodes, rfEdges };
+}
+
+// ─── Helpers ───
+
+function formatTC(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
 // ─── Styles ───
@@ -234,7 +251,8 @@ interface DAGProjectPanelProps {
 }
 
 export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanelProps) {
-  const [dagData, setDagData] = useState<DAGData | null>(null);
+  const [dagNodes, setDagNodes] = useState<DAGNodeData[]>([]);
+  const [dagEdges, setDagEdges] = useState<{ source: string; target: string; edge_type: string }[]>([]);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([] as Node[]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([] as Edge[]);
 
@@ -250,16 +268,14 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
         if (!res.ok) return;
         const json = await res.json();
         if (!cancelled && json.success !== false) {
-          const data: DAGData = {
-            nodes: json.nodes || [],
-            edges: json.edges || [],
-            clusters: json.clusters || {},
-          };
-          setDagData(data);
+          const nodes: DAGNodeData[] = json.nodes || [];
+          const edges = json.edges || [];
+          setDagNodes(nodes);
+          setDagEdges(edges);
 
-          const { nodes, edges } = layoutNodes(data);
-          setRfNodes(nodes);
-          setRfEdges(edges);
+          const { rfNodes: rn, rfEdges: re } = layoutNodes(nodes, edges);
+          setRfNodes(rn);
+          setRfEdges(re);
         }
       } catch {
         // non-critical
@@ -273,7 +289,7 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
   // ─── Node click → sync store ───
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      const data = node.data as any;
+      const data = node.data as DAGNodeData;
       syncFromDAG(data.node_id, data.source_path || '');
     },
     [syncFromDAG],
@@ -281,22 +297,19 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
 
   return (
     <div style={PANEL}>
-      {(!dagData || dagData.nodes.length === 0) ? (
-        <div
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#444',
-            fontSize: 11,
-            fontFamily: 'Inter, system-ui, sans-serif',
-            textAlign: 'center',
-            padding: 16,
-          }}
-        >
-          No assets in DAG. Import media to build project graph.
+      {dagNodes.length === 0 ? (
+        <div style={{
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#444',
+          fontSize: 11,
+          textAlign: 'center',
+          padding: 16,
+        }}>
+          No assets in DAG. Import script to build spine.
         </div>
       ) : (
         <ReactFlow
@@ -309,8 +322,8 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
           fitView
           proOptions={{ hideAttribution: true }}
           style={{ background: '#0D0D0D' }}
-          minZoom={0.3}
-          maxZoom={2}
+          minZoom={0.2}
+          maxZoom={3}
         >
           <Background color="#1A1A1A" gap={20} size={1} />
         </ReactFlow>

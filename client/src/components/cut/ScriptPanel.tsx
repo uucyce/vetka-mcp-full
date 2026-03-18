@@ -1,34 +1,34 @@
 /**
- * MARKER_180.5: ScriptPanel — the spine of VETKA CUT.
- * Vertical Y-time panel. Lines with timecodes.
- * Click line → sync playhead + DAG + source monitor.
+ * MARKER_CUT_1.3: ScriptPanel — the spine of VETKA CUT.
+ *
+ * Displays screenplay text as clickable scene chunk blocks.
+ * Each chunk = visual block with scene heading, timecode from API.
+ * Click block → sync playhead + DAG + source monitor.
  * Auto-scroll on playback (teleprompter mode).
  *
- * Architecture doc §2.1:
- * - Axis: Y = time (vertical, chat-like). 1 line ≈ 1 minute
- * - Click line → source monitor shows linked material
- * - Play button scrolls text like teleprompter
- * - BPM display: three colored dots (audio/visual/script)
- *
- * Architecture doc §4: "Script uses Y-time (vertical) because project
- * panels are typically narrow and tall."
+ * Data source: POST /api/cut/script/parse → SceneChunk[]
+ * Fallback: line-by-line display if no chunks available.
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { usePanelSyncStore } from '../../store/usePanelSyncStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { API_BASE } from '../../config/api.config';
 
 // ─── Types ───
 
-interface ScriptLine {
-  index: number;
+interface SceneChunk {
+  chunk_id: string;
+  scene_heading: string | null;
+  chunk_type: string;
   text: string;
-  timecode: string;       // "00:00", "01:30", etc.
-  time_sec: number;
-  scene_id: string;
-  type: 'scene_header' | 'action' | 'dialogue' | 'transition' | 'empty';
+  start_sec: number;
+  duration_sec: number;
+  line_start: number;
+  line_end: number;
+  page_count: number;
 }
 
-// ─── Styles (§11 compliant) ───
+// ─── Styles ───
 
 const PANEL: CSSProperties = {
   display: 'flex',
@@ -39,108 +39,73 @@ const PANEL: CSSProperties = {
   overflow: 'hidden',
 };
 
-const TAB_BAR: CSSProperties = {
-  display: 'flex',
-  gap: 1,
-  padding: '0 4px',
-  background: '#141414',
-  borderBottom: '0.5px solid #333',
-  flexShrink: 0,
-};
-
-const TAB: CSSProperties = {
-  padding: '4px 10px',
-  fontSize: 10,
-  fontFamily: 'Inter, system-ui, sans-serif',
-  background: '#1A1A1A',
-  color: '#555',
-  border: 'none',
-  borderRadius: '2px 2px 0 0',
-  cursor: 'pointer',
-  transition: 'color 0.15s, background 0.15s',
-};
-
-const TAB_ACTIVE: CSSProperties = {
-  ...TAB,
-  background: '#252525',
-  color: '#E0E0E0',
-  fontWeight: 500,
-};
-
-const SCRIPT_LIST: CSSProperties = {
+const CHUNK_LIST: CSSProperties = {
   flex: 1,
   overflowY: 'auto',
   padding: '4px 0',
 };
 
-const LINE_BASE: CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  padding: '4px 8px',
-  borderLeft: '2px solid transparent',
-  fontSize: 11,
-  fontFamily: 'Inter, system-ui, sans-serif',
-  lineHeight: 1.6,
-  color: '#888',
+const CHUNK_BASE: CSSProperties = {
+  padding: '8px 10px',
+  borderLeft: '2px solid #333',
+  marginBottom: 1,
   cursor: 'pointer',
-  borderRadius: '0 4px 4px 0',
   transition: 'all 0.12s',
 };
 
-const LINE_ACTIVE: CSSProperties = {
-  ...LINE_BASE,
+const CHUNK_ACTIVE: CSSProperties = {
+  ...CHUNK_BASE,
   borderLeftColor: '#4a9eff',
   background: 'rgba(74, 158, 255, 0.08)',
-  color: '#E0E0E0',
 };
 
-const LINE_HOVER: CSSProperties = {
-  background: '#252525',
+const CHUNK_HEADER: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  marginBottom: 4,
 };
 
-const TIMECODE: CSSProperties = {
+const CHUNK_TC: CSSProperties = {
   fontSize: 9,
   fontFamily: '"JetBrains Mono", monospace',
   color: '#555',
-  marginRight: 8,
   minWidth: 36,
   flexShrink: 0,
-  userSelect: 'none',
 };
 
-const SCENE_HEADER: CSSProperties = {
+const CHUNK_ID: CSSProperties = {
+  fontSize: 8,
+  fontFamily: '"JetBrains Mono", monospace',
+  color: '#444',
+};
+
+const HEADING: CSSProperties = {
   fontWeight: 600,
-  color: '#E0E0E0',
+  color: '#ccc',
   textTransform: 'uppercase',
   fontSize: 10,
   letterSpacing: '0.5px',
 };
 
-// ─── BPM Display (§5.1) ───
-
-const BPM_CONTAINER: CSSProperties = {
-  display: 'flex',
-  gap: 10,
-  padding: '6px 8px',
-  borderTop: '0.5px solid #333',
-  background: '#141414',
-  flexShrink: 0,
-  fontSize: 10,
-  color: '#555',
+const CHUNK_TEXT: CSSProperties = {
+  fontSize: 11,
   fontFamily: 'Inter, system-ui, sans-serif',
+  color: '#777',
+  lineHeight: 1.5,
+  whiteSpace: 'pre-wrap',
+  maxHeight: 80,
+  overflow: 'hidden',
 };
 
-const BPM_DOT = (color: string): CSSProperties => ({
-  width: 6,
-  height: 6,
-  borderRadius: '50%',
-  background: color,
-  display: 'inline-block',
-  marginRight: 4,
-  verticalAlign: 'middle',
-});
+const EMPTY_STATE: CSSProperties = {
+  padding: 16,
+  color: '#555',
+  fontSize: 11,
+  textAlign: 'center',
+};
 
-// ─── Helper: format seconds to MM:SS ───
+// ─── Helpers ───
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -148,184 +113,112 @@ function formatTime(sec: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-// ─── Helper: parse script text into lines ───
-
-function parseScript(text: string): ScriptLine[] {
-  if (!text.trim()) return [];
-
-  const rawLines = text.split('\n');
-  const result: ScriptLine[] = [];
-  let currentScene = 'sc_0';
-  let sceneIdx = 0;
-
-  for (let i = 0; i < rawLines.length; i++) {
-    const line = rawLines[i].trim();
-    if (!line) continue;
-
-    // Detect line type
-    let type: ScriptLine['type'] = 'action';
-    if (/^(INT\.|EXT\.|INT\/EXT\.)/.test(line)) {
-      type = 'scene_header';
-      sceneIdx++;
-      currentScene = `sc_${sceneIdx}`;
-    } else if (/^(CUT TO|FADE|DISSOLVE|SMASH CUT)/.test(line)) {
-      type = 'transition';
-    } else if (/^[A-Z]{2,}(\s*\(.*\))?\s*$/.test(line)) {
-      // Character name (all caps) — next line is dialogue
-      type = 'dialogue';
-    } else if (line.startsWith('"') || line.startsWith("'")) {
-      type = 'dialogue';
-    }
-
-    // Approximate time: 1 line ≈ 4 seconds (55 lines per page, 1 page ≈ 60 sec)
-    const timeSec = result.length * 4;
-
-    result.push({
-      index: result.length,
-      text: line,
-      timecode: formatTime(timeSec),
-      time_sec: timeSec,
-      scene_id: currentScene,
-      type,
-    });
-  }
-
-  return result;
-}
-
 // ─── Component ───
 
 interface ScriptPanelProps {
-  /** Script text (screenplay or auto-transcript) */
   scriptText?: string;
-  /** Active tab override */
-  activeTab?: 'script' | 'dag';
-  /** Callback when tab changes */
-  onTabChange?: (tab: 'script' | 'dag') => void;
+  activeTab?: string;
+  onTabChange?: (tab: string) => void;
 }
 
-export default function ScriptPanel({ scriptText = '', activeTab: tabProp, onTabChange }: ScriptPanelProps) {
-  const [tab, setTab] = useState<'script' | 'dag'>(tabProp || 'script');
-  const [hoveredLine, setHoveredLine] = useState<number | null>(null);
+export default function ScriptPanel({ scriptText = '' }: ScriptPanelProps) {
+  const [chunks, setChunks] = useState<SceneChunk[]>([]);
+  const [activeChunkId, setActiveChunkId] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Sync store
   const syncFromScript = usePanelSyncStore((s) => s.syncFromScript);
-  const selectedScriptLine = usePanelSyncStore((s) => s.selectedScriptLine);
   const playheadSec = usePanelSyncStore((s) => s.playheadSec);
   const lastSyncSource = usePanelSyncStore((s) => s.lastSyncSource);
-  const audioBPM = usePanelSyncStore((s) => s.currentAudioBPM);
-  const visualBPM = usePanelSyncStore((s) => s.currentVisualBPM);
-  const scriptBPM = usePanelSyncStore((s) => s.currentScriptBPM);
 
-  // Editor store (for isPlaying teleprompter)
+  // Editor store
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
 
-  const lines = parseScript(scriptText);
+  // ─── Parse script text into chunks via API ───
+  useEffect(() => {
+    if (!scriptText.trim()) {
+      setChunks([]);
+      return;
+    }
 
-  // ─── Click line → sync ───
-  const handleLineClick = useCallback(
-    (line: ScriptLine) => {
-      syncFromScript(line.index, line.scene_id, line.time_sec);
+    const controller = new AbortController();
+    fetch(`${API_BASE}/cut/script/parse`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: scriptText }),
+      signal: controller.signal,
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.chunks)) {
+          setChunks(data.chunks);
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.warn('[ScriptPanel] parse failed:', err);
+        }
+      });
+
+    return () => controller.abort();
+  }, [scriptText]);
+
+  // ─── Click chunk → sync ───
+  const handleChunkClick = useCallback(
+    (chunk: SceneChunk) => {
+      setActiveChunkId(chunk.chunk_id);
+      syncFromScript(chunk.line_start, chunk.chunk_id, chunk.start_sec);
     },
     [syncFromScript],
   );
 
   // ─── Teleprompter auto-scroll during playback ───
   useEffect(() => {
-    if (!isPlaying || !listRef.current || lastSyncSource === 'script') return;
+    if (!isPlaying || !listRef.current || lastSyncSource === 'script' || chunks.length === 0) return;
 
-    // Find the line closest to current playhead
-    const targetLine = lines.findIndex((l) => l.time_sec >= playheadSec);
-    if (targetLine < 0) return;
+    // Find the chunk that contains current playhead
+    const targetIdx = chunks.findIndex(
+      (c) => playheadSec >= c.start_sec && playheadSec < c.start_sec + c.duration_sec,
+    );
+    if (targetIdx < 0) return;
 
-    const lineEl = listRef.current.children[targetLine] as HTMLElement | undefined;
-    if (lineEl) {
-      lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const chunkEl = listRef.current.children[targetIdx] as HTMLElement | undefined;
+    if (chunkEl) {
+      chunkEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-  }, [playheadSec, isPlaying, lines, lastSyncSource]);
-
-  // ─── Tab handling ───
-  const handleTabChange = useCallback(
-    (newTab: 'script' | 'dag') => {
-      setTab(newTab);
-      onTabChange?.(newTab);
-    },
-    [onTabChange],
-  );
+  }, [playheadSec, isPlaying, chunks, lastSyncSource]);
 
   return (
     <div style={PANEL}>
-      {/* Tab bar: Script / DAG project (§2.1) */}
-      <div style={TAB_BAR}>
-        <button
-          style={tab === 'script' ? TAB_ACTIVE : TAB}
-          onClick={() => handleTabChange('script')}
-        >
-          Script
-        </button>
-        <button
-          style={tab === 'dag' ? TAB_ACTIVE : TAB}
-          onClick={() => handleTabChange('dag')}
-        >
-          DAG project
-        </button>
-      </div>
-
-      {/* Script lines */}
-      {tab === 'script' && (
-        <div ref={listRef} style={SCRIPT_LIST}>
-          {lines.length === 0 && (
-            <div style={{ padding: 16, color: '#555', fontSize: 11, textAlign: 'center' }}>
-              No script loaded. Import media → auto-transcribe → becomes script.
-            </div>
-          )}
-          {lines.map((line) => {
-            const isActive = selectedScriptLine === line.index;
-            const isHovered = hoveredLine === line.index;
-
-            return (
-              <div
-                key={line.index}
-                style={{
-                  ...(isActive ? LINE_ACTIVE : LINE_BASE),
-                  ...(isHovered && !isActive ? LINE_HOVER : {}),
-                }}
-                onClick={() => handleLineClick(line)}
-                onMouseEnter={() => setHoveredLine(line.index)}
-                onMouseLeave={() => setHoveredLine(null)}
-              >
-                <span style={TIMECODE}>{line.timecode}</span>
-                <span style={line.type === 'scene_header' ? SCENE_HEADER : undefined}>
-                  {line.text}
-                </span>
+      <div ref={listRef} style={CHUNK_LIST}>
+        {chunks.length === 0 && (
+          <div style={EMPTY_STATE}>
+            No script loaded.
+          </div>
+        )}
+        {chunks.map((chunk) => {
+          const isActive = activeChunkId === chunk.chunk_id;
+          return (
+            <div
+              key={chunk.chunk_id}
+              style={isActive ? CHUNK_ACTIVE : CHUNK_BASE}
+              onClick={() => handleChunkClick(chunk)}
+            >
+              {/* Header: timecode + chunk_id + scene heading */}
+              <div style={CHUNK_HEADER}>
+                <span style={CHUNK_TC}>{formatTime(chunk.start_sec)}</span>
+                <span style={CHUNK_ID}>{chunk.chunk_id}</span>
               </div>
-            );
-          })}
-        </div>
-      )}
-
-      {/* DAG project tab — placeholder, rendered by DAGProjectPanel */}
-      {tab === 'dag' && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: 11 }}>
-          DAG Project panel (180.16)
-        </div>
-      )}
-
-      {/* BPM display (§5.1, MARKER_180.6) */}
-      <div style={BPM_CONTAINER}>
-        <span>
-          <span style={BPM_DOT('#5DCAA5')} />
-          Audio: {audioBPM ?? '—'}
-        </span>
-        <span>
-          <span style={BPM_DOT('#85B7EB')} />
-          Visual: {visualBPM ?? '—'}
-        </span>
-        <span>
-          <span style={BPM_DOT('#E0E0E0')} />
-          Script: {scriptBPM ?? '—'}
-        </span>
+              {chunk.scene_heading && (
+                <div style={HEADING}>{chunk.scene_heading}</div>
+              )}
+              {/* Body text (truncated) */}
+              <div style={CHUNK_TEXT}>
+                {chunk.text.split('\n').filter((l) => l.trim() && l !== chunk.scene_heading).slice(0, 4).join('\n')}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
