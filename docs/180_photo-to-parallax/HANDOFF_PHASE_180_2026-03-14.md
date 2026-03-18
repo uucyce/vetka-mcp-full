@@ -241,6 +241,21 @@ Depth convention:
   - `preset_renders`
   - `evidence` с `manual vs gated-qwen` путями (`compare_sheet`, `compare_video`, mid-frames, preview paths)
 
+## Update 2026-03-19 — PARALLAX v1.5 Service Extraction
+
+- Из `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/App.tsx` вынесены release-critical pure services:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/lib/plateLayout.ts`
+- В модуле живут:
+  - `recommendWorkflowRouting()`
+  - `deriveParallaxStrength()`
+  - `buildPlateLayoutContract()`
+  - `buildPlateExportAssetsContract()`
+- Добавлены unit tests:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/lib/plateLayout.test.ts`
+- Проверка после выноса:
+  - `cd photo_parallax_playground && npm test`
+  - `cd photo_parallax_playground && npm run build`
+
 ## 8) Быстрый старт для нового чата
 
 1. Прочитать:
