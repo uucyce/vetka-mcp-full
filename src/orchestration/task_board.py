@@ -2036,6 +2036,149 @@ class TaskBoard:
 
         return await self.dispatch_task(task["id"], chat_id=chat_id, selected_key=selected_key)
 
+    # ==========================================
+    # MARKER_189.15: DOCS CONTENT INJECTION
+    # ==========================================
+
+    async def _inject_docs_content(
+        self,
+        task: Dict[str, Any],
+        preset: Optional[str] = None,
+    ) -> str:
+        """Read architecture_docs + recon_docs files and inject content into task_text.
+
+        Context Budget Guard:
+        - Determines model context_length from preset → LLMModelRegistry
+        - Budget = min(context_length * 0.30, 32000 tokens ≈ 128KB chars)
+        - Reads files up to budget, truncates per-doc and total
+        - Applies ELISION L2 compression if available
+
+        Args:
+            task: Task dict with architecture_docs/recon_docs fields
+            preset: Pipeline preset name (e.g. "dragon_silver")
+
+        Returns:
+            Formatted docs section string, or empty string if no docs
+        """
+        # Collect all doc paths
+        doc_paths = []
+        for field in ("architecture_docs", "recon_docs"):
+            for doc_ref in (task.get(field) or []):
+                doc_ref = str(doc_ref).strip()
+                if doc_ref:
+                    doc_paths.append((field, doc_ref))
+
+        if not doc_paths:
+            return ""
+
+        # Determine context budget from model
+        budget_chars = 32000  # Conservative default (~8K tokens)
+        try:
+            model_id = self._get_coder_model_from_preset(preset)
+            if model_id:
+                from src.elisya.llm_model_registry import LLMModelRegistry
+                registry = LLMModelRegistry()
+                profile = await registry.get_profile(model_id)
+                context_length = profile.context_length
+                # Budget: 30% of context, capped at 128K chars (~32K tokens)
+                budget_chars = min(int(context_length * 0.30 * 4), 128000)
+                logger.info(f"[TaskBoard] Docs budget: {budget_chars} chars "
+                            f"(model={model_id}, context={context_length})")
+        except Exception as e:
+            logger.warning(f"[TaskBoard] Failed to get model context, using default budget: {e}")
+
+        # Read docs up to budget
+        sections = []
+        total_chars = 0
+        per_doc_cap = max(budget_chars // max(len(doc_paths), 1), 2000)
+        docs_included = 0
+        docs_skipped = []
+
+        for field, doc_ref in doc_paths:
+            if total_chars >= budget_chars:
+                docs_skipped.append(doc_ref)
+                continue
+
+            # Resolve path relative to project root
+            full_path = _MAIN_ROOT / doc_ref
+            if not full_path.exists():
+                # Try without leading slash
+                full_path = _MAIN_ROOT / doc_ref.lstrip("/")
+            if not full_path.exists():
+                docs_skipped.append(f"{doc_ref} (not found)")
+                continue
+
+            try:
+                content = full_path.read_text(encoding="utf-8", errors="replace")
+                # Per-doc cap
+                if len(content) > per_doc_cap:
+                    content = content[:per_doc_cap] + f"\n... [truncated, {len(content)} chars total]"
+
+                remaining = budget_chars - total_chars
+                if len(content) > remaining:
+                    content = content[:remaining] + "\n... [budget exceeded]"
+
+                sections.append(f"### {doc_ref} ({field})\n{content}")
+                total_chars += len(content)
+                docs_included += 1
+            except Exception as e:
+                docs_skipped.append(f"{doc_ref} (read error: {e})")
+
+        if not sections:
+            return ""
+
+        # Try ELISION compression if total is large
+        docs_text = "\n\n".join(sections)
+        compressed = False
+        try:
+            if total_chars > 8000:
+                from src.memory.elision import compress_context
+                result = compress_context(docs_text, level=2)
+                if result.get("compressed"):
+                    ratio = result.get("ratio", 1.0)
+                    if ratio > 1.1:  # Only use if actually compressed
+                        docs_text = result["compressed"]
+                        compressed = True
+                        logger.info(f"[TaskBoard] Docs compressed: ratio={ratio:.2f}")
+        except Exception:
+            pass  # ELISION optional, proceed with raw text
+
+        # Build final section
+        header = f"\n\n--- ARCHITECTURE & RECON DOCS ({docs_included} files"
+        if docs_skipped:
+            header += f", {len(docs_skipped)} skipped"
+        if compressed:
+            header += ", ELISION L2"
+        header += ") ---\n"
+
+        footer = "\n--- END DOCS ---\n"
+
+        logger.info(f"[TaskBoard] Injected {docs_included} docs ({total_chars} chars) "
+                     f"into task {task.get('id', '?')}")
+
+        return header + docs_text + footer
+
+    @staticmethod
+    def _get_coder_model_from_preset(preset: Optional[str]) -> Optional[str]:
+        """Extract the coder model_id from a preset name.
+
+        Reads model_presets.json and returns the 'coder' role model.
+        Falls back to None if preset not found.
+        """
+        if not preset:
+            return None
+        try:
+            presets_path = _MAIN_ROOT / "data" / "templates" / "model_presets.json"
+            if not presets_path.exists():
+                return None
+            data = json.loads(presets_path.read_text())
+            preset_data = data.get("presets", {}).get(preset)
+            if preset_data and "roles" in preset_data:
+                return preset_data["roles"].get("coder")
+        except Exception:
+            pass
+        return None
+
     async def dispatch_task(
         self,
         task_id: str,
@@ -2146,6 +2289,17 @@ class TaskBoard:
                             task_text += f"  Confidence: {conf}\n"
                         task_text += "\n"
                     task_text += "--- END FAILURE HISTORY ---\n"
+
+                # MARKER_189.15: Auto-inject architecture_docs + recon_docs content
+                # Context Budget Guard: reads files, respects model context_length
+                docs_section = await self._inject_docs_content(task, preset)
+                if docs_section:
+                    task_text += docs_section
+
+                # MARKER_191.6: Inject implementation_hints if present
+                hints = task.get("implementation_hints", "").strip()
+                if hints:
+                    task_text += f"\n\n--- IMPLEMENTATION HINTS ---\n{hints}\n--- END HINTS ---\n"
 
                 try:
                     # Execute pipeline
