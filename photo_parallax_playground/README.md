@@ -48,6 +48,30 @@ photo_parallax_playground/output/render_preview_multiplate_qwen_gated/web/render
 photo_parallax_playground/output/render_preview_multiplate_qwen_gated/social/render_preview_multiplate_summary.json
 ```
 
+## RC1 Runbook
+
+Canonical release smoke:
+
+```bash
+bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_gated_multiplate_flow.sh \
+  hover-politsia keyboard-hands truck-driver
+```
+
+Primary RC1 artifacts:
+
+```text
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/render_compare_qwen_multiplate_summary.json
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/compare_batch_sheet.png
+```
+
+Troubleshooting:
+
+- If export fails before render, inspect `plate_export_readiness_diagnostics.json` under each sample in `photo_parallax_playground/output/plate_exports_qwen_gated`.
+- If batch result is `caution`, inspect `cameraSafe.warning` and `cameraSafe.suggestion` in `plate_layout.json` and in `regression_quality_summary.json`.
+- If preset outputs are overwritten unexpectedly, keep `quality` in the base render root and let `web`/`social` use their auto-created subdirectories.
+
 ## Review Probe
 
 ```bash

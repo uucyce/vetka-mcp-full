@@ -256,6 +256,17 @@ Depth convention:
   - `cd photo_parallax_playground && npm test`
   - `cd photo_parallax_playground && npm run build`
 
+## Update 2026-03-19 — PARALLAX v1.6 RC1 Packaging
+
+- Добавлены release notes:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/RELEASE_NOTES_V1_RC1_2026-03-19.md`
+- README теперь содержит `RC1 Runbook` и troubleshooting для:
+  - readiness diagnostics
+  - `cameraSafe.warning`
+  - preset output layout
+- RC1 smoke path остаётся canonical:
+  - `bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_gated_multiplate_flow.sh hover-politsia keyboard-hands truck-driver`
+
 ## 8) Быстрый старт для нового чата
 
 1. Прочитать:
