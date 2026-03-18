@@ -35,9 +35,12 @@ MARKER_109_1_VIEWPORT_INJECT: Phase 109.1 - Dynamic Context Injection
 from typing import Dict, Any, Optional
 import time
 import asyncio
+import logging
 import json as _json  # MARKER_181.5.4: Prevent shadowing in async call chain
 from pathlib import Path
 from .base_tool import BaseMCPTool
+
+logger = logging.getLogger(__name__)
 
 
 # Project digest path (relative to project root)
@@ -162,7 +165,9 @@ class SessionInitTool(BaseMCPTool):
 
     async def _execute_async(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Async implementation of session initialization."""
-        user_id = arguments.get("user_id", "default")
+        # MARKER_191.5: user_id resolution chain: arg > env > fallback
+        import os
+        user_id = arguments.get("user_id") or os.environ.get("VETKA_USER_ID") or "danila"
         group_id = arguments.get("group_id")
         chat_id = arguments.get("chat_id")  # MARKER_108_1: Unified MCP-Chat ID
         include_viewport = arguments.get("include_viewport", True)
@@ -222,25 +227,34 @@ class SessionInitTool(BaseMCPTool):
             if agent_focus_all:
                 context["_all_agent_focus"] = agent_focus_all  # full map for debug
 
-        # Get user preferences from AURA
+        # MARKER_191.5: Get user preferences from AURA with auto-bootstrap
         try:
             from src.memory.aura_store import get_aura_store
+            from src.memory.user_memory import create_user_preferences
             aura = get_aura_store()
             prefs = aura.get_user_preferences(user_id)
-            if prefs:
-                # Convert UserPreferences dataclass to dict safely
-                context["user_preferences"] = {
-                    "user_id": prefs.user_id,
-                    "has_preferences": True
-                }
-                # Add key preference categories if available
-                if hasattr(prefs, 'communication_style'):
-                    context["communication_style"] = getattr(prefs.communication_style, '__dict__', {})
-                if hasattr(prefs, 'viewport_patterns'):
-                    context["viewport_patterns"] = getattr(prefs.viewport_patterns, '__dict__', {})
-            else:
-                context["user_preferences"] = {"user_id": user_id, "has_preferences": False}
+            if not prefs:
+                # Auto-bootstrap: create default profile for new user
+                prefs = create_user_preferences(user_id)
+                aura.set_preference(
+                    agent_type="default", user_id=user_id,
+                    category="communication_style", key="preferred_language",
+                    value="ru"
+                )
+                prefs = aura.get_user_preferences(user_id)
+                logger.info(f"[session_init] Auto-bootstrapped AURA profile for user_id={user_id}")
+            # Convert UserPreferences dataclass to dict safely
+            context["user_preferences"] = {
+                "user_id": prefs.user_id,
+                "has_preferences": True
+            }
+            # Add key preference categories if available
+            if hasattr(prefs, 'communication_style'):
+                context["communication_style"] = getattr(prefs.communication_style, '__dict__', {})
+            if hasattr(prefs, 'viewport_patterns'):
+                context["viewport_patterns"] = getattr(prefs.viewport_patterns, '__dict__', {})
         except Exception as e:
+            context["user_preferences"] = {"user_id": user_id, "has_preferences": False}
             context["user_preferences_error"] = str(e)
 
         # Get recent MCP states
