@@ -106,18 +106,37 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   }, [activeMediaPath]);
 
   // ─── Right top: Program Monitor (ONLY ONE — timeline playback) ───
+  // StorySpace 3D mini-panel in bottom-right corner (MARKER_CUT_0.4)
+  const ssState = panels.find((p) => p.id === 'story_space_3d');
   const renderRightTop = useCallback(() => {
     return (
       <PanelShell panelId="program_monitor" title="Program Monitor">
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
           <div style={{ flex: 1, overflow: 'hidden' }}>
             <VideoPreview />
           </div>
           <MonitorTransport feed="program" />
+          {/* StorySpace 3D mini — bottom-right corner of Program Monitor */}
+          {ssState?.visible && (
+            <div style={{
+              position: 'absolute',
+              right: 8,
+              bottom: 40,
+              width: 120,
+              height: 80,
+              zIndex: 10,
+              borderRadius: 4,
+              overflow: 'hidden',
+              border: '1px solid #333',
+              background: '#000',
+            }}>
+              <StorySpace3D timelineId={timelineId} scriptText={scriptText} mini={true} />
+            </div>
+          )}
         </div>
       </PanelShell>
     );
-  }, []);
+  }, [ssState?.visible, timelineId, scriptText]);
 
   // ─── Right bottom: Inspector + Script + DAG tab group (MARKER_181.13) ───
   const setActiveTab = usePanelLayoutStore((s) => s.setActiveTab);
@@ -183,25 +202,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     [renderLeftTop, renderLeftBottom, renderCenter, renderRightTop, renderRightBottom, renderBottom],
   );
 
-  // ─── Floating panels: StorySpace3D mini ───
-  const storySpacePanel = useMemo(() => {
-    const ssState = panels.find((p) => p.id === 'story_space_3d');
-    if (!ssState?.visible) return null;
-
-    return (
-      <PanelShell panelId="story_space_3d" title="StorySpace 3D">
-        <StorySpace3D
-          timelineId={timelineId}
-          scriptText={scriptText}
-          mini={ssState.isMini}
-        />
-      </PanelShell>
-    );
-  }, [panels, timelineId, scriptText]);
-
   return (
     <div style={ROOT}>
-      <PanelGrid renderPanel={renderPanel} floatingPanels={storySpacePanel} />
+      <PanelGrid renderPanel={renderPanel} />
     </div>
   );
 }
