@@ -30,7 +30,8 @@ def _resolve_project_root() -> Path:
     env_root = os.environ.get("VETKA_MAIN_REPO")
     if env_root and Path(env_root).is_dir():
         return Path(env_root)
-    return Path(__file__).resolve().parent.parent.parent
+    # __file__ = src/mcp/tools/task_board_tools.py → 4 levels up to project root
+    return Path(__file__).resolve().parent.parent.parent.parent
 
 
 _PROJECT_ROOT = _resolve_project_root()
