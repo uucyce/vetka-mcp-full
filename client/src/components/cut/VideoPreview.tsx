@@ -113,7 +113,17 @@ const METER_STRIP_STYLE: CSSProperties = {
   zIndex: 2,
 };
 
-export default function VideoPreview() {
+/**
+ * MARKER_W1.3: feed prop controls which media path this monitor reads.
+ * feed='source' → sourceMediaPath (raw clip from DAG/Project click)
+ * feed='program' → programMediaPath (timeline playback)
+ * Default (no prop) → activeMediaPath (legacy behavior)
+ */
+type VideoPreviewProps = {
+  feed?: 'source' | 'program';
+};
+
+export default function VideoPreview({ feed }: VideoPreviewProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef(0);
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
@@ -121,7 +131,13 @@ export default function VideoPreview() {
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [sourceHint, setSourceHint] = useState<string>('');
 
-  const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
+  // MARKER_W1.3: Select media path based on feed prop
+  const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
+  const programMediaPath = useCutEditorStore((s) => s.programMediaPath);
+  const legacyMediaPath = useCutEditorStore((s) => s.activeMediaPath);
+  const activeMediaPath = feed === 'source' ? sourceMediaPath
+    : feed === 'program' ? programMediaPath
+    : legacyMediaPath;
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const playbackRate = useCutEditorStore((s) => s.playbackRate);
@@ -291,9 +307,9 @@ export default function VideoPreview() {
     return (
       <div style={CONTAINER_STYLE}>
         <div style={EMPTY_STYLE}>
-          Select a clip to preview
+          {feed === 'source' ? 'Select a clip to preview' : feed === 'program' ? 'No timeline playback' : 'Select a clip to preview'}
           <br />
-          <span style={{ fontSize: 11, color: '#333' }}>Program Monitor</span>
+          <span style={{ fontSize: 11, color: '#333' }}>{feed === 'source' ? 'SOURCE' : feed === 'program' ? 'PROGRAM' : 'Monitor'}</span>
         </div>
       </div>
     );

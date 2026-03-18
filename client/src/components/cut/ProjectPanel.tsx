@@ -184,8 +184,9 @@ export default function ProjectPanel() {
   const setEditorSession = useCutEditorStore((s) => s.setEditorSession);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const lanes = useCutEditorStore((s) => s.lanes);
-  const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
-  const setActiveMedia = useCutEditorStore((s) => s.setActiveMedia);
+  const activeMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
+  // MARKER_W1.3: Project click → Source Monitor (not program)
+  const setActiveMedia = useCutEditorStore((s) => s.setSourceMedia);
   const setSelectedClip = useCutEditorStore((s) => s.setSelectedClip);
 
   // Local state

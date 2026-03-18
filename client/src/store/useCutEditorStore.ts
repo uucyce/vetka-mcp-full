@@ -104,8 +104,12 @@ interface CutEditorState {
 
   // === Selection ===
   selectedClipId: string | null;
-  activeMediaPath: string | null;
+  activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
+
+  // === MARKER_W1.3: Source/Program feed split ===
+  sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
+  programMediaPath: string | null;    // timeline playback → Program Monitor
 
   // === Data (set from CutStandalone projectState) ===
   lanes: TimelineLane[];
@@ -160,6 +164,9 @@ interface CutEditorState {
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
   setActiveMedia: (path: string | null) => void;
+  // MARKER_W1.3: Source/Program routing
+  setSourceMedia: (path: string | null) => void;
+  setProgramMedia: (path: string | null) => void;
   setHoveredClip: (id: string | null) => void;
   setMediaError: (err: string | null) => void;
   setMediaLoading: (loading: boolean) => void;
@@ -211,6 +218,10 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   selectedClipId: null,
   activeMediaPath: null,
   hoveredClipId: null,
+
+  // MARKER_W1.3: Source/Program feed split
+  sourceMediaPath: null,
+  programMediaPath: null,
 
   // Data
   lanes: [],
@@ -274,7 +285,10 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
   setSelectedClip: (id) => set({ selectedClipId: id }),
-  setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_W1.3: Source/Program routing
+  setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
   setHoveredClip: (id) => set({ hoveredClipId: id }),

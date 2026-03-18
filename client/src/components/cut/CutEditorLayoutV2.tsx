@@ -59,7 +59,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
   const duration = useCutEditorStore((s) => s.duration);
   const timelineId = useCutEditorStore((s) => s.timelineId);
-  const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
 
@@ -111,29 +110,30 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const renderLeftBottom = useCallback(() => null, []);
 
   // ─── Center: Source Monitor — raw clip preview (large area) ───
-  // Phase 3 (CUT-3.2) will add feed="source" prop to VideoPreview
+  // MARKER_W1.3: feed="source" routes to sourceMediaPath
+  const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   const renderCenter = useCallback(() => {
-    const clipName = activeMediaPath ? activeMediaPath.split('/').pop() : 'NO CLIP';
+    const clipName = sourceMediaPath ? sourceMediaPath.split('/').pop() : 'NO CLIP';
     return (
-      <PanelShell panelId="source_monitor" title={`Source: ${clipName}`}>
+      <PanelShell panelId="source_monitor" title={`SOURCE: ${clipName}`}>
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1, overflow: 'hidden' }}>
-            <VideoPreview />
+            <VideoPreview feed="source" />
           </div>
           <MonitorTransport feed="source" />
         </div>
       </PanelShell>
     );
-  }, [activeMediaPath]);
+  }, [sourceMediaPath]);
 
   // ─── Right top: Program Monitor (ONLY ONE — timeline playback) ───
-  // StorySpace removed — was blocking Program Monitor. Will be a separate panel/tab.
+  // MARKER_W1.3: feed="program" routes to programMediaPath
   const renderRightTop = useCallback(() => {
     return (
-      <PanelShell panelId="program_monitor" title="Program Monitor">
+      <PanelShell panelId="program_monitor" title="PROGRAM">
         <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
           <div style={{ flex: 1, overflow: 'hidden' }}>
-            <VideoPreview />
+            <VideoPreview feed="program" />
           </div>
           <MonitorTransport feed="program" />
         </div>
