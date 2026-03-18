@@ -465,6 +465,8 @@ interface MCCState {
   projectTabsLoading: boolean;
   projectTabsUpdatedAt: string;
   projectTabsHiddenCount: number;
+  // MARKER_189.6A: Toggle to show tasks from all projects vs active only
+  showAllProjectsTasks: boolean;
 
   // MARKER_155.4: Camera position for zoom-based navigation
   cameraPosition: { x: number; y: number; zoom: number } | null;
@@ -600,6 +602,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
   projectTabsLoading: false,
   projectTabsUpdatedAt: '',
   projectTabsHiddenCount: 0,
+  showAllProjectsTasks: false,
 
   // MARKER_155.4: Camera position initial state
   cameraPosition: null,
@@ -616,7 +619,8 @@ export const useMCCStore = create<MCCState>((set, get) => ({
     set({ tasksLoading: true });
     try {
       const activeProjectId = String(get().activeProjectId || '');
-      const taskQs = activeProjectId ? `?project_id=${encodeURIComponent(activeProjectId)}` : '';
+      // MARKER_189.6A: showAllProjectsTasks bypasses project filter
+      const taskQs = (activeProjectId && !get().showAllProjectsTasks) ? `?project_id=${encodeURIComponent(activeProjectId)}` : '';
       const [tasksRes, agentsRes, hbRes] = await Promise.all([
         fetch(`${API_DEBUG}/task-board${taskQs}`).catch(() => null),
         fetch(`${API_DEBUG}/task-board/active-agents${taskQs}`).catch(() => null),

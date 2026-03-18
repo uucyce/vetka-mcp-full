@@ -192,6 +192,37 @@ function SelectedTaskActions({ selectedTask }: { selectedTask: TaskData | null }
   );
 }
 
+// MARKER_189.6A: All Projects toggle for task filtering
+function AllProjectsToggle({ dense = false }: { dense?: boolean }) {
+  const showAll = useMCCStore((s) => s.showAllProjectsTasks);
+  const fetchTasks = useMCCStore((s) => s.fetchTasks);
+
+  const toggle = () => {
+    useMCCStore.setState({ showAllProjectsTasks: !showAll });
+    setTimeout(() => fetchTasks(), 0);
+  };
+
+  return (
+    <button
+      onClick={toggle}
+      title={showAll ? 'Showing all projects' : 'Showing active project only'}
+      style={{
+        border: `1px solid ${NOLAN_PALETTE.borderDim}`,
+        borderRadius: 3,
+        background: showAll ? 'rgba(120,140,170,0.18)' : 'rgba(255,255,255,0.04)',
+        color: showAll ? '#b9c8dd' : '#a9b2bc',
+        fontSize: dense ? 7 : 8,
+        padding: dense ? '1px 5px' : '2px 6px',
+        cursor: 'pointer',
+        textTransform: 'uppercase',
+        letterSpacing: 0.3,
+      }}
+    >
+      {showAll ? 'all' : 'proj'}
+    </button>
+  );
+}
+
 function TasksCompact() {
   const tasks = useMCCStore((s) => s.tasks);
   const summary = useMCCStore((s) => s.summary);
@@ -233,6 +264,7 @@ function TasksCompact() {
         {(summary?.by_status?.done ?? 0) > 0 && (
           <span style={{ color: '#8a8' }}>✓ {summary!.by_status.done}</span>
         )}
+        <AllProjectsToggle dense />
       </div>
 
       <SelectedTaskActions selectedTask={selectedTask} />
@@ -388,6 +420,7 @@ function TasksExpanded() {
             {s}
           </button>
         ))}
+        <AllProjectsToggle />
       </div>
 
       <SelectedTaskActions selectedTask={selectedTask} />
