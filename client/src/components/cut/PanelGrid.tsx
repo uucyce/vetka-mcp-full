@@ -213,25 +213,9 @@ export default function PanelGrid({ renderPanel, floatingPanels }: PanelGridProp
         onPointerUp={handleResizeUp}
       />
 
-      {/* Right column — split into top (Program Monitor) + bottom (Inspector + tabs) */}
-      <div style={{ ...CELL, gridColumn: '5', gridRow: '1', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ flex: rightTopH, overflow: 'hidden', minHeight: 0 }}>
-          {renderPanel('right_top')}
-        </div>
-        <div
-          style={{
-            height: 3,
-            cursor: 'row-resize',
-            background: '#1A1A1A',
-            flexShrink: 0,
-          }}
-          onPointerDown={handleRightSplitResizeDown}
-          onPointerMove={handleRightSplitResizeMove}
-          onPointerUp={handleResizeUp}
-        />
-        <div style={{ flex: rightBottomH, overflow: 'hidden', minHeight: 0 }}>
-          {renderPanel('right_bottom')}
-        </div>
+      {/* Right column — Program Monitor (full height, no split) */}
+      <div style={{ ...CELL, gridColumn: '5', gridRow: '1' }}>
+        {renderPanel('right_top')}
       </div>
 
       {/* Row 2: Bottom resize handle (full width) */}
