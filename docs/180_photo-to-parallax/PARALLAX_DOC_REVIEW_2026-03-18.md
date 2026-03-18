@@ -82,3 +82,33 @@
 
 - recon doc/task drift audit;
 - recon `Qwen-Image-Layered` fit for layered decomposition.
+
+## 7. Current Backlog Mapping
+
+Актуальный `parallax` backlog должен читаться так:
+
+- `recon`
+  - document/task drift audit
+  - `Qwen-Image-Layered` fit review
+- `release`
+  - contract freeze
+  - export anti-flake + QA summary
+  - final render presets
+  - regression quality pack
+  - RC1 packaging/runbook/smoke
+- `refactor`
+  - extract release-critical services from `App.tsx`
+
+Правило исполнения:
+
+- `recon` идёт параллельно, но не блокирует release-v1;
+- `release` определяет ближайший критический путь;
+- `refactor` делается так, чтобы не ломать release behavior.
+
+## 8. Final Planning Rule
+
+При любом новом чате по parallax:
+
+- сначала открыть `PARALLAX_ARCHITECTURE_RELEASE_V1_2026-03-18.md`;
+- затем `PARALLAX_DOC_REVIEW_2026-03-18.md`;
+- после этого брать задачи только из fresh `parallax` backlog, а не из старых `task_id`.
