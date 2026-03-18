@@ -22,7 +22,7 @@ EMBEDDING_FILE = Path(__file__).parent.parent / "src" / "utils" / "embedding_ser
 TRIPLE_WRITE_FILE = Path(__file__).parent.parent / "src" / "orchestration" / "triple_write_manager.py"
 MAIN_FILE = Path(__file__).parent.parent / "main.py"
 HOSTESS_FILE = Path(__file__).parent.parent / "src" / "agents" / "hostess_agent.py"
-ENGRAM_FILE = Path(__file__).parent.parent / "src" / "memory" / "engram_user_memory.py"
+ENGRAM_FILE = Path(__file__).parent.parent / "src" / "memory" / "aura_store.py"  # MARKER_187.6: renamed from engram_user_memory.py
 QDRANT_CLIENT_FILE = Path(__file__).parent.parent / "src" / "memory" / "qdrant_client.py"
 
 
@@ -256,11 +256,11 @@ class TestEngramFixes:
             "QdrantVetkaClient should have retrieve() proxy method"
         )
 
-    def test_engram_has_get_all_preferences(self):
-        """EngramUserMemory should have get_all_preferences() public method."""
+    def test_aura_has_get_all_preferences(self):
+        """AuraStore should have get_all_preferences() public method."""
         source = ENGRAM_FILE.read_text()
         assert "def get_all_preferences(" in source, (
-            "EngramUserMemory should have get_all_preferences() method"
+            "AuraStore should have get_all_preferences() method"
         )
 
     def test_get_all_preferences_returns_dict(self):
@@ -281,8 +281,8 @@ class TestEngramFixes:
         source = QDRANT_CLIENT_FILE.read_text()
         assert "MARKER_118.5" in source
 
-    def test_marker_118_5_present_in_engram(self):
-        """MARKER_118.5 should be in engram_user_memory.py."""
+    def test_marker_118_5_present_in_aura(self):
+        """MARKER_118.5 should be in aura_store.py."""
         source = ENGRAM_FILE.read_text()
         assert "MARKER_118.5" in source
 

@@ -4,7 +4,7 @@ Hybrid RAM + Qdrant storage for user preferences
 
 @file aura_store.py
 @status active
-@phase 187.6 (renamed from engram_user_memory.py)
+@phase 187.6 (renamed from engram_user_memory.py) MARKER_118.5
 @depends logging, math, datetime, qdrant_client, user_memory.py, elision.py
 @used_by jarvis_prompt_enricher.py, orchestrator_with_elisya.py, vetka_mcp_bridge.py,
          shared_tools.py, llm_call_tool.py, session_tools.py, user_memory_updater.py
@@ -675,8 +675,5 @@ async def aura_lookup(query: str) -> Optional[List[Dict[str, Any]]]:
         return None
 
 
-# ============ BACKWARDS COMPATIBILITY ============
-# Temporary aliases — remove after all callers migrated
-EngramUserMemory = AuraStore
-get_engram_user_memory = get_aura_store
-engram_lookup = aura_lookup
+# MARKER_187.6: Backwards-compat aliases removed (Phase 191.5)
+# All callers migrated — engram_user_memory.py shim also removed.

@@ -75,6 +75,8 @@ TASK_BOARD_SCHEMA = {
         "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
         # MARKER_188.2: Worktree path for auto-commit from worktree context
         "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree."},
+        # MARKER_192.2: execution_mode — controls closure proof requirements
+        "execution_mode": {"type": "string", "enum": ["pipeline", "manual"], "description": "Closure proof mode. 'pipeline' = full proof (pipeline_success + verifier + tests). 'manual' = relaxed (commit_hash only). Auto-inferred from agent_type if omitted."},
     },
     "required": ["action"]
 }
@@ -241,6 +243,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 allowed_paths=payload.get("allowed_paths"),
                 implementation_hints=payload.get("implementation_hints"),
                 depends_on_docs=payload.get("depends_on_docs"),
+                execution_mode=payload.get("execution_mode"),
             )
         except ValueError as exc:
             return {"success": False, "error": str(exc)}
@@ -370,9 +373,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not current_branch:
             current_branch = _detect_git_branch(cwd=worktree_path)
 
+        # MARKER_192.2: execution_mode override for manual agents
+        exec_mode = arguments.get("execution_mode")
+
         # Case A: agent already committed — just close
         if commit_hash:
-            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch)
+            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, execution_mode=exec_mode)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -394,7 +400,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if merge_result.get("success") and merge_result.get("commit_hash"):
                     # Verifier merge succeeded — close task
-                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch)
+                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, execution_mode=exec_mode)
                     result["verifier_merge"] = merge_result
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
@@ -431,7 +437,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Close task (commit succeeded or nothing to commit)
-        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch)
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, execution_mode=exec_mode)
         result["auto_commit"] = auto
         return result
 

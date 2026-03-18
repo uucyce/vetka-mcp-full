@@ -478,6 +478,16 @@ class TaskBoard:
                 break
         return results
 
+    # MARKER_192.2: Infer execution_mode from agent_type
+    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex"}
+
+    @staticmethod
+    def _infer_execution_mode(agent_type: Optional[str]) -> str:
+        """Infer execution_mode from agent_type. Pipeline agents get 'pipeline', others get 'manual'."""
+        if not agent_type:
+            return "pipeline"  # conservative default
+        return "manual" if agent_type in TaskBoard._MANUAL_AGENT_TYPES else "pipeline"
+
     def _closure_threshold(self, task: Dict[str, Any]) -> float:
         try:
             return float(task.get("verifier_threshold") or DEFAULT_VERIFIER_PASS_THRESHOLD)
@@ -498,6 +508,20 @@ class TaskBoard:
         if not isinstance(closure_proof, dict):
             return "closure_proof is required for protocol tasks"
 
+        # MARKER_192.2: execution_mode guard — manual agents skip pipeline/verifier checks
+        exec_mode = task.get("execution_mode", "pipeline")
+        if exec_mode == "manual":
+            # Manual agents only need commit_hash proof
+            if not str(closure_proof.get("commit_hash") or "").strip():
+                return "closure_proof.commit_hash is required for protocol task closure"
+            # If closure_tests were defined, validate them (but don't require pipeline/verifier)
+            tests = closure_proof.get("tests")
+            if isinstance(tests, list) and tests:
+                if any(not isinstance(row, dict) or not row.get("passed") for row in tests):
+                    return "all closure_proof tests must pass before closing the task"
+            return None
+
+        # --- Full pipeline proof (execution_mode == "pipeline") ---
         stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
         if not bool(closure_proof.get("pipeline_success", stats.get("success"))):
             return "pipeline_success must be true before closing the task"
@@ -670,6 +694,7 @@ class TaskBoard:
         closure_tests: Optional[List[str]] = None,
         closure_files: Optional[List[str]] = None,
         implementation_hints: Optional[str] = None,  # MARKER_191.6: Algorithm/approach guidance
+        execution_mode: Optional[str] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
     ) -> str:
         """Add a new task to the board.
 
@@ -773,6 +798,10 @@ class TaskBoard:
             "closure_files": protocol_fields["closure_files"],
             # MARKER_191.6: Structured task guidance
             "implementation_hints": implementation_hints or "",
+            # MARKER_192.2: execution_mode — controls closure proof requirements
+            # "pipeline" = full proof (pipeline_success + verifier + tests)
+            # "manual" = relaxed proof (commit_hash only, closure_tests if defined)
+            "execution_mode": execution_mode or self._infer_execution_mode(agent_type),
             "closure_subtask": {
                 "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
                 "tests": [],
@@ -1057,11 +1086,20 @@ class TaskBoard:
         if task["status"] not in ("pending", "queued"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
 
+        # MARKER_192.2: Update execution_mode on claim if not explicitly set
+        inferred_mode = self._infer_execution_mode(agent_type)
+        update_fields: Dict[str, Any] = {
+            "status": "claimed",
+            "assigned_to": agent_name,
+            "agent_type": agent_type,
+            "assigned_at": datetime.now().isoformat(),
+        }
+        # Only set execution_mode if task doesn't have one or had no agent_type at creation
+        if not task.get("execution_mode") or task.get("execution_mode") == "pipeline" and not task.get("agent_type"):
+            update_fields["execution_mode"] = inferred_mode
+
         self.update_task(task_id,
-            status="claimed",
-            assigned_to=agent_name,
-            agent_type=agent_type,
-            assigned_at=datetime.now().isoformat(),
+            **update_fields,
             _history_event="claimed",
             _history_source="task_board",
             _history_reason="task claimed by agent",
@@ -1091,6 +1129,7 @@ class TaskBoard:
         manual_override: bool = False,
         override_reason: Optional[str] = None,
         branch: Optional[str] = None,
+        execution_mode: Optional[str] = None,  # MARKER_192.2: override task's execution_mode at close time
     ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
@@ -1111,6 +1150,10 @@ class TaskBoard:
         task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
+
+        # MARKER_192.2: Allow execution_mode override at close time
+        if execution_mode and execution_mode in ("pipeline", "manual"):
+            task["execution_mode"] = execution_mode
 
         proof = dict(closure_proof or {})
         if commit_hash and not proof.get("commit_hash"):
