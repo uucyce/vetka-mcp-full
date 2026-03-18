@@ -61,6 +61,7 @@ TASK_BOARD_SCHEMA = {
         "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled"]},
         # For "list":
         "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
+        "limit": {"type": "number", "description": "Max tasks to return in list (default: 40, max: 100)"},
         # MARKER_190.DOC_GATE: Force-create task without docs (bypass doc gate)
         "force_no_docs": {"type": "boolean", "description": "Bypass doc requirement gate. Use only when truly no relevant docs exist."},
         # For "complete":
@@ -250,9 +251,15 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 if not str(t.get("project_id") or "").strip()
                 or str(t.get("project_id") or "").strip() == filter_project
             ]
+        # MARKER_189.13: Dynamic limit + count/returned/truncated metadata
+        max_limit = min(int(arguments.get("limit") or 40), 100)
+        total = len(tasks)
+        page = tasks[:max_limit]
         return {
             "success": True,
-            "count": len(tasks),
+            "count": total,
+            "returned": len(page),
+            "truncated": total > max_limit,
             "tasks": [
                 {
                     "id": t["id"],
@@ -265,7 +272,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     "assigned_tier": t.get("assigned_tier"),
                     "project_id": t.get("project_id", ""),
                 }
-                for t in tasks[:20]  # Limit to 20 for readability
+                for t in page
             ]
         }
 
