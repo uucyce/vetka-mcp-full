@@ -23,6 +23,12 @@ Open [http://127.0.0.1:1434](http://127.0.0.1:1434).
 
 Contract freeze for release work lives in [CONTRACTS_V1.md](/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md).
 
+Gated batch QA summary lives at:
+
+```text
+photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json
+```
+
 ## Review Probe
 
 ```bash

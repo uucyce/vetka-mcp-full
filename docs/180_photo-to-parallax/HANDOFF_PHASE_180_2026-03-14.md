@@ -112,6 +112,23 @@
   - main recovery path: `stageHydrate` (не asset fallback)
   - wrapper-level retry (`WARN_180...RETRY`): `3/10`
 
+Статус обновление (`2026-03-18`, gated batch QA summary):
+
+- ✅ Добавлен единый machine-readable batch QA artifact:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json`
+- QA summary агрегирует:
+  - readiness diagnostics
+  - gated render summary
+  - compare summary
+- Текущий итог по `hover-politsia`, `keyboard-hands`, `truck-driver`:
+  - `overall_status = caution`
+  - `pass = 0`
+  - `caution = 3`
+  - `fail = 0`
+- Текущие причины caution:
+  - `camera-safe gate is not fully satisfied`
+  - для `truck-driver`: ещё и `readiness required more than one poll`
+
 ## 4) Playwright песочница: как работает
 
 Песочница:
