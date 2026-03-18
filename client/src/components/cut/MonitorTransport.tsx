@@ -2,7 +2,7 @@
  * MARKER_CUT_0.3: MonitorTransport — compact transport controls under each monitor.
  *
  * Renders UNDER video in Source Monitor and Program Monitor.
- * Contains: scrubber bar, timecode display, transport buttons, DUR display.
+ * Contains: scrubber bar, timecode display, transport buttons, total duration.
  * Source Monitor additionally: IN / OUT buttons.
  * Max height: 60px. Style: dark #0a0a0a, white text, like Premiere.
  *
@@ -162,8 +162,8 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           <IconSkipEnd size={14} />
         </button>
 
-        {/* DUR */}
-        <span style={DUR_STYLE}>DUR {formatTC(duration)}</span>
+        {/* Total duration — Premiere style: no label, just timecode */}
+        <span style={DUR_STYLE}>{formatTC(duration)}</span>
 
         {/* Source-only: IN / OUT buttons */}
         {feed === 'source' && (

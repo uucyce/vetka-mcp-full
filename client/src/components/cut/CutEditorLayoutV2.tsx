@@ -147,7 +147,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   // ─── Bottom: Timeline area ───
   const renderBottom = useCallback(() => {
     return (
-      <PanelShell panelId="timeline" title={`Timeline: ${timelineId} (${thumbnails.length} clips)`}>
+      <PanelShell panelId="timeline" title={timelineId}>
         <div style={TIMELINE_AREA}>
           <TimelineToolbar />
           <TimelineTabBar />
