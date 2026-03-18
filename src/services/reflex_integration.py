@@ -331,14 +331,15 @@ def reflex_session(
     session_data: Dict[str, Any],
     phase_type: str = "research",
     agent_type: str = "",
+    current_task: Optional[Dict[str, Any]] = None,
 ) -> List[Dict]:
-    """MARKER_172.P4.IP6 + MARKER_186.3 — Get broad recommendations for session_init.
+    """MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_191.3 — Get task-aware recommendations for session_init.
 
     Called by session_tools._execute_async() to include tool recommendations
     in the session init response.
 
     MARKER_186.3: Now accepts agent_type for agent-aware scoring.
-    Auto-generates task_text from recent git changes for meaningful semantic match.
+    MARKER_191.3: Now accepts current_task for task-aware semantic matching.
 
     Returns:
         List of {tool_id, score, reason} dicts.
@@ -354,6 +355,7 @@ def reflex_session(
             phase_type=phase_type,
             top_n=10,
             agent_type=agent_type,
+            current_task=current_task,
         )
 
         # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)

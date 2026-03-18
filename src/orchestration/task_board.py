@@ -31,9 +31,20 @@ from typing import Dict, Any, List, Optional
 logger = logging.getLogger("VETKA_TASK_BOARD")
 
 # MARKER_121.1: Task Board storage
-TASK_BOARD_FILE = Path(__file__).parent.parent.parent / "data" / "task_board.json"
+# MARKER_189.11: Resolve to main repo root — safe from worktree cwd confusion.
+# Priority: VETKA_MAIN_REPO env > git rev-parse > __file__-relative
+def _resolve_main_repo_root() -> Path:
+    """Find the main repo root, even when called from a worktree."""
+    env_root = os.environ.get("VETKA_MAIN_REPO")
+    if env_root and Path(env_root).is_dir():
+        return Path(env_root)
+    # __file__-relative: works when task_board.py lives in main repo (always true via .mcp.json)
+    return Path(__file__).resolve().parent.parent.parent
+
+_MAIN_ROOT = _resolve_main_repo_root()
+TASK_BOARD_FILE = _MAIN_ROOT / "data" / "task_board.json"
 _TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
-PROJECT_ROOT = TASK_BOARD_FILE.parent.parent
+PROJECT_ROOT = _MAIN_ROOT
 
 # Priority levels
 PRIORITY_CRITICAL = 1
@@ -1370,10 +1381,11 @@ class TaskBoard:
     def auto_complete_by_commit(self, commit_hash: str, commit_message: str) -> List[str]:
         """Auto-complete tasks mentioned in commit message.
 
-        Looks for patterns in commit message:
-        - "Phase 129.C13" → find task with tag "C13" or title containing "C13"
-        - "tb_xxxx" → direct task ID reference
-        - "MARKER_130.6" → find task with matching marker
+        MARKER_191.1: Hardened against false positives.
+        Only closes tasks that are:
+        - Explicitly referenced via [task:tb_xxxx] or direct tb_xxxx ID in commit
+        - Already claimed/running (not pending/queued — unclaimed tasks cannot auto-close)
+        - NOT protected by require_closure_proof
 
         Args:
             commit_hash: Git commit hash
@@ -1383,18 +1395,19 @@ class TaskBoard:
             List of task IDs that were auto-completed
         """
         completed = []
-        # Normalize commit message for matching
         msg_lower = commit_message.lower()
 
-        # MARKER_136.AUTO_CLOSE_COMMIT: Allow direct tb_xxx auto-close even for pending/queued tasks.
-        # This enables infra flow: vetka_git_commit("... tb_123_4 ...") -> board.complete_task(...)
+        # MARKER_191.1: Only claimed/running tasks are eligible for auto-close.
+        # Pending/queued tasks have no owner — auto-closing them is a false positive.
         eligible = [
             t for t in self.tasks.values()
-            if not t.get("require_closure_proof") and t["status"] in ("pending", "queued", "claimed", "running")
+            if not t.get("require_closure_proof")
+            and t["status"] in ("claimed", "running")
         ]
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):
+                closed_by = str(task.get("assigned_to") or "git")
                 result = self.complete_task(
                     task["id"],
                     commit_hash,
@@ -1405,24 +1418,32 @@ class TaskBoard:
                         "pipeline_success": bool((task.get("stats") or {}).get("success")),
                         "verifier_confidence": float((task.get("stats") or {}).get("verifier_avg_confidence") or 0),
                         "tests": [{"command": "git auto-close", "passed": True, "exit_code": 0}],
-                        "activating_agent": str(task.get("assigned_to") or "git"),
+                        "activating_agent": closed_by,
+                        "auto_close_method": "commit_match",
                     },
-                    closed_by=str(task.get("assigned_to") or "git"),
+                    closed_by=closed_by,
                 )
                 if result.get("success"):
                     completed.append(task["id"])
-                    logger.info(f"[TaskBoard] Auto-completed {task['id']} from commit {commit_hash[:8]}")
+                    logger.info(f"[TaskBoard] Auto-completed {task['id']} (owner: {closed_by}) from commit {commit_hash[:8]}")
+                else:
+                    logger.warning(f"[TaskBoard] Auto-close FAILED for {task['id']}: {result.get('error')}")
 
         return completed
 
     def _commit_matches_task(self, task: Dict[str, Any], commit_msg: str, msg_lower: str) -> bool:
         """Check if commit message matches a task.
 
-        Matches:
-        - Direct task ID mention (tb_xxx)
-        - Task title keywords in commit message
-        - Tag matches (C13, C16A, etc.)
-        - Phase/MARKER patterns
+        MARKER_191.1: Hardened matching — only explicit references.
+
+        Matches (HIGH confidence only):
+        - [task:tb_xxxx] explicit tag (strongest signal)
+        - Direct task ID mention: tb_xxxx as standalone token
+        - Phase/MARKER pattern with matching task tag (e.g., "Phase 130.C16" + tag "C16")
+
+        REMOVED (false positive risk):
+        - Title keyword matching (3 words was too loose)
+        - Loose tag substring matching (short tags like "fix" matched everything)
 
         Args:
             task: Task dict
@@ -1430,33 +1451,26 @@ class TaskBoard:
             msg_lower: Lowercased commit message for case-insensitive matching
 
         Returns:
-            True if commit appears to complete this task
+            True if commit explicitly references this task
         """
         task_id = task["id"]
-        title = task.get("title", "")
         tags = task.get("tags", [])
 
-        # Direct ID mention
-        if task_id in commit_msg:
+        # 1. Explicit [task:tb_xxxx] tag — strongest signal
+        if f"[task:{task_id}]" in commit_msg:
             return True
 
-        # Tag mentions (e.g., "C13", "C16A" in commit matches task with that tag)
-        for tag in tags:
-            if tag and tag in commit_msg:
-                return True
+        # 2. Direct ID mention as standalone token (not substring of another ID)
+        # Use word boundary to avoid tb_123 matching inside tb_1234_5
+        if re.search(r'\b' + re.escape(task_id) + r'\b', commit_msg):
+            return True
 
-        # Title keyword matching (at least 3 significant words match)
-        title_words = [w for w in re.findall(r'\w+', title.lower()) if len(w) > 3]
-        if title_words:
-            matches = sum(1 for w in title_words if w in msg_lower)
-            if matches >= min(3, len(title_words)):
-                return True
-
-        # Phase/MARKER pattern (e.g., "Phase 130.C16" matches task tagged "C16")
+        # 3. Phase/MARKER pattern (e.g., "Phase 130.C16" matches task tagged "C16")
+        # Only match tags that look like phase codes (uppercase letter + digits)
         phase_match = re.search(r'Phase\s*(\d+)[\.\s]*([A-Z]\d+[A-Z]?)', commit_msg, re.IGNORECASE)
         if phase_match:
             phase_tag = phase_match.group(2).upper()
-            if phase_tag in [t.upper() for t in tags]:
+            if phase_tag in [t.upper() for t in tags if re.match(r'^[A-Z]\d+', t, re.IGNORECASE)]:
                 return True
 
         return False

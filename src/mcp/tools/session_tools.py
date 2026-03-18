@@ -399,7 +399,15 @@ class SessionInitTool(BaseMCPTool):
                 else:
                     # Default: assume Claude Code when called via MCP
                     agent_type = "claude_code"
-            reflex_recs = reflex_session(context, agent_type=agent_type)
+            # MARKER_191.3: Extract current task for task-aware reflex scoring
+            current_task = None
+            tb = context.get("task_board_summary", {})
+            in_prog = tb.get("in_progress", [])
+            if in_prog:
+                current_task = in_prog[0]
+            elif tb.get("top_pending"):
+                current_task = tb["top_pending"][0]
+            reflex_recs = reflex_session(context, agent_type=agent_type, current_task=current_task)
             if reflex_recs:
                 context["reflex_recommendations"] = reflex_recs
         except Exception:

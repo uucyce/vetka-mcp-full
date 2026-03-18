@@ -5,7 +5,8 @@
       "args": ["/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/src/mcp/vetka_mcp_bridge.py"],
       "env": {
         "VETKA_API_URL": "http://localhost:5001",
-        "PYTHONPATH": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
+        "PYTHONPATH": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
+        "VETKA_MAIN_REPO": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
       }
     },
     "mycelium": {

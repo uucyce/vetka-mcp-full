@@ -107,6 +107,8 @@ from src.mcp.tools.pinned_files_tool import register_pinned_files_tool
 from src.mcp.tools.context_dag_tool import register_context_dag_tool
 # MARKER_119.7: Tavily web search for @researcher
 from src.mcp.tools.web_search_tool import register_web_search_tool
+# MARKER_191.2: Single source of truth for task board schema
+from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
 # MARKER_119.8: Context7 library docs for @coder
 from src.mcp.tools.library_docs_tool import register_library_docs_tool
 
@@ -354,12 +356,12 @@ async def list_tools() -> list[Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "file_path": {
+                    "path": {
                         "type": "string",
                         "description": "Path to file (relative to project root, e.g., 'src/main.py')"
                     }
                 },
-                "required": ["file_path"]
+                "required": ["path"]
             }
         ),
         Tool(
@@ -913,48 +915,12 @@ async def list_tools() -> list[Tool]:
             description="[DEPRECATED] Use mycelium_heartbeat_status instead. Moved to MCP MYCELIUM.",
             inputSchema={"type": "object", "properties": {}}
         ),
-        # MARKER_178.6.1: Un-deprecated — live fallback when MYCELIUM unavailable
+        # MARKER_191.2: Schema imported from task_board_tools.py — single source of truth
         Tool(
             name="vetka_task_board",
-            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete). Uses local transport as fallback when MYCELIUM MCP is unavailable.",
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "action": {
-                        "type": "string",
-                        "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents"],
-                        "description": "Operation to perform"
-                    },
-                    "title": {"type": "string", "description": "Task title (for add)"},
-                    "description": {"type": "string", "description": "Task description"},
-                    "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
-                    "priority": {"type": "number", "description": "1=critical..5=someday"},
-                    "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"]},
-                    "preset": {"type": "string", "description": "Pipeline preset"},
-                    "tags": {"type": "array", "items": {"type": "string"}},
-                    "task_id": {"type": "string", "description": "Task ID (for get/update/remove/claim/complete)"},
-                    "status": {"type": "string", "description": "New status (for update)"},
-                    "filter_status": {"type": "string", "description": "Filter by status (for list)"},
-                    "assigned_to": {"type": "string", "description": "Agent name"},
-                    "agent_type": {"type": "string", "description": "Agent type"},
-                    "complexity": {"type": "string"},
-                    "dependencies": {"type": "array", "items": {"type": "string"}},
-                    "project_id": {"type": "string", "description": "Logical project ID"},
-                    "project_lane": {"type": "string", "description": "Specific project lane / MCC tab"},
-                    "architecture_docs": {"type": "array", "items": {"type": "string"}},
-                    "recon_docs": {"type": "array", "items": {"type": "string"}},
-                    "protocol_version": {"type": "string"},
-                    "require_closure_proof": {"type": "boolean"},
-                    "closure_tests": {"type": "array", "items": {"type": "string"}},
-                    "closure_files": {"type": "array", "items": {"type": "string"}},
-                    # MARKER_188.5: Worktree-aware completion fields
-                    "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
-                    "commit_message": {"type": "string", "description": "Commit message (for complete)"},
-                    "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
-                    "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Auto-inferred from branch= if omitted."},
-                },
-                "required": ["action"]
-            }
+            description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete/active_agents/merge_request/promote_to_main). "
+                        "Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+            inputSchema=TASK_BOARD_SCHEMA,
         ),
         Tool(
             name="vetka_task_dispatch",
@@ -1122,11 +1088,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_read_file":
             # Read file via REST
-            file_path = arguments.get("file_path", "")
+            file_path = arguments.get("path", "")
 
             response = await http_client.post(
                 "/api/files/read",
-                json={"file_path": file_path}
+                json={"path": file_path}
             )
 
         elif name == "vetka_get_tree":
