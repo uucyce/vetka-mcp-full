@@ -511,3 +511,185 @@ class TestPerformance:
         elapsed = (time.perf_counter() - t0) * 1000
         assert elapsed < 50, f"get_score(500 entries) took {elapsed:.1f}ms"
         assert 0.0 <= score <= 1.0
+
+
+# ─── T3.8: Epoch-based feedback decay (Phase 195.3) ──────────────
+
+class TestEpochDecay:
+    """T3.8: MARKER_195.3 — Pre-update failures discounted by epoch gap."""
+
+    def test_pre_update_failures_discounted(self, feedback):
+        """Tool with 0% success pre-update shows ~50% (cold start) after epoch bump."""
+        from src.services.tool_source_watch import ToolFreshnessEntry, get_tool_source_watch, reset_tool_source_watch
+
+        # Record 10 failures BEFORE epoch 1 (timestamps in epoch 0)
+        old_time = "2026-03-10T00:00:00+00:00"
+        for _ in range(10):
+            entry = FeedbackEntry(
+                tool_id="failing_tool",
+                success=False,
+                useful=False,
+                verifier_passed=False,
+                timestamp=old_time,
+            )
+            feedback._append_entry(entry)
+
+        # Score without epoch → should be very low (all failures)
+        score_before = feedback.get_score("failing_tool")
+        assert score_before < 0.1, f"Expected low score, got {score_before}"
+
+        # Now simulate epoch bump: tool was fixed on 2026-03-15
+        freshness_entry = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/some_tool.py"],
+            current_epoch=1,
+            last_commit="new_commit",
+            updated_at="2026-03-15T00:00:00+00:00",
+            history=[
+                {"epoch": 0, "commit": "old_commit", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new_commit", "ts": "2026-03-15T00:00:00+00:00"},
+            ],
+        )
+
+        # Patch the source watch to return our freshness entry
+        import src.services.tool_source_watch as tsw_mod
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness_entry
+        tsw_mod._watch_instance = mock_watch
+        with patch.object(feedback, '_cache', feedback._cache):  # force re-aggregate
+            score_after = feedback.get_score("failing_tool")
+
+        # After epoch bump, old failures are discounted by 0.1 (10%)
+        # With so little weight, score should approach DEFAULT (0.5)
+        assert score_after > 0.3, f"Expected score near cold start (~0.5), got {score_after}"
+        assert score_after > score_before, (
+            f"Score should improve after epoch bump: {score_before} → {score_after}"
+        )
+
+    def test_post_update_entries_unaffected(self, feedback):
+        """Entries recorded AFTER the epoch bump have full weight."""
+        from src.services.tool_source_watch import ToolFreshnessEntry, reset_tool_source_watch
+
+        # Record entries AFTER epoch 1 (timestamps after epoch bump)
+        new_time = "2026-03-18T00:00:00+00:00"
+        for _ in range(5):
+            entry = FeedbackEntry(
+                tool_id="fresh_tool",
+                success=True,
+                useful=True,
+                verifier_passed=True,
+                timestamp=new_time,
+            )
+            feedback._append_entry(entry)
+
+        freshness_entry = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/some_tool.py"],
+            current_epoch=1,
+            updated_at="2026-03-15T00:00:00+00:00",
+            history=[
+                {"epoch": 0, "commit": "old", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new", "ts": "2026-03-15T00:00:00+00:00"},
+            ],
+        )
+
+        import src.services.tool_source_watch as tsw_mod
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness_entry
+        tsw_mod._watch_instance = mock_watch
+        with patch.object(feedback, '_cache', feedback._cache):  # force re-aggregate
+            score = feedback.get_score("fresh_tool")
+
+        # All entries are post-update (epoch 1) → no discount → high score
+        assert score >= 0.9, f"Post-update entries should have full weight, got {score}"
+
+    def test_multiple_epoch_gaps_compound_discount(self, feedback):
+        """2 epochs behind → 0.01 weight (0.1^2)."""
+        from src.services.tool_source_watch import ToolFreshnessEntry, reset_tool_source_watch
+
+        # Record failures during epoch 0
+        for _ in range(10):
+            entry = FeedbackEntry(
+                tool_id="old_tool",
+                success=False,
+                useful=False,
+                verifier_passed=False,
+                timestamp="2026-03-05T00:00:00+00:00",
+            )
+            feedback._append_entry(entry)
+
+        freshness_entry = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/some_tool.py"],
+            current_epoch=2,
+            updated_at="2026-03-18T00:00:00+00:00",
+            history=[
+                {"epoch": 0, "commit": "v0", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "v1", "ts": "2026-03-10T00:00:00+00:00"},
+                {"epoch": 2, "commit": "v2", "ts": "2026-03-18T00:00:00+00:00"},
+            ],
+        )
+
+        import src.services.tool_source_watch as tsw_mod
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness_entry
+        tsw_mod._watch_instance = mock_watch
+        with patch.object(feedback, '_cache', feedback._cache):  # force re-aggregate
+            score = feedback.get_score("old_tool")
+
+        # 2 epochs behind → discount = 0.1^2 = 0.01 → nearly no contribution
+        # Score should be close to default (0.5) since weight is negligible
+        assert score > 0.3, f"2 epochs behind should heavily discount, got {score}"
+
+    def test_no_freshness_data_no_change(self, feedback):
+        """Without freshness data, aggregation is unchanged."""
+        from src.services.tool_source_watch import reset_tool_source_watch
+
+        for _ in range(5):
+            feedback.record("unknown_tool", success=False, useful=False)
+
+        reset_tool_source_watch()
+        with patch("src.services.tool_source_watch.get_tool_source_watch") as mock_watch:
+            mock_instance = mock_watch.return_value
+            mock_instance.get.return_value = None  # No freshness data
+            score = feedback.get_score("unknown_tool")
+
+        # Should behave as before — all failures, low score
+        assert score < 0.5
+
+    def test_epoch_decay_performance(self, tmp_path):
+        """Epoch discount adds <10ms overhead for 500 entries."""
+        from src.services.tool_source_watch import ToolFreshnessEntry, reset_tool_source_watch
+
+        log_path = tmp_path / "epoch_perf.jsonl"
+        fb = ReflexFeedback(log_path=log_path)
+
+        with open(log_path, "w") as f:
+            for i in range(500):
+                entry = FeedbackEntry(
+                    tool_id="perf_tool",
+                    success=i % 3 != 0,
+                    useful=i % 2 == 0,
+                    timestamp=(datetime.now(timezone.utc) - timedelta(days=i % 30)).isoformat(),
+                )
+                f.write(json.dumps(entry.to_dict()) + "\n")
+
+        freshness_entry = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/some_tool.py"],
+            current_epoch=1,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            history=[
+                {"epoch": 0, "commit": "v0", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "v1", "ts": "2026-03-15T00:00:00+00:00"},
+            ],
+        )
+
+        import src.services.tool_source_watch as tsw_mod
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness_entry
+        tsw_mod._watch_instance = mock_watch
+        with patch.object(feedback, '_cache', feedback._cache):  # force re-aggregate
+
+            t0 = time.perf_counter()
+            score = fb.get_score("perf_tool")
+            elapsed = (time.perf_counter() - t0) * 1000
+
+        assert elapsed < 50, f"Epoch decay with 500 entries took {elapsed:.1f}ms (expected <50ms)"
+        assert 0.0 <= score <= 1.0

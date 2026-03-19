@@ -428,6 +428,10 @@ class ReflexFeedback:
         Formula: score = success_rate * 0.40 + usefulness * 0.35 + verifier_pass * 0.25
         Decay: MARKER_173.P5.INTEGRATE — phase-specific half-life via ReflexDecayEngine.
         Falls back to fixed DECAY_LAMBDA if engine import fails.
+
+        MARKER_195.3.DECAY: Epoch-based discount for pre-update failures.
+        When a tool's source code changes (new epoch), old feedback entries are
+        discounted by 0.1^epochs_behind, so pre-fix failures don't drag the score.
         """
         if not entries:
             return AggregatedScore(
@@ -447,6 +451,15 @@ class ReflexFeedback:
             decay_engine = ReflexDecayEngine()
         except ImportError:
             pass  # Fall back to fixed DECAY_LAMBDA
+
+        # MARKER_195.3.DECAY: Load tool freshness for epoch-based discount
+        freshness_entry = None
+        tool_id = entries[0].tool_id if entries else ""
+        try:
+            from src.services.tool_source_watch import get_tool_source_watch
+            freshness_entry = get_tool_source_watch().get(tool_id)
+        except ImportError:
+            pass  # tool_source_watch not available yet
 
         now = datetime.now(timezone.utc)
 
@@ -480,13 +493,26 @@ class ReflexFeedback:
                 )
             else:
                 weight = math.exp(-DECAY_LAMBDA * age_days)
+
+            # MARKER_195.3.DECAY: Epoch-based discount for pre-update entries
+            if freshness_entry and freshness_entry.current_epoch > 0:
+                entry_epoch = freshness_entry.epoch_for_timestamp(entry.timestamp)
+                if entry_epoch < freshness_entry.current_epoch:
+                    epochs_behind = freshness_entry.current_epoch - entry_epoch
+                    epoch_discount = 0.1 ** epochs_behind  # 10% per epoch gap
+                    weight *= epoch_discount
+
             total_weight += weight
 
             weighted_success += weight * (1.0 if entry.success else 0.0)
             weighted_useful += weight * (1.0 if entry.useful else 0.0)
             weighted_verifier += weight * (1.0 if entry.verifier_passed else 0.0)
 
-        if total_weight == 0.0:
+        # MARKER_195.3.DECAY: When total_weight is negligible (all entries
+        # heavily discounted by epoch gap + time decay), return cold start score.
+        # Threshold: effective weight < 0.01 per entry means no meaningful signal.
+        min_effective_weight = 0.01 * len(entries)
+        if total_weight < min_effective_weight:
             return AggregatedScore(
                 tool_id=entries[0].tool_id,
                 phase_type=entries[0].phase_type,
