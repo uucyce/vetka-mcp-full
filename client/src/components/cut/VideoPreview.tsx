@@ -345,6 +345,23 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
           {sourceHint}
         </div>
       ) : null}
+      {/* MARKER_W2.3: Monitor label overlay — top-left corner */}
+      {feed && (
+        <div style={{
+          position: 'absolute',
+          top: 6,
+          left: 8,
+          fontSize: 10,
+          fontFamily: 'system-ui',
+          color: '#888',
+          letterSpacing: 1,
+          textTransform: 'uppercase',
+          userSelect: 'none',
+          zIndex: 3,
+        }}>
+          {feed === 'source' ? 'SOURCE' : 'PROGRAM'}
+        </div>
+      )}
       <TranscriptOverlay />
       {/* MARKER_170.NLE.AUDIO_VU: VU meter strip on right edge */}
       <AudioLevelMeter
