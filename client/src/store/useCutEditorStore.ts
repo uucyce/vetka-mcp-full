@@ -89,6 +89,7 @@ interface CutEditorState {
   currentTime: number;
   isPlaying: boolean;
   playbackRate: number;
+  shuttleSpeed: number;  // MARKER_W3.4: JKL progressive shuttle (-8,-4,-2,-1,0,1,2,4,8)
   duration: number;
   markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
   markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
@@ -105,16 +106,23 @@ interface CutEditorState {
   trackHeight: number; // height per lane in pixels
   mutedLanes: Set<string>;
   soloLanes: Set<string>;
+  lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
+  targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   laneVolumes: Record<string, number>;
   snapEnabled: boolean;
 
   // === Selection ===
   selectedClipId: string | null;
+  selectedClipIds: Set<string>;       // MARKER_W3.7: multi-select
+  linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
   focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null;
+
+  // === MARKER_W3.6: Tool State Machine ===
+  activeTool: 'selection' | 'razor' | 'hand' | 'zoom';
 
   // === MARKER_W1.3: Source/Program feed split ===
   sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
@@ -169,14 +177,22 @@ interface CutEditorState {
   setSequenceMarkIn: (t: number | null) => void;
   setSequenceMarkOut: (t: number | null) => void;
   setPlaybackRate: (rate: number) => void;
+  setShuttleSpeed: (speed: number) => void;  // MARKER_W3.4
   setZoom: (z: number) => void;
   setTrackHeight: (h: number) => void;
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
+  toggleLock: (laneId: string) => void;      // MARKER_W2.1
+  toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   setLaneVolume: (laneId: string, volume: number) => void;
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
+  // MARKER_W3.7: Multi-select
+  toggleClipSelection: (id: string) => void;   // Cmd+Click toggle
+  selectAllClips: () => void;                   // Cmd+A
+  clearSelection: () => void;                   // Escape
+  toggleLinkedSelection: () => void;            // linked selection toggle
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -188,6 +204,11 @@ interface CutEditorState {
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
+  // MARKER_W3.6: Tool State Machine
+  setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom') => void;
+
+  // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
+  getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
 
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
@@ -212,11 +233,12 @@ interface CutEditorState {
   createVersionedTimeline: (projectName: string, mode?: string) => string;
 }
 
-export const useCutEditorStore = create<CutEditorState>((set) => ({
+export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Playback defaults
   currentTime: 0,
   isPlaying: false,
   playbackRate: 1,
+  shuttleSpeed: 0,
   duration: 0,
   markIn: null,
   markOut: null,
@@ -233,11 +255,15 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   trackHeight: 56,
   mutedLanes: new Set<string>(),
   soloLanes: new Set<string>(),
+  lockedLanes: new Set<string>(),
+  targetedLanes: new Set<string>(),
   laneVolumes: {},
   snapEnabled: true,
 
   // Selection
   selectedClipId: null,
+  selectedClipIds: new Set<string>(),
+  linkedSelection: true,
   activeMediaPath: null,
   hoveredClipId: null,
 
@@ -247,6 +273,7 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
 
   // MARKER_W1.2: Panel Focus
   focusedPanel: null,
+  activeTool: 'selection',
 
   // Data
   lanes: [],
@@ -289,6 +316,7 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
   setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
+  setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
   setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),
@@ -306,6 +334,21 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
       else soloLanes.add(laneId);
       return { soloLanes };
     }),
+  // MARKER_W2.1: Lock and Target toggles
+  toggleLock: (laneId) =>
+    set((state) => {
+      const lockedLanes = new Set(state.lockedLanes);
+      if (lockedLanes.has(laneId)) lockedLanes.delete(laneId);
+      else lockedLanes.add(laneId);
+      return { lockedLanes };
+    }),
+  toggleTarget: (laneId) =>
+    set((state) => {
+      const targetedLanes = new Set(state.targetedLanes);
+      if (targetedLanes.has(laneId)) targetedLanes.delete(laneId);
+      else targetedLanes.add(laneId);
+      return { targetedLanes };
+    }),
   setLaneVolume: (laneId, volume) =>
     set((state) => ({
       laneVolumes: {
@@ -314,7 +357,24 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
-  setSelectedClip: (id) => set({ selectedClipId: id }),
+  setSelectedClip: (id) => set({ selectedClipId: id, selectedClipIds: id ? new Set([id]) : new Set() }),
+  // MARKER_W3.7: Multi-select actions
+  toggleClipSelection: (id) =>
+    set((state) => {
+      const ids = new Set(state.selectedClipIds);
+      if (ids.has(id)) { ids.delete(id); } else { ids.add(id); }
+      return { selectedClipIds: ids, selectedClipId: ids.size === 1 ? [...ids][0] : state.selectedClipId };
+    }),
+  selectAllClips: () =>
+    set((state) => {
+      const allIds = new Set<string>();
+      for (const lane of state.lanes) {
+        for (const clip of lane.clips) { allIds.add(clip.clip_id); }
+      }
+      return { selectedClipIds: allIds };
+    }),
+  clearSelection: () => set({ selectedClipId: null, selectedClipIds: new Set() }),
+  toggleLinkedSelection: () => set((state) => ({ linkedSelection: !state.linkedSelection })),
   setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
@@ -326,9 +386,46 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   setSceneGraphSurfaceMode: (mode) => set({ sceneGraphSurfaceMode: mode }),
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
+  // MARKER_W3.6: Tool State Machine
+  setActiveTool: (tool) => set({ activeTool: tool }),
+
+  // MARKER_W2.2: Resolve insert/overwrite destination lanes
+  // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
+  getInsertTargets: () => {
+    const state = get();
+    const { lanes, targetedLanes } = state;
+    const isVideo = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
+    const isAudio = (t: string) => t.startsWith('audio');
+    let videoLaneId: string | null = null;
+    let audioLaneId: string | null = null;
+    for (const lane of lanes) {
+      if (!targetedLanes.has(lane.lane_id)) continue;
+      if (!videoLaneId && isVideo(lane.lane_type)) videoLaneId = lane.lane_id;
+      if (!audioLaneId && isAudio(lane.lane_type)) audioLaneId = lane.lane_id;
+    }
+    // Fallback: first V and first A lane if none targeted
+    if (!videoLaneId) videoLaneId = lanes.find((l) => isVideo(l.lane_type))?.lane_id ?? null;
+    if (!audioLaneId) audioLaneId = lanes.find((l) => isAudio(l.lane_type))?.lane_id ?? null;
+    return { videoLaneId, audioLaneId };
+  },
 
   // Data setters
-  setLanes: (lanes) => set({ lanes }),
+  setLanes: (lanes) => {
+    // MARKER_W2.2: Auto-target first V + first A lane if no targets set
+    const state = get();
+    const isVideo = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
+    const isAudio = (t: string) => t.startsWith('audio');
+    if (state.targetedLanes.size === 0 && lanes.length > 0) {
+      const autoTargets = new Set<string>();
+      const firstV = lanes.find((l) => isVideo(l.lane_type));
+      const firstA = lanes.find((l) => isAudio(l.lane_type));
+      if (firstV) autoTargets.add(firstV.lane_id);
+      if (firstA) autoTargets.add(firstA.lane_id);
+      set({ lanes, targetedLanes: autoTargets });
+    } else {
+      set({ lanes });
+    }
+  },
   setWaveforms: (items) => set({ waveforms: items }),
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),

@@ -422,6 +422,76 @@ export default function TransportBar() {
     await refreshProjectState?.();
   }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
 
+  // MARKER_W3.1: Split clip at playhead position
+  const splitAtPlayhead = useCallback(async () => {
+    if (!sandboxRoot || !projectId) return;
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{ op: 'split_clip', time: currentTime }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [currentTime, projectId, refreshProjectState, sandboxRoot, timelineId]);
+
+  // MARKER_W3.1: Ripple delete — remove selected clip and close the gap
+  const rippleDeleteClip = useCallback(async () => {
+    if (!sandboxRoot || !projectId || !selectedClipId) return;
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{ op: 'ripple_delete', clip_id: selectedClipId }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
+
+  // MARKER_W3.2: Insert/Overwrite edit — send source clip to targeted tracks
+  const performSourceEdit = useCallback(async (mode: 'insert' | 'overwrite') => {
+    const state = useCutEditorStore.getState();
+    if (!sandboxRoot || !projectId || !state.sourceMediaPath) return;
+    const targets = state.getInsertTargets();
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{
+          op: mode === 'insert' ? 'insert_clip' : 'overwrite_clip',
+          source_path: state.sourceMediaPath,
+          source_in: state.sourceMarkIn ?? 0,
+          source_out: state.sourceMarkOut ?? state.duration,
+          timeline_position: state.currentTime,
+          video_lane_id: targets.videoLaneId,
+          audio_lane_id: targets.audioLaneId,
+        }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [projectId, refreshProjectState, sandboxRoot, timelineId]);
+
   const runUndoAction = useCallback(
     async (mode: 'undo' | 'redo') => {
       if (!sandboxRoot || !projectId) return;
@@ -464,19 +534,85 @@ export default function TransportBar() {
   // MARKER_185.7: Centralized hotkey registry (Premiere / FCP7 / Custom presets)
   const hotkeyHandlers: CutHotkeyHandlers = useMemo(() => ({
     playPause:        () => togglePlay(),
-    stop:             () => { pause(); },
-    shuttleBack:      () => seek(Math.max(0, currentTime - 5)),
-    shuttleForward:   () => seek(Math.min(duration, currentTime + 5)),
+    // MARKER_W3.4: JKL Progressive Shuttle
+    // K = pause + reset shuttle. J = reverse (progressive). L = forward (progressive).
+    stop:             () => { pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
+    shuttleBack:      () => {
+      const s = useCutEditorStore.getState().shuttleSpeed;
+      const next = s > 0 ? -1 : s === 0 ? -1 : Math.max(-8, s * 2);
+      useCutEditorStore.getState().setShuttleSpeed(next);
+      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      if (next < 0) {
+        // Reverse: simulate by stepping backward via rAF
+        pause();
+      } else {
+        play();
+      }
+    },
+    shuttleForward:   () => {
+      const s = useCutEditorStore.getState().shuttleSpeed;
+      const next = s < 0 ? 1 : s === 0 ? 1 : Math.min(8, s * 2);
+      useCutEditorStore.getState().setShuttleSpeed(next);
+      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      play();
+    },
     frameStepBack:    () => { pause(); seek(Math.max(0, currentTime - 1 / 25)); },
     frameStepForward: () => { pause(); seek(Math.min(duration, currentTime + 1 / 25)); },
+    // MARKER_W3.5: 5-frame step (Shift+Arrow)
+    fiveFrameStepBack:    () => { pause(); seek(Math.max(0, currentTime - 5 / 25)); },
+    fiveFrameStepForward: () => { pause(); seek(Math.min(duration, currentTime + 5 / 25)); },
     goToStart:        () => seek(0),
     goToEnd:          () => seek(duration),
     cyclePlaybackRate: () => cycleRate(),
     markIn:           () => setMarkIn(currentTime),
     markOut:          () => setMarkOut(currentTime),
+    // MARKER_W3.5: Clear and Go to marks
+    clearIn:          () => setMarkIn(null),
+    clearOut:         () => setMarkOut(null),
+    clearInOut:       () => { setMarkIn(null); setMarkOut(null); },
+    goToIn:           () => { const m = useCutEditorStore.getState().sourceMarkIn; if (m != null) seek(m); },
+    goToOut:          () => { const m = useCutEditorStore.getState().sourceMarkOut; if (m != null) seek(m); },
     undo:             () => runUndoAction('undo'),
     redo:             () => runUndoAction('redo'),
     deleteClip:       () => removeSelectedClip(),
+    splitClip:        () => splitAtPlayhead(),
+    rippleDelete:     () => rippleDeleteClip(),
+    // MARKER_W3.3: Navigate edit points + Zoom to fit
+    prevEditPoint:    () => {
+      const lanes = useCutEditorStore.getState().lanes;
+      const editPoints = new Set<number>();
+      for (const lane of lanes) {
+        for (const clip of lane.clips) {
+          editPoints.add(clip.timeline_in);
+          editPoints.add(clip.timeline_in + (clip.duration ?? 0));
+        }
+      }
+      const sorted = [...editPoints].sort((a, b) => a - b);
+      const prev = sorted.filter((t) => t < currentTime - 0.01).pop();
+      if (prev != null) seek(prev);
+    },
+    nextEditPoint:    () => {
+      const lanes = useCutEditorStore.getState().lanes;
+      const editPoints = new Set<number>();
+      for (const lane of lanes) {
+        for (const clip of lane.clips) {
+          editPoints.add(clip.timeline_in);
+          editPoints.add(clip.timeline_in + (clip.duration ?? 0));
+        }
+      }
+      const sorted = [...editPoints].sort((a, b) => a - b);
+      const next = sorted.find((t) => t > currentTime + 0.01);
+      if (next != null) seek(next);
+    },
+    zoomToFit:        () => {
+      const { lanes, duration: dur } = useCutEditorStore.getState();
+      if (dur <= 0) return;
+      // Estimate visible width (~80% of window minus lane headers)
+      const visibleWidth = Math.max(400, window.innerWidth - 200);
+      const fitZoom = visibleWidth / dur;
+      setZoom(Math.max(10, Math.min(300, fitZoom)));
+      useCutEditorStore.getState().setScrollLeft(0);
+    },
     addMarker:        () => createMarker('favorite', ''),
     addComment:       async () => {
       const text = window.prompt('Comment marker text', 'CUT note') || '';
@@ -486,10 +622,20 @@ export default function TransportBar() {
     zoomOut:          () => setZoom(zoom / 1.3),
     importMedia:      () => window.dispatchEvent(new CustomEvent('cut:trigger-import')),
     sceneDetect:      () => handleSceneDetect(),
+    // MARKER_W3.6: Tool State Machine hotkeys
+    selectTool:       () => useCutEditorStore.getState().setActiveTool('selection'),
+    razorTool:        () => useCutEditorStore.getState().setActiveTool('razor'),
+    // MARKER_W3.2: Insert/Overwrite with track targeting
+    insertEdit:       () => performSourceEdit('insert'),
+    overwriteEdit:    () => performSourceEdit('overwrite'),
+    // MARKER_W3.7: Selection hotkeys
+    selectAll:        () => useCutEditorStore.getState().selectAllClips(),
+    escapeContext:    () => useCutEditorStore.getState().clearSelection(),
     toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
   }), [
     togglePlay, pause, seek, currentTime, duration, cycleRate,
     setMarkIn, setMarkOut, runUndoAction, removeSelectedClip,
+    splitAtPlayhead, rippleDeleteClip, performSourceEdit,
     createMarker, setZoom, zoom, handleSceneDetect, setViewMode, viewMode,
   ]);
 

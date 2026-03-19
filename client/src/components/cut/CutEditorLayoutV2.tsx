@@ -19,6 +19,9 @@ import ProjectPanel from './ProjectPanel';
 import ScriptPanel from './ScriptPanel';
 import DAGProjectPanel from './DAGProjectPanel';
 import MonitorTransport from './MonitorTransport';
+import PulseInspector from './PulseInspector';
+import ClipInspector from './ClipInspector';
+import StorySpace3D from './StorySpace3D';
 import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
@@ -62,8 +65,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
 
-  // ─── Left column: tabbed panel (Project | Script | DAG) ───
+  // ─── Left column: Navigation tabs (Project | Script | DAG) ───
   const [leftTab, setLeftTab] = useState<'project' | 'script' | 'dag'>('project');
+
+  // ─── Left column bottom: Analysis tabs (Inspector | Clip | StorySpace | History) ───
+  // MARKER_W0.5: Restore Analysis tab group in left_bottom
+  const [analysisTab, setAnalysisTab] = useState<'inspector' | 'clip' | 'story' | 'history'>('inspector');
 
   const renderLeftTop = useCallback(() => {
     return (
@@ -107,7 +114,59 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     );
   }, [leftTab, scriptText, projectId, thumbnails.length]);
 
-  const renderLeftBottom = useCallback(() => null, []);
+  // MARKER_W0.5: Analysis tab group — Inspector, Clip, StorySpace, History
+  const renderLeftBottom = useCallback(() => {
+    const tabs = [
+      { id: 'inspector' as const, label: 'Inspector' },
+      { id: 'clip' as const, label: 'Clip' },
+      { id: 'story' as const, label: 'StorySpace' },
+      { id: 'history' as const, label: 'History' },
+    ];
+    return (
+      <PanelShell panelId="inspector" title="Analysis">
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+          {/* Tab bar */}
+          <div style={{
+            display: 'flex',
+            height: 24,
+            background: '#0a0a0a',
+            borderBottom: '1px solid #1a1a1a',
+            flexShrink: 0,
+          }}>
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setAnalysisTab(tab.id)}
+                style={{
+                  background: analysisTab === tab.id ? '#1a1a1a' : 'none',
+                  color: analysisTab === tab.id ? '#ccc' : '#555',
+                  border: 'none',
+                  borderBottom: analysisTab === tab.id ? '2px solid #4a9eff' : '2px solid transparent',
+                  padding: '0 10px',
+                  fontSize: 10,
+                  cursor: 'pointer',
+                  fontFamily: 'system-ui',
+                }}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          {/* Tab content */}
+          <div style={{ flex: 1, overflow: 'hidden' }}>
+            {analysisTab === 'inspector' && <PulseInspector />}
+            {analysisTab === 'clip' && <ClipInspector />}
+            {analysisTab === 'story' && <StorySpace3D />}
+            {analysisTab === 'history' && (
+              <div style={{ padding: 12, color: '#555', fontSize: 11 }}>
+                History panel — coming soon
+              </div>
+            )}
+          </div>
+        </div>
+      </PanelShell>
+    );
+  }, [analysisTab]);
 
   // ─── Center: Source Monitor — raw clip preview (large area) ───
   // MARKER_W1.3: feed="source" routes to sourceMediaPath
@@ -196,6 +255,5 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   );
 }
 
-// Inspector/Script/DAG tabs removed from layout (CUT-0.4 cleanup).
-// Inspector will be a tab inside Source Monitor area (Phase 3).
-// DAG Project moved to left_bottom.
+// MARKER_W0.5: Analysis tabs (Inspector, Clip, StorySpace, History) restored in left_bottom.
+// Navigation tabs (Project, Script, DAG) in left_top.

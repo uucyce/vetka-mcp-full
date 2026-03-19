@@ -29,10 +29,16 @@ export type CutHotkeyAction =
   | 'goToStart'
   | 'goToEnd'
   | 'cyclePlaybackRate'
+  | 'fiveFrameStepBack'
+  | 'fiveFrameStepForward'
   // Marking
   | 'markIn'
   | 'markOut'
+  | 'clearIn'
+  | 'clearOut'
   | 'clearInOut'
+  | 'goToIn'
+  | 'goToOut'
   // Editing
   | 'undo'
   | 'redo'
@@ -52,9 +58,13 @@ export type CutHotkeyAction =
   // Markers
   | 'addMarker'
   | 'addComment'
+  // Navigation
+  | 'prevEditPoint'
+  | 'nextEditPoint'
   // View
   | 'zoomIn'
   | 'zoomOut'
+  | 'zoomToFit'
   // Project
   | 'importMedia'
   // CUT-specific
@@ -86,12 +96,18 @@ export const PREMIERE_PRESET: HotkeyMap = {
   shuttleForward:    'l',
   frameStepBack:     'ArrowLeft',
   frameStepForward:  'ArrowRight',
+  fiveFrameStepBack: 'Shift+ArrowLeft',
+  fiveFrameStepForward: 'Shift+ArrowRight',
   goToStart:         'Home',
   goToEnd:           'End',
   // Marking
   markIn:            'i',
   markOut:           'o',
+  clearIn:           'Alt+i',
+  clearOut:          'Alt+o',
   clearInOut:        'Cmd+Shift+x',
+  goToIn:            'Shift+i',
+  goToOut:           'Shift+o',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -111,9 +127,13 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  // Navigation
+  prevEditPoint:     'ArrowUp',
+  nextEditPoint:     'ArrowDown',
   // View
   zoomIn:            '=',
   zoomOut:           '-',
+  zoomToFit:         '\\',
   // Project
   importMedia:       'Cmd+i',
   // CUT-specific
@@ -130,11 +150,17 @@ export const FCP7_PRESET: HotkeyMap = {
   shuttleForward:    'l',
   frameStepBack:     'ArrowLeft',
   frameStepForward:  'ArrowRight',
+  fiveFrameStepBack: 'Shift+ArrowLeft',
+  fiveFrameStepForward: 'Shift+ArrowRight',
   goToStart:         'Home',
   goToEnd:           'End',
   // Marking
   markIn:            'i',
   markOut:           'o',
+  clearIn:           'Alt+i',
+  clearOut:          'Alt+o',
+  goToIn:            'Shift+i',
+  goToOut:           'Shift+o',
   clearInOut:        'Alt+x',
   // Editing
   undo:              'Cmd+z',
@@ -155,9 +181,13 @@ export const FCP7_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  // Navigation
+  prevEditPoint:     'ArrowUp',
+  nextEditPoint:     'ArrowDown',
   // View
   zoomIn:            'Cmd+=',
   zoomOut:           'Cmd+-',
+  zoomToFit:         'Shift+z',
   // Project
   importMedia:       'Cmd+i',
   // CUT-specific
@@ -308,10 +338,16 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'goToStart', label: 'Go to Start', group: 'Playback' },
   { action: 'goToEnd', label: 'Go to End', group: 'Playback' },
   { action: 'cyclePlaybackRate', label: 'Cycle Playback Rate', group: 'Playback' },
+  { action: 'fiveFrameStepBack', label: '5-Frame Step Back', group: 'Playback' },
+  { action: 'fiveFrameStepForward', label: '5-Frame Step Forward', group: 'Playback' },
   // Marking
   { action: 'markIn', label: 'Set Mark In', group: 'Marking' },
   { action: 'markOut', label: 'Set Mark Out', group: 'Marking' },
+  { action: 'clearIn', label: 'Clear Mark In', group: 'Marking' },
+  { action: 'clearOut', label: 'Clear Mark Out', group: 'Marking' },
   { action: 'clearInOut', label: 'Clear In/Out', group: 'Marking' },
+  { action: 'goToIn', label: 'Go to Mark In', group: 'Marking' },
+  { action: 'goToOut', label: 'Go to Mark Out', group: 'Marking' },
   // Editing
   { action: 'undo', label: 'Undo', group: 'Editing' },
   { action: 'redo', label: 'Redo', group: 'Editing' },
@@ -331,9 +367,13 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Markers
   { action: 'addMarker', label: 'Add Marker', group: 'Markers' },
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
+  // Navigation
+  { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
+  { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
   { action: 'zoomOut', label: 'Zoom Out', group: 'View' },
+  { action: 'zoomToFit', label: 'Zoom to Fit', group: 'View' },
   // Project
   { action: 'importMedia', label: 'Import Media', group: 'Project' },
   // CUT
