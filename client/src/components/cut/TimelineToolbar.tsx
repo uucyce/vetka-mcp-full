@@ -1,12 +1,19 @@
 /**
- * MARKER_CUT_0.3: TimelineToolbar — minimal toolbar above timeline tracks.
+ * MARKER_192.2: TimelineToolbar — minimal state-only toolbar above timeline.
+ *
+ * Principle: Toolbar controls STATE, not ACTIONS.
+ * See: RECON_UI_LAYOUT_GROK_2026-03-19.md §3
  *
  * Contains ONLY:
- *   - Snap toggle (magnet SVG icon, hotkey S)
+ *   - Snap toggle (magnet icon, hotkey S)
+ *   - Linked Selection toggle (chain icon)
+ *   - Zoom slider (right side)
+ *   - Parallel timeline toggle (|| when 2+ tabs)
  *
- * Zoom = hotkeys +/- or mouse wheel. No slider.
- * Track height = mouse drag on track header or Shift+scroll.
- * Ref: CUT_NLE_UNIVERSAL_ACTION_REGISTRY.md
+ * Removed (MARKER_192.2):
+ *   - V/C tool buttons → cursor modes via hotkeys only
+ *   - Export button → File menu (future task)
+ *   - Undo was never here (Cmd+Z)
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
@@ -23,7 +30,7 @@ const ROOT: CSSProperties = {
   userSelect: 'none',
 };
 
-const SNAP_BTN: CSSProperties = {
+const TOGGLE_BTN: CSSProperties = {
   background: 'none',
   border: 'none',
   cursor: 'pointer',
@@ -45,38 +52,59 @@ function MagnetIcon({ active }: { active: boolean }) {
   );
 }
 
-// MARKER_W3.6: Tool indicator style
-const TOOL_BTN: CSSProperties = {
-  background: 'none',
-  border: '1px solid transparent',
+function ChainIcon({ active }: { active: boolean }) {
+  const color = active ? '#ccc' : '#444';
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M6.5 4A2.5 2.5 0 004 6.5v1A2.5 2.5 0 006.5 10h1a.5.5 0 000-1h-1A1.5 1.5 0 015 7.5v-1A1.5 1.5 0 016.5 5h1a.5.5 0 000-1h-1zM8.5 6a.5.5 0 000 1h1A1.5 1.5 0 0111 8.5v1A1.5 1.5 0 019.5 11h-1a.5.5 0 000 1h1a2.5 2.5 0 002.5-2.5v-1A2.5 2.5 0 009.5 6h-1z"
+        fill={color}
+      />
+      <path d="M6 8h4" stroke={color} strokeWidth="1" />
+    </svg>
+  );
+}
+
+function ParallelIcon({ active }: { active: boolean }) {
+  const color = active ? '#ccc' : '#444';
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="3" y="3" width="3" height="10" rx="1" fill={color} />
+      <rect x="10" y="3" width="3" height="10" rx="1" fill={color} />
+    </svg>
+  );
+}
+
+const ZOOM_SLIDER: CSSProperties = {
+  width: 80,
+  height: 3,
+  appearance: 'none' as const,
+  background: '#222',
+  borderRadius: 2,
+  outline: 'none',
   cursor: 'pointer',
-  padding: '1px 6px',
-  fontSize: 10,
-  fontFamily: 'system-ui',
-  color: '#555',
-  borderRadius: 3,
 };
 
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
-  const activeTool = useCutEditorStore((s) => s.activeTool);
-  const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
-  // MARKER_W6.1: Export dialog
-  const setShowExportDialog = useCutEditorStore((s) => s.setShowExportDialog);
   // MARKER_W5.2: Parallel timeline toggle
   const parallelTimelineTabIndex = useCutEditorStore((s) => s.parallelTimelineTabIndex);
   const setParallelTimeline = useCutEditorStore((s) => s.setParallelTimeline);
   const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
   const activeTimelineTabIndex = useCutEditorStore((s) => s.activeTimelineTabIndex);
+  // Zoom
+  const zoom = useCutEditorStore((s) => s.zoom);
+  const setZoom = useCutEditorStore((s) => s.setZoom);
 
   return (
     <div style={ROOT}>
+      {/* Snap toggle */}
       <button
         style={{
-          ...SNAP_BTN,
+          ...TOGGLE_BTN,
           background: snapEnabled ? '#1a1a1a' : 'none',
         }}
         onClick={toggleSnap}
@@ -84,56 +112,29 @@ export default function TimelineToolbar() {
       >
         <MagnetIcon active={snapEnabled} />
       </button>
-      {/* MARKER_W3.6: Tool selector — V=Selection, C=Razor */}
-      <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
-      {(['selection', 'razor'] as const).map((tool) => (
-        <button
-          key={tool}
-          style={{
-            ...TOOL_BTN,
-            color: activeTool === tool ? '#ccc' : '#555',
-            background: activeTool === tool ? '#1a1a1a' : 'none',
-            borderColor: activeTool === tool ? '#333' : 'transparent',
-          }}
-          onClick={() => setActiveTool(tool)}
-          title={tool === 'selection' ? 'Selection Tool (V)' : 'Razor Tool (C)'}
-        >
-          {tool === 'selection' ? 'V' : 'C'}
-        </button>
-      ))}
-      {/* MARKER_W3.7: Linked selection toggle */}
-      <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
+
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+
+      {/* Linked Selection toggle */}
       <button
         style={{
-          ...TOOL_BTN,
-          color: linkedSelection ? '#ccc' : '#555',
+          ...TOGGLE_BTN,
           background: linkedSelection ? '#1a1a1a' : 'none',
-          borderColor: linkedSelection ? '#333' : 'transparent',
         }}
         onClick={toggleLinkedSelection}
         title={`Linked Selection ${linkedSelection ? 'ON' : 'OFF'}`}
       >
-        LK
+        <ChainIcon active={linkedSelection} />
       </button>
-      {/* MARKER_W6.1: Export button — pushed to the right */}
-      <div style={{ flex: 1 }} />
-      <button
-        style={{ ...TOOL_BTN, color: '#888' }}
-        onClick={() => setShowExportDialog(true)}
-        title="Export / Render"
-      >
-        Export
-      </button>
+
       {/* MARKER_W5.2: Parallel timeline toggle */}
       {timelineTabs.length >= 2 && (
         <>
-          <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
+          <div style={{ width: 1, height: 14, background: '#222' }} />
           <button
             style={{
-              ...TOOL_BTN,
-              color: parallelTimelineTabIndex !== null ? '#ccc' : '#555',
+              ...TOGGLE_BTN,
               background: parallelTimelineTabIndex !== null ? '#1a1a1a' : 'none',
-              borderColor: parallelTimelineTabIndex !== null ? '#333' : 'transparent',
             }}
             onClick={() => {
               if (parallelTimelineTabIndex !== null) {
@@ -145,10 +146,24 @@ export default function TimelineToolbar() {
             }}
             title={parallelTimelineTabIndex !== null ? 'Exit parallel view' : 'Parallel timeline view'}
           >
-            ||
+            <ParallelIcon active={parallelTimelineTabIndex !== null} />
           </button>
         </>
       )}
+
+      {/* Spacer */}
+      <div style={{ flex: 1 }} />
+
+      {/* Zoom slider */}
+      <input
+        type="range"
+        min={10}
+        max={300}
+        value={zoom}
+        onChange={(e) => setZoom(Number(e.target.value))}
+        style={ZOOM_SLIDER}
+        title={`Zoom: ${zoom}px/s`}
+      />
     </div>
   );
 }
