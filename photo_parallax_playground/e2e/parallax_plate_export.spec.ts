@@ -49,6 +49,31 @@ function validatePlateLayoutContract(layout: Record<string, unknown>) {
     "plate_layout",
   );
   expectObjectKeys(
+    layout.camera,
+    [
+      "motionType",
+      "travelXPct",
+      "travelYPct",
+      "zoom",
+      "phase",
+      "durationSec",
+      "fps",
+      "overscanPct",
+      "focalLengthMm",
+      "filmWidthMm",
+      "aovDeg",
+      "zoomPx",
+      "zNear",
+      "zFar",
+      "referenceZ",
+      "cameraTx",
+      "cameraTy",
+      "cameraTz",
+      "motionScale",
+    ],
+    "plate_layout.camera",
+  );
+  expectObjectKeys(
     layout.cameraSafe,
     ["ok", "recommendedOverscanPct", "minSafeOverscanPct", "highestDisocclusionRisk", "worstTransitionRisk", "riskyPlateIds", "warning", "suggestion"],
     "plate_layout.cameraSafe",
