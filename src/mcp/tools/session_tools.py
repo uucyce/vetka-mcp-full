@@ -549,6 +549,26 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # REFLEX report never blocks session init
 
+        # MARKER_195.6.INIT: Tool Freshness Watchdog — auto-scan for code changes
+        try:
+            from src.services.tool_source_watch import get_tool_source_watch
+            watch = get_tool_source_watch()
+            freshness_events = watch.scan_all()
+            if freshness_events:
+                context["freshness_events"] = [e.to_dict() for e in freshness_events]
+                # Also enrich reflex_report with freshness info
+                report = context.get("reflex_report", {})
+                report["freshened_tools"] = [e.tool_id for e in freshness_events]
+                context["reflex_report"] = report
+            # Always report recently-updated tools (from previous sessions too)
+            recently_updated = watch.get_recently_updated()
+            if recently_updated:
+                report = context.get("reflex_report", {})
+                report["recently_updated_tools"] = recently_updated
+                context["reflex_report"] = report
+        except Exception:
+            pass  # Freshness never blocks session init
+
         # MARKER_195.2.4: REFLEX Emotions — agent mood + per-tool emotions
         try:
             from src.services.reflex_emotions import get_reflex_emotions, EmotionContext

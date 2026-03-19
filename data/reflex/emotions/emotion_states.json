@@ -1,23 +1,23 @@
 {
   "vetka_search_semantic": {
     "tool_id": "vetka_search_semantic",
-    "curiosity": 0.8175744761936437,
-    "trust": 0.6387499999999999,
+    "curiosity": 0.7310585786300049,
+    "trust": 0.6929375,
     "caution": 0.1,
-    "usage_count": 2,
-    "success_count": 2,
+    "usage_count": 3,
+    "success_count": 3,
     "failure_count": 0,
-    "last_updated": 1773908511.665592
+    "last_updated": 1773908592.964266
   },
   "vetka_edit_file": {
     "tool_id": "vetka_edit_file",
-    "curiosity": 0.04742587317756678,
-    "trust": 0.44356385363478273,
+    "curiosity": 0.02931223075135632,
+    "trust": 0.5270292755895654,
     "caution": 0.1,
-    "usage_count": 11,
-    "success_count": 7,
+    "usage_count": 12,
+    "success_count": 8,
     "failure_count": 4,
-    "last_updated": 1773908511.669423
+    "last_updated": 1773908592.9649699
   },
   "mycelium_pipeline": {
     "tool_id": "mycelium_pipeline",
@@ -51,103 +51,103 @@
   },
   "tool_0": {
     "tool_id": "tool_0",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.984664
+    "last_updated": 1773908592.968703
   },
   "tool_1": {
     "tool_id": "tool_1",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.9850209
+    "last_updated": 1773908592.969326
   },
   "tool_2": {
     "tool_id": "tool_2",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.985375
+    "last_updated": 1773908592.96997
   },
   "tool_3": {
     "tool_id": "tool_3",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.985708
+    "last_updated": 1773908592.9706
   },
   "tool_4": {
     "tool_id": "tool_4",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.986038
+    "last_updated": 1773908592.97124
   },
   "tool_5": {
     "tool_id": "tool_5",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.986384
+    "last_updated": 1773908592.971861
   },
   "tool_6": {
     "tool_id": "tool_6",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.9867258
+    "last_updated": 1773908592.97247
   },
   "tool_7": {
     "tool_id": "tool_7",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.987069
+    "last_updated": 1773908592.973082
   },
   "tool_8": {
     "tool_id": "tool_8",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.987443
+    "last_updated": 1773908592.973695
   },
   "tool_9": {
     "tool_id": "tool_9",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907718.987882
+    "last_updated": 1773908592.9743092
   },
   "tool_10": {
     "tool_id": "tool_10",
@@ -1051,193 +1051,193 @@
   },
   "tool_x": {
     "tool_id": "tool_x",
-    "curiosity": 0.8175744761936437,
-    "trust": 0.6387499999999999,
-    "caution": 0.1,
-    "usage_count": 2,
-    "success_count": 2,
-    "failure_count": 0,
-    "last_updated": 1773908522.500909
-  },
-  "tool_y": {
-    "tool_id": "tool_y",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.325,
-    "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 0,
-    "failure_count": 1,
-    "last_updated": 1773907718.9838011
-  },
-  "tool_perfect": {
-    "tool_id": "tool_perfect",
-    "curiosity": 0.5,
-    "trust": 0.7781473437499999,
-    "caution": 0.1,
-    "usage_count": 5,
-    "success_count": 5,
-    "failure_count": 0,
-    "last_updated": 1773907718.991897
-  },
-  "tool_mixed": {
-    "tool_id": "tool_mixed",
-    "curiosity": 0.8175744761936437,
-    "trust": 0.37374999999999997,
-    "caution": 0.1,
-    "usage_count": 2,
-    "success_count": 1,
-    "failure_count": 1,
-    "last_updated": 1773907718.994373
-  },
-  "tool_bad": {
-    "tool_id": "tool_bad",
-    "curiosity": 0.5,
-    "trust": 0.05801453125,
-    "caution": 0.1,
-    "usage_count": 5,
-    "success_count": 0,
-    "failure_count": 5,
-    "last_updated": 1773907718.9968488
-  },
-  "tool_a": {
-    "tool_id": "tool_a",
-    "curiosity": 0.3775406687981454,
-    "trust": 0.8114252421874999,
-    "caution": 0.1,
-    "usage_count": 6,
-    "success_count": 6,
-    "failure_count": 0,
-    "last_updated": 1773907719.033855
-  },
-  "tool_b": {
-    "tool_id": "tool_b",
-    "curiosity": 0.3775406687981454,
-    "trust": 0.36299047656249994,
-    "caution": 0.1,
-    "usage_count": 6,
-    "success_count": 3,
-    "failure_count": 3,
-    "last_updated": 1773907719.034631
-  },
-  "tool_c": {
-    "tool_id": "tool_c",
     "curiosity": 0.7310585786300049,
     "trust": 0.6929375,
     "caution": 0.1,
     "usage_count": 3,
     "success_count": 3,
     "failure_count": 0,
-    "last_updated": 1773907719.0351129
+    "last_updated": 1773908592.966178
   },
-  "fresh_tool": {
-    "tool_id": "fresh_tool",
-    "curiosity": 0.5,
-    "trust": 0.7781473437499999,
+  "tool_y": {
+    "tool_id": "tool_y",
+    "curiosity": 0.8175744761936437,
+    "trust": 0.21125000000000002,
     "caution": 0.1,
-    "usage_count": 5,
-    "success_count": 5,
-    "failure_count": 0,
-    "last_updated": 1773907719.005825
+    "usage_count": 2,
+    "success_count": 0,
+    "failure_count": 2,
+    "last_updated": 1773908592.9675741
   },
-  "small_log": {
-    "tool_id": "small_log",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
-    "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
-    "failure_count": 0,
-    "last_updated": 1773907719.019661
-  },
-  "popular_tool": {
-    "tool_id": "popular_tool",
+  "tool_perfect": {
+    "tool_id": "tool_perfect",
     "curiosity": 0.07585818002124355,
     "trust": 0.9015627978296387,
     "caution": 0.1,
     "usage_count": 10,
     "success_count": 10,
     "failure_count": 0,
-    "last_updated": 1773907719.039967
+    "last_updated": 1773908592.9799879
+  },
+  "tool_mixed": {
+    "tool_id": "tool_mixed",
+    "curiosity": 0.6224593312018546,
+    "trust": 0.303996875,
+    "caution": 0.1,
+    "usage_count": 4,
+    "success_count": 2,
+    "failure_count": 2,
+    "last_updated": 1773908592.9833841
+  },
+  "tool_bad": {
+    "tool_id": "tool_bad",
+    "curiosity": 0.07585818002124355,
+    "trust": 0.006731371672314456,
+    "caution": 0.1,
+    "usage_count": 10,
+    "success_count": 0,
+    "failure_count": 10,
+    "last_updated": 1773908592.987191
+  },
+  "tool_a": {
+    "tool_id": "tool_a",
+    "curiosity": 0.02931223075135632,
+    "trust": 0.928879121431914,
+    "caution": 0.1,
+    "usage_count": 12,
+    "success_count": 12,
+    "failure_count": 0,
+    "last_updated": 1773908593.029687
+  },
+  "tool_b": {
+    "tool_id": "tool_b",
+    "curiosity": 0.02931223075135632,
+    "trust": 0.33988326169280286,
+    "caution": 0.1,
+    "usage_count": 12,
+    "success_count": 6,
+    "failure_count": 6,
+    "last_updated": 1773908593.03092
+  },
+  "tool_c": {
+    "tool_id": "tool_c",
+    "curiosity": 0.3775406687981454,
+    "trust": 0.8114252421874999,
+    "caution": 0.1,
+    "usage_count": 6,
+    "success_count": 6,
+    "failure_count": 0,
+    "last_updated": 1773908593.0315268
+  },
+  "fresh_tool": {
+    "tool_id": "fresh_tool",
+    "curiosity": 0.07585818002124355,
+    "trust": 0.9015627978296387,
+    "caution": 0.1,
+    "usage_count": 10,
+    "success_count": 10,
+    "failure_count": 0,
+    "last_updated": 1773908593.0004008
+  },
+  "small_log": {
+    "tool_id": "small_log",
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
+    "caution": 0.1,
+    "usage_count": 2,
+    "success_count": 2,
+    "failure_count": 0,
+    "last_updated": 1773908593.014957
+  },
+  "popular_tool": {
+    "tool_id": "popular_tool",
+    "curiosity": 0.0005527786369235996,
+    "trust": 0.9806202344577428,
+    "caution": 0.1,
+    "usage_count": 20,
+    "success_count": 20,
+    "failure_count": 0,
+    "last_updated": 1773908593.038528
   },
   "medium_tool": {
     "tool_id": "medium_tool",
-    "curiosity": 0.7310585786300049,
-    "trust": 0.6929375,
+    "curiosity": 0.3775406687981454,
+    "trust": 0.8114252421874999,
     "caution": 0.1,
-    "usage_count": 3,
-    "success_count": 3,
+    "usage_count": 6,
+    "success_count": 6,
     "failure_count": 0,
-    "last_updated": 1773907719.041109
+    "last_updated": 1773908593.04035
   },
   "rare_tool": {
     "tool_id": "rare_tool",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773907719.041476
+    "last_updated": 1773908593.0409658
   },
   "perf_tool_0": {
     "tool_id": "perf_tool_0",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.9806202344577428,
+    "curiosity": 2.5109990926928157e-08,
+    "trust": 0.9992488493750544,
     "caution": 0.1,
-    "usage_count": 20,
-    "success_count": 20,
+    "usage_count": 40,
+    "success_count": 40,
     "failure_count": 0,
-    "last_updated": 1773907719.0807528
+    "last_updated": 1773908593.1012459
   },
   "perf_tool_1": {
     "tool_id": "perf_tool_1",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.9806202344577428,
+    "curiosity": 2.5109990926928157e-08,
+    "trust": 0.9992488493750544,
     "caution": 0.1,
-    "usage_count": 20,
-    "success_count": 20,
+    "usage_count": 40,
+    "success_count": 40,
     "failure_count": 0,
-    "last_updated": 1773907719.081119
+    "last_updated": 1773908593.1018329
   },
   "perf_tool_2": {
     "tool_id": "perf_tool_2",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.9806202344577428,
+    "curiosity": 2.5109990926928157e-08,
+    "trust": 0.9992488493750544,
     "caution": 0.1,
-    "usage_count": 20,
-    "success_count": 20,
+    "usage_count": 40,
+    "success_count": 40,
     "failure_count": 0,
-    "last_updated": 1773907719.081503
+    "last_updated": 1773908593.1024268
   },
   "perf_tool_3": {
     "tool_id": "perf_tool_3",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.9806202344577428,
+    "curiosity": 2.5109990926928157e-08,
+    "trust": 0.9992488493750544,
     "caution": 0.1,
-    "usage_count": 20,
-    "success_count": 20,
+    "usage_count": 40,
+    "success_count": 40,
     "failure_count": 0,
-    "last_updated": 1773907719.08188
+    "last_updated": 1773908593.103023
   },
   "perf_tool_4": {
     "tool_id": "perf_tool_4",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.9806202344577428,
+    "curiosity": 2.5109990926928157e-08,
+    "trust": 0.9992488493750544,
     "caution": 0.1,
-    "usage_count": 20,
-    "success_count": 20,
+    "usage_count": 40,
+    "success_count": 40,
     "failure_count": 0,
-    "last_updated": 1773907719.082262
+    "last_updated": 1773908593.103616
   },
   "unknown_tool": {
     "tool_id": "unknown_tool",
-    "curiosity": 0.5,
-    "trust": 0.05801453125,
+    "curiosity": 0.07585818002124355,
+    "trust": 0.006731371672314456,
     "caution": 0.1,
-    "usage_count": 5,
+    "usage_count": 10,
     "success_count": 0,
-    "failure_count": 5,
-    "last_updated": 1773907719.092583
+    "failure_count": 10,
+    "last_updated": 1773908593.114979
   },
   "vetka_search_files": {
     "tool_id": "vetka_search_files",

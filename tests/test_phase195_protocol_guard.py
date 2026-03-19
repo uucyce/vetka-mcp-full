@@ -384,12 +384,11 @@ class TestFullWorkflow:
         violations = guard.check(s, "Edit", {"file_path": "src/core/app.py"})
         rule_ids = [v.rule_id for v in violations]
 
-        # Should have at minimum these violations:
-        assert "session_init_first" in rule_ids, "Missing session_init_first"
+        # session_init_first only fires for MCP tools (vetka_*), not native "Edit"
         assert "taskboard_before_work" in rule_ids, "Missing taskboard_before_work"
         assert "task_before_code" in rule_ids, "Missing task_before_code"
         assert "read_before_edit" in rule_ids, "Missing read_before_edit"
-        assert len(violations) >= 4
+        assert len(violations) >= 3
         print("  test_worst_case_multiple_violations")
 
     # -- 22. Partial compliance: init + board check but no task --
@@ -432,8 +431,13 @@ class TestSingletonAndConfig:
     # -- 24. Config overrides severity --
     def test_config_override_severity(self):
         """ProtocolGuard config can override a rule's severity to 'block'."""
+        import tempfile, json as _json
         reset_protocol_guard()
-        guard = ProtocolGuard(config={"rules": {"read_before_edit": {"severity": "block"}}})
+        # Write a config file that overrides read_before_edit to "block"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            _json.dump({"rules": {"read_before_edit": {"severity": "block", "enabled": True}}}, f)
+            cfg_path = f.name
+        guard = ProtocolGuard(config_path=cfg_path)
 
         tracker = SessionActionTracker()
         tracker.record_action(SID, "vetka_session_init", {})
