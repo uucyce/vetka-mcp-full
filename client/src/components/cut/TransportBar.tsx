@@ -595,6 +595,9 @@ export default function TransportBar() {
     // MARKER_W3.6: Tool State Machine hotkeys
     selectTool:       () => useCutEditorStore.getState().setActiveTool('selection'),
     razorTool:        () => useCutEditorStore.getState().setActiveTool('razor'),
+    // MARKER_W3.7: Selection hotkeys
+    selectAll:        () => useCutEditorStore.getState().selectAllClips(),
+    escapeContext:    () => useCutEditorStore.getState().clearSelection(),
     toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
   }), [
     togglePlay, pause, seek, currentTime, duration, cycleRate,

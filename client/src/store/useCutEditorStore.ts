@@ -113,6 +113,8 @@ interface CutEditorState {
 
   // === Selection ===
   selectedClipId: string | null;
+  selectedClipIds: Set<string>;       // MARKER_W3.7: multi-select
+  linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
 
@@ -186,6 +188,11 @@ interface CutEditorState {
   setLaneVolume: (laneId: string, volume: number) => void;
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
+  // MARKER_W3.7: Multi-select
+  toggleClipSelection: (id: string) => void;   // Cmd+Click toggle
+  selectAllClips: () => void;                   // Cmd+A
+  clearSelection: () => void;                   // Escape
+  toggleLinkedSelection: () => void;            // linked selection toggle
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -255,6 +262,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // Selection
   selectedClipId: null,
+  selectedClipIds: new Set<string>(),
+  linkedSelection: true,
   activeMediaPath: null,
   hoveredClipId: null,
 
@@ -348,7 +357,24 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
-  setSelectedClip: (id) => set({ selectedClipId: id }),
+  setSelectedClip: (id) => set({ selectedClipId: id, selectedClipIds: id ? new Set([id]) : new Set() }),
+  // MARKER_W3.7: Multi-select actions
+  toggleClipSelection: (id) =>
+    set((state) => {
+      const ids = new Set(state.selectedClipIds);
+      if (ids.has(id)) { ids.delete(id); } else { ids.add(id); }
+      return { selectedClipIds: ids, selectedClipId: ids.size === 1 ? [...ids][0] : state.selectedClipId };
+    }),
+  selectAllClips: () =>
+    set((state) => {
+      const allIds = new Set<string>();
+      for (const lane of state.lanes) {
+        for (const clip of lane.clips) { allIds.add(clip.clip_id); }
+      }
+      return { selectedClipIds: allIds };
+    }),
+  clearSelection: () => set({ selectedClipId: null, selectedClipIds: new Set() }),
+  toggleLinkedSelection: () => set((state) => ({ linkedSelection: !state.linkedSelection })),
   setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),

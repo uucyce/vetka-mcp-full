@@ -62,6 +62,8 @@ export default function TimelineToolbar() {
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
   const activeTool = useCutEditorStore((s) => s.activeTool);
   const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
+  const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
+  const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
 
   return (
     <div style={ROOT}>
@@ -92,6 +94,20 @@ export default function TimelineToolbar() {
           {tool === 'selection' ? 'V' : 'C'}
         </button>
       ))}
+      {/* MARKER_W3.7: Linked selection toggle */}
+      <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
+      <button
+        style={{
+          ...TOOL_BTN,
+          color: linkedSelection ? '#ccc' : '#555',
+          background: linkedSelection ? '#1a1a1a' : 'none',
+          borderColor: linkedSelection ? '#333' : 'transparent',
+        }}
+        onClick={toggleLinkedSelection}
+        title={`Linked Selection ${linkedSelection ? 'ON' : 'OFF'}`}
+      >
+        LK
+      </button>
     </div>
   );
 }
