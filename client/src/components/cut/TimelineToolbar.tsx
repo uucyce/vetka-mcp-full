@@ -64,6 +64,11 @@ export default function TimelineToolbar() {
   const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
+  // MARKER_W5.2: Parallel timeline toggle
+  const parallelTimelineTabIndex = useCutEditorStore((s) => s.parallelTimelineTabIndex);
+  const setParallelTimeline = useCutEditorStore((s) => s.setParallelTimeline);
+  const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
+  const activeTimelineTabIndex = useCutEditorStore((s) => s.activeTimelineTabIndex);
 
   return (
     <div style={ROOT}>
@@ -108,6 +113,33 @@ export default function TimelineToolbar() {
       >
         LK
       </button>
+      {/* MARKER_W5.2: Parallel timeline toggle */}
+      {timelineTabs.length >= 2 && (
+        <>
+          <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
+          <button
+            style={{
+              ...TOOL_BTN,
+              color: parallelTimelineTabIndex !== null ? '#ccc' : '#555',
+              background: parallelTimelineTabIndex !== null ? '#1a1a1a' : 'none',
+              borderColor: parallelTimelineTabIndex !== null ? '#333' : 'transparent',
+            }}
+            onClick={() => {
+              if (parallelTimelineTabIndex !== null) {
+                // Turn off parallel view
+                setParallelTimeline(null);
+              } else {
+                // Pick first tab that isn't the active one
+                const otherIndex = timelineTabs.findIndex((_, i) => i !== activeTimelineTabIndex);
+                if (otherIndex >= 0) setParallelTimeline(otherIndex);
+              }
+            }}
+            title={parallelTimelineTabIndex !== null ? 'Exit parallel view' : 'Parallel timeline view'}
+          >
+            ||
+          </button>
+        </>
+      )}
     </div>
   );
 }

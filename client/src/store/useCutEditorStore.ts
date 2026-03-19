@@ -164,6 +164,9 @@ interface CutEditorState {
   /** MARKER_180.14: global version counter for {project}_cut-{NN} naming */
   nextTimelineVersion: number;
 
+  // === MARKER_W5.2: Parallel Timelines (stacked dual view) ===
+  parallelTimelineTabIndex: number | null;  // index of the reference (non-active) timeline tab, null = single view
+
   // === Auto-Montage (MARKER_W5.1) ===
   montageRunning: boolean;
   montageMode: 'favorites' | 'script' | 'music' | null;
@@ -259,6 +262,9 @@ interface CutEditorState {
   renameTimelineTab: (index: number, label: string) => void;
   /** MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1) */
   createVersionedTimeline: (projectName: string, mode?: string) => string;
+  // MARKER_W5.2: Parallel Timelines
+  setParallelTimeline: (tabIndex: number | null) => void;
+  swapParallelTimeline: () => void;  // swap active ↔ parallel
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -330,6 +336,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   timelineTabs: [{ id: 'main', label: 'Main', version: 0, createdAt: Date.now(), mode: 'manual' }],
   activeTimelineTabIndex: 0,
   nextTimelineVersion: 1,
+  parallelTimelineTabIndex: null,
 
   // MARKER_W5.1: Auto-Montage
   montageRunning: false,
@@ -520,6 +527,21 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const tabs = [...state.timelineTabs];
       if (tabs[index]) tabs[index] = { ...tabs[index], label };
       return { timelineTabs: tabs };
+    }),
+
+  // MARKER_W5.2: Parallel Timelines
+  setParallelTimeline: (tabIndex) => set({ parallelTimelineTabIndex: tabIndex }),
+  swapParallelTimeline: () =>
+    set((state) => {
+      if (state.parallelTimelineTabIndex === null) return state;
+      const oldActive = state.activeTimelineTabIndex;
+      const newActive = state.parallelTimelineTabIndex;
+      if (newActive < 0 || newActive >= state.timelineTabs.length) return state;
+      return {
+        activeTimelineTabIndex: newActive,
+        timelineId: state.timelineTabs[newActive].id,
+        parallelTimelineTabIndex: oldActive,
+      };
     }),
 
   // MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1)
