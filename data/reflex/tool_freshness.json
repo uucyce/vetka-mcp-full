@@ -1,0 +1,850 @@
+{
+  "vetka_get_tree": {
+    "source_files": [
+      "src/mcp/tools/tree_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454149+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454164+00:00"
+      }
+    ]
+  },
+  "vetka_get_node": {
+    "source_files": [
+      "src/mcp/tools/tree_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454176+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454178+00:00"
+      }
+    ]
+  },
+  "vetka_add_markers": {
+    "source_files": [
+      "src/mcp/tools/marker_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454182+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454183+00:00"
+      }
+    ]
+  },
+  "vetka_verify_markers": {
+    "source_files": [
+      "src/mcp/tools/marker_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454185+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454186+00:00"
+      }
+    ]
+  },
+  "vetka_execute_workflow": {
+    "source_files": [
+      "src/mcp/tools/workflow_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "6f133001f3ad85604d44f7ad15eeffe7e1b109a8",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454189+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "6f133001f3ad85604d44f7ad15eeffe7e1b109a8",
+        "ts": "2026-03-19T07:50:23.454190+00:00"
+      }
+    ]
+  },
+  "vetka_workflow_status": {
+    "source_files": [
+      "src/mcp/tools/workflow_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "6f133001f3ad85604d44f7ad15eeffe7e1b109a8",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454191+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "6f133001f3ad85604d44f7ad15eeffe7e1b109a8",
+        "ts": "2026-03-19T07:50:23.454192+00:00"
+      }
+    ]
+  },
+  "vetka_arc_gap": {
+    "source_files": [
+      "src/mcp/tools/arc_gap_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454202+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454203+00:00"
+      }
+    ]
+  },
+  "vetka_arc_concepts": {
+    "source_files": [
+      "src/mcp/tools/arc_gap_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454208+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454209+00:00"
+      }
+    ]
+  },
+  "vetka_git_status": {
+    "source_files": [
+      "src/mcp/tools/git_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "219bc8704d9346c53212121169e44da7c55b1776",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454210+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "219bc8704d9346c53212121169e44da7c55b1776",
+        "ts": "2026-03-19T07:50:23.454212+00:00"
+      }
+    ]
+  },
+  "vetka_git_commit": {
+    "source_files": [
+      "src/mcp/tools/git_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "219bc8704d9346c53212121169e44da7c55b1776",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454215+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "219bc8704d9346c53212121169e44da7c55b1776",
+        "ts": "2026-03-19T07:50:23.454216+00:00"
+      }
+    ]
+  },
+  "vetka_search": {
+    "source_files": [
+      "src/mcp/tools/search_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454217+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454218+00:00"
+      }
+    ]
+  },
+  "mycelium_call_model": {
+    "source_files": [
+      "src/mcp/tools/llm_call_tool_async.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454222+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+        "ts": "2026-03-19T07:50:23.454224+00:00"
+      }
+    ]
+  },
+  "vetka_library_docs": {
+    "source_files": [
+      "src/mcp/tools/library_docs_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "16f9c6cc9f3c2573267d7aae364a89de9322b8df",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454226+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "16f9c6cc9f3c2573267d7aae364a89de9322b8df",
+        "ts": "2026-03-19T07:50:23.454226+00:00"
+      }
+    ]
+  },
+  "vetka_get_viewport_detail": {
+    "source_files": [
+      "src/mcp/tools/viewport_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454227+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+        "ts": "2026-03-19T07:50:23.454228+00:00"
+      }
+    ]
+  },
+  "vetka_edit_file": {
+    "source_files": [
+      "src/mcp/tools/edit_file_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "5ec51d1266c04f8b5b1bcf0ae149634ac5aa6376",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454229+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "5ec51d1266c04f8b5b1bcf0ae149634ac5aa6376",
+        "ts": "2026-03-19T07:50:23.454230+00:00"
+      }
+    ]
+  },
+  "vetka_get_pinned_files": {
+    "source_files": [
+      "src/mcp/tools/pinned_files_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "00645770316a2ae26de883d32ae8d6927287ca40",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454231+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "00645770316a2ae26de883d32ae8d6927287ca40",
+        "ts": "2026-03-19T07:50:23.454232+00:00"
+      }
+    ]
+  },
+  "vetka_session_init": {
+    "source_files": [
+      "src/mcp/tools/session_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "08f91bfae019234a7f7da2c5b45f103458ca1633",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454233+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "08f91bfae019234a7f7da2c5b45f103458ca1633",
+        "ts": "2026-03-19T07:50:23.454234+00:00"
+      }
+    ]
+  },
+  "vetka_session_status": {
+    "source_files": [
+      "src/mcp/tools/session_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "08f91bfae019234a7f7da2c5b45f103458ca1633",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454239+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "08f91bfae019234a7f7da2c5b45f103458ca1633",
+        "ts": "2026-03-19T07:50:23.454240+00:00"
+      }
+    ]
+  },
+  "vetka_read_file": {
+    "source_files": [
+      "src/mcp/tools/read_file_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "5ec51d1266c04f8b5b1bcf0ae149634ac5aa6376",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454241+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "5ec51d1266c04f8b5b1bcf0ae149634ac5aa6376",
+        "ts": "2026-03-19T07:50:23.454242+00:00"
+      }
+    ]
+  },
+  "vetka_create_branch": {
+    "source_files": [
+      "src/mcp/tools/branch_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454243+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454244+00:00"
+      }
+    ]
+  },
+  "vetka_list_files": {
+    "source_files": [
+      "src/mcp/tools/list_files_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454245+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454246+00:00"
+      }
+    ]
+  },
+  "vetka_edit_artifact": {
+    "source_files": [
+      "src/mcp/tools/artifact_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454247+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+        "ts": "2026-03-19T07:50:23.454247+00:00"
+      }
+    ]
+  },
+  "vetka_approve_artifact": {
+    "source_files": [
+      "src/mcp/tools/artifact_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454250+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+        "ts": "2026-03-19T07:50:23.454256+00:00"
+      }
+    ]
+  },
+  "vetka_reject_artifact": {
+    "source_files": [
+      "src/mcp/tools/artifact_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454258+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+        "ts": "2026-03-19T07:50:23.454259+00:00"
+      }
+    ]
+  },
+  "vetka_list_artifacts": {
+    "source_files": [
+      "src/mcp/tools/artifact_tools.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454260+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "3d329a4750c26c7e17ad78d223b47680cb3d64cc",
+        "ts": "2026-03-19T07:50:23.454261+00:00"
+      }
+    ]
+  },
+  "vetka_web_search": {
+    "source_files": [
+      "src/mcp/tools/web_search_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "76e0cccb46db2190308142f74e7035216471e7f2",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454264+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "76e0cccb46db2190308142f74e7035216471e7f2",
+        "ts": "2026-03-19T07:50:23.454264+00:00"
+      }
+    ]
+  },
+  "vetka_get_context_dag": {
+    "source_files": [
+      "src/mcp/tools/context_dag_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454267+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+        "ts": "2026-03-19T07:50:23.454267+00:00"
+      }
+    ]
+  },
+  "vetka_run_tests": {
+    "source_files": [
+      "src/mcp/tools/run_tests_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454270+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454271+00:00"
+      }
+    ]
+  },
+  "vetka_search_knowledge": {
+    "source_files": [
+      "src/mcp/tools/search_knowledge_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454272+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454273+00:00"
+      }
+    ]
+  },
+  "vetka_call_model": {
+    "source_files": [
+      "src/mcp/tools/llm_call_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454276+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "021ca525892d822bcc0fe20afcecbfc2b3d288be",
+        "ts": "2026-03-19T07:50:23.454277+00:00"
+      }
+    ]
+  },
+  "vetka_camera_focus": {
+    "source_files": [
+      "src/mcp/tools/camera_tool.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454279+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "931e07a2d09d7ea30dff87af38b04a188087bdaf",
+        "ts": "2026-03-19T07:50:23.454280+00:00"
+      }
+    ]
+  },
+  "vetka_search_semantic": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454281+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454282+00:00"
+      }
+    ]
+  },
+  "vetka_health": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454283+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454284+00:00"
+      }
+    ]
+  },
+  "vetka_get_media_window_debug": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454285+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454286+00:00"
+      }
+    ]
+  },
+  "vetka_search_files": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454292+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454293+00:00"
+      }
+    ]
+  },
+  "vetka_get_metrics": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454294+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454295+00:00"
+      }
+    ]
+  },
+  "vetka_get_knowledge_graph": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454296+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454297+00:00"
+      }
+    ]
+  },
+  "vetka_read_group_messages": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454299+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454300+00:00"
+      }
+    ]
+  },
+  "vetka_get_chat_digest": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454301+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454302+00:00"
+      }
+    ]
+  },
+  "vetka_send_message": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454303+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454304+00:00"
+      }
+    ]
+  },
+  "vetka_get_conversation_context": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454306+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454306+00:00"
+      }
+    ]
+  },
+  "vetka_get_user_preferences": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454307+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454310+00:00"
+      }
+    ]
+  },
+  "vetka_get_memory_summary": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454312+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454312+00:00"
+      }
+    ]
+  },
+  "vetka_arc_suggest": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454317+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454318+00:00"
+      }
+    ]
+  },
+  "vetka_research": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454319+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454320+00:00"
+      }
+    ]
+  },
+  "vetka_implement": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454321+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454322+00:00"
+      }
+    ]
+  },
+  "vetka_review": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454323+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454323+00:00"
+      }
+    ]
+  },
+  "vetka_mycelium_pipeline": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454324+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454325+00:00"
+      }
+    ]
+  },
+  "vetka_heartbeat_tick": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454326+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454327+00:00"
+      }
+    ]
+  },
+  "vetka_heartbeat_status": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454328+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454328+00:00"
+      }
+    ]
+  },
+  "vetka_task_board": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454329+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454330+00:00"
+      }
+    ]
+  },
+  "vetka_task_dispatch": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454331+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454332+00:00"
+      }
+    ]
+  },
+  "vetka_task_import": {
+    "source_files": [
+      "src/mcp/vetka_mcp_bridge.py"
+    ],
+    "current_epoch": 0,
+    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "last_mtime": 0.0,
+    "updated_at": "2026-03-19T07:50:23.454333+00:00",
+    "history": [
+      {
+        "epoch": 0,
+        "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+        "ts": "2026-03-19T07:50:23.454334+00:00"
+      }
+    ]
+  }
+}

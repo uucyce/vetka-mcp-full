@@ -1,0 +1,161 @@
+{
+  "vetka_get_tree": [
+    "src/mcp/tools/tree_tool.py"
+  ],
+  "vetka_get_node": [
+    "src/mcp/tools/tree_tool.py"
+  ],
+  "vetka_add_markers": [
+    "src/mcp/tools/marker_tool.py"
+  ],
+  "vetka_verify_markers": [
+    "src/mcp/tools/marker_tool.py"
+  ],
+  "vetka_execute_workflow": [
+    "src/mcp/tools/workflow_tools.py"
+  ],
+  "vetka_workflow_status": [
+    "src/mcp/tools/workflow_tools.py"
+  ],
+  "vetka_arc_gap": [
+    "src/mcp/tools/arc_gap_tool.py"
+  ],
+  "vetka_arc_concepts": [
+    "src/mcp/tools/arc_gap_tool.py"
+  ],
+  "vetka_git_status": [
+    "src/mcp/tools/git_tool.py"
+  ],
+  "vetka_git_commit": [
+    "src/mcp/tools/git_tool.py"
+  ],
+  "vetka_search": [
+    "src/mcp/tools/search_tool.py"
+  ],
+  "mycelium_call_model": [
+    "src/mcp/tools/llm_call_tool_async.py"
+  ],
+  "vetka_library_docs": [
+    "src/mcp/tools/library_docs_tool.py"
+  ],
+  "vetka_get_viewport_detail": [
+    "src/mcp/tools/viewport_tool.py"
+  ],
+  "vetka_edit_file": [
+    "src/mcp/tools/edit_file_tool.py"
+  ],
+  "vetka_get_pinned_files": [
+    "src/mcp/tools/pinned_files_tool.py"
+  ],
+  "vetka_session_init": [
+    "src/mcp/tools/session_tools.py"
+  ],
+  "vetka_session_status": [
+    "src/mcp/tools/session_tools.py"
+  ],
+  "vetka_read_file": [
+    "src/mcp/tools/read_file_tool.py"
+  ],
+  "vetka_create_branch": [
+    "src/mcp/tools/branch_tool.py"
+  ],
+  "vetka_list_files": [
+    "src/mcp/tools/list_files_tool.py"
+  ],
+  "vetka_edit_artifact": [
+    "src/mcp/tools/artifact_tools.py"
+  ],
+  "vetka_approve_artifact": [
+    "src/mcp/tools/artifact_tools.py"
+  ],
+  "vetka_reject_artifact": [
+    "src/mcp/tools/artifact_tools.py"
+  ],
+  "vetka_list_artifacts": [
+    "src/mcp/tools/artifact_tools.py"
+  ],
+  "vetka_web_search": [
+    "src/mcp/tools/web_search_tool.py"
+  ],
+  "vetka_get_context_dag": [
+    "src/mcp/tools/context_dag_tool.py"
+  ],
+  "vetka_run_tests": [
+    "src/mcp/tools/run_tests_tool.py"
+  ],
+  "vetka_search_knowledge": [
+    "src/mcp/tools/search_knowledge_tool.py"
+  ],
+  "vetka_call_model": [
+    "src/mcp/tools/llm_call_tool.py"
+  ],
+  "vetka_camera_focus": [
+    "src/mcp/tools/camera_tool.py"
+  ],
+  "vetka_search_semantic": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_health": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_media_window_debug": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_search_files": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_metrics": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_knowledge_graph": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_read_group_messages": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_chat_digest": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_send_message": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_conversation_context": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_user_preferences": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_get_memory_summary": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_arc_suggest": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_research": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_implement": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_review": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_mycelium_pipeline": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_heartbeat_tick": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_heartbeat_status": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_task_board": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_task_dispatch": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ],
+  "vetka_task_import": [
+    "src/mcp/vetka_mcp_bridge.py"
+  ]
+}
