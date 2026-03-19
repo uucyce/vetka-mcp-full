@@ -369,6 +369,14 @@ class ReflexScorer:
         if not available_tools or not context:
             return []
 
+        # MARKER_195.2.3: Load emotion engine for post-scoring modulation (IP-E1)
+        emotion_engine = None
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext as EmoCtx
+            emotion_engine = get_reflex_emotions()
+        except Exception:
+            pass  # Emotion errors never break scoring
+
         scored: List[ScoredTool] = []
         for tool in self._eligible_tools(context, available_tools):
             signals = self.score_signals(tool, context)
@@ -379,12 +387,40 @@ class ReflexScorer:
                 overlay = self.overlay_effect(tool, context)
                 if overlay["applied"] and overlay["score_delta"] > 0:
                     reason_parts.append(f"overlay:+{overlay['score_delta']:.2f}")
+
+                # MARKER_195.2.3 IP-E1: Apply emotion modifier after weighted sum
+                emotion_overlay: Dict[str, Any] = {}
+                if emotion_engine is not None:
+                    try:
+                        tool_id = getattr(tool, "tool_id", str(tool))
+                        emo_ctx = EmoCtx(
+                            agent_id=context.extra.get("agent_type", ""),
+                            phase_type=context.phase_type,
+                            tool_permission=getattr(tool, "permission", "READ"),
+                        )
+                        breakdown = emotion_engine.get_modifier_breakdown(tool_id, emo_ctx)
+                        emo_modifier = breakdown.get("modifier", 1.0)
+                        total = max(0.0, min(1.0, total * emo_modifier))
+                        emotion_overlay = {
+                            "curiosity": breakdown.get("curiosity", 0),
+                            "trust": breakdown.get("trust", 0),
+                            "caution": breakdown.get("caution", 0),
+                            "modifier": round(emo_modifier, 4),
+                        }
+                        reason_parts.append(f"emo:×{emo_modifier:.2f}")
+                    except Exception:
+                        pass  # Emotion errors never break scoring
+
+                final_overlay = overlay
+                if emotion_overlay:
+                    final_overlay = {**overlay, "emotions": emotion_overlay}
+
                 scored.append(ScoredTool(
                     tool_id=getattr(tool, "tool_id", str(tool)),
                     score=round(total, 4),
                     reason=", ".join(reason_parts),
                     source_signals=signals,
-                    overlay=overlay,
+                    overlay=final_overlay,
                 ))
 
         # Sort descending by score
@@ -566,8 +602,26 @@ class ReflexScorer:
         High surprise (>0.7) = novel context → broaden tool palette (boost all).
         Low surprise (<0.3) = predictable → prefer proven tools.
         Medium = neutral (0.5 baseline).
+
+        MARKER_195.4.BOOST: Tool freshness curiosity boost.
+        Recently-updated tools (within 48h) get +0.3 CAM boost decaying linearly,
+        encouraging agents to re-try tools after source code changes.
         """
         surprise = context.cam_surprise
+
+        # MARKER_195.4.BOOST: Freshness curiosity boost for updated tools
+        tool_id = getattr(tool, "tool_id", "")
+        if tool_id:
+            try:
+                from src.services.tool_source_watch import get_tool_source_watch
+                freshness = get_tool_source_watch().get(tool_id)
+                if freshness and freshness.is_recently_updated(hours=48):
+                    hours_since = freshness.hours_since_update()
+                    boost = 0.3 * max(0.0, 1.0 - hours_since / 48.0)
+                    surprise = min(1.0, surprise + boost)
+            except ImportError:
+                pass
+
         if surprise >= 0.7:
             return 1.0   # Novel context: all tools get boosted equally
         elif surprise >= 0.3:

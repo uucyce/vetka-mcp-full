@@ -163,6 +163,19 @@ class ReflexFeedback:
         )
 
         self._append_entry(entry)
+
+        # MARKER_195.2.3 IP-E2: Update emotion state after recording feedback
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+            emo = get_reflex_emotions()
+            emo_ctx = EmotionContext(
+                agent_id=agent_role,
+                phase_type=phase_type,
+            )
+            emo.record_outcome(tool_id, success=success, context=emo_ctx)
+        except Exception:
+            pass  # Emotion errors never break feedback recording
+
         return entry
 
     def record_outcome(

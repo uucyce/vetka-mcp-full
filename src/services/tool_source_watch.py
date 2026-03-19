@@ -84,8 +84,12 @@ class ToolFreshnessEntry:
     history: List[Dict[str, Any]] = field(default_factory=list)
 
     def is_recently_updated(self, hours: float = FRESHNESS_WINDOW_HOURS) -> bool:
-        """Check if tool was updated within the freshness window."""
-        if not self.updated_at:
+        """Check if tool was updated within the freshness window.
+
+        Only returns True if current_epoch > 0 (i.e., tool was actually updated
+        at least once, not just initially discovered).
+        """
+        if self.current_epoch < 1 or not self.updated_at:
             return False
         try:
             ts = datetime.fromisoformat(self.updated_at)

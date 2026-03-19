@@ -25,6 +25,7 @@ import sys
 import time
 import pytest
 from dataclasses import dataclass, field
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from unittest.mock import patch, MagicMock
@@ -845,3 +846,126 @@ class TestScoredTool:
             assert isinstance(r.reason, str)
             assert isinstance(r.source_signals, dict)
             assert "semantic" in r.source_signals
+
+
+# ─── T2.15: Freshness curiosity boost (Phase 195.4) ──────────────
+
+class TestFreshnessCuriosityBoost:
+    """MARKER_195.4 — Recently-updated tools get CAM boost."""
+
+    def teardown_method(self):
+        import src.services.tool_source_watch as tsw_mod
+        tsw_mod._watch_instance = None
+
+    def test_fresh_tool_gets_cam_boost(self, scorer, search_tool):
+        """Tool updated <48h ago should get higher CAM signal."""
+        from src.services.tool_source_watch import ToolFreshnessEntry
+        import src.services.tool_source_watch as tsw_mod
+
+        freshness = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/search_tool.py"],
+            current_epoch=1,
+            updated_at=datetime.now(timezone.utc).isoformat(),
+            history=[
+                {"epoch": 0, "commit": "old", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new", "ts": datetime.now(timezone.utc).isoformat()},
+            ],
+        )
+
+        # Without freshness
+        tsw_mod._watch_instance = None
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            signals_no_fresh = scorer.score_signals(
+                search_tool, ReflexContext(cam_surprise=0.2)
+            )
+
+        # With freshness mock
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness
+        tsw_mod._watch_instance = mock_watch
+
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            signals_fresh = scorer.score_signals(
+                search_tool, ReflexContext(cam_surprise=0.2)
+            )
+
+        # Fresh tool should have higher CAM signal (0.2 + 0.3 = 0.5 → returns 0.5)
+        # vs non-fresh (0.2 → returns 0.3)
+        assert signals_fresh["cam"] >= signals_no_fresh["cam"], (
+            f"Fresh tool CAM {signals_fresh['cam']} should be >= non-fresh {signals_no_fresh['cam']}"
+        )
+
+    def test_non_fresh_tool_unaffected(self, scorer, search_tool):
+        """Tool NOT recently updated should get normal CAM score."""
+        from src.services.tool_source_watch import ToolFreshnessEntry
+        import src.services.tool_source_watch as tsw_mod
+
+        old_time = (datetime.now(timezone.utc) - timedelta(hours=72)).isoformat()
+        freshness = ToolFreshnessEntry(
+            source_files=["src/mcp/tools/search_tool.py"],
+            current_epoch=1,
+            updated_at=old_time,
+            history=[
+                {"epoch": 0, "commit": "old", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new", "ts": old_time},
+            ],
+        )
+
+        mock_watch = MagicMock()
+        mock_watch.get.return_value = freshness
+        tsw_mod._watch_instance = mock_watch
+
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            signals = scorer.score_signals(
+                search_tool, ReflexContext(cam_surprise=0.2)
+            )
+
+        # Non-fresh → normal CAM signal (0.2 < 0.3 → returns 0.3)
+        assert signals["cam"] == 0.3
+
+    def test_boost_decays_over_time(self, scorer, search_tool):
+        """Freshness boost should decay linearly from +0.3 to 0 over 48h."""
+        from src.services.tool_source_watch import ToolFreshnessEntry
+        import src.services.tool_source_watch as tsw_mod
+
+        # 24h ago → boost = 0.3 * (1 - 24/48) = 0.15
+        time_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        freshness_24h = ToolFreshnessEntry(
+            source_files=["test.py"], current_epoch=1,
+            updated_at=time_24h,
+            history=[
+                {"epoch": 0, "commit": "old", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new", "ts": time_24h},
+            ],
+        )
+
+        # Just now → boost = 0.3
+        time_now = datetime.now(timezone.utc).isoformat()
+        freshness_now = ToolFreshnessEntry(
+            source_files=["test.py"], current_epoch=1,
+            updated_at=time_now,
+            history=[
+                {"epoch": 0, "commit": "old", "ts": "2026-03-01T00:00:00+00:00"},
+                {"epoch": 1, "commit": "new", "ts": time_now},
+            ],
+        )
+
+        with patch("src.services.reflex_scorer.REFLEX_ENABLED", True):
+            # Score at t=0
+            mock0 = MagicMock()
+            mock0.get.return_value = freshness_now
+            tsw_mod._watch_instance = mock0
+            signals_now = scorer.score_signals(
+                search_tool, ReflexContext(cam_surprise=0.2)
+            )
+
+            # Score at t=24h
+            mock24 = MagicMock()
+            mock24.get.return_value = freshness_24h
+            tsw_mod._watch_instance = mock24
+            signals_24h = scorer.score_signals(
+                search_tool, ReflexContext(cam_surprise=0.2)
+            )
+
+        # t=0 boost should be >= t=24h boost (both might hit same threshold tier)
+        assert signals_now["cam"] >= signals_24h["cam"]

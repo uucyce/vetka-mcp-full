@@ -337,7 +337,19 @@ class FeedbackGuard:
         Returns a DangerRule (severity='warn') if:
         - call_count >= _FAILURE_MIN_CALLS (default 3)
         - success_rate < _FAILURE_MAX_SUCCESS_RATE (default 0.2)
+
+        MARKER_195.5.GUARD: Suppresses warning for recently-updated tools (within 48h).
+        After the freshness window expires, warning re-appears if tool still fails.
         """
+        # MARKER_195.5.GUARD: Skip warning for recently-updated tools
+        try:
+            from src.services.tool_source_watch import get_tool_source_watch
+            freshness = get_tool_source_watch().get(tool_id)
+            if freshness and freshness.is_recently_updated(hours=48):
+                return None  # Suppress cortex_failure warning for fresh tools
+        except ImportError:
+            pass
+
         self._refresh_cortex_cache()
 
         stats = self._cortex_cache.get(tool_id)
