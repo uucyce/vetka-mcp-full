@@ -492,10 +492,14 @@ export default function TimelineTrackView() {
   const setTrackHeight = useCutEditorStore((state) => state.setTrackHeight);
   const mutedLanes = useCutEditorStore((state) => state.mutedLanes);
   const soloLanes = useCutEditorStore((state) => state.soloLanes);
+  const lockedLanes = useCutEditorStore((state) => state.lockedLanes);
+  const targetedLanes = useCutEditorStore((state) => state.targetedLanes);
   const laneVolumes = useCutEditorStore((state) => state.laneVolumes);
   const snapEnabled = useCutEditorStore((state) => state.snapEnabled);
   const toggleMute = useCutEditorStore((state) => state.toggleMute);
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
+  const toggleLock = useCutEditorStore((state) => state.toggleLock);
+  const toggleTarget = useCutEditorStore((state) => state.toggleTarget);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
   // MARKER_W1.3: Timeline clip click → Source Monitor
@@ -1212,7 +1216,41 @@ export default function TimelineTrackView() {
               <div style={LANE_HEADER}>
                 <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
-                {/* MARKER_170.NLE.TRACK_SOLO_MUTE: per-lane solo/mute controls live in the header. */}
+                {/* MARKER_W2.1: Track controls — target, lock, solo, mute */}
+                <div style={TRACK_BUTTON_ROW}>
+                  <button
+                    style={{
+                      ...TRACK_BUTTON,
+                      color: targetedLanes.has(lane.lane_id) ? '#111' : '#555',
+                      background: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#111',
+                      borderColor: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#333',
+                      fontSize: 11,
+                      lineHeight: '14px',
+                    }}
+                    title="Target lane (insert/overwrite destination)"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleTarget(lane.lane_id);
+                    }}
+                  >
+                    {'\u25CF'}
+                  </button>
+                  <button
+                    style={{
+                      ...TRACK_BUTTON,
+                      color: lockedLanes.has(lane.lane_id) ? '#111' : '#555',
+                      background: lockedLanes.has(lane.lane_id) ? '#888' : '#111',
+                      borderColor: lockedLanes.has(lane.lane_id) ? '#888' : '#333',
+                    }}
+                    title="Lock lane (prevent edits)"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleLock(lane.lane_id);
+                    }}
+                  >
+                    L
+                  </button>
+                </div>
                 <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
@@ -1245,7 +1283,6 @@ export default function TimelineTrackView() {
                     M
                   </button>
                 </div>
-                {/* Volume slider removed (CUT-0.4 cleanup) — volume via context menu or hotkeys */}
               </div>
 
               <div

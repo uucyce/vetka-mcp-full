@@ -105,6 +105,8 @@ interface CutEditorState {
   trackHeight: number; // height per lane in pixels
   mutedLanes: Set<string>;
   soloLanes: Set<string>;
+  lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
+  targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   laneVolumes: Record<string, number>;
   snapEnabled: boolean;
 
@@ -174,6 +176,8 @@ interface CutEditorState {
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
+  toggleLock: (laneId: string) => void;      // MARKER_W2.1
+  toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   setLaneVolume: (laneId: string, volume: number) => void;
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
@@ -233,6 +237,8 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   trackHeight: 56,
   mutedLanes: new Set<string>(),
   soloLanes: new Set<string>(),
+  lockedLanes: new Set<string>(),
+  targetedLanes: new Set<string>(),
   laneVolumes: {},
   snapEnabled: true,
 
@@ -305,6 +311,21 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
       if (soloLanes.has(laneId)) soloLanes.delete(laneId);
       else soloLanes.add(laneId);
       return { soloLanes };
+    }),
+  // MARKER_W2.1: Lock and Target toggles
+  toggleLock: (laneId) =>
+    set((state) => {
+      const lockedLanes = new Set(state.lockedLanes);
+      if (lockedLanes.has(laneId)) lockedLanes.delete(laneId);
+      else lockedLanes.add(laneId);
+      return { lockedLanes };
+    }),
+  toggleTarget: (laneId) =>
+    set((state) => {
+      const targetedLanes = new Set(state.targetedLanes);
+      if (targetedLanes.has(laneId)) targetedLanes.delete(laneId);
+      else targetedLanes.add(laneId);
+      return { targetedLanes };
     }),
   setLaneVolume: (laneId, volume) =>
     set((state) => ({
