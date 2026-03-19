@@ -135,6 +135,15 @@ interface CutEditorState {
   syncSurface: SyncSurfaceItem[];
   markers: TimeMarker[];
 
+  // === MARKER_W4.5: Project Settings ===
+  projectFramerate: number;             // 23.976 | 24 | 25 | 29.97 | 30 | 50 | 59.94 | 60
+  timecodeFormat: 'smpte' | 'milliseconds';  // HH:MM:SS:FF or HH:MM:SS.mmm
+  dropFrame: boolean;                   // only for 29.97/59.94
+  startTimecode: string;                // e.g. "01:00:00:00"
+  audioSampleRate: 48000 | 44100 | 96000;
+  audioBitDepth: 16 | 24 | 32;
+  showProjectSettings: boolean;         // dialog visibility
+
   // === Session / backend wiring ===
   sandboxRoot: string | null;
   projectId: string | null;
@@ -206,6 +215,14 @@ interface CutEditorState {
   setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
   // MARKER_W3.6: Tool State Machine
   setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom') => void;
+  // MARKER_W4.5: Project Settings
+  setProjectFramerate: (fps: number) => void;
+  setTimecodeFormat: (fmt: 'smpte' | 'milliseconds') => void;
+  setDropFrame: (on: boolean) => void;
+  setStartTimecode: (tc: string) => void;
+  setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
+  setAudioBitDepth: (bits: 16 | 24 | 32) => void;
+  setShowProjectSettings: (show: boolean) => void;
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
@@ -274,6 +291,15 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W1.2: Panel Focus
   focusedPanel: null,
   activeTool: 'selection',
+
+  // MARKER_W4.5: Project Settings defaults
+  projectFramerate: 25,
+  timecodeFormat: 'smpte',
+  dropFrame: false,
+  startTimecode: '00:00:00:00',
+  audioSampleRate: 48000,
+  audioBitDepth: 24,
+  showProjectSettings: false,
 
   // Data
   lanes: [],
@@ -388,6 +414,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
   // MARKER_W3.6: Tool State Machine
   setActiveTool: (tool) => set({ activeTool: tool }),
+  // MARKER_W4.5: Project Settings setters
+  setProjectFramerate: (fps) => set({ projectFramerate: fps }),
+  setTimecodeFormat: (fmt) => set({ timecodeFormat: fmt }),
+  setDropFrame: (on) => set({ dropFrame: on }),
+  setStartTimecode: (tc) => set({ startTimecode: tc }),
+  setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
+  setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
+  setShowProjectSettings: (show) => set({ showProjectSettings: show }),
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio

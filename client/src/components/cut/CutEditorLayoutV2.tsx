@@ -26,6 +26,8 @@ import TimelineToolbar from './TimelineToolbar';
 import TimelineTabBar from './TimelineTabBar';
 import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
+import HistoryPanel from './HistoryPanel';
+import ProjectSettings from './ProjectSettings';
 
 // ─── Styles ───
 
@@ -157,11 +159,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
             {analysisTab === 'inspector' && <PulseInspector />}
             {analysisTab === 'clip' && <ClipInspector />}
             {analysisTab === 'story' && <StorySpace3D />}
-            {analysisTab === 'history' && (
-              <div style={{ padding: 12, color: '#555', fontSize: 11 }}>
-                History panel — coming soon
-              </div>
-            )}
+            {analysisTab === 'history' && <HistoryPanel />}
           </div>
         </div>
       </PanelShell>
@@ -251,6 +249,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   return (
     <div style={ROOT}>
       <PanelGrid renderPanel={renderPanel} />
+      <ProjectSettings />
     </div>
   );
 }
