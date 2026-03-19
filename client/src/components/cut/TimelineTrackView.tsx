@@ -41,7 +41,9 @@ const CONTAINER_STYLE: CSSProperties = {
 };
 
 const RULER_HEIGHT = 28;
-const LANE_HEADER_WIDTH = 76;
+// MARKER_192.3: Increased from 76 to 100 — buttons were overlapping.
+// See: RECON_UI_LAYOUT_GROK_2026-03-19.md §5
+const LANE_HEADER_WIDTH = 100;
 const TRIM_HANDLE_WIDTH = 7;
 const MIN_CLIP_DURATION_SEC = 0.15;
 const PLAYHEAD_FOLLOW_PADDING = 120;
@@ -75,6 +77,7 @@ const LANE_ROW: CSSProperties = {
   flexShrink: 0,
 };
 
+// MARKER_192.3: Lane header — 100px with proper spacing
 const LANE_HEADER: CSSProperties = {
   width: LANE_HEADER_WIDTH,
   flexShrink: 0,
@@ -82,8 +85,8 @@ const LANE_HEADER: CSSProperties = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 4,
-  padding: '4px 2px',
+  gap: 2,
+  padding: '4px 4px',
   borderRight: '1px solid #222',
   background: '#080808',
   userSelect: 'none',
@@ -146,23 +149,28 @@ const MARKER_COLORS: Record<string, string> = {
   insight: '#22c55e',
 };
 
+// MARKER_192.3: 2x2 grid for track buttons — no overlap at 100px width
 const TRACK_BUTTON_ROW: CSSProperties = {
   display: 'flex',
-  gap: 3,
+  gap: 2,
 };
 
+// MARKER_192.3: Track buttons — sized for 100px header, 2x2 grid
 const TRACK_BUTTON: CSSProperties = {
-  width: 18,
+  width: 20,
   height: 16,
-  borderRadius: 3,
+  borderRadius: 2,
   border: '1px solid #333',
   background: '#111',
   color: '#888',
-  fontSize: 9,
+  fontSize: 8,
   fontWeight: 700,
   lineHeight: '14px',
   padding: 0,
   cursor: 'pointer',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };
 
 const TRACK_SLIDER: CSSProperties = {
