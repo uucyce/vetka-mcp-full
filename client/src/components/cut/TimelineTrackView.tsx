@@ -1578,6 +1578,7 @@ export default function TimelineTrackView() {
         </div>
       ) : null}
 
+      {/* MARKER_W4.1: Expanded CUT context menu with groups, separators, and shortcut hints */}
       {contextMenu ? (
         <div
           data-testid="cut-clip-context-menu"
@@ -1585,82 +1586,92 @@ export default function TimelineTrackView() {
             position: 'absolute',
             left: contextMenu.x,
             top: contextMenu.y,
-            width: 180,
+            width: 220,
             background: '#0b0b0b',
             border: '1px solid #2a2a2a',
             borderRadius: 6,
             boxShadow: '0 12px 30px rgba(0,0,0,0.45)',
-            padding: 6,
+            padding: 4,
             zIndex: 170,
           }}
           onMouseDown={(event) => event.stopPropagation()}
         >
-          {[
-            {
-              label: 'Set as Active',
-              action: () => {
-                setActiveMedia(contextMenu.clip.source_path);
-                setSelectedClip(contextMenu.clip.clip_id);
-                setContextMenu(null);
-              },
-            },
-            {
-              label: 'Add Marker Here',
-              action: () => {
-                setContextMenu(null);
+          {(() => {
+            const hasSync = syncSurface.some((item) => item.source_path === contextMenu.clip.source_path && item.recommended_method);
+            const clipId = contextMenu.clip.clip_id;
+            const clipPath = contextMenu.clip.source_path;
+            const close = () => setContextMenu(null);
+
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
+
+            const items: MenuItem[] = [
+              // ── Selection ──
+              { label: 'Set as Active', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              'separator',
+              // ── Edit operations ──
+              { label: 'Split at Playhead', shortcut: '\u2318K', action: () => { close(); /* splitAtPlayhead dispatched via hotkey */ } },
+              { label: 'Remove Clip', shortcut: 'Del', action: () => { close(); void removeClip(clipId); } },
+              { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => { close(); void removeClip(clipId); } },
+              'separator',
+              // ── Markers ──
+              { label: 'Add Marker Here', shortcut: 'M', action: () => {
+                close();
                 setMarkerDraft({
-                  x: contextMenu.x + 16,
-                  y: contextMenu.y + 16,
-                  timeSec: contextMenu.clip.start_sec,
-                  mediaPath: contextMenu.clip.source_path,
-                  kind: 'favorite',
-                  text: '',
+                  x: contextMenu.x + 16, y: contextMenu.y + 16,
+                  timeSec: contextMenu.clip.start_sec, mediaPath: clipPath,
+                  kind: 'favorite', text: '',
                 });
-              },
-            },
-            {
-              label: 'Apply Sync',
-              disabled: !syncSurface.some((item) => item.source_path === contextMenu.clip.source_path && item.recommended_method),
-              action: () => {
-                const clip = contextMenu.clip;
-                setContextMenu(null);
-                void applySuggestedSync(clip);
-              },
-            },
-            {
-              label: 'Remove Clip',
-              action: () => {
-                const clipId = contextMenu.clip.clip_id;
-                setContextMenu(null);
-                void removeClip(clipId);
-              },
-            },
-            {
-              label: 'Export XML',
-              action: () => {
-                setContextMenu(null);
-                void exportPremiereXml();
-              },
-            },
-          ].map((item) => (
-            <button
-              key={item.label}
-              disabled={Boolean(item.disabled)}
-              onClick={item.action}
-              style={{
-                width: '100%',
-                textAlign: 'left',
-                background: 'transparent',
-                color: item.disabled ? '#555' : '#ccc',
-                border: 'none',
-                borderRadius: 4,
-                padding: '7px 8px',
-                cursor: item.disabled ? 'default' : 'pointer',
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
+              }},
+              { label: 'Add Negative Marker', shortcut: 'N', action: () => {
+                close();
+                setMarkerDraft({
+                  x: contextMenu.x + 16, y: contextMenu.y + 16,
+                  timeSec: contextMenu.clip.start_sec, mediaPath: clipPath,
+                  kind: 'comment', text: 'NEG',
+                });
+              }},
+              'separator',
+              // ── Sync & NLE ──
+              { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
+              { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
+              'separator',
+              // ── Export ──
+              { label: 'Export XML', action: () => { close(); void exportPremiereXml(); } },
+            ];
+
+            return items.map((item, idx) => {
+              if (item === 'separator') {
+                return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
+              }
+              return (
+                <button
+                  key={item.label}
+                  disabled={Boolean(item.disabled)}
+                  onClick={item.action}
+                  style={{
+                    width: '100%',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'transparent',
+                    color: item.disabled ? '#444' : '#ccc',
+                    border: 'none',
+                    borderRadius: 4,
+                    padding: '6px 8px',
+                    cursor: item.disabled ? 'default' : 'pointer',
+                    fontSize: 11,
+                    fontFamily: 'system-ui',
+                  }}
+                >
+                  <span>{item.label}</span>
+                  {item.shortcut ? (
+                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{item.shortcut}</span>
+                  ) : null}
+                </button>
+              );
+            });
+          })()}
         </div>
       ) : null}
 

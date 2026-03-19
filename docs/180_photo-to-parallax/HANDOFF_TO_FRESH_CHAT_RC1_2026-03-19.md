@@ -145,17 +145,29 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 
 Текущий итог:
 
-- `overall_status = caution`
-- `pass = 0`
-- `caution = 3`
+- `overall_status = pass`
+- `pass = 3`
+- `caution = 0`
 - `fail = 0`
+
+Что изменилось до `pass`:
+
+- export/layout path теперь auto-applies `cameraSafe.suggestion` для risky scenes;
+- `plate_layout.json` сохраняет `cameraSafe.adjustment` с requested/effective motion;
+- readiness на canonical smoke сейчас проходит с `attempts = 1` на текущем sample set.
+
+Но важная оговорка:
+
+- technical `pass` не равен автоматически visual success;
+- March 12 user-approved success path жил в `output/review` / `output/layered_edit_flow` / `output/custom_renders`;
+- текущий `render_preview_multiplate*` contract должен отдельно пройти visual regression check.
 
 ## 8. Идеи на следующий этап
 
-1. Снизить `caution` до `pass`:
-- auto-apply `cameraSafe.suggestion`
-- tighter motion presets для risky scenes
-- возможно scene-specific caps для travel/overscan
+1. Зафиксировать post-pass hardening:
+- задокументировать verdict aggregation policy;
+- удержать repeatability smoke и summaries;
+- не допустить drift между contract-level pass и batch-level pass.
 
 2. Продолжить рефактор:
 - отделить export/orchestration helpers из `App.tsx`
@@ -207,8 +219,8 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 2. Считай текущим состоянием:
 - release backlog по `parallax` закрыт;
 - RC1 smoke path работает;
-- текущий verdict = `caution`, не `fail`;
-- следующий meaningful step = снизить caution или идти в controlled bakeoff `Qwen-Image-Layered`.
+- текущий verdict = `pass`;
+- следующий meaningful step = release hardening и controlled bakeoff `Qwen-Image-Layered`.
 
 3. Не трать время на повторное восстановление TaskBoard истории:
 - parallax-тasks уже выровнены;

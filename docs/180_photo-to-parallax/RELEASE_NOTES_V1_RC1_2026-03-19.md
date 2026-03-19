@@ -27,22 +27,24 @@
 
 ## Current RC1 Verdict
 
-- batch status: `caution`
-- current count profile: `pass=0`, `caution=3`, `fail=0`
+- batch status: `pass`
+- current count profile: `pass=3`, `caution=0`, `fail=0`
 
-Current caution reasons:
+What changed to reach `pass`:
 
-- `camera-safe gate is not fully satisfied`
-- some scenes may require more than one readiness poll
+- export/layout path now auto-applies `cameraSafe.suggestion` for risky scenes before final contract/render generation;
+- `plate_layout.json` records both requested and effective motion via `cameraSafe.adjustment`;
+- canonical smoke now finishes with `attempts=1` across the current sample set.
 
 ## What Changed Recently
 
 - `v1.3`: final render presets and preset-aware render summaries
 - `v1.4`: regression quality pack with evidence links
 - `v1.5`: release-critical layout/export builders extracted from `App.tsx` into `src/lib/plateLayout.ts`
+- `v1.6`: camera-safe auto-adjusted export motion plus traceable requested/effective motion in `plate_layout.json`
 
 ## Known Limits
 
 - TaskBoard hard-close still depends on `pipeline_success`; current fallback flow uses `done_worktree`
-- complex scenes are still mostly `caution`, not `pass`
+- `Qwen-Image-Layered` is still not integrated as an alternative backend yet
 - release is sandbox-grade, not product-integrated

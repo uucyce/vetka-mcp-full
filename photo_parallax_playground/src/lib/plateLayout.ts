@@ -96,6 +96,20 @@ export type PlateAwareLayoutContract = {
     worstTransitionRisk: number;
     riskyPlateIds: string[];
     warning: string | null;
+    adjustment: {
+      applied: boolean;
+      requested: {
+        overscanPct: number;
+        travelXPct: number;
+        travelYPct: number;
+      };
+      effective: {
+        overscanPct: number;
+        travelXPct: number;
+        travelYPct: number;
+      };
+      reason: string | null;
+    };
     suggestion: {
       overscanPct: number;
       travelXPct: number;
@@ -178,9 +192,10 @@ export function buildPlateLayoutContract(params: {
   plateStack: PlateLike[];
   motion: MotionSettings;
   snapshot: ParallaxSnapshot;
+  requestedMotion?: MotionSettings;
   renderMode: "auto" | "safe" | "three-layer";
 }): PlateAwareLayoutContract {
-  const { contractVersion, sample, plateStack, motion, snapshot, renderMode } = params;
+  const { contractVersion, sample, plateStack, motion, snapshot, requestedMotion, renderMode } = params;
   const workflowRouting = recommendWorkflowRouting(plateStack);
   const visibleRenderablePlates = plateStack.filter((plate) => plate.visible && plate.role !== "special-clean");
   const plateZValues = visibleRenderablePlates.map((plate) => plate.z);
@@ -310,6 +325,11 @@ export function buildPlateLayoutContract(params: {
       : transitionOver >= disocclusionOver
         ? "reduce camera travel to lower plate transition overlap risk"
         : "reduce camera travel to keep plate disocclusion within safe range";
+  const requestedCameraMotion = requestedMotion ?? motion;
+  const adjustmentApplied =
+    Number(requestedCameraMotion.overscanPct.toFixed(2)) !== Number(layoutMotion.overscanPct.toFixed(2)) ||
+    Number(requestedCameraMotion.travelXPct.toFixed(2)) !== Number(layoutMotion.travelXPct.toFixed(2)) ||
+    Number(requestedCameraMotion.travelYPct.toFixed(2)) !== Number(layoutMotion.travelYPct.toFixed(2));
 
   return {
     contract_version: contractVersion,
@@ -345,6 +365,20 @@ export function buildPlateLayoutContract(params: {
       worstTransitionRisk: Number(worstTransitionRisk.toFixed(2)),
       riskyPlateIds,
       warning: cameraSafeWarning,
+      adjustment: {
+        applied: adjustmentApplied,
+        requested: {
+          overscanPct: Number(requestedCameraMotion.overscanPct.toFixed(2)),
+          travelXPct: Number(requestedCameraMotion.travelXPct.toFixed(2)),
+          travelYPct: Number(requestedCameraMotion.travelYPct.toFixed(2)),
+        },
+        effective: {
+          overscanPct: Number(layoutMotion.overscanPct.toFixed(2)),
+          travelXPct: Number(layoutMotion.travelXPct.toFixed(2)),
+          travelYPct: Number(layoutMotion.travelYPct.toFixed(2)),
+        },
+        reason: adjustmentApplied ? cameraSuggestionReason : null,
+      },
       suggestion: {
         overscanPct: cameraSafeOk ? Number(layoutMotion.overscanPct.toFixed(2)) : suggestedOverscanPct,
         travelXPct: cameraSafeOk ? Number(layoutMotion.travelXPct.toFixed(2)) : suggestedTravelXPct,

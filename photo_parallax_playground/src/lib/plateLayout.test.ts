@@ -141,9 +141,81 @@ describe("plateLayout", () => {
 
     expect(layout.cameraSafe.ok).toBe(false);
     expect(layout.cameraSafe.warning).toBeTruthy();
+    expect(layout.cameraSafe.adjustment.applied).toBe(false);
     expect(layout.cameraSafe.suggestion.overscanPct).toBeGreaterThan(motion.overscanPct);
     expect(layout.cameraSafe.suggestion.travelXPct).toBeLessThanOrEqual(motion.travelXPct);
     expect(layout.cameraSafe.suggestion.reason).toBeTruthy();
+  });
+
+  it("records adjustment metadata when effective motion differs from requested motion", () => {
+    const sample = SAMPLE_LIBRARY.find((item) => item.id === "hover-politsia") ?? SAMPLE_LIBRARY[0];
+    const requestedMotion = {
+      travelXPct: 5.6,
+      travelYPct: 2,
+      zoom: 1.058,
+      phase: 0.62,
+      durationSec: 4,
+      fps: 25,
+      overscanPct: 12,
+      layerGapPx: 22,
+      layerCount: 2,
+    };
+    const effectiveMotion = {
+      ...requestedMotion,
+      travelXPct: 4.2,
+      travelYPct: 1.5,
+      overscanPct: 18,
+    };
+    const snapshot = computeSnapshot(
+      sample,
+      1180,
+      760,
+      { x: 0.53, y: 0.46, width: 0.46, height: 0.48, feather: 0.14 },
+      effectiveMotion,
+    );
+
+    const layout = buildPlateLayoutContract({
+      contractVersion: "1.0.0",
+      sample,
+      motion: effectiveMotion,
+      requestedMotion,
+      snapshot,
+      renderMode: "auto",
+      plateStack: [
+        {
+          id: "plate_01",
+          label: "vehicle",
+          role: "foreground-subject",
+          source: "auto",
+          x: 0.28,
+          y: 0.21,
+          width: 0.5,
+          height: 0.54,
+          z: 26,
+          depthPriority: 0.86,
+          visible: true,
+          cleanVariant: "no-vehicle",
+        },
+        {
+          id: "plate_02",
+          label: "background city",
+          role: "background-far",
+          source: "auto",
+          x: 0.02,
+          y: 0.02,
+          width: 0.96,
+          height: 0.96,
+          z: -30,
+          depthPriority: 0.14,
+          visible: true,
+        },
+      ],
+    });
+
+    expect(layout.cameraSafe.adjustment.applied).toBe(true);
+    expect(layout.cameraSafe.adjustment.requested.overscanPct).toBe(12);
+    expect(layout.cameraSafe.adjustment.effective.overscanPct).toBe(18);
+    expect(layout.cameraSafe.adjustment.effective.travelXPct).toBe(4.2);
   });
 
   it("builds export assets contract from layout and plate maps", () => {

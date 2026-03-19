@@ -4118,7 +4118,7 @@ async def get_layout_preferences(
             return {"success": False, "error": "AURA unavailable", "profile": None}
 
         profiles = (
-            aura.get_preference(user_id, "viewport_patterns", "dag_layout_profiles")
+            aura.get_preference("default", user_id, "viewport_patterns", "dag_layout_profiles")
             or {}
         )
         if not isinstance(profiles, dict):
@@ -4157,7 +4157,7 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
             raise HTTPException(status_code=503, detail="AURA unavailable")
 
         profiles = (
-            aura.get_preference(req.user_id, "viewport_patterns", "dag_layout_profiles")
+            aura.get_preference("default", req.user_id, "viewport_patterns", "dag_layout_profiles")
             or {}
         )
         if not isinstance(profiles, dict):
@@ -4202,6 +4202,7 @@ async def update_layout_preferences(req: LayoutPreferenceUpdateRequest):
 
         profiles[scope_key] = next_profile
         aura.set_preference(
+            "default",
             req.user_id,
             "viewport_patterns",
             "dag_layout_profiles",

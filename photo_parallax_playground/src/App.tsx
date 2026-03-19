@@ -249,6 +249,20 @@ type PlateAwareLayoutContract = {
     worstTransitionRisk: number;
     riskyPlateIds: string[];
     warning: string | null;
+    adjustment: {
+      applied: boolean;
+      requested: {
+        overscanPct: number;
+        travelXPct: number;
+        travelYPct: number;
+      };
+      effective: {
+        overscanPct: number;
+        travelXPct: number;
+        travelYPct: number;
+      };
+      reason: string | null;
+    };
     suggestion: {
       overscanPct: number;
       travelXPct: number;
@@ -1756,7 +1770,13 @@ function App() {
     plates: plateStack,
   });
 
-  const buildPlateLayoutContract = (): PlateAwareLayoutContract =>
+  const buildSnapshotMotion = (baseMotion: MotionSettings): MotionSettings => ({
+    ...baseMotion,
+    layerCount: Math.max(baseMotion.layerCount, Math.max(2, visibleRenderablePlates.length)),
+    layerGapPx: Math.max(baseMotion.layerGapPx, plateZSpan * 0.85),
+  });
+
+  const buildPreviewPlateLayoutContract = (): PlateAwareLayoutContract =>
     buildPlateLayoutContractModel({
       contractVersion: PARALLAX_CONTRACT_VERSION,
       sample,
@@ -1765,6 +1785,67 @@ function App() {
       snapshot,
       renderMode: manual.renderMode,
     });
+
+  const buildEffectiveExportLayoutState = () => {
+    let candidateMotion = { ...motion };
+    let candidateSnapshot = computeSnapshot(
+      sample,
+      stageSize.width,
+      stageSize.height,
+      focus,
+      buildSnapshotMotion(candidateMotion),
+    );
+    let candidateLayout = buildPlateLayoutContractModel({
+      contractVersion: PARALLAX_CONTRACT_VERSION,
+      sample,
+      plateStack,
+      motion: candidateMotion,
+      snapshot: candidateSnapshot,
+      requestedMotion: motion,
+      renderMode: manual.renderMode,
+    });
+
+    for (let attempt = 0; attempt < 3 && !candidateLayout.cameraSafe.ok; attempt += 1) {
+      const suggestedMotion: MotionSettings = {
+        ...candidateMotion,
+        overscanPct: candidateLayout.cameraSafe.suggestion.overscanPct,
+        travelXPct: candidateLayout.cameraSafe.suggestion.travelXPct,
+        travelYPct: candidateLayout.cameraSafe.suggestion.travelYPct,
+      };
+
+      const motionUnchanged =
+        Number(suggestedMotion.overscanPct.toFixed(2)) === Number(candidateMotion.overscanPct.toFixed(2)) &&
+        Number(suggestedMotion.travelXPct.toFixed(2)) === Number(candidateMotion.travelXPct.toFixed(2)) &&
+        Number(suggestedMotion.travelYPct.toFixed(2)) === Number(candidateMotion.travelYPct.toFixed(2));
+      if (motionUnchanged) break;
+
+      candidateMotion = suggestedMotion;
+      candidateSnapshot = computeSnapshot(
+        sample,
+        stageSize.width,
+        stageSize.height,
+        focus,
+        buildSnapshotMotion(candidateMotion),
+      );
+      candidateLayout = buildPlateLayoutContractModel({
+        contractVersion: PARALLAX_CONTRACT_VERSION,
+        sample,
+        plateStack,
+        motion: candidateMotion,
+        snapshot: candidateSnapshot,
+        requestedMotion: motion,
+        renderMode: manual.renderMode,
+      });
+    }
+
+    return {
+      motion: candidateMotion,
+      snapshot: candidateSnapshot,
+      layout: candidateLayout,
+    };
+  };
+
+  const buildPlateLayoutContract = (): PlateAwareLayoutContract => buildEffectiveExportLayoutState().layout;
 
   const buildProxyAssetsContract = (): ProxyAssetsContract => ({
     sampleId,
@@ -1779,7 +1860,7 @@ function App() {
   });
 
   const buildPlateExportAssetsContract = (): PlateExportAssetsContract => {
-    const layout = buildPlateLayoutContract();
+    const { layout } = buildEffectiveExportLayoutState();
     return buildPlateExportAssetsContractModel({
       contractVersion: PARALLAX_CONTRACT_VERSION,
       sample,
@@ -2417,7 +2498,8 @@ function App() {
     { label: "Preview", value: "MP4 / 25 fps" },
   ];
   const renderPolicy = `25 out / 50 internal / tmix 3`;
-  const plateLayout = buildPlateLayoutContract();
+  const plateLayout = buildPreviewPlateLayoutContract();
+  const exportLayout = buildPlateLayoutContract();
   const previewPlateLayers = plateLayout.plates.filter(
     (plate) => plate.visible && plate.role !== "background-far" && plate.role !== "special-clean",
   );
@@ -3181,6 +3263,11 @@ function App() {
                   <span>{target.value}</span>
                 </div>
               ))}
+            </div>
+            <div className="panel-copy">
+              {exportLayout.cameraSafe.adjustment.applied
+                ? `Export auto-adjusts motion to ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelXPct)} / ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelYPct)} with ${formatPct(exportLayout.cameraSafe.adjustment.effective.overscanPct)} overscan.`
+                : "Export uses the current camera motion as-is."}
             </div>
           </article>
         </section>
