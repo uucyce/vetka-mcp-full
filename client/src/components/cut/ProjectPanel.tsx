@@ -18,6 +18,10 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
+import DAGProjectPanel from './DAGProjectPanel';
+
+// MARKER_W5.4: View mode type
+type ProjectViewMode = 'list' | 'grid' | 'dag';
 
 // ─── Bin (bucket) types ───
 
@@ -128,6 +132,42 @@ const THUMB: CSSProperties = {
   flexShrink: 0,
 };
 
+// MARKER_W5.4: Grid view styles
+const GRID_CONTAINER: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))',
+  gap: 4,
+  padding: 6,
+};
+
+const GRID_ITEM: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: 4,
+  borderRadius: 4,
+  cursor: 'pointer',
+  transition: 'background 0.15s',
+};
+
+const GRID_THUMB: CSSProperties = {
+  width: '100%',
+  aspectRatio: '16/9',
+  borderRadius: 3,
+  background: '#1A1A1A',
+  objectFit: 'cover',
+};
+
+const MODE_SWITCH_BTN: CSSProperties = {
+  background: 'none',
+  border: 'none',
+  cursor: 'pointer',
+  padding: '1px 5px',
+  fontSize: 9,
+  fontFamily: 'system-ui',
+  borderRadius: 2,
+};
+
 // ─── Helpers ───
 
 function basename(path: string): string {
@@ -196,6 +236,8 @@ export default function ProjectPanel() {
   const [dragging, setDragging] = useState(false);
   const [collapsedBins, setCollapsedBins] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // MARKER_W5.4: View mode
+  const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -447,10 +489,28 @@ export default function ProjectPanel() {
 
   return (
     <div style={PANEL}>
-      {/* Header */}
+      {/* Header with view mode switcher — MARKER_W5.4 */}
       <div style={HEADER}>
         <span>Project</span>
-        <span>{totalClips} clip{totalClips !== 1 ? 's' : ''}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {(['list', 'grid', 'dag'] as const).map((mode) => (
+            <button
+              key={mode}
+              style={{
+                ...MODE_SWITCH_BTN,
+                color: viewMode === mode ? '#ccc' : '#555',
+                background: viewMode === mode ? '#1a1a1a' : 'none',
+              }}
+              onClick={() => setViewMode(mode)}
+              title={mode === 'list' ? 'List view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
+            >
+              {mode === 'list' ? '≡' : mode === 'grid' ? '⊞' : '◇'}
+            </button>
+          ))}
+          <span style={{ marginLeft: 6, fontSize: 9, color: '#555' }}>
+            {totalClips}
+          </span>
+        </div>
       </div>
 
       {/* Import area */}
@@ -504,83 +564,140 @@ export default function ProjectPanel() {
         )}
       </div>
 
-      {/* Bin list (media clips organized by type) */}
-      <div style={BIN_LIST}>
-        {bins.map((bin) => {
-          const isCollapsed = collapsedBins.has(bin.key);
-          return (
-            <div key={bin.key}>
-              <div style={BIN_HEADER} onClick={() => toggleBin(bin.key)}>
-                <span>
-                  {isCollapsed ? '▸' : '▾'} {bin.icon} {bin.label}
-                </span>
-                <span>{bin.items.length}</span>
-              </div>
-              {!isCollapsed && bin.items.map((item) => {
-                const isActive = item.source_path === activeMediaPath;
-                return (
-                  <div
-                    key={item.item_id}
-                    style={{
-                      ...CLIP_ITEM,
-                      background: isActive ? '#1a1a2a' : 'transparent',
-                      borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
-                    }}
-                    onClick={() => handleClipClick(item.source_path)}
-                  >
-                    {/* Thumbnail */}
-                    {item.poster_url ? (
-                      <img src={item.poster_url} style={THUMB} alt="" />
-                    ) : (
-                      <div style={{
-                        ...THUMB,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 14,
-                        color: '#333',
-                      }}>
-                        {item.modality === 'audio' ? '♪' : item.modality === 'image' ? '◻' : '▶'}
-                      </div>
-                    )}
-
-                    {/* Clip info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 11,
-                        color: isActive ? '#fff' : '#aaa',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}>
-                        {basename(item.source_path)}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, fontSize: 9, color: '#555' }}>
-                        <span>
-                          {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
-                        </span>
-                        {item.modality && (
-                          <span style={{ color: '#444' }}>{item.modality}</span>
-                        )}
+      {/* Content area — switches by viewMode (MARKER_W5.4) */}
+      {viewMode === 'dag' ? (
+        /* DAG view — embedded DAGProjectPanel */
+        <div style={{ flex: 1, overflow: 'hidden' }}>
+          <DAGProjectPanel />
+        </div>
+      ) : viewMode === 'grid' ? (
+        /* Grid view — thumbnail grid */
+        <div style={{ ...BIN_LIST }}>
+          <div style={GRID_CONTAINER}>
+            {projectItems.map((item) => {
+              const isActive = item.source_path === activeMediaPath;
+              return (
+                <div
+                  key={item.item_id}
+                  style={{
+                    ...GRID_ITEM,
+                    background: isActive ? '#1a1a2a' : 'transparent',
+                    border: isActive ? '1px solid #4a9eff' : '1px solid transparent',
+                  }}
+                  onClick={() => handleClipClick(item.source_path)}
+                >
+                  {item.poster_url ? (
+                    <img src={item.poster_url} style={GRID_THUMB} alt="" />
+                  ) : (
+                    <div style={{
+                      ...GRID_THUMB,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 18,
+                      color: '#333',
+                    }}>
+                      {item.modality === 'audio' ? '♪' : item.modality === 'image' ? '◻' : '▶'}
+                    </div>
+                  )}
+                  <div style={{
+                    fontSize: 8,
+                    color: isActive ? '#fff' : '#777',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    width: '100%',
+                    textAlign: 'center',
+                    marginTop: 2,
+                  }}>
+                    {basename(item.source_path)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {totalClips === 0 && (
+            <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>
+              No clips imported
+            </div>
+          )}
+        </div>
+      ) : (
+        /* List view (default) — bins with clip rows */
+        <div style={BIN_LIST}>
+          {bins.map((bin) => {
+            const isCollapsed = collapsedBins.has(bin.key);
+            return (
+              <div key={bin.key}>
+                <div style={BIN_HEADER} onClick={() => toggleBin(bin.key)}>
+                  <span>
+                    {isCollapsed ? '▸' : '▾'} {bin.icon} {bin.label}
+                  </span>
+                  <span>{bin.items.length}</span>
+                </div>
+                {!isCollapsed && bin.items.map((item) => {
+                  const isActive = item.source_path === activeMediaPath;
+                  return (
+                    <div
+                      key={item.item_id}
+                      style={{
+                        ...CLIP_ITEM,
+                        background: isActive ? '#1a1a2a' : 'transparent',
+                        borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                      }}
+                      onClick={() => handleClipClick(item.source_path)}
+                    >
+                      {item.poster_url ? (
+                        <img src={item.poster_url} style={THUMB} alt="" />
+                      ) : (
+                        <div style={{
+                          ...THUMB,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 14,
+                          color: '#333',
+                        }}>
+                          {item.modality === 'audio' ? '♪' : item.modality === 'image' ? '◻' : '▶'}
+                        </div>
+                      )}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{
+                          fontSize: 11,
+                          color: isActive ? '#fff' : '#aaa',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}>
+                          {basename(item.source_path)}
+                        </div>
+                        <div style={{ display: 'flex', gap: 6, fontSize: 9, color: '#555' }}>
+                          <span>
+                            {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                          </span>
+                          {item.modality && (
+                            <span style={{ color: '#444' }}>{item.modality}</span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
+                  );
+                })}
+              </div>
+            );
+          })}
 
-        {totalClips === 0 && (
-          <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>
-            No clips imported
-            <br />
-            <span style={{ fontSize: 10, color: '#444' }}>
-              ⌘I or double-click above to import media
-            </span>
-          </div>
-        )}
-      </div>
+          {totalClips === 0 && (
+            <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>
+              No clips imported
+              <br />
+              <span style={{ fontSize: 10, color: '#444' }}>
+                press above to import media
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

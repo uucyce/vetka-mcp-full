@@ -28,6 +28,7 @@ import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
 import HistoryPanel from './HistoryPanel';
 import ProjectSettings from './ProjectSettings';
+import ExportDialog from './ExportDialog';
 
 // ─── Styles ───
 
@@ -66,6 +67,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const timelineId = useCutEditorStore((s) => s.timelineId);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const projectId = useCutEditorStore((s) => s.projectId);
+  // MARKER_W5.2: Parallel timeline state
+  const parallelTimelineTabIndex = useCutEditorStore((s) => s.parallelTimelineTabIndex);
+  const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
+  const swapParallelTimeline = useCutEditorStore((s) => s.swapParallelTimeline);
 
   // ─── Left column: Navigation tabs (Project | Script | DAG) ───
   const [leftTab, setLeftTab] = useState<'project' | 'script' | 'dag'>('project');
@@ -202,15 +207,69 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const renderRightBottom = useCallback(() => null, []);
 
   // ─── Bottom: Timeline area ───
+  // MARKER_W5.2: Parallel timeline — when parallelTimelineTabIndex is set, render stacked dual view
+  const parallelTab = parallelTimelineTabIndex !== null ? timelineTabs[parallelTimelineTabIndex] : null;
+
   const renderBottom = useCallback(() => {
+    const isParallel = parallelTab !== null;
+
     return (
       <PanelShell panelId="timeline" title={timelineId}>
         <div style={TIMELINE_AREA}>
           <TimelineToolbar />
           <TimelineTabBar />
-          <div style={{ flex: 1, overflow: 'hidden' }}>
-            <TimelineTrackView />
-          </div>
+          {isParallel ? (
+            /* MARKER_W5.2: Stacked dual view */
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              {/* Active timeline (top) */}
+              <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                <TimelineTrackView />
+              </div>
+              {/* Divider with swap button */}
+              <div style={{
+                height: 20,
+                background: '#111',
+                borderTop: '1px solid #333',
+                borderBottom: '1px solid #333',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                flexShrink: 0,
+                fontSize: 9,
+                fontFamily: 'system-ui',
+                color: '#666',
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onClick={swapParallelTimeline}
+              title="Click to swap active timeline"
+              >
+                <span style={{ color: '#4a9eff' }}>{timelineId.replace(/^tl_/, '').split('_').slice(0, -1).join('_') || timelineId}</span>
+                <span style={{ color: '#555' }}>&#8645;</span>
+                <span style={{ color: '#888' }}>{parallelTab?.label || 'Reference'}</span>
+              </div>
+              {/* Reference timeline (bottom) — dimmed, click to swap */}
+              <div
+                style={{
+                  flex: 1,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  opacity: 0.5,
+                  cursor: 'pointer',
+                }}
+                onClick={swapParallelTimeline}
+                title="Click to make this the active timeline"
+              >
+                <TimelineTrackView />
+              </div>
+            </div>
+          ) : (
+            /* Single timeline view */
+            <div style={{ flex: 1, overflow: 'hidden' }}>
+              <TimelineTrackView />
+            </div>
+          )}
           <BPMTrack
             timelineId={timelineId}
             scriptText={scriptText}
@@ -221,7 +280,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         </div>
       </PanelShell>
     );
-  }, [timelineId, scriptText, zoom, scrollLeft, duration, thumbnails.length]);
+  }, [timelineId, scriptText, zoom, scrollLeft, duration, thumbnails.length, parallelTab, swapParallelTimeline]);
 
   // ─── Panel router ───
   const renderPanel = useCallback(
@@ -250,6 +309,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     <div style={ROOT}>
       <PanelGrid renderPanel={renderPanel} />
       <ProjectSettings />
+      <ExportDialog />
     </div>
   );
 }

@@ -10,6 +10,7 @@
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import AutoMontageMenu from './AutoMontageMenu';
 
 const BAR_STYLE: CSSProperties = {
   display: 'flex',
@@ -152,6 +153,8 @@ export default function TimelineTabBar() {
       <button style={ADD_BTN} onClick={handleAdd} title="New versioned timeline">
         +
       </button>
+      {/* MARKER_W5.1: Auto-Montage dropdown */}
+      <AutoMontageMenu />
     </div>
   );
 }

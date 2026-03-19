@@ -164,6 +164,21 @@ interface CutEditorState {
   /** MARKER_180.14: global version counter for {project}_cut-{NN} naming */
   nextTimelineVersion: number;
 
+  // === MARKER_W5.2: Parallel Timelines (stacked dual view) ===
+  parallelTimelineTabIndex: number | null;  // index of the reference (non-active) timeline tab, null = single view
+
+  // === Auto-Montage (MARKER_W5.1) ===
+  montageRunning: boolean;
+  montageMode: 'favorites' | 'script' | 'music' | null;
+  montageProgress: string | null;  // status text: "Analyzing..." / "Building timeline..."
+  montageError: string | null;
+
+  // === MARKER_W6.1: Export/Render dialog ===
+  showExportDialog: boolean;
+  renderProgress: number | null;    // 0-1, null = not rendering
+  renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
+  renderError: string | null;
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -223,6 +238,16 @@ interface CutEditorState {
   setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
   setAudioBitDepth: (bits: 16 | 24 | 32) => void;
   setShowProjectSettings: (show: boolean) => void;
+  // MARKER_W6.1: Export/Render
+  setShowExportDialog: (show: boolean) => void;
+  setRenderProgress: (p: number | null) => void;
+  setRenderStatus: (s: string | null) => void;
+  setRenderError: (e: string | null) => void;
+  // MARKER_W5.1: Auto-Montage
+  setMontageRunning: (running: boolean) => void;
+  setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
+  setMontageProgress: (text: string | null) => void;
+  setMontageError: (err: string | null) => void;
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
@@ -248,6 +273,9 @@ interface CutEditorState {
   renameTimelineTab: (index: number, label: string) => void;
   /** MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1) */
   createVersionedTimeline: (projectName: string, mode?: string) => string;
+  // MARKER_W5.2: Parallel Timelines
+  setParallelTimeline: (tabIndex: number | null) => void;
+  swapParallelTimeline: () => void;  // swap active ↔ parallel
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -319,6 +347,19 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   timelineTabs: [{ id: 'main', label: 'Main', version: 0, createdAt: Date.now(), mode: 'manual' }],
   activeTimelineTabIndex: 0,
   nextTimelineVersion: 1,
+  parallelTimelineTabIndex: null,
+
+  // MARKER_W6.1: Export/Render
+  showExportDialog: false,
+  renderProgress: null,
+  renderStatus: null,
+  renderError: null,
+
+  // MARKER_W5.1: Auto-Montage
+  montageRunning: false,
+  montageMode: null,
+  montageProgress: null,
+  montageError: null,
 
   // Media status
   mediaError: null,
@@ -422,6 +463,16 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
   setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
+  // MARKER_W6.1: Export/Render
+  setShowExportDialog: (show) => set({ showExportDialog: show }),
+  setRenderProgress: (p) => set({ renderProgress: p }),
+  setRenderStatus: (s) => set({ renderStatus: s }),
+  setRenderError: (e) => set({ renderError: e }),
+  // MARKER_W5.1: Auto-Montage
+  setMontageRunning: (running) => set({ montageRunning: running }),
+  setMontageMode: (mode) => set({ montageMode: mode }),
+  setMontageProgress: (text) => set({ montageProgress: text }),
+  setMontageError: (err) => set({ montageError: err }),
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
@@ -498,6 +549,21 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const tabs = [...state.timelineTabs];
       if (tabs[index]) tabs[index] = { ...tabs[index], label };
       return { timelineTabs: tabs };
+    }),
+
+  // MARKER_W5.2: Parallel Timelines
+  setParallelTimeline: (tabIndex) => set({ parallelTimelineTabIndex: tabIndex }),
+  swapParallelTimeline: () =>
+    set((state) => {
+      if (state.parallelTimelineTabIndex === null) return state;
+      const oldActive = state.activeTimelineTabIndex;
+      const newActive = state.parallelTimelineTabIndex;
+      if (newActive < 0 || newActive >= state.timelineTabs.length) return state;
+      return {
+        activeTimelineTabIndex: newActive,
+        timelineId: state.timelineTabs[newActive].id,
+        parallelTimelineTabIndex: oldActive,
+      };
     }),
 
   // MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1)
