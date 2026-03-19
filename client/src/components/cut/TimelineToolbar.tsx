@@ -64,6 +64,8 @@ export default function TimelineToolbar() {
   const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
+  // MARKER_W6.1: Export dialog
+  const setShowExportDialog = useCutEditorStore((s) => s.setShowExportDialog);
   // MARKER_W5.2: Parallel timeline toggle
   const parallelTimelineTabIndex = useCutEditorStore((s) => s.parallelTimelineTabIndex);
   const setParallelTimeline = useCutEditorStore((s) => s.setParallelTimeline);
@@ -113,6 +115,15 @@ export default function TimelineToolbar() {
       >
         LK
       </button>
+      {/* MARKER_W6.1: Export button — pushed to the right */}
+      <div style={{ flex: 1 }} />
+      <button
+        style={{ ...TOOL_BTN, color: '#888' }}
+        onClick={() => setShowExportDialog(true)}
+        title="Export / Render"
+      >
+        Export
+      </button>
       {/* MARKER_W5.2: Parallel timeline toggle */}
       {timelineTabs.length >= 2 && (
         <>
@@ -126,10 +137,8 @@ export default function TimelineToolbar() {
             }}
             onClick={() => {
               if (parallelTimelineTabIndex !== null) {
-                // Turn off parallel view
                 setParallelTimeline(null);
               } else {
-                // Pick first tab that isn't the active one
                 const otherIndex = timelineTabs.findIndex((_, i) => i !== activeTimelineTabIndex);
                 if (otherIndex >= 0) setParallelTimeline(otherIndex);
               }

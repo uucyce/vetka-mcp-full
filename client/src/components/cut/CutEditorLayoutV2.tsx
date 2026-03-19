@@ -28,6 +28,7 @@ import TimelineTrackView from './TimelineTrackView';
 import BPMTrack from './BPMTrack';
 import HistoryPanel from './HistoryPanel';
 import ProjectSettings from './ProjectSettings';
+import ExportDialog from './ExportDialog';
 
 // ─── Styles ───
 
@@ -308,6 +309,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     <div style={ROOT}>
       <PanelGrid renderPanel={renderPanel} />
       <ProjectSettings />
+      <ExportDialog />
     </div>
   );
 }

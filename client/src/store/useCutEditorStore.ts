@@ -173,6 +173,12 @@ interface CutEditorState {
   montageProgress: string | null;  // status text: "Analyzing..." / "Building timeline..."
   montageError: string | null;
 
+  // === MARKER_W6.1: Export/Render dialog ===
+  showExportDialog: boolean;
+  renderProgress: number | null;    // 0-1, null = not rendering
+  renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
+  renderError: string | null;
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -232,6 +238,11 @@ interface CutEditorState {
   setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
   setAudioBitDepth: (bits: 16 | 24 | 32) => void;
   setShowProjectSettings: (show: boolean) => void;
+  // MARKER_W6.1: Export/Render
+  setShowExportDialog: (show: boolean) => void;
+  setRenderProgress: (p: number | null) => void;
+  setRenderStatus: (s: string | null) => void;
+  setRenderError: (e: string | null) => void;
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running: boolean) => void;
   setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
@@ -337,6 +348,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   activeTimelineTabIndex: 0,
   nextTimelineVersion: 1,
   parallelTimelineTabIndex: null,
+
+  // MARKER_W6.1: Export/Render
+  showExportDialog: false,
+  renderProgress: null,
+  renderStatus: null,
+  renderError: null,
 
   // MARKER_W5.1: Auto-Montage
   montageRunning: false,
@@ -446,6 +463,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
   setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
+  // MARKER_W6.1: Export/Render
+  setShowExportDialog: (show) => set({ showExportDialog: show }),
+  setRenderProgress: (p) => set({ renderProgress: p }),
+  setRenderStatus: (s) => set({ renderStatus: s }),
+  setRenderError: (e) => set({ renderError: e }),
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running) => set({ montageRunning: running }),
   setMontageMode: (mode) => set({ montageMode: mode }),
