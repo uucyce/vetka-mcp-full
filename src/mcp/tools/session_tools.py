@@ -396,8 +396,9 @@ class SessionInitTool(BaseMCPTool):
             import logging
             logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
 
-        # MARKER_172.P4.IP6 + MARKER_186.3: REFLEX session recommendations
+        # MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_193.2: REFLEX session recommendations
         # Enhanced with agent_type inference for agent-aware scoring
+        # MARKER_193.2: Now also injects reflex_warnings + blocked_tools from Guard
         try:
             from src.services.reflex_integration import reflex_session
             # MARKER_186.3: Infer agent_type from user_id or environment
@@ -426,6 +427,31 @@ class SessionInitTool(BaseMCPTool):
                 context["reflex_recommendations"] = reflex_recs
         except Exception:
             pass  # REFLEX errors never block session init
+
+        # MARKER_193.2: Inject reflex_warnings and blocked_tools from Guard
+        try:
+            from src.services.reflex_guard import get_feedback_guard, GuardContext
+            guard = get_feedback_guard()
+            guard_ctx = GuardContext(
+                agent_type=agent_type,
+                phase_type=context.get("current_phase", {}).get("status", ""),
+                project_id="",
+            )
+            active_dangers = guard.get_active_dangers(
+                agent_type=agent_type,
+                phase_type=guard_ctx.phase_type,
+            )
+            if active_dangers:
+                context["reflex_warnings"] = [
+                    {"tool_pattern": d.tool_pattern, "reason": d.reason,
+                     "severity": d.severity, "source": d.source}
+                    for d in active_dangers
+                ]
+                context["blocked_tools"] = [
+                    d.tool_pattern for d in active_dangers if d.severity == "block"
+                ]
+        except Exception:
+            pass  # Guard errors never block session init
 
         # MARKER_187.7: Inject per-agent focus after agent_type is resolved
         if agent_type and context.get("_all_agent_focus"):

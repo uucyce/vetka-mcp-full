@@ -256,6 +256,18 @@ class EngramCache:
         return {k: v.to_dict() for k, v in self._cache.items()
                 if not self._is_expired(v)}
 
+    # ============ MARKER_193.2: Category accessors ============
+
+    def get_danger_entries(self) -> List[EngramEntry]:
+        """Return all non-expired entries with category='danger'."""
+        return [e for e in self._cache.values()
+                if e.category == "danger" and not self._is_expired(e)]
+
+    def get_all_by_category(self, category: str) -> List[EngramEntry]:
+        """Return all non-expired entries matching the given category."""
+        return [e for e in self._cache.values()
+                if e.category == category and not self._is_expired(e)]
+
     def stats(self) -> Dict[str, Any]:
         """Cache statistics."""
         total = len(self._cache)

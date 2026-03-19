@@ -333,16 +333,17 @@ def reflex_session(
     agent_type: str = "",
     current_task: Optional[Dict[str, Any]] = None,
 ) -> List[Dict]:
-    """MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_191.3 — Get task-aware recommendations for session_init.
+    """MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_191.3 + MARKER_193.2 — Get task-aware recommendations for session_init.
 
     Called by session_tools._execute_async() to include tool recommendations
     in the session init response.
 
     MARKER_186.3: Now accepts agent_type for agent-aware scoring.
     MARKER_191.3: Now accepts current_task for task-aware semantic matching.
+    MARKER_193.2: Guard filtering — blocked/warned tools annotated before return.
 
     Returns:
-        List of {tool_id, score, reason} dicts.
+        List of {tool_id, score, reason} dicts (blocked tools excluded).
     """
     if not _is_enabled():
         return []
@@ -361,10 +362,25 @@ def reflex_session(
         # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)
         scored = _apply_preferences(scored)
 
-        return [
+        recs = [
             {"tool_id": s.tool_id, "score": s.score, "reason": s.reason}
             for s in scored
         ]
+
+        # MARKER_193.2: Apply guard filtering — block/warn/demote dangerous tools
+        try:
+            from src.services.reflex_guard import get_feedback_guard, GuardContext
+            guard = get_feedback_guard()
+            ctx = GuardContext(
+                agent_type=agent_type,
+                phase_type=phase_type,
+                project_id=session_data.get("project_id", ""),
+            )
+            recs = guard.filter_recommendations(recs, ctx)
+        except Exception as e:
+            logger.debug("[REFLEX IP-6] Guard filtering failed (non-fatal): %s", e)
+
+        return recs
 
     except Exception as e:
         logger.debug("[REFLEX IP-6] Error (non-fatal): %s", e)
