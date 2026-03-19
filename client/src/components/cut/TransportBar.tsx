@@ -462,6 +462,36 @@ export default function TransportBar() {
     }
   }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
 
+  // MARKER_W3.2: Insert/Overwrite edit — send source clip to targeted tracks
+  const performSourceEdit = useCallback(async (mode: 'insert' | 'overwrite') => {
+    const state = useCutEditorStore.getState();
+    if (!sandboxRoot || !projectId || !state.sourceMediaPath) return;
+    const targets = state.getInsertTargets();
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{
+          op: mode === 'insert' ? 'insert_clip' : 'overwrite_clip',
+          source_path: state.sourceMediaPath,
+          source_in: state.sourceMarkIn ?? 0,
+          source_out: state.sourceMarkOut ?? state.duration,
+          timeline_position: state.currentTime,
+          video_lane_id: targets.videoLaneId,
+          audio_lane_id: targets.audioLaneId,
+        }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [projectId, refreshProjectState, sandboxRoot, timelineId]);
+
   const runUndoAction = useCallback(
     async (mode: 'undo' | 'redo') => {
       if (!sandboxRoot || !projectId) return;
@@ -595,6 +625,9 @@ export default function TransportBar() {
     // MARKER_W3.6: Tool State Machine hotkeys
     selectTool:       () => useCutEditorStore.getState().setActiveTool('selection'),
     razorTool:        () => useCutEditorStore.getState().setActiveTool('razor'),
+    // MARKER_W3.2: Insert/Overwrite with track targeting
+    insertEdit:       () => performSourceEdit('insert'),
+    overwriteEdit:    () => performSourceEdit('overwrite'),
     // MARKER_W3.7: Selection hotkeys
     selectAll:        () => useCutEditorStore.getState().selectAllClips(),
     escapeContext:    () => useCutEditorStore.getState().clearSelection(),
@@ -602,7 +635,7 @@ export default function TransportBar() {
   }), [
     togglePlay, pause, seek, currentTime, duration, cycleRate,
     setMarkIn, setMarkOut, runUndoAction, removeSelectedClip,
-    splitAtPlayhead, rippleDeleteClip,
+    splitAtPlayhead, rippleDeleteClip, performSourceEdit,
     createMarker, setZoom, zoom, handleSceneDetect, setViewMode, viewMode,
   ]);
 
