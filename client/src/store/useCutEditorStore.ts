@@ -89,6 +89,7 @@ interface CutEditorState {
   currentTime: number;
   isPlaying: boolean;
   playbackRate: number;
+  shuttleSpeed: number;  // MARKER_W3.4: JKL progressive shuttle (-8,-4,-2,-1,0,1,2,4,8)
   duration: number;
   markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
   markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
@@ -171,6 +172,7 @@ interface CutEditorState {
   setSequenceMarkIn: (t: number | null) => void;
   setSequenceMarkOut: (t: number | null) => void;
   setPlaybackRate: (rate: number) => void;
+  setShuttleSpeed: (speed: number) => void;  // MARKER_W3.4
   setZoom: (z: number) => void;
   setTrackHeight: (h: number) => void;
   setScrollLeft: (s: number) => void;
@@ -224,6 +226,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   currentTime: 0,
   isPlaying: false,
   playbackRate: 1,
+  shuttleSpeed: 0,
   duration: 0,
   markIn: null,
   markOut: null,
@@ -298,6 +301,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
   setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
+  setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
   setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),

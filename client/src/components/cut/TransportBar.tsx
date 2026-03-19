@@ -504,9 +504,28 @@ export default function TransportBar() {
   // MARKER_185.7: Centralized hotkey registry (Premiere / FCP7 / Custom presets)
   const hotkeyHandlers: CutHotkeyHandlers = useMemo(() => ({
     playPause:        () => togglePlay(),
-    stop:             () => { pause(); },
-    shuttleBack:      () => seek(Math.max(0, currentTime - 5)),
-    shuttleForward:   () => seek(Math.min(duration, currentTime + 5)),
+    // MARKER_W3.4: JKL Progressive Shuttle
+    // K = pause + reset shuttle. J = reverse (progressive). L = forward (progressive).
+    stop:             () => { pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
+    shuttleBack:      () => {
+      const s = useCutEditorStore.getState().shuttleSpeed;
+      const next = s > 0 ? -1 : s === 0 ? -1 : Math.max(-8, s * 2);
+      useCutEditorStore.getState().setShuttleSpeed(next);
+      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      if (next < 0) {
+        // Reverse: simulate by stepping backward via rAF
+        pause();
+      } else {
+        play();
+      }
+    },
+    shuttleForward:   () => {
+      const s = useCutEditorStore.getState().shuttleSpeed;
+      const next = s < 0 ? 1 : s === 0 ? 1 : Math.min(8, s * 2);
+      useCutEditorStore.getState().setShuttleSpeed(next);
+      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      play();
+    },
     frameStepBack:    () => { pause(); seek(Math.max(0, currentTime - 1 / 25)); },
     frameStepForward: () => { pause(); seek(Math.min(duration, currentTime + 1 / 25)); },
     // MARKER_W3.5: 5-frame step (Shift+Arrow)
