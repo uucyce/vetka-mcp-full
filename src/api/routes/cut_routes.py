@@ -2842,6 +2842,41 @@ async def cut_undo_stack(
     }
 
 
+# ── MARKER_W4.3: Save / Autosave / Recovery endpoints ─────────────
+
+
+@router.post("/save")
+async def cut_save(sandbox_root: str) -> dict[str, Any]:
+    """Explicit ⌘S save — stamps project updated_at + last_save_timestamp."""
+    store = CutProjectStore(sandbox_root)
+    result = store.save_all()
+    return {"success": True, **result}
+
+
+@router.post("/autosave")
+async def cut_autosave(sandbox_root: str) -> dict[str, Any]:
+    """Silent autosave — snapshot mutable state to .autosave/ directory."""
+    store = CutProjectStore(sandbox_root)
+    result = store.autosave_snapshot()
+    return {"success": True, **result}
+
+
+@router.get("/recovery-check")
+async def cut_recovery_check(sandbox_root: str) -> dict[str, Any]:
+    """Check if autosave recovery is available (autosave newer than last save)."""
+    store = CutProjectStore(sandbox_root)
+    result = store.recovery_check()
+    return {"success": True, **result}
+
+
+@router.post("/recover")
+async def cut_recover(sandbox_root: str, snapshot_dir: str) -> dict[str, Any]:
+    """Restore state from an autosave snapshot."""
+    store = CutProjectStore(sandbox_root)
+    result = store.recover_from_autosave(snapshot_dir)
+    return result
+
+
 @router.post("/scene-detect-and-apply")
 async def cut_scene_detect_and_apply(body: CutSceneDetectApplyRequest) -> dict[str, Any]:
     """
