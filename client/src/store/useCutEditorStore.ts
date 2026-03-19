@@ -107,6 +107,9 @@ interface CutEditorState {
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
 
+  // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
+  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null;
+
   // === MARKER_W1.3: Source/Program feed split ===
   sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
   programMediaPath: string | null;    // timeline playback → Program Monitor
@@ -172,6 +175,8 @@ interface CutEditorState {
   setMediaLoading: (loading: boolean) => void;
   setViewMode: (mode: 'nle' | 'debug') => void;
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
+  // MARKER_W1.2: Panel Focus
+  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
 
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
@@ -222,6 +227,9 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   // MARKER_W1.3: Source/Program feed split
   sourceMediaPath: null,
   programMediaPath: null,
+
+  // MARKER_W1.2: Panel Focus
+  focusedPanel: null,
 
   // Data
   lanes: [],
@@ -294,6 +302,8 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   setHoveredClip: (id) => set({ hoveredClipId: id }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setSceneGraphSurfaceMode: (mode) => set({ sceneGraphSurfaceMode: mode }),
+  // MARKER_W1.2: Panel Focus
+  setFocusedPanel: (panel) => set({ focusedPanel: panel }),
 
   // Data setters
   setLanes: (lanes) => set({ lanes }),

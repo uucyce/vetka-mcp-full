@@ -4,6 +4,7 @@
  */
 import { useCallback, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { usePanelLayoutStore, type PanelId } from '../../store/usePanelLayoutStore';
+import { useCutEditorStore } from '../../store/useCutEditorStore';
 
 const IconDetach = ({ size = 12 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -162,6 +163,16 @@ interface PanelShellProps {
 
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
 
+// MARKER_W1.2: Map PanelId → focusedPanel store value
+const PANEL_FOCUS_MAP: Partial<Record<PanelId, 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag'>> = {
+  source_monitor: 'source',
+  program_monitor: 'program',
+  timeline: 'timeline',
+  project: 'project',
+  script: 'script',
+  dag_project: 'dag',
+};
+
 export default function PanelShell({ panelId, children, title, hideTitleBar }: PanelShellProps) {
   const panel = usePanelLayoutStore((s) => s.getPanel(panelId));
   const detach = usePanelLayoutStore((s) => s.detach);
@@ -170,6 +181,15 @@ export default function PanelShell({ panelId, children, title, hideTitleBar }: P
   const toggleMini = usePanelLayoutStore((s) => s.toggleMini);
   const moveFloating = usePanelLayoutStore((s) => s.moveFloating);
   const resizeFloating = usePanelLayoutStore((s) => s.resizeFloating);
+
+  // MARKER_W1.2: Panel Focus
+  const focusedPanel = useCutEditorStore((s) => s.focusedPanel);
+  const setFocusedPanel = useCutEditorStore((s) => s.setFocusedPanel);
+  const focusValue = PANEL_FOCUS_MAP[panelId] ?? null;
+  const isFocused = focusValue !== null && focusedPanel === focusValue;
+  const handleFocus = useCallback(() => {
+    if (focusValue) setFocusedPanel(focusValue);
+  }, [focusValue, setFocusedPanel]);
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -348,8 +368,11 @@ export default function PanelShell({ panelId, children, title, hideTitleBar }: P
     );
   }
 
+  // MARKER_W1.2: Focus border style
+  const focusBorder = isFocused ? { outline: '1px solid #4A9EFF', outlineOffset: -1 } : {};
+
   return (
-    <div ref={rootRef} style={SHELL_DOCKED}>
+    <div ref={rootRef} style={{ ...SHELL_DOCKED, ...focusBorder }} onMouseDown={handleFocus}>
       {!hideTitleBar && (
         <div style={TITLE_BAR}>
           <span style={TITLE_TEXT}>{label}</span>
