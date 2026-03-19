@@ -134,7 +134,7 @@ TASK_BOARD_SCHEMA = {
         "preset": {"type": "string", "description": "Pipeline preset override"},
         "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
         "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
-        "project_id": {"type": "string", "description": "Logical project ID. For add: assigns project. For list: filters tasks by project (shows matching + unassigned)."},
+        "project_id": {"type": "string", "description": "Logical project ID. For add: assigns project. For list: smart filter — case-insensitive, RU keyboard layout auto-fix, prefix autocomplete (e.g. 'c'→'cut', 'СГЕ'→'CUT')."},
         "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
         "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
         "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
@@ -340,13 +340,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "list":
         filter_status = arguments.get("filter_status")
         tasks = board.get_queue(status=filter_status)
-        # MARKER_192.1: Filter by project_id — exact match only
+        # MARKER_191.16: Smart project_id filter — case-insensitive, RU layout fix, prefix match
         filter_project = str(arguments.get("project_id") or "").strip()
+        project_resolve = None
         if filter_project:
-            tasks = [
-                t for t in tasks
-                if str(t.get("project_id") or "").strip() == filter_project
-            ]
+            tasks, project_resolve = board.filter_tasks_by_project(tasks, filter_project)
         # MARKER_189.13 + MARKER_191.4: Dynamic limit; no limit when filtering by project
         total = len(tasks)
         if filter_project and not arguments.get("limit"):
@@ -355,7 +353,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         else:
             max_limit = min(int(arguments.get("limit") or 40), 100)
             page = tasks[:max_limit]
-        return {
+        result = {
             "success": True,
             "count": total,
             "returned": len(page),
@@ -373,8 +371,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     "project_id": t.get("project_id", ""),
                 }
                 for t in page
-            ]
+            ],
         }
+        if project_resolve:
+            result["project_resolve"] = project_resolve
+        return result
 
     elif action == "get":
         task_id = arguments.get("task_id")

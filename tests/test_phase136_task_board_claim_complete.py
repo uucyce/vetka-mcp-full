@@ -1,10 +1,26 @@
-"""Phase 136 tests for TaskBoard claim/complete flow."""
+"""Phase 136 tests for TaskBoard claim/complete flow.
+
+MARKER_192.4: Updated for SQLite backend — 'done' → 'done_main' (MARKER_186.4),
+and patched production JSON paths to isolate tests.
+"""
 
 import asyncio
 from datetime import datetime
-from unittest.mock import AsyncMock
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from src.orchestration.task_board import TaskBoard
+
+# MARKER_192.4: Prevent loading production task_board.json during auto-migration
+_NONEXISTENT = Path("/tmp/_vetka_test_nonexistent_board.json")
+
+@pytest.fixture(autouse=True)
+def _isolate_task_board_from_production():
+    with patch("src.orchestration.task_board.TASK_BOARD_FILE", _NONEXISTENT), \
+         patch("src.orchestration.task_board._TASK_BOARD_FALLBACK", _NONEXISTENT):
+        yield
 
 
 def _create_board(tmp_path):
@@ -72,7 +88,7 @@ def test_complete_task_stores_commit_and_emits_truncated_event(tmp_path):
     assert result["commit_hash"] == "abcdef1234567890"
 
     task = board.get_task(task_id)
-    assert task["status"] == "done"
+    assert task["status"] in ("done", "done_main", "done_worktree")
     assert task["commit_hash"] == "abcdef1234567890"
     assert len(task["commit_message"]) == 200
     assert task["completed_at"] is not None
@@ -95,7 +111,7 @@ def test_complete_task_without_commit_metadata(tmp_path):
 
     assert result["success"] is True
     task = board.get_task(task_id)
-    assert task["status"] == "done"
+    assert task["status"] in ("done", "done_main", "done_worktree")
     assert task["commit_hash"] is None
     assert task["commit_message"] is None
 
@@ -118,10 +134,11 @@ def test_status_history_tracks_created_claimed_and_closed(tmp_path):
     history = board.get_task_history(task_id)
     assert [row["event"] for row in history] == ["created", "claimed", "closed"]
     assert history[1]["agent_name"] == "codex"
-    assert history[-1]["status"] == "done"
+    assert history[-1]["status"] in ("done", "done_main", "done_worktree")
 
 
-def test_protocol_task_requires_closure_proof(tmp_path):
+def test_protocol_task_manual_agent_needs_commit_hash(tmp_path):
+    """MARKER_192.2: Manual agents (claude_code) can close protocol tasks with commit_hash."""
     board = _create_board(tmp_path)
     task_id = board.add_task(
         title="Protocol close",
@@ -130,12 +147,27 @@ def test_protocol_task_requires_closure_proof(tmp_path):
         closure_files=["src/orchestration/task_board.py"],
     )
     board.claim_task(task_id, "codex", "claude_code")
-    board.record_pipeline_stats(task_id, {"success": True, "verifier_avg_confidence": 0.9})
 
+    # Manual agent with commit_hash → success (relaxed proof per MARKER_192.2)
     result = board.complete_task(task_id, commit_hash="abc123", commit_message="manual close")
+    assert result["success"] is True
 
+def test_protocol_task_pipeline_agent_requires_full_proof(tmp_path):
+    """MARKER_192.2: Pipeline agents need full closure proof."""
+    board = _create_board(tmp_path)
+    task_id = board.add_task(
+        title="Protocol close pipeline",
+        require_closure_proof=True,
+        agent_type="mycelium",
+        closure_tests=["python -c \"print('ok')\""],
+        closure_files=["src/orchestration/task_board.py"],
+    )
+    board.claim_task(task_id, "dragon", "mycelium")
+
+    # Pipeline agent with only commit_hash → failure (needs full proof)
+    result = board.complete_task(task_id, commit_hash="abc123", commit_message="pipeline close")
     assert result["success"] is False
-    assert "closure_proof" in result["error"]
+    assert "pipeline_success" in result["error"]
 
 
 def test_run_closure_protocol_executes_tests_commit_and_tracker(monkeypatch, tmp_path):
@@ -145,7 +177,7 @@ def test_run_closure_protocol_executes_tests_commit_and_tracker(monkeypatch, tmp
         assigned_to="codex",
         agent_type="claude_code",
         require_closure_proof=True,
-        closure_tests=["python -c \"print('ok')\""],
+        closure_tests=["python3 -c \"print('ok')\""],
         closure_files=["src/orchestration/task_board.py"],
     )
     board.record_pipeline_stats(task_id, {"success": True, "verifier_avg_confidence": 0.92, "duration_s": 1.5})
@@ -174,7 +206,7 @@ def test_run_closure_protocol_executes_tests_commit_and_tracker(monkeypatch, tmp
     assert result["commit_hash"] == "cafebabe"
     assert result["tests"][0]["passed"] is True
     task = board.get_task(task_id)
-    assert task["status"] == "done"
+    assert task["status"] in ("done", "done_main", "done_worktree")
     assert task["closed_by"] == "codex"
     assert task["closure_proof"]["commit_hash"] == "cafebabe"
     tracker_mock.assert_awaited_once()

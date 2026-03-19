@@ -1808,13 +1808,10 @@ async def get_task_board_api(project_id: str = "") -> Dict[str, Any]:
     board = get_task_board()
     tasks = board.get_queue()  # All tasks, sorted by priority
     scoped_project_id = str(project_id or "").strip()
+    project_resolve = None
     if scoped_project_id:
-        # MARKER_189.8: Show tasks for active project + unassigned tasks (no project_id)
-        tasks = [
-            task for task in tasks
-            if not str(task.get("project_id") or "").strip()
-            or str(task.get("project_id") or task.get("roadmap_id") or "").strip() == scoped_project_id
-        ]
+        # MARKER_191.16: Smart project filter — case-insensitive, RU layout fix, prefix autocomplete
+        tasks, project_resolve = board.filter_tasks_by_project(tasks, scoped_project_id)
         summary = {
             "total": len(tasks),
             "pending": sum(1 for task in tasks if str(task.get("status") or "") in {"pending", "queued", "hold"}),
@@ -1847,13 +1844,16 @@ async def get_task_board_api(project_id: str = "") -> Dict[str, Any]:
             if adjusted:
                 task["adjusted_stats"] = adjusted
 
-    return {
+    result = {
         "success": True,
         "tasks": tasks,
         "settings": board.settings,
         "summary": summary,
         "integrity_warning": getattr(board, "integrity_warning", ""),
     }
+    if project_resolve:
+        result["project_resolve"] = project_resolve
+    return result
 
 
 # MARKER_137.S1_1_EVENT_DISPATCH: Update task board settings (auto_dispatch toggle)

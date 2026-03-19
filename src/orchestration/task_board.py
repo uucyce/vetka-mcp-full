@@ -18,6 +18,7 @@ Flow:
 """
 
 import json
+import sqlite3
 import time
 import logging
 import os
@@ -43,8 +44,21 @@ def _resolve_main_repo_root() -> Path:
 
 _MAIN_ROOT = _resolve_main_repo_root()
 TASK_BOARD_FILE = _MAIN_ROOT / "data" / "task_board.json"
+TASK_BOARD_DB = _MAIN_ROOT / "data" / "task_board.db"
 _TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
+_TASK_BOARD_DB_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.db"
 PROJECT_ROOT = _MAIN_ROOT
+
+# MARKER_192.1: Indexed columns for SQLite hybrid schema.
+# These columns get their own DB columns + indexes for WHERE/ORDER BY.
+# Everything else goes into the 'extra' JSON blob column.
+INDEXED_COLUMNS = [
+    "id", "title", "description", "priority", "status", "phase_type",
+    "complexity", "project_id", "assigned_to", "agent_type", "assigned_at",
+    "created_by", "created_at", "started_at", "completed_at", "closed_at",
+    "commit_hash", "commit_message", "updated_at",
+]
+_INDEXED_SET = frozenset(INDEXED_COLUMNS)
 
 # Priority levels
 PRIORITY_CRITICAL = 1
@@ -116,7 +130,11 @@ class TaskBoard:
         """
         max_c = board.settings.get("max_concurrent", 2)
         sem = cls._get_dispatch_semaphore(max_c)
-        running = len([t for t in board.tasks.values() if t.get("status") == "running"])
+        try:
+            cursor = board.db.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
+            running = cursor.fetchone()[0]
+        except Exception:
+            running = len([t for t in board.tasks.values() if t.get("status") == "running"])
         return {
             "max": max_c,
             "available": sem._value if hasattr(sem, '_value') else max_c,
@@ -125,12 +143,32 @@ class TaskBoard:
     # MARKER_133.C33C_END
 
     def __init__(self, board_file: Optional[Path] = None):
-        """Initialize TaskBoard with storage file.
+        """Initialize TaskBoard with storage.
+
+        MARKER_192.3: SQLite-first init. Accepts both .json (legacy) and .db paths.
+        If board_file ends with .json, derives .db path from it.
+        If board_file ends with .db, uses it directly.
+        If board_file is None, uses TASK_BOARD_DB.
 
         Args:
-            board_file: Path to JSON storage. Defaults to data/task_board.json.
+            board_file: Path to storage file. Defaults to data/task_board.db.
         """
-        self.board_file = board_file or TASK_BOARD_FILE
+        # Determine DB path
+        if board_file is not None:
+            if str(board_file).endswith(".json"):
+                # Legacy callers passing .json path → derive .db path
+                self.board_file = board_file
+                self.db_path = board_file.parent / (board_file.stem + ".db")
+            elif str(board_file).endswith(".db"):
+                self.db_path = board_file
+                self.board_file = board_file.parent / (board_file.stem + ".json")
+            else:
+                self.db_path = board_file
+                self.board_file = TASK_BOARD_FILE
+        else:
+            self.db_path = TASK_BOARD_DB
+            self.board_file = TASK_BOARD_FILE
+
         self.tasks: Dict[str, Dict[str, Any]] = {}
         self.settings: Dict[str, Any] = {
             "max_concurrent": 2,
@@ -138,40 +176,36 @@ class TaskBoard:
             "default_preset": "dragon_silver"
         }
         self.integrity_warning: str = ""
-        self._load()
+
+        # MARKER_192.3: SQLite connection + schema + migration
+        self.db = self._connect()
+        self._ensure_schema()
+        self._migrate_json_to_sqlite()
+
+        # Load settings from DB
+        db_settings = self._load_settings()
+        if db_settings:
+            self.settings.update(db_settings)
+
+        # Fill in-memory cache for backward compat
+        self.tasks = self._load_all_tasks()
+        self._backfill_modules()
 
     # ==========================================
     # PERSISTENCE
     # ==========================================
 
     def _load(self):
-        """Load task board from disk."""
-        for path in [self.board_file, _TASK_BOARD_FALLBACK]:
-            if path.exists():
-                try:
-                    data = json.loads(path.read_text())
-                    self.tasks = data.get("tasks", {})
-                    self.settings = data.get("settings", self.settings)
-                    meta = data.get("_meta") if isinstance(data.get("_meta"), dict) else {}
-                    expected_sig = str(meta.get("integrity_sig") or "").strip()
-                    actual_sig = self._compute_integrity_sig(self.tasks, self.settings)
-                    if expected_sig and expected_sig != actual_sig:
-                        self.integrity_warning = "task_board_signature_mismatch"
-                        self.settings["_integrity_warning"] = self.integrity_warning
-                        logger.warning("[TaskBoard] Integrity signature mismatch — board may have been edited outside protocol")
-                    elif not expected_sig and self.tasks:
-                        self.integrity_warning = "task_board_signature_missing"
-                        self.settings["_integrity_warning"] = self.integrity_warning
-                        logger.warning("[TaskBoard] Integrity signature missing — legacy or out-of-band write detected")
-                    else:
-                        self.integrity_warning = ""
-                        self.settings.pop("_integrity_warning", None)
-                    logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from {path}")
-                    self._backfill_modules()
-                    return
-                except Exception as e:
-                    logger.warning(f"[TaskBoard] Failed to load from {path}: {e}")
-        logger.info("[TaskBoard] No existing board found, starting fresh")
+        """Reload task board from SQLite.
+
+        MARKER_192.3: Reads all tasks from DB into self.tasks cache.
+        Called only for explicit full refresh (rare).
+        """
+        self.tasks = self._load_all_tasks()
+        db_settings = self._load_settings()
+        if db_settings:
+            self.settings.update(db_settings)
+        logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from SQLite")
 
     def _backfill_modules(self):
         """MARKER_155.2A: Backfill 'module' field for existing tasks."""
@@ -183,9 +217,9 @@ class TaskBoard:
                     task.get("description", ""),
                     task.get("tags", []),
                 )
+                self._save_task(task)
                 updated += 1
         if updated > 0:
-            self._save(action="backfill_modules")
             logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
 
     @staticmethod
@@ -198,35 +232,254 @@ class TaskBoard:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def _save(self, action: str = "update"):
-        """Save task board to disk with sandbox fallback."""
-        runtime_settings = {k: v for k, v in self.settings.items() if not str(k).startswith("_")}
-        integrity_sig = self._compute_integrity_sig(self.tasks, runtime_settings)
-        data = {
-            "_meta": {
-                "version": "1.0",
-                "phase": "121",
-                "updated": datetime.now().isoformat(),
-                "integrity_sig": integrity_sig,
-                "last_writer": "task_board_runtime",
-                "last_action": str(action or "update"),
-            },
-            "tasks": self.tasks,
-            "settings": runtime_settings
-        }
-        content = json.dumps(data, indent=2, default=str, ensure_ascii=False)
+        """Persist settings and notify UI.
 
-        for path in [self.board_file, _TASK_BOARD_FALLBACK]:
-            try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(content)
-                logger.debug(f"[TaskBoard] Saved {len(self.tasks)} tasks to {path}")
-                # MARKER_124.3D: Emit SocketIO event for live UI updates
-                self._notify_board_update(action)
+        MARKER_192.3: Tasks are now saved per-operation via _save_task().
+        This method only saves settings and emits the UI notification.
+        """
+        self._save_settings()
+        # MARKER_124.3D: Emit SocketIO event for live UI updates
+        self._notify_board_update(action)
+
+    # ==========================================
+    # MARKER_192.1: SQLite Storage Layer
+    # ==========================================
+
+    def _connect(self) -> sqlite3.Connection:
+        """Open SQLite connection with WAL mode and busy_timeout.
+
+        MARKER_192.1: Core DB connection setup.
+        """
+        db_path = self.db_path
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _ensure_schema(self):
+        """Create tasks/settings/meta tables and indexes if they don't exist.
+
+        MARKER_192.1: Idempotent schema creation.
+        """
+        with self.db:
+            self.db.executescript("""
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT DEFAULT '',
+                    priority INTEGER DEFAULT 3,
+                    status TEXT DEFAULT 'pending',
+                    phase_type TEXT DEFAULT 'build',
+                    complexity TEXT DEFAULT 'medium',
+                    project_id TEXT DEFAULT '',
+                    assigned_to TEXT DEFAULT '',
+                    agent_type TEXT DEFAULT '',
+                    assigned_at TEXT DEFAULT '',
+                    created_by TEXT DEFAULT '',
+                    created_at TEXT NOT NULL,
+                    started_at TEXT DEFAULT '',
+                    completed_at TEXT DEFAULT '',
+                    closed_at TEXT DEFAULT '',
+                    commit_hash TEXT DEFAULT '',
+                    commit_message TEXT DEFAULT '',
+                    extra TEXT DEFAULT '{}',
+                    updated_at TEXT DEFAULT ''
+                );
+                CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+                CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+                CREATE INDEX IF NOT EXISTS idx_tasks_project ON tasks(project_id);
+                CREATE INDEX IF NOT EXISTS idx_tasks_assigned ON tasks(assigned_to);
+
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+
+                CREATE TABLE IF NOT EXISTS meta (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                );
+            """)
+
+    @staticmethod
+    def _task_to_row(task: dict) -> dict:
+        """Convert in-memory task dict to DB row dict.
+
+        MARKER_192.1: Splits indexed columns from extra JSON blob.
+        """
+        row = {}
+        extra = {}
+        for k, v in task.items():
+            if k in _INDEXED_SET:
+                # Coerce None to empty string for TEXT columns, keep int for priority
+                if k == "priority":
+                    row[k] = int(v) if v is not None else 3
+                else:
+                    row[k] = str(v) if v is not None else ""
+            else:
+                extra[k] = v
+        # Ensure all indexed columns have a value
+        for col in INDEXED_COLUMNS:
+            if col not in row:
+                row[col] = 3 if col == "priority" else ""
+        row["extra"] = json.dumps(extra, default=str, ensure_ascii=False)
+        return row
+
+    @staticmethod
+    def _row_to_task(row: sqlite3.Row) -> dict:
+        """Convert DB row back to task dict.
+
+        MARKER_192.1: Merges indexed columns with parsed extra JSON.
+        """
+        task = dict(row)
+        extra_raw = task.pop("extra", "{}")
+        try:
+            extra = json.loads(extra_raw) if extra_raw else {}
+        except (json.JSONDecodeError, TypeError):
+            extra = {}
+        # Merge extra into task (indexed columns take precedence)
+        for k, v in extra.items():
+            if k not in task:
+                task[k] = v
+        # Convert priority back to int
+        try:
+            task["priority"] = int(task.get("priority", 3))
+        except (TypeError, ValueError):
+            task["priority"] = 3
+        # Convert empty strings back to None for nullable fields
+        for field in ("started_at", "completed_at", "closed_at", "commit_hash",
+                       "commit_message", "assigned_to", "assigned_at"):
+            if task.get(field) == "":
+                task[field] = None
+        return task
+
+    def _save_task(self, task: dict):
+        """INSERT OR REPLACE a single task into SQLite.
+
+        MARKER_192.1: Per-row atomic write — no full-board overwrite.
+        """
+        row = self._task_to_row(task)
+        row["updated_at"] = datetime.now().isoformat()
+        columns = list(row.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        values = [row[c] for c in columns]
+        with self.db:
+            self.db.execute(
+                f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
+                values,
+            )
+
+    def _delete_task(self, task_id: str):
+        """DELETE a single task row from SQLite.
+
+        MARKER_192.1: Per-row delete.
+        """
+        with self.db:
+            self.db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+
+    def _load_all_tasks(self) -> Dict[str, dict]:
+        """SELECT all tasks from SQLite → dict keyed by task ID.
+
+        MARKER_192.1: Used for migration/startup cache fill.
+        """
+        cursor = self.db.execute("SELECT * FROM tasks")
+        tasks = {}
+        for row in cursor:
+            task = self._row_to_task(row)
+            tasks[task["id"]] = task
+        return tasks
+
+    def _load_task(self, task_id: str) -> Optional[dict]:
+        """SELECT a single task by ID from SQLite.
+
+        MARKER_192.1: Point query for get_task().
+        """
+        cursor = self.db.execute("SELECT * FROM tasks WHERE id = ?", (task_id,))
+        row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_task(row)
+
+    def _save_settings(self):
+        """Persist board settings to SQLite settings table.
+
+        MARKER_192.1: Key-value storage for board config.
+        """
+        with self.db:
+            for key, value in self.settings.items():
+                if str(key).startswith("_"):
+                    continue
+                self.db.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (key, json.dumps(value, default=str, ensure_ascii=False)),
+                )
+
+    def _load_settings(self) -> Dict[str, Any]:
+        """Read board settings from SQLite settings table.
+
+        MARKER_192.1: Returns deserialized settings dict.
+        """
+        settings = {}
+        try:
+            cursor = self.db.execute("SELECT key, value FROM settings")
+            for row in cursor:
+                try:
+                    settings[row["key"]] = json.loads(row["value"])
+                except (json.JSONDecodeError, TypeError):
+                    settings[row["key"]] = row["value"]
+        except sqlite3.OperationalError:
+            pass  # Table may not exist yet
+        return settings
+
+    def _migrate_json_to_sqlite(self):
+        """Auto-migrate from JSON file to SQLite if DB is empty but JSON exists.
+
+        MARKER_192.1: Zero-downtime migration on first startup.
+        """
+        # Check if DB already has tasks
+        try:
+            cursor = self.db.execute("SELECT COUNT(*) FROM tasks")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                return  # DB already populated
+        except sqlite3.OperationalError:
+            self._ensure_schema()
+
+        # Find JSON file to migrate from
+        json_path = None
+        for path in [TASK_BOARD_FILE, _TASK_BOARD_FALLBACK]:
+            if path.exists():
+                json_path = path
+                break
+
+        if not json_path:
+            return  # No JSON to migrate
+
+        try:
+            data = json.loads(json_path.read_text())
+            tasks = data.get("tasks", {})
+            settings = data.get("settings", {})
+
+            if not tasks:
                 return
-            except (PermissionError, OSError) as e:
-                logger.warning(f"[TaskBoard] Cannot write to {path}: {e}")
 
-        logger.error("[TaskBoard] Failed to save task board to any location")
+            # Insert all tasks
+            for task in tasks.values():
+                self._save_task(task)
+
+            # Save settings
+            if settings:
+                for key, value in settings.items():
+                    if not str(key).startswith("_"):
+                        self.settings[key] = value
+                self._save_settings()
+
+            logger.info(f"[TaskBoard] Migrated {len(tasks)} tasks from {json_path} to SQLite")
+        except Exception as e:
+            logger.warning(f"[TaskBoard] JSON→SQLite migration failed: {e}")
 
     @staticmethod
     def _history_entry(
@@ -305,7 +558,7 @@ class TaskBoard:
 
         Returns dict with success status and attempt number.
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
@@ -502,7 +755,6 @@ class TaskBoard:
     _MANUAL_AGENT_NAMES = {"opus", "cursor", "codex", "grok", "claude-code", "opencode"}
 
     @staticmethod
-    @staticmethod
     def _infer_execution_mode(agent_type: Optional[str], agent_name: Optional[str] = None) -> str:
         """Infer execution_mode from agent_type or agent_name.
 
@@ -664,7 +916,8 @@ class TaskBoard:
                 self.settings[key] = value
                 updated[key] = value
         if updated:
-            self._save("settings_updated")
+            self._save_settings()
+            self._notify_board_update("settings_updated")
         return {"updated": updated, "settings": self.settings}
 
     # ==========================================
@@ -855,8 +1108,8 @@ class TaskBoard:
             },
         )
         self.tasks[task_id] = task_payload
-
-        self._save(action="added")
+        self._save_task(task_payload)
+        self._notify_board_update("added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id
 
@@ -895,13 +1148,20 @@ class TaskBoard:
     def get_task(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get a task by ID.
 
+        MARKER_192.3: Reads from SQLite, updates in-memory cache.
+
         Args:
             task_id: Task identifier
 
         Returns:
             Task dict or None if not found
         """
-        return self.tasks.get(task_id)
+        task = self._load_task(task_id)
+        if task is not None:
+            self.tasks[task_id] = task
+        else:
+            self.tasks.pop(task_id, None)
+        return task
 
     def update_task(self, task_id: str, **updates) -> bool:
         """Update task fields.
@@ -999,12 +1259,15 @@ class TaskBoard:
                 extra=history_extra if isinstance(history_extra, dict) else None,
             )
 
-        self._save(action="updated")
+        self._save_task(task)
+        self._notify_board_update("updated")
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
     def remove_task(self, task_id: str) -> bool:
         """Remove a task from the board.
+
+        MARKER_192.3: Deletes from SQLite + in-memory cache.
 
         Args:
             task_id: Task identifier
@@ -1012,9 +1275,11 @@ class TaskBoard:
         Returns:
             True if task was found and removed
         """
-        if task_id in self.tasks:
-            del self.tasks[task_id]
-            self._save(action="removed")
+        task = self.get_task(task_id)
+        if task is not None:
+            self._delete_task(task_id)
+            self.tasks.pop(task_id, None)
+            self._notify_board_update("removed")
             logger.info(f"[TaskBoard] Removed task {task_id}")
             return True
         return False
@@ -1060,6 +1325,7 @@ class TaskBoard:
                                 source="cleanup",
                                 reason=f"running > {running_timeout_min}min",
                             )
+                            self._save_task(task)
                             cleaned += 1
                             logger.info(f"[TaskBoard] Cleaned stale running task {task.get('id')}")
                     except Exception:
@@ -1081,13 +1347,14 @@ class TaskBoard:
                                 source="cleanup",
                                 reason=f"claimed > {claimed_timeout_min}min",
                             )
+                            self._save_task(task)
                             cleaned += 1
                             logger.info(f"[TaskBoard] Released stale claimed task {task.get('id')}")
                     except Exception:
                         pass
 
         if cleaned:
-            self._save(action="cleanup")
+            self._notify_board_update("cleanup")
             logger.info(f"[TaskBoard] Cleaned {cleaned} stale tasks")
 
         return cleaned
@@ -1420,14 +1687,18 @@ class TaskBoard:
     def get_active_agents(self) -> List[Dict[str, Any]]:
         """Get list of agents with active (claimed/running) tasks.
 
+        MARKER_192.3: Queries from SQLite.
+
         Returns:
             List of dicts with agent_name, agent_type, task_id, task_title, elapsed_time
         """
         active = []
         now = datetime.now()
 
-        for task in self.tasks.values():
-            if task["status"] in ("claimed", "running"):
+        cursor = self.db.execute("SELECT * FROM tasks WHERE status IN ('claimed', 'running')")
+        for row in cursor:
+            task = self._row_to_task(row)
+            if True:  # replaces the old `if task["status"] in ...` filter
                 agent = task.get("assigned_to")
                 if agent:
                     assigned_at = task.get("assigned_at") or task.get("started_at")
@@ -1473,13 +1744,13 @@ class TaskBoard:
         completed = []
         msg_lower = commit_message.lower()
 
-        # MARKER_191.1: Only claimed/running tasks are eligible for auto-close.
-        # Pending/queued tasks have no owner — auto-closing them is a false positive.
-        eligible = [
-            t for t in self.tasks.values()
-            if not t.get("require_closure_proof")
-            and t["status"] in ("claimed", "running")
-        ]
+        # MARKER_192.3 + MARKER_191.1: Query eligible tasks from DB.
+        # Only claimed/running tasks without closure_proof requirement.
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('claimed', 'running')"
+        )
+        all_candidates = [self._row_to_task(row) for row in cursor]
+        eligible = [t for t in all_candidates if not t.get("require_closure_proof")]
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):
@@ -1558,16 +1829,17 @@ class TaskBoard:
     def get_next_task(self) -> Optional[Dict[str, Any]]:
         """Get the highest-priority pending task with satisfied dependencies.
 
+        MARKER_192.3: Queries pending tasks from SQLite.
         Returns tasks sorted by: priority (ascending), then created_at (oldest first).
         Skips tasks whose dependencies haven't completed.
 
         Returns:
             Next task dict or None if queue is empty
         """
-        pending = [
-            t for t in self.tasks.values()
-            if t["status"] == "pending"
-        ]
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status = 'pending' ORDER BY priority, created_at"
+        )
+        pending = [self._row_to_task(row) for row in cursor]
 
         if not pending:
             return None
@@ -1596,6 +1868,8 @@ class TaskBoard:
     def get_queue(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get tasks filtered by status, sorted by priority.
 
+        MARKER_192.3: Reads from SQLite with ORDER BY.
+
         Args:
             status: Filter by status. None = all tasks.
 
@@ -1603,40 +1877,149 @@ class TaskBoard:
             List of task dicts sorted by priority
         """
         if status:
-            tasks = [t for t in self.tasks.values() if t["status"] == status]
+            cursor = self.db.execute(
+                "SELECT * FROM tasks WHERE status = ? ORDER BY priority, created_at",
+                (status,),
+            )
         else:
-            tasks = list(self.tasks.values())
-
-        tasks.sort(key=lambda t: (t["priority"], t["created_at"]))
-        return tasks
+            cursor = self.db.execute(
+                "SELECT * FROM tasks ORDER BY priority, created_at"
+            )
+        return [self._row_to_task(row) for row in cursor]
 
     # MARKER_181.5.6: Backwards-compatible alias (used by dag_aggregator, agent_pipeline, tests)
     def list_tasks(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Alias for get_queue() — backwards compatibility."""
         return self.get_queue(status=status)
 
+    # MARKER_191.16: Smart project_id matching — case-insensitive, RU layout fix, prefix autocomplete
+    # Keyboard layout map: Russian ЙЦУКЕН → English QWERTY
+    _RU_TO_EN: Dict[str, str] = dict(zip(
+        "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ",
+        "qwertyuiop[]asdfghjkl;'zxcvbnm,.QWERTYUIOP[]ASDFGHJKL;'ZXCVBNM,.",
+    ))
+
+    def _transliterate_ru_to_en(self, text: str) -> str:
+        """Convert Russian keyboard layout input to English equivalent."""
+        return "".join(self._RU_TO_EN.get(ch, ch) for ch in text)
+
+    def resolve_project_id(self, query: str) -> Dict[str, Any]:
+        """Smart project_id resolver: case-insensitive, RU→EN layout, prefix match.
+
+        Returns:
+            {
+                "resolved": "cut" | None,
+                "exact": True/False,
+                "candidates": ["cut", "CUT"],
+                "method": "exact" | "case_insensitive" | "layout_fix" | "prefix" | "none"
+            }
+        """
+        query = str(query or "").strip()
+        if not query:
+            return {"resolved": None, "exact": False, "candidates": [], "method": "none"}
+
+        # MARKER_192.3: Collect all known project_ids from SQLite
+        known: Dict[str, str] = {}  # lowercase → original
+        cursor = self.db.execute("SELECT DISTINCT project_id FROM tasks WHERE project_id != ''")
+        for row in cursor:
+            pid = str(row["project_id"]).strip()
+            if pid:
+                key = pid.lower()
+                if key not in known:
+                    known[key] = pid
+
+        # 1. Exact match
+        if query in known.values():
+            return {"resolved": query, "exact": True, "candidates": [query], "method": "exact"}
+
+        # 2. Case-insensitive match
+        q_lower = query.lower()
+        if q_lower in known:
+            resolved = known[q_lower]
+            return {"resolved": resolved, "exact": True, "candidates": [resolved], "method": "case_insensitive"}
+
+        # 3. RU→EN layout fix (СГЕ → CUT)
+        en_query = self._transliterate_ru_to_en(query).lower()
+        if en_query != q_lower and en_query in known:
+            resolved = known[en_query]
+            return {"resolved": resolved, "exact": True, "candidates": [resolved], "method": "layout_fix"}
+
+        # 4. Prefix match (c → cut, p → parallax)
+        prefix_matches = sorted(set(
+            original for key, original in known.items()
+            if key.startswith(q_lower) or key.startswith(en_query)
+        ))
+        if len(prefix_matches) == 1:
+            return {"resolved": prefix_matches[0], "exact": False, "candidates": prefix_matches, "method": "prefix"}
+        if len(prefix_matches) > 1:
+            # Ambiguous prefix — check if one candidate matches exactly (e.g. "vetka" matches "vetka" not "vetka_pulse")
+            exact_prefix = [p for p in prefix_matches if p.lower() == q_lower or p.lower() == en_query]
+            if len(exact_prefix) == 1:
+                return {"resolved": exact_prefix[0], "exact": False, "candidates": prefix_matches, "method": "prefix_exact"}
+            return {"resolved": None, "exact": False, "candidates": prefix_matches, "method": "prefix_ambiguous"}
+
+        return {"resolved": None, "exact": False, "candidates": [], "method": "none"}
+
+    def filter_tasks_by_project(self, tasks: List[Dict[str, Any]], query: str) -> tuple:
+        """Filter tasks by project_id with smart matching.
+
+        Returns:
+            (filtered_tasks, resolve_info)
+        """
+        resolve = self.resolve_project_id(query)
+
+        # Ambiguous prefix: show tasks from ALL candidates so agent can see scope
+        if resolve["method"] == "prefix_ambiguous":
+            candidate_set = {c.lower() for c in resolve["candidates"]}
+            filtered = [
+                t for t in tasks
+                if str(t.get("project_id") or "").strip().lower() in candidate_set
+            ]
+            return filtered, resolve
+
+        if not resolve["resolved"]:
+            return [], resolve
+
+        resolved_lower = resolve["resolved"].lower()
+        # Match all case variants of the resolved project
+        filtered = [
+            t for t in tasks
+            if str(t.get("project_id") or "").strip().lower() == resolved_lower
+        ]
+        return filtered, resolve
+
     # MARKER_183.1: Query tasks by heartbeat session
     def get_tasks_for_session(self, session_id: str) -> List[Dict[str, Any]]:
-        """Get all tasks created in a specific heartbeat session."""
+        """Get all tasks created in a specific heartbeat session.
+
+        MARKER_192.3: session_id is in the extra JSON, so we load all and filter.
+        """
+        # session_id is in extra blob, so we can't use SQL WHERE efficiently
+        # But this is a rare query, so full scan is acceptable
+        cursor = self.db.execute("SELECT * FROM tasks")
         return [
-            t for t in self.tasks.values()
-            if t.get("session_id") == session_id
+            self._row_to_task(row) for row in cursor
+            if json.loads(row["extra"] or "{}").get("session_id") == session_id
         ]
 
     def get_board_summary(self) -> Dict[str, Any]:
         """Get summary counts of tasks by status.
 
+        MARKER_192.3: Uses SQL COUNT/GROUP BY for efficiency.
+
         Returns:
             Dict with counts per status, total, and next task preview
         """
         counts = {}
-        for task in self.tasks.values():
-            status = task["status"]
-            counts[status] = counts.get(status, 0) + 1
+        total = 0
+        cursor = self.db.execute("SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status")
+        for row in cursor:
+            counts[row["status"]] = row["cnt"]
+            total += row["cnt"]
 
         next_task = self.get_next_task()
         return {
-            "total": len(self.tasks),
+            "total": total,
             "by_status": counts,
             "next_task": {
                 "id": next_task["id"],
@@ -1664,7 +2047,7 @@ class TaskBoard:
         Returns:
             {success, merge_result, eval_delta, ...} or {error}
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
@@ -1933,11 +2316,13 @@ class TaskBoard:
         MARKER_126.0B: Called by AgentPipeline at end of execute().
         Stats include: preset, league, llm_calls, tokens, duration, success.
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task:
             return False
         task["stats"] = stats
-        self._save(action="stats_recorded")
+        self.tasks[task_id] = task
+        self._save_task(task)
+        self._notify_board_update("stats_recorded")
         logger.info(f"[TaskBoard] Stats recorded for {task_id}: {stats.get('preset', '?')}")
         return True
 
@@ -1951,7 +2336,7 @@ class TaskBoard:
         Returns dict with original stats + adjusted_success, user_feedback, has_user_feedback.
         Empty dict if task not found or has no stats.
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task or "stats" not in task:
             return {}
 
@@ -2007,7 +2392,7 @@ class TaskBoard:
         Returns:
             True if task was found and cancel was initiated
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task:
             logger.warning(f"[TaskBoard] Task {task_id} not found for cancel")
             return False
@@ -2037,7 +2422,8 @@ class TaskBoard:
             source="task_board",
             reason=reason,
         )
-        self._save(action="cancelled")
+        self._save_task(task)
+        self._notify_board_update("cancelled")
         logger.info(f"[TaskBoard] Task {task_id} cancelled (was {old_status})")
         return True
 
@@ -2229,7 +2615,7 @@ class TaskBoard:
         Returns:
             Dict with success status, pipeline_task_id, and result
         """
-        task = self.tasks.get(task_id)
+        task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
