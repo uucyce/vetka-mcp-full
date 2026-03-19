@@ -17,7 +17,7 @@
       "name": "vetka-client",
       "runtimeExecutable": "npx",
       "runtimeArgs": ["vite", "--port", "3005", "--strictPort"],
-      "cwd": "client",
+      "cwd": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/client",
       "port": 3005
     },
     {

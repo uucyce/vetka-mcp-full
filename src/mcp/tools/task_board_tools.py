@@ -530,7 +530,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Double-close protection: GitCommitTool._auto_complete_tasks() may
         # have already closed this task via [task:tb_xxxx] in commit message
         task_refreshed = board.get_task(task_id)
-        if task_refreshed and task_refreshed.get("status") == "done":
+        if task_refreshed and task_refreshed.get("status", "").startswith("done"):
             return {
                 "success": True,
                 "task_id": task_id,

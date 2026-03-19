@@ -1438,6 +1438,10 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
+        # MARKER_191.1: Guard against double-close (done/done_main/done_worktree)
+        if task.get("status", "").startswith("done"):
+            return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
+
         # MARKER_192.2: Allow execution_mode override at close time
         if execution_mode and execution_mode in ("pipeline", "manual"):
             task["execution_mode"] = execution_mode

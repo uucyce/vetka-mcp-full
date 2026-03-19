@@ -288,6 +288,8 @@ type PlateAwareLayoutContract = {
 };
 
 type ProxyMaps = {
+  width: number;
+  height: number;
   depthUrl: string;
   selectionMaskUrl: string;
   overlayUrl: string;
@@ -305,6 +307,9 @@ type ProxyMaps = {
   matteOverlayUrl: string;
   matteCoverage: number;
   usingRealDepth: boolean;
+  depthValues: Float32Array;
+  selectionValues: Float32Array;
+  midgroundValues: Float32Array;
 };
 
 type ProxyAssetsContract = {
@@ -986,15 +991,11 @@ function smoothBoxMask(nx: number, ny: number, plate: Plate) {
 }
 
 function buildPlateCompositeMaps(
-  sample: SampleMeta,
-  focus: FocusSettings,
-  manual: ManualSettings,
-  realDepth: RealDepthRaster | null,
+  proxyMaps: ProxyMaps,
   sourceRaster: SourceRaster | null,
   plateStack: Plate[],
 ): PlateCompositeMaps {
-  const width = 640;
-  const height = Math.max(360, Math.round((sample.height / sample.width) * width));
+  const { width, height } = proxyMaps;
   const buildCanvas = () => {
     const canvas = document.createElement("canvas");
     canvas.width = width;
@@ -1034,21 +1035,10 @@ function buildPlateCompositeMaps(
     for (let x = 0; x < width; x += 1) {
       const nx = x / Math.max(1, width - 1);
       const ny = y / Math.max(1, height - 1);
-      const remapped = computeResolvedDepth(sample, focus, manual, nx, ny, realDepth);
-      const distance = Math.abs(remapped - manual.targetDepth);
-      const halfRange = Math.max(0.04, manual.range / 2);
-      const effectiveSoftness = manual.softness + manual.postFilter * 0.12;
-      const selection = clamp(
-        1 - smoothstep(halfRange, halfRange + effectiveSoftness, distance) + manual.foregroundBias * 0.08,
-        0,
-        1,
-      );
-      const broader = 1 - smoothstep(
-        halfRange + effectiveSoftness * 0.32,
-        halfRange * 2.35 + effectiveSoftness * 1.65,
-        distance,
-      );
-      const midground = clamp((broader - selection * 0.9) + manual.backgroundBias * 0.04, 0, 1);
+      const pixelIndex = y * width + x;
+      const remapped = proxyMaps.depthValues[pixelIndex] ?? 0;
+      const selection = proxyMaps.selectionValues[pixelIndex] ?? 0;
+      const midground = proxyMaps.midgroundValues[pixelIndex] ?? 0;
       const sourceColor = sampleSourceColor(sourceRaster, nx, ny);
 
       let unionAlpha = 0;
@@ -1275,6 +1265,8 @@ function buildProxyMaps(
   const matteCtx = matteCanvas.getContext("2d");
   if (!depthCtx || !maskCtx || !midCtx || !overlayCtx || !matteCtx) {
     return {
+      width,
+      height,
       depthUrl: "",
       selectionMaskUrl: "",
       overlayUrl: "",
@@ -1292,6 +1284,9 @@ function buildProxyMaps(
       matteOverlayUrl: "",
       matteCoverage: 0,
       usingRealDepth: false,
+      depthValues: new Float32Array(0),
+      selectionValues: new Float32Array(0),
+      midgroundValues: new Float32Array(0),
     };
   }
 
@@ -1310,6 +1305,9 @@ function buildProxyMaps(
   let midgroundSum = 0;
   let nearSum = 0;
   let matteSum = 0;
+  const depthValues = new Float32Array(width * height);
+  const selectionValues = new Float32Array(width * height);
+  const midgroundValues = new Float32Array(width * height);
 
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
@@ -1401,6 +1399,9 @@ function buildProxyMaps(
       const gray = Math.round(remapped * 255);
       const selectionAlpha = Math.round(combinedSelection * 255);
       const midAlpha = Math.round(midground * 255);
+      depthValues[pixelIndex] = remapped;
+      selectionValues[pixelIndex] = combinedSelection;
+      midgroundValues[pixelIndex] = midground;
       const index = (y * width + x) * 4;
 
       depthImage.data[index] = gray;
@@ -1478,6 +1479,8 @@ function buildProxyMaps(
   }
 
   return {
+    width,
+    height,
     depthUrl: depthCanvas.toDataURL("image/png"),
     selectionMaskUrl: maskSource.toDataURL("image/png"),
     overlayUrl: overlayCanvas.toDataURL("image/png"),
@@ -1495,6 +1498,9 @@ function buildProxyMaps(
     matteOverlayUrl: matteCanvas.toDataURL("image/png"),
     matteCoverage: Number((matteSum / (width * height)).toFixed(4)),
     usingRealDepth: Boolean(realDepth),
+    depthValues,
+    selectionValues,
+    midgroundValues,
   };
 }
 
@@ -1633,8 +1639,8 @@ function App() {
     [sample, focus, manual, realDepth, hintStrokes, groupBoxes, matteSeeds, matteSettings],
   );
   const plateCompositeMaps = useMemo(
-    () => buildPlateCompositeMaps(sample, focus, manual, realDepth, sourceRaster, plateStack),
-    [sample, focus, manual, realDepth, sourceRaster, plateStack],
+    () => buildPlateCompositeMaps(proxyMaps, sourceRaster, plateStack),
+    [proxyMaps, sourceRaster, plateStack],
   );
 
   useEffect(() => {
