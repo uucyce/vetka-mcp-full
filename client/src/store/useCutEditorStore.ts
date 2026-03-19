@@ -193,6 +193,9 @@ interface CutEditorState {
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
 
+  // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
+  getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
+
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
   setWaveforms: (items: WaveformItem[]) => void;
@@ -216,7 +219,7 @@ interface CutEditorState {
   createVersionedTimeline: (projectName: string, mode?: string) => string;
 }
 
-export const useCutEditorStore = create<CutEditorState>((set) => ({
+export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Playback defaults
   currentTime: 0,
   isPlaying: false,
@@ -348,8 +351,43 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
 
+  // MARKER_W2.2: Resolve insert/overwrite destination lanes
+  // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
+  getInsertTargets: () => {
+    const state = get();
+    const { lanes, targetedLanes } = state;
+    const isVideo = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
+    const isAudio = (t: string) => t.startsWith('audio');
+    let videoLaneId: string | null = null;
+    let audioLaneId: string | null = null;
+    for (const lane of lanes) {
+      if (!targetedLanes.has(lane.lane_id)) continue;
+      if (!videoLaneId && isVideo(lane.lane_type)) videoLaneId = lane.lane_id;
+      if (!audioLaneId && isAudio(lane.lane_type)) audioLaneId = lane.lane_id;
+    }
+    // Fallback: first V and first A lane if none targeted
+    if (!videoLaneId) videoLaneId = lanes.find((l) => isVideo(l.lane_type))?.lane_id ?? null;
+    if (!audioLaneId) audioLaneId = lanes.find((l) => isAudio(l.lane_type))?.lane_id ?? null;
+    return { videoLaneId, audioLaneId };
+  },
+
   // Data setters
-  setLanes: (lanes) => set({ lanes }),
+  setLanes: (lanes) => {
+    // MARKER_W2.2: Auto-target first V + first A lane if no targets set
+    const state = get();
+    const isVideo = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
+    const isAudio = (t: string) => t.startsWith('audio');
+    if (state.targetedLanes.size === 0 && lanes.length > 0) {
+      const autoTargets = new Set<string>();
+      const firstV = lanes.find((l) => isVideo(l.lane_type));
+      const firstA = lanes.find((l) => isAudio(l.lane_type));
+      if (firstV) autoTargets.add(firstV.lane_id);
+      if (firstA) autoTargets.add(firstA.lane_id);
+      set({ lanes, targetedLanes: autoTargets });
+    } else {
+      set({ lanes });
+    }
+  },
   setWaveforms: (items) => set({ waveforms: items }),
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),

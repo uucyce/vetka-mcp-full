@@ -1216,7 +1216,13 @@ export default function TimelineTrackView() {
               <div style={LANE_HEADER}>
                 <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
-                {/* MARKER_W2.1: Track controls — target, lock, solo, mute */}
+                {/* MARKER_W2.1 + W2.2: Track controls — patch indicator, target, lock, solo, mute */}
+                {/* MARKER_W2.2: Source patch indicator — shows source channel routed here */}
+                {targetedLanes.has(lane.lane_id) && (
+                  <span style={{ fontSize: 8, color: '#4a9eff', letterSpacing: 0.5, userSelect: 'none' }}>
+                    {lane.lane_type.startsWith('audio') ? 'A' : 'V'} {'\u2192'}
+                  </span>
+                )}
                 <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
