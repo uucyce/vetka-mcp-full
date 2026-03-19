@@ -45,9 +45,23 @@ function MagnetIcon({ active }: { active: boolean }) {
   );
 }
 
+// MARKER_W3.6: Tool indicator style
+const TOOL_BTN: CSSProperties = {
+  background: 'none',
+  border: '1px solid transparent',
+  cursor: 'pointer',
+  padding: '1px 6px',
+  fontSize: 10,
+  fontFamily: 'system-ui',
+  color: '#555',
+  borderRadius: 3,
+};
+
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
+  const activeTool = useCutEditorStore((s) => s.activeTool);
+  const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
 
   return (
     <div style={ROOT}>
@@ -61,6 +75,23 @@ export default function TimelineToolbar() {
       >
         <MagnetIcon active={snapEnabled} />
       </button>
+      {/* MARKER_W3.6: Tool selector — V=Selection, C=Razor */}
+      <div style={{ width: 1, height: 14, background: '#222', margin: '0 4px' }} />
+      {(['selection', 'razor'] as const).map((tool) => (
+        <button
+          key={tool}
+          style={{
+            ...TOOL_BTN,
+            color: activeTool === tool ? '#ccc' : '#555',
+            background: activeTool === tool ? '#1a1a1a' : 'none',
+            borderColor: activeTool === tool ? '#333' : 'transparent',
+          }}
+          onClick={() => setActiveTool(tool)}
+          title={tool === 'selection' ? 'Selection Tool (V)' : 'Razor Tool (C)'}
+        >
+          {tool === 'selection' ? 'V' : 'C'}
+        </button>
+      ))}
     </div>
   );
 }

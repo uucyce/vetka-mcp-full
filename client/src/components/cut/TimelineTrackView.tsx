@@ -502,6 +502,9 @@ export default function TimelineTrackView() {
   const toggleTarget = useCutEditorStore((state) => state.toggleTarget);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
+  // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
+  const activeTool = useCutEditorStore((state) => state.activeTool);
+  const TOOL_CURSOR: Record<string, string> = { selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in' };
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
@@ -1293,7 +1296,7 @@ export default function TimelineTrackView() {
 
               <div
                 data-testid={`cut-timeline-lane-${lane.lane_id}`}
-                style={LANE_CONTENT}
+                style={{ ...LANE_CONTENT, cursor: TOOL_CURSOR[activeTool] || 'default' }}
                 onClick={handleTrackClick}
                 onDoubleClick={(event) => handleTrackDoubleClick(event, lane.lane_id)}
               >

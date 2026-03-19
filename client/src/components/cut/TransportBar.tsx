@@ -592,6 +592,9 @@ export default function TransportBar() {
     zoomOut:          () => setZoom(zoom / 1.3),
     importMedia:      () => window.dispatchEvent(new CustomEvent('cut:trigger-import')),
     sceneDetect:      () => handleSceneDetect(),
+    // MARKER_W3.6: Tool State Machine hotkeys
+    selectTool:       () => useCutEditorStore.getState().setActiveTool('selection'),
+    razorTool:        () => useCutEditorStore.getState().setActiveTool('razor'),
     toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
   }), [
     togglePlay, pause, seek, currentTime, duration, cycleRate,

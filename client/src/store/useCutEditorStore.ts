@@ -119,6 +119,9 @@ interface CutEditorState {
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
   focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null;
 
+  // === MARKER_W3.6: Tool State Machine ===
+  activeTool: 'selection' | 'razor' | 'hand' | 'zoom';
+
   // === MARKER_W1.3: Source/Program feed split ===
   sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
   programMediaPath: string | null;    // timeline playback → Program Monitor
@@ -194,6 +197,8 @@ interface CutEditorState {
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
+  // MARKER_W3.6: Tool State Machine
+  setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom') => void;
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
@@ -259,6 +264,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W1.2: Panel Focus
   focusedPanel: null,
+  activeTool: 'selection',
 
   // Data
   lanes: [],
@@ -354,6 +360,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setSceneGraphSurfaceMode: (mode) => set({ sceneGraphSurfaceMode: mode }),
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),
+  // MARKER_W3.6: Tool State Machine
+  setActiveTool: (tool) => set({ activeTool: tool }),
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
