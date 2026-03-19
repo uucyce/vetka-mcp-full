@@ -47,6 +47,12 @@ RENDER_PRESETS: dict[str, dict[str, Any]] = {
     },
 }
 
+DEPTH_BANDS: list[dict[str, Any]] = [
+    {"name": "near", "min": 170, "max": 255, "motion_scale": 1.18, "zoom_scale": 1.08},
+    {"name": "mid", "min": 96, "max": 169, "motion_scale": 1.0, "zoom_scale": 1.0},
+    {"name": "far", "min": 1, "max": 95, "motion_scale": 0.72, "zoom_scale": 0.94},
+]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Render preview_multiplate.mp4 from exported plate assets.")
@@ -155,27 +161,28 @@ def motion_profile(layout: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def plate_zoom_expr(profile: dict[str, Any], strength: float) -> str:
+def plate_zoom_expr(profile: dict[str, Any], strength: float, zoom_scale: float = 1.0) -> str:
     motion_type = profile["motion_type"]
     zoom_delta = profile["zoom"] - 1.0
     progress = profile["progress"]
     cosine = profile["cosine"]
+    scaled_strength = strength * zoom_scale
     if motion_type == "orbit":
-      return f"(1+({zoom_delta:.6f})*{strength:.4f}*0.14*(1-({cosine}*{cosine})))"
+      return f"(1+({zoom_delta:.6f})*{scaled_strength:.4f}*0.14*(1-({cosine}*{cosine})))"
     if motion_type == "dolly-out + zoom-in":
-      return f"(1+({zoom_delta:.6f})*{progress}*{strength:.4f})"
+      return f"(1+({zoom_delta:.6f})*{progress}*{scaled_strength:.4f})"
     if motion_type == "dolly-in + zoom-out":
-      return f"(1+({zoom_delta:.6f})*(1-{progress})*{strength:.4f})"
-    return f"(1+({zoom_delta:.6f})*{strength:.4f}*0.32)"
+      return f"(1+({zoom_delta:.6f})*(1-{progress})*{scaled_strength:.4f})"
+    return f"(1+({zoom_delta:.6f})*{scaled_strength:.4f}*0.32)"
 
 
-def plate_motion_expr(profile: dict[str, Any], plate: dict[str, Any], axis: str) -> str:
+def plate_motion_expr(profile: dict[str, Any], plate: dict[str, Any], axis: str, strength_scale: float = 1.0) -> str:
     base = profile["travel_x_px"] if axis == "x" else profile["travel_y_px"]
     signed = profile["signed"]
     cosine = profile["cosine"]
     strength = float(plate["parallaxStrength"])
     damping = float(plate["motionDamping"])
-    pixels = base * strength * damping
+    pixels = base * strength * strength_scale * damping
     if profile["motion_type"] == "orbit":
         if axis == "x":
             return f"{pixels:.4f}*{signed}"
@@ -234,37 +241,66 @@ def build_filter_complex(
     )
     chain.append("[base][bg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto[layer0]")
 
-    for index, plate in enumerate(ordered, start=background_index + 1):
+    for plate_offset, plate in enumerate(ordered):
+        rgba_input_index = background_index + 1 + plate_offset * 2
+        depth_input_index = rgba_input_index + 1
         layout_plate = layout_by_id[plate["id"]]
         strength = float(layout_plate["parallaxStrength"])
-        x_motion = f"({plate_motion_expr(profile, layout_plate, 'x')})*{motion_scale:.6f}"
-        y_motion = f"({plate_motion_expr(profile, layout_plate, 'y')})*{motion_scale:.6f}"
-        zoom_expr = plate_zoom_expr(profile, strength)
-        layer_input = f"layer{index-background_index-1}"
+        layer_input = f"layer{plate_offset}"
         clean_variant = layout_plate.get("cleanVariant")
         clean_plate = clean_by_variant.get(clean_variant) if clean_variant else None
         if clean_plate:
             clean_input_index = ordered_clean.index(clean_plate)
             chain.append(
                 f"[{layer_input}][clean{clean_input_index}]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto"
-                f"[cleanunderlay{index-background_index}]"
+                f"[cleanunderlay{plate_offset + 1}]"
             )
-            layer_input = f"cleanunderlay{index-background_index}"
+            layer_input = f"cleanunderlay{plate_offset + 1}"
+
+        rgba_split_labels = [f"plate{plate_offset}_rgba_{band['name']}" for band in DEPTH_BANDS]
+        depth_split_labels = [f"plate{plate_offset}_depth_{band['name']}" for band in DEPTH_BANDS]
         chain.append(
-            f"[{index}:v]"
-            "format=rgba,"
-            f"scale=w='iw*{asset_scale:.6f}*{supersample:.3f}*{zoom_expr}':h='ih*{asset_scale:.6f}*{supersample:.3f}*{zoom_expr}':flags=lanczos:eval=frame,"
-            "setsar=1"
-            f"[plate{index}]"
+            f"[{rgba_input_index}:v]format=rgba,split={len(DEPTH_BANDS)}" + "".join(f"[{label}]" for label in rgba_split_labels)
         )
         chain.append(
-            f"[{layer_input}][plate{index}]"
-            f"overlay=x='(W-w)/2-({x_motion})':"
-            f"y='(H-h)/2-({y_motion})':eval=frame:format=auto"
-            f"[layer{index-background_index}]"
+            f"[{depth_input_index}:v]format=gray,split={len(DEPTH_BANDS)}" + "".join(f"[{label}]" for label in depth_split_labels)
         )
 
-    last = f"[layer{len(ordered)}]"
+        for band_index, band in enumerate(DEPTH_BANDS):
+            zoom_expr = plate_zoom_expr(profile, strength, float(band["zoom_scale"]))
+            x_motion = f"({plate_motion_expr(profile, layout_plate, 'x', float(band['motion_scale']))})*{motion_scale:.6f}"
+            y_motion = f"({plate_motion_expr(profile, layout_plate, 'y', float(band['motion_scale']))})*{motion_scale:.6f}"
+            rgba_label = rgba_split_labels[band_index]
+            depth_label = depth_split_labels[band_index]
+            alpha_label = f"plate{plate_offset}_alpha_{band['name']}"
+            mask_label = f"plate{plate_offset}_mask_{band['name']}"
+            band_alpha_label = f"plate{plate_offset}_bandalpha_{band['name']}"
+            rgb_label = f"plate{plate_offset}_rgb_{band['name']}"
+            band_plate_label = f"plate{plate_offset}_band_{band['name']}"
+            next_layer_label = f"layer{plate_offset + 1}_{band['name']}"
+
+            chain.append(f"[{rgba_label}]alphaextract[{alpha_label}]")
+            chain.append(
+                f"[{depth_label}]lut=y='if(between(val,{band['min']},{band['max']}),255,0)',gblur=sigma=0.8[{mask_label}]"
+            )
+            chain.append(f"[{alpha_label}][{mask_label}]blend=all_mode=multiply[{band_alpha_label}]")
+            chain.append(f"[{rgba_label}]format=rgb24[{rgb_label}]")
+            chain.append(f"[{rgb_label}][{band_alpha_label}]alphamerge[{band_plate_label}]")
+            chain.append(
+                f"[{band_plate_label}]"
+                f"scale=w='iw*{asset_scale:.6f}*{supersample:.3f}*{zoom_expr}':h='ih*{asset_scale:.6f}*{supersample:.3f}*{zoom_expr}':flags=lanczos:eval=frame,"
+                "setsar=1"
+                f"[{band_plate_label}_scaled]"
+            )
+            chain.append(
+                f"[{layer_input}][{band_plate_label}_scaled]"
+                f"overlay=x='(W-w)/2-({x_motion})':"
+                f"y='(H-h)/2-({y_motion})':eval=frame:format=auto"
+                f"[{next_layer_label}]"
+            )
+            layer_input = next_layer_label
+
+    last = f"[{layer_input}]" if ordered else "[layer0]"
     chain.append(
         f"{last}fps={working_fps},"
         f"scale=w={source_w}:h={source_h}:flags=lanczos,"
@@ -313,6 +349,7 @@ def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> di
     )
     for plate in ordered:
         inputs.append(sample_dir / plate["files"]["rgba"])
+        inputs.append(sample_dir / plate["files"]["depth"])
 
     command = ["ffmpeg", "-y"]
     for path in inputs:
@@ -371,6 +408,7 @@ def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> di
         "preset": settings["name"],
         "render_settings": settings,
         "rendered_plate_count": len(ordered),
+        "rendered_depth_band_count": len(ordered) * len(DEPTH_BANDS),
         "special_clean_count": len(ordered_clean),
         "routed_clean_count": routed_clean_count,
         "camera_safe": layout.get("cameraSafe", {}),
