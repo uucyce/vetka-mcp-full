@@ -519,6 +519,42 @@ export default function TransportBar() {
     deleteClip:       () => removeSelectedClip(),
     splitClip:        () => splitAtPlayhead(),
     rippleDelete:     () => rippleDeleteClip(),
+    // MARKER_W3.3: Navigate edit points + Zoom to fit
+    prevEditPoint:    () => {
+      const lanes = useCutEditorStore.getState().lanes;
+      const editPoints = new Set<number>();
+      for (const lane of lanes) {
+        for (const clip of lane.clips) {
+          editPoints.add(clip.timeline_in);
+          editPoints.add(clip.timeline_in + (clip.duration ?? 0));
+        }
+      }
+      const sorted = [...editPoints].sort((a, b) => a - b);
+      const prev = sorted.filter((t) => t < currentTime - 0.01).pop();
+      if (prev != null) seek(prev);
+    },
+    nextEditPoint:    () => {
+      const lanes = useCutEditorStore.getState().lanes;
+      const editPoints = new Set<number>();
+      for (const lane of lanes) {
+        for (const clip of lane.clips) {
+          editPoints.add(clip.timeline_in);
+          editPoints.add(clip.timeline_in + (clip.duration ?? 0));
+        }
+      }
+      const sorted = [...editPoints].sort((a, b) => a - b);
+      const next = sorted.find((t) => t > currentTime + 0.01);
+      if (next != null) seek(next);
+    },
+    zoomToFit:        () => {
+      const { lanes, duration: dur } = useCutEditorStore.getState();
+      if (dur <= 0) return;
+      // Estimate visible width (~80% of window minus lane headers)
+      const visibleWidth = Math.max(400, window.innerWidth - 200);
+      const fitZoom = visibleWidth / dur;
+      setZoom(Math.max(10, Math.min(300, fitZoom)));
+      useCutEditorStore.getState().setScrollLeft(0);
+    },
     addMarker:        () => createMarker('favorite', ''),
     addComment:       async () => {
       const text = window.prompt('Comment marker text', 'CUT note') || '';

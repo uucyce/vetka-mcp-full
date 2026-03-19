@@ -52,9 +52,13 @@ export type CutHotkeyAction =
   // Markers
   | 'addMarker'
   | 'addComment'
+  // Navigation
+  | 'prevEditPoint'
+  | 'nextEditPoint'
   // View
   | 'zoomIn'
   | 'zoomOut'
+  | 'zoomToFit'
   // Project
   | 'importMedia'
   // CUT-specific
@@ -111,9 +115,13 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  // Navigation
+  prevEditPoint:     'ArrowUp',
+  nextEditPoint:     'ArrowDown',
   // View
   zoomIn:            '=',
   zoomOut:           '-',
+  zoomToFit:         '\\',
   // Project
   importMedia:       'Cmd+i',
   // CUT-specific
@@ -155,9 +163,13 @@ export const FCP7_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  // Navigation
+  prevEditPoint:     'ArrowUp',
+  nextEditPoint:     'ArrowDown',
   // View
   zoomIn:            'Cmd+=',
   zoomOut:           'Cmd+-',
+  zoomToFit:         'Shift+z',
   // Project
   importMedia:       'Cmd+i',
   // CUT-specific
@@ -331,9 +343,13 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Markers
   { action: 'addMarker', label: 'Add Marker', group: 'Markers' },
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
+  // Navigation
+  { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
+  { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
   { action: 'zoomOut', label: 'Zoom Out', group: 'View' },
+  { action: 'zoomToFit', label: 'Zoom to Fit', group: 'View' },
   // Project
   { action: 'importMedia', label: 'Import Media', group: 'Project' },
   // CUT
