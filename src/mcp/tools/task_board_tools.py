@@ -270,6 +270,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     if not action:
         return {"success": False, "error": "action is required"}
 
+    # MARKER_195.6: Record task_board action for protocol tracking
+    try:
+        from src.services.session_tracker import get_session_tracker
+        get_session_tracker().record_action(
+            "mcp_default", "vetka_task_board",
+            {"action": action, "task_id": arguments.get("task_id", "")},
+        )
+    except Exception:
+        pass
+
     board = get_task_board()
 
     if action == "add":

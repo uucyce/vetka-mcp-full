@@ -82,6 +82,13 @@ class EditFileTool(BaseMCPTool):
         create_dirs = arguments.get("create_dirs", False)
         dry_run = arguments.get("dry_run", True)
 
+        # MARKER_195.6: Record edit action for protocol tracking
+        try:
+            from src.services.session_tracker import get_session_tracker
+            get_session_tracker().record_action("mcp_default", "vetka_edit_file", {"file_path": rel_path})
+        except Exception:
+            pass
+
         full_path = PROJECT_ROOT / rel_path
         exists = full_path.exists()
 

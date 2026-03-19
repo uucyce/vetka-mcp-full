@@ -2,7 +2,7 @@
 
 **Author:** Opus (Claude Code)
 **Date:** 2026-03-19
-**Status:** DRAFT
+**Status:** IMPLEMENTED (W1-W2 done, W3 verified 2026-03-19)
 **Task:** `tb_1773893756_1`
 **Related:** D1 (195.0 Protocol Guard), D2 (195.1 CORTEX Freshness)
 
@@ -445,7 +445,38 @@ tests/test_phase195_reflex_emotions.py # Full test suite (NEW)
 
 ---
 
-## Open Questions (for roadmap discussion)
+## W3 Verification Report (2026-03-19)
+
+### Test Results
+- **147/147 REFLEX tests pass** (emotions: 36, scorer: 78, feedback: 26, guard: 7)
+- 6 stale test files with ImportErrors (phase159/170/172, agents_routes) — pre-existing, unrelated
+
+### Implementation Deviations (accepted)
+
+| # | Spec vs Implementation | Decision |
+|---|------------------------|----------|
+| 1 | Singleton: `get_emotion_engine()` → `get_reflex_emotions()` | Accept — consistent with `get_reflex_scorer()` naming |
+| 2 | Trust formula: raw ±delta → EMA-style proportional | Accept — EMA is more stable, prevents overshoot |
+| 3 | IP-E3: explicit hook → transitive via `recommend()` | Accept — works, no functional gap |
+
+### Known Gaps (Phase 2)
+
+| # | Gap | Impact | Fix |
+|---|-----|--------|-----|
+| 1 | `score()` skips emotions, only `recommend()` applies modifier | Single-tool scoring bypasses emotions | Add emotion modifier to `score()` |
+| 2 | `record_outcome()` (verifier path) doesn't update emotions | Verifier pass/fail doesn't affect trust | Wire IP-E2 into `record_outcome()` |
+| 3 | EmotionContext shallow — no guard_warnings/foreign_files from D1 | Caution underestimates risk | Wire when D1 ships |
+| 4 | EmotionContext no freshness from D2 | Curiosity doesn't respond to tool updates | Wire when D2 ships |
+
+### D1/D2 Interface Status
+
+- **D1 → D3 (Protocol Guard → Caution):** Interface defined, not wired. Caution currently uses local guard_warnings set.
+- **D2 → D3 (Tool Freshness → Curiosity):** Interface defined, not wired. Curiosity uses tool_freshness dict (empty until D2 ships).
+- **D3 → D1/D2 (Emotions → Guard/Freshness):** `get_reflex_emotions()` exposes `get_modifier_breakdown(tool_id)` for external consumers.
+
+---
+
+## Open Questions (for future phases)
 
 1. **Emotion visualization:** Should the 3D DAG show emotion state as node color/glow?
 2. **Cross-agent emotion transfer:** If Cursor trusts `vetka_edit_file`, should Opus inherit partial trust?

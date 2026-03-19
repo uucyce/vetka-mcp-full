@@ -578,6 +578,29 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Emotion errors never block session init
 
+        # MARKER_195.5: Protocol status in session_init
+        try:
+            from src.services.session_tracker import get_session_tracker
+            _pt_tracker = get_session_tracker()
+            _pt_sid = context.get("session_id", "default")
+            _pt_tracker.record_action(_pt_sid, "vetka_session_init", {})
+            _pt_session = _pt_tracker.get_session(_pt_sid)
+            context["protocol_status"] = {
+                "session_init": True,
+                "task_board_checked": _pt_session.task_board_checked,
+                "task_claimed": _pt_session.task_claimed,
+                "claimed_task_id": _pt_session.claimed_task_id,
+                "files_read": len(_pt_session.files_read),
+                "files_edited": len(_pt_session.files_edited),
+                "protocol_checklist": [
+                    {"step": "session_init", "done": True},
+                    {"step": "task_board_check", "done": _pt_session.task_board_checked},
+                    {"step": "claim_task", "done": _pt_session.task_claimed},
+                ],
+            }
+        except Exception:
+            pass  # Protocol status never blocks session init
+
         # MARKER_178.1.4: Build actionable next_steps from context
         try:
             next_steps = []

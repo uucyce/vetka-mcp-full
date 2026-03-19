@@ -380,6 +380,27 @@ def reflex_session(
         except Exception as e:
             logger.debug("[REFLEX IP-6] Guard filtering failed (non-fatal): %s", e)
 
+        # MARKER_195.7: Protocol violations as REFLEX warnings
+        try:
+            from src.services.protocol_guard import get_protocol_guard
+            from src.services.session_tracker import get_session_tracker
+            _pg_tracker = get_session_tracker()
+            _pg_guard = get_protocol_guard()
+            _pg_sid = session_data.get("session_id", "reflex_default")
+            _pg_session = _pg_tracker.get_session(_pg_sid)
+            _pg_pending = _pg_guard.check_all_pending(_pg_session)
+            for _pg_v in _pg_pending:
+                recs.append({
+                    "tool_id": "protocol_guard",
+                    "score": 0.0,
+                    "reason": _pg_v.message,
+                    "severity": _pg_v.severity,
+                    "source": f"protocol:{_pg_v.rule_id}",
+                    "warning": f"PROTOCOL: {_pg_v.message} → {_pg_v.suggestion}",
+                })
+        except Exception as e:
+            logger.debug("[REFLEX IP-6] Protocol bridge failed (non-fatal): %s", e)
+
         return recs
 
     except Exception as e:

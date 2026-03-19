@@ -63,6 +63,13 @@ class ReadFileTool(BaseMCPTool):
         max_lines = arguments.get("max_lines", 500)
         encoding = arguments.get("encoding", "utf-8")
 
+        # MARKER_195.6: Record read action for protocol tracking
+        try:
+            from src.services.session_tracker import get_session_tracker
+            get_session_tracker().record_action("mcp_default", "vetka_read_file", {"file_path": rel_path})
+        except Exception:
+            pass
+
         full_path = PROJECT_ROOT / rel_path
 
         if not full_path.is_file():

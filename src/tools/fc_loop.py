@@ -567,6 +567,45 @@ async def execute_fc_loop(
                 logger.debug(f"[FC Loop] Guard check error (non-fatal): {e}")
             # MARKER_193.4_END
 
+            # MARKER_195.4: Protocol Guard pre-call check
+            try:
+                from src.services.protocol_guard import get_protocol_guard
+                from src.services.session_tracker import get_session_tracker
+                _pg_tracker = get_session_tracker()
+                _pg_guard = get_protocol_guard()
+                _pg_sid = locals().get("session_id", "fc_loop_default")
+                _pg_tracker.record_action(_pg_sid, func_name, func_args)
+                _pg_violations = _pg_guard.check(
+                    _pg_tracker.get_session(_pg_sid), func_name, func_args
+                )
+                for _pg_v in _pg_violations:
+                    if _pg_v.severity == "block":
+                        logger.warning("[FC Loop] PROTOCOL BLOCKED '%s': %s", func_name, _pg_v.message)
+                        tool_results.append({
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "content": json.dumps({
+                                "success": False,
+                                "error": f"PROTOCOL: {_pg_v.message}\n→ {_pg_v.suggestion}",
+                            })
+                        })
+                        all_tool_executions.append({
+                            "name": func_name,
+                            "args": func_args,
+                            "result": {"success": False, "result": None, "error": _pg_v.message},
+                        })
+                        # Skip to next tool call on block
+                        break
+                    else:
+                        logger.info("[FC Loop] PROTOCOL WARNING '%s': %s", func_name, _pg_v.message)
+                else:
+                    _pg_violations = []  # No block → clear for execution
+                if any(v.severity == "block" for v in _pg_violations):
+                    continue  # Skip execution for blocked tool
+            except Exception as _pg_e:
+                logger.debug("[FC Loop] Protocol check error (non-fatal): %s", _pg_e)
+            # MARKER_195.4_END
+
             # Emit progress
             if progress_callback:
                 try:
