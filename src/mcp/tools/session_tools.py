@@ -459,6 +459,66 @@ class SessionInitTool(BaseMCPTool):
             if my_focus:
                 context["my_focus"] = my_focus
 
+        # MARKER_194.1: Claimed tasks overlay — show other agents' active work
+        try:
+            from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
+            _board = TaskBoard(TASK_BOARD_FILE)
+            claimed_tasks = _board.get_queue(status="claimed")
+            other_agents_work = []
+            for t in claimed_tasks:
+                t_agent_type = t.get("agent_type", "")
+                # Skip current agent's own tasks
+                if t_agent_type == agent_type:
+                    continue
+                other_agents_work.append({
+                    "agent": t.get("assigned_to", t_agent_type or "unknown"),
+                    "task_id": t.get("task_id", t.get("id", "?")),
+                    "title": t.get("title", "")[:60],
+                    "allowed_paths": t.get("allowed_paths", []),
+                    "claimed_at": t.get("assigned_at", ""),
+                })
+            if other_agents_work:
+                context["other_agents"] = other_agents_work
+        except Exception:
+            pass  # Never break session_init
+
+        # MARKER_194.2: Conflict radar — recent file changes by other agents
+        try:
+            import subprocess as _sp
+            _git_result = _sp.run(
+                ["git", "log", "--since=2h", "--name-only", "--format=COMMIT_BY:%an"],
+                capture_output=True, text=True, timeout=5,
+                cwd=str(PROJECT_ROOT)
+            )
+            if _git_result.returncode == 0 and _git_result.stdout.strip():
+                # Parse: group files by author
+                _changes_by_author = {}
+                _current_author = None
+                for line in _git_result.stdout.strip().split("\n"):
+                    if line.startswith("COMMIT_BY:"):
+                        _current_author = line[10:].strip()
+                        if _current_author not in _changes_by_author:
+                            _changes_by_author[_current_author] = {"files": set(), "commits": 0}
+                        _changes_by_author[_current_author]["commits"] += 1
+                    elif line.strip() and _current_author:
+                        _changes_by_author[_current_author]["files"].add(line.strip())
+                # Build radar, exclude empty entries
+                radar_changes = []
+                for author, data in _changes_by_author.items():
+                    if data["files"]:
+                        radar_changes.append({
+                            "agent": author,
+                            "files": sorted(data["files"]),
+                            "commit_count": data["commits"],
+                        })
+                if radar_changes:
+                    context["conflict_radar"] = {
+                        "window": "2h",
+                        "changes": radar_changes,
+                    }
+        except Exception:
+            pass  # Git failure never breaks session_init
+
         # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
         try:
             from src.services.reflex_feedback import ReflexFeedback
