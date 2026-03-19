@@ -212,14 +212,23 @@ export default function ExportDialog() {
   const projectId = useCutEditorStore((s) => s.projectId);
   const timelineId = useCutEditorStore((s) => s.timelineId);
   const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
+  // MARKER_W6.2: Sequence marks for selection export
+  const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
+  const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
+  const lanes = useCutEditorStore((s) => s.lanes);
 
   const [tab, setTab] = useState<ExportTab>('master');
   const [codec, setCodec] = useState<VideoCodec>('h264');
   const [resolution, setResolution] = useState<Resolution>('1080p');
   const [quality, setQuality] = useState(80);
+  const [selectionOnly, setSelectionOnly] = useState(false);
+  const [audioStems, setAudioStems] = useState(false);
   const [editorialFormat, setEditorialFormat] = useState<EditorialFormat>('premiere_xml');
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
+
+  const hasSelection = sequenceMarkIn !== null && sequenceMarkOut !== null;
+  const audioLanes = lanes.filter((l) => l.lane_type.startsWith('audio'));
 
   const close = useCallback(() => {
     if (renderProgress !== null) return; // don't close while rendering
@@ -246,6 +255,10 @@ export default function ExportDialog() {
           resolution,
           quality,
           fps: projectFramerate,
+          // MARKER_W6.2: Selection range + audio stems
+          range_in: selectionOnly && hasSelection ? sequenceMarkIn : null,
+          range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
+          audio_stems: audioStems,
         }),
       });
 
@@ -441,6 +454,56 @@ export default function ExportDialog() {
                     {quality}%
                   </span>
                 </div>
+              </div>
+
+              {/* MARKER_W6.2: Selection range */}
+              <div style={FIELD}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: hasSelection ? '#ccc' : '#555', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={selectionOnly}
+                    onChange={(e) => setSelectionOnly(e.target.checked)}
+                    disabled={isRendering || !hasSelection}
+                  />
+                  Selection only (IN/OUT range)
+                </label>
+                {hasSelection ? (
+                  <div style={{ fontSize: 9, color: '#555', marginTop: 2, marginLeft: 24 }}>
+                    {sequenceMarkIn?.toFixed(2)}s - {sequenceMarkOut?.toFixed(2)}s
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 9, color: '#444', marginTop: 2, marginLeft: 24 }}>
+                    Set IN/OUT marks on timeline to enable
+                  </div>
+                )}
+              </div>
+
+              {/* MARKER_W6.2: Audio stems */}
+              <div style={FIELD}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: audioLanes.length > 0 ? '#ccc' : '#555', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={audioStems}
+                    onChange={(e) => setAudioStems(e.target.checked)}
+                    disabled={isRendering || audioLanes.length === 0}
+                  />
+                  Export audio stems (per-track WAV)
+                </label>
+                {audioLanes.length > 0 ? (
+                  <div style={{ fontSize: 9, color: '#555', marginTop: 2, marginLeft: 24 }}>
+                    {audioLanes.length} audio track{audioLanes.length !== 1 ? 's' : ''} will be exported separately
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 9, color: '#444', marginTop: 2, marginLeft: 24 }}>
+                    No audio tracks in timeline
+                  </div>
+                )}
               </div>
 
               {/* Progress */}

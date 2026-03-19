@@ -7908,6 +7908,10 @@ class CutRenderMasterRequest(BaseModel):
     quality: int = Field(default=80, ge=1, le=100)
     fps: int = Field(default=25, ge=1, le=120)
     preset: str = ""  # optional: youtube, instagram_reels, tiktok, telegram
+    # MARKER_W6.2: Selection range + audio stems
+    range_in: float | None = None   # seconds — export only this range
+    range_out: float | None = None
+    audio_stems: bool = False        # export per-track WAV files
 
 
 _CODEC_MAP = {
@@ -8018,6 +8022,11 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             crf = max(0, min(51, int(51 - (req.quality / 100) * 51)))
             cmd += ["-crf", str(crf)]
 
+        # MARKER_W6.2: Selection range (IN/OUT trim)
+        if req.range_in is not None and req.range_out is not None and req.range_out > req.range_in:
+            # Insert -ss and -t before output for range export
+            cmd += ["-ss", str(req.range_in), "-t", str(req.range_out - req.range_in)]
+
         # FPS
         cmd += ["-r", str(req.fps)]
 
@@ -8047,6 +8056,33 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             store.update_job(job_id, state="error", error={"message": f"FFmpeg failed: {stderr}"})
             return
 
+        # MARKER_W6.2: Audio stems export (per-track WAV)
+        stem_paths: list[str] = []
+        if req.audio_stems:
+            store.update_job(job_id, progress=0.85)
+            stems_dir = os.path.join(output_dir, "stems")
+            os.makedirs(stems_dir, exist_ok=True)
+            for lane in lanes:
+                if not lane.get("lane_type", "").startswith("audio"):
+                    continue
+                lane_id = lane.get("lane_id", "unknown")
+                for clip in lane.get("clips", []):
+                    sp = clip.get("source_path", "")
+                    if not sp or not os.path.isfile(sp):
+                        continue
+                    stem_name = f"{lane_id}_{os.path.basename(sp).rsplit('.', 1)[0]}.wav"
+                    stem_path = os.path.join(stems_dir, stem_name)
+                    stem_cmd = [ffmpeg_path, "-y", "-i", sp, "-vn", "-c:a", "pcm_s24le", "-ar", "48000"]
+                    if req.range_in is not None and req.range_out is not None:
+                        stem_cmd += ["-ss", str(req.range_in), "-t", str(req.range_out - req.range_in)]
+                    stem_cmd += [stem_path]
+                    try:
+                        subprocess.run(stem_cmd, capture_output=True, timeout=120)
+                        if os.path.exists(stem_path):
+                            stem_paths.append(stem_path)
+                    except Exception:
+                        pass  # best-effort stems
+
         store.update_job(
             job_id,
             state="done",
@@ -8056,6 +8092,8 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
                 "codec": req.codec,
                 "resolution": req.resolution,
                 "file_size_bytes": os.path.getsize(output_path) if os.path.exists(output_path) else 0,
+                "stem_paths": stem_paths,
+                "stem_count": len(stem_paths),
             },
         )
 
