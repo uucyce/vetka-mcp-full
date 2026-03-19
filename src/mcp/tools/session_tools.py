@@ -482,42 +482,9 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Never break session_init
 
-        # MARKER_194.2: Conflict radar — recent file changes by other agents
-        try:
-            import subprocess as _sp
-            _git_result = _sp.run(
-                ["git", "log", "--since=2h", "--name-only", "--format=COMMIT_BY:%an"],
-                capture_output=True, text=True, timeout=5,
-                cwd=str(PROJECT_ROOT)
-            )
-            if _git_result.returncode == 0 and _git_result.stdout.strip():
-                # Parse: group files by author
-                _changes_by_author = {}
-                _current_author = None
-                for line in _git_result.stdout.strip().split("\n"):
-                    if line.startswith("COMMIT_BY:"):
-                        _current_author = line[10:].strip()
-                        if _current_author not in _changes_by_author:
-                            _changes_by_author[_current_author] = {"files": set(), "commits": 0}
-                        _changes_by_author[_current_author]["commits"] += 1
-                    elif line.strip() and _current_author:
-                        _changes_by_author[_current_author]["files"].add(line.strip())
-                # Build radar, exclude empty entries
-                radar_changes = []
-                for author, data in _changes_by_author.items():
-                    if data["files"]:
-                        radar_changes.append({
-                            "agent": author,
-                            "files": sorted(data["files"]),
-                            "commit_count": data["commits"],
-                        })
-                if radar_changes:
-                    context["conflict_radar"] = {
-                        "window": "2h",
-                        "changes": radar_changes,
-                    }
-        except Exception:
-            pass  # Git failure never breaks session_init
+        # MARKER_194.2: Conflict radar REMOVED (MARKER_193.8)
+        # Was dumping full git log --name-only → 3.5MB in session_init response.
+        # project_digest.agent_focus.hot_files already covers this info compactly.
 
         # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
         try:

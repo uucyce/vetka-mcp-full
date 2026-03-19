@@ -163,7 +163,7 @@ def _feed_cortex(
 ) -> Dict[str, Any]:
     """Record tool-level failures in CORTEX (REFLEX feedback)."""
     try:
-        from src.reflex.feedback import get_reflex_feedback
+        from src.services.reflex_feedback import get_reflex_feedback
 
         feedback = get_reflex_feedback()
         recorded = 0
@@ -201,7 +201,7 @@ def _maybe_promote_to_danger(
     promoted = 0
     checked = 0
     try:
-        from src.reflex.feedback import get_reflex_feedback
+        from src.services.reflex_feedback import get_reflex_feedback
         from src.memory.engram_cache import get_engram_cache
 
         fb = get_reflex_feedback()
