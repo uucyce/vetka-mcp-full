@@ -483,7 +483,7 @@ export default function TimelineTrackView() {
   const projectId = useCutEditorStore((state) => state.projectId);
   const timelineId = useCutEditorStore((state) => state.timelineId);
   const refreshProjectState = useCutEditorStore((state) => state.refreshProjectState);
-  const activeMediaPath = useCutEditorStore((state) => state.activeMediaPath);
+  const activeMediaPath = useCutEditorStore((state) => state.sourceMediaPath);
   const syncSurface = useCutEditorStore((state) => state.syncSurface);
   const markIn = useCutEditorStore((state) => state.markIn);
   const markOut = useCutEditorStore((state) => state.markOut);
@@ -498,7 +498,8 @@ export default function TimelineTrackView() {
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
-  const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
+  // MARKER_W1.3: Timeline clip click → Source Monitor
+  const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
 
   useEffect(() => {

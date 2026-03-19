@@ -90,8 +90,14 @@ interface CutEditorState {
   isPlaying: boolean;
   playbackRate: number;
   duration: number;
-  markIn: number | null;
-  markOut: number | null;
+  markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
+  markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
+
+  // === MARKER_W1.4: Separate Source marks and Sequence marks ===
+  sourceMarkIn: number | null;     // IN/OUT for raw clip in Source Monitor
+  sourceMarkOut: number | null;
+  sequenceMarkIn: number | null;   // IN/OUT for timeline position in Program Monitor
+  sequenceMarkOut: number | null;
 
   // === Timeline View ===
   zoom: number; // pixels per second (20 = zoomed out, 200 = zoomed in)
@@ -104,8 +110,15 @@ interface CutEditorState {
 
   // === Selection ===
   selectedClipId: string | null;
-  activeMediaPath: string | null;
+  activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
+
+  // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
+  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null;
+
+  // === MARKER_W1.3: Source/Program feed split ===
+  sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
+  programMediaPath: string | null;    // timeline playback → Program Monitor
 
   // === Data (set from CutStandalone projectState) ===
   lanes: TimelineLane[];
@@ -150,6 +163,11 @@ interface CutEditorState {
   setDuration: (d: number) => void;
   setMarkIn: (t: number | null) => void;
   setMarkOut: (t: number | null) => void;
+  // MARKER_W1.4: Separate marks
+  setSourceMarkIn: (t: number | null) => void;
+  setSourceMarkOut: (t: number | null) => void;
+  setSequenceMarkIn: (t: number | null) => void;
+  setSequenceMarkOut: (t: number | null) => void;
   setPlaybackRate: (rate: number) => void;
   setZoom: (z: number) => void;
   setTrackHeight: (h: number) => void;
@@ -160,11 +178,16 @@ interface CutEditorState {
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
   setActiveMedia: (path: string | null) => void;
+  // MARKER_W1.3: Source/Program routing
+  setSourceMedia: (path: string | null) => void;
+  setProgramMedia: (path: string | null) => void;
   setHoveredClip: (id: string | null) => void;
   setMediaError: (err: string | null) => void;
   setMediaLoading: (loading: boolean) => void;
   setViewMode: (mode: 'nle' | 'debug') => void;
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
+  // MARKER_W1.2: Panel Focus
+  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
 
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
@@ -198,6 +221,12 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   markIn: null,
   markOut: null,
 
+  // MARKER_W1.4: Separate marks
+  sourceMarkIn: null,
+  sourceMarkOut: null,
+  sequenceMarkIn: null,
+  sequenceMarkOut: null,
+
   // Timeline defaults
   zoom: 60, // 60px per second — good starting point
   scrollLeft: 0,
@@ -211,6 +240,13 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   selectedClipId: null,
   activeMediaPath: null,
   hoveredClipId: null,
+
+  // MARKER_W1.3: Source/Program feed split
+  sourceMediaPath: null,
+  programMediaPath: null,
+
+  // MARKER_W1.2: Panel Focus
+  focusedPanel: null,
 
   // Data
   lanes: [],
@@ -245,8 +281,13 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
   seek: (time) => set({ currentTime: Math.max(0, time) }),
   setDuration: (d) => set({ duration: d }),
-  setMarkIn: (t) => set({ markIn: t }),
-  setMarkOut: (t) => set({ markOut: t }),
+  setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
+  setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
+  // MARKER_W1.4: Separate marks
+  setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
+  setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
   setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
@@ -274,12 +315,17 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
   setSelectedClip: (id) => set({ selectedClipId: id }),
-  setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_W1.3: Source/Program routing
+  setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
   setHoveredClip: (id) => set({ hoveredClipId: id }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setSceneGraphSurfaceMode: (mode) => set({ sceneGraphSurfaceMode: mode }),
+  // MARKER_W1.2: Panel Focus
+  setFocusedPanel: (panel) => set({ focusedPanel: panel }),
 
   // Data setters
   setLanes: (lanes) => set({ lanes }),

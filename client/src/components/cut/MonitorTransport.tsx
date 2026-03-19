@@ -2,7 +2,7 @@
  * MARKER_CUT_0.3: MonitorTransport — compact transport controls under each monitor.
  *
  * Renders UNDER video in Source Monitor and Program Monitor.
- * Contains: scrubber bar, timecode display, transport buttons, DUR display.
+ * Contains: scrubber bar, timecode display, transport buttons, total duration.
  * Source Monitor additionally: IN / OUT buttons.
  * Max height: 60px. Style: dark #0a0a0a, white text, like Premiere.
  *
@@ -109,12 +109,23 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const duration = useCutEditorStore((s) => s.duration);
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
-  const markIn = useCutEditorStore((s) => s.markIn);
-  const markOut = useCutEditorStore((s) => s.markOut);
+  // MARKER_W1.4: Read correct marks based on feed
+  const sourceMarkIn = useCutEditorStore((s) => s.sourceMarkIn);
+  const sourceMarkOut = useCutEditorStore((s) => s.sourceMarkOut);
+  const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
+  const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
+  const setSourceMarkIn = useCutEditorStore((s) => s.setSourceMarkIn);
+  const setSourceMarkOut = useCutEditorStore((s) => s.setSourceMarkOut);
+  const setSequenceMarkIn = useCutEditorStore((s) => s.setSequenceMarkIn);
+  const setSequenceMarkOut = useCutEditorStore((s) => s.setSequenceMarkOut);
+
+  const markIn = feed === 'source' ? sourceMarkIn : sequenceMarkIn;
+  const markOut = feed === 'source' ? sourceMarkOut : sequenceMarkOut;
+  const setMarkIn = feed === 'source' ? setSourceMarkIn : setSequenceMarkIn;
+  const setMarkOut = feed === 'source' ? setSourceMarkOut : setSequenceMarkOut;
+
   const togglePlay = useCutEditorStore((s) => s.togglePlay);
   const seek = useCutEditorStore((s) => s.seek);
-  const setMarkIn = useCutEditorStore((s) => s.setMarkIn);
-  const setMarkOut = useCutEditorStore((s) => s.setMarkOut);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -162,8 +173,8 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           <IconSkipEnd size={14} />
         </button>
 
-        {/* DUR */}
-        <span style={DUR_STYLE}>DUR {formatTC(duration)}</span>
+        {/* Total duration — Premiere style: no label, just timecode */}
+        <span style={DUR_STYLE}>{formatTC(duration)}</span>
 
         {/* Source-only: IN / OUT buttons */}
         {feed === 'source' && (

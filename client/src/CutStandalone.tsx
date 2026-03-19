@@ -10,6 +10,7 @@ import {
   type CutSceneGraphView,
 } from './components/cut/sceneGraphViewportAdapter';
 import { useCutEditorStore } from './store/useCutEditorStore';
+import { usePanelSyncBridge } from './hooks/usePanelSyncBridge';
 
 type CutProject = {
   project_id: string;
@@ -513,6 +514,9 @@ function persistSceneGraphPaneMode(mode: 'embedded' | 'peer_pane') {
 }
 
 export default function CutStandalone() {
+  // MARKER_W1.1: Bridge PanelSyncStore → EditorStore (script/DAG clicks → source monitor + playhead)
+  usePanelSyncBridge();
+
   const query = useMemo(parseQuery, []);
   const playerLabInputRef = useRef<HTMLInputElement | null>(null);
   const [sandboxRoot, setSandboxRoot] = useState(query.sandboxRoot);
