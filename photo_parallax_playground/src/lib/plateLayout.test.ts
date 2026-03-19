@@ -145,6 +145,9 @@ describe("plateLayout", () => {
     expect(layout.cameraSafe.suggestion.overscanPct).toBeGreaterThan(motion.overscanPct);
     expect(layout.cameraSafe.suggestion.travelXPct).toBeLessThanOrEqual(motion.travelXPct);
     expect(layout.cameraSafe.suggestion.reason).toBeTruthy();
+    expect(layout.camera.zoomPx).toBeGreaterThan(0);
+    expect(layout.camera.zFar).toBeGreaterThan(layout.camera.zNear);
+    expect(layout.camera.focalLengthMm).toBe(50);
   });
 
   it("records adjustment metadata when effective motion differs from requested motion", () => {
@@ -216,6 +219,8 @@ describe("plateLayout", () => {
     expect(layout.cameraSafe.adjustment.requested.overscanPct).toBe(12);
     expect(layout.cameraSafe.adjustment.effective.overscanPct).toBe(18);
     expect(layout.cameraSafe.adjustment.effective.travelXPct).toBe(4.2);
+    expect(layout.camera.cameraTx).not.toBe(0);
+    expect(layout.camera.cameraTy).not.toBe(0);
   });
 
   it("builds export assets contract from layout and plate maps", () => {

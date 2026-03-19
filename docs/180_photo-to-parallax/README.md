@@ -14,6 +14,7 @@
 - `PARALLAX_LAYER_SPACE_RECOVERY_PLAN_2026-03-19.md`: correction plan для возврата `layer-space pipeline` в центр системы.
 - `PARALLAX_VISUAL_FORENSIC_2026-03-19.md`: forensic note про drift между March 12 visual-success path и текущим `render_preview_multiplate` contract.
 - `PARALLAX_SMART_DEPTH_RECON_2026-03-19.md`: strict recon по подтверждённому `smart depth` path и его расхождению с synthetic export/render path.
+- `PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`: canonical reference по camera-based parallax math, `Zoom/FOV/mm` и AE calibration track.
 - `PARALLAX_DOC_REVIEW_2026-03-18.md`: ревизия актуальности существующих документов и planning rules.
 - `QWEN_IMAGE_LAYERED_FIT_REVIEW_2026-03-18.md`: fit-review по `Qwen-Image-Layered` как candidate backend для layered decomposition.
 - `HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md`: короткий стартовый handoff для нового чата после закрытия release/recon backlog.

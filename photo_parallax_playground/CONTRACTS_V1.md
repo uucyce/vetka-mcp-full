@@ -18,6 +18,28 @@ Required top-level fields:
 - `transitions`
 - `plates`
 
+Required `camera` fields:
+
+- `motionType`
+- `travelXPct`
+- `travelYPct`
+- `zoom`
+- `phase`
+- `durationSec`
+- `fps`
+- `overscanPct`
+- `focalLengthMm`
+- `filmWidthMm`
+- `aovDeg`
+- `zoomPx`
+- `zNear`
+- `zFar`
+- `referenceZ`
+- `cameraTx`
+- `cameraTy`
+- `cameraTz`
+- `motionScale`
+
 Required `cameraSafe` fields:
 
 - `ok`

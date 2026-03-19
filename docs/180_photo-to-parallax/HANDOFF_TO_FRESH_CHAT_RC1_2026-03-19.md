@@ -31,6 +31,7 @@
 4. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md`
 5. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/RELEASE_NOTES_V1_RC1_2026-03-19.md`
 6. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/QWEN_IMAGE_LAYERED_FIT_REVIEW_2026-03-18.md`
+7. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
 
 Исторические evidence-docs полезны как proof, но уже не как planning source.
 
@@ -199,6 +200,11 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 - не встраивать сразу в final path
 - сначала давать `draft plateStack` / `draft RGBA layers`
 - сравнивать против current gated stack
+
+4. Вернуть renderer к camera-based parallax truth
+- опираться на `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+- не считать `distance/lens` скрытым tuning problem
+- отделить bridge-stage `depth-band motion` от target-state `continuous depth warp`
 
 ## 9. Про новую Qwen-модель, которая режет на слои
 

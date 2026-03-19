@@ -844,8 +844,11 @@ class TaskBoard:
         return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
 
     @staticmethod
-    def _detect_current_branch() -> str:
-        """MARKER_186.4: Detect current git branch. Works in worktrees."""
+    def _detect_current_branch() -> Optional[str]:
+        """MARKER_186.4: Detect current git branch. Works in worktrees.
+        MARKER_195.1: Returns None instead of silently falling back to 'main'.
+        Callers must handle None explicitly to avoid false branch attribution.
+        """
         import subprocess
         try:
             result = subprocess.run(
@@ -856,7 +859,8 @@ class TaskBoard:
                 return result.stdout.strip()
         except Exception:
             pass
-        return "main"  # fallback
+        logger.warning("[TaskBoard] _detect_current_branch: could not detect branch, returning None (was silently returning 'main')")
+        return None
 
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
         """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
@@ -1509,8 +1513,22 @@ class TaskBoard:
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
         return {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
 
+    @staticmethod
+    def _is_commit_on_main(commit_hash: str) -> bool:
+        """MARKER_195.1: Verify commit is actually on main branch using git merge-base."""
+        import subprocess
+        try:
+            result = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", commit_hash, "main"],
+                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
     def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None) -> Dict[str, Any]:
         """MARKER_186.4: Transition done_worktree → done_main after merge.
+        MARKER_195.1: Added git merge-base verification to prevent false positives.
 
         Called when a worktree branch is merged to main.
         """
@@ -1519,6 +1537,13 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
         if task.get("status") not in ("done_worktree", "done"):
             return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree"}
+
+        # MARKER_195.1: Verify the commit is actually on main before promoting
+        verify_hash = merge_commit_hash or task.get("commit_hash")
+        if verify_hash and not self._is_commit_on_main(verify_hash):
+            reason = f"Task {task_id} commit {verify_hash[:8]} is NOT on main branch (git merge-base failed)"
+            logger.warning(f"[TaskBoard] BLOCKED promote: {reason}")
+            return {"success": False, "error": reason}
 
         update: Dict[str, Any] = {"status": "done_main"}
         if merge_commit_hash:

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import math
 import subprocess
 import time
 from pathlib import Path
@@ -81,6 +82,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-width", type=int, help="Optional override for output width.")
     parser.add_argument("--out-height", type=int, help="Optional override for output height.")
     parser.add_argument("--output-fps", type=int, help="Optional override for final output fps.")
+    parser.add_argument("--camera-focal-length-mm", type=float, default=50.0, help="Virtual focal length for camera-based parallax.")
+    parser.add_argument("--camera-film-width-mm", type=float, default=36.0, help="Virtual film/sensor width for AOV to zoom conversion.")
+    parser.add_argument("--camera-zoom-px", type=float, help="Optional explicit camera zoom in pixels. Overrides focal-length/film-width conversion.")
+    parser.add_argument("--camera-z-near", type=float, default=0.72, help="Normalized near Z for depth->Z mapping.")
+    parser.add_argument("--camera-z-far", type=float, default=1.85, help="Normalized far Z for depth->Z mapping.")
+    parser.add_argument("--camera-motion-scale", type=float, default=0.42, help="Global camera travel scale used to derive camera translation from layout travel.")
     return parser.parse_args()
 
 
@@ -131,10 +138,77 @@ def resolve_render_settings(args: argparse.Namespace) -> dict[str, Any]:
         "supersample": args.supersample if args.supersample != 2.0 or args.preset == "quality" else preset["supersample"],
         "internal_fps": args.internal_fps if args.internal_fps != 50 or args.preset == "quality" else preset["internal_fps"],
         "tmix_frames": args.tmix_frames if args.tmix_frames != 3 or args.preset == "quality" else preset["tmix_frames"],
+        "camera_focal_length_mm": args.camera_focal_length_mm,
+        "camera_film_width_mm": args.camera_film_width_mm,
+        "camera_zoom_px": args.camera_zoom_px,
+        "camera_z_near": args.camera_z_near,
+        "camera_z_far": args.camera_z_far,
+        "camera_motion_scale": args.camera_motion_scale,
     }
 
 
-def motion_profile(layout: dict[str, Any]) -> dict[str, Any]:
+def resolve_camera_geometry(layout: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
+    source = layout["source"]
+    camera = layout["camera"]
+    if all(
+        key in camera
+        for key in ("focalLengthMm", "filmWidthMm", "aovDeg", "zoomPx", "zNear", "zFar", "referenceZ", "cameraTx", "cameraTy", "cameraTz", "motionScale")
+    ):
+        return {
+            "focal_length_mm": round(float(camera["focalLengthMm"]), 4),
+            "film_width_mm": round(float(camera["filmWidthMm"]), 4),
+            "aov_deg": round(float(camera["aovDeg"]), 4),
+            "zoom_px": round(float(camera["zoomPx"]), 4),
+            "z_near": round(float(camera["zNear"]), 4),
+            "z_far": round(float(camera["zFar"]), 4),
+            "reference_z": round(float(camera["referenceZ"]), 4),
+            "camera_tx": round(float(camera["cameraTx"]), 6),
+            "camera_ty": round(float(camera["cameraTy"]), 6),
+            "camera_tz": round(float(camera["cameraTz"]), 6),
+            "camera_motion_scale": round(float(camera["motionScale"]), 4),
+            "travel_x_px": round(float(source["width"]) * float(camera["travelXPct"]) / 100.0, 4),
+            "travel_y_px": round(float(source["height"]) * float(camera["travelYPct"]) / 100.0, 4),
+            "source": "layout.camera",
+        }
+
+    focal_length_mm = float(settings["camera_focal_length_mm"])
+    film_width_mm = max(1e-6, float(settings["camera_film_width_mm"]))
+    if settings.get("camera_zoom_px") is not None:
+        zoom_px = float(settings["camera_zoom_px"])
+        aov_rad = 2.0 * math.atan(float(source["width"]) / max(1e-6, 2.0 * zoom_px))
+    else:
+        aov_rad = 2.0 * math.atan(film_width_mm / max(1e-6, 2.0 * focal_length_mm))
+        zoom_px = float(source["width"]) / max(1e-6, 2.0 * math.tan(aov_rad / 2.0))
+
+    z_near = max(1e-4, float(settings["camera_z_near"]))
+    z_far = max(z_near + 1e-4, float(settings["camera_z_far"]))
+    reference_z = (z_near + z_far) / 2.0
+    travel_x_px = float(source["width"]) * float(camera["travelXPct"]) / 100.0
+    travel_y_px = float(source["height"]) * float(camera["travelYPct"]) / 100.0
+    camera_motion_scale = float(settings["camera_motion_scale"])
+    camera_tx = -((travel_x_px * reference_z * camera_motion_scale) / max(1e-6, zoom_px))
+    camera_ty = -((travel_y_px * reference_z * camera_motion_scale) / max(1e-6, zoom_px))
+    camera_tz = (float(camera["zoom"]) - 1.0) * reference_z * 0.22
+
+    return {
+        "focal_length_mm": round(focal_length_mm, 4),
+        "film_width_mm": round(film_width_mm, 4),
+        "aov_deg": round(math.degrees(aov_rad), 4),
+        "zoom_px": round(zoom_px, 4),
+        "z_near": round(z_near, 4),
+        "z_far": round(z_far, 4),
+        "reference_z": round(reference_z, 4),
+        "camera_tx": round(camera_tx, 6),
+        "camera_ty": round(camera_ty, 6),
+        "camera_tz": round(camera_tz, 6),
+        "camera_motion_scale": round(camera_motion_scale, 4),
+        "travel_x_px": round(travel_x_px, 4),
+        "travel_y_px": round(travel_y_px, 4),
+        "source": "render_settings",
+    }
+
+
+def motion_profile(layout: dict[str, Any], settings: dict[str, Any]) -> dict[str, Any]:
     camera = layout["camera"]
     source = layout["source"]
     duration = float(camera["durationSec"])
@@ -144,8 +218,7 @@ def motion_profile(layout: dict[str, Any]) -> dict[str, Any]:
     signed = f"sin((({progress})-0.5)*PI)"
     cosine = f"cos(({progress})*PI)"
     zoom = float(camera["zoom"])
-    travel_x_px = float(source["width"]) * float(camera["travelXPct"]) / 100.0
-    travel_y_px = float(source["height"]) * float(camera["travelYPct"]) / 100.0
+    camera_geometry = resolve_camera_geometry(layout, settings)
     return {
         "duration": duration,
         "fps": fps,
@@ -154,10 +227,11 @@ def motion_profile(layout: dict[str, Any]) -> dict[str, Any]:
         "signed": signed,
         "cosine": cosine,
         "zoom": zoom,
-        "travel_x_px": travel_x_px,
-        "travel_y_px": travel_y_px,
+        "travel_x_px": camera_geometry["travel_x_px"],
+        "travel_y_px": camera_geometry["travel_y_px"],
         "source_width": int(source["width"]),
         "source_height": int(source["height"]),
+        "camera_geometry": camera_geometry,
     }
 
 
@@ -176,13 +250,23 @@ def plate_zoom_expr(profile: dict[str, Any], strength: float, zoom_scale: float 
     return f"(1+({zoom_delta:.6f})*{scaled_strength:.4f}*0.32)"
 
 
-def plate_motion_expr(profile: dict[str, Any], plate: dict[str, Any], axis: str, strength_scale: float = 1.0) -> str:
-    base = profile["travel_x_px"] if axis == "x" else profile["travel_y_px"]
+def depth_byte_to_z_expr(profile: dict[str, Any], depth_byte: float) -> str:
+    camera_geometry = profile["camera_geometry"]
+    depth_norm = max(0.0, min(1.0, depth_byte / 255.0))
+    z_near = float(camera_geometry["z_near"])
+    z_far = float(camera_geometry["z_far"])
+    z_value = z_near + (1.0 - depth_norm) * (z_far - z_near)
+    return f"{z_value:.6f}"
+
+
+def plate_motion_expr(profile: dict[str, Any], axis: str, depth_byte: float, strength_scale: float = 1.0) -> str:
+    camera_geometry = profile["camera_geometry"]
+    zoom_px = float(camera_geometry["zoom_px"])
+    camera_shift = float(camera_geometry["camera_tx"] if axis == "x" else camera_geometry["camera_ty"])
     signed = profile["signed"]
     cosine = profile["cosine"]
-    strength = float(plate["parallaxStrength"])
-    damping = float(plate["motionDamping"])
-    pixels = base * strength * strength_scale * damping
+    z_expr = depth_byte_to_z_expr(profile, depth_byte)
+    pixels = (-(zoom_px * camera_shift) / max(1e-6, float(z_expr))) * strength_scale
     if profile["motion_type"] == "orbit":
         if axis == "x":
             return f"{pixels:.4f}*{signed}"
@@ -202,8 +286,9 @@ def build_filter_complex(
     internal_fps: int,
     tmix_frames: int,
     asset_scale: float,
-) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]]]:
-    profile = motion_profile(layout)
+    render_settings: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
+    profile = motion_profile(layout, render_settings)
     source_w = profile["source_width"]
     source_h = profile["source_height"]
     internal_w = max(2, int(round(source_w * supersample / 2) * 2))
@@ -246,7 +331,6 @@ def build_filter_complex(
         rgba_input_index = background_index + 1 + plate_offset * 2
         depth_input_index = rgba_input_index + 1
         layout_plate = layout_by_id[plate["id"]]
-        strength = float(layout_plate["parallaxStrength"])
         layer_input = current_layer
         clean_variant = layout_plate.get("cleanVariant")
         clean_plate = clean_by_variant.get(clean_variant) if clean_variant else None
@@ -268,9 +352,10 @@ def build_filter_complex(
         )
 
         for band_index, band in enumerate(DEPTH_BANDS):
-            zoom_expr = plate_zoom_expr(profile, strength, float(band["zoom_scale"]))
-            x_motion = f"({plate_motion_expr(profile, layout_plate, 'x', float(band['motion_scale']))})*{motion_scale:.6f}"
-            y_motion = f"({plate_motion_expr(profile, layout_plate, 'y', float(band['motion_scale']))})*{motion_scale:.6f}"
+            band_depth_byte = (float(band["min"]) + float(band["max"])) / 2.0
+            zoom_expr = plate_zoom_expr(profile, float(layout_plate["parallaxStrength"]), float(band["zoom_scale"]))
+            x_motion = f"({plate_motion_expr(profile, 'x', band_depth_byte, float(band['motion_scale']))})*{motion_scale:.6f}"
+            y_motion = f"({plate_motion_expr(profile, 'y', band_depth_byte, float(band['motion_scale']))})*{motion_scale:.6f}"
             rgba_label = rgba_split_labels[band_index]
             depth_label = depth_split_labels[band_index]
             alpha_label = f"plate{plate_offset}_alpha_{band['name']}"
@@ -315,7 +400,7 @@ def build_filter_complex(
         chain.append(f"[composite]tmix=frames={tmix_frames}:weights='{weights}',fps={output_fps}[v]")
     else:
         chain.append(f"[composite]fps={output_fps}[v]")
-    return ";".join(chain), ordered_clean, ordered
+    return ";".join(chain), ordered_clean, ordered, profile["camera_geometry"]
 
 
 def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> dict[str, Any]:
@@ -330,7 +415,7 @@ def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> di
     inputs = [*clean_inputs, sample_dir / manifest["files"]["backgroundRgba"]]
     background_meta = ffprobe_stream(inputs[-1])
     asset_scale = float(layout["source"]["width"]) / max(1.0, float(background_meta["width"]))
-    filter_complex, ordered_clean, ordered = build_filter_complex(
+    filter_complex, ordered_clean, ordered, camera_geometry = build_filter_complex(
         layout,
         manifest,
         settings["out_width"],
@@ -340,6 +425,7 @@ def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> di
         settings["internal_fps"],
         settings["tmix_frames"],
         asset_scale,
+        settings,
     )
     routed_clean_count = sum(
         1
@@ -414,6 +500,7 @@ def render_case(sample_dir: Path, out_dir: Path, settings: dict[str, Any]) -> di
         "special_clean_count": len(ordered_clean),
         "routed_clean_count": routed_clean_count,
         "camera_safe": layout.get("cameraSafe", {}),
+        "camera_geometry": camera_geometry,
         "routing": layout.get("routing", {}),
         "transition_count": len(layout.get("transitions", [])),
         "internal_fps": settings["internal_fps"],

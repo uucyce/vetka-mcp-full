@@ -298,6 +298,30 @@ Done criteria:
 - current render path проверяется не только JSON verdict, но и against visual regression questions;
 - oval/proxy cutout look считается blocker, даже если batch summary = `pass`.
 
+### B6. Camera Geometry Recovery
+
+Что сделать:
+
+- перевести renderer с heuristic motion на camera-based model;
+- привязать `distance / lens / mm / FOV` к явным формулами, а не к тюнингу на глаз;
+- калибровать поведение against AE reference project.
+
+Canonical reference:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PAVEL_AE_REFERENCE_WORKFLOW_2026-03-13.md`
+
+Связанные задачи:
+
+- `tb_1773892185_4` — camera-based parallax model
+- `tb_1773892186_5` — focal length / lens calibration against AE
+
+Done criteria:
+
+- renderer использует explicit camera parameters;
+- depth участвует в motion как `depth -> Z -> projection displacement`;
+- lens behavior и distance math больше не живут как undocumented heuristics.
+
 ## 9. Track C — Qwen-Image-Layered Bakeoff
 
 ### C1. Adapter-First Integration

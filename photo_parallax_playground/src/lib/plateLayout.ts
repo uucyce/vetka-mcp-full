@@ -87,6 +87,17 @@ export type PlateAwareLayoutContract = {
     durationSec: number;
     fps: number;
     overscanPct: number;
+    focalLengthMm: number;
+    filmWidthMm: number;
+    aovDeg: number;
+    zoomPx: number;
+    zNear: number;
+    zFar: number;
+    referenceZ: number;
+    cameraTx: number;
+    cameraTy: number;
+    cameraTz: number;
+    motionScale: number;
   };
   cameraSafe: {
     ok: boolean;
@@ -184,6 +195,42 @@ function intersectionArea(
   const right = Math.min(a.x + a.width, b.x + b.width);
   const bottom = Math.min(a.y + a.height, b.y + b.height);
   return Math.max(0, right - left) * Math.max(0, bottom - top);
+}
+
+function deriveCameraGeometry(params: {
+  sampleWidth: number;
+  sampleHeight: number;
+  travelXPct: number;
+  travelYPct: number;
+  zoom: number;
+}) {
+  const { sampleWidth, sampleHeight, travelXPct, travelYPct, zoom } = params;
+  const focalLengthMm = 50;
+  const filmWidthMm = 36;
+  const aovRad = 2 * Math.atan(filmWidthMm / (2 * focalLengthMm));
+  const zoomPx = sampleWidth / (2 * Math.tan(aovRad / 2));
+  const zNear = 0.72;
+  const zFar = 1.85;
+  const referenceZ = Number(((zNear + zFar) / 2).toFixed(3));
+  const motionScale = 0.42;
+  const travelXPx = sampleWidth * (travelXPct / 100);
+  const travelYPx = sampleHeight * (travelYPct / 100);
+  const cameraTx = -((travelXPx * referenceZ * motionScale) / Math.max(1e-6, zoomPx));
+  const cameraTy = -((travelYPx * referenceZ * motionScale) / Math.max(1e-6, zoomPx));
+  const cameraTz = (zoom - 1) * referenceZ * 0.22;
+  return {
+    focalLengthMm: Number(focalLengthMm.toFixed(2)),
+    filmWidthMm: Number(filmWidthMm.toFixed(2)),
+    aovDeg: Number((aovRad * (180 / Math.PI)).toFixed(4)),
+    zoomPx: Number(zoomPx.toFixed(4)),
+    zNear: Number(zNear.toFixed(3)),
+    zFar: Number(zFar.toFixed(3)),
+    referenceZ,
+    cameraTx: Number(cameraTx.toFixed(6)),
+    cameraTy: Number(cameraTy.toFixed(6)),
+    cameraTz: Number(cameraTz.toFixed(6)),
+    motionScale: Number(motionScale.toFixed(3)),
+  };
 }
 
 export function buildPlateLayoutContract(params: {
@@ -330,6 +377,13 @@ export function buildPlateLayoutContract(params: {
     Number(requestedCameraMotion.overscanPct.toFixed(2)) !== Number(layoutMotion.overscanPct.toFixed(2)) ||
     Number(requestedCameraMotion.travelXPct.toFixed(2)) !== Number(layoutMotion.travelXPct.toFixed(2)) ||
     Number(requestedCameraMotion.travelYPct.toFixed(2)) !== Number(layoutMotion.travelYPct.toFixed(2));
+  const cameraGeometry = deriveCameraGeometry({
+    sampleWidth: sample.width,
+    sampleHeight: sample.height,
+    travelXPct: layoutMotion.travelXPct,
+    travelYPct: layoutMotion.travelYPct,
+    zoom: layoutMotion.zoom,
+  });
 
   return {
     contract_version: contractVersion,
@@ -356,6 +410,17 @@ export function buildPlateLayoutContract(params: {
       durationSec: Number(layoutMotion.durationSec.toFixed(2)),
       fps: layoutMotion.fps,
       overscanPct: Number(layoutMotion.overscanPct.toFixed(2)),
+      focalLengthMm: cameraGeometry.focalLengthMm,
+      filmWidthMm: cameraGeometry.filmWidthMm,
+      aovDeg: cameraGeometry.aovDeg,
+      zoomPx: cameraGeometry.zoomPx,
+      zNear: cameraGeometry.zNear,
+      zFar: cameraGeometry.zFar,
+      referenceZ: cameraGeometry.referenceZ,
+      cameraTx: cameraGeometry.cameraTx,
+      cameraTy: cameraGeometry.cameraTy,
+      cameraTz: cameraGeometry.cameraTz,
+      motionScale: cameraGeometry.motionScale,
     },
     cameraSafe: {
       ok: cameraSafeOk,
