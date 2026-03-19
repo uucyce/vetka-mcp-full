@@ -185,6 +185,46 @@ export default function TransportBar() {
   const setZoom = useCutEditorStore((s) => s.setZoom);
   const setViewMode = useCutEditorStore((s) => s.setViewMode);
   const pause = useCutEditorStore((s) => s.pause);
+  const play = useCutEditorStore((s) => s.play);
+
+  // MARKER_W3.4: JKL reverse playback via requestAnimationFrame
+  const reverseRafRef = useRef<number | null>(null);
+  const lastReverseTimeRef = useRef<number>(0);
+
+  const startReversePlayback = useCallback((speed: number) => {
+    // Cancel any existing rAF loop
+    if (reverseRafRef.current) cancelAnimationFrame(reverseRafRef.current);
+    lastReverseTimeRef.current = performance.now();
+
+    const step = () => {
+      const state = useCutEditorStore.getState();
+      // Stop if shuttle is no longer negative
+      if (state.shuttleSpeed >= 0) {
+        reverseRafRef.current = null;
+        return;
+      }
+      const now = performance.now();
+      const dt = (now - lastReverseTimeRef.current) / 1000; // seconds
+      lastReverseTimeRef.current = now;
+      const newTime = Math.max(0, state.currentTime - dt * Math.abs(state.shuttleSpeed));
+      state.seek(newTime);
+      if (newTime <= 0) {
+        state.setShuttleSpeed(0);
+        reverseRafRef.current = null;
+        return;
+      }
+      reverseRafRef.current = requestAnimationFrame(step);
+    };
+    reverseRafRef.current = requestAnimationFrame(step);
+  }, []);
+
+  // Cleanup reverse rAF on unmount
+  useEffect(() => {
+    return () => {
+      if (reverseRafRef.current) cancelAnimationFrame(reverseRafRef.current);
+    };
+  }, []);
+
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'done' | 'error'>('idle');
   const [exportFormat, setExportFormat] = useState<'premiere' | 'fcpxml'>('premiere');
   const [sceneDetectStatus, setSceneDetectStatus] = useState<'idle' | 'detecting' | 'done' | 'error'>('idle');
@@ -422,9 +462,26 @@ export default function TransportBar() {
     await refreshProjectState?.();
   }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
 
-  // MARKER_W3.1: Split clip at playhead position
+  // MARKER_W3.1: Split all clips under playhead on targeted tracks
   const splitAtPlayhead = useCallback(async () => {
     if (!sandboxRoot || !projectId) return;
+    const state = useCutEditorStore.getState();
+    const time = state.currentTime;
+    // Find all clips that span the playhead position
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of state.lanes) {
+      // Skip locked lanes
+      if (state.lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        const start = clip.start_sec ?? clip.timeline_in ?? 0;
+        const dur = clip.duration_sec ?? clip.duration ?? 0;
+        const end = start + dur;
+        if (time > start + 0.001 && time < end - 0.001) {
+          ops.push({ op: 'split_at', clip_id: clip.clip_id, split_sec: time });
+        }
+      }
+    }
+    if (ops.length === 0) return;
     const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -433,14 +490,14 @@ export default function TransportBar() {
         project_id: projectId,
         timeline_id: timelineId || 'main',
         author: 'cut_transport',
-        ops: [{ op: 'split_clip', time: currentTime }],
+        ops,
       }),
     });
     if (response.ok) {
       const payload = (await response.json()) as { success?: boolean };
       if (payload.success) await refreshProjectState?.();
     }
-  }, [currentTime, projectId, refreshProjectState, sandboxRoot, timelineId]);
+  }, [projectId, refreshProjectState, sandboxRoot, timelineId]);
 
   // MARKER_W3.1: Ripple delete — remove selected clip and close the gap
   const rippleDeleteClip = useCallback(async () => {
@@ -476,13 +533,11 @@ export default function TransportBar() {
         timeline_id: timelineId || 'main',
         author: 'cut_transport',
         ops: [{
-          op: mode === 'insert' ? 'insert_clip' : 'overwrite_clip',
+          op: mode === 'insert' ? 'insert_at' : 'overwrite_at',
+          lane_id: targets.videoLaneId,
           source_path: state.sourceMediaPath,
-          source_in: state.sourceMarkIn ?? 0,
-          source_out: state.sourceMarkOut ?? state.duration,
-          timeline_position: state.currentTime,
-          video_lane_id: targets.videoLaneId,
-          audio_lane_id: targets.audioLaneId,
+          start_sec: state.currentTime,
+          duration_sec: (state.sourceMarkOut ?? state.duration) - (state.sourceMarkIn ?? 0),
         }],
       }),
     });
@@ -536,24 +591,33 @@ export default function TransportBar() {
     playPause:        () => togglePlay(),
     // MARKER_W3.4: JKL Progressive Shuttle
     // K = pause + reset shuttle. J = reverse (progressive). L = forward (progressive).
-    stop:             () => { pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
+    stop:             () => {
+      pause();
+      useCutEditorStore.getState().setShuttleSpeed(0);
+      if (reverseRafRef.current) { cancelAnimationFrame(reverseRafRef.current); reverseRafRef.current = null; }
+    },
+    // MARKER_W3.4: JKL Progressive Shuttle with real reverse playback
     shuttleBack:      () => {
-      const s = useCutEditorStore.getState().shuttleSpeed;
+      const state = useCutEditorStore.getState();
+      const s = state.shuttleSpeed;
       const next = s > 0 ? -1 : s === 0 ? -1 : Math.max(-8, s * 2);
-      useCutEditorStore.getState().setShuttleSpeed(next);
-      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      state.setShuttleSpeed(next);
+      state.setPlaybackRate(Math.abs(next));
       if (next < 0) {
-        // Reverse: simulate by stepping backward via rAF
         pause();
+        startReversePlayback(Math.abs(next));
       } else {
+        if (reverseRafRef.current) { cancelAnimationFrame(reverseRafRef.current); reverseRafRef.current = null; }
         play();
       }
     },
     shuttleForward:   () => {
-      const s = useCutEditorStore.getState().shuttleSpeed;
+      const state = useCutEditorStore.getState();
+      const s = state.shuttleSpeed;
       const next = s < 0 ? 1 : s === 0 ? 1 : Math.min(8, s * 2);
-      useCutEditorStore.getState().setShuttleSpeed(next);
-      useCutEditorStore.getState().setPlaybackRate(Math.abs(next));
+      state.setShuttleSpeed(next);
+      state.setPlaybackRate(Math.abs(next));
+      if (reverseRafRef.current) { cancelAnimationFrame(reverseRafRef.current); reverseRafRef.current = null; }
       play();
     },
     frameStepBack:    () => { pause(); seek(Math.max(0, currentTime - 1 / 25)); },
@@ -633,10 +697,11 @@ export default function TransportBar() {
     escapeContext:    () => useCutEditorStore.getState().clearSelection(),
     toggleViewMode:   () => setViewMode(viewMode === 'nle' ? 'debug' : 'nle'),
   }), [
-    togglePlay, pause, seek, currentTime, duration, cycleRate,
+    togglePlay, pause, play, seek, currentTime, duration, cycleRate,
     setMarkIn, setMarkOut, runUndoAction, removeSelectedClip,
     splitAtPlayhead, rippleDeleteClip, performSourceEdit,
     createMarker, setZoom, zoom, handleSceneDetect, setViewMode, viewMode,
+    startReversePlayback,
   ]);
 
   const { labelFor } = useCutHotkeys({ handlers: hotkeyHandlers });

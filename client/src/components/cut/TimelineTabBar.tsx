@@ -10,7 +10,10 @@
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import AutoMontageMenu from './AutoMontageMenu';
+// MARKER_192.1: AutoMontageMenu removed from timeline tab bar.
+// PULSE/Auto Cut will live in DAG/Graph panel context menu (separate task).
+// Component preserved at ./AutoMontageMenu.tsx for future DAG integration.
+// See: RECON_UI_LAYOUT_GROK_2026-03-19.md §1
 
 const BAR_STYLE: CSSProperties = {
   display: 'flex',
@@ -153,8 +156,7 @@ export default function TimelineTabBar() {
       <button style={ADD_BTN} onClick={handleAdd} title="New versioned timeline">
         +
       </button>
-      {/* MARKER_W5.1: Auto-Montage dropdown */}
-      <AutoMontageMenu />
+      {/* MARKER_192.1: PULSE dropdown removed — timeline is a result surface, not control surface */}
     </div>
   );
 }
