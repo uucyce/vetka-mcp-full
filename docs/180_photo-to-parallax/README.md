@@ -12,6 +12,8 @@
 - `PARALLAX_ARCHITECTURE_RELEASE_V1_2026-03-18.md`: актуальный operational architecture doc для release-v1 и parallel tracks.
 - `PARALLAX_DOC_REVIEW_2026-03-18.md`: ревизия актуальности существующих документов и planning rules.
 - `QWEN_IMAGE_LAYERED_FIT_REVIEW_2026-03-18.md`: fit-review по `Qwen-Image-Layered` как candidate backend для layered decomposition.
+- `HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md`: короткий стартовый handoff для нового чата после закрытия release/recon backlog.
+- `RELEASE_NOTES_V1_RC1_2026-03-19.md`: текущее RC1 summary, ограничения и артефакты.
 - `PHOTO_TO_PARALLAX_RESEARCH_2026-03-10.md`: исследование по этапам пайплайна.
 - `PHOTO_TO_PARALLAX_ARCHITECTURE_V1_2026-03-10.md`: архитектурный документ и границы MVP.
 - `PHOTO_TO_PARALLAX_ROADMAP_CHECKLIST_2026-03-10.md`: дорожная карта с чек-листом.
