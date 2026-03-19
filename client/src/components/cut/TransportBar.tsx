@@ -422,6 +422,46 @@ export default function TransportBar() {
     await refreshProjectState?.();
   }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
 
+  // MARKER_W3.1: Split clip at playhead position
+  const splitAtPlayhead = useCallback(async () => {
+    if (!sandboxRoot || !projectId) return;
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{ op: 'split_clip', time: currentTime }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [currentTime, projectId, refreshProjectState, sandboxRoot, timelineId]);
+
+  // MARKER_W3.1: Ripple delete — remove selected clip and close the gap
+  const rippleDeleteClip = useCallback(async () => {
+    if (!sandboxRoot || !projectId || !selectedClipId) return;
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_transport',
+        ops: [{ op: 'ripple_delete', clip_id: selectedClipId }],
+      }),
+    });
+    if (response.ok) {
+      const payload = (await response.json()) as { success?: boolean };
+      if (payload.success) await refreshProjectState?.();
+    }
+  }, [projectId, refreshProjectState, sandboxRoot, selectedClipId, timelineId]);
+
   const runUndoAction = useCallback(
     async (mode: 'undo' | 'redo') => {
       if (!sandboxRoot || !projectId) return;
@@ -477,6 +517,8 @@ export default function TransportBar() {
     undo:             () => runUndoAction('undo'),
     redo:             () => runUndoAction('redo'),
     deleteClip:       () => removeSelectedClip(),
+    splitClip:        () => splitAtPlayhead(),
+    rippleDelete:     () => rippleDeleteClip(),
     addMarker:        () => createMarker('favorite', ''),
     addComment:       async () => {
       const text = window.prompt('Comment marker text', 'CUT note') || '';
@@ -490,6 +532,7 @@ export default function TransportBar() {
   }), [
     togglePlay, pause, seek, currentTime, duration, cycleRate,
     setMarkIn, setMarkOut, runUndoAction, removeSelectedClip,
+    splitAtPlayhead, rippleDeleteClip,
     createMarker, setZoom, zoom, handleSceneDetect, setViewMode, viewMode,
   ]);
 
