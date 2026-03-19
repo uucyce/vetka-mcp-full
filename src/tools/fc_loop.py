@@ -444,6 +444,10 @@ async def execute_fc_loop(
     provider_source: Optional[str] = None,
     progress_callback: Optional[Callable] = None,
     base_path: Optional[str] = None,
+    # MARKER_193.4: Guard context for pre-call safety gate
+    agent_type: str = "",
+    phase_type: str = "",
+    project_id: str = "",
 ) -> Dict[str, Any]:
     """
     Shared async Function Calling loop.
@@ -529,6 +533,39 @@ async def execute_fc_loop(
                     "content": json.dumps({"success": False, "error": f"Tool '{func_name}' not available"})
                 })
                 continue
+
+            # MARKER_193.4: Pre-call guard gate — check danger rules before execution
+            try:
+                from src.services.reflex_guard import get_feedback_guard, GuardContext
+                guard = get_feedback_guard()
+                guard_ctx = GuardContext(
+                    agent_type=agent_type,
+                    phase_type=phase_type,
+                    project_id=project_id,
+                )
+                guard_result = guard.check_tool(func_name, guard_ctx)
+                if not guard_result.allowed:
+                    logger.warning(f"[FC Loop] GUARD BLOCKED tool '{func_name}': {guard_result.blocked_reason}")
+                    tool_results.append({
+                        "role": "tool",
+                        "tool_call_id": call_id,
+                        "content": json.dumps({
+                            "success": False,
+                            "error": f"BLOCKED by feedback guard: {guard_result.blocked_reason}",
+                        })
+                    })
+                    all_tool_executions.append({
+                        "name": func_name,
+                        "args": func_args,
+                        "result": {"success": False, "result": None, "error": guard_result.blocked_reason},
+                    })
+                    continue
+                if guard_result.warnings:
+                    logger.info(f"[FC Loop] GUARD WARNING for '{func_name}': {'; '.join(guard_result.warnings)}")
+            except Exception as e:
+                # Guard errors must NEVER break the pipeline
+                logger.debug(f"[FC Loop] Guard check error (non-fatal): {e}")
+            # MARKER_193.4_END
 
             # Emit progress
             if progress_callback:

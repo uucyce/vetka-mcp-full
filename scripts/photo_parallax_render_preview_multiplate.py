@@ -241,12 +241,13 @@ def build_filter_complex(
     )
     chain.append("[base][bg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto[layer0]")
 
+    current_layer = "layer0"
     for plate_offset, plate in enumerate(ordered):
         rgba_input_index = background_index + 1 + plate_offset * 2
         depth_input_index = rgba_input_index + 1
         layout_plate = layout_by_id[plate["id"]]
         strength = float(layout_plate["parallaxStrength"])
-        layer_input = f"layer{plate_offset}"
+        layer_input = current_layer
         clean_variant = layout_plate.get("cleanVariant")
         clean_plate = clean_by_variant.get(clean_variant) if clean_variant else None
         if clean_plate:
@@ -299,8 +300,9 @@ def build_filter_complex(
                 f"[{next_layer_label}]"
             )
             layer_input = next_layer_label
+        current_layer = layer_input
 
-    last = f"[{layer_input}]" if ordered else "[layer0]"
+    last = f"[{current_layer}]" if ordered else "[layer0]"
     chain.append(
         f"{last}fps={working_fps},"
         f"scale=w={source_w}:h={source_h}:flags=lanczos,"

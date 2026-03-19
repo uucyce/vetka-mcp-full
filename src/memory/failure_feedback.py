@@ -75,6 +75,9 @@ def record_failure_feedback(
     # 2. CORTEX — Record tool-level failures for REFLEX scoring
     results["cortex"] = _feed_cortex(failed_tools or [], phase_type, task_id)
 
+    # MARKER_193.5: Auto-promote to ENGRAM danger if threshold crossed
+    results["auto_promote"] = _maybe_promote_to_danger(failed_tools or [], phase_type)
+
     # 3. ENGRAM L1 — Check for pair warnings
     results["engram"] = _check_engram_warnings(failed_tools or [])
 
@@ -82,7 +85,8 @@ def record_failure_feedback(
         f"[FailureFeedback] Task {task_id} attempt #{attempt}: "
         f"STM={results['stm'].get('status', 'skip')}, "
         f"CORTEX={results['cortex'].get('recorded', 0)} tools, "
-        f"ENGRAM={results['engram'].get('warnings', 0)} warnings"
+        f"ENGRAM={results['engram'].get('warnings', 0)} warnings, "
+        f"promoted={results['auto_promote'].get('promoted', 0)}"
     )
 
     return results
