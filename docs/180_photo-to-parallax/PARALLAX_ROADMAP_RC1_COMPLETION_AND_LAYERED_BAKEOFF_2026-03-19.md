@@ -11,6 +11,12 @@
 - довести текущий `RC1` путь от `caution` к максимально стабильному `pass`;
 - встроить `Qwen-Image-Layered` как альтернативный decomposition backend внутри gated pipeline, не ломая release path.
 
+Жёсткая интерпретация:
+
+- `export success` и `batch pass` считаются только engineering readiness;
+- они не считаются достаточным основанием для product deploy;
+- release hardening закрыт только тогда, когда export path не подменяет depth-first сущность продукта.
+
 ## 2. Planning Mode For Current Phase
 
 Пока TaskBoard мигрирует на `SQLite`, этот документ считается главным execution plan для `parallax`.
@@ -71,6 +77,7 @@ Canonical artifacts:
 И дополнительное жёсткое правило:
 
 - technical `pass` не считается достаточным без visual acceptance против known-good baseline.
+- successful export не считается признаком того, что “всё готово”.
 
 ## 5. Execution Tracks
 
@@ -91,6 +98,15 @@ Canonical artifacts:
 - убрать скрытые anti-flake причины;
 - зафиксировать diagnostics и acceptance rules.
 - вернуть visual acceptance как обязательную часть release evaluation.
+- отделить `export readiness` от `product readiness` в явном виде.
+
+Текущий supporting tool:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_build_visual_acceptance_pack.py`
+- он собирает:
+  - `visual_acceptance_summary.json`
+  - `visual_acceptance_checklist.md`
+  из `review`, `plate export`, `render summary` и `compare summary` артефактов.
 
 ### Track C. Layered Backend Bakeoff
 

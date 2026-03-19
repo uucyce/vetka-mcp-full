@@ -15,6 +15,12 @@
 - какие идеи и next tracks выглядят разумно;
 - как оценивать свежую `Qwen` layered-модель.
 
+Критическое правило для следующего чата:
+
+- успешный `export/render` нельзя больше трактовать как завершённость продукта;
+- это только engineering signal, что sandbox/export path работает;
+- product readiness требует сохранения depth-first truth и отдельного visual acceptance.
+
 ## 2. Source Of Truth
 
 Начинать всегда с этих документов:
@@ -139,6 +145,8 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/render_compare_qwen_multiplate_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/compare_batch_sheet.png`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/visual_acceptance_summary.json`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/visual_acceptance_checklist.md`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/render_preview_multiplate_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/web/render_preview_multiplate_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/social/render_preview_multiplate_summary.json`
@@ -149,6 +157,17 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 - `pass = 3`
 - `caution = 0`
 - `fail = 0`
+
+Этот `pass` означает только:
+
+- canonical smoke проходит стабильно;
+- export/layout/render contracts сейчас не падают на canonical set.
+
+Этот `pass` не означает:
+
+- что можно деплоить продукт без дополнительных visual checks;
+- что synthetic export path уже совпал с depth-first product truth;
+- что layered parallax quality подтверждена только самим фактом экспорта.
 
 Что изменилось до `pass`:
 
@@ -161,6 +180,8 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 - technical `pass` не равен автоматически visual success;
 - March 12 user-approved success path жил в `output/review` / `output/layered_edit_flow` / `output/custom_renders`;
 - текущий `render_preview_multiplate*` contract должен отдельно пройти visual regression check.
+- для этого теперь есть отдельный visual acceptance pack builder:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_build_visual_acceptance_pack.py`
 
 ## 8. Идеи на следующий этап
 
@@ -168,6 +189,7 @@ bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_para
 - задокументировать verdict aggregation policy;
 - удержать repeatability smoke и summaries;
 - не допустить drift между contract-level pass и batch-level pass.
+- не допустить подмены product goal формулой `export works => system ready`.
 
 2. Продолжить рефактор:
 - отделить export/orchestration helpers из `App.tsx`
