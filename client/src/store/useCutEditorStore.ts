@@ -494,7 +494,3 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 }));
 
-// Dev-mode: expose store for testing
-if (typeof window !== 'undefined') {
-  (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
-}

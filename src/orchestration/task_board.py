@@ -24,7 +24,6 @@ import logging
 import os
 import re
 import asyncio
-import hashlib
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -221,15 +220,6 @@ class TaskBoard:
                 updated += 1
         if updated > 0:
             logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
-
-    @staticmethod
-    def _compute_integrity_sig(tasks: Dict[str, Dict[str, Any]], settings: Dict[str, Any]) -> str:
-        payload = {
-            "tasks": tasks,
-            "settings": {k: v for k, v in settings.items() if not str(k).startswith("_")},
-        }
-        canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     def _save(self, action: str = "update"):
         """Persist settings and notify UI.
@@ -448,9 +438,10 @@ class TaskBoard:
         except sqlite3.OperationalError:
             self._ensure_schema()
 
-        # Find JSON file to migrate from
+        # Find JSON file to migrate from (check .bak too for post-migration recovery)
+        json_bak = TASK_BOARD_FILE.with_suffix(".json.bak")
         json_path = None
-        for path in [TASK_BOARD_FILE, _TASK_BOARD_FALLBACK]:
+        for path in [TASK_BOARD_FILE, json_bak, _TASK_BOARD_FALLBACK]:
             if path.exists():
                 json_path = path
                 break
