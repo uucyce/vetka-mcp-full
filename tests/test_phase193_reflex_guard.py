@@ -27,6 +27,20 @@ from src.services.reflex_guard import (
 )
 
 
+def _make_guard(danger_rules=None):
+    """Create a FeedbackGuard without __init__ side-effects (ENGRAM/CORTEX loading).
+
+    Properly initializes ALL required attributes including CORTEX cache.
+    """
+    guard = FeedbackGuard.__new__(FeedbackGuard)
+    guard._danger_rules = danger_rules or []
+    guard._failure_thresholds = {}
+    guard._cortex_cache = {}
+    guard._cortex_cache_ts = time.time() + 9999  # prevent live CORTEX refresh
+    guard._cortex_cache_ttl = 60.0
+    return guard
+
+
 # ════════════════════════════════════════════════════════════════
 # Fixtures
 # ════════════════════════════════════════════════════════════════
@@ -52,16 +66,16 @@ def tmp_rules_file(tmp_path):
         }
     ]
     rules_path = tmp_path / "reflex_guard_rules.json"
-    rules_path.write_text(json.dumps(rules, indent=2))
+    rules_path.write_text(json.dumps({"rules": rules}, indent=2))
     return rules_path
 
 
 @pytest.fixture
 def guard_with_rules(tmp_cache, tmp_rules_file):
     """FeedbackGuard initialized with tmp cache + static rules file."""
-    with patch("src.services.reflex_guard.CACHE_PATH", tmp_cache._path), \
-         patch("src.services.reflex_guard.RULES_PATH", tmp_rules_file):
-        guard = FeedbackGuard()
+    with patch("src.services.reflex_guard._RULES_FILE", str(tmp_rules_file)):
+        guard = _make_guard()
+        guard._load_static_rules()
     return guard
 
 
@@ -113,9 +127,7 @@ class TestReflexGuardW1:
     # ── 1. Guard blocks danger tool ──
     def test_guard_blocks_danger_tool(self, guard_context_cut, danger_rule_block):
         """Tool with danger ENGRAM entry is blocked."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_block]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_block])
 
         result = guard.check_tool("preview_start", guard_context_cut)
 
@@ -127,9 +139,7 @@ class TestReflexGuardW1:
     # ── 2. Guard warns low-success tool ──
     def test_guard_warns_low_success_tool(self, guard_context_cut, danger_rule_warn):
         """Tool with <20% success rate gets warning but is allowed."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_warn]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_warn])
 
         result = guard.check_tool("search_files", guard_context_cut)
 
@@ -141,9 +151,7 @@ class TestReflexGuardW1:
     # ── 3. Guard allows safe tool ──
     def test_guard_allows_safe_tool(self, guard_context_cut, danger_rule_block):
         """Normal tool with no matching danger rule passes through."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_block]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_block])
 
         result = guard.check_tool("vetka_read_file", guard_context_cut)
 
@@ -157,9 +165,7 @@ class TestReflexGuardW1:
         self, guard_context_cut, danger_rule_block
     ):
         """Blocked tools are removed/marked in filtered recommendation list."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_block]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_block])
 
         recs = [
             {"tool_id": "preview_start", "score": 0.87, "reason": "semantic match"},
@@ -180,9 +186,7 @@ class TestReflexGuardW1:
         self, guard_context_cut, danger_rule_warn
     ):
         """Warned tools get a 'warning' field in recommendations."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_warn]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_warn])
 
         recs = [
             {"tool_id": "search_files", "score": 0.65, "reason": "match"},
@@ -210,9 +214,7 @@ class TestReflexGuardW1:
             severity="block",
             created_at=time.time(),
         )
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [glob_rule]
-        guard._failure_thresholds = {}
+        guard = _make_guard([glob_rule])
 
         # preview_start should match
         r1 = guard.check_tool("preview_start", guard_context_cut)
@@ -230,13 +232,12 @@ class TestReflexGuardW1:
     # ── 7. Static rules loaded from JSON ──
     def test_static_rules_loaded(self, tmp_rules_file):
         """Rules from static JSON file are loaded into guard."""
-        with patch("src.services.reflex_guard.RULES_PATH", tmp_rules_file), \
-             patch("src.services.reflex_guard.get_engram_cache") as mock_cache:
-            mock_cache.return_value = MagicMock(get_all=MagicMock(return_value={}))
-            guard = FeedbackGuard()
+        with patch("src.services.reflex_guard._RULES_FILE", str(tmp_rules_file)):
+            guard = _make_guard()
+            guard._load_static_rules()
 
         # Should have at least the one rule from the JSON file
-        static_rules = [r for r in guard._danger_rules if r.source == "user_feedback"]
+        static_rules = [r for r in guard._danger_rules if r.source == "static_rules"]
         assert len(static_rules) >= 1
         assert static_rules[0].tool_pattern == "preview_start"
         assert static_rules[0].context_pattern == "CUT"
@@ -248,9 +249,7 @@ class TestReflexGuardW1:
         self, danger_rule_block, guard_context_cut, guard_context_pulse
     ):
         """Rule for 'CUT' context doesn't block the same tool in 'PULSE'."""
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._danger_rules = [danger_rule_block]
-        guard._failure_thresholds = {}
+        guard = _make_guard([danger_rule_block])
 
         # CUT context → blocked
         r_cut = guard.check_tool("preview_start", guard_context_cut)
@@ -308,12 +307,11 @@ class TestReflexGuardW1:
             },
         ]
 
-        with patch("src.services.reflex_guard.get_feedback_guard", return_value=mock_guard):
-            guard = get_feedback_guard()
-            dangers = guard.get_active_dangers(agent_type="claude_code", phase_type="CUT")
-            recs = guard.filter_recommendations([], GuardContext(
-                agent_type="claude_code", phase_type="CUT", project_id="vetka"
-            ))
+        guard = mock_guard
+        dangers = guard.get_active_dangers(agent_type="claude_code", phase_type="CUT")
+        recs = guard.filter_recommendations([], GuardContext(
+            agent_type="claude_code", phase_type="CUT", project_id="vetka"
+        ))
 
         # Verify blocked_tools derivable from guard output
         blocked = [r for r in recs if r.get("blocked")]
@@ -518,8 +516,7 @@ class TestReflexGuardW2Integration:
         cache.put(danger_key, reason, category="danger")
 
         # Step 3: Guard picks up ENGRAM danger entries
-        guard = FeedbackGuard.__new__(FeedbackGuard)
-        guard._failure_thresholds = {}
+        guard = _make_guard()
 
         # Build danger rules from ENGRAM entries
         engram_dangers = cache.get_danger_entries()

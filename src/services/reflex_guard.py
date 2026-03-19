@@ -36,8 +36,10 @@ logger = logging.getLogger(__name__)
 REFLEX_GUARD_ENABLED = os.getenv("REFLEX_GUARD_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # CORTEX failure thresholds for auto-warn
-_FAILURE_MIN_CALLS = int(os.getenv("REFLEX_GUARD_MIN_CALLS", "3"))
-_FAILURE_MAX_SUCCESS_RATE = float(os.getenv("REFLEX_GUARD_MAX_SUCCESS_RATE", "0.2"))
+# MARKER_193.7: Raised min_calls from 3→10 to avoid false positives
+# from noisy CORTEX feedback (e.g., vetka_read_file "fails" when file not found)
+_FAILURE_MIN_CALLS = int(os.getenv("REFLEX_GUARD_MIN_CALLS", "10"))
+_FAILURE_MAX_SUCCESS_RATE = float(os.getenv("REFLEX_GUARD_MAX_SUCCESS_RATE", "0.15"))
 
 # Static rules file path (relative to project root)
 _RULES_FILE = os.path.join(
@@ -68,14 +70,22 @@ class DangerRule:
         """Check if tool_id matches this rule's tool_pattern (glob)."""
         return fnmatch.fnmatch(tool_id, self.tool_pattern)
 
-    def matches_context(self, context_str: str) -> bool:
-        """Check if context string matches this rule's context_pattern (glob).
+    def matches_context(self, context: "GuardContext") -> bool:
+        """Check if context matches this rule's context_pattern (glob).
 
-        context_str is typically project_id or phase_type.
+        Checks against project_id, phase_type, and combined string.
+        A match on ANY component counts.
         """
         if self.context_pattern == "*":
             return True
-        return fnmatch.fnmatch(context_str.lower(), self.context_pattern.lower())
+        pat = self.context_pattern.lower()
+        # Match against each component individually
+        candidates = [
+            context.project_id.lower() if context.project_id else "",
+            context.phase_type.lower() if context.phase_type else "",
+            context.context_str.lower(),
+        ]
+        return any(fnmatch.fnmatch(c, pat) for c in candidates if c)
 
 
 @dataclass
@@ -129,11 +139,10 @@ class FeedbackGuard:
             return GuardResult()
 
         result = GuardResult()
-        ctx_str = context.context_str
 
         # Check static + ENGRAM rules
         for rule in self._danger_rules:
-            if rule.matches_tool(tool_id) and rule.matches_context(ctx_str):
+            if rule.matches_tool(tool_id) and rule.matches_context(context):
                 result.matched_rules.append(rule)
                 if rule.severity == "block":
                     result.allowed = False
@@ -199,19 +208,18 @@ class FeedbackGuard:
             return []
 
         ctx = GuardContext(agent_type=agent_type, phase_type=phase_type)
-        ctx_str = ctx.context_str
 
         active: List[DangerRule] = []
 
         # Static + ENGRAM rules
         for rule in self._danger_rules:
-            if rule.matches_context(ctx_str):
+            if rule.matches_context(ctx):
                 active.append(rule)
 
         # Add CORTEX-derived rules
         cortex_rules = self._get_cortex_danger_rules()
         for rule in cortex_rules:
-            if rule.matches_context(ctx_str):
+            if rule.matches_context(ctx):
                 active.append(rule)
 
         return active
