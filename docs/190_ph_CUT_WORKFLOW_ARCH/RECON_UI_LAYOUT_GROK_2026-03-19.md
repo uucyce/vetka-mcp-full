@@ -71,12 +71,20 @@ U (undo), V (selection), C (razor), LK (linked selection) are crammed into timel
 | **Toggles** (state) | Snap, Linked Selection | Timeline toolbar icons |
 
 ### MVP Tools (hotkey-only, no panel)
-| Key | Tool | Cursor |
-|-----|------|--------|
-| V | Selection | Default pointer |
-| C | Razor | Knife icon |
-| H | Hand | Palm icon |
-| Z | Zoom | Magnifier icon |
+
+**IMPORTANT: Keys depend on active preset (Premiere/FCP7/Avid/Custom).**
+Preset system already implemented in `useCutHotkeys.ts` with `PREMIERE_PRESET` and `FCP7_PRESET`.
+See: `CUT_UNIFIED_VISION.md §13.3`, `CUT_NLE_UNIVERSAL_ACTION_REGISTRY.md`
+
+| Action | Premiere | FCP7 | Cursor |
+|--------|----------|------|--------|
+| Selection | V | A | Default pointer |
+| Razor/Blade | C | B | Knife icon |
+| Split at playhead | Cmd+K | Cmd+B | N/A (action, not mode) |
+| Hand | H | H | Palm icon |
+| Zoom | Z | Z | Magnifier icon |
+
+Research sources: `docs/185_ph_CUT_POLISH/hotcuts/` (Premiere PDF, Avid PDF, FCP7 PDF)
 
 ### NOT tools (remove from tools area)
 - **Undo (U)** → Cmd+Z, Edit menu, History panel
