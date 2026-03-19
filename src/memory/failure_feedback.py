@@ -182,6 +182,75 @@ def _feed_cortex(
         return {"recorded": 0, "error": str(e)}
 
 
+# MARKER_193.5: Thresholds for auto-promotion to ENGRAM danger
+_PROMOTE_MIN_FAILURES = 3
+_PROMOTE_MAX_SUCCESS_RATE = 0.2
+
+
+def _maybe_promote_to_danger(
+    failed_tools: List[str], phase_type: str,
+) -> Dict[str, Any]:
+    """MARKER_193.5: Auto-promote tools to ENGRAM L1 danger if failure threshold crossed.
+
+    After CORTEX records failures, check if any tool crossed the threshold:
+    - >= 3 total calls AND success_rate < 20%
+    - No existing ENGRAM danger entry for this tool (avoid duplicates)
+
+    Creates self-healing loop: fails → record → promote → guard blocks → agent learns.
+    """
+    promoted = 0
+    checked = 0
+    try:
+        from src.reflex.feedback import get_reflex_feedback
+        from src.memory.engram_cache import get_engram_cache
+
+        fb = get_reflex_feedback()
+        cache = get_engram_cache()
+        summary = fb.get_feedback_summary()
+        per_tool = summary.get("per_tool", {})
+
+        for tool_id in failed_tools:
+            stats = per_tool.get(tool_id)
+            if not stats:
+                continue
+            checked += 1
+
+            count = stats.get("count", 0)
+            success_rate = stats.get("success_rate", 1.0)
+
+            if count < _PROMOTE_MIN_FAILURES or success_rate >= _PROMOTE_MAX_SUCCESS_RATE:
+                continue
+
+            # Check for existing danger entry (avoid duplicates)
+            existing = cache.get_all()
+            already_danger = any(
+                e.get("category") == "danger" and e.get("key") == tool_id
+                for e in existing.values()
+            )
+            if already_danger:
+                logger.debug(f"[FailureFeedback] {tool_id} already has ENGRAM danger entry, skipping")
+                continue
+
+            # Promote: create ENGRAM L1 danger entry
+            reason = f"Auto-promoted: {success_rate:.0%} success over {count} calls"
+            cache.put(
+                key=tool_id,
+                value=f"{reason} | {phase_type}",
+                category="danger",
+            )
+            promoted += 1
+            logger.info(
+                f"[FailureFeedback] Auto-promoted {tool_id} to ENGRAM danger "
+                f"({count} calls, {success_rate:.0%} success)"
+            )
+
+    except Exception as e:
+        logger.debug(f"[FailureFeedback] Auto-promote check failed: {e}")
+        return {"promoted": 0, "checked": checked, "error": str(e)}
+
+    return {"promoted": promoted, "checked": checked}
+
+
 def _check_engram_warnings(failed_tools: List[str]) -> Dict[str, Any]:
     """Check ENGRAM L1 for pair warnings on failed files."""
     try:
