@@ -478,6 +478,7 @@ export default function TimelineTrackView() {
   const currentTime = useCutEditorStore((state) => state.currentTime);
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useCutEditorStore((state) => state.selectedClipId);
+  const selectedClipIds = useCutEditorStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
   const hoveredClipId = useCutEditorStore((state) => state.hoveredClipId);
   const sandboxRoot = useCutEditorStore((state) => state.sandboxRoot);
   const projectId = useCutEditorStore((state) => state.projectId);
@@ -758,6 +759,16 @@ export default function TimelineTrackView() {
     (clip: TimelineClip, laneId: string, mode: ClipDragMode, event: MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
       event.stopPropagation();
+
+      // MARKER_W3.6: Razor tool — split on mousedown instead of drag
+      if (activeTool === 'razor' && mode === 'move') {
+        const splitTime = timeFromTrackClientX(event.clientX);
+        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }]).catch((err) =>
+          console.error('[CUT] razor split failed:', err)
+        );
+        return;
+      }
+
       setSelectedClip(clip.clip_id);
       setActiveMedia(clip.source_path);
       const pointerTime = timeFromTrackClientX(event.clientX);
@@ -776,7 +787,7 @@ export default function TimelineTrackView() {
         grabOffsetSec: clamp(pointerTime - clip.start_sec, 0, clip.duration_sec),
       });
     },
-    [setActiveMedia, setSelectedClip, timeFromTrackClientX]
+    [activeTool, applyTimelineOps, setActiveMedia, setSelectedClip, timeFromTrackClientX]
   );
 
   const handleWheel = useCallback(
@@ -817,14 +828,72 @@ export default function TimelineTrackView() {
     [openMarkerDraft, seek, timeFromTrackClientX]
   );
 
+  // MARKER_W3.6: Razor tool — click on clip splits at click position
+  // MARKER_W3.7: Multi-select — Cmd+click toggle, Shift+click range
   const handleClipClick = useCallback(
     (clipId: string, sourcePath: string, event: MouseEvent) => {
       event.stopPropagation();
+      setContextMenu(null);
+
+      // W3.6: Razor tool — split clip at click position instead of selecting
+      if (activeTool === 'razor') {
+        const splitTime = timeFromTrackClientX(event.clientX);
+        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }]).catch((err) =>
+          console.error('[CUT] razor split failed:', err)
+        );
+        return;
+      }
+
+      // W3.7: Multi-select with Cmd+click
+      if (event.metaKey || event.ctrlKey) {
+        useCutEditorStore.getState().toggleClipSelection(clipId);
+        return;
+      }
+
+      // W3.7: Range select with Shift+click
+      if (event.shiftKey) {
+        const state = useCutEditorStore.getState();
+        const lastSelected = state.selectedClipId;
+        if (lastSelected) {
+          // Collect all clips in timeline order
+          const allClips: { clipId: string; time: number }[] = [];
+          for (const lane of state.lanes) {
+            for (const clip of lane.clips) {
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
+            }
+          }
+          allClips.sort((a, b) => a.time - b.time);
+          const idxA = allClips.findIndex((c) => c.clipId === lastSelected);
+          const idxB = allClips.findIndex((c) => c.clipId === clipId);
+          if (idxA >= 0 && idxB >= 0) {
+            const [lo, hi] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
+            const newIds = new Set(state.selectedClipIds);
+            for (let i = lo; i <= hi; i++) newIds.add(allClips[i].clipId);
+            useCutEditorStore.setState({ selectedClipIds: newIds });
+            return;
+          }
+        }
+        // Fallback: just add to selection
+        useCutEditorStore.getState().toggleClipSelection(clipId);
+        return;
+      }
+
+      // Default: single select
       setSelectedClip(clipId);
       setActiveMedia(sourcePath);
-      setContextMenu(null);
+
+      // W3.7: Linked selection — also select synced audio/video on adjacent lane
+      const state = useCutEditorStore.getState();
+      if (state.linkedSelection) {
+        const clickedLane = state.lanes.find((l) => l.clips.some((c) => c.clip_id === clipId));
+        const clickedClip = clickedLane?.clips.find((c) => c.clip_id === clipId);
+        if (clickedClip && clickedClip.sync?.linked_clip_id) {
+          const ids = new Set([clipId, clickedClip.sync.linked_clip_id]);
+          useCutEditorStore.setState({ selectedClipIds: ids });
+        }
+      }
     },
-    [setActiveMedia, setSelectedClip]
+    [activeTool, applyTimelineOps, setActiveMedia, setSelectedClip, timeFromTrackClientX]
   );
 
   const handleWaveformHover = useCallback((clip: TimelineClip, event: MouseEvent<HTMLDivElement>) => {
@@ -1311,7 +1380,7 @@ export default function TimelineTrackView() {
                     return null;
                   }
 
-                  const isSelected = selectedClipId === clip.clip_id;
+                  const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
                   const isHovered = hoveredClipId === clip.clip_id;
                   const waveformBins = waveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
