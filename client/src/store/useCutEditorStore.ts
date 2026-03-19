@@ -90,8 +90,14 @@ interface CutEditorState {
   isPlaying: boolean;
   playbackRate: number;
   duration: number;
-  markIn: number | null;
-  markOut: number | null;
+  markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
+  markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
+
+  // === MARKER_W1.4: Separate Source marks and Sequence marks ===
+  sourceMarkIn: number | null;     // IN/OUT for raw clip in Source Monitor
+  sourceMarkOut: number | null;
+  sequenceMarkIn: number | null;   // IN/OUT for timeline position in Program Monitor
+  sequenceMarkOut: number | null;
 
   // === Timeline View ===
   zoom: number; // pixels per second (20 = zoomed out, 200 = zoomed in)
@@ -157,6 +163,11 @@ interface CutEditorState {
   setDuration: (d: number) => void;
   setMarkIn: (t: number | null) => void;
   setMarkOut: (t: number | null) => void;
+  // MARKER_W1.4: Separate marks
+  setSourceMarkIn: (t: number | null) => void;
+  setSourceMarkOut: (t: number | null) => void;
+  setSequenceMarkIn: (t: number | null) => void;
+  setSequenceMarkOut: (t: number | null) => void;
   setPlaybackRate: (rate: number) => void;
   setZoom: (z: number) => void;
   setTrackHeight: (h: number) => void;
@@ -209,6 +220,12 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   duration: 0,
   markIn: null,
   markOut: null,
+
+  // MARKER_W1.4: Separate marks
+  sourceMarkIn: null,
+  sourceMarkOut: null,
+  sequenceMarkIn: null,
+  sequenceMarkOut: null,
 
   // Timeline defaults
   zoom: 60, // 60px per second — good starting point
@@ -264,8 +281,13 @@ export const useCutEditorStore = create<CutEditorState>((set) => ({
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
   seek: (time) => set({ currentTime: Math.max(0, time) }),
   setDuration: (d) => set({ duration: d }),
-  setMarkIn: (t) => set({ markIn: t }),
-  setMarkOut: (t) => set({ markOut: t }),
+  setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
+  setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
+  // MARKER_W1.4: Separate marks
+  setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
+  setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
   setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
