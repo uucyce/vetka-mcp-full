@@ -16,9 +16,9 @@
     {
       "name": "vetka-client",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["vite", "--port", "3007"],
-      "cwd": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/heuristic-mestorf/client",
-      "port": 3007
+      "runtimeArgs": ["vite", "--port", "3009"],
+      "cwd": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/jovial-wing/client",
+      "port": 3009
     },
     {
       "name": "mycelium-client",
