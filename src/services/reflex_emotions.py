@@ -153,10 +153,6 @@ def compute_caution(
     try:
         perm = tool_permission.upper() if tool_permission else "READ"
 
-        # READ-only shortcut
-        if perm == "READ":
-            return 0.1
-
         risks: List[float] = []
 
         # Side-effect risk by permission
@@ -177,7 +173,8 @@ def compute_caution(
             risks.append(0.9)
 
         if not risks:
-            return 0.0
+            # READ-only with no risk flags → minimal caution
+            return 0.1 if perm == "READ" else 0.0
 
         return max(risks)
     except Exception:
@@ -212,7 +209,9 @@ class EmotionEngine:
     MARKER_195.2.1: Core emotion modulator for REFLEX.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, data_dir: Optional[str] = None) -> None:
+        self._data_dir = Path(data_dir) if data_dir else _DATA_DIR
+        self._state_file = self._data_dir / "emotion_states.json"
         self._states: Dict[str, EmotionState] = {}
         self._lock = threading.Lock()
         self._load()
@@ -222,8 +221,8 @@ class EmotionEngine:
     def _load(self) -> None:
         """Load emotion states from disk (JSON)."""
         try:
-            if _STATE_FILE.exists():
-                raw = json.loads(_STATE_FILE.read_text(encoding="utf-8"))
+            if self._state_file.exists():
+                raw = json.loads(self._state_file.read_text(encoding="utf-8"))
                 for tool_id, blob in raw.items():
                     self._states[tool_id] = EmotionState(
                         tool_id=tool_id,
@@ -235,7 +234,7 @@ class EmotionEngine:
                         failure_count=blob.get("failure_count", 0),
                         last_updated=blob.get("last_updated", time.time()),
                     )
-                logger.debug("Loaded %d emotion states from %s", len(self._states), _STATE_FILE)
+                logger.debug("Loaded %d emotion states from %s", len(self._states), self._state_file)
         except Exception:
             logger.warning("Failed to load emotion states, starting fresh", exc_info=True)
             self._states = {}
@@ -243,15 +242,15 @@ class EmotionEngine:
     def _save(self) -> None:
         """Persist emotion states to disk (JSON)."""
         try:
-            _DATA_DIR.mkdir(parents=True, exist_ok=True)
+            self._data_dir.mkdir(parents=True, exist_ok=True)
             payload: Dict[str, dict] = {}
             for tool_id, state in self._states.items():
                 payload[tool_id] = asdict(state)
-            _STATE_FILE.write_text(
+            self._state_file.write_text(
                 json.dumps(payload, indent=2, default=str),
                 encoding="utf-8",
             )
-            logger.debug("Saved %d emotion states to %s", len(payload), _STATE_FILE)
+            logger.debug("Saved %d emotion states to %s", len(payload), self._state_file)
         except Exception:
             logger.warning("Failed to save emotion states", exc_info=True)
 
@@ -377,13 +376,13 @@ _instance: Optional[EmotionEngine] = None
 _instance_lock = threading.Lock()
 
 
-def get_reflex_emotions() -> EmotionEngine:
+def get_reflex_emotions(data_dir: Optional[str] = None) -> EmotionEngine:
     """Return the singleton EmotionEngine instance."""
     global _instance
     if _instance is None:
         with _instance_lock:
             if _instance is None:
-                _instance = EmotionEngine()
+                _instance = EmotionEngine(data_dir=data_dir)
     return _instance
 
 

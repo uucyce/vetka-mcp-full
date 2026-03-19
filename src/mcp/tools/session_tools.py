@@ -83,6 +83,53 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
     return None
 
 
+# ---------------------------------------------------------------------------
+# MARKER_195.2.4: Emotion display helpers
+# ---------------------------------------------------------------------------
+
+def _compute_mood_label(tool_emotions: Dict[str, Dict[str, float]]) -> str:
+    """Derive a single mood label from per-tool emotions.
+
+    Priority: cautious > wary > confident > exploratory > balanced.
+    """
+    if not tool_emotions:
+        return "balanced"
+    n = len(tool_emotions)
+    avg_curiosity = sum(e.get("curiosity", 0) for e in tool_emotions.values()) / n
+    avg_trust = sum(e.get("trust", 0) for e in tool_emotions.values()) / n
+    avg_caution = sum(e.get("caution", 0) for e in tool_emotions.values()) / n
+
+    if avg_caution > 0.6:
+        return "cautious"
+    if avg_trust < 0.3:
+        return "wary"
+    if avg_trust > 0.7:
+        return "confident"
+    if avg_curiosity > 0.6:
+        return "exploratory"
+    return "balanced"
+
+
+def _generate_emotion_summary(tool_emotions: Dict[str, Dict[str, float]]) -> str:
+    """Build a short human-readable summary of emotion state."""
+    if not tool_emotions:
+        return ""
+    parts = []
+    high_curiosity = [t for t, e in tool_emotions.items() if e.get("curiosity", 0) > 0.7]
+    low_trust = [t for t, e in tool_emotions.items() if e.get("trust", 0) < 0.3]
+    high_caution = [t for t, e in tool_emotions.items() if e.get("caution", 0) > 0.6]
+
+    if high_curiosity:
+        parts.append(f"High curiosity for {len(high_curiosity)} tool(s)")
+    if low_trust:
+        names = ", ".join(low_trust[:3])
+        parts.append(f"Low trust for {names}")
+    if high_caution:
+        parts.append(f"High caution for {len(high_caution)} tool(s)")
+
+    return ". ".join(parts) + "." if parts else "Balanced emotional state."
+
+
 class SessionInitTool(BaseMCPTool):
     """Initialize MCP session with fat context and ELISION compression."""
 
@@ -501,6 +548,35 @@ class SessionInitTool(BaseMCPTool):
                 }
         except Exception:
             pass  # REFLEX report never blocks session init
+
+        # MARKER_195.2.4: REFLEX Emotions — agent mood + per-tool emotions
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+            emo_engine = get_reflex_emotions()
+            # Gather per-tool emotions for tools already in reflex_recommendations
+            recs = context.get("reflex_recommendations", [])
+            tool_emotions: Dict[str, Dict[str, float]] = {}
+            for rec in recs[:10]:  # Limit to top 10 tools
+                tid = rec.get("tool_id", "") if isinstance(rec, dict) else ""
+                if not tid:
+                    continue
+                breakdown = emo_engine.get_modifier_breakdown(tid)
+                tool_emotions[tid] = {
+                    "curiosity": breakdown["curiosity"],
+                    "trust": breakdown["trust"],
+                    "caution": breakdown["caution"],
+                    "modifier": breakdown["modifier"],
+                }
+            if tool_emotions:
+                mood = _compute_mood_label(tool_emotions)
+                summary = _generate_emotion_summary(tool_emotions)
+                context["reflex_emotions"] = {
+                    "agent_mood": mood,
+                    "tool_emotions": tool_emotions,
+                    "emotion_summary": summary,
+                }
+        except Exception:
+            pass  # Emotion errors never block session init
 
         # MARKER_178.1.4: Build actionable next_steps from context
         try:
