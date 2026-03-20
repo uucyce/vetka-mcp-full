@@ -209,7 +209,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     const timelinePanel = event.api.getPanel('timeline');
 
     if (projectPanel) {
-      try { projectPanel.api.setSize({ width: 260 }); } catch { /* ok */ }
+      // MARKER_LAYOUT-4: Widen left column 260→320px (~22% at 1440p, matches Premiere)
+      try { projectPanel.api.setSize({ width: 320 }); } catch { /* ok */ }
     }
     if (sourcePanel && event.api.getPanel('program')) {
       // Source and program share center-right equally

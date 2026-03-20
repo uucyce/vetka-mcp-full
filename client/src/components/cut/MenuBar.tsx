@@ -251,15 +251,45 @@ export default function MenuBar() {
     {
       label: 'View',
       items: [
+        // MARKER_FIX-VIEW-MENU: Context-aware zoom (monitor vs timeline)
+        { label: 'Zoom In', shortcut: '=', action: () => {
+          const s = store.getState();
+          const fp = s.focusedPanel;
+          if (fp === 'source' || fp === 'program') {
+            // Monitor zoom — future: video magnification
+            // For now: same as timeline zoom (no monitor zoom state yet)
+          }
+          s.setZoom(Math.min(300, s.zoom + 20));
+        }},
+        { label: 'Zoom Out', shortcut: '-', action: () => {
+          const s = store.getState();
+          s.setZoom(Math.max(10, s.zoom - 20));
+        }},
+        { label: 'Zoom to Fit', shortcut: '\\', action: () => {
+          const s = store.getState();
+          if (s.duration > 0) {
+            // Fit entire duration to visible area (~800px default)
+            s.setZoom(Math.max(10, Math.min(300, 800 / s.duration)));
+            s.setScrollLeft(0);
+          }
+        }},
+        { separator: true },
         { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'S', action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
-        { label: 'Show Source Monitor', shortcut: '⌘1', action: () => store.getState().setFocusedPanel('source') },
-        { label: 'Show Program Monitor', shortcut: '⌘2', action: () => store.getState().setFocusedPanel('program') },
-        { label: 'Show Timeline', shortcut: '⌘3', action: () => store.getState().setFocusedPanel('timeline') },
-        { label: 'Show Project Panel', shortcut: '⌘4', action: () => store.getState().setFocusedPanel('project') },
-        { label: 'Show Effects Panel', shortcut: '⌘5', action: () => store.getState().setFocusedPanel('effects') },
+        { label: 'Overlays', submenu: [
+          { label: 'Title Safe', disabled: true },
+          { label: 'Action Safe', disabled: true },
+          { label: 'Timecode Overlay', disabled: true },
+          { label: 'Marker Overlay', disabled: true },
+        ]},
+        { separator: true },
+        { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
+        { label: 'Show Program Monitor', shortcut: '⌘2', action: () => focusPanel('program') },
+        { label: 'Show Timeline', shortcut: '⌘3', action: () => focusPanel('timeline') },
+        { label: 'Show Project Panel', shortcut: '⌘4', action: () => focusPanel('project') },
+        { label: 'Show Effects Panel', shortcut: '⌘5', action: () => focusPanel('effects') },
         { separator: true },
         { label: 'Toggle NLE / Debug', shortcut: '⌘\\', action: () => {
           const s = store.getState();
