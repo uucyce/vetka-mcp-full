@@ -121,7 +121,9 @@ interface CutEditorState {
   // === Timeline View ===
   zoom: number; // pixels per second (20 = zoomed out, 200 = zoomed in)
   scrollLeft: number; // horizontal scroll in pixels
-  trackHeight: number; // height per lane in pixels
+  trackHeight: number; // global default height per lane in pixels
+  trackHeights: Record<string, number>; // per-lane custom heights (overrides trackHeight)
+  trackHeightPreset: 0 | 1 | 2; // 0=S(28), 1=M(56), 2=L(112) — cycled by Shift-T
   mutedLanes: Set<string>;
   soloLanes: Set<string>;
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
@@ -234,6 +236,8 @@ interface CutEditorState {
   setShuttleSpeed: (speed: number) => void;  // MARKER_W3.4
   setZoom: (z: number) => void;
   setTrackHeight: (h: number) => void;
+  setTrackHeightForLane: (laneId: string, h: number) => void;
+  cycleTrackHeights: () => void; // Shift-T: S→M→L→S
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
@@ -344,6 +348,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   zoom: 60, // 60px per second — good starting point
   scrollLeft: 0,
   trackHeight: 56,
+  trackHeights: {},
+  trackHeightPreset: 1 as 0 | 1 | 2,
   mutedLanes: new Set<string>(),
   soloLanes: new Set<string>(),
   lockedLanes: new Set<string>(),
@@ -443,7 +449,17 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
-  setTrackHeight: (h) => set({ trackHeight: Math.max(32, Math.min(180, h)) }),
+  setTrackHeight: (h) => set({ trackHeight: Math.max(28, Math.min(180, h)) }),
+  setTrackHeightForLane: (laneId, h) =>
+    set((state) => ({
+      trackHeights: { ...state.trackHeights, [laneId]: Math.max(28, Math.min(180, h)) },
+    })),
+  cycleTrackHeights: () =>
+    set((state) => {
+      const PRESETS: [number, 0 | 1 | 2][] = [[28, 0], [56, 1], [112, 2]];
+      const next = ((state.trackHeightPreset + 1) % 3) as 0 | 1 | 2;
+      return { trackHeight: PRESETS[next][0], trackHeightPreset: next, trackHeights: {} };
+    }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),
   toggleMute: (laneId) =>
     set((state) => {

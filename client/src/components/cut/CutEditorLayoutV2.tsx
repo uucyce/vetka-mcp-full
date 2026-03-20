@@ -262,6 +262,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (next !== undefined) s.seek(next);
     },
 
+    // Track height
+    cycleTrackHeight: () => useCutEditorStore.getState().cycleTrackHeights(),
+
     // Tools
     razorTool: () => useCutEditorStore.getState().setActiveTool('razor'),
     selectTool: () => useCutEditorStore.getState().setActiveTool('selection'),

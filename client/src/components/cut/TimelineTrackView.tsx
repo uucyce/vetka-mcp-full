@@ -510,6 +510,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const zoom = useCutEditorStore((state) => state.zoom);
   const scrollLeft = useCutEditorStore((state) => state.scrollLeft);
   const trackHeight = useCutEditorStore((state) => state.trackHeight);
+  const trackHeights = useCutEditorStore((state) => state.trackHeights);
+  const setTrackHeightForLane = useCutEditorStore((state) => state.setTrackHeightForLane);
   const currentTime = useCutEditorStore((state) => state.currentTime);
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useCutEditorStore((state) => state.selectedClipId);
@@ -1339,8 +1341,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const hasSolo = soloLanes.size > 0;
           const isSolo = soloLanes.has(lane.lane_id);
           const laneDimmed = isMuted || (hasSolo && !isSolo);
+          const laneH = trackHeights[lane.lane_id] ?? trackHeight;
           return (
-            <div key={lane.lane_id} style={{ ...LANE_ROW, height: trackHeight, opacity: laneDimmed ? 0.3 : 1 }}>
+            <div key={lane.lane_id} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
               <div style={LANE_HEADER}>
                 <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
@@ -1621,7 +1624,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         ...MARKER_STYLE,
                         left: markerX,
                         width: markerWidth,
-                        height: trackHeight - 6,
+                        height: laneH - 6,
                         top: 3,
                         background: `${color}33`,
                         borderLeft: `2px solid ${color}`,
@@ -1631,6 +1634,35 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   );
                 })}
               </div>
+              {/* MARKER_TIMELINE-1: Drag-to-resize handle on bottom edge */}
+              <div
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 4,
+                  cursor: 'row-resize',
+                  zIndex: 10,
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const startY = e.clientY;
+                  const startH = laneH;
+                  const laneId = lane.lane_id;
+                  const onMove = (ev: MouseEvent) => {
+                    const delta = ev.clientY - startY;
+                    setTrackHeightForLane(laneId, startH + delta);
+                  };
+                  const onUp = () => {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                  };
+                  document.addEventListener('mousemove', onMove);
+                  document.addEventListener('mouseup', onUp);
+                }}
+              />
             </div>
           );
         })}
