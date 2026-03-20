@@ -28,6 +28,30 @@ dedicated service modules and adds missing capabilities.
 | `PRODUCTION_VIDEO_FORMATS` | `cut_routes.py:2419` | Classification constants |
 | `_CODEC_MAP` | `cut_routes.py:7917` | ProRes/H.264/H.265 mapping |
 
+## Task Breakdown — Wave 0.5 (Post-B1, priority 1, no deps)
+
+### B1.5: Maximum Codec/Container Coverage — PyAV-Ready Registry
+- **Files:** `cut_codec_probe.py`, `cut_render_engine.py`, `cut_routes.py`
+- **Task ID:** `tb_1773989032_1`
+- **Motivation:** Real production footage uses exotic codecs: GH5 HEVC 10-bit in MOV,
+  Panasonic V-Log, Sony XAVC-S, Canon XF-AVC, RED R3D, BRAW, ARRIRAW, CinemaDNG.
+  Current maps only cover 5 encode codecs and 5 native container extensions.
+- **What:**
+  1. `cut_codec_probe.py` — add `codec_family` classification (camera_raw, production,
+     delivery, web, audio_only) + `playback_class` inference (native/proxy_recommended/
+     transcode_required/unsupported). Expand pix_fmt and color primaries maps.
+  2. `cut_render_engine.py` CODEC_MAP — add all ProRes profiles (LT/Proxy/422HQ/4444XQ),
+     DNxHR tiers (LB/SQ/HQ/HQX/444), H.264 10-bit, H.265 10-bit, VP9, AV1.
+  3. `cut_routes.py` — expand PRODUCTION_VIDEO_FORMATS, NATIVE_VIDEO_EXT,
+     PROXY_RECOMMENDED_EXT to cover all camera/broadcast/web containers.
+- **Future:** PyAV decoder path (B4) will use this registry for codec→decoder routing.
+- **Acceptance:**
+  - Codec family for all major camera codecs classified
+  - Playback class auto-detected from codec+container
+  - Render engine can target 15+ encode codecs
+  - GH5 HEVC 10-bit MOV detected as proxy_recommended
+  - Tests cover all codec families
+
 ## Task Breakdown — Wave 1 (Priority 1, no deps)
 
 ### B1: FFprobe Codec Detection + Metadata Extraction
@@ -95,6 +119,33 @@ dedicated service modules and adds missing capabilities.
 - B9 → {B10, B16} (effects → transitions + color)
 - B13 → B14 (mixer → audio transitions)
 - B12 (motion controls — independent)
+
+## FFmpeg Build Strategy (Grok Recon 2026-03-20)
+
+**Goal:** Maximum codec coverage via custom FFmpeg build (GPL + nonfree).
+
+**Recommended:** `markus-perl/ffmpeg-build-script` → static binary, all libs.
+```bash
+git clone https://github.com/markus-perl/ffmpeg-build-script.git
+cd ffmpeg-build-script
+SKIPINSTALL=yes ./build-ffmpeg --build --enable-gpl-and-non-free
+```
+
+**Key --enable flags for full coverage:**
+libx264, libx265, libvpx, libaom, libdav1d, libsvtav1, librav1e,
+libfdk-aac, libopus, libmp3lame, libvorbis, libsoxr, libzimg,
+libbluray, libwebp, libopenjpeg, openssl
+
+**PyAV:** Must build from source against custom FFmpeg:
+```bash
+pip uninstall av -y
+git clone https://github.com/PyAV-Org/PyAV.git
+cd PyAV
+export PKG_CONFIG_PATH=/usr/local/lib/pkgconfig
+pip install -e .
+```
+
+**Verify:** `ffmpeg -codecs | grep -E 'HEVC|ProRes|DNx|opus|fdk'`
 
 ## Parallel Execution Map
 

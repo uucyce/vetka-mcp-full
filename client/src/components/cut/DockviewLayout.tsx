@@ -37,9 +37,12 @@ import {
   HistoryPanelDock,
   AutoMontagePanelDock,
 } from './panels';
+import EffectsPanel from './EffectsPanel';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
+
+const EffectsPanelDock = () => <EffectsPanel />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -50,6 +53,7 @@ const PANEL_COMPONENTS = {
   storyspace: StorySpacePanelDock,
   history: HistoryPanelDock,
   montage: AutoMontagePanelDock,
+  effects: EffectsPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -161,6 +165,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
+<<<<<<< HEAD
     // MARKER_C14: Auto-Montage panel (Analysis tab group)
     event.api.addPanel({
       id: 'montage',
@@ -171,6 +176,17 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
     // MARKER_C13: Timeline (full-width bottom) — dockview tabs replace TimelineTabBar
     event.api.addPanel({
+=======
+    event.api.addPanel({
+      id: 'effects',
+      component: 'effects',
+      title: 'Effects',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // Timeline (full-width bottom) — hide dockview tab header (TimelineTabBar is internal)
+    const timelinePanelRef = event.api.addPanel({
+>>>>>>> claude/cut-engine
       id: 'timeline',
       component: 'timeline',
       title: 'Timeline',

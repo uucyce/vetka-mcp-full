@@ -5,12 +5,30 @@
  */
 import { create } from 'zustand';
 
+// MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
+export type ClipEffects = {
+  brightness: number;   // -1..1, default 0
+  contrast: number;     // -1..1, default 0
+  saturation: number;   // 0..2, default 1
+  blur: number;         // 0..20, default 0 (px radius)
+  opacity: number;      // 0..1, default 1
+};
+
+export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
+  brightness: 0,
+  contrast: 0,
+  saturation: 1,
+  blur: 0,
+  opacity: 1,
+};
+
 export type TimelineClip = {
   clip_id: string;
   scene_id?: string;
   start_sec: number;
   duration_sec: number;
   source_path: string;
+  effects?: ClipEffects;
   sync?: {
     method?: string;
     offset_sec?: number;
@@ -276,6 +294,10 @@ interface CutEditorState {
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
 
+  // MARKER_W10.6: Per-clip effects
+  setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
+  resetClipEffects: (clipId: string) => void;
+
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
   setWaveforms: (items: WaveformItem[]) => void;
@@ -527,6 +549,28 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setLastSavedAt: (ts) => set({ lastSavedAt: ts }),
   setSaveError: (err) => set({ saveError: err }),
   markUnsavedChanges: () => set({ hasUnsavedChanges: true, saveStatus: 'idle' }),
+
+  // MARKER_W10.6: Per-clip effects
+  setClipEffects: (clipId, effects) =>
+    set((state) => ({
+      lanes: state.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId
+            ? { ...c, effects: { ...(c.effects ?? DEFAULT_CLIP_EFFECTS), ...effects } }
+            : c,
+        ),
+      })),
+    })),
+  resetClipEffects: (clipId) =>
+    set((state) => ({
+      lanes: state.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId ? { ...c, effects: undefined } : c,
+        ),
+      })),
+    })),
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
