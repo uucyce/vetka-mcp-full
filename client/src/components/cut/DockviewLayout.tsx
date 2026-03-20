@@ -159,19 +159,15 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-    // Timeline (full-width bottom) — hide dockview tab header (TimelineTabBar is internal)
-    const timelinePanelRef = event.api.addPanel({
+    // MARKER_C13: Timeline (full-width bottom) — dockview tabs replace TimelineTabBar
+    event.api.addPanel({
       id: 'timeline',
       component: 'timeline',
       title: 'Timeline',
       params: { scriptText },
       position: { direction: 'below' },
     });
-    // Hide the group header for timeline — it has its own TimelineTabBar
-    if (timelinePanelRef?.group) {
-      timelinePanelRef.group.locked = 'no-drop-target';
-      timelinePanelRef.group.header.hidden = true;
-    }
+    // Dockview native tabs now visible — supports multi-instance via drag/split/tab
 
     // Set approximate sizes to match current layout proportions
     // Left column ~260px, right monitor area fills rest
