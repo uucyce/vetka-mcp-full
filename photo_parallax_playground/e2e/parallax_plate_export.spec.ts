@@ -134,6 +134,64 @@ function validateQwenPlateGateContract(gate: Record<string, unknown>, sampleId: 
   expectObjectKeys(gate.gated_plate_stack, ["sampleId", "plates"], `qwen_plate_gate.${sampleId}.gated_plate_stack`);
 }
 
+async function sampleDepthPolarity(
+  page: Parameters<typeof test>[0]["page"],
+  payload: {
+    globalDepthUrl: string;
+    plates: Array<{ id: string; role: string; depthUrl: string }>;
+  },
+) {
+  return page.evaluate(async ({ globalDepthUrl, plates }) => {
+    const points = {
+      sky_far: { x: 0.08, y: 0.12 },
+      hovercar_mid: { x: 0.56, y: 0.57 },
+      walker_near: { x: 0.47, y: 0.73 },
+      road_far: { x: 0.84, y: 0.88 },
+    } as const;
+
+    const sampleGray = async (url: string) => {
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const next = new Image();
+        next.onload = () => resolve(next);
+        next.onerror = () => reject(new Error(`Failed to load image: ${url.slice(0, 48)}`));
+        next.src = url;
+      });
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas 2D context is unavailable");
+      ctx.drawImage(image, 0, 0);
+      const readPoint = ({ x, y }: { x: number; y: number }) => {
+        const px = Math.max(0, Math.min(image.width - 1, Math.round(x * (image.width - 1))));
+        const py = Math.max(0, Math.min(image.height - 1, Math.round(y * (image.height - 1))));
+        const data = ctx.getImageData(px, py, 1, 1).data;
+        return data[0];
+      };
+      return {
+        sky_far: readPoint(points.sky_far),
+        hovercar_mid: readPoint(points.hovercar_mid),
+        walker_near: readPoint(points.walker_near),
+        road_far: readPoint(points.road_far),
+      };
+    };
+
+    const perPlate: Record<string, { role: string; samples: Awaited<ReturnType<typeof sampleGray>> }> = {};
+    for (const plate of plates) {
+      if (!plate.depthUrl) continue;
+      perPlate[plate.id] = {
+        role: plate.role,
+        samples: await sampleGray(plate.depthUrl),
+      };
+    }
+
+    return {
+      global: await sampleGray(globalDepthUrl),
+      perPlate,
+    };
+  }, payload);
+}
+
 test("export plate-wise png alpha and depth assets", async ({ page }) => {
   test.setTimeout(90000);
   const sampleId = process.env.PARALLAX_LAB_SAMPLE_ID || "hover-politsia";
@@ -280,6 +338,22 @@ test("export plate-wise png alpha and depth assets", async ({ page }) => {
   expect(result.assets.contract_version).toBe(CONTRACT_VERSION);
   expect(result.assets.layout.plates.length).toBeGreaterThan(0);
   validatePlateLayoutContract(result.assets.layout as Record<string, unknown>);
+  expect(result.depthState.manual.invertDepth).toBe(false);
+
+  if (sampleId === "hover-politsia") {
+    expect(result.depthState.usingRealDepth).toBe(true);
+    const polarity = await sampleDepthPolarity(page, {
+      globalDepthUrl: result.assets.globalDepthUrl,
+      plates: result.assets.plates.map((plate: { id: string; role: string; depthUrl: string }) => ({
+        id: plate.id,
+        role: plate.role,
+        depthUrl: plate.depthUrl,
+      })),
+    });
+    expect(polarity.global.walker_near).toBeGreaterThan(polarity.global.hovercar_mid);
+    expect(polarity.global.hovercar_mid).toBeGreaterThan(polarity.global.sky_far);
+    expect(Object.keys(polarity.perPlate).length).toBeGreaterThan(0);
+  }
 
   fs.writeFileSync(path.join(outputDir, "plate_stack.json"), JSON.stringify(result.assets.plateStack, null, 2), "utf8");
   fs.writeFileSync(path.join(outputDir, "plate_layout.json"), JSON.stringify(result.assets.layout, null, 2), "utf8");
