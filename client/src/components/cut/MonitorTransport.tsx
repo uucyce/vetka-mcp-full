@@ -47,9 +47,11 @@ const SCRUBBER_FILL: CSSProperties = {
 const CONTROLS_ROW: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: 4,
+  justifyContent: 'center',
+  gap: 2,
   padding: '2px 8px',
   height: 28,
+  position: 'relative',
 };
 
 const TC_STYLE: CSSProperties = {
@@ -134,6 +136,54 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const handleStepBack = useCallback(() => seek(Math.max(0, currentTime - 1 / 25)), [seek, currentTime]);
   const handleStepForward = useCallback(() => seek(Math.min(duration, currentTime + 1 / 25)), [seek, currentTime, duration]);
 
+  // MARKER_FIX-MONITOR-1: Navigate edit points (clip boundaries)
+  const lanes = useCutEditorStore((s) => s.lanes);
+  const lockedLanes = useCutEditorStore((s) => s.lockedLanes);
+
+  const handlePrevEdit = useCallback(() => {
+    const pts = new Set<number>();
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        pts.add(clip.start_sec);
+        pts.add(clip.start_sec + clip.duration_sec);
+      }
+    }
+    const sorted = [...pts].sort((a, b) => a - b);
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (sorted[i] < currentTime - 0.02) { seek(sorted[i]); return; }
+    }
+    seek(0);
+  }, [lanes, lockedLanes, currentTime, seek]);
+
+  const handleNextEdit = useCallback(() => {
+    const pts = new Set<number>();
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        pts.add(clip.start_sec);
+        pts.add(clip.start_sec + clip.duration_sec);
+      }
+    }
+    const sorted = [...pts].sort((a, b) => a - b);
+    for (const pt of sorted) {
+      if (pt > currentTime + 0.02) { seek(pt); return; }
+    }
+  }, [lanes, lockedLanes, currentTime, seek]);
+
+  const handleMatchFrame = useCallback(() => {
+    // Match Frame: find clip at playhead → load into Source Monitor
+    const setSourceMedia = useCutEditorStore.getState().setSourceMedia;
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+          setSourceMedia(clip.source_path);
+          return;
+        }
+      }
+    }
+  }, [lanes, currentTime]);
+
   const handleScrubberClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (duration <= 0) return;
@@ -151,51 +201,57 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <div style={{ ...SCRUBBER_FILL, width: `${progress}%` }} />
       </div>
 
-      {/* Controls row */}
+      {/* MARKER_FIX-MONITOR-1: Controls row — FCP7/Premiere centered layout */}
       <div style={CONTROLS_ROW}>
-        {/* Timecode */}
-        <span style={TC_STYLE}>{formatTC(currentTime)}</span>
+        {/* Left: Timecode (absolute positioned) */}
+        <span style={{ ...TC_STYLE, position: 'absolute', left: 8 }}>{formatTC(currentTime)}</span>
 
-        {/* Transport buttons */}
+        {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
+        <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to previous edit (Up)">
+          <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'|◂◂'}</span>
+        </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipStart} title="Go to start">
           <IconSkipStart size={14} />
         </button>
-        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame">
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame (Left)">
           <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
         </button>
-        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause' : 'Play'}>
+        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
-        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame">
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame (Right)">
           <span style={{ fontFamily: 'monospace' }}>{'▸|'}</span>
         </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipEnd} title="Go to end">
           <IconSkipEnd size={14} />
         </button>
+        <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to next edit (Down)">
+          <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'▸▸|'}</span>
+        </button>
 
-        {/* Total duration — Premiere style: no label, just timecode */}
-        <span style={DUR_STYLE}>{formatTC(duration)}</span>
-
-        {/* Source-only: IN / OUT buttons */}
-        {feed === 'source' && (
-          <>
-            <div style={{ width: 1, height: 16, background: '#333', margin: '0 4px' }} />
-            <button
-              style={{ ...IO_BTN, color: markIn != null ? '#3b82f6' : '#666' }}
-              onClick={() => setMarkIn(currentTime)}
-              title="Set IN point (I)"
-            >
-              I
-            </button>
-            <button
-              style={{ ...IO_BTN, color: markOut != null ? '#3b82f6' : '#666' }}
-              onClick={() => setMarkOut(currentTime)}
-              title="Set OUT point (O)"
-            >
-              O
-            </button>
-          </>
-        )}
+        {/* Right: Duration + Marking (absolute positioned) */}
+        <div style={{ position: 'absolute', right: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={DUR_STYLE}>{formatTC(duration)}</span>
+          {/* IN / OUT + Match Frame — Source and Program both get marks */}
+          <div style={{ width: 1, height: 14, background: '#333' }} />
+          <button
+            style={{ ...IO_BTN, color: markIn != null ? '#3b82f6' : '#666' }}
+            onClick={() => setMarkIn(currentTime)}
+            title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} IN (I)`}
+          >
+            I
+          </button>
+          <button
+            style={{ ...IO_BTN, color: markOut != null ? '#3b82f6' : '#666' }}
+            onClick={() => setMarkOut(currentTime)}
+            title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} OUT (O)`}
+          >
+            O
+          </button>
+          {feed === 'program' && (
+            <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)">F</button>
+          )}
+        </div>
       </div>
     </div>
   );
