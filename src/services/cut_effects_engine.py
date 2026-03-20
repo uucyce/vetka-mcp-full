@@ -172,6 +172,59 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         params_schema={},
     ),
 
+    # === MARKER_B16: Color correction ===
+    "lift": EffectDef(
+        type="lift", label="Lift (Shadows)", category="color",
+        params_schema={
+            "r": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "g": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "b": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+        },
+    ),
+    "midtone": EffectDef(
+        type="midtone", label="Gamma (Midtones)", category="color",
+        params_schema={
+            "r": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "g": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "b": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+        },
+    ),
+    "gain": EffectDef(
+        type="gain", label="Gain (Highlights)", category="color",
+        params_schema={
+            "r": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "g": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "b": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+        },
+    ),
+    "curves": EffectDef(
+        type="curves", label="Curves", category="color",
+        params_schema={
+            "preset": {"type": "str", "default": "none",
+                       "options": ["none", "lighter", "darker", "increase_contrast",
+                                   "decrease_contrast", "strong_contrast", "negative",
+                                   "vintage", "cross_process"]},
+            "master": {"type": "str", "default": ""},   # custom spline: "0/0 0.25/0.2 0.5/0.6 1/1"
+            "red": {"type": "str", "default": ""},
+            "green": {"type": "str", "default": ""},
+            "blue": {"type": "str", "default": ""},
+        },
+    ),
+    "color_balance": EffectDef(
+        type="color_balance", label="Color Balance", category="color",
+        params_schema={
+            "rs": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "gs": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "bs": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "rm": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "gm": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "bm": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "rh": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "gh": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+            "bh": {"type": "float", "min": -1.0, "max": 1.0, "default": 0, "step": 0.01},
+        },
+    ),
+
     # === MARKER_B12: Motion controls ===
     "position": EffectDef(
         type="position", label="Position", category="motion",
@@ -315,12 +368,55 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
         elif t == "white_balance":
             temp = float(p.get("temperature", 6500))
             if temp != 6500:
-                # Rough WB: shift red/blue channels via colorbalance
-                # Cool (>6500) = more blue, warm (<6500) = more red
-                shift = (temp - 6500) / 6500  # -1 to +1 roughly
+                shift = (temp - 6500) / 6500
                 rs = -shift * 0.3
                 bs = shift * 0.3
                 filters.append(f"colorbalance=rs={rs:.3f}:bs={bs:.3f}")
+
+        # MARKER_B16: Lift/Gamma/Gain (3-way color corrector)
+        elif t == "lift":
+            r, g, b = float(p.get("r", 0)), float(p.get("g", 0)), float(p.get("b", 0))
+            if r != 0 or g != 0 or b != 0:
+                filters.append(f"colorbalance=rs={r:.3f}:gs={g:.3f}:bs={b:.3f}")
+
+        elif t == "midtone":
+            r, g, b = float(p.get("r", 0)), float(p.get("g", 0)), float(p.get("b", 0))
+            if r != 0 or g != 0 or b != 0:
+                filters.append(f"colorbalance=rm={r:.3f}:gm={g:.3f}:bm={b:.3f}")
+
+        elif t == "gain":
+            r, g, b = float(p.get("r", 0)), float(p.get("g", 0)), float(p.get("b", 0))
+            if r != 0 or g != 0 or b != 0:
+                filters.append(f"colorbalance=rh={r:.3f}:gh={g:.3f}:bh={b:.3f}")
+
+        elif t == "curves":
+            preset = str(p.get("preset", "none"))
+            master = str(p.get("master", ""))
+            red = str(p.get("red", ""))
+            green = str(p.get("green", ""))
+            blue = str(p.get("blue", ""))
+            if preset != "none":
+                filters.append(f"curves=preset={preset}")
+            elif master or red or green or blue:
+                parts_c: list[str] = []
+                if master:
+                    parts_c.append(f"master='{master}'")
+                if red:
+                    parts_c.append(f"red='{red}'")
+                if green:
+                    parts_c.append(f"green='{green}'")
+                if blue:
+                    parts_c.append(f"blue='{blue}'")
+                filters.append(f"curves={':'.join(parts_c)}")
+
+        elif t == "color_balance":
+            cb_parts: list[str] = []
+            for key in ["rs", "gs", "bs", "rm", "gm", "bm", "rh", "gh", "bh"]:
+                val = float(p.get(key, 0))
+                if val != 0:
+                    cb_parts.append(f"{key}={val:.3f}")
+            if cb_parts:
+                filters.append(f"colorbalance={':'.join(cb_parts)}")
 
         elif t == "blur":
             sigma = float(p.get("sigma", 0))

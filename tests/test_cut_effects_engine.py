@@ -133,6 +133,55 @@ class TestCompileVideoFilters:
         result = compile_video_filters(effects)
         assert "gamma=" in result[0]
 
+    # MARKER_B16: Color correction effects
+    def test_lift_shadows(self):
+        effects = [EffectParam(type="lift", params={"r": 0.1, "g": 0, "b": -0.1})]
+        result = compile_video_filters(effects)
+        assert "colorbalance=" in result[0]
+        assert "rs=0.100" in result[0]
+        assert "bs=-0.100" in result[0]
+
+    def test_midtone(self):
+        effects = [EffectParam(type="midtone", params={"r": 0, "g": 0.2, "b": 0})]
+        result = compile_video_filters(effects)
+        assert "colorbalance=" in result[0]
+        assert "gm=0.200" in result[0]
+
+    def test_gain_highlights(self):
+        effects = [EffectParam(type="gain", params={"r": 0.3, "g": 0.3, "b": 0.3})]
+        result = compile_video_filters(effects)
+        assert "rh=0.300" in result[0]
+
+    def test_curves_preset(self):
+        effects = [EffectParam(type="curves", params={"preset": "vintage"})]
+        result = compile_video_filters(effects)
+        assert "curves=preset=vintage" in result[0]
+
+    def test_curves_none_no_filter(self):
+        effects = [EffectParam(type="curves", params={"preset": "none"})]
+        assert compile_video_filters(effects) == []
+
+    def test_curves_custom_master(self):
+        effects = [EffectParam(type="curves", params={"preset": "none", "master": "0/0 0.5/0.7 1/1"})]
+        result = compile_video_filters(effects)
+        assert "curves=" in result[0]
+        assert "master=" in result[0]
+
+    def test_color_balance(self):
+        effects = [EffectParam(type="color_balance", params={"rs": 0.1, "bh": -0.2})]
+        result = compile_video_filters(effects)
+        assert "colorbalance=" in result[0]
+        assert "rs=0.100" in result[0]
+        assert "bh=-0.200" in result[0]
+
+    def test_lift_zero_no_filter(self):
+        effects = [EffectParam(type="lift", params={"r": 0, "g": 0, "b": 0})]
+        assert compile_video_filters(effects) == []
+
+    def test_color_balance_zero_no_filter(self):
+        effects = [EffectParam(type="color_balance", params={})]
+        assert compile_video_filters(effects) == []
+
     def test_white_balance(self):
         effects = [EffectParam(type="white_balance", params={"temperature": 3500})]
         result = compile_video_filters(effects)
