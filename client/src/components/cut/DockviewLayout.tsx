@@ -6,6 +6,7 @@
  *
  * Architecture doc: RECON_PANEL_DOCKING_2026-03-19.md §5
  * Panel registry: 10 panels, timeline = multi-instance, all others = singleton.
+ * Panel wrappers: MARKER_C4 — extracted to ./panels/ with focus handling.
  *
  * @phase 196
  */
@@ -14,7 +15,6 @@ import {
   DockviewReact,
   type DockviewApi,
   type DockviewReadyEvent,
-  type IDockviewPanelProps,
 } from 'dockview-react';
 import 'dockview-react/dist/styles/dockview.css';
 import './dockview-cut-theme.css';
@@ -22,83 +22,19 @@ import './dockview-cut-theme.css';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
 
-// Panel content components
-import VideoPreview from './VideoPreview';
-import ProjectPanel from './ProjectPanel';
-import ScriptPanel from './ScriptPanel';
-import DAGProjectPanel from './DAGProjectPanel';
-import MonitorTransport from './MonitorTransport';
-import PulseInspector from './PulseInspector';
-import ClipInspector from './ClipInspector';
-import StorySpace3D from './StorySpace3D';
-import HistoryPanel from './HistoryPanel';
-import TimelineToolbar from './TimelineToolbar';
-import TimelineTabBar from './TimelineTabBar';
-import TimelineTrackView from './TimelineTrackView';
-import BPMTrack from './BPMTrack';
-
-// ─── Panel wrapper components ───────────────────────────────────────
-// Each wraps an existing CUT panel into a dockview-compatible component.
-// dockview provides its own title bar, so we render content only.
-
-const ProjectPanelDock = (_props: IDockviewPanelProps) => <ProjectPanel />;
-
-const ScriptPanelDock = (props: IDockviewPanelProps) => (
-  <ScriptPanel scriptText={props.params?.scriptText as string ?? ''} />
-);
-
-const GraphPanelDock = (_props: IDockviewPanelProps) => <DAGProjectPanel />;
-
-const InspectorPanelDock = (_props: IDockviewPanelProps) => <PulseInspector />;
-
-const ClipPanelDock = (_props: IDockviewPanelProps) => <ClipInspector />;
-
-const StorySpacePanelDock = (_props: IDockviewPanelProps) => <StorySpace3D />;
-
-const HistoryPanelDock = (_props: IDockviewPanelProps) => <HistoryPanel />;
-
-const SourceMonitorDock = (_props: IDockviewPanelProps) => (
-  <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-    <div style={{ flex: 1, overflow: 'hidden' }}>
-      <VideoPreview feed="source" />
-    </div>
-    <MonitorTransport feed="source" />
-  </div>
-);
-
-const ProgramMonitorDock = (_props: IDockviewPanelProps) => (
-  <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-    <div style={{ flex: 1, overflow: 'hidden' }}>
-      <VideoPreview feed="program" />
-    </div>
-    <MonitorTransport feed="program" />
-  </div>
-);
-
-const TimelinePanelDock = (props: IDockviewPanelProps) => {
-  const zoom = useCutEditorStore((s) => s.zoom);
-  const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
-  const duration = useCutEditorStore((s) => s.duration);
-  const timelineId = useCutEditorStore((s) => s.timelineId);
-  const scriptText = (props.params?.scriptText as string) ?? '';
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%', overflow: 'hidden' }}>
-      <TimelineToolbar />
-      <TimelineTabBar />
-      <div style={{ flex: 1, overflow: 'hidden' }}>
-        <TimelineTrackView />
-      </div>
-      <BPMTrack
-        timelineId={timelineId}
-        scriptText={scriptText}
-        pxPerSec={zoom}
-        scrollLeft={scrollLeft}
-        durationSec={duration}
-      />
-    </div>
-  );
-};
+// MARKER_C4: Panel wrappers extracted to panels/ directory
+import {
+  SourceMonitorPanel,
+  ProgramMonitorPanel,
+  TimelinePanel,
+  ProjectPanelDock,
+  ScriptPanelDock,
+  GraphPanelDock,
+  InspectorPanelDock,
+  ClipPanelDock,
+  StorySpacePanelDock,
+  HistoryPanelDock,
+} from './panels';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -111,9 +47,9 @@ const PANEL_COMPONENTS = {
   clip: ClipPanelDock,
   storyspace: StorySpacePanelDock,
   history: HistoryPanelDock,
-  source: SourceMonitorDock,
-  program: ProgramMonitorDock,
-  timeline: TimelinePanelDock,
+  source: SourceMonitorPanel,
+  program: ProgramMonitorPanel,
+  timeline: TimelinePanel,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
@@ -135,10 +71,12 @@ interface DockviewLayoutProps {
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const { saveLayout, loadLayout, activePreset } = useDockviewStore();
+  const { saveLayout, loadLayout, activePreset, setApiRef } = useDockviewStore();
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     apiRef.current = event.api;
+    // MARKER_C5: Expose API to store for workspace preset switching
+    setApiRef(event.api);
 
     // Try restoring saved layout
     const saved = loadLayout(activePreset);
@@ -267,7 +205,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         saveLayout(activePreset, json);
       }
     });
-  }, [scriptText, activePreset, loadLayout, saveLayout]);
+  }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
 
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);

@@ -26,6 +26,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import { API_BASE } from '../../config/api.config';
 import { usePanelSyncStore } from '../../store/usePanelSyncStore';
+import { useCutEditorStore } from '../../store/useCutEditorStore';
 
 // ─── Types ───
 
@@ -127,22 +128,29 @@ const NODE_TYPES: NodeTypes = {
 };
 
 // ─── Layout: Y = chronology, spine center ───
+// MARKER_C8.1: flipY=true → START at bottom, END at top (architecture default)
 
-function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[]): { rfNodes: Node[]; rfEdges: Edge[] } {
+function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[], flipY = true): { rfNodes: Node[]; rfEdges: Edge[] } {
   const rfNodes: Node[] = [];
 
   // Separate spine nodes from media nodes
   const spineNodes = nodes.filter((n) => n.node_type === 'scene_chunk');
   const mediaNodes = nodes.filter((n) => n.node_type !== 'scene_chunk');
 
-  // Place spine nodes: center X, Y = start_sec * PX_PER_SEC
+  // Find max time for Y inversion
+  const maxSec = spineNodes.reduce((mx, n) => Math.max(mx, (n.start_sec ?? 0) + (n.duration_sec ?? 0)), 0);
+
+  // MARKER_C8.1: Y direction — flipY true = START bottom, END top (negative Y = up in ReactFlow)
+  const yPos = (sec: number) => flipY ? -(sec * PX_PER_SEC) : sec * PX_PER_SEC;
+
+  // Place spine nodes: center X, Y = chronological position
   for (const n of spineNodes) {
     rfNodes.push({
       id: n.node_id,
       type: 'scene_chunk',
       position: {
         x: SPINE_X,
-        y: (n.start_sec ?? 0) * PX_PER_SEC,
+        y: yPos(n.start_sec ?? 0),
       },
       data: { ...n },
     });
@@ -170,13 +178,14 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
         mediaByScene[sceneId].left.push(m);
       }
     } else {
-      // Unlinked media — place below all spine nodes
+      // Unlinked media — place after all spine nodes
       const lastSpine = spineNodes[spineNodes.length - 1];
-      const baseY = lastSpine ? (lastSpine.start_sec ?? 0) * PX_PER_SEC + 80 : 0;
+      const baseSec = lastSpine ? (lastSpine.start_sec ?? 0) + (lastSpine.duration_sec ?? 0) : 0;
+      const offsetY = flipY ? -(baseSec * PX_PER_SEC + 80 + rfNodes.length * 40) : baseSec * PX_PER_SEC + 80 + rfNodes.length * 40;
       rfNodes.push({
         id: m.node_id,
         type: 'asset',
-        position: { x: SPINE_X + MEDIA_OFFSET, y: baseY + rfNodes.length * 40 },
+        position: { x: SPINE_X + MEDIA_OFFSET, y: offsetY },
         data: { ...m },
       });
     }
@@ -186,7 +195,8 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
   for (const [sceneId, sides] of Object.entries(mediaByScene)) {
     const sceneNode = spineNodes.find((n) => n.node_id === sceneId);
     if (!sceneNode) continue;
-    const sceneY = (sceneNode.start_sec ?? 0) * PX_PER_SEC;
+    const sceneY = yPos(sceneNode.start_sec ?? 0);
+    const stepY = flipY ? -35 : 35;
 
     // Left side (video/takes)
     for (let i = 0; i < sides.left.length; i++) {
@@ -194,7 +204,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
       rfNodes.push({
         id: m.node_id,
         type: 'asset',
-        position: { x: SPINE_X - MEDIA_OFFSET, y: sceneY + i * 35 },
+        position: { x: SPINE_X - MEDIA_OFFSET, y: sceneY + i * stepY },
         data: { ...m },
       });
     }
@@ -205,7 +215,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
       rfNodes.push({
         id: m.node_id,
         type: 'asset',
-        position: { x: SPINE_X + MEDIA_OFFSET, y: sceneY + i * 35 },
+        position: { x: SPINE_X + MEDIA_OFFSET, y: sceneY + i * stepY },
         data: { ...m },
       });
     }
@@ -250,11 +260,17 @@ interface DAGProjectPanelProps {
   timelineId?: string;
 }
 
-export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanelProps) {
+export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProjectPanelProps) {
+  // MARKER_C8.2: Read timelineId from store if not provided via prop
+  const storeTimelineId = useCutEditorStore((s) => s.timelineId);
+  const timelineId = timelineIdProp ?? storeTimelineId ?? 'main';
+
   const [dagNodes, setDagNodes] = useState<DAGNodeData[]>([]);
   const [dagEdges, setDagEdges] = useState<{ source: string; target: string; edge_type: string }[]>([]);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([] as Node[]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([] as Edge[]);
+  // MARKER_C8.1: Flip Y toggle — START bottom (true) or START top (false)
+  const [flipY, setFlipY] = useState(true);
 
   const syncFromDAG = usePanelSyncStore((s) => s.syncFromDAG);
 
@@ -273,7 +289,7 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
           setDagNodes(nodes);
           setDagEdges(edges);
 
-          const { rfNodes: rn, rfEdges: re } = layoutNodes(nodes, edges);
+          const { rfNodes: rn, rfEdges: re } = layoutNodes(nodes, edges, flipY);
           setRfNodes(rn);
           setRfEdges(re);
         }
@@ -286,6 +302,14 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
     return () => { cancelled = true; };
   }, [timelineId, setRfNodes, setRfEdges]);
 
+  // MARKER_C8.1: Re-layout when flipY changes (no re-fetch needed)
+  useEffect(() => {
+    if (dagNodes.length === 0) return;
+    const { rfNodes: rn, rfEdges: re } = layoutNodes(dagNodes, dagEdges, flipY);
+    setRfNodes(rn);
+    setRfEdges(re);
+  }, [flipY]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ─── Node click → sync store ───
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
@@ -297,6 +321,27 @@ export default function DAGProjectPanel({ timelineId = 'main' }: DAGProjectPanel
 
   return (
     <div style={PANEL}>
+      {/* MARKER_C8.1: Flip Y toggle */}
+      <button
+        onClick={() => setFlipY((v) => !v)}
+        style={{
+          position: 'absolute',
+          top: 4,
+          right: 4,
+          zIndex: 10,
+          background: '#1a1a1a',
+          border: '1px solid #333',
+          borderRadius: 3,
+          color: '#888',
+          fontSize: 8,
+          fontFamily: 'monospace',
+          padding: '2px 6px',
+          cursor: 'pointer',
+        }}
+        title={flipY ? 'Y: START bottom → flip to top' : 'Y: START top → flip to bottom'}
+      >
+        {flipY ? 'Y ↑' : 'Y ↓'}
+      </button>
       {dagNodes.length === 0 ? (
         <div style={{
           width: '100%',

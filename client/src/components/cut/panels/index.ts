@@ -1,0 +1,22 @@
+/**
+ * MARKER_C4.1: Panel wrappers barrel export for dockview integration.
+ * Each panel wraps an existing CUT component with focus handling and dark bg.
+ */
+
+// Monitor panels
+export { default as SourceMonitorPanel } from './SourceMonitorPanel';
+export { default as ProgramMonitorPanel } from './ProgramMonitorPanel';
+
+// Timeline panel
+export { default as TimelinePanel } from './TimelinePanel';
+
+// Navigation panels (left column tabs)
+export { default as ProjectPanelDock } from './ProjectPanelDock';
+export { default as ScriptPanelDock } from './ScriptPanelDock';
+export { default as GraphPanelDock } from './GraphPanelDock';
+
+// Analysis panels (left column bottom tabs)
+export { default as InspectorPanelDock } from './InspectorPanelDock';
+export { default as ClipPanelDock } from './ClipPanelDock';
+export { default as StorySpacePanelDock } from './StorySpacePanelDock';
+export { default as HistoryPanelDock } from './HistoryPanelDock';

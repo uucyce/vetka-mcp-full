@@ -17,6 +17,8 @@
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import HotkeyPresetSelector from './HotkeyPresetSelector';
+import WorkspacePresets from './WorkspacePresets';
 
 const ROOT: CSSProperties = {
   display: 'flex',
@@ -150,6 +152,14 @@ export default function TimelineToolbar() {
           </button>
         </>
       )}
+
+      {/* MARKER_C6: Hotkey preset selector */}
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+      <HotkeyPresetSelector />
+
+      {/* MARKER_C5: Workspace presets */}
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+      <WorkspacePresets />
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />

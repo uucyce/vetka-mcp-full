@@ -424,6 +424,20 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
   );
   const [customOverrides, setCustomOverrides] = useState<HotkeyMap>(loadCustomOverrides);
 
+  // MARKER_C6.2: Sync preset when changed from HotkeyPresetSelector
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cut_hotkey_preset' && e.newValue) {
+        const v = e.newValue as HotkeyPresetName;
+        if (v === 'premiere' || v === 'fcp7' || v === 'custom') {
+          setPresetNameState(v);
+        }
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // Keep handlers in a ref so the keydown listener always sees latest
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;

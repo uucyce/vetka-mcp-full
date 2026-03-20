@@ -20,6 +20,9 @@ interface DockviewStoreState {
   loadLayout: (name: WorkspacePresetName) => SerializedDockview | null;
   /** List saved preset names */
   getSavedPresets: () => WorkspacePresetName[];
+  /** MARKER_C5: Dockview API ref for workspace preset switching */
+  apiRef: import('dockview-react').DockviewApi | null;
+  setApiRef: (api: import('dockview-react').DockviewApi) => void;
 }
 
 const LS_PREFIX = 'cut_dockview_';
@@ -62,4 +65,8 @@ export const useDockviewStore = create<DockviewStoreState>((set) => ({
     }
     return presets;
   },
+
+  // MARKER_C5: API ref for workspace preset switching
+  apiRef: null,
+  setApiRef: (api) => set({ apiRef: api }),
 }));
