@@ -65,6 +65,7 @@ export type CutHotkeyAction =
   | 'zoomIn'
   | 'zoomOut'
   | 'zoomToFit'
+  | 'cycleTrackHeight'
   // Project
   | 'importMedia'
   | 'saveProject'
@@ -141,6 +142,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   zoomIn:            '=',
   zoomOut:           '-',
   zoomToFit:         '\\',
+  cycleTrackHeight:  'Shift+t',
   // Project
   importMedia:       'Cmd+i',
   saveProject:       'Cmd+s',
@@ -202,6 +204,7 @@ export const FCP7_PRESET: HotkeyMap = {
   zoomIn:            'Cmd+=',
   zoomOut:           'Cmd+-',
   zoomToFit:         'Shift+z',
+  cycleTrackHeight:  'Shift+t',
   // Project
   importMedia:       'Cmd+i',
   saveProject:       'Cmd+s',
@@ -395,6 +398,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
   { action: 'zoomOut', label: 'Zoom Out', group: 'View' },
   { action: 'zoomToFit', label: 'Zoom to Fit', group: 'View' },
+  { action: 'cycleTrackHeight', label: 'Cycle Track Height (S/M/L)', group: 'View' },
   // Project
   { action: 'importMedia', label: 'Import Media', group: 'Project' },
   { action: 'saveProject', label: 'Save Project', group: 'Project' },
