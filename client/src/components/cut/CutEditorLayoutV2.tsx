@@ -175,6 +175,78 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setLanes(newLanes);
     },
 
+    // MARKER_W3.2: Insert/Overwrite with track targeting
+    insertEdit: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sourceMediaPath) return;
+      const markIn = s.sourceMarkIn ?? 0;
+      const markOut = s.sourceMarkOut ?? s.duration;
+      if (markOut <= markIn) return;
+      const clipDur = markOut - markIn;
+      const insertAt = s.currentTime;
+      const targets = s.getInsertTargets();
+      const targetLaneId = targets.videoLaneId;
+      if (!targetLaneId) return;
+      // Insert: push all clips at/after insertAt to the right by clipDur
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== targetLaneId) return lane;
+        const pushed = lane.clips.map((c) =>
+          c.start_sec >= insertAt ? { ...c, start_sec: c.start_sec + clipDur } : c,
+        );
+        const newClip = {
+          clip_id: `clip_${Date.now()}`,
+          source_path: s.sourceMediaPath!,
+          start_sec: insertAt,
+          duration_sec: clipDur,
+        };
+        return { ...lane, clips: [...pushed, newClip] };
+      });
+      s.setLanes(newLanes);
+      s.seek(insertAt + clipDur);
+    },
+    overwriteEdit: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sourceMediaPath) return;
+      const markIn = s.sourceMarkIn ?? 0;
+      const markOut = s.sourceMarkOut ?? s.duration;
+      if (markOut <= markIn) return;
+      const clipDur = markOut - markIn;
+      const insertAt = s.currentTime;
+      const targets = s.getInsertTargets();
+      const targetLaneId = targets.videoLaneId;
+      if (!targetLaneId) return;
+      // Overwrite: remove overlapping portions, then add new clip
+      const overEnd = insertAt + clipDur;
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== targetLaneId) return lane;
+        const trimmed = lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          // Fully covered → remove
+          if (c.start_sec >= insertAt && cEnd <= overEnd) return [];
+          // No overlap → keep
+          if (cEnd <= insertAt || c.start_sec >= overEnd) return [c];
+          // Partial overlap — trim
+          const result = [];
+          if (c.start_sec < insertAt) {
+            result.push({ ...c, duration_sec: insertAt - c.start_sec });
+          }
+          if (cEnd > overEnd) {
+            result.push({ ...c, clip_id: c.clip_id + '_ow', start_sec: overEnd, duration_sec: cEnd - overEnd });
+          }
+          return result;
+        });
+        const newClip = {
+          clip_id: `clip_${Date.now()}`,
+          source_path: s.sourceMediaPath!,
+          start_sec: insertAt,
+          duration_sec: clipDur,
+        };
+        return { ...lane, clips: [...trimmed, newClip] };
+      });
+      s.setLanes(newLanes);
+      s.seek(insertAt + clipDur);
+    },
+
     // Navigation — edit points
     prevEditPoint: () => {
       const s = useCutEditorStore.getState();
