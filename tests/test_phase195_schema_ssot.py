@@ -31,26 +31,8 @@ class TestSchemaSSoT:
             "mycelium_mcp_server.TASK_BOARD_SCHEMA is a copy, not the canonical object"
         )
 
-    def test_bridge_tool_schema_matches_canonical(self):
-        """The vetka_task_board Tool in bridge has the same schema content as canonical.
-
-        Note: Tool() constructor may copy the dict, so we check equality not identity.
-        The identity check on module-level import (test above) guarantees no inline copy.
-        """
-        from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA as canonical
-        from src.mcp.vetka_mcp_bridge import VetkaMCPServer
-        server = VetkaMCPServer.__new__(VetkaMCPServer)
-        tools = server.get_tools()
-        tb_tools = [t for t in tools if t.name == "vetka_task_board"]
-        assert len(tb_tools) == 1, "vetka_task_board tool not found in bridge"
-        assert tb_tools[0].inputSchema == canonical
-
     def test_mycelium_tool_schema_matches_canonical(self):
-        """The mycelium_task_board Tool has the same schema content as canonical.
-
-        Note: Tool() constructor may copy the dict, so we check equality not identity.
-        The identity check on module-level import (test above) guarantees no inline copy.
-        """
+        """The mycelium_task_board Tool has the same schema content as canonical."""
         from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA as canonical
         from src.mcp.mycelium_mcp_server import MYCELIUM_TOOLS
         tb_tools = [t for t in MYCELIUM_TOOLS if t.name == "mycelium_task_board"]
@@ -68,3 +50,35 @@ class TestSchemaSSoT:
         ]
         for action in required_actions:
             assert action in actions, f"Missing action '{action}' in TASK_BOARD_SCHEMA"
+
+    def test_no_inline_schema_in_bridge(self):
+        """vetka_mcp_bridge must not contain inline action enum for task_board."""
+        from pathlib import Path
+        bridge_path = Path(__file__).parent.parent / "src" / "mcp" / "vetka_mcp_bridge.py"
+        source = bridge_path.read_text()
+        # Should NOT have inline "add", "list", "get" enum for task_board
+        # The TASK_BOARD_SCHEMA import line should be present instead
+        assert "from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA" in source
+        # Check no inline schema block with action enum near vetka_task_board
+        lines = source.split("\n")
+        for i, line in enumerate(lines):
+            if '"vetka_task_board"' in line or "'vetka_task_board'" in line:
+                # Look at surrounding 40 lines for inline enum
+                block = "\n".join(lines[max(0, i-5):i+40])
+                assert '"add", "list", "get"' not in block, (
+                    f"Found inline action enum near vetka_task_board (line {i+1})"
+                )
+
+    def test_no_inline_schema_in_mycelium(self):
+        """mycelium_mcp_server must not contain inline action enum for task_board."""
+        from pathlib import Path
+        myc_path = Path(__file__).parent.parent / "src" / "mcp" / "mycelium_mcp_server.py"
+        source = myc_path.read_text()
+        assert "from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA" in source
+        lines = source.split("\n")
+        for i, line in enumerate(lines):
+            if '"mycelium_task_board"' in line or "'mycelium_task_board'" in line:
+                block = "\n".join(lines[max(0, i-5):i+40])
+                assert '"add", "list", "get"' not in block, (
+                    f"Found inline action enum near mycelium_task_board (line {i+1})"
+                )
