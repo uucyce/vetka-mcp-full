@@ -172,6 +172,42 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         params_schema={},
     ),
 
+    # === MARKER_B12: Motion controls ===
+    "position": EffectDef(
+        type="position", label="Position", category="motion",
+        params_schema={
+            "x": {"type": "float", "min": -7680, "max": 7680, "default": 0, "step": 1},
+            "y": {"type": "float", "min": -4320, "max": 4320, "default": 0, "step": 1},
+        },
+    ),
+    "scale": EffectDef(
+        type="scale", label="Scale", category="motion",
+        params_schema={
+            "x": {"type": "float", "min": 0.01, "max": 10.0, "default": 1.0, "step": 0.01},
+            "y": {"type": "float", "min": 0.01, "max": 10.0, "default": 1.0, "step": 0.01},
+            "uniform": {"type": "bool", "default": True},
+        },
+    ),
+    "rotation": EffectDef(
+        type="rotation", label="Rotation", category="motion",
+        params_schema={
+            "degrees": {"type": "float", "min": -360, "max": 360, "default": 0, "step": 0.5},
+        },
+    ),
+    "anchor": EffectDef(
+        type="anchor", label="Anchor Point", category="motion",
+        params_schema={
+            "x": {"type": "float", "min": 0, "max": 1.0, "default": 0.5, "step": 0.01},
+            "y": {"type": "float", "min": 0, "max": 1.0, "default": 0.5, "step": 0.01},
+        },
+    ),
+    "opacity": EffectDef(
+        type="opacity", label="Opacity", category="motion",
+        params_schema={
+            "value": {"type": "float", "min": 0.0, "max": 1.0, "default": 1.0, "step": 0.01},
+        },
+    ),
+
     # === Time ===
     "fade_in": EffectDef(
         type="fade_in", label="Fade In", category="time",
@@ -330,6 +366,35 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
                 # fade out needs clip duration — use large offset, caller should set st
                 filters.append(f"fade=t=out:d={dur:.2f}")
 
+        # MARKER_B12: Motion controls → FFmpeg filters
+        elif t == "position":
+            x, y = float(p.get("x", 0)), float(p.get("y", 0))
+            if x != 0 or y != 0:
+                # Pad canvas larger, then crop to shift position
+                # More reliable: use overlay on black background
+                filters.append(f"pad=iw+abs({x:.0f})*2:ih+abs({y:.0f})*2:{max(0, x):.0f}:{max(0, y):.0f}:black")
+
+        elif t == "scale":
+            sx = float(p.get("x", 1))
+            sy = float(p.get("y", 1))
+            uniform = p.get("uniform", True)
+            if uniform:
+                sy = sx
+            if sx != 1.0 or sy != 1.0:
+                filters.append(f"scale=iw*{sx:.4f}:ih*{sy:.4f}")
+
+        elif t == "rotation":
+            deg = float(p.get("degrees", 0))
+            if deg != 0:
+                rad = deg * 3.14159265 / 180.0
+                filters.append(f"rotate={rad:.6f}:fillcolor=none")
+
+        elif t == "opacity":
+            val = float(p.get("value", 1))
+            if val < 1.0:
+                # Format as alpha via colorchannelmixer
+                filters.append(f"colorchannelmixer=aa={val:.3f}")
+
     # Build merged eq filter
     if eq_parts:
         eq_str = ":".join(f"{k}={v}" for k, v in eq_parts.items())
@@ -422,7 +487,42 @@ def compile_css_filters(effects: list[EffectParam]) -> str:
             if deg != 0:
                 parts.append(f"hue-rotate({deg:.0f}deg)")
 
-    return " ".join(parts) if parts else "none"
+        # MARKER_B12: Motion → CSS transform
+        elif t == "opacity":
+            val = float(p.get("value", 1))
+            if val < 1.0:
+                parts.append(f"opacity({val:.3f})")
+
+    # Collect CSS transforms separately
+    transforms: list[str] = []
+    for e in effects:
+        if not e.enabled:
+            continue
+        t, p = e.type, e.params
+        if t == "position":
+            x, y = float(p.get("x", 0)), float(p.get("y", 0))
+            if x != 0 or y != 0:
+                transforms.append(f"translate({x:.0f}px, {y:.0f}px)")
+        elif t == "scale":
+            sx = float(p.get("x", 1))
+            sy = float(p.get("y", 1))
+            if p.get("uniform", True):
+                sy = sx
+            if sx != 1.0 or sy != 1.0:
+                transforms.append(f"scale({sx:.3f}, {sy:.3f})")
+        elif t == "rotation":
+            deg = float(p.get("degrees", 0))
+            if deg != 0:
+                transforms.append(f"rotate({deg:.1f}deg)")
+
+    result = " ".join(parts) if parts else ""
+    # CSS transforms go as a separate property — return combined
+    if transforms:
+        transform_str = " ".join(transforms)
+        if result:
+            return f"{result}; transform: {transform_str}"
+        return f"transform: {transform_str}"
+    return result if result else "none"
 
 
 # ---------------------------------------------------------------------------
