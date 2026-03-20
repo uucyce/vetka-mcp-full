@@ -249,9 +249,9 @@ test.describe.serial('CUT NLE Layout Compliance (TDD — expect failures until L
     const saveItem = page.locator('text=Save').first();
     await expect(saveItem).toBeVisible({ timeout: 2000 });
 
-    // Check key items
-    await expect(page.locator('text=Import Media')).toBeVisible();
-    await expect(page.locator('text=Export Media')).toBeVisible();
+    // Check key items (use .first() to avoid strict mode with BPM placeholder text)
+    await expect(page.locator('text=Import Media...').first()).toBeVisible();
+    await expect(page.locator('text=Export Media...').first()).toBeVisible();
 
     // Verify shortcut label shown (⌘S next to Save)
     await expect(page.locator('text=⌘S')).toBeVisible();
@@ -398,7 +398,7 @@ test.describe.serial('CUT NLE Layout Compliance (TDD — expect failures until L
     await page.waitForTimeout(200);
 
     // Source panel should be active — verify SOURCE tab is visible
-    await expect(page.locator('text=SOURCE')).toBeVisible();
+    await expect(page.locator('text=SOURCE').first()).toBeVisible();
   });
 
   test('T5c: Window > Timeline activates timeline panel', async ({ page }) => {
@@ -424,7 +424,7 @@ test.describe.serial('CUT NLE Layout Compliance (TDD — expect failures until L
     await page.waitForTimeout(200);
 
     // PROGRAM label should be visible
-    await expect(page.locator('text=PROGRAM')).toBeVisible();
+    await expect(page.locator('text=PROGRAM').first()).toBeVisible();
   });
 
   // -------------------------------------------------------------------------
