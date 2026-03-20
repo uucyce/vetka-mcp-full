@@ -202,16 +202,38 @@ def build_render_plan(
 
     clips.sort(key=lambda c: c.start_sec)
 
-    # Detect transitions from clip overlaps
+    # MARKER_B10: Detect transitions from clip metadata or overlaps
+    # Collect raw timeline clips to read transition metadata
+    _raw_clips_sorted: list[dict] = []
+    for lane in lanes:
+        lt = lane.get("lane_type", "")
+        if not (lt.startswith("video") or lt.startswith("take_alt")):
+            continue
+        for clip in lane.get("clips", []):
+            sp = clip.get("source_path", "")
+            if sp and os.path.isfile(sp):
+                _raw_clips_sorted.append(clip)
+    _raw_clips_sorted.sort(key=lambda c: c.get("start_sec", 0))
+
     transitions: list[Transition] = []
     for i in range(len(clips) - 1):
         a, b = clips[i], clips[i + 1]
         a_end = a.start_sec + a.duration_sec
         overlap = a_end - b.start_sec
-        if overlap > 0.01:  # >10ms overlap = transition
+
+        # Explicit transition metadata (from TransitionsPanel UI) takes priority
+        raw_b = _raw_clips_sorted[i + 1] if i + 1 < len(_raw_clips_sorted) else {}
+        tr_meta = raw_b.get("transition")
+        if tr_meta and isinstance(tr_meta, dict):
+            transitions.append(Transition(
+                type=tr_meta.get("type", "crossfade"),
+                duration_sec=float(tr_meta.get("duration_sec", 1.0)),
+                between=(i, i + 1),
+            ))
+        elif overlap > 0.01:  # >10ms overlap = auto crossfade
             transitions.append(Transition(
                 type="crossfade",
-                duration_sec=min(overlap, 5.0),  # cap at 5s
+                duration_sec=min(overlap, 5.0),
                 between=(i, i + 1),
             ))
 
@@ -426,7 +448,14 @@ def _map_transition_type(t: str) -> str:
         "crossfade": "fade",
         "dissolve": "dissolve",
         "dip_to_black": "fadeblack",
+        "dip_to_white": "fadewhite",
         "wipe": "wipeleft",
+        "wipe_left": "wipeleft",
+        "wipe_right": "wiperight",
+        "wipe_up": "wipeup",
+        "wipe_down": "wipedown",
+        "slide_left": "slideleft",
+        "slide_right": "slideright",
     }
     return mapping.get(t, "fade")
 
