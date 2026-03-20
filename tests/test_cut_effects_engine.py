@@ -225,6 +225,83 @@ class TestCompileCSSFilters:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B12: Motion controls
+# ---------------------------------------------------------------------------
+
+class TestMotionFilters:
+    def test_position(self):
+        effects = [EffectParam(type="position", params={"x": 100, "y": -50})]
+        result = compile_video_filters(effects)
+        assert len(result) == 1
+        assert "pad=" in result[0]
+
+    def test_scale(self):
+        effects = [EffectParam(type="scale", params={"x": 1.5, "y": 1.5, "uniform": True})]
+        result = compile_video_filters(effects)
+        assert "scale=" in result[0]
+        assert "1.5000" in result[0]
+
+    def test_rotation(self):
+        effects = [EffectParam(type="rotation", params={"degrees": 45})]
+        result = compile_video_filters(effects)
+        assert "rotate=" in result[0]
+
+    def test_opacity(self):
+        effects = [EffectParam(type="opacity", params={"value": 0.5})]
+        result = compile_video_filters(effects)
+        assert "colorchannelmixer=aa=0.500" in result[0]
+
+    def test_opacity_full_no_filter(self):
+        effects = [EffectParam(type="opacity", params={"value": 1.0})]
+        assert compile_video_filters(effects) == []
+
+    def test_scale_identity_no_filter(self):
+        effects = [EffectParam(type="scale", params={"x": 1.0, "y": 1.0})]
+        assert compile_video_filters(effects) == []
+
+    def test_position_zero_no_filter(self):
+        effects = [EffectParam(type="position", params={"x": 0, "y": 0})]
+        assert compile_video_filters(effects) == []
+
+    def test_rotation_zero_no_filter(self):
+        effects = [EffectParam(type="rotation", params={"degrees": 0})]
+        assert compile_video_filters(effects) == []
+
+
+class TestMotionCSSPreview:
+    def test_position_css(self):
+        effects = [EffectParam(type="position", params={"x": 50, "y": -20})]
+        css = compile_css_filters(effects)
+        assert "translate(50px, -20px)" in css
+
+    def test_scale_css(self):
+        effects = [EffectParam(type="scale", params={"x": 2.0, "y": 2.0, "uniform": True})]
+        css = compile_css_filters(effects)
+        assert "scale(2.000" in css
+
+    def test_rotation_css(self):
+        effects = [EffectParam(type="rotation", params={"degrees": 90})]
+        css = compile_css_filters(effects)
+        assert "rotate(90.0deg)" in css
+
+    def test_opacity_css(self):
+        effects = [EffectParam(type="opacity", params={"value": 0.7})]
+        css = compile_css_filters(effects)
+        assert "opacity(0.700)" in css
+
+    def test_combined_motion_css(self):
+        effects = [
+            EffectParam(type="position", params={"x": 10, "y": 20}),
+            EffectParam(type="scale", params={"x": 1.5, "uniform": True}),
+            EffectParam(type="rotation", params={"degrees": 30}),
+        ]
+        css = compile_css_filters(effects)
+        assert "translate(" in css
+        assert "scale(" in css
+        assert "rotate(" in css
+
+
+# ---------------------------------------------------------------------------
 # ClipEffects serialization
 # ---------------------------------------------------------------------------
 
