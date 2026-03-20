@@ -156,26 +156,64 @@ def build_contact_sheet(frames: list[Path], meta: dict,
 # Motion diff strip (197.5)
 # ---------------------------------------------------------------------------
 
-def build_motion_diff(frames: list[Path], outdir: Path) -> Path | None:
-    """Compute absdiff between consecutive frames, assemble horizontal strip."""
+def _auto_amplify(diff_img: Image.Image) -> Image.Image:
+    """Auto-amplify diff image so subtle motion becomes visible.
+
+    Finds the max pixel value and scales so it maps to 255.
+    Subtle parallax diffs (max ~5-15) become clearly visible.
+    """
+    import numpy as np
+    arr = np.array(diff_img, dtype=np.float32)
+    peak = arr.max()
+    if peak < 1:
+        return diff_img
+    # Scale to fill full dynamic range — subtle motion must be visible
+    factor = 255.0 / peak
+    amplified = (arr * factor).clip(0, 255).astype(np.uint8)
+    return Image.fromarray(amplified)
+
+
+def build_motion_diff(frames: list[Path], columns: int,
+                      outdir: Path) -> Path | None:
+    """Compute absdiff between consecutive frames, auto-amplify, assemble grid."""
     if len(frames) < 2:
         return None
+
+    import numpy as np
 
     diffs = []
     for i in range(len(frames) - 1):
         im1 = Image.open(frames[i]).convert("RGB")
         im2 = Image.open(frames[i + 1]).convert("RGB")
-        diffs.append(ImageChops.difference(im1, im2))
+        raw_diff = ImageChops.difference(im1, im2)
+        diffs.append(raw_diff)
 
-    total_w = sum(d.width for d in diffs)
-    strip = Image.new("RGB", (total_w, diffs[0].height), (0, 0, 0))
-    x = 0
+    # Normalize by p98 (not max) so subtle motion fills the range.
+    # Max is often a single hot pixel; p98 represents real motion edges.
+    all_pixels = np.concatenate([np.array(d).ravel() for d in diffs])
+    p98 = float(np.percentile(all_pixels[all_pixels > 0], 98)) if (all_pixels > 0).any() else 1.0
+    p98 = max(p98, 1.0)
+    print(f"  diff stats: max={all_pixels.max()}, p98={p98:.1f} (amplify: {255.0 / p98:.1f}x)")
+
+    amplified = []
     for d in diffs:
-        strip.paste(d, (x, 0))
-        x += d.width
+        arr = (np.array(d, dtype=np.float32) * (255.0 / p98)).clip(0, 255).astype(np.uint8)
+        amplified.append(Image.fromarray(arr))
 
-    out_path = outdir / "motion_diff.jpg"
-    strip.save(out_path, "JPEG", quality=85)
+    # Grid layout (same as contact sheet)
+    thumb_w, thumb_h = amplified[0].size
+    cols = min(columns, len(amplified))
+    rows = (len(amplified) + cols - 1) // cols
+
+    grid = Image.new("RGB", (cols * thumb_w, rows * thumb_h), (0, 0, 0))
+    for i, d in enumerate(amplified):
+        px = (i % cols) * thumb_w
+        py = (i // cols) * thumb_h
+        grid.paste(d, (px, py))
+
+    # PNG to preserve subtle values (JPEG kills dark detail)
+    out_path = outdir / "motion_diff.png"
+    grid.save(out_path, "PNG")
     return out_path
 
 
@@ -208,7 +246,7 @@ def write_inspection_json(meta: dict, args, outdir: Path,
         },
         "outputs": {
             "contact_sheet": "contact_sheet.jpg" if contact_path else None,
-            "motion_diff": "motion_diff.jpg" if diff_path else None,
+            "motion_diff": "motion_diff.png" if diff_path else None,
         },
         "timestamps_sampled": [round(t, 3) for t in timestamps],
     }
@@ -294,8 +332,8 @@ def main():
         contact_path = build_contact_sheet(frames, meta, args.columns, args.width, outdir)
 
         # Motion diff
-        print("[build] motion_diff.jpg")
-        diff_path = build_motion_diff(frames, outdir)
+        print("[build] motion_diff.png")
+        diff_path = build_motion_diff(frames, args.columns, outdir)
 
     # Depth (M2 placeholder)
     if args.depth:
@@ -312,7 +350,7 @@ def main():
     print(f"\nInspection pack ready: {outdir}/")
     print(f"  contact_sheet.jpg  — {args.frames} frames, {args.columns} columns")
     if diff_path:
-        print(f"  motion_diff.jpg    — {len(timestamps) - 1} diffs")
+        print(f"  motion_diff.png    — {len(timestamps) - 1} diffs (amplified)")
     print(f"  inspection.json    — metadata + paths")
 
 

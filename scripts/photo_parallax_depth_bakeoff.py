@@ -82,7 +82,10 @@ def normalize_to_16bit(predicted_depth) -> tuple["np.ndarray", "np.ndarray", dic
     minimum = float(array.min())
     maximum = float(array.max())
     spread = max(1e-6, maximum - minimum)
-    normalized = (array - minimum) / spread
+    # Canonical convention for the sandbox is white = near, black = far.
+    # The raw model outputs are normalized here once so downstream UI/export/render
+    # do not need to guess or invert polarity independently.
+    normalized = 1.0 - ((array - minimum) / spread)
     depth16 = (normalized * 65535.0).clip(0, 65535).astype("uint16")
     return array, depth16, {
         "min": round(minimum, 6),
@@ -106,7 +109,7 @@ def normalize_to_preview_percentile(array) -> tuple["Image.Image", dict[str, flo
     p2 = float(np.percentile(array, 2))
     p98 = float(np.percentile(array, 98))
     spread = max(1e-6, p98 - p2)
-    normalized = ((array - p2) / spread).clip(0, 1)
+    normalized = (1.0 - ((array - p2) / spread)).clip(0, 1)
     preview = (normalized * 255.0).astype("uint8")
     return Image.fromarray(preview, mode="L"), {
         "p2": round(p2, 6),
