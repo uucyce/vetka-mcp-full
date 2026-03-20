@@ -221,11 +221,18 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // Wire panel focus to store
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
-        // MARKER_C12: Detect timeline panels → setActiveTimeline
+        // MARKER_C12: Detect timeline panels → setActiveTimeline + snapshot swap
         const tlId = panel.params?.timelineId as string | undefined;
         if (tlId || panel.id === 'timeline' || panel.id.startsWith('timeline-')) {
           useCutEditorStore.getState().setFocusedPanel('timeline');
           if (tlId) {
+            const editorStore = useCutEditorStore.getState();
+            // Snapshot current active timeline before switching
+            if (editorStore.timelineId && editorStore.timelineId !== tlId) {
+              editorStore.snapshotTimeline(editorStore.timelineId);
+            }
+            // Restore target timeline data
+            editorStore.restoreTimeline(tlId);
             useTimelineInstanceStore.getState().setActiveTimeline(tlId);
           }
         } else {
