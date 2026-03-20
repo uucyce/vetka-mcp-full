@@ -71,10 +71,12 @@ interface DockviewLayoutProps {
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const { saveLayout, loadLayout, activePreset } = useDockviewStore();
+  const { saveLayout, loadLayout, activePreset, setApiRef } = useDockviewStore();
 
   const onReady = useCallback((event: DockviewReadyEvent) => {
     apiRef.current = event.api;
+    // MARKER_C5: Expose API to store for workspace preset switching
+    setApiRef(event.api);
 
     // Try restoring saved layout
     const saved = loadLayout(activePreset);
@@ -203,7 +205,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         saveLayout(activePreset, json);
       }
     });
-  }, [scriptText, activePreset, loadLayout, saveLayout]);
+  }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
 
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
