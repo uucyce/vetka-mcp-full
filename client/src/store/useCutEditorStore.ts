@@ -126,6 +126,7 @@ interface CutEditorState {
   soloLanes: Set<string>;
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
+  hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
   laneVolumes: Record<string, number>;
   snapEnabled: boolean;
 
@@ -239,6 +240,7 @@ interface CutEditorState {
   toggleSolo: (laneId: string) => void;
   toggleLock: (laneId: string) => void;      // MARKER_W2.1
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
+  toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
@@ -348,6 +350,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   soloLanes: new Set<string>(),
   lockedLanes: new Set<string>(),
   targetedLanes: new Set<string>(),
+  hiddenLanes: new Set<string>(),
   laneVolumes: {},
   snapEnabled: true,
 
@@ -473,6 +476,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       if (targetedLanes.has(laneId)) targetedLanes.delete(laneId);
       else targetedLanes.add(laneId);
       return { targetedLanes };
+    }),
+  // MARKER_FIX-TIMELINE-2: Track visibility toggle (eye icon)
+  toggleVisibility: (laneId) =>
+    set((state) => {
+      const hiddenLanes = new Set(state.hiddenLanes);
+      if (hiddenLanes.has(laneId)) hiddenLanes.delete(laneId);
+      else hiddenLanes.add(laneId);
+      return { hiddenLanes };
     }),
   setLaneVolume: (laneId, volume) =>
     set((state) => ({
