@@ -1,10 +1,11 @@
 /**
  * MARKER_C4.3: Timeline panel wrapper for dockview.
- * Renders TimelineToolbar + TimelineTabBar + TimelineTrackView + BPMTrack.
- * Sets focusedPanel='timeline' on mouse interaction.
+ * MARKER_198: Multi-instance support — active timeline gets full controls,
+ * inactive timelines show readonly snapshot with dimmed overlay + click-to-activate.
  */
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
+import { useTimelineInstanceStore } from '../../../store/useTimelineInstanceStore';
 import TimelineToolbar from '../TimelineToolbar';
 import TimelineTrackView from '../TimelineTrackView';
 import BPMTrack from '../BPMTrack';
@@ -16,33 +17,66 @@ const PANEL_STYLE: React.CSSProperties = {
   height: '100%',
   overflow: 'hidden',
   background: '#0d0d0d',
+  position: 'relative',
+};
+
+const INACTIVE_OVERLAY: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  background: 'rgba(0,0,0,0.35)',
+  zIndex: 50,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  fontSize: 11,
+  color: '#888',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
 };
 
 export default function TimelinePanel(props: IDockviewPanelProps) {
   const zoom = useCutEditorStore((s) => s.zoom);
   const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
   const duration = useCutEditorStore((s) => s.duration);
-  const timelineId = useCutEditorStore((s) => s.timelineId);
+  const activeTimelineId = useCutEditorStore((s) => s.timelineId);
   const scriptText = (props.params?.scriptText as string) ?? '';
+
+  const panelTimelineId = props.params?.timelineId as string | undefined;
+  const isActive = !panelTimelineId || panelTimelineId === activeTimelineId;
+
+  const handleActivate = () => {
+    if (panelTimelineId && !isActive) {
+      const store = useCutEditorStore.getState();
+      store.snapshotTimeline(store.timelineId);
+      store.restoreTimeline(panelTimelineId);
+      useTimelineInstanceStore.getState().setActiveTimeline(panelTimelineId);
+    }
+  };
 
   return (
     <div
       style={PANEL_STYLE}
       onMouseDown={() => useCutEditorStore.getState().setFocusedPanel('timeline')}
     >
-      <TimelineToolbar />
-      {/* MARKER_C13: TimelineTabBar removed — dockview native tabs replace it */}
+      {isActive && <TimelineToolbar />}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {/* MARKER_C11: Pass timelineId from dockview params for multi-instance */}
-        <TimelineTrackView timelineId={props.params?.timelineId as string | undefined} />
+        <TimelineTrackView timelineId={panelTimelineId} />
       </div>
-      <BPMTrack
-        timelineId={timelineId}
-        scriptText={scriptText}
-        pxPerSec={zoom}
-        scrollLeft={scrollLeft}
-        durationSec={duration}
-      />
+      {isActive && (
+        <BPMTrack
+          timelineId={activeTimelineId}
+          scriptText={scriptText}
+          pxPerSec={zoom}
+          scrollLeft={scrollLeft}
+          durationSec={duration}
+        />
+      )}
+      {!isActive && (
+        <div style={INACTIVE_OVERLAY} onClick={handleActivate}>
+          Click to activate
+        </div>
+      )}
     </div>
   );
 }

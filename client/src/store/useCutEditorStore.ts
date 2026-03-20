@@ -171,6 +171,15 @@ interface CutEditorState {
   sequenceColorSpace: 'Rec.709' | 'Rec.2020' | 'DCI-P3';
   proxyMode: 'full' | 'proxy' | 'auto';
 
+  // === MARKER_198: Timeline snapshot cache (multi-instance) ===
+  timelineSnapshots: Map<string, {
+    lanes: TimelineLane[];
+    markers: TimeMarker[];
+    currentTime: number;
+    scrollLeft: number;
+    zoom: number;
+  }>;
+
   // === Session / backend wiring ===
   sandboxRoot: string | null;
   projectId: string | null;
@@ -328,6 +337,10 @@ interface CutEditorState {
   // MARKER_W5.2: Parallel Timelines
   setParallelTimeline: (tabIndex: number | null) => void;
   swapParallelTimeline: () => void;  // swap active ↔ parallel
+
+  // MARKER_198: Snapshot cache for multi-instance timeline swap
+  snapshotTimeline: (id: string) => void;
+  restoreTimeline: (id: string) => void;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -396,6 +409,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   thumbnails: [],
   syncSurface: [],
   markers: [],
+
+  // MARKER_198: Timeline snapshot cache
+  timelineSnapshots: new Map(),
 
   // Session defaults
   sandboxRoot: null,
@@ -688,6 +704,33 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         activeTimelineTabIndex: newActive,
         timelineId: state.timelineTabs[newActive].id,
         parallelTimelineTabIndex: oldActive,
+      };
+    }),
+
+  // MARKER_198: Snapshot cache — save/restore active timeline data on swap
+  snapshotTimeline: (id) =>
+    set((state) => {
+      const snapshots = new Map(state.timelineSnapshots);
+      snapshots.set(id, {
+        lanes: state.lanes,
+        markers: state.markers,
+        currentTime: state.currentTime,
+        scrollLeft: state.scrollLeft,
+        zoom: state.zoom,
+      });
+      return { timelineSnapshots: snapshots };
+    }),
+  restoreTimeline: (id) =>
+    set((state) => {
+      const snap = state.timelineSnapshots.get(id);
+      if (!snap) return { timelineId: id };
+      return {
+        timelineId: id,
+        lanes: snap.lanes,
+        markers: snap.markers,
+        currentTime: snap.currentTime,
+        scrollLeft: snap.scrollLeft,
+        zoom: snap.zoom,
       };
     }),
 
