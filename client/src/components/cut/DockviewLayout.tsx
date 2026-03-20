@@ -35,6 +35,7 @@ import {
   ClipPanelDock,
   StorySpacePanelDock,
   HistoryPanelDock,
+  AutoMontagePanelDock,
 } from './panels';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -48,6 +49,7 @@ const PANEL_COMPONENTS = {
   clip: ClipPanelDock,
   storyspace: StorySpacePanelDock,
   history: HistoryPanelDock,
+  montage: AutoMontagePanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -156,6 +158,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'history',
       component: 'history',
       title: 'History',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // MARKER_C14: Auto-Montage panel (Analysis tab group)
+    event.api.addPanel({
+      id: 'montage',
+      component: 'montage',
+      title: 'Montage',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 

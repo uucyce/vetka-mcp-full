@@ -20,3 +20,6 @@ export { default as InspectorPanelDock } from './InspectorPanelDock';
 export { default as ClipPanelDock } from './ClipPanelDock';
 export { default as StorySpacePanelDock } from './StorySpacePanelDock';
 export { default as HistoryPanelDock } from './HistoryPanelDock';
+
+// MARKER_C14: Auto-Montage panel
+export { default as AutoMontagePanelDock } from './AutoMontagePanelDock';
