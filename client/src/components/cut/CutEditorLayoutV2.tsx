@@ -37,6 +37,23 @@ const ROOT: CSSProperties = {
   flexDirection: 'column',
 };
 
+// ─── MARKER_W3.3: Collect all edit points (clip boundaries) from unlocked tracks ───
+
+function collectEditPoints(
+  lanes: { lane_id: string; clips: { start_sec: number; duration_sec: number }[] }[],
+  lockedLanes: Set<string>,
+): number[] {
+  const pts = new Set<number>();
+  for (const lane of lanes) {
+    if (lockedLanes.has(lane.lane_id)) continue;
+    for (const clip of lane.clips) {
+      pts.add(clip.start_sec);
+      pts.add(clip.start_sec + clip.duration_sec);
+    }
+  }
+  return [...pts].sort((a, b) => a - b);
+}
+
 // ─── Component ───
 
 interface CutEditorLayoutV2Props {
@@ -156,6 +173,20 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         }),
       }));
       s.setLanes(newLanes);
+    },
+
+    // Navigation — edit points
+    prevEditPoint: () => {
+      const s = useCutEditorStore.getState();
+      const points = collectEditPoints(s.lanes, s.lockedLanes);
+      const prev = points.filter((t) => t < s.currentTime - 0.001);
+      if (prev.length > 0) s.seek(prev[prev.length - 1]);
+    },
+    nextEditPoint: () => {
+      const s = useCutEditorStore.getState();
+      const points = collectEditPoints(s.lanes, s.lockedLanes);
+      const next = points.find((t) => t > s.currentTime + 0.001);
+      if (next !== undefined) s.seek(next);
     },
 
     // Tools
