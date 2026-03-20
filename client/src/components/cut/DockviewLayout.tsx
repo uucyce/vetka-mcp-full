@@ -36,6 +36,7 @@ import {
   StorySpacePanelDock,
   HistoryPanelDock,
   AutoMontagePanelDock,
+  AudioMixerPanelDock,
 } from './panels';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -50,6 +51,7 @@ const PANEL_COMPONENTS = {
   storyspace: StorySpacePanelDock,
   history: HistoryPanelDock,
   montage: AutoMontagePanelDock,
+  mixer: AudioMixerPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -166,6 +168,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'montage',
       component: 'montage',
       title: 'Montage',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // MARKER_B13: Audio Mixer panel (Analysis tab group)
+    event.api.addPanel({
+      id: 'mixer',
+      component: 'mixer',
+      title: 'Mixer',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
