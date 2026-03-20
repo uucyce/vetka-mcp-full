@@ -1,5 +1,6 @@
 /**
  * MARKER_W4.5: Project Settings dialog — framerate, timecode, audio settings.
+ * MARKER_B3: Sequence Settings — resolution, color space, proxy mode.
  * Modal overlay triggered by hotkey or menu. Stores settings in useCutEditorStore.
  */
 import { useCallback, type CSSProperties } from 'react';
@@ -114,6 +115,19 @@ export default function ProjectSettings() {
   const setBitDepth = useCutEditorStore((s) => s.setAudioBitDepth);
   const setShow = useCutEditorStore((s) => s.setShowProjectSettings);
 
+  // MARKER_B3: Sequence Settings
+  const resolution = useCutEditorStore((s) => s.sequenceResolution);
+  const seqWidth = useCutEditorStore((s) => s.sequenceWidth);
+  const seqHeight = useCutEditorStore((s) => s.sequenceHeight);
+  const colorSpace = useCutEditorStore((s) => s.sequenceColorSpace);
+  const proxyMode = useCutEditorStore((s) => s.proxyMode);
+
+  const setResolution = useCutEditorStore((s) => s.setSequenceResolution);
+  const setSeqWidth = useCutEditorStore((s) => s.setSequenceWidth);
+  const setSeqHeight = useCutEditorStore((s) => s.setSequenceHeight);
+  const setColorSpace = useCutEditorStore((s) => s.setSequenceColorSpace);
+  const setProxyMode = useCutEditorStore((s) => s.setProxyMode);
+
   const close = useCallback(() => setShow(false), [setShow]);
 
   if (!show) return null;
@@ -174,6 +188,70 @@ export default function ProjectSettings() {
               onChange={(e) => setStartTC(e.target.value)}
               placeholder="01:00:00:00"
             />
+          </div>
+        </div>
+
+        {/* MARKER_B3: Sequence Settings */}
+        <div style={SECTION}>
+          <div style={SECTION_TITLE}>Sequence</div>
+          <div style={ROW}>
+            <span style={LABEL}>Resolution</span>
+            <select
+              style={SELECT}
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value as '4K' | '1080p' | '720p' | 'custom')}
+            >
+              <option value="4K">4K (3840×2160)</option>
+              <option value="1080p">1080p (1920×1080)</option>
+              <option value="720p">720p (1280×720)</option>
+              <option value="custom">Custom</option>
+            </select>
+          </div>
+          {resolution === 'custom' && (
+            <div style={ROW}>
+              <span style={LABEL}>Width × Height</span>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  style={{ ...INPUT, width: 56 }}
+                  value={seqWidth}
+                  onChange={(e) => setSeqWidth(Number(e.target.value))}
+                  min={1}
+                />
+                <span style={{ color: '#555' }}>×</span>
+                <input
+                  type="number"
+                  style={{ ...INPUT, width: 56 }}
+                  value={seqHeight}
+                  onChange={(e) => setSeqHeight(Number(e.target.value))}
+                  min={1}
+                />
+              </div>
+            </div>
+          )}
+          <div style={ROW}>
+            <span style={LABEL}>Color Space</span>
+            <select
+              style={SELECT}
+              value={colorSpace}
+              onChange={(e) => setColorSpace(e.target.value as 'Rec.709' | 'Rec.2020' | 'DCI-P3')}
+            >
+              <option value="Rec.709">Rec.709 (SDR)</option>
+              <option value="Rec.2020">Rec.2020 (HDR)</option>
+              <option value="DCI-P3">DCI-P3 (Cinema)</option>
+            </select>
+          </div>
+          <div style={ROW}>
+            <span style={LABEL}>Proxy Mode</span>
+            <select
+              style={SELECT}
+              value={proxyMode}
+              onChange={(e) => setProxyMode(e.target.value as 'full' | 'proxy' | 'auto')}
+            >
+              <option value="full">Full Resolution</option>
+              <option value="proxy">Proxy Only</option>
+              <option value="auto">Auto (proxy when available)</option>
+            </select>
           </div>
         </div>
 

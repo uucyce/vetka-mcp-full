@@ -143,6 +143,12 @@ interface CutEditorState {
   audioSampleRate: 48000 | 44100 | 96000;
   audioBitDepth: 16 | 24 | 32;
   showProjectSettings: boolean;         // dialog visibility
+  // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
+  sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
+  sequenceWidth: number;                // custom resolution width
+  sequenceHeight: number;               // custom resolution height
+  sequenceColorSpace: 'Rec.709' | 'Rec.2020' | 'DCI-P3';
+  proxyMode: 'full' | 'proxy' | 'auto';
 
   // === Session / backend wiring ===
   sandboxRoot: string | null;
@@ -244,6 +250,12 @@ interface CutEditorState {
   setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
   setAudioBitDepth: (bits: 16 | 24 | 32) => void;
   setShowProjectSettings: (show: boolean) => void;
+  // MARKER_B3: Sequence Settings
+  setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
+  setSequenceWidth: (w: number) => void;
+  setSequenceHeight: (h: number) => void;
+  setSequenceColorSpace: (cs: 'Rec.709' | 'Rec.2020' | 'DCI-P3') => void;
+  setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
   setRenderProgress: (p: number | null) => void;
@@ -340,6 +352,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   audioSampleRate: 48000,
   audioBitDepth: 24,
   showProjectSettings: false,
+  // MARKER_B3: Sequence Settings defaults
+  sequenceResolution: '1080p',
+  sequenceWidth: 1920,
+  sequenceHeight: 1080,
+  sequenceColorSpace: 'Rec.709',
+  proxyMode: 'auto',
 
   // Data
   lanes: [],
@@ -481,6 +499,18 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
   setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
+  // MARKER_B3: Sequence Settings setters
+  setSequenceResolution: (res) => {
+    const dims: Record<string, [number, number]> = {
+      '4K': [3840, 2160], '1080p': [1920, 1080], '720p': [1280, 720],
+    };
+    const [w, h] = dims[res] ?? [get().sequenceWidth, get().sequenceHeight];
+    set({ sequenceResolution: res, sequenceWidth: w, sequenceHeight: h });
+  },
+  setSequenceWidth: (w) => set({ sequenceWidth: w, sequenceResolution: 'custom' }),
+  setSequenceHeight: (h) => set({ sequenceHeight: h, sequenceResolution: 'custom' }),
+  setSequenceColorSpace: (cs) => set({ sequenceColorSpace: cs }),
+  setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setRenderProgress: (p) => set({ renderProgress: p }),
