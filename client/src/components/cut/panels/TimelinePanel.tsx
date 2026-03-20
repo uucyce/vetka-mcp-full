@@ -6,7 +6,6 @@
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import TimelineToolbar from '../TimelineToolbar';
-import TimelineTabBar from '../TimelineTabBar';
 import TimelineTrackView from '../TimelineTrackView';
 import BPMTrack from '../BPMTrack';
 
@@ -32,9 +31,10 @@ export default function TimelinePanel(props: IDockviewPanelProps) {
       onMouseDown={() => useCutEditorStore.getState().setFocusedPanel('timeline')}
     >
       <TimelineToolbar />
-      <TimelineTabBar />
+      {/* MARKER_C13: TimelineTabBar removed — dockview native tabs replace it */}
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <TimelineTrackView />
+        {/* MARKER_C11: Pass timelineId from dockview params for multi-instance */}
+        <TimelineTrackView timelineId={props.params?.timelineId as string | undefined} />
       </div>
       <BPMTrack
         timelineId={timelineId}

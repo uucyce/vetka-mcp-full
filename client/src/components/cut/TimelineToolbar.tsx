@@ -67,16 +67,6 @@ function ChainIcon({ active }: { active: boolean }) {
   );
 }
 
-function ParallelIcon({ active }: { active: boolean }) {
-  const color = active ? '#ccc' : '#444';
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="3" y="3" width="3" height="10" rx="1" fill={color} />
-      <rect x="10" y="3" width="3" height="10" rx="1" fill={color} />
-    </svg>
-  );
-}
-
 const ZOOM_SLIDER: CSSProperties = {
   width: 80,
   height: 3,
@@ -92,11 +82,6 @@ export default function TimelineToolbar() {
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
-  // MARKER_W5.2: Parallel timeline toggle
-  const parallelTimelineTabIndex = useCutEditorStore((s) => s.parallelTimelineTabIndex);
-  const setParallelTimeline = useCutEditorStore((s) => s.setParallelTimeline);
-  const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
-  const activeTimelineTabIndex = useCutEditorStore((s) => s.activeTimelineTabIndex);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
@@ -129,29 +114,7 @@ export default function TimelineToolbar() {
         <ChainIcon active={linkedSelection} />
       </button>
 
-      {/* MARKER_W5.2: Parallel timeline toggle */}
-      {timelineTabs.length >= 2 && (
-        <>
-          <div style={{ width: 1, height: 14, background: '#222' }} />
-          <button
-            style={{
-              ...TOGGLE_BTN,
-              background: parallelTimelineTabIndex !== null ? '#1a1a1a' : 'none',
-            }}
-            onClick={() => {
-              if (parallelTimelineTabIndex !== null) {
-                setParallelTimeline(null);
-              } else {
-                const otherIndex = timelineTabs.findIndex((_, i) => i !== activeTimelineTabIndex);
-                if (otherIndex >= 0) setParallelTimeline(otherIndex);
-              }
-            }}
-            title={parallelTimelineTabIndex !== null ? 'Exit parallel view' : 'Parallel timeline view'}
-          >
-            <ParallelIcon active={parallelTimelineTabIndex !== null} />
-          </button>
-        </>
-      )}
+      {/* MARKER_C13: Parallel timeline toggle removed — dockview split replaces it */}
 
       {/* MARKER_C6: Hotkey preset selector */}
       <div style={{ width: 1, height: 14, background: '#222' }} />

@@ -21,6 +21,7 @@ import './dockview-cut-theme.css';
 
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
+import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 
 // MARKER_C4: Panel wrappers extracted to panels/ directory
 import {
@@ -158,19 +159,15 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-    // Timeline (full-width bottom) — hide dockview tab header (TimelineTabBar is internal)
-    const timelinePanelRef = event.api.addPanel({
+    // MARKER_C13: Timeline (full-width bottom) — dockview tabs replace TimelineTabBar
+    event.api.addPanel({
       id: 'timeline',
       component: 'timeline',
       title: 'Timeline',
       params: { scriptText },
       position: { direction: 'below' },
     });
-    // Hide the group header for timeline — it has its own TimelineTabBar
-    if (timelinePanelRef?.group) {
-      timelinePanelRef.group.locked = 'no-drop-target';
-      timelinePanelRef.group.header.hidden = true;
-    }
+    // Dockview native tabs now visible — supports multi-instance via drag/split/tab
 
     // Set approximate sizes to match current layout proportions
     // Left column ~260px, right monitor area fills rest
@@ -191,9 +188,18 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // Wire panel focus to store
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
-        const focus = PANEL_FOCUS_MAP[panel.id];
-        if (focus) {
-          useCutEditorStore.getState().setFocusedPanel(focus);
+        // MARKER_C12: Detect timeline panels → setActiveTimeline
+        const tlId = panel.params?.timelineId as string | undefined;
+        if (tlId || panel.id === 'timeline' || panel.id.startsWith('timeline-')) {
+          useCutEditorStore.getState().setFocusedPanel('timeline');
+          if (tlId) {
+            useTimelineInstanceStore.getState().setActiveTimeline(tlId);
+          }
+        } else {
+          const focus = PANEL_FOCUS_MAP[panel.id];
+          if (focus) {
+            useCutEditorStore.getState().setFocusedPanel(focus);
+          }
         }
       }
     });
