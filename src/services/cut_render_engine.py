@@ -104,6 +104,9 @@ class RenderClip:
     speed: float = 1.0              # playback speed (0.25-4.0)
     lane_id: str = ""
     clip_id: str = ""
+    # MARKER_B9: Per-clip effects
+    video_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
+    audio_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
 
 
 @dataclass
@@ -182,6 +185,8 @@ def build_render_plan(
             sp = clip.get("source_path", "")
             if not sp or not os.path.isfile(sp):
                 continue
+            # MARKER_B9: Extract effects from clip metadata
+            effects_data = clip.get("effects") or {}
             clips.append(RenderClip(
                 source_path=sp,
                 start_sec=float(clip.get("start_sec", 0)),
@@ -191,6 +196,8 @@ def build_render_plan(
                 speed=float(clip.get("speed", 1.0)),
                 lane_id=lane.get("lane_id", ""),
                 clip_id=clip.get("clip_id", ""),
+                video_effects=effects_data.get("video_effects", []),
+                audio_effects=effects_data.get("audio_effects", []),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -303,7 +310,7 @@ class FilterGraphBuilder:
         return input_args, filter_str
 
     def _clip_video_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip video: trim + speed + label."""
+        """Per-clip video: trim + effects + speed + label."""
         parts: list[str] = []
 
         # Trim
@@ -313,6 +320,12 @@ class FilterGraphBuilder:
                 trim += f":end={clip.source_out}"
             parts.append(trim)
             parts.append("setpts=PTS-STARTPTS")
+
+        # MARKER_B9: Insert video effects between trim and speed
+        if clip.video_effects:
+            from src.services.cut_effects_engine import compile_video_filters
+            effect_filters = compile_video_filters(clip.video_effects)
+            parts.extend(effect_filters)
 
         # Speed
         if clip.speed != 1.0 and clip.speed > 0:
@@ -325,7 +338,7 @@ class FilterGraphBuilder:
         return f"[{idx}:v]{','.join(parts)}[v{idx}]"
 
     def _clip_audio_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip audio: atrim + speed."""
+        """Per-clip audio: atrim + effects + speed."""
         parts: list[str] = []
 
         if clip.source_in > 0 or clip.source_out > 0:
@@ -334,6 +347,12 @@ class FilterGraphBuilder:
                 trim += f":end={clip.source_out}"
             parts.append(trim)
             parts.append("asetpts=PTS-STARTPTS")
+
+        # MARKER_B9: Insert audio effects between trim and speed
+        if clip.audio_effects:
+            from src.services.cut_effects_engine import compile_audio_filters
+            effect_filters = compile_audio_filters(clip.audio_effects)
+            parts.extend(effect_filters)
 
         if clip.speed != 1.0 and clip.speed > 0:
             # atempo only supports 0.5-2.0, chain for wider range
@@ -454,7 +473,8 @@ def build_ffmpeg_command(
     has_transitions = bool(plan.transitions)
     has_speed_changes = any(c.speed != 1.0 for c in plan.clips)
     has_trims = any(c.source_in > 0 or c.source_out > 0 for c in plan.clips)
-    use_filter_complex = has_transitions or has_speed_changes or has_trims
+    has_effects = any(c.video_effects or c.audio_effects for c in plan.clips)
+    use_filter_complex = has_transitions or has_speed_changes or has_trims or has_effects
 
     if use_filter_complex:
         return _build_filter_complex_cmd(plan, ffmpeg_path)
