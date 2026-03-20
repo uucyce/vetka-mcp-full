@@ -137,7 +137,7 @@ interface CutEditorState {
   hoveredClipId: string | null;
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
-  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null;
+  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null;
 
   // === MARKER_W3.6: Tool State Machine ===
   activeTool: 'selection' | 'razor' | 'hand' | 'zoom';
@@ -257,7 +257,7 @@ interface CutEditorState {
   setViewMode: (mode: 'nle' | 'debug') => void;
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
   // MARKER_W1.2: Panel Focus
-  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | null) => void;
+  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null) => void;
   // MARKER_W3.6: Tool State Machine
   setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom') => void;
   // MARKER_W4.5: Project Settings
