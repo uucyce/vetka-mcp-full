@@ -293,11 +293,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Every task must have at least one architecture_doc or recon_doc.
         # If missing: search docs/ by title, suggest matches, REJECT until attached.
         # force_no_docs=true bypasses (for truly novel tasks with no prior docs).
+        # MARKER_195.3: phase_type-aware — research/test auto-exempt (they create docs, not consume them).
         arch_docs = [d for d in (payload.get("architecture_docs") or []) if str(d).strip()]
         recon_docs = [d for d in (payload.get("recon_docs") or []) if str(d).strip()]
         force_no_docs = bool(payload.pop("force_no_docs", False))
+        phase_type = payload.get("phase_type", "")
+        doc_exempt_types = ("research", "test")
 
-        if not arch_docs and not recon_docs and not force_no_docs:
+        if not arch_docs and not recon_docs and not force_no_docs and phase_type not in doc_exempt_types:
             # Build search query from title + tags for better relevance
             tags = payload.get("tags") or []
             search_query = title + " " + " ".join(str(t) for t in tags)
@@ -309,7 +312,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 "doc_gate": True,
                 "suggested_docs": suggested,
                 "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
-                        "Use force_no_docs=true ONLY if no relevant docs exist.",
+                        "Use force_no_docs=true ONLY if no relevant docs exist. "
+                        "Note: phase_type=research and phase_type=test are auto-exempt.",
             }
 
         try:
