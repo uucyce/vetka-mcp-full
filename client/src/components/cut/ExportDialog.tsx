@@ -1,15 +1,16 @@
 /**
  * MARKER_W6.1: Master Render / Export dialog.
+ * MARKER_B6: Rewired to cut_render_engine.py — filter_complex, transitions, speed.
  *
  * Three export modes:
- * 1. Master Render — ProRes 422 / H.264 / H.265 video file
+ * 1. Master Render — ProRes 422/4444 / H.264 / H.265 / DNxHD video file
  * 2. Editorial Export — Premiere XML / FCPXML / EDL / OTIO
- * 3. Publish — Platform presets (YouTube, Instagram, TikTok)
+ * 3. Publish — Platform presets (YouTube, Instagram, TikTok, Telegram)
  *
- * Master render calls POST /cut/render/master → async job → progress.
- * Editorial exports call existing POST /cut/export/* endpoints.
+ * Backend: POST /cut/render/master → cut_render_engine.render_timeline() → async job.
+ * Editorial: POST /cut/export/* endpoints (unchanged).
  */
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
 
@@ -17,7 +18,7 @@ import { API_BASE } from '../../config/api.config';
 
 type ExportTab = 'master' | 'editorial' | 'publish';
 
-type VideoCodec = 'prores_422' | 'prores_4444' | 'h264' | 'h265';
+type VideoCodec = 'prores_422' | 'prores_4444' | 'h264' | 'h265' | 'dnxhd';
 type Resolution = '4k' | '1080p' | '720p' | 'source';
 type EditorialFormat = 'premiere_xml' | 'fcpxml' | 'edl' | 'otio';
 
@@ -40,6 +41,7 @@ const CODECS: CodecOption[] = [
   { id: 'prores_4444', label: 'ProRes 4444', ext: '.mov', description: 'Maximum quality with alpha. Largest files.' },
   { id: 'h264', label: 'H.264', ext: '.mp4', description: 'Universal delivery codec. Good quality/size ratio.' },
   { id: 'h265', label: 'H.265 (HEVC)', ext: '.mp4', description: 'Better compression than H.264. Modern devices.' },
+  { id: 'dnxhd', label: 'DNxHD', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
 ];
 
 const RESOLUTIONS: ResolutionOption[] = [
@@ -281,7 +283,11 @@ export default function ExportDialog() {
           setRenderProgress(progress);
           setRenderStatus(state === 'done' ? 'Complete' : `Encoding... ${Math.round(progress * 100)}%`);
           if (state === 'done') {
-            setExportResult(job.job?.result?.output_path || 'Render complete');
+            const result = job.job?.result;
+            const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
+            const transitions = result?.transitions_count ? ` | ${result.transitions_count} transition(s)` : '';
+            const fc = result?.used_filter_complex ? ' | filter_complex' : '';
+            setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB}${transitions}${fc})` : ''}`);
             setRenderProgress(null);
             setRenderStatus(null);
             return;
@@ -337,10 +343,13 @@ export default function ExportDialog() {
     }
   }, [sandboxRoot, projectId, timelineId, projectFramerate, editorialFormat, setRenderError]);
 
-  // ─── Publish preset ───
+  // ─── MARKER_B6: Publish preset — async job with progress polling ───
   const startPublish = useCallback(async (presetId: string) => {
-    setExporting(true);
+    setRenderProgress(0);
+    setRenderStatus(`Publishing to ${presetId}...`);
+    setRenderError(null);
     setExportResult(null);
+
     try {
       const res = await fetch(`${API_BASE}/cut/render/master`, {
         method: 'POST',
@@ -351,20 +360,52 @@ export default function ExportDialog() {
           timeline_id: timelineId,
           codec: 'h264',
           resolution: '1080p',
-          quality: 75,
+          quality: 80,
           fps: projectFramerate,
           preset: presetId,
+          range_in: selectionOnly && hasSelection ? sequenceMarkIn : null,
+          range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
+          audio_stems: false,
         }),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
       const data = await res.json();
-      setExportResult(data.output_path || `Queued for ${presetId}`);
+
+      if (data.job_id) {
+        setRenderStatus(`Encoding for ${presetId}...`);
+        for (let i = 0; i < 600; i++) {
+          await new Promise((r) => setTimeout(r, 500));
+          const jobRes = await fetch(`${API_BASE}/cut/job/${encodeURIComponent(data.job_id)}`);
+          if (!jobRes.ok) continue;
+          const job = await jobRes.json();
+          const state = job.job?.state;
+          const progress = job.job?.progress ?? 0;
+          setRenderProgress(progress);
+          setRenderStatus(state === 'done' ? 'Complete' : `Encoding for ${presetId}... ${Math.round(progress * 100)}%`);
+          if (state === 'done') {
+            const result = job.job?.result;
+            const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
+            setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB})` : ''}`);
+            setRenderProgress(null);
+            setRenderStatus(null);
+            return;
+          }
+          if (state === 'error') {
+            throw new Error(job.job?.error?.message || 'Publish render failed');
+          }
+        }
+        throw new Error('Publish render timed out');
+      } else {
+        throw new Error(data.error || 'Unknown publish error');
+      }
     } catch (err) {
       setRenderError(err instanceof Error ? err.message : 'Publish failed');
-    } finally {
-      setExporting(false);
+      setRenderProgress(null);
+      setRenderStatus(null);
     }
-  }, [sandboxRoot, projectId, timelineId, projectFramerate, setRenderError]);
+  }, [sandboxRoot, projectId, timelineId, projectFramerate, selectionOnly, hasSelection,
+      sequenceMarkIn, sequenceMarkOut, setRenderProgress, setRenderStatus, setRenderError]);
 
   if (!show) return null;
 
@@ -506,21 +547,6 @@ export default function ExportDialog() {
                 )}
               </div>
 
-              {/* Progress */}
-              {isRendering && (
-                <div>
-                  <div style={{ fontSize: 10, color: '#4a9eff' }}>{renderStatus}</div>
-                  <div style={PROGRESS_BAR}>
-                    <div style={{
-                      width: `${Math.round((renderProgress ?? 0) * 100)}%`,
-                      height: '100%',
-                      background: '#4a9eff',
-                      borderRadius: 3,
-                      transition: 'width 0.3s',
-                    }} />
-                  </div>
-                </div>
-              )}
             </>
           )}
 
@@ -555,7 +581,7 @@ export default function ExportDialog() {
               {PUBLISH_PRESETS.map((preset) => (
                 <div
                   key={preset.id}
-                  style={RADIO_ITEM}
+                  style={{ ...RADIO_ITEM, opacity: isRendering ? 0.5 : 1, pointerEvents: isRendering ? 'none' : 'auto' }}
                   onClick={() => startPublish(preset.id)}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#1f1f2a'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
@@ -571,6 +597,34 @@ export default function ExportDialog() {
             </>
           )}
 
+          {/* MARKER_B6: Shared progress bar (Master + Publish) */}
+          {isRendering && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ fontSize: 10, color: '#4a9eff' }}>{renderStatus}</div>
+                <div style={{ fontSize: 9, color: '#555' }}>
+                  {(renderProgress ?? 0) < 0.1 ? 'Preparing...'
+                    : (renderProgress ?? 0) < 0.3 ? 'Building graph...'
+                    : (renderProgress ?? 0) < 0.85 ? 'Encoding...'
+                    : (renderProgress ?? 0) < 1 ? 'Audio stems...'
+                    : 'Finalizing...'}
+                </div>
+              </div>
+              <div style={PROGRESS_BAR}>
+                <div style={{
+                  width: `${Math.round((renderProgress ?? 0) * 100)}%`,
+                  height: '100%',
+                  background: '#4a9eff',
+                  borderRadius: 3,
+                  transition: 'width 0.3s',
+                }} />
+              </div>
+              <div style={{ fontSize: 9, color: '#444', marginTop: 3, textAlign: 'right' }}>
+                {Math.round((renderProgress ?? 0) * 100)}%
+              </div>
+            </div>
+          )}
+
           {/* Error */}
           {renderError && (
             <div style={{ fontSize: 10, color: '#e55', marginTop: 8 }}>
@@ -580,7 +634,7 @@ export default function ExportDialog() {
 
           {/* Result */}
           {exportResult && (
-            <div style={{ fontSize: 10, color: '#4ade80', marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: '#4ade80', marginTop: 8, wordBreak: 'break-all' }}>
               {exportResult}
             </div>
           )}
