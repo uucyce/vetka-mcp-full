@@ -18,7 +18,7 @@ import {
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import WaveformCanvas from './WaveformCanvas';
-import { IconFilmStrip, IconSpeaker, IconCamera, IconLink } from './icons/CutIcons';
+import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget } from './icons/CutIcons';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#4a9eff', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -1307,11 +1307,8 @@ export default function TimelineTrackView() {
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      color: targetedLanes.has(lane.lane_id) ? '#111' : '#555',
                       background: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#111',
                       borderColor: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#333',
-                      fontSize: 11,
-                      lineHeight: '14px',
                     }}
                     title="Target lane (insert/overwrite destination)"
                     onClick={(event) => {
@@ -1319,12 +1316,11 @@ export default function TimelineTrackView() {
                       toggleTarget(lane.lane_id);
                     }}
                   >
-                    {'\u25CF'}
+                    <IconTarget size={12} color={targetedLanes.has(lane.lane_id) ? '#111' : '#555'} />
                   </button>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      color: lockedLanes.has(lane.lane_id) ? '#111' : '#555',
                       background: lockedLanes.has(lane.lane_id) ? '#888' : '#111',
                       borderColor: lockedLanes.has(lane.lane_id) ? '#888' : '#333',
                     }}
@@ -1334,14 +1330,16 @@ export default function TimelineTrackView() {
                       toggleLock(lane.lane_id);
                     }}
                   >
-                    L
+                    {lockedLanes.has(lane.lane_id)
+                      ? <IconLock size={12} color="#111" />
+                      : <IconUnlock size={12} color="#555" />
+                    }
                   </button>
                 </div>
                 <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      color: soloLanes.has(lane.lane_id) ? '#111' : '#888',
                       background: soloLanes.has(lane.lane_id) ? '#facc15' : '#111',
                       borderColor: soloLanes.has(lane.lane_id) ? '#facc15' : '#333',
                     }}
@@ -1351,12 +1349,11 @@ export default function TimelineTrackView() {
                       toggleSolo(lane.lane_id);
                     }}
                   >
-                    S
+                    <IconSolo size={12} color={soloLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      color: mutedLanes.has(lane.lane_id) ? '#111' : '#888',
                       background: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#111',
                       borderColor: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#333',
                     }}
@@ -1366,7 +1363,7 @@ export default function TimelineTrackView() {
                       toggleMute(lane.lane_id);
                     }}
                   >
-                    M
+                    <IconMute size={12} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                 </div>
               </div>
