@@ -8130,3 +8130,48 @@ async def cut_render_master(req: CutRenderMasterRequest) -> dict[str, Any]:
         "job_id": str(job["job_id"]),
         "job": job,
     }
+
+
+# ─── MARKER_W4.3: Save / Save As / Autosave ───────────────────────────
+
+
+class CutSaveRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    timeline_state: dict[str, Any] | None = None
+    scene_graph: dict[str, Any] | None = None
+
+
+@router.post("/save")
+async def cut_save_project(req: CutSaveRequest) -> dict[str, Any]:
+    """
+    MARKER_W4.3: Flush current project state to disk.
+    Updates project metadata (updated_at), saves timeline state and scene graph
+    if provided. Returns saved_at timestamp for UI confirmation.
+    """
+    store = CutProjectStore(req.sandbox_root)
+    project = store.load_project()
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    saved_at = datetime.now(timezone.utc).isoformat()
+
+    # Update project metadata
+    project["updated_at"] = saved_at
+    if req.project_id:
+        project["project_id"] = req.project_id
+    store.save_project(project)
+
+    # Save timeline state if provided
+    if req.timeline_state is not None:
+        store.save_timeline_state(req.timeline_state)
+
+    # Save scene graph if provided
+    if req.scene_graph is not None:
+        store.save_scene_graph(req.scene_graph)
+
+    return {
+        "success": True,
+        "saved_at": saved_at,
+        "project_id": str(project.get("project_id", "")),
+    }

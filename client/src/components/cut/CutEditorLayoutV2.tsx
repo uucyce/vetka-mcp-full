@@ -20,9 +20,11 @@
 import { useMemo, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
+import { useCutAutosave } from '../../hooks/useCutAutosave';
 import DockviewLayout from './DockviewLayout';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
+import SaveIndicator from './SaveIndicator';
 
 // ─── Styles ───
 
@@ -43,6 +45,9 @@ interface CutEditorLayoutV2Props {
 }
 
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
+  // ─── MARKER_W4.3: Autosave + manual save ───
+  const { saveProject } = useCutAutosave();
+
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
     // Playback
@@ -169,6 +174,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // Project
+    saveProject: () => saveProject(),
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');
@@ -179,7 +185,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
-  }), []);
+  }), [saveProject]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
@@ -188,6 +194,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <DockviewLayout scriptText={scriptText} />
       <ProjectSettings />
       <ExportDialog />
+      <SaveIndicator />
     </div>
   );
 }
