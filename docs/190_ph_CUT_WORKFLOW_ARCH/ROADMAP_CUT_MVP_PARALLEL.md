@@ -32,10 +32,22 @@ Every agent MUST read these before starting work:
 ### Done
 - PULSE pipeline: conductor, critics, camelot, auto-montage (Phase 179) — 100%
 - Layout V2 + 22 components + 3 Zustand stores — working
-- Backend: 70+ endpoints, undo/redo, proxy generation — working
-- Export: Premiere XML, FCPXML, EDL, SRT — working
-- Hotkeys: 40+ bindings implemented in useCutHotkeys.ts — NOT wired to layout
-- Dockview migration: 5 commits on `claude/relaxed-rosalind` — NOT merged
+- Backend: **54 production-ready endpoints**, ZERO stubs — fully working
+- Master render: `POST /render/master` — H.264, H.265, ProRes 422/4444, range export, audio stems
+- Export: Premiere XML, FCPXML, EDL, SRT, OTIO, batch, social presets — ALL working
+- Proxy: FFmpeg 720p/480p/360p H.264 generation — working
+- Audio: waveform extraction, sync (correlation+peaks), silence detection — working
+- Hotkeys: 20/54 (37%) implemented in useCutHotkeys.ts — NOT wired to layout
+- Dockview migration: 5 commits on `claude/relaxed-rosalind` — NOT merged (local only, no remote)
+
+### Backend Strength (important for Stream B)
+The backend is MUCH stronger than initially assessed. Key endpoints already working:
+- `POST /render/master` — real render with codec/quality/resolution/range/stems
+- `POST /media/support` — codec probe (needs structured ProbeResult wrapper)
+- `POST /export/batch` — multi-format export
+- `GET /export/social-presets` — YouTube/IG/TikTok/Telegram presets
+- `POST /pulse/auto-montage` — AI montage (3 modes)
+- **Stream B focus should be: UI for existing endpoints + filter_complex for effects/transitions**
 
 ### Done on worktree (awaiting merge)
 - W0.1-W0.4: Legacy cleanup, transport split — done_worktree
@@ -43,19 +55,29 @@ Every agent MUST read these before starting work:
 - CUT-W3.4: JKL reverse playback — done_worktree
 - Panel docking research — done_worktree
 
-### Critical gaps (blocks "working APP")
-1. **Stores disconnected** — PanelSyncStore island, no Source/Program split
-2. **Track controls missing** — no lock/mute/solo/target
-3. **Editing hotkeys dead** — useCutHotkeys not mounted in NLE layout
-4. **No save/autosave** — work lost on reload
-5. **No context menu** — right-click does nothing
-6. **No effects/transitions** — zero visual effects, no crossfades
-7. **No clip speed control** — can't change playback rate
-8. **No audio mixer** — volume/pan/VU meters absent
-9. **No sequence settings** — framerate/resolution/timecode hardcoded
-10. **No real codec engine** — HTML5 video only (no ProRes, R3D, BRAW decode)
-11. **No master render** — ExportDialog is stub, no FFmpeg pipeline
-12. **No hotkey customization UI** — backend presets exist, no settings panel
+### Already working (discovered by frontend recon, better than expected)
+- **ExportDialog** — 3 tabs (Master/Editorial/Publish), ProRes/H.264/H.265, quality, resolution, async job polling
+- **ProjectSettings** — framerate (23.976-60), timecode, drop frame, audio sample rate/bit depth
+- **HistoryPanel** — visual undo/redo list (Photoshop-style)
+- **AutoMontageMenu** — 3 PULSE modes dropdown (favorites/script/music)
+- **Store: 50+ state fields** — including lane mute/solo/lock/target + volume faders
+- **35 hotkey actions** — Premiere/FCP7 presets, custom overrides, localStorage persistence
+- **Source/Program marks split** — sourceMarkIn/Out vs sequenceMarkIn/Out (MARKER_W1.4)
+- **Context menu on timeline** — clip operations available
+- **ClipInspector** — timing, sync info, waveform, marker list
+
+### Remaining gaps (actual blockers)
+1. **PanelSyncStore island** — Script/DAG clicks don't reach EditorStore/VideoPreview
+2. **Hotkey mounting unclear** — useCutHotkeys may not be called in component tree (verify!)
+3. **Track header UI missing** — store has mute/solo/lock state, but no SVG icons rendered
+4. **No effects/transitions** — ZERO implementation (no components, no state, no backend)
+5. **No clip speed/retime** — no variable speed, freeze frame, slow motion
+6. **No motion controls** — no position/scale/rotation/opacity per clip
+7. **No audio mixer panel** — AudioLevelMeter exists (VU), but no faders/pan/EQ UI
+8. **No proxy workflow UI** — backend generates proxies, no client-side toggle/management
+9. **No color correction** — Itten grading advisor exists (backend), no UI
+10. **No hotkey customization UI** — presets exist in code, no settings panel
+11. **Dockview not on main** — 5 commits on local branch, no remote
 
 ---
 
@@ -450,10 +472,10 @@ The user has a **client coming tomorrow**. The MVP gate is MERGE POINT 4:
 | Editing ops (split/insert) | CUT_UNIFIED_VISION W3 | MISSING | A | 1 |
 | Save/Autosave | CUT_UNIFIED_VISION W4 | MISSING | A | 1 |
 | Context menu | CUT_UNIFIED_VISION W4 | MISSING | A | 2 |
-| Codec detection | CUT_TARGET_ARCH §8 | PARTIAL (HTML5 only) | B | 1 |
-| Proxy pipeline | CUT_TARGET_ARCH §8 | WORKING (basic) | B | 1 |
-| Master render | CUT_UNIFIED_VISION W6 | STUB | B | 1 |
-| Export dialog | CUT_UNIFIED_VISION W6 | STUB | B | 1 |
+| Codec detection | CUT_TARGET_ARCH §8 | WORKING (POST /media/support) — needs ProbeResult wrapper | B | 2 |
+| Proxy pipeline | CUT_TARGET_ARCH §8 | WORKING (720p/480p/360p H.264) | B | — |
+| Master render | CUT_UNIFIED_VISION W6 | BACKEND WORKING (POST /render/master) — needs filter_complex for effects | B | 2 |
+| Export dialog | CUT_UNIFIED_VISION W6 | FRONTEND STUB (backend 100% done) | B | 1 |
 | Effects system | NOT IN DOCS (W10.6 only) | MISSING | B | 2 |
 | Transitions | NOT IN DOCS | MISSING | B | 2 |
 | Clip speed | NOT IN DOCS | MISSING | B | 2 |
