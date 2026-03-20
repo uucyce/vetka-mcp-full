@@ -34,11 +34,42 @@ from typing import Any, Literal
 # ---------------------------------------------------------------------------
 
 CODEC_MAP: dict[str, dict[str, str]] = {
-    "prores_422": {"vcodec": "prores_ks", "profile": "2", "ext": ".mov", "pix_fmt": "yuv422p10le"},
-    "prores_4444": {"vcodec": "prores_ks", "profile": "4", "ext": ".mov", "pix_fmt": "yuva444p10le"},
-    "h264": {"vcodec": "libx264", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-    "h265": {"vcodec": "libx265", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-    "dnxhd": {"vcodec": "dnxhd", "profile": "", "ext": ".mxf", "pix_fmt": "yuv422p"},
+    # === Apple ProRes family ===
+    "prores_proxy": {"vcodec": "prores_ks", "profile": "0", "ext": ".mov", "pix_fmt": "yuv422p10le"},
+    "prores_lt":    {"vcodec": "prores_ks", "profile": "1", "ext": ".mov", "pix_fmt": "yuv422p10le"},
+    "prores_422":   {"vcodec": "prores_ks", "profile": "2", "ext": ".mov", "pix_fmt": "yuv422p10le"},
+    "prores_422hq": {"vcodec": "prores_ks", "profile": "3", "ext": ".mov", "pix_fmt": "yuv422p10le"},
+    "prores_4444":  {"vcodec": "prores_ks", "profile": "4", "ext": ".mov", "pix_fmt": "yuva444p10le"},
+    "prores_4444xq": {"vcodec": "prores_ks", "profile": "5", "ext": ".mov", "pix_fmt": "yuva444p10le"},
+    # === Avid DNxHR family ===
+    "dnxhr_lb":  {"vcodec": "dnxhd", "profile": "dnxhr_lb",  "ext": ".mxf", "pix_fmt": "yuv422p"},
+    "dnxhr_sq":  {"vcodec": "dnxhd", "profile": "dnxhr_sq",  "ext": ".mxf", "pix_fmt": "yuv422p"},
+    "dnxhr_hq":  {"vcodec": "dnxhd", "profile": "dnxhr_hq",  "ext": ".mxf", "pix_fmt": "yuv422p"},
+    "dnxhr_hqx": {"vcodec": "dnxhd", "profile": "dnxhr_hqx", "ext": ".mxf", "pix_fmt": "yuv422p10le"},
+    "dnxhr_444": {"vcodec": "dnxhd", "profile": "dnxhr_444", "ext": ".mxf", "pix_fmt": "yuv444p10le"},
+    "dnxhd":     {"vcodec": "dnxhd", "profile": "",           "ext": ".mxf", "pix_fmt": "yuv422p"},
+    # === H.264 / AVC ===
+    "h264":        {"vcodec": "libx264",    "profile": "",     "ext": ".mp4", "pix_fmt": "yuv420p"},
+    "h264_10bit":  {"vcodec": "libx264",    "profile": "high10", "ext": ".mp4", "pix_fmt": "yuv420p10le"},
+    # === H.265 / HEVC ===
+    "h265":        {"vcodec": "libx265",    "profile": "",     "ext": ".mp4", "pix_fmt": "yuv420p"},
+    "h265_10bit":  {"vcodec": "libx265",    "profile": "main10", "ext": ".mp4", "pix_fmt": "yuv420p10le"},
+    # === Web / Modern codecs ===
+    "vp9":    {"vcodec": "libvpx-vp9", "profile": "", "ext": ".webm", "pix_fmt": "yuv420p"},
+    "av1":    {"vcodec": "libsvtav1",  "profile": "", "ext": ".mp4",  "pix_fmt": "yuv420p10le"},
+    "av1_8":  {"vcodec": "libsvtav1",  "profile": "", "ext": ".mp4",  "pix_fmt": "yuv420p"},
+    # === Lossless / Intermediate ===
+    "ffv1":     {"vcodec": "ffv1",     "profile": "", "ext": ".mkv",  "pix_fmt": "yuv422p10le"},
+    "huffyuv":  {"vcodec": "huffyuv",  "profile": "", "ext": ".avi",  "pix_fmt": "yuv422p"},
+    "ut_video": {"vcodec": "utvideo",  "profile": "", "ext": ".avi",  "pix_fmt": "yuv422p"},
+    # === Legacy / Broadcast ===
+    "mpeg2":  {"vcodec": "mpeg2video", "profile": "", "ext": ".mxf", "pix_fmt": "yuv422p"},
+    "mjpeg":  {"vcodec": "mjpeg",      "profile": "", "ext": ".avi", "pix_fmt": "yuvj420p"},
+    # === Image sequence ===
+    "png_seq":  {"vcodec": "png",      "profile": "", "ext": ".png", "pix_fmt": "rgb24"},
+    "tiff_seq": {"vcodec": "tiff",     "profile": "", "ext": ".tiff", "pix_fmt": "rgb48le"},
+    "dpx_seq":  {"vcodec": "dpx",      "profile": "", "ext": ".dpx", "pix_fmt": "gbrp10le"},
+    "exr_seq":  {"vcodec": "exr",      "profile": "", "ext": ".exr", "pix_fmt": "gbrpf32le"},
 }
 
 RESOLUTION_MAP: dict[str, tuple[int, int] | None] = {

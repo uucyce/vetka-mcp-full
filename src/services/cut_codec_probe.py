@@ -83,6 +83,10 @@ class ProbeResult:
     sample_rate: int = 0
     channels: int = 0
 
+    # MARKER_B1.5: Codec classification
+    codec_family: str = ""       # camera_raw, production, delivery, web, audio_only
+    playback_class: str = ""     # native, proxy_recommended, transcode_required, unsupported
+
     # Error state
     error: str = ""
 
@@ -132,6 +136,8 @@ class ProbeResult:
             "resolution_label": self.resolution_label,
             "sample_rate": self.sample_rate,
             "channels": self.channels,
+            "codec_family": self.codec_family,
+            "playback_class": self.playback_class,
             "error": self.error,
         }
         if self.video:
@@ -175,6 +181,10 @@ _COLOR_PRIMARIES_MAP: dict[str, str] = {
     "smpte170m": "Rec.601",
     "smpte240m": "SMPTE 240M",
     "film": "Film",
+    "bt470m": "BT.470M",          # NTSC 1953
+    "ebu3213": "EBU 3213",        # EBU Tech 3213
+    "jedec-p22": "JEDEC P22",     # Generic phosphors
+    "smpte428": "DCI XYZ",        # SMPTE ST 428 (cinema XYZ)
 }
 
 # pix_fmt → (bit_depth, chroma)
@@ -196,6 +206,25 @@ _PIX_FMT_INFO: dict[str, tuple[int, str]] = {
     "rgb48le": (16, "RGB"),
     "gbrp10le": (10, "RGB"),
     "gbrp12le": (12, "RGB"),
+    "gbrap10le": (10, "RGB+A"),
+    "gbrap12le": (12, "RGB+A"),
+    # Panasonic/Sony camera formats
+    "yuv422p10": (10, "4:2:2"),
+    "p010le": (10, "4:2:0"),       # HEVC 10-bit (GH5, Sony)
+    "p010be": (10, "4:2:0"),
+    "p016le": (16, "4:2:0"),
+    "p210le": (10, "4:2:2"),
+    "p216le": (16, "4:2:2"),
+    "p410le": (10, "4:4:4"),
+    "p416le": (16, "4:4:4"),
+    # DPX / EXR / CinemaDNG
+    "rgb48be": (16, "RGB"),
+    "rgba64le": (16, "RGBA"),
+    "gbrpf32le": (32, "RGB"),      # float
+    "gbrapf32le": (32, "RGB+A"),   # float
+    # XYZ (DCI cinema)
+    "xyz12le": (12, "XYZ"),
+    "xyz12be": (12, "XYZ"),
 }
 
 
@@ -233,6 +262,169 @@ def _infer_bit_depth(pix_fmt: str) -> int:
     if "16" in pix_fmt:
         return 16
     return 8
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B1.5: Codec family + playback class classification
+# ---------------------------------------------------------------------------
+
+# codec_name (from ffprobe) → family
+_CODEC_FAMILY_MAP: dict[str, str] = {
+    # === Camera RAW — needs transcode, huge files ===
+    "r3d": "camera_raw",                # RED R3D
+    "braw": "camera_raw",               # Blackmagic RAW
+    "cdng": "camera_raw",               # CinemaDNG
+    "dpx": "camera_raw",                # DPX sequence
+    "exr": "camera_raw",                # OpenEXR
+    "ari": "camera_raw",                # ARRIRAW
+    "rawvideo": "camera_raw",
+
+    # === Production — high quality, often needs proxy ===
+    "prores": "production",             # Apple ProRes (all profiles)
+    "dnxhd": "production",              # Avid DNxHD / DNxHR
+    "ffv1": "production",               # FFV1 lossless
+    "huffyuv": "production",            # HuffYUV lossless
+    "magicyuv": "production",           # MagicYUV
+    "cineform": "production",           # GoPro CineForm
+    "cfhd": "production",               # CineForm (alt name)
+    "v210": "production",               # Uncompressed 10-bit 4:2:2
+    "v410": "production",               # Uncompressed 10-bit 4:4:4
+    "png": "production",                # PNG sequence
+    "tiff": "production",               # TIFF sequence
+    "jpeg2000": "production",           # JPEG 2000 (MXF)
+    "j2k": "production",                # JPEG 2000 (alt)
+
+    # === Delivery — playback-ready, good balance ===
+    "h264": "delivery",                 # H.264 / AVC
+    "h265": "delivery",                 # H.265 / HEVC
+    "hevc": "delivery",                 # HEVC (alt name)
+    "mpeg4": "delivery",                # MPEG-4 Part 2
+    "mpeg2video": "delivery",           # MPEG-2 (broadcast, DVD)
+    "mpeg1video": "delivery",           # MPEG-1
+    "mjpeg": "delivery",               # Motion JPEG
+    "theora": "delivery",
+
+    # === Web — optimized for streaming ===
+    "vp8": "web",
+    "vp9": "web",
+    "av1": "web",
+    "libaom-av1": "web",
+    "libsvtav1": "web",
+    "librav1e": "web",
+    "webp": "web",                      # Animated WebP
+
+    # === Audio only ===
+    "aac": "audio_only",
+    "mp3": "audio_only",
+    "pcm_s16le": "audio_only",
+    "pcm_s16be": "audio_only",
+    "pcm_s24le": "audio_only",
+    "pcm_s24be": "audio_only",
+    "pcm_s32le": "audio_only",
+    "pcm_s32be": "audio_only",
+    "pcm_f32le": "audio_only",
+    "pcm_f32be": "audio_only",
+    "pcm_f64le": "audio_only",
+    "pcm_f64be": "audio_only",
+    "flac": "audio_only",
+    "alac": "audio_only",
+    "opus": "audio_only",
+    "vorbis": "audio_only",
+    "ac3": "audio_only",
+    "eac3": "audio_only",
+    "dts": "audio_only",
+    "truehd": "audio_only",
+    "mlp": "audio_only",
+    "wmav2": "audio_only",
+    "adpcm_ima_wav": "audio_only",
+    "pcm_alaw": "audio_only",
+    "pcm_mulaw": "audio_only",
+}
+
+# Containers where browser/Electron can play natively
+_NATIVE_CONTAINERS: set[str] = {
+    "mp4", "m4v", "webm", "ogg", "mov",
+}
+
+# Containers needing proxy or transcode for smooth playback
+_PROXY_CONTAINERS: set[str] = {
+    "mxf", "avi", "mkv", "mts", "m2ts", "ts", "gxf",
+    "flv", "f4v", "3gp", "3g2", "wmv", "asf",
+}
+
+# Camera-specific containers that always need transcode
+_TRANSCODE_CONTAINERS: set[str] = {
+    "r3d", "braw", "ari", "dpx", "exr", "cin", "dng",
+}
+
+# Codecs that are heavy regardless of container
+_HEAVY_CODECS: set[str] = {
+    "prores", "dnxhd", "cineform", "cfhd", "v210", "v410",
+    "huffyuv", "ffv1", "magicyuv", "jpeg2000", "j2k",
+    "r3d", "braw", "cdng", "ari", "rawvideo",
+}
+
+# Codecs that always need transcode (no WebCodecs / Electron support)
+_TRANSCODE_CODECS: set[str] = {
+    "r3d", "braw", "cdng", "ari", "rawvideo", "dpx", "exr",
+    "v210", "v410", "ffv1", "huffyuv", "magicyuv",
+    "jpeg2000", "j2k", "cineform", "cfhd",
+}
+
+
+def _infer_codec_family(codec: str) -> str:
+    """Classify codec into family: camera_raw, production, delivery, web, audio_only."""
+    return _CODEC_FAMILY_MAP.get(codec, "delivery")
+
+
+def _infer_playback_class(codec: str, container: str, bit_depth: int) -> str:
+    """
+    Determine playback class based on codec, container, and bit depth.
+
+    Returns: native, proxy_recommended, transcode_required, unsupported
+    """
+    # Unsupported / raw → always transcode
+    if codec in _TRANSCODE_CODECS:
+        return "transcode_required"
+
+    # Check container first
+    # Normalize container: "mov,mp4,m4a,3gp,3g2,mj2" → check each part
+    container_parts = {c.strip() for c in container.lower().split(",")} if container else set()
+    ext_from_container = container_parts & _NATIVE_CONTAINERS
+
+    # Camera containers
+    if container_parts & _TRANSCODE_CONTAINERS:
+        return "transcode_required"
+
+    # Heavy production codecs → proxy recommended
+    if codec in _HEAVY_CODECS:
+        return "proxy_recommended"
+
+    # HEVC 10-bit (GH5, Sony etc.) — browser can decode but heavy
+    if codec in ("hevc", "h265") and bit_depth >= 10:
+        return "proxy_recommended"
+
+    # MPEG-2 in MXF (broadcast) — proxy
+    if codec == "mpeg2video" and (container_parts & _PROXY_CONTAINERS):
+        return "proxy_recommended"
+
+    # Standard H.264/H.265 8-bit in native container → native
+    if codec in ("h264", "h265", "hevc") and ext_from_container:
+        return "native"
+
+    # VP8/VP9/AV1 in WebM → native
+    if codec in ("vp8", "vp9", "av1", "libaom-av1") and ("webm" in container_parts or "mp4" in container_parts):
+        return "native"
+
+    # Non-native container but playable codec → proxy recommended
+    if container_parts & _PROXY_CONTAINERS:
+        return "proxy_recommended"
+
+    # Fallback: if native container, assume native
+    if ext_from_container:
+        return "native"
+
+    return "proxy_recommended"
 
 
 # ---------------------------------------------------------------------------
@@ -391,6 +583,9 @@ def probe_file(path: str | Path, *, timeout: float = 15.0) -> ProbeResult:
         result.pix_fmt = v.pix_fmt
         result.color_space = v.color_space
         result.bit_depth = v.bit_depth
+        # MARKER_B1.5: classify codec
+        result.codec_family = _infer_codec_family(v.codec)
+        result.playback_class = _infer_playback_class(v.codec, result.container, v.bit_depth)
 
     if result.audio_streams:
         a = result.audio_streams[0]
@@ -398,6 +593,11 @@ def probe_file(path: str | Path, *, timeout: float = 15.0) -> ProbeResult:
         result.audio_codec = a.codec
         result.sample_rate = a.sample_rate
         result.channels = a.channels
+
+    # Audio-only files
+    if not result.video_streams and result.audio_streams:
+        result.codec_family = "audio_only"
+        result.playback_class = "native"
 
     return result
 
