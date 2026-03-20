@@ -23,12 +23,14 @@ interface DockviewStoreState {
   /** MARKER_C5: Dockview API ref for workspace preset switching */
   apiRef: import('dockview-react').DockviewApi | null;
   setApiRef: (api: import('dockview-react').DockviewApi) => void;
+  /** MARKER_C12: Add a timeline panel to dockview (multi-instance) */
+  addTimelinePanel: (timelineId: string, label: string) => void;
 }
 
 const LS_PREFIX = 'cut_dockview_';
 const LS_ACTIVE = 'cut_dockview_active';
 
-export const useDockviewStore = create<DockviewStoreState>((set) => ({
+export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   activePreset: (() => {
     try {
       const v = localStorage.getItem(LS_ACTIVE);
@@ -69,4 +71,26 @@ export const useDockviewStore = create<DockviewStoreState>((set) => ({
   // MARKER_C5: API ref for workspace preset switching
   apiRef: null,
   setApiRef: (api) => set({ apiRef: api }),
+
+  // MARKER_C12: Add timeline panel to dockview
+  addTimelinePanel: (timelineId, label) => {
+    const api = get().apiRef;
+    if (!api) return;
+    const panelId = `timeline-${timelineId}`;
+    // Check if panel already exists
+    try {
+      if (api.getPanel(panelId)) return;
+    } catch { /* panel not found — ok to create */ }
+    // Find existing timeline group to add as tab, or create below
+    const existingTimeline = api.getPanel('timeline');
+    api.addPanel({
+      id: panelId,
+      component: 'timeline',
+      title: label,
+      params: { timelineId },
+      position: existingTimeline
+        ? { referencePanel: existingTimeline.id, direction: 'within' }
+        : { direction: 'below' },
+    });
+  },
 }));

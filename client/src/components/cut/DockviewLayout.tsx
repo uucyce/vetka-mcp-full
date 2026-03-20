@@ -21,6 +21,7 @@ import './dockview-cut-theme.css';
 
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
+import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 
 // MARKER_C4: Panel wrappers extracted to panels/ directory
 import {
@@ -191,9 +192,18 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // Wire panel focus to store
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
-        const focus = PANEL_FOCUS_MAP[panel.id];
-        if (focus) {
-          useCutEditorStore.getState().setFocusedPanel(focus);
+        // MARKER_C12: Detect timeline panels → setActiveTimeline
+        const tlId = panel.params?.timelineId as string | undefined;
+        if (tlId || panel.id === 'timeline' || panel.id.startsWith('timeline-')) {
+          useCutEditorStore.getState().setFocusedPanel('timeline');
+          if (tlId) {
+            useTimelineInstanceStore.getState().setActiveTimeline(tlId);
+          }
+        } else {
+          const focus = PANEL_FOCUS_MAP[panel.id];
+          if (focus) {
+            useCutEditorStore.getState().setFocusedPanel(focus);
+          }
         }
       }
     });
