@@ -22,6 +22,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import DockviewLayout from './DockviewLayout';
+import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SaveIndicator from './SaveIndicator';
@@ -301,6 +302,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   return (
     <div style={ROOT}>
+      <MenuBar />
       <DockviewLayout scriptText={scriptText} />
       <ProjectSettings />
       <ExportDialog />
