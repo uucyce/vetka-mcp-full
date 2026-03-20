@@ -169,10 +169,59 @@
 }
 
 /* ═══ Kill ALL remaining blue — nuclear override ════════════════════ */
-/* Dockview default theme uses #4a9eff and rgb(0,12,24) in many places */
+/* MARKER_DOCK-FIX-2: Dockview uses #4a9eff / rgb(0,12,24) internally.
+   Previous *:not() missed pseudo-elements and deeply nested internals. */
 
 .dockview-theme-dark *:not(.lane-clip):not(.marker-dot) {
   border-color: #222 !important;
+}
+
+/* Dockview group header border (active panel indicator) */
+.dockview-theme-dark .dv-tabs-container {
+  border-bottom-color: #222 !important;
+}
+
+/* Panel highlight border when dragging over */
+.dockview-theme-dark .dv-drop-target-content,
+.dockview-theme-dark .dv-overlay-render-container,
+.dockview-theme-dark .dv-render-overlay {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  outline: none !important;
+}
+
+/* Active group outline — dockview adds blue outline on focus */
+.dockview-theme-dark .dv-groupview:focus,
+.dockview-theme-dark .dv-groupview:focus-within,
+.dockview-theme-dark .dv-content-container:focus,
+.dockview-theme-dark .dv-content-container:focus-within {
+  outline: none !important;
+  border-color: #222 !important;
+}
+
+/* Pane header borders */
+.dockview-theme-dark .dv-pane-header {
+  border-color: #222 !important;
+  background-color: #0a0a0a !important;
+}
+
+/* Split view internal borders */
+.dockview-theme-dark .dv-split-view-container,
+.dockview-theme-dark .dv-grid-branch-node {
+  border-color: #222 !important;
+}
+
+/* Floating panels — no blue ring */
+.dockview-theme-dark .dv-floating-container,
+.dockview-theme-dark .dv-popout-window {
+  border-color: #333 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+}
+
+/* Tab drag indicator / ghost */
+.dockview-theme-dark .dv-tab-drag-ghost,
+.dockview-theme-dark .dv-tab-ghost {
+  border-color: #555 !important;
+  background-color: #1a1a1a !important;
 }
 
 /* Restore specific borders that need different colors */
@@ -185,4 +234,12 @@
 .dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark .dv-sash.dv-active {
   border-color: transparent !important;
+}
+
+/* Final insurance: any element with inline blue style */
+.dockview-theme-dark [style*="border-color: rgb(0, 12, 24)"],
+.dockview-theme-dark [style*="border-color: #4a9eff"],
+.dockview-theme-dark [style*="outline-color: #4a9eff"] {
+  border-color: #222 !important;
+  outline-color: transparent !important;
 }
