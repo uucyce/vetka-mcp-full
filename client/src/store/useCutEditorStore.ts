@@ -231,6 +231,18 @@ interface CutEditorState {
   mediaError: string | null;
   mediaLoading: boolean;
 
+  // === MARKER_DISPLAY-CTRL: Timeline Display Controls (FCP7 Ch.9 §141-148) ===
+  showClipNames: boolean;
+  showClipBorders: boolean;
+  showWaveforms: boolean;
+  showThroughEdits: boolean;
+  showClipLabels: boolean;
+  showRubberBand: boolean;
+  clipLabelMode: 'name' | 'color' | 'filename';
+  timecodeDisplayMode: 'timecode' | 'frames' | 'seconds';
+  showVideoTracks: boolean;
+  showAudioTracks: boolean;
+
   // === Layout mode ===
   viewMode: 'nle' | 'debug'; // toggle between NLE and legacy debug view
   sceneGraphSurfaceMode: 'shell_only' | 'nle_ready';
@@ -320,6 +332,18 @@ interface CutEditorState {
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
+
+  // MARKER_DISPLAY-CTRL: Timeline Display Controls toggles
+  toggleShowClipNames: () => void;
+  toggleShowClipBorders: () => void;
+  toggleShowWaveforms: () => void;
+  toggleShowThroughEdits: () => void;
+  toggleShowClipLabels: () => void;
+  toggleShowRubberBand: () => void;
+  setClipLabelMode: (mode: 'name' | 'color' | 'filename') => void;
+  setTimecodeDisplayMode: (mode: 'timecode' | 'frames' | 'seconds') => void;
+  toggleShowVideoTracks: () => void;
+  toggleShowAudioTracks: () => void;
 
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
@@ -461,6 +485,18 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showTitleSafe: false,
   showActionSafe: false,
   showMonitorOverlays: false,
+
+  // MARKER_DISPLAY-CTRL: Timeline Display Controls defaults (FCP7 Ch.9 §141-148)
+  showClipNames: true,
+  showClipBorders: true,
+  showWaveforms: true,
+  showThroughEdits: false,
+  showClipLabels: false,
+  showRubberBand: false,
+  clipLabelMode: 'name' as 'name' | 'color' | 'filename',
+  timecodeDisplayMode: 'timecode' as 'timecode' | 'frames' | 'seconds',
+  showVideoTracks: true,
+  showAudioTracks: true,
 
   // Media status
   mediaError: null,
@@ -616,6 +652,18 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setLastSavedAt: (ts) => set({ lastSavedAt: ts }),
   setSaveError: (err) => set({ saveError: err }),
   markUnsavedChanges: () => set({ hasUnsavedChanges: true, saveStatus: 'idle' }),
+
+  // MARKER_DISPLAY-CTRL: Timeline Display Controls toggles
+  toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
+  toggleShowClipBorders: () => set((s) => ({ showClipBorders: !s.showClipBorders })),
+  toggleShowWaveforms: () => set((s) => ({ showWaveforms: !s.showWaveforms })),
+  toggleShowThroughEdits: () => set((s) => ({ showThroughEdits: !s.showThroughEdits })),
+  toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
+  toggleShowRubberBand: () => set((s) => ({ showRubberBand: !s.showRubberBand })),
+  setClipLabelMode: (mode) => set({ clipLabelMode: mode }),
+  setTimecodeDisplayMode: (mode) => set({ timecodeDisplayMode: mode }),
+  toggleShowVideoTracks: () => set((s) => ({ showVideoTracks: !s.showVideoTracks })),
+  toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId, effects) =>

@@ -523,6 +523,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const refreshProjectState = useCutEditorStore((state) => state.refreshProjectState);
   const activeMediaPath = useCutEditorStore((state) => state.sourceMediaPath);
   const syncSurface = useCutEditorStore((state) => state.syncSurface);
+  // MARKER_DISPLAY-CTRL: display control flags
+  const showClipNames = useCutEditorStore((state) => state.showClipNames);
+  const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
+  const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
+  const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
   const markIn = useCutEditorStore((state) => state.markIn);
   const markOut = useCutEditorStore((state) => state.markOut);
   const seek = useCutEditorStore((state) => state.seek);
@@ -611,8 +617,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     return map;
   }, [waveforms]);
 
-  const displayLanes = lanes.length
-    ? lanes
+  // MARKER_DISPLAY-CTRL: Filter lanes based on show video/audio track toggles
+  const isVideoLane = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
+  const isAudioLane = (t: string) => t.startsWith('audio');
+  const filteredLanes = lanes.filter((lane) => {
+    if (!showVideoTracks && isVideoLane(lane.lane_type)) return false;
+    if (!showAudioTracks && isAudioLane(lane.lane_type)) return false;
+    return true;
+  });
+  const displayLanes = filteredLanes.length
+    ? filteredLanes
     : [
         { lane_id: 'v1_empty', lane_type: 'video_main', clips: [] },
         { lane_id: 'a1_empty', lane_type: 'audio_sync', clips: [] },
@@ -1473,7 +1487,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         left: x,
                         width: Math.max(4, width),
                         background: `${config.color}${isSelected ? '44' : isHovered ? '33' : '22'}`,
-                        border: `1px solid ${isSelected ? config.color : isHovered ? `${config.color}88` : `${config.color}44`}`,
+                        border: showClipBorders
+                          ? `1px solid ${isSelected ? config.color : isHovered ? `${config.color}88` : `${config.color}44`}`
+                          : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
                       onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'move', event)}
@@ -1508,7 +1524,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
                       />
 
-                      {width > 20 ? (
+                      {width > 20 && showWaveforms ? (
                         <div
                           data-clip="1"
                           style={{
@@ -1596,7 +1612,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </div>
                       ) : null}
 
-                      {width > 40 ? (
+                      {width > 40 && showClipNames ? (
                         <span
                           style={{
                             position: 'relative',

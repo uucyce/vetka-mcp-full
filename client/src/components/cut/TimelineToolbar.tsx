@@ -17,6 +17,7 @@
  */
 import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import TimelineDisplayControls from './TimelineDisplayControls';
 
 const ROOT: CSSProperties = {
   display: 'flex',
@@ -97,6 +98,11 @@ export default function TimelineToolbar() {
       >
         <MagnetIcon active={snapEnabled} />
       </button>
+
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+
+      {/* MARKER_DISPLAY-CTRL: Timeline Display Controls popup */}
+      <TimelineDisplayControls />
 
       <div style={{ width: 1, height: 14, background: '#222' }} />
 
