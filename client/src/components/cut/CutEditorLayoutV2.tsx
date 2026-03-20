@@ -288,6 +288,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
+
+    // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
+    focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
+    focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
+    focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
+    focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
+    focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
   }), [saveProject]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });

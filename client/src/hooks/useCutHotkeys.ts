@@ -68,6 +68,12 @@ export type CutHotkeyAction =
   // Project
   | 'importMedia'
   | 'saveProject'
+  // Panel focus
+  | 'focusSource'
+  | 'focusProgram'
+  | 'focusTimeline'
+  | 'focusProject'
+  | 'focusEffects'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -138,6 +144,12 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Project
   importMedia:       'Cmd+i',
   saveProject:       'Cmd+s',
+  // Panel focus (Premiere: ⇧1-5, CUT: ⌘1-5)
+  focusSource:       'Cmd+1',
+  focusProgram:      'Cmd+2',
+  focusTimeline:     'Cmd+3',
+  focusProject:      'Cmd+4',
+  focusEffects:      'Cmd+5',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -193,6 +205,12 @@ export const FCP7_PRESET: HotkeyMap = {
   // Project
   importMedia:       'Cmd+i',
   saveProject:       'Cmd+s',
+  // Panel focus (FCP7: ⌘1-4, CUT: ⌘1-5)
+  focusSource:       'Cmd+1',
+  focusProgram:      'Cmd+2',
+  focusTimeline:     'Cmd+3',
+  focusProject:      'Cmd+4',
+  focusEffects:      'Cmd+5',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -380,6 +398,12 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Project
   { action: 'importMedia', label: 'Import Media', group: 'Project' },
   { action: 'saveProject', label: 'Save Project', group: 'Project' },
+  // Panel focus
+  { action: 'focusSource', label: 'Focus Source Monitor', group: 'Window' },
+  { action: 'focusProgram', label: 'Focus Program Monitor', group: 'Window' },
+  { action: 'focusTimeline', label: 'Focus Timeline', group: 'Window' },
+  { action: 'focusProject', label: 'Focus Project Panel', group: 'Window' },
+  { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },

@@ -63,13 +63,14 @@ const PANEL_COMPONENTS = {
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
 
-const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag'> = {
+const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects'> = {
   project: 'project',
   script: 'script',
   graph: 'dag',
   source: 'source',
   program: 'program',
   timeline: 'timeline',
+  effects: 'effects',
 };
 
 // ─── Main component ─────────────────────────────────────────────────
