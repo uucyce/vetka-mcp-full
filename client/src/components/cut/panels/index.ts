@@ -23,3 +23,6 @@ export { default as HistoryPanelDock } from './HistoryPanelDock';
 
 // MARKER_C14: Auto-Montage panel
 export { default as AutoMontagePanelDock } from './AutoMontagePanelDock';
+
+// MARKER_B13: Audio Mixer panel
+export { default as AudioMixerPanelDock } from './AudioMixerPanelDock';
