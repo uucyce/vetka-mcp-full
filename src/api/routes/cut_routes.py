@@ -207,6 +207,23 @@ class CutMediaSupportRequest(BaseModel):
     probe_ffprobe: bool = True
 
 
+# MARKER_B3: Sequence settings persistence
+class CutSequenceSettingsRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    framerate: float = Field(default=25, ge=1, le=120)
+    timecode_format: str = "smpte"          # 'smpte' | 'milliseconds'
+    drop_frame: bool = False
+    start_timecode: str = "00:00:00:00"
+    audio_sample_rate: int = Field(default=48000, ge=8000, le=192000)
+    audio_bit_depth: int = Field(default=24, ge=8, le=64)
+    resolution: str = "1080p"               # '4K' | '1080p' | '720p' | 'custom'
+    width: int = Field(default=1920, ge=1, le=16384)
+    height: int = Field(default=1080, ge=1, le=16384)
+    color_space: str = "Rec.709"            # 'Rec.709' | 'Rec.2020' | 'DCI-P3'
+    proxy_mode: str = "auto"                # 'full' | 'proxy' | 'auto'
+
+
 class CutExportRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -4841,6 +4858,7 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "recent_jobs": recent_jobs,
         "active_jobs": active_jobs,
         "layout": store.sandbox_layout_status(),
+        "sequence_settings": project.get("sequence_settings"),
         "runtime_ready": timeline_state is not None,
         "graph_ready": scene_graph is not None,
         "waveform_ready": waveform_bundle is not None,
@@ -4855,6 +4873,35 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         "time_markers_ready": time_marker_bundle is not None,
         "montage_ready": montage_state is not None,
     }
+
+
+@router.post("/sequence-settings")
+async def cut_sequence_settings(body: CutSequenceSettingsRequest) -> dict[str, Any]:
+    """
+    MARKER_B3 — Persist sequence settings to project JSON.
+    Frontend calls this when user changes any project setting.
+    """
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None:
+        return {"success": False, "error": "project_not_found"}
+
+    seq = {
+        "framerate": body.framerate,
+        "timecode_format": body.timecode_format,
+        "drop_frame": body.drop_frame,
+        "start_timecode": body.start_timecode,
+        "audio_sample_rate": body.audio_sample_rate,
+        "audio_bit_depth": body.audio_bit_depth,
+        "resolution": body.resolution,
+        "width": body.width,
+        "height": body.height,
+        "color_space": body.color_space,
+        "proxy_mode": body.proxy_mode,
+    }
+    project["sequence_settings"] = seq
+    store.save_project(project)
+    return {"success": True, "sequence_settings": seq}
 
 
 @router.get("/time-markers")
