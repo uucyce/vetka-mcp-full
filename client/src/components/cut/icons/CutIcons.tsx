@@ -233,3 +233,67 @@ export const IconScissors = memo((props: IconProps) => {
   );
 });
 IconScissors.displayName = 'IconScissors';
+
+// ─── MARKER_W2.1: Track Header Icons ───
+
+/** Lock — padlock closed */
+export const IconLock = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <rect x="3" y="7" width="10" height="7" rx="1.5" stroke={d.color} strokeWidth="1.5" />
+      <path d="M5 7V5a3 3 0 016 0v2" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="10.5" r="1" fill={d.color} />
+    </svg>
+  );
+});
+IconLock.displayName = 'IconLock';
+
+/** Unlock — padlock open */
+export const IconUnlock = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <rect x="3" y="7" width="10" height="7" rx="1.5" stroke={d.color} strokeWidth="1.5" />
+      <path d="M5 7V5a3 3 0 016 0" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+});
+IconUnlock.displayName = 'IconUnlock';
+
+/** Mute — speaker with X */
+export const IconMute = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M2 6h2l3-3v10L4 10H2a1 1 0 01-1-1V7a1 1 0 011-1z" fill={d.color} />
+      <line x1="11" y1="5.5" x2="14.5" y2="10.5" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+      <line x1="14.5" y1="5.5" x2="11" y2="10.5" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+});
+IconMute.displayName = 'IconMute';
+
+/** Solo — headphones */
+export const IconSolo = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M3 9V7a5 5 0 0110 0v2" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+      <rect x="1" y="9" width="3" height="4" rx="1" stroke={d.color} strokeWidth="1.3" />
+      <rect x="12" y="9" width="3" height="4" rx="1" stroke={d.color} strokeWidth="1.3" />
+    </svg>
+  );
+});
+IconSolo.displayName = 'IconSolo';
+
+/** Target — filled circle (patch/enable) */
+export const IconTarget = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <circle cx="8" cy="8" r="5" stroke={d.color} strokeWidth="1.5" />
+      <circle cx="8" cy="8" r="2" fill={d.color} />
+    </svg>
+  );
+});
