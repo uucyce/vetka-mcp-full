@@ -136,3 +136,5 @@ data/**
 client/src-tauri/target/
 venv_voice/
 data/voice_models/*.onnx
+photo_parallax_playground/.depth-venv/
+photo_parallax_playground/.depth-venv.broken*/

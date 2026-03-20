@@ -113,6 +113,9 @@ interface TimelineInstance {
 
 ### §3.1 Маркеры: Unified Model (НЕ три бункера)
 
+> **Full spec:** `CUT_MOMENT_DOCTRINE.md` — M/MM/F/N hotkeys, moment boundary detection, PULSE integration.
+> Момент = не секунда, а шот (cut-to-cut / pause-to-pause / beat-to-beat).
+
 > **ANTI-PATTERN (Premiere model):** TimelineMarker / SourceMarker / ClipMarker — три типа, три хранилища.
 > Это стандартная колея. VETKA НЕ идёт этим путём.
 
@@ -131,22 +134,25 @@ type TimeMarker = {
 }
 ```
 
-**9 видов маркеров CUT:**
+**11 видов маркеров CUT (see CUT_MOMENT_DOCTRINE.md for full spec):**
 
-| Kind | Название | Scope | Кто ставит | Горячая клавиша |
-|------|----------|-------|-----------|-----------------|
-| `favorite` | Favorite Time (F) | source | Юзер | F |
-| `negative` | Negative Time (N) | source | Юзер | N |
-| `comment` | Маркер (M) | timeline | Юзер | M |
-| `cam` | CAM memory | auto | Система | — |
-| `insight` | AI insight | auto | PULSE | — |
-| `chat` | Chat marker | timeline | Юзер | — |
-| `bpm_audio` | Audio BPM | source | PULSE | — |
-| `bpm_visual` | Visual BPM | source | PULSE | — |
-| `bpm_script` | Script BPM | timeline | PULSE | — |
-| `sync_point` | Sync (жирный) | timeline | PULSE | — |
+| Kind | Hotkey | Название | Scope | Кто ставит |
+|------|--------|----------|-------|-----------|
+| `moment` | **M** | Marker на максималках (auto-detect boundaries) | timeline | Юзер |
+| `favorite` | **F** | Favorite Moment | source | Юзер |
+| `negative` | **N** | Negative Moment (исключить) | source | Юзер |
+| `comment` | **MM** | Comment on Moment (с текстом) | timeline | Юзер |
+| `cam` | — | CAM memory | auto | Система |
+| `insight` | — | AI insight | auto | PULSE |
+| `chat` | — | Chat marker | timeline | Юзер |
+| `bpm_audio` | — | Audio BPM | source | PULSE |
+| `bpm_visual` | — | Visual BPM | source | PULSE |
+| `bpm_script` | — | Script BPM | timeline | PULSE |
+| `sync_point` | — | Sync (жирный, 2-3 BPM совпали) | timeline | PULSE |
 
-> ⚠️ `negative` — **НЕТ В КОДЕ**, нужно добавить. Монтажёр помечает плохой дубль/момент.
+> ⚠️ `moment` и `negative` — **НЕТ В КОДЕ**, нужно добавить.
+> M = auto-detect moment boundaries (cut/pause/beat), NOT point marker.
+> MM = comment (double-press M opens text input on detected moment).
 
 **Scope логика:**
 - `source` scope: маркер привязан к `media_path` + позиции в исходнике. Виден на ВСЕХ таймлайнах где есть этот клип.
