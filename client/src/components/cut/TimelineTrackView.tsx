@@ -19,7 +19,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
-import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget } from './icons/CutIcons';
+import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#4a9eff', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -538,6 +538,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
   const toggleLock = useCutEditorStore((state) => state.toggleLock);
   const toggleTarget = useCutEditorStore((state) => state.toggleTarget);
+  const toggleVisibility = useCutEditorStore((state) => state.toggleVisibility);
+  const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
@@ -1340,13 +1342,33 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const isMuted = mutedLanes.has(lane.lane_id);
           const hasSolo = soloLanes.size > 0;
           const isSolo = soloLanes.has(lane.lane_id);
-          const laneDimmed = isMuted || (hasSolo && !isSolo);
+          const isHidden = hiddenLanes.has(lane.lane_id);
+          const laneDimmed = isHidden || isMuted || (hasSolo && !isSolo);
           const laneH = trackHeights[lane.lane_id] ?? trackHeight;
           return (
             <div key={lane.lane_id} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
               <div style={LANE_HEADER}>
                 <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
+                {/* MARKER_FIX-TIMELINE-2: Eye icon — track visibility toggle */}
+                <button
+                  style={{
+                    ...TRACK_BUTTON,
+                    background: isHidden ? '#333' : '#111',
+                    borderColor: isHidden ? '#555' : '#333',
+                    marginRight: 2,
+                  }}
+                  title={isHidden ? 'Show track' : 'Hide track'}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    toggleVisibility(lane.lane_id);
+                  }}
+                >
+                  {isHidden
+                    ? <IconEyeOff size={12} color="#888" />
+                    : <IconEye size={12} color="#555" />
+                  }
+                </button>
                 {/* MARKER_W2.1 + W2.2: Track controls — patch indicator, target, lock, solo, mute */}
                 {/* MARKER_W2.2: Source patch indicator — shows source channel routed here */}
                 {targetedLanes.has(lane.lane_id) && (

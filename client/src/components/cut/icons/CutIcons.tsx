@@ -297,3 +297,25 @@ export const IconTarget = memo((props: IconProps) => {
     </svg>
   );
 });
+
+/** MARKER_FIX-TIMELINE-2: Eye — track visible */
+export const IconEye = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M8 4C4.5 4 2 8 2 8s2.5 4 6 4 6-4 6-4-2.5-4-6-4z" stroke={d.color} strokeWidth="1.5" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="2" fill={d.color} />
+    </svg>
+  );
+});
+
+/** MARKER_FIX-TIMELINE-2: Eye off — track hidden */
+export const IconEyeOff = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M8 4C4.5 4 2 8 2 8s2.5 4 6 4 6-4 6-4-2.5-4-6-4z" stroke={d.color} strokeWidth="1.5" strokeLinejoin="round" opacity="0.3" />
+      <line x1="3" y1="3" x2="13" y2="13" stroke={d.color} strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+});
