@@ -35,9 +35,12 @@ import {
   StorySpacePanelDock,
   HistoryPanelDock,
 } from './panels';
+import EffectsPanel from './EffectsPanel';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
+
+const EffectsPanelDock = () => <EffectsPanel />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -47,6 +50,7 @@ const PANEL_COMPONENTS = {
   clip: ClipPanelDock,
   storyspace: StorySpacePanelDock,
   history: HistoryPanelDock,
+  effects: EffectsPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -155,6 +159,13 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'history',
       component: 'history',
       title: 'History',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    event.api.addPanel({
+      id: 'effects',
+      component: 'effects',
+      title: 'Effects',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
