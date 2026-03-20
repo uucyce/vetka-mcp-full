@@ -7977,27 +7977,18 @@ _RESOLUTION_MAP = {
 
 
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
-    """Background thread: build FFmpeg command and render timeline to file."""
-    import subprocess
-    import shutil
+    """
+    MARKER_B6 — Background thread: delegates to cut_render_engine.render_timeline().
+    Replaces inline FFmpeg concat pipeline with filter_complex-capable engine.
+    """
+    from src.services.cut_render_engine import render_timeline
 
     store = get_cut_mcp_job_store()
 
     try:
         store.update_job(job_id, state="running", progress=0.05)
 
-        # Resolve codec settings
-        codec_cfg = _CODEC_MAP.get(req.codec, _CODEC_MAP["h264"])
-        ext = codec_cfg["ext"]
-
-        # Resolve output path
-        sandbox = req.sandbox_root or "/tmp/cut_sandbox"
-        output_dir = os.path.join(sandbox, "cut_runtime", "renders")
-        os.makedirs(output_dir, exist_ok=True)
-        output_filename = f"{req.project_id}_{req.timeline_id}_master{ext}"
-        output_path = os.path.join(output_dir, output_filename)
-
-        # Load timeline clips from project store
+        # Load timeline from project store
         project_store = CutProjectStore.get_instance()
         if not project_store:
             store.update_job(job_id, state="error", error={"message": "No project store"})
@@ -8008,140 +7999,36 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             store.update_job(job_id, state="error", error={"message": f"Timeline '{req.timeline_id}' not found"})
             return
 
-        lanes = timeline.get("lanes", [])
-        if not lanes:
-            store.update_job(job_id, state="error", error={"message": "Timeline has no lanes"})
-            return
+        # Resolve output directory
+        sandbox = req.sandbox_root or "/tmp/cut_sandbox"
+        output_dir = os.path.join(sandbox, "cut_runtime", "renders")
 
-        store.update_job(job_id, progress=0.1)
+        # Progress callback → job store updates
+        def on_progress(p: float, msg: str = "") -> None:
+            store.update_job(job_id, progress=p)
 
-        # Check FFmpeg availability
-        ffmpeg_path = shutil.which("ffmpeg")
-        if not ffmpeg_path:
-            store.update_job(job_id, state="error", error={"message": "FFmpeg not found on system"})
-            return
-
-        # Build concat file from video lane clips
-        video_clips = []
-        for lane in lanes:
-            if lane.get("lane_type", "").startswith("video") or lane.get("lane_type", "").startswith("take_alt"):
-                for clip in lane.get("clips", []):
-                    sp = clip.get("source_path", "")
-                    if sp and os.path.isfile(sp):
-                        video_clips.append(clip)
-
-        if not video_clips:
-            store.update_job(job_id, state="error", error={"message": "No video clips found in timeline"})
-            return
-
-        # Sort clips by start_sec
-        video_clips.sort(key=lambda c: c.get("start_sec", 0))
-
-        store.update_job(job_id, progress=0.2)
-
-        # Write concat list
-        concat_path = os.path.join(output_dir, f"_concat_{job_id}.txt")
-        with open(concat_path, "w") as f:
-            for clip in video_clips:
-                escaped = clip["source_path"].replace("'", "'\\''")
-                f.write(f"file '{escaped}'\n")
-                dur = clip.get("duration_sec")
-                if dur:
-                    f.write(f"duration {dur}\n")
-
-        # Build FFmpeg command
-        cmd = [ffmpeg_path, "-y", "-f", "concat", "-safe", "0", "-i", concat_path]
-
-        # Video codec
-        cmd += ["-c:v", codec_cfg["vcodec"]]
-        if codec_cfg["profile"]:
-            cmd += ["-profile:v", codec_cfg["profile"]]
-        cmd += ["-pix_fmt", codec_cfg["pix_fmt"]]
-
-        # Resolution
-        res = _RESOLUTION_MAP.get(req.resolution)
-        if res:
-            cmd += ["-vf", f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:-1:-1:color=black"]
-
-        # Quality
-        if req.codec in ("h264", "h265"):
-            # CRF: quality 100 → CRF 0 (lossless), quality 10 → CRF 40 (low)
-            crf = max(0, min(51, int(51 - (req.quality / 100) * 51)))
-            cmd += ["-crf", str(crf)]
-
-        # MARKER_W6.2: Selection range (IN/OUT trim)
-        if req.range_in is not None and req.range_out is not None and req.range_out > req.range_in:
-            # Insert -ss and -t before output for range export
-            cmd += ["-ss", str(req.range_in), "-t", str(req.range_out - req.range_in)]
-
-        # FPS
-        cmd += ["-r", str(req.fps)]
-
-        # Audio
-        cmd += ["-c:a", "aac", "-b:a", "320k"]
-
-        cmd += [output_path]
-
-        store.update_job(job_id, progress=0.3)
-
-        # Run FFmpeg
-        process = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=600,
+        # Delegate to render engine (handles filter_complex, transitions, speed, stems)
+        result = render_timeline(
+            timeline,
+            codec=req.codec,
+            resolution=req.resolution,
+            fps=req.fps,
+            quality=req.quality,
+            range_in=req.range_in,
+            range_out=req.range_out,
+            audio_stems=req.audio_stems,
+            output_dir=output_dir,
+            project_id=req.project_id,
+            timeline_id=req.timeline_id,
+            preset=req.preset,
+            on_progress=on_progress,
         )
-
-        # Clean up concat file
-        try:
-            os.remove(concat_path)
-        except OSError:
-            pass
-
-        if process.returncode != 0:
-            stderr = (process.stderr or "")[-500:]
-            store.update_job(job_id, state="error", error={"message": f"FFmpeg failed: {stderr}"})
-            return
-
-        # MARKER_W6.2: Audio stems export (per-track WAV)
-        stem_paths: list[str] = []
-        if req.audio_stems:
-            store.update_job(job_id, progress=0.85)
-            stems_dir = os.path.join(output_dir, "stems")
-            os.makedirs(stems_dir, exist_ok=True)
-            for lane in lanes:
-                if not lane.get("lane_type", "").startswith("audio"):
-                    continue
-                lane_id = lane.get("lane_id", "unknown")
-                for clip in lane.get("clips", []):
-                    sp = clip.get("source_path", "")
-                    if not sp or not os.path.isfile(sp):
-                        continue
-                    stem_name = f"{lane_id}_{os.path.basename(sp).rsplit('.', 1)[0]}.wav"
-                    stem_path = os.path.join(stems_dir, stem_name)
-                    stem_cmd = [ffmpeg_path, "-y", "-i", sp, "-vn", "-c:a", "pcm_s24le", "-ar", "48000"]
-                    if req.range_in is not None and req.range_out is not None:
-                        stem_cmd += ["-ss", str(req.range_in), "-t", str(req.range_out - req.range_in)]
-                    stem_cmd += [stem_path]
-                    try:
-                        subprocess.run(stem_cmd, capture_output=True, timeout=120)
-                        if os.path.exists(stem_path):
-                            stem_paths.append(stem_path)
-                    except Exception:
-                        pass  # best-effort stems
 
         store.update_job(
             job_id,
             state="done",
             progress=1.0,
-            result={
-                "output_path": output_path,
-                "codec": req.codec,
-                "resolution": req.resolution,
-                "file_size_bytes": os.path.getsize(output_path) if os.path.exists(output_path) else 0,
-                "stem_paths": stem_paths,
-                "stem_count": len(stem_paths),
-            },
+            result=result,
         )
 
     except Exception as exc:
