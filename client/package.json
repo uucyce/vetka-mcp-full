@@ -37,6 +37,7 @@
     "@use-gesture/react": "^10.3.0",
     "@xyflow/react": "^12.10.0",
     "dagre": "^0.8.5",
+    "dockview-react": "^5.1.0",
     "framer-motion": "^11.18.2",
     "gsap": "^3.14.2",
     "immer": "^10.2.0",
