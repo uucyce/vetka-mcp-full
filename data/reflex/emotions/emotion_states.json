@@ -1,33 +1,33 @@
 {
   "vetka_search_semantic": {
     "tool_id": "vetka_search_semantic",
-    "curiosity": 0.7310585786300049,
-    "trust": 0.6929375,
+    "curiosity": 0.6224593312018546,
+    "trust": 0.738996875,
     "caution": 0.1,
-    "usage_count": 3,
-    "success_count": 3,
+    "usage_count": 4,
+    "success_count": 4,
     "failure_count": 0,
-    "last_updated": 1773908592.964266
+    "last_updated": 1773909644.634094
   },
   "vetka_edit_file": {
     "tool_id": "vetka_edit_file",
-    "curiosity": 0.01098694263059318,
-    "trust": 0.2226698689365914,
+    "curiosity": 0.00020342697805520653,
+    "trust": 0.44033429437654575,
     "caution": 0.1,
-    "usage_count": 14,
-    "success_count": 8,
-    "failure_count": 6,
-    "last_updated": 1773909133.941159
+    "usage_count": 22,
+    "success_count": 14,
+    "failure_count": 8,
+    "last_updated": 1773909644.6374788
   },
   "mycelium_pipeline": {
     "tool_id": "mycelium_pipeline",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.575,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.6387499999999999,
     "caution": 0.1,
-    "usage_count": 1,
-    "success_count": 1,
+    "usage_count": 2,
+    "success_count": 2,
     "failure_count": 0,
-    "last_updated": 1773908511.387591
+    "last_updated": 1773909644.405211
   },
   "active_tool": {
     "tool_id": "active_tool",
@@ -1051,13 +1051,13 @@
   },
   "tool_x": {
     "tool_id": "tool_x",
-    "curiosity": 0.7310585786300049,
-    "trust": 0.6929375,
+    "curiosity": 0.6224593312018546,
+    "trust": 0.738996875,
     "caution": 0.1,
-    "usage_count": 3,
-    "success_count": 3,
+    "usage_count": 4,
+    "success_count": 4,
     "failure_count": 0,
-    "last_updated": 1773908592.966178
+    "last_updated": 1773909655.194321
   },
   "tool_y": {
     "tool_id": "tool_y",
@@ -1251,13 +1251,13 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.325,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.21125000000000002,
     "caution": 0.1,
-    "usage_count": 1,
+    "usage_count": 2,
     "success_count": 0,
-    "failure_count": 1,
-    "last_updated": 1773908511.670154
+    "failure_count": 2,
+    "last_updated": 1773909644.638171
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -1291,13 +1291,13 @@
   },
   "mycelium_task_board": {
     "tool_id": "mycelium_task_board",
-    "curiosity": 0.8175744761936437,
-    "trust": 0.21125000000000002,
+    "curiosity": 0.6224593312018546,
+    "trust": 0.089253125,
     "caution": 0.1,
-    "usage_count": 2,
+    "usage_count": 4,
     "success_count": 0,
-    "failure_count": 2,
-    "last_updated": 1773908508.952878
+    "failure_count": 4,
+    "last_updated": 1773909642.467718
   },
   "mycelium_task_dispatch": {
     "tool_id": "mycelium_task_dispatch",
@@ -1711,13 +1711,13 @@
   },
   "select_best_local_qwen_model": {
     "tool_id": "select_best_local_qwen_model",
-    "curiosity": 0.8807970779778823,
-    "trust": 0.325,
+    "curiosity": 0.8175744761936437,
+    "trust": 0.21125000000000002,
     "caution": 0.1,
-    "usage_count": 1,
+    "usage_count": 2,
     "success_count": 0,
-    "failure_count": 1,
-    "last_updated": 1773908508.948153
+    "failure_count": 2,
+    "last_updated": 1773909642.46456
   },
   "list_reflex_tool_memory": {
     "tool_id": "list_reflex_tool_memory",

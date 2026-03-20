@@ -1745,10 +1745,12 @@ class TaskBoard:
     # MARKER_130.C17A: GIT COMMIT AUTO-DETECTION
     # ==========================================
 
-    def auto_complete_by_commit(self, commit_hash: str, commit_message: str) -> List[str]:
+    def auto_complete_by_commit(self, commit_hash: str, commit_message: str, *, agent_id: Optional[str] = None) -> List[str]:
         """Auto-complete tasks mentioned in commit message.
 
         MARKER_191.1: Hardened against false positives.
+        MARKER_195.2: activating_agent records real committer, not task's assigned_to.
+
         Only closes tasks that are:
         - Explicitly referenced via [task:tb_xxxx] or direct tb_xxxx ID in commit
         - Already claimed/running (not pending/queued — unclaimed tasks cannot auto-close)
@@ -1757,12 +1759,15 @@ class TaskBoard:
         Args:
             commit_hash: Git commit hash
             commit_message: Full commit message
+            agent_id: Real agent/committer identity (MARKER_195.2). Falls back to "git_auto_close".
 
         Returns:
             List of task IDs that were auto-completed
         """
         completed = []
         msg_lower = commit_message.lower()
+        # MARKER_195.2: Record actual committer, not task's assigned_to
+        real_closer = agent_id or "git_auto_close"
 
         # MARKER_192.3 + MARKER_191.1: Query eligible tasks from DB.
         # Only claimed/running tasks without closure_proof requirement.
@@ -1774,7 +1779,6 @@ class TaskBoard:
 
         for task in eligible:
             if self._commit_matches_task(task, commit_message, msg_lower):
-                closed_by = str(task.get("assigned_to") or "git")
                 result = self.complete_task(
                     task["id"],
                     commit_hash,
@@ -1785,14 +1789,14 @@ class TaskBoard:
                         "pipeline_success": bool((task.get("stats") or {}).get("success")),
                         "verifier_confidence": float((task.get("stats") or {}).get("verifier_avg_confidence") or 0),
                         "tests": [{"command": "git auto-close", "passed": True, "exit_code": 0}],
-                        "activating_agent": closed_by,
+                        "activating_agent": real_closer,
                         "auto_close_method": "commit_match",
                     },
-                    closed_by=closed_by,
+                    closed_by=real_closer,
                 )
                 if result.get("success"):
                     completed.append(task["id"])
-                    logger.info(f"[TaskBoard] Auto-completed {task['id']} (owner: {closed_by}) from commit {commit_hash[:8]}")
+                    logger.info(f"[TaskBoard] Auto-completed {task['id']} (closer: {real_closer}) from commit {commit_hash[:8]}")
                 else:
                     logger.warning(f"[TaskBoard] Auto-close FAILED for {task['id']}: {result.get('error')}")
 
