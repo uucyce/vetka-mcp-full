@@ -179,6 +179,12 @@ interface CutEditorState {
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
 
+  // === MARKER_W4.3: Save status ===
+  saveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  lastSavedAt: string | null;     // ISO timestamp from backend
+  saveError: string | null;
+  hasUnsavedChanges: boolean;
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -248,6 +254,12 @@ interface CutEditorState {
   setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
   setMontageProgress: (text: string | null) => void;
   setMontageError: (err: string | null) => void;
+
+  // MARKER_W4.3: Save actions
+  setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
+  setLastSavedAt: (ts: string | null) => void;
+  setSaveError: (err: string | null) => void;
+  markUnsavedChanges: () => void;
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
@@ -361,6 +373,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   montageProgress: null,
   montageError: null,
 
+  // MARKER_W4.3: Save status
+  saveStatus: 'idle',
+  lastSavedAt: null,
+  saveError: null,
+  hasUnsavedChanges: false,
+
   // Media status
   mediaError: null,
   mediaLoading: false,
@@ -473,6 +491,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setMontageMode: (mode) => set({ montageMode: mode }),
   setMontageProgress: (text) => set({ montageProgress: text }),
   setMontageError: (err) => set({ montageError: err }),
+
+  // MARKER_W4.3: Save actions
+  setSaveStatus: (status) => set({ saveStatus: status }),
+  setLastSavedAt: (ts) => set({ lastSavedAt: ts }),
+  setSaveError: (err) => set({ saveError: err }),
+  markUnsavedChanges: () => set({ hasUnsavedChanges: true, saveStatus: 'idle' }),
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio
