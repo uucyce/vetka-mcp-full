@@ -4411,6 +4411,31 @@ async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, A
     }
 
 
+@router.get("/waveform-peaks")
+async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
+    """
+    MARKER_B15 — Per-clip on-demand waveform peaks.
+    Lightweight: extract PCM → RMS bins → return JSON array.
+    Frontend calls this when a clip has no cached waveform.
+    """
+    from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback
+
+    bins = max(16, min(512, bins))
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found", "peaks": []}
+
+    peak_bins, degraded, reason = build_waveform_with_fallback(str(p), bins)
+    return {
+        "success": True,
+        "source_path": str(p),
+        "bins": bins,
+        "peaks": peak_bins,
+        "degraded": degraded,
+        "degraded_reason": reason,
+    }
+
+
 @router.post("/worker/waveform-build-async")
 async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, Any]:
     """
