@@ -1,255 +1,322 @@
 # Parallax Handoff To Fresh Chat RC1
 
-Дата: `2026-03-19`
+Дата: `2026-03-20`
 
 ## 1. Зачем этот handoff
 
-Этот документ нужен как короткая входная точка для нового чата, чтобы не перечитывать весь phase 180 с нуля.
+Этот документ нужен как короткая входная точка для следующего чата перед MVP-финишем.
 
 Он фиксирует:
 
-- какие документы сейчас являются source of truth;
-- что именно было сделано по `parallax`;
-- что не получилось закрыть идеально;
-- что сработало хорошо;
-- какие идеи и next tracks выглядят разумно;
-- как оценивать свежую `Qwen` layered-модель.
+- что сейчас является canonical truth;
+- что уже реально работает;
+- где именно был найден drift;
+- какие грабли уже подтверждены;
+- какие задачи открыты на следующий чат;
+- в каком порядке продолжать работу без повторного расползания архитектуры.
 
 Критическое правило для следующего чата:
 
-- успешный `export/render` нельзя больше трактовать как завершённость продукта;
-- это только engineering signal, что sandbox/export path работает;
-- product readiness требует сохранения depth-first truth и отдельного visual acceptance.
+- `export works` и `batch pass` нельзя трактовать как product readiness;
+- они подтверждают только engineering readiness;
+- product readiness начинается там, где depth-first truth, camera geometry и visual result совпадают.
 
-## 2. Source Of Truth
+## 2. Что читать первым
 
-Начинать всегда с этих документов:
+Стартовый порядок чтения:
 
-1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_ARCHITECTURE_RELEASE_V1_2026-03-18.md`
-2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_DOC_REVIEW_2026-03-18.md`
-3. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/HANDOFF_PHASE_180_2026-03-14.md`
-4. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md`
-5. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/RELEASE_NOTES_V1_RC1_2026-03-19.md`
-6. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/QWEN_IMAGE_LAYERED_FIT_REVIEW_2026-03-18.md`
-7. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+1. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md`
+2. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_ROADMAP_RC1_COMPLETION_AND_LAYERED_BAKEOFF_2026-03-19.md`
+3. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_SMART_DEPTH_RECON_2026-03-19.md`
+4. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_VISUAL_FORENSIC_2026-03-19.md`
+5. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_LAYER_SPACE_RECOVERY_PLAN_2026-03-19.md`
+6. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+7. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PAVEL_AE_REFERENCE_WORKFLOW_2026-03-13.md`
+8. `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md`
 
-Исторические evidence-docs полезны как proof, но уже не как planning source.
+Короткая интерпретация:
 
-## 3. Что сделали
+- roadmap объясняет порядок работы;
+- recon docs объясняют, где именно мы ошиблись;
+- camera doc фиксирует новую geometry baseline;
+- AE doc нужен как reference truth;
+- contracts нужны как runtime/API source of truth.
 
-### Release backlog
+## 3. Текущее состояние на `2026-03-20`
 
-Все основные parallax-задачи в TaskBoard доведены до `done`:
+### Что уже подтверждено
 
-- `tb_1773857716_1` — RECON 1
-- `tb_1773857716_2` — RECON 2
-- `tb_1773857716_3` — v1.1 freeze contracts
-- `tb_1773857716_4` — v1.2 anti-flake + QA
-- `tb_1773857716_5` — v1.3 final render presets
-- `tb_1773857716_6` — v1.4 regression quality pack
-- `tb_1773857717_7` — v1.5 service extraction from `App.tsx`
-- `tb_1773857717_8` — v1.6 RC1 packaging/runbook/smoke
+- canonical smoke по release path проходит;
+- camera geometry уже поднята в `plate_layout.json`;
+- renderer уже умеет читать camera contract из layout;
+- `smart depth` path в sandbox жив и это подтверждено recon-ом;
+- основная визуальная проблема сейчас не в отсутствии depth, а в том, как downstream render/compositing использует depth и plate semantics.
 
-### По коду и артефактам
+### Что уже не надо переоткрывать
 
-1. Anti-flake и export stability:
-- readiness diagnostics введены и встроены в flow;
-- gated batch QA summary собирается автоматически;
-- `truck-driver` стабилизирован на wrapper-level.
+- вопрос “есть ли у нас умная глубина вообще?” закрыт: да, есть;
+- вопрос “надо ли возвращать camera-based model?” закрыт: да, надо, и часть уже внедрена;
+- вопрос “можно ли считать export success признаком готового продукта?” закрыт: нет.
 
-2. Render presets:
-- `quality`, `web`, `social` реализованы;
-- summaries по preset-ам разведены по отдельным директориям;
-- render summary теперь включает codec, bitrate, file size, validation.
+### Что осталось незакрытым
 
-3. Regression pack:
-- появился `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json`
-- он агрегирует:
-  - `gated_batch_qa_summary.json`
-  - `render_compare_qwen_multiplate_summary.json`
-  - preset summaries
-- на каждый sample даёт:
-  - `status`
-  - `reasons`
-  - evidence paths
+- canonical white-near convention ещё не докатана как end-to-end truth на всём наборе артефактов;
+- AE calibration против Пашиного проекта ещё открыта;
+- atmospheric/compositing semantics для `hover-politsia` ещё не починены;
+- visual truth всё ещё отстаёт от promising depth truth.
 
-4. RC1 docs:
-- README получил `RC1 Runbook`;
-- добавлены release notes;
-- handoff и architecture docs синхронизированы.
+## 4. Что реально сделано в этом чате
 
-5. Refactor:
-- из `App.tsx` вынесены release-critical pure services в:
+### 4.1 Camera model
+
+Сделано:
+
+- создан canonical research doc:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+- renderer bridge переведён с чистой эвристики к camera-based formula:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_multiplate.py`
+- camera geometry добавлена в contract:
   - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/lib/plateLayout.ts`
-- туда вынесено:
-  - `recommendWorkflowRouting`
-  - `deriveParallaxStrength`
-  - `buildPlateLayoutContract`
-  - `buildPlateExportAssetsContract`
-- tests:
+- contract/tests обновлены:
   - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/lib/plateLayout.test.ts`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/e2e/parallax_plate_export.spec.ts`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/CONTRACTS_V1.md`
 
-## 4. Последние важные коммиты
+Что это значит:
 
-- `bf812d15` — final render presets
-- `0de08be9` — regression quality pack
-- `67cc7df9` — service extraction from `App.tsx`
-- `f816874d` — RC1 runbook and release notes
+- runtime уже может брать `camera_geometry.source = layout.camera`;
+- мы больше не держим lens/distance полностью в undocumented heuristics.
 
-## 5. Что не получилось идеально
+### 4.2 Smart depth recon
 
-1. TaskBoard hard-close:
-- `complete` по-прежнему упирался в `pipeline_success must be true before closing the task`
-- обходной путь: переводили задачи в `done_worktree`, потом в `done`
-- это проблема процесса/борда, не parallax-кода
+Сделано:
 
-2. RC1 quality verdict:
-- текущий release verdict остаётся `caution`, не `pass`
-- причина не в падениях pipeline, а в содержательных safety-ограничениях:
-  - `camera-safe gate is not fully satisfied`
-  - иногда `readiness required more than one poll`
+- выпущен strict recon без экстрасенсорики:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_SMART_DEPTH_RECON_2026-03-19.md`
 
-3. Полный refactor App:
-- `App.tsx` стал тоньше, но ещё остаётся большим
-- следующий этап рефактора возможен, но release-critical долг уже снижен
+Главный вывод recon:
 
-## 6. Что было хорошо
+- `smart depth` path реально существовал и частично жив;
+- drift произошёл не потому, что “магия пропала”, а потому что export/render asset generation ушла в synthetic/surrogate path;
+- depth-first preview truth и export/render truth стали разными сущностями.
 
-1. Gated flow дал стабильный backbone:
-- export
-- render
-- compare
-- QA
-- regression summary
+### 4.3 Visual forensic
 
-2. Docs стали лучше, чем были:
-- появился внятный release source of truth
-- backlog перестал расходиться с фактическим кодом
+Сделано:
 
-3. Артефакты стали machine-readable:
-- нет нужды “смотреть глазами” всё подряд, чтобы понять состояние batch
+- выпущен visual forensic:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_VISUAL_FORENSIC_2026-03-19.md`
 
-4. Refactor оказался безопасным:
-- `npm test` и `npm run build` зелёные после выноса сервисов
+Главный вывод:
 
-## 7. Canonical smoke и артефакты
+- technical `pass` по export/render не гарантирует хороший parallax;
+- хороший March baseline нельзя путать с текущим mp4 только потому, что batch summary зелёный.
 
-Canonical command:
+### 4.4 Depth polarity
 
-```bash
-bash /Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_qwen_gated_multiplate_flow.sh hover-politsia keyboard-hands truck-driver
-```
+Подтверждено recon-ом:
 
-Главные артефакты:
+- docs и planner prompt жили как `white = near`;
+- а живой baked/runtime/export path для `hover-politsia` фактически жил как `black = near`.
+
+Починено:
+
+- generation переведена на canonical convention:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_depth_bakeoff.py`
+- canonical convention теперь:
+  - `white = near`
+  - `black = far`
+
+Важно:
+
+- это нужно удержать;
+- не возвращать обратно ни в bakeoff, ни в UI preview, ни в planner prompt, ни в renderer.
+
+### 4.5 Hover-politsia depth defaults
+
+После white-near switch выяснилось:
+
+- export depth стала слишком выбеливаться из-за старых remap defaults.
+
+Подстроено:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/App.tsx`
+
+Зафиксировано коммитом:
+
+- `0b5031ff`
+- `phase180.7: retune hover-politsia depth defaults after white-near switch [task:tb_1773892185_4]`
+
+Практический смысл:
+
+- depth для `hover-politsia` снова стала правдоподобной “из коробки”;
+- это пока не общий solve для всех сцен, а point-fix для важного canonical sample.
+
+### 4.6 Video/image inspection tool
+
+Важно для следующего чата:
+
+- Opus по моему заданию делает/уже внёс sidecar tool, чтобы ИИ мог лучше разбирать видео и изображения;
+- related task:
+  - `tb_1773972539_3`
+- свежий related commit:
+  - `a2c9e7c67`
+  - `build: video_inspection_pack.py — M1 MVP (scaffold + contact_sheet + motion_diff + inspection.json) [task:tb_1773972539_3]`
+- главный файл:
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/video_inspection_pack.py`
+
+Это не core parallax logic, но очень полезный supporting tool:
+
+- для AI review mp4/gif;
+- для contact sheets;
+- для frame diffs;
+- для объяснения render bugs без бесконечных описаний словами.
+
+## 5. Главные артефакты, на которые смотреть
+
+### Canonical compare/render
 
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/gated_batch_qa_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/regression_quality_summary.json`
-- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/render_compare_qwen_multiplate_summary.json`
-- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/compare_batch_sheet.png`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/visual_acceptance_summary.json`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_compare_qwen_gated_multiplate/visual_acceptance_checklist.md`
-- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/render_preview_multiplate_summary.json`
-- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/web/render_preview_multiplate_summary.json`
-- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated/social/render_preview_multiplate_summary.json`
 
-Текущий итог:
+### Hover-politsia depth/debug
 
-- `overall_status = pass`
-- `pass = 3`
-- `caution = 0`
-- `fail = 0`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated/hover-politsia/global_depth_bw.png`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated/hover-politsia/plate_export_depth.png`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated/hover-politsia/plate_layout.json`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated/hover-politsia/plate_export_depth_state.json`
 
-Этот `pass` означает только:
+### Camera-contract render
 
-- canonical smoke проходит стабильно;
-- export/layout/render contracts сейчас не падают на canonical set.
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract/hover-politsia/preview_multiplate.mp4`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract/hover-politsia/preview_multiplate.gif`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract/hover-politsia/preview_multiplate_report.json`
 
-Этот `pass` не означает:
+## 6. Текущие задачи на board
 
-- что можно деплоить продукт без дополнительных visual checks;
-- что synthetic export path уже совпал с depth-first product truth;
-- что layered parallax quality подтверждена только самим фактом экспорта.
+### Уже закрыто
 
-Что изменилось до `pass`:
+- `tb_1773892185_4` — `PARALLAX: Introduce camera-based parallax model`
+  - статус: `done_main`
+  - commit: `0b5031ff`
 
-- export/layout path теперь auto-applies `cameraSafe.suggestion` для risky scenes;
-- `plate_layout.json` сохраняет `cameraSafe.adjustment` с requested/effective motion;
-- readiness на canonical smoke сейчас проходит с `attempts = 1` на текущем sample set.
+### Ещё открыто
 
-Но важная оговорка:
+- `tb_1773892186_5` — `PARALLAX: Calibrate focal length and lens behavior against AE reference`
+  - статус: `pending`
+  - canonical docs:
+    - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
+    - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PAVEL_AE_REFERENCE_WORKFLOW_2026-03-13.md`
 
-- technical `pass` не равен автоматически visual success;
-- March 12 user-approved success path жил в `output/review` / `output/layered_edit_flow` / `output/custom_renders`;
-- текущий `render_preview_multiplate*` contract должен отдельно пройти visual regression check.
-- для этого теперь есть отдельный visual acceptance pack builder:
-  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_build_visual_acceptance_pack.py`
+### Что логично добавить/продолжить следующим чатом
 
-## 8. Идеи на следующий этап
+1. `tb_1773976439_6` — white-near rollout / verification
+- довести canonical `white = near` до полного end-to-end состояния;
+- проверить UI depth preview, export depth, planner semantics, renderer semantics на одном языке.
 
-1. Зафиксировать post-pass hardening:
-- задокументировать verdict aggregation policy;
-- удержать repeatability smoke и summaries;
-- не допустить drift между contract-level pass и batch-level pass.
-- не допустить подмены product goal формулой `export works => system ready`.
+2. `tb_1773976439_7` — hover-politsia atmospheric compositing audit
+- разобрать `street steam` / fog / atmospheric layer policy;
+- понять, должен ли этот материал жить как hard plate, soft participation или часть vehicle/background composite.
 
-2. Продолжить рефактор:
-- отделить export/orchestration helpers из `App.tsx`
-- дальше дробить debug API wiring
+3. `tb_1773892186_5` — AE calibration
+- привязать current camera contract к Пашиному AE reference;
+- сузить дефолты по `zoomPx`, `zNear`, `zFar`, `motionScale`, `Tx/Ty/Tz`.
 
-3. Сделать controlled bakeoff нового decomposition backend
-- не встраивать сразу в final path
-- сначала давать `draft plateStack` / `draft RGBA layers`
-- сравнивать против current gated stack
+## 7. Грабли, на которые больше не наступать
 
-4. Вернуть renderer к camera-based parallax truth
-- опираться на `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`
-- не считать `distance/lens` скрытым tuning problem
-- отделить bridge-stage `depth-band motion` от target-state `continuous depth warp`
+### Грабля 1. Export success != product success
 
-## 9. Про новую Qwen-модель, которая режет на слои
+Самая дорогая ошибка этого цикла:
 
-Речь про `Qwen-Image-Layered`.
+- увидели, что export и batch QA проходят;
+- начали трактовать это как “система готова”.
 
-Что уже зафиксировано:
+Правильно:
 
-- fit review: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/QWEN_IMAGE_LAYERED_FIT_REVIEW_2026-03-18.md`
+- export success = engineering signal;
+- visual truth = отдельный gate;
+- deployment readiness без visual acceptance не объявлять.
 
-Вывод по ней сейчас:
+### Грабля 2. Не верить docs, если PNG говорит обратное
 
-- это `GO` для recon / controlled bakeoff
-- это `NO GO` как прямая замена release path
+У нас был прямой semantic split:
 
-Почему полезна:
+- docs/planner говорили `white = near`;
+- реальные depth PNG жили как `black = near`.
 
-- умеет layered decomposition в RGBA layers;
-- концептуально хорошо совпадает с multi-plate направлением;
-- может стать кандидатом на `draft plateStack generator`.
+Правильно:
 
-Почему нельзя сразу встроить:
+- проверять pixel values в baked/export artifacts;
+- если docs и артефакты спорят, верить артефактам и чинить docs/code.
 
-- не заменяет:
-  - `cameraSafe`
-  - `z/depth priority`
-  - deterministic gate
-  - release contracts
-- сначала должна пройти как compare-track, а не как новый default runtime.
+### Грабля 3. Не считать camera math серебряной пулей
 
-## 10. Что говорить в свежем чате
+Camera geometry нужна, но она не чинит:
 
-Короткий стартовый промпт для следующего чата:
+- плохую plate semantics;
+- wrong occlusion authority;
+- atmospheric cards, которые едут как жёсткие cutout layers.
 
-1. Прочитай:
-- `PARALLAX_ARCHITECTURE_RELEASE_V1_2026-03-18.md`
-- `PARALLAX_DOC_REVIEW_2026-03-18.md`
-- `HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md`
-- `RELEASE_NOTES_V1_RC1_2026-03-19.md`
+Правильно:
 
-2. Считай текущим состоянием:
-- release backlog по `parallax` закрыт;
-- RC1 smoke path работает;
-- текущий verdict = `pass`;
-- следующий meaningful step = release hardening и controlled bakeoff `Qwen-Image-Layered`.
+- optics и compositing policy надо разруливать отдельно.
 
-3. Не трать время на повторное восстановление TaskBoard истории:
-- parallax-тasks уже выровнены;
-- использовать board как навигацию, а не как единственный источник истины.
+### Грабля 4. Не возвращаться в `black-near`
+
+Сейчас canonical решение выбрано:
+
+- `white = near`
+- `black = far`
+
+Это надо удержать в:
+
+- depth bakeoff generation;
+- UI depth preview;
+- export depth;
+- planner prompt;
+- renderer `depth -> Z`.
+
+### Грабля 5. Не путать real depth preview с synthetic export assets
+
+`smart depth` и `exported plates` долгое время были разными truth-ветками.
+
+Правильно:
+
+- явно спрашивать: “это raw/baked depth truth или synthetic export derivative?”
+- не делать вывод о продукте только по derived artifacts.
+
+### Грабля 6. Не тащить новую AI-модель, пока живой deterministic bug не закрыт
+
+JEPA, новые multimodal модели, layered backends и прочее полезны, но:
+
+- сначала закрыть deterministic bugs;
+- потом открывать новую модель как compare lane;
+- не заменять дебаг композитинга скачком в новый black box.
+
+## 8. Что делать первым в следующем чате
+
+Стартовый текст:
+
+```text
+Прочитай HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md и продолжим parallax от текущего post-RC1 state. У нас уже есть smart-depth recon, visual forensic, camera geometry doc и white-near canonical decision. Export smoke проходит, но MVP ещё блокируется visual truth: нужно довести white-near end-to-end, затем проверить atmospheric compositing на hover-politsia и потом калибровать camera contract против AE reference.
+```
+
+После этого порядок действий такой:
+
+1. открыть handoff;
+2. открыть roadmap;
+3. открыть `PARALLAX_SMART_DEPTH_RECON_2026-03-19.md`;
+4. открыть `PARALLAX_CAMERA_GEOMETRY_AND_LENS_RESEARCH_2026-03-19.md`;
+5. проверить task `tb_1773892186_5`;
+6. продолжать либо с white-near rollout, либо с hover-politsia atmospheric audit.
+
+## 9. Контекст этого чата
+
+На момент handoff чат был близко к auto-compact:
+
+- примерно `220k / 258k` tokens used;
+- окно было около `85%`.
+
+То есть этот документ нужен именно для безопасного перехода в следующий чат без повторного выжигания контекста.
