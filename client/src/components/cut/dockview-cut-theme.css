@@ -1,0 +1,60 @@
+/**
+ * MARKER_196.2: CUT NLE dark theme overrides for dockview.
+ * Matches CUT's #0D0D0D background and monochrome aesthetic.
+ */
+
+/* ─── Base background ───────────────────────────────────────────── */
+.dockview-theme-dark {
+  --dv-background-color: #0D0D0D;
+  --dv-paneview-header-border-color: #1a1a1a;
+  --dv-tabs-and-actions-container-background-color: #0a0a0a;
+  --dv-activegroup-visiblepanel-tab-background-color: #1a1a1a;
+  --dv-activegroup-hiddenpanel-tab-background-color: #0a0a0a;
+  --dv-inactivegroup-visiblepanel-tab-background-color: #141414;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: #0a0a0a;
+  --dv-tab-divider-color: #1a1a1a;
+  --dv-activegroup-visiblepanel-tab-color: #ccc;
+  --dv-activegroup-hiddenpanel-tab-color: #555;
+  --dv-inactivegroup-visiblepanel-tab-color: #888;
+  --dv-inactivegroup-hiddenpanel-tab-color: #444;
+  --dv-separator-border: #1a1a1a;
+  --dv-group-view-background-color: #0D0D0D;
+}
+
+/* ─── Active panel indicator ────────────────────────────────────── */
+.dockview-theme-dark .tab.active-tab {
+  border-bottom: 2px solid #4a9eff;
+}
+
+/* ─── Drop target highlights ────────────────────────────────────── */
+.dockview-theme-dark .drop-target-dropzone {
+  background-color: rgba(74, 158, 255, 0.15);
+  border: 1px solid rgba(74, 158, 255, 0.4);
+}
+
+/* ─── Resize sash ───────────────────────────────────────────────── */
+.dockview-theme-dark .sash {
+  background-color: transparent;
+}
+.dockview-theme-dark .sash:hover,
+.dockview-theme-dark .sash.active {
+  background-color: #4a9eff;
+  transition: background-color 0.15s;
+}
+
+/* ─── Panel content fills available space ───────────────────────── */
+.dockview-theme-dark .view-container {
+  background-color: #0D0D0D;
+}
+
+/* ─── Tab close button ──────────────────────────────────────────── */
+.dockview-theme-dark .tab .dv-default-tab-action {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.dockview-theme-dark .tab:hover .dv-default-tab-action {
+  opacity: 0.5;
+}
+.dockview-theme-dark .tab .dv-default-tab-action:hover {
+  opacity: 1;
+}
