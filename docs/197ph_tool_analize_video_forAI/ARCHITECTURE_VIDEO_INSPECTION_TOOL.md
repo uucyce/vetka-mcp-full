@@ -229,6 +229,13 @@ ffmpeg scene change detection (`select='gt(scene,0.3)'`). Находит реа�
 
 ### Никаких внешних API. Всё локально.
 
+### Operational note
+
+- shared depth runtime lives in `photo_parallax_playground/.depth-venv`
+- bootstrap command: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_depth_bootstrap.sh`
+- `video_inspection_pack.py --depth` now auto-reexecs into that venv, so the user can call plain `python3 ... --depth` without manually picking the interpreter
+- if `.depth-venv` is missing or corrupted, rebuild it first instead of adding fallback polarity/runtime hacks into the tool
+
 ---
 
 ## 9. Integration Points

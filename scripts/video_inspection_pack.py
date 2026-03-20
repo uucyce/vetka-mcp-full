@@ -22,6 +22,41 @@ import tempfile
 from fractions import Fraction
 from pathlib import Path
 
+DEPTH_VENV_ENV = "VIDEO_INSPECTION_DEPTH_VENV_ACTIVE"
+
+
+def _preflight_depth_runtime() -> None:
+    """Switch to the shared depth venv before optional third-party imports.
+
+    This keeps `python3 ... --depth` working even when the system interpreter
+    does not have Pillow/torch installed.
+    """
+    if "--depth" not in sys.argv[1:]:
+        return
+    if os.environ.get(DEPTH_VENV_ENV) == "1":
+        return
+
+    script_path = Path(__file__).resolve()
+    root_dir = script_path.parent.parent
+    venv_python = root_dir / "photo_parallax_playground" / ".depth-venv" / "bin" / "python3"
+    if not venv_python.exists():
+        sys.exit(
+            "ERROR: --depth requested but .depth-venv is missing. "
+            "Run scripts/photo_parallax_depth_bootstrap.sh first."
+        )
+
+    current_python = Path(sys.executable).resolve()
+    if current_python == venv_python.resolve():
+        os.environ[DEPTH_VENV_ENV] = "1"
+        return
+
+    next_env = os.environ.copy()
+    next_env[DEPTH_VENV_ENV] = "1"
+    os.execve(str(venv_python), [str(venv_python), str(script_path), *sys.argv[1:]], next_env)
+
+
+_preflight_depth_runtime()
+
 # Layer 1 deps (minimal)
 from PIL import Image, ImageChops, ImageDraw, ImageFont
 
