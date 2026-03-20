@@ -251,14 +251,15 @@ export default function MenuBar() {
     {
       label: 'View',
       items: [
-        { label: 'Zoom In', shortcut: '=', action: () => {
-          const s = store.getState();
-          s.setZoom(Math.min(300, s.zoom + 20));
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'S', action: () => {
+          store.getState().toggleSnap();
         }},
-        { label: 'Zoom Out', shortcut: '-', action: () => {
-          const s = store.getState();
-          s.setZoom(Math.max(10, s.zoom - 20));
-        }},
+        { separator: true },
+        { label: 'Show Source Monitor', shortcut: '⌘1', action: () => store.getState().setFocusedPanel('source') },
+        { label: 'Show Program Monitor', shortcut: '⌘2', action: () => store.getState().setFocusedPanel('program') },
+        { label: 'Show Timeline', shortcut: '⌘3', action: () => store.getState().setFocusedPanel('timeline') },
+        { label: 'Show Project Panel', shortcut: '⌘4', action: () => store.getState().setFocusedPanel('project') },
+        { label: 'Show Effects Panel', shortcut: '⌘5', action: () => store.getState().setFocusedPanel('effects') },
         { separator: true },
         { label: 'Toggle NLE / Debug', shortcut: '⌘\\', action: () => {
           const s = store.getState();
