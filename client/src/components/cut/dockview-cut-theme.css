@@ -1,60 +1,120 @@
 /**
- * MARKER_196.2: CUT NLE dark theme overrides for dockview.
- * Matches CUT's #0D0D0D background and monochrome aesthetic.
+ * MARKER_196.4: CUT NLE dark theme for dockview.
+ * Premiere-thin tabs (22px), monochrome, #0D0D0D background.
+ * No colored accents except subtle active indicator.
  */
 
 /* ─── Base background ───────────────────────────────────────────── */
 .dockview-theme-dark {
   --dv-background-color: #0D0D0D;
   --dv-paneview-header-border-color: #1a1a1a;
-  --dv-tabs-and-actions-container-background-color: #0a0a0a;
+  --dv-tabs-and-actions-container-background-color: #111;
   --dv-activegroup-visiblepanel-tab-background-color: #1a1a1a;
-  --dv-activegroup-hiddenpanel-tab-background-color: #0a0a0a;
+  --dv-activegroup-hiddenpanel-tab-background-color: #111;
   --dv-inactivegroup-visiblepanel-tab-background-color: #141414;
-  --dv-inactivegroup-hiddenpanel-tab-background-color: #0a0a0a;
+  --dv-inactivegroup-hiddenpanel-tab-background-color: #111;
   --dv-tab-divider-color: #1a1a1a;
-  --dv-activegroup-visiblepanel-tab-color: #ccc;
+  --dv-activegroup-visiblepanel-tab-color: #aaa;
   --dv-activegroup-hiddenpanel-tab-color: #555;
-  --dv-inactivegroup-visiblepanel-tab-color: #888;
+  --dv-inactivegroup-visiblepanel-tab-color: #777;
   --dv-inactivegroup-hiddenpanel-tab-color: #444;
   --dv-separator-border: #1a1a1a;
   --dv-group-view-background-color: #0D0D0D;
 }
 
-/* ─── Active panel indicator ────────────────────────────────────── */
-.dockview-theme-dark .tab.active-tab {
-  border-bottom: 2px solid #4a9eff;
+/* ─── Ultra-thin tab bar (18px — tighter than Premiere) ─────────── */
+.dockview-theme-dark .dv-tabs-and-actions-container {
+  height: 18px !important;
+  min-height: 18px !important;
 }
 
-/* ─── Drop target highlights ────────────────────────────────────── */
-.dockview-theme-dark .drop-target-dropzone {
-  background-color: rgba(74, 158, 255, 0.15);
-  border: 1px solid rgba(74, 158, 255, 0.4);
+.dockview-theme-dark .dv-tab {
+  height: 16px !important;
+  font-size: 9px !important;
+  font-family: system-ui, -apple-system, sans-serif !important;
+  padding: 0 6px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 
-/* ─── Resize sash ───────────────────────────────────────────────── */
-.dockview-theme-dark .sash {
-  background-color: transparent;
+/* ─── Active tab: subtle bottom line, NO blue/color ─────────────── */
+.dockview-theme-dark .dv-tab.dv-active-tab {
+  border-bottom: 1px solid #555 !important;
+  background-color: #1a1a1a !important;
+  color: #aaa !important;
 }
-.dockview-theme-dark .sash:hover,
-.dockview-theme-dark .sash.active {
-  background-color: #4a9eff;
+
+.dockview-theme-dark .dv-tab.dv-inactive-tab {
+  border-bottom: 1px solid transparent !important;
+  background-color: #111 !important;
+  color: #555 !important;
+}
+
+/* ─── Tab close button — hide by default, tiny on hover ─────────── */
+.dockview-theme-dark .dv-default-tab-action {
+  opacity: 0 !important;
+  width: 12px !important;
+  height: 12px !important;
+  transition: opacity 0.1s;
+}
+.dockview-theme-dark .dv-tab:hover .dv-default-tab-action {
+  opacity: 0.4 !important;
+}
+.dockview-theme-dark .dv-default-tab-action:hover {
+  opacity: 0.8 !important;
+}
+
+/* ─── Tab overflow dropdown — compact ───────────────────────────── */
+.dockview-theme-dark .dv-tabs-overflow-dropdown-root {
+  height: 20px !important;
+  font-size: 10px !important;
+}
+
+/* ─── Group header actions (chevron, count) — compact ───────────── */
+.dockview-theme-dark .dv-right-actions-container {
+  font-size: 9px !important;
+}
+
+/* ─── Drop target highlights — subtle, not bright blue ──────────── */
+.dockview-theme-dark .dv-drop-target-dropzone {
+  background-color: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+}
+
+/* ─── Resize sash — invisible until hover ───────────────────────── */
+.dockview-theme-dark .dv-sash {
+  background-color: transparent !important;
+}
+.dockview-theme-dark .dv-sash:hover,
+.dockview-theme-dark .dv-sash.dv-active {
+  background-color: #444 !important;
   transition: background-color 0.15s;
 }
 
-/* ─── Panel content fills available space ───────────────────────── */
-.dockview-theme-dark .view-container {
-  background-color: #0D0D0D;
+/* ─── Panel content — fill space, dark bg ───────────────────────── */
+.dockview-theme-dark .dv-content-container {
+  background-color: #0D0D0D !important;
 }
 
-/* ─── Tab close button ──────────────────────────────────────────── */
-.dockview-theme-dark .tab .dv-default-tab-action {
-  opacity: 0;
-  transition: opacity 0.15s;
+/* ─── Single-tab group: minimal header ──────────────────────────── */
+/* Source and Program monitors — tiny header when solo */
+.dockview-theme-dark .dv-single-tab .dv-tabs-and-actions-container {
+  height: 14px !important;
+  min-height: 14px !important;
 }
-.dockview-theme-dark .tab:hover .dv-default-tab-action {
-  opacity: 0.5;
+.dockview-theme-dark .dv-single-tab .dv-tab {
+  font-size: 8px !important;
+  height: 12px !important;
+  padding: 0 4px !important;
 }
-.dockview-theme-dark .tab .dv-default-tab-action:hover {
-  opacity: 1;
+
+/* ─── Void (empty space) background ─────────────────────────────── */
+.dockview-theme-dark .dv-void-container {
+  background-color: #0D0D0D !important;
+}
+
+/* ─── Watermark (empty state) ───────────────────────────────────── */
+.dockview-theme-dark .dv-watermark {
+  background-color: #0D0D0D !important;
+  color: #333 !important;
 }
