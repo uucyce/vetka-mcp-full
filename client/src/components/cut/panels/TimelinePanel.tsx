@@ -34,7 +34,8 @@ export default function TimelinePanel(props: IDockviewPanelProps) {
       <TimelineToolbar />
       <TimelineTabBar />
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <TimelineTrackView />
+        {/* MARKER_C11: Pass timelineId from dockview params for multi-instance */}
+        <TimelineTrackView timelineId={props.params?.timelineId as string | undefined} />
       </div>
       <BPMTrack
         timelineId={timelineId}

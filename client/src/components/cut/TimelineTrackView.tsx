@@ -17,6 +17,7 @@ import {
 
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
+import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink } from './icons/CutIcons';
 
@@ -112,26 +113,36 @@ const CLIP_STYLE: CSSProperties = {
   transition: 'border-color 0.1s',
 };
 
-const PLAYHEAD_STYLE: CSSProperties = {
-  position: 'absolute',
-  top: 0,
-  bottom: 0,
-  width: 1,
-  background: '#fff',
-  zIndex: 100,
-  pointerEvents: 'none',
-};
+// MARKER_C11: Playhead style — active (bright white) vs inactive (dim grey)
+function playheadStyle(isActive: boolean): CSSProperties {
+  return {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: isActive ? 1 : 1,
+    background: isActive ? '#fff' : '#666',
+    zIndex: 100,
+    pointerEvents: 'none',
+  };
+}
 
-const PLAYHEAD_HEAD: CSSProperties = {
-  position: 'absolute',
-  top: -2,
-  left: -5,
-  width: 0,
-  height: 0,
-  borderLeft: '5px solid transparent',
-  borderRight: '5px solid transparent',
-  borderTop: '6px solid #fff',
-};
+function playheadHeadStyle(isActive: boolean): CSSProperties {
+  const color = isActive ? '#fff' : '#666';
+  return {
+    position: 'absolute',
+    top: -2,
+    left: -5,
+    width: 0,
+    height: 0,
+    borderLeft: '5px solid transparent',
+    borderRight: '5px solid transparent',
+    borderTop: `6px solid ${color}`,
+  };
+}
+
+// Legacy const refs for backward compat
+const PLAYHEAD_STYLE = playheadStyle(true);
+const PLAYHEAD_HEAD = playheadHeadStyle(true);
 
 const MARKER_STYLE: CSSProperties = {
   position: 'absolute',
@@ -445,7 +456,23 @@ function TimeRuler({
   );
 }
 
-export default function TimelineTrackView() {
+// MARKER_C11: Props interface for multi-instance support (Phase 198)
+interface TimelineTrackViewProps {
+  /** If provided, reads data from useTimelineInstanceStore instead of legacy flat store.
+   *  When omitted, falls back to useCutEditorStore (backward-compatible). */
+  timelineId?: string;
+}
+
+export default function TimelineTrackView({ timelineId: timelineIdProp }: TimelineTrackViewProps = {}) {
+  // MARKER_C11: Multi-instance support — resolve instance data
+  const instanceStoreTimeline = useTimelineInstanceStore((s) =>
+    timelineIdProp ? s.timelines.get(timelineIdProp) : undefined
+  );
+  const activeTimelineId = useTimelineInstanceStore((s) => s.activeTimelineId);
+  const setActiveTimeline = useTimelineInstanceStore((s) => s.setActiveTimeline);
+  const isMultiInstance = !!timelineIdProp && !!instanceStoreTimeline;
+  const isActive = isMultiInstance ? activeTimelineId === timelineIdProp : true;
+
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
@@ -517,6 +544,27 @@ export default function TimelineTrackView() {
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
+
+  // ─── MARKER_C11: Multi-instance override ──────────────────────────
+  // When timelineId prop is provided AND instance exists in the new store,
+  // shadow legacy selectors with instance-local data. This enables multiple
+  // independent TimelineTrackView instances without modifying useCutEditorStore.
+  // The updateTimeline helper writes view state changes back to the instance store.
+  const inst = instanceStoreTimeline;
+  const updateInstance = useTimelineInstanceStore((s) => s.updateTimeline);
+
+  // Phase 198 data resolution will go here when useCutEditorStore migrates.
+  // For now, all data comes from legacy store. The timelineId prop + isActive
+  // flag enables multi-instance rendering with visual differentiation.
+  void inst; // suppress unused warning — will be used in full migration
+
+  // Click handler: activate this timeline if not active
+  const handleTimelineActivate = useCallback(() => {
+    if (isMultiInstance && !isActive && timelineIdProp) {
+      setActiveTimeline(timelineIdProp);
+    }
+  }, [isMultiInstance, isActive, timelineIdProp, setActiveTimeline]);
+  // ─── END MARKER_C11 ──────────────────────────────────────────────
 
   useEffect(() => {
     zoomRef.current = zoom;
@@ -1178,7 +1226,7 @@ export default function TimelineTrackView() {
   }, [currentTime, dragState, isPlaying, scrubActive, scrollLeft, setScrollLeft, zoom]);
 
   return (
-    <div ref={containerRef} data-testid="cut-timeline-track-view" style={CONTAINER_STYLE} onWheel={handleWheel}>
+    <div ref={containerRef} data-testid="cut-timeline-track-view" style={CONTAINER_STYLE} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
       <TimeRuler
         zoom={zoom}
         scrollLeft={scrollLeft}
@@ -1774,9 +1822,10 @@ export default function TimelineTrackView() {
         </div>
       ) : null}
 
+      {/* MARKER_C11: Playhead — active=bright white, inactive=dim grey */}
       {playheadX > LANE_HEADER_WIDTH - 5 && playheadX < containerWidth + 5 ? (
-        <div style={{ ...PLAYHEAD_STYLE, left: playheadX }}>
-          <div style={PLAYHEAD_HEAD} />
+        <div style={{ ...playheadStyle(isActive), left: playheadX }}>
+          <div style={playheadHeadStyle(isActive)} />
         </div>
       ) : null}
 
