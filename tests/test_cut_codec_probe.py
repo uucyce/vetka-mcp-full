@@ -20,7 +20,9 @@ from src.services.cut_codec_probe import (
     ProbeResult,
     VideoStream,
     _infer_bit_depth,
+    _infer_codec_family,
     _infer_color_space,
+    _infer_playback_class,
     _parse_fps,
     probe_duration,
     probe_file,
@@ -187,6 +189,145 @@ class TestInferBitDepth:
 
     def test_fallback_8(self):
         assert _infer_bit_depth("weird_format") == 8
+
+    def test_p010le_10bit(self):
+        assert _infer_bit_depth("p010le") == 10
+
+    def test_xyz12le(self):
+        assert _infer_bit_depth("xyz12le") == 12
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B1.5: Codec family classification
+# ---------------------------------------------------------------------------
+
+class TestInferCodecFamily:
+    def test_h264_delivery(self):
+        assert _infer_codec_family("h264") == "delivery"
+
+    def test_hevc_delivery(self):
+        assert _infer_codec_family("hevc") == "delivery"
+
+    def test_prores_production(self):
+        assert _infer_codec_family("prores") == "production"
+
+    def test_dnxhd_production(self):
+        assert _infer_codec_family("dnxhd") == "production"
+
+    def test_r3d_camera_raw(self):
+        assert _infer_codec_family("r3d") == "camera_raw"
+
+    def test_braw_camera_raw(self):
+        assert _infer_codec_family("braw") == "camera_raw"
+
+    def test_arriraw_camera_raw(self):
+        assert _infer_codec_family("ari") == "camera_raw"
+
+    def test_cdng_camera_raw(self):
+        assert _infer_codec_family("cdng") == "camera_raw"
+
+    def test_vp9_web(self):
+        assert _infer_codec_family("vp9") == "web"
+
+    def test_av1_web(self):
+        assert _infer_codec_family("av1") == "web"
+
+    def test_aac_audio(self):
+        assert _infer_codec_family("aac") == "audio_only"
+
+    def test_opus_audio(self):
+        assert _infer_codec_family("opus") == "audio_only"
+
+    def test_pcm_s24le_audio(self):
+        assert _infer_codec_family("pcm_s24le") == "audio_only"
+
+    def test_ffv1_production(self):
+        assert _infer_codec_family("ffv1") == "production"
+
+    def test_cineform_production(self):
+        assert _infer_codec_family("cineform") == "production"
+
+    def test_unknown_defaults_delivery(self):
+        assert _infer_codec_family("some_unknown_codec") == "delivery"
+
+
+class TestInferPlaybackClass:
+    def test_h264_mp4_native(self):
+        assert _infer_playback_class("h264", "mov,mp4,m4a,3gp,3g2,mj2", 8) == "native"
+
+    def test_h265_mp4_8bit_native(self):
+        assert _infer_playback_class("h265", "mov,mp4,m4a,3gp,3g2,mj2", 8) == "native"
+
+    def test_h265_10bit_proxy(self):
+        """GH5 HEVC 10-bit → proxy recommended"""
+        assert _infer_playback_class("hevc", "mov,mp4,m4a,3gp,3g2,mj2", 10) == "proxy_recommended"
+
+    def test_prores_proxy_recommended(self):
+        assert _infer_playback_class("prores", "mov,mp4,m4a,3gp,3g2,mj2", 10) == "proxy_recommended"
+
+    def test_dnxhd_mxf_proxy(self):
+        assert _infer_playback_class("dnxhd", "mxf", 8) == "proxy_recommended"
+
+    def test_r3d_transcode(self):
+        assert _infer_playback_class("r3d", "r3d", 16) == "transcode_required"
+
+    def test_braw_transcode(self):
+        assert _infer_playback_class("braw", "braw", 12) == "transcode_required"
+
+    def test_rawvideo_transcode(self):
+        assert _infer_playback_class("rawvideo", "avi", 8) == "transcode_required"
+
+    def test_vp9_webm_native(self):
+        assert _infer_playback_class("vp9", "webm", 8) == "native"
+
+    def test_av1_mp4_native(self):
+        assert _infer_playback_class("libaom-av1", "mp4", 10) == "native"
+
+    def test_mpeg2_mxf_proxy(self):
+        assert _infer_playback_class("mpeg2video", "mxf", 8) == "proxy_recommended"
+
+    def test_h264_mkv_proxy(self):
+        """MKV container → proxy recommended even with playable codec"""
+        assert _infer_playback_class("h264", "mkv", 8) == "proxy_recommended"
+
+
+class TestProbeResultCodecFields:
+    @patch("src.services.cut_codec_probe.shutil.which", return_value="/usr/bin/ffprobe")
+    @patch("src.services.cut_codec_probe.subprocess.run", side_effect=_mock_run_factory(MOCK_FFPROBE_H264))
+    def test_h264_classification(self, mock_run, mock_which, tmp_path):
+        f = tmp_path / "test.mp4"
+        f.write_bytes(b"\x00" * 100)
+        r = probe_file(f)
+        assert r.codec_family == "delivery"
+        assert r.playback_class == "native"
+
+    @patch("src.services.cut_codec_probe.shutil.which", return_value="/usr/bin/ffprobe")
+    @patch("src.services.cut_codec_probe.subprocess.run", side_effect=_mock_run_factory(MOCK_FFPROBE_PRORES))
+    def test_prores_classification(self, mock_run, mock_which, tmp_path):
+        f = tmp_path / "test.mov"
+        f.write_bytes(b"\x00" * 100)
+        r = probe_file(f)
+        assert r.codec_family == "production"
+        assert r.playback_class == "proxy_recommended"
+
+    @patch("src.services.cut_codec_probe.shutil.which", return_value="/usr/bin/ffprobe")
+    @patch("src.services.cut_codec_probe.subprocess.run", side_effect=_mock_run_factory(MOCK_FFPROBE_AUDIO_ONLY))
+    def test_audio_only_classification(self, mock_run, mock_which, tmp_path):
+        f = tmp_path / "test.wav"
+        f.write_bytes(b"\x00" * 100)
+        r = probe_file(f)
+        assert r.codec_family == "audio_only"
+        assert r.playback_class == "native"
+
+    @patch("src.services.cut_codec_probe.shutil.which", return_value="/usr/bin/ffprobe")
+    @patch("src.services.cut_codec_probe.subprocess.run", side_effect=_mock_run_factory(MOCK_FFPROBE_H264))
+    def test_to_dict_has_codec_fields(self, mock_run, mock_which, tmp_path):
+        f = tmp_path / "test.mp4"
+        f.write_bytes(b"\x00" * 100)
+        r = probe_file(f)
+        d = r.to_dict()
+        assert "codec_family" in d
+        assert "playback_class" in d
 
 
 # ---------------------------------------------------------------------------

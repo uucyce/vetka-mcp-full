@@ -2433,19 +2433,51 @@ def _build_time_marker(body: CutTimeMarkerApplyRequest, project_id: str, timelin
     }
 
 
+# MARKER_B1.5: Maximum codec/container coverage
 PRODUCTION_VIDEO_FORMATS = {
-    "camera_codecs": ["H.264", "H.265/HEVC", "ProRes 422/4444", "DNxHD/DNxHR", "RED R3D", "BRAW"],
-    "containers": ["MOV", "MP4", "MXF", "AVI", "MKV"],
-    "audio": ["WAV", "AIFF", "MP3", "AAC", "FLAC", "M4A"],
-    "images": ["JPEG", "PNG", "TIFF", "EXR", "DPX", "BMP"],
-    "documents": ["MD", "TXT", "PDF", "SRT", "VTT"],
-    "projects": ["FCP XML", "AAF", "EDL", "OTIO"],
-    "resolutions": ["SD", "HD", "FHD", "2K", "4K", "6K", "8K"],
-    "frame_rates": [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 120],
+    "camera_codecs": [
+        "H.264", "H.265/HEVC", "H.265 10-bit",
+        "ProRes Proxy", "ProRes LT", "ProRes 422", "ProRes 422 HQ", "ProRes 4444", "ProRes 4444 XQ",
+        "DNxHD", "DNxHR LB", "DNxHR SQ", "DNxHR HQ", "DNxHR HQX", "DNxHR 444",
+        "RED R3D", "BRAW", "ARRIRAW", "CinemaDNG",
+        "Sony XAVC", "Sony XAVC-S", "Canon XF-AVC", "Panasonic V-Log",
+        "GoPro CineForm", "AV1", "VP9",
+        "MPEG-2", "MJPEG", "FFV1",
+    ],
+    "containers": [
+        "MOV", "MP4", "MXF", "AVI", "MKV", "MTS", "M2TS", "TS",
+        "WebM", "OGG", "FLV", "GXF", "3GP", "WMV", "ASF", "F4V",
+    ],
+    "audio": [
+        "WAV", "AIFF", "MP3", "AAC", "AAC-LC", "AAC-HE",
+        "FLAC", "ALAC", "M4A", "OGG/Vorbis", "Opus",
+        "AC-3", "E-AC-3", "DTS", "DTS-HD", "Dolby TrueHD",
+        "PCM 16-bit", "PCM 24-bit", "PCM 32-bit float",
+    ],
+    "images": ["JPEG", "PNG", "TIFF", "EXR", "DPX", "BMP", "WebP", "JPEG 2000", "TGA"],
+    "documents": ["MD", "TXT", "PDF", "SRT", "VTT", "ASS", "SSA"],
+    "projects": ["FCP XML", "FCPXML", "AAF", "EDL", "OTIO"],
+    "resolutions": ["SD", "HD", "FHD", "2K", "DCI 2K", "4K", "DCI 4K", "6K", "8K"],
+    "frame_rates": [23.976, 24, 25, 29.97, 30, 48, 50, 59.94, 60, 100, 120, 240],
 }
 
-NATIVE_VIDEO_EXT = {"mp4", "m4v", "webm", "ogg", "mov"}
-PROXY_RECOMMENDED_EXT = {"mxf", "r3d", "braw", "avi", "mkv", "mts", "m2ts", "dpx", "exr"}
+# Browser/Electron native playback — no proxy needed
+NATIVE_VIDEO_EXT = {"mp4", "m4v", "webm", "ogg", "mov", "m4a", "3gp"}
+
+# Heavy/broadcast containers — proxy recommended for smooth editing
+PROXY_RECOMMENDED_EXT = {
+    "mxf", "avi", "mkv", "mts", "m2ts", "ts", "gxf",
+    "flv", "f4v", "wmv", "asf", "vob", "mpg", "mpeg",
+}
+
+# Camera RAW — always needs transcode
+TRANSCODE_REQUIRED_EXT = {"r3d", "braw", "ari", "dng", "cin", "dpx", "exr"}
+
+# All supported audio extensions
+AUDIO_EXT = {
+    "wav", "aiff", "aif", "mp3", "aac", "m4a", "flac", "alac",
+    "ogg", "oga", "opus", "wma", "ac3", "eac3", "dts", "mka",
+}
 
 
 def _resolve_asset_path(path: str, sandbox_root: str = "") -> Path:
@@ -5127,7 +5159,17 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
     path = _resolve_asset_path(body.source_path, body.sandbox_root)
     ext = path.suffix.lower().lstrip(".")
     mime_type, _ = mimetypes.guess_type(str(path))
-    playback_class = "native" if ext in NATIVE_VIDEO_EXT else ("proxy_recommended" if ext in PROXY_RECOMMENDED_EXT else "unknown")
+    # MARKER_B1.5: expanded playback class detection
+    if ext in NATIVE_VIDEO_EXT:
+        playback_class = "native"
+    elif ext in PROXY_RECOMMENDED_EXT:
+        playback_class = "proxy_recommended"
+    elif ext in TRANSCODE_REQUIRED_EXT:
+        playback_class = "transcode_required"
+    elif ext in AUDIO_EXT:
+        playback_class = "native"
+    else:
+        playback_class = "unknown"
     ffprobe_payload = _probe_ffprobe_metadata(path) if body.probe_ffprobe else {"available": False, "error": "disabled"}
     return {
         "success": True,
