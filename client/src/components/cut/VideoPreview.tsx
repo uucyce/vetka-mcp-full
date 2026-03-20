@@ -152,6 +152,11 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
 
+  // MARKER_W5.2: Monitor overlay state
+  const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
+  const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
+  const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
+
   const extension = (activeMediaPath?.split('.').pop() || '').toLowerCase();
 
   // Find poster for current media
@@ -363,6 +368,39 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         </div>
       )}
       <TranscriptOverlay />
+      {/* MARKER_W5.2: Safe margins overlay */}
+      {(showTitleSafe || showActionSafe) && (
+        <svg
+          style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 4 }}
+          viewBox="0 0 1000 1000"
+          preserveAspectRatio="xMidYMid meet"
+        >
+          {showActionSafe && (
+            <rect x="50" y="50" width="900" height="900" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="6 4" />
+          )}
+          {showTitleSafe && (
+            <rect x="100" y="100" width="800" height="800" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="1" strokeDasharray="3 3" />
+          )}
+          {showActionSafe && (
+            <text x="55" y="45" fill="rgba(255,255,255,0.3)" fontSize="14" fontFamily="system-ui">ACTION SAFE</text>
+          )}
+          {showTitleSafe && (
+            <text x="105" y="95" fill="rgba(255,255,255,0.25)" fontSize="14" fontFamily="system-ui">TITLE SAFE</text>
+          )}
+        </svg>
+      )}
+      {/* MARKER_W5.2: Monitor overlay (clip name) */}
+      {showMonitorOverlays && activeMediaPath && (
+        <div style={{
+          position: 'absolute', top: 6, left: '50%', transform: 'translateX(-50%)',
+          fontSize: 10, fontFamily: 'system-ui', color: '#aaa',
+          background: 'rgba(0,0,0,0.6)', padding: '1px 8px', borderRadius: 3,
+          userSelect: 'none', zIndex: 3, maxWidth: '60%', overflow: 'hidden',
+          textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {activeMediaPath.split('/').pop()}
+        </div>
+      )}
       {/* MARKER_170.NLE.AUDIO_VU: VU meter strip on right edge */}
       <AudioLevelMeter
         mediaElement={videoEl}

@@ -13,13 +13,18 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
+import {
+  type HotkeyPresetName,
+  loadPresetName,
+  savePresetName,
+} from '../../hooks/useCutHotkeys';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 
 // ─── Types ─────────────────────────────────────────────────────────
 
 interface MenuItem {
-  label: string;
+  label?: string;
   shortcut?: string;
   action?: () => void;
   separator?: boolean;
@@ -245,7 +250,17 @@ export default function MenuBar() {
         { label: 'Select All', shortcut: '⌘A', action: () => store.getState().selectAllClips() },
         { label: 'Deselect All', shortcut: 'Esc', action: () => store.getState().clearSelection() },
         { separator: true },
-        { label: 'Keyboard Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
+        { label: 'Keyboard Shortcuts', submenu: [
+          { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
+          { separator: true },
+          ...(['premiere', 'fcp7', 'custom'] as HotkeyPresetName[]).map((p) => ({
+            label: `${loadPresetName() === p ? '\u2713 ' : '  '}${{ premiere: 'Premiere Pro', fcp7: 'Final Cut Pro 7', custom: 'Custom' }[p]}`,
+            action: () => {
+              savePresetName(p);
+              window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: p }));
+            },
+          })),
+        ]},
       ],
     },
     {
@@ -256,19 +271,30 @@ export default function MenuBar() {
           const s = store.getState();
           const fp = s.focusedPanel;
           if (fp === 'source' || fp === 'program') {
-            // Monitor zoom — future: video magnification
-            // For now: same as timeline zoom (no monitor zoom state yet)
+            const steps = [0, 50, 75, 100, 150, 200];
+            const cur = steps.indexOf(s.monitorZoom);
+            if (cur < steps.length - 1) s.setMonitorZoom(steps[cur + 1]);
+          } else {
+            s.setZoom(Math.min(300, s.zoom + 20));
           }
-          s.setZoom(Math.min(300, s.zoom + 20));
         }},
         { label: 'Zoom Out', shortcut: '-', action: () => {
           const s = store.getState();
-          s.setZoom(Math.max(10, s.zoom - 20));
+          const fp = s.focusedPanel;
+          if (fp === 'source' || fp === 'program') {
+            const steps = [0, 50, 75, 100, 150, 200];
+            const cur = steps.indexOf(s.monitorZoom);
+            if (cur > 0) s.setMonitorZoom(steps[cur - 1]);
+          } else {
+            s.setZoom(Math.max(10, s.zoom - 20));
+          }
         }},
         { label: 'Zoom to Fit', shortcut: '\\', action: () => {
           const s = store.getState();
-          if (s.duration > 0) {
-            // Fit entire duration to visible area (~800px default)
+          const fp = s.focusedPanel;
+          if (fp === 'source' || fp === 'program') {
+            s.setMonitorZoom(0);
+          } else if (s.duration > 0) {
             s.setZoom(Math.max(10, Math.min(300, 800 / s.duration)));
             s.setScrollLeft(0);
           }
@@ -278,10 +304,17 @@ export default function MenuBar() {
           store.getState().toggleSnap();
         }},
         { separator: true },
+        { label: 'Monitor Zoom', submenu: [
+          ...([0, 50, 75, 100, 150, 200] as const).map((z) => ({
+            label: `${store.getState().monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
+            action: () => store.getState().setMonitorZoom(z),
+          })),
+        ]},
         { label: 'Overlays', submenu: [
-          { label: 'Title Safe', disabled: true },
-          { label: 'Action Safe', disabled: true },
-          { label: 'Timecode Overlay', disabled: true },
+          { label: `${store.getState().showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
+          { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
+          { separator: true },
+          { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
           { label: 'Marker Overlay', disabled: true },
         ]},
         { separator: true },

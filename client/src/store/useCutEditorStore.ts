@@ -221,6 +221,12 @@ interface CutEditorState {
   saveError: string | null;
   hasUnsavedChanges: boolean;
 
+  // === MARKER_W5.2: Monitor display settings ===
+  monitorZoom: number;              // 0 = Fit, or 50/75/100/150/200
+  showTitleSafe: boolean;           // 4:3 title safe zone overlay
+  showActionSafe: boolean;          // 4:3 action safe zone overlay
+  showMonitorOverlays: boolean;     // timecode + clip name on monitor
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -299,6 +305,12 @@ interface CutEditorState {
   setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
   setMontageProgress: (text: string | null) => void;
   setMontageError: (err: string | null) => void;
+
+  // MARKER_W5.2: Monitor display setters
+  setMonitorZoom: (zoom: number) => void;
+  toggleTitleSafe: () => void;
+  toggleActionSafe: () => void;
+  toggleMonitorOverlays: () => void;
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -444,6 +456,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   saveError: null,
   hasUnsavedChanges: false,
 
+  // MARKER_W5.2: Monitor display defaults
+  monitorZoom: 0,          // 0 = Fit
+  showTitleSafe: false,
+  showActionSafe: false,
+  showMonitorOverlays: false,
+
   // Media status
   mediaError: null,
   mediaLoading: false,
@@ -586,6 +604,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setMontageMode: (mode) => set({ montageMode: mode }),
   setMontageProgress: (text) => set({ montageProgress: text }),
   setMontageError: (err) => set({ montageError: err }),
+
+  // MARKER_W5.2: Monitor display actions
+  setMonitorZoom: (zoom) => set({ monitorZoom: zoom }),
+  toggleTitleSafe: () => set((s) => ({ showTitleSafe: !s.showTitleSafe })),
+  toggleActionSafe: () => set((s) => ({ showActionSafe: !s.showActionSafe })),
+  toggleMonitorOverlays: () => set((s) => ({ showMonitorOverlays: !s.showMonitorOverlays })),
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status) => set({ saveStatus: status }),
