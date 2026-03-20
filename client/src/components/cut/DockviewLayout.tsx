@@ -165,7 +165,6 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-<<<<<<< HEAD
     // MARKER_C14: Auto-Montage panel (Analysis tab group)
     event.api.addPanel({
       id: 'montage',
@@ -174,9 +173,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-    // MARKER_C13: Timeline (full-width bottom) — dockview tabs replace TimelineTabBar
-    event.api.addPanel({
-=======
+    // MARKER_B9: Effects panel (Analysis tab group)
     event.api.addPanel({
       id: 'effects',
       component: 'effects',
@@ -184,9 +181,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-    // Timeline (full-width bottom) — hide dockview tab header (TimelineTabBar is internal)
-    const timelinePanelRef = event.api.addPanel({
->>>>>>> claude/cut-engine
+    // Timeline (full-width bottom)
+    event.api.addPanel({
       id: 'timeline',
       component: 'timeline',
       title: 'Timeline',
