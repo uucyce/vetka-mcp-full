@@ -31,6 +31,8 @@ export type TimelineClip = {
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;
+  // MARKER_SPEED: Clip speed (1.0 = normal, 0.5 = half speed, 2.0 = double, -1 = reverse)
+  speed?: number;
   effects?: ClipEffects;
   sync?: {
     method?: string;

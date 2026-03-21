@@ -1950,6 +1950,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </span>
                       ) : null}
 
+                      {/* MARKER_SPEED: Speed indicator badge */}
+                      {clip.speed != null && clip.speed !== 1 && width > 30 ? (
+                        <span
+                          style={{
+                            position: 'absolute',
+                            top: 2,
+                            right: 4,
+                            zIndex: 3,
+                            fontSize: 8,
+                            fontWeight: 700,
+                            fontFamily: 'monospace',
+                            padding: '0 3px',
+                            borderRadius: 2,
+                            background: clip.speed < 0
+                              ? 'rgba(239, 68, 68, 0.8)'   // red for reverse
+                              : clip.speed < 1
+                                ? 'rgba(74, 222, 128, 0.7)' // green for slow-mo
+                                : 'rgba(251, 146, 60, 0.7)',// orange for speed-up
+                            color: '#fff',
+                            textShadow: '0 1px 2px rgba(0,0,0,0.8)',
+                            lineHeight: '13px',
+                          }}
+                          title={`Speed: ${Math.abs(clip.speed * 100).toFixed(0)}%${clip.speed < 0 ? ' (reverse)' : ''}`}
+                        >
+                          {clip.speed < 0 ? '◀ ' : ''}{Math.abs(clip.speed * 100).toFixed(0)}%
+                        </span>
+                      ) : null}
+
                       {width > 60 ? (
                         <span
                           style={{
