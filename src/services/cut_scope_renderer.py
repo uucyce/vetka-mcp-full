@@ -182,7 +182,7 @@ def compute_vectorscope(frame_rgb: "np.ndarray", scope_size: int = 256) -> list[
 # High-level API
 # ---------------------------------------------------------------------------
 
-_scope_cache: dict[tuple[str, float], dict[str, Any]] = {}
+_scope_cache: dict[tuple, dict[str, Any]] = {}
 _CACHE_MAX = 32
 
 
@@ -195,10 +195,15 @@ def analyze_frame_scopes(
     time_sec: float = 0.0,
     scopes: list[str] | None = None,
     scope_size: int = 256,
+    log_profile: str | None = None,
+    lut_path: str | None = None,
 ) -> dict[str, Any]:
     """Extract frame and compute requested scopes.
 
     Valid scopes: "histogram", "waveform", "vectorscope", "parade"
+
+    If log_profile or lut_path provided, applies color pipeline BEFORE
+    scope computation (post-grade scopes).
     """
     if not HAS_NUMPY:
         return {"success": False, "error": "numpy_not_available"}
@@ -206,7 +211,10 @@ def analyze_frame_scopes(
     if scopes is None:
         scopes = ["histogram", "waveform", "vectorscope"]
 
-    cache_key = _cache_key(source_path, time_sec)
+    # MARKER_B25: Include grading params in cache key
+    graded = bool(log_profile or lut_path)
+    cache_key_base = _cache_key(source_path, time_sec)
+    cache_key = (cache_key_base[0], cache_key_base[1], log_profile or "", lut_path or "")
     cached = _scope_cache.get(cache_key)
     if cached and all(s in cached for s in scopes):
         return cached
@@ -216,9 +224,18 @@ def analyze_frame_scopes(
         return {"success": False, "error": "frame_extraction_failed",
                 "source_path": source_path, "time_sec": time_sec}
 
+    # MARKER_B25: Apply color pipeline for post-grade scopes
+    if graded:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=log_profile, lut_path=lut_path)
+        except ImportError:
+            pass  # color pipeline not available, use raw frame
+
     result: dict[str, Any] = {
         "success": True, "source_path": source_path, "time_sec": time_sec,
         "frame_w": frame.shape[1], "frame_h": frame.shape[0],
+        "graded": graded,
     }
 
     if "histogram" in scopes:

@@ -182,6 +182,7 @@ function drawHistogram(
 
 export default function VideoScopes() {
   const [mode, setMode] = useState<ScopeMode>('waveform');
+  const [postGrade, setPostGrade] = useState(true); // MARKER_B25: default post-grade
   const [scopeData, setScopeData] = useState<ScopeData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -193,13 +194,37 @@ export default function VideoScopes() {
   const programMediaPath = useCutEditorStore((s) => s.programMediaPath);
   const mediaPath = programMediaPath || sourceMediaPath;
 
+  // MARKER_B25: Read color_correction from selected clip for post-grade scopes
+  const selectedClipCC = useCutEditorStore((s) => {
+    if (!s.selectedClipId) return null;
+    for (const lane of s.lanes) {
+      for (const clip of lane.clips || []) {
+        if (clip.clip_id === s.selectedClipId) {
+          return (clip as any).color_correction as { lutPath?: string; logProfile?: string } | null;
+        }
+      }
+    }
+    return null;
+  });
+
   const fetchScopes = useCallback((path: string, time: number) => {
     if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
     fetchTimerRef.current = window.setTimeout(async () => {
       setLoading(true); setError(null);
       try {
         const scopeParam = mode === 'parade' ? 'parade' : mode;
-        const url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopeParam}&size=256`;
+        let url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopeParam}&size=256`;
+
+        // MARKER_B25: Append grading params for post-grade scopes
+        if (postGrade && selectedClipCC) {
+          if (selectedClipCC.lutPath) {
+            url += `&lut_path=${encodeURIComponent(selectedClipCC.lutPath)}`;
+          }
+          if (selectedClipCC.logProfile) {
+            url += `&log_profile=${encodeURIComponent(selectedClipCC.logProfile)}`;
+          }
+        }
+
         const res = await fetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -210,14 +235,14 @@ export default function VideoScopes() {
       } finally {
         setLoading(false);
       }
-    }, 200);
-  }, [mode]);
+    }, 500); // MARKER_B25: 500ms debounce (heavier with grading)
+  }, [mode, postGrade, selectedClipCC]);
 
   useEffect(() => {
     if (!mediaPath) { setScopeData(null); return; }
     fetchScopes(mediaPath, currentTime);
     return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
-  }, [mediaPath, currentTime, mode, fetchScopes]);
+  }, [mediaPath, currentTime, mode, postGrade, selectedClipCC, fetchScopes]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -255,8 +280,23 @@ export default function VideoScopes() {
           : error ? <span style={{ color: '#ef4444', fontSize: 10 }}>{error}</span>
           : <canvas ref={canvasRef} data-testid="scope-canvas" />}
       </div>
-      <div style={STATUS_BAR}>
-        {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
+      <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span>
+          {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
+        </span>
+        {/* MARKER_B25: Pre-grade / Post-grade toggle */}
+        <button
+          onClick={() => setPostGrade((v) => !v)}
+          data-testid="scope-grade-toggle"
+          style={{
+            background: 'none', border: '1px solid #333', borderRadius: 3,
+            padding: '1px 6px', cursor: 'pointer', fontSize: 8,
+            color: postGrade ? '#4a9eff' : '#666',
+          }}
+          title={postGrade ? 'Showing post-grade (click for raw)' : 'Showing raw (click for post-grade)'}
+        >
+          {postGrade ? 'Post' : 'Raw'}
+        </button>
       </div>
     </div>
   );

@@ -4419,9 +4419,12 @@ async def cut_scopes_analyze(
     time: float = 0.0,
     scopes: str = "histogram,waveform,vectorscope",
     size: int = 256,
+    log_profile: str | None = None,
+    lut_path: str | None = None,
 ) -> dict[str, Any]:
     """
     MARKER_B19 — Video scope analysis: waveform, parade, vectorscope, histogram.
+    MARKER_B25 — Video scope analysis with optional color pipeline grading.
 
     Extracts frame at given time via FFmpeg, computes requested scopes.
     Returns JSON with histogram (RGB), waveform (luma), parade (RGB), vectorscope (CbCr).
@@ -4431,6 +4434,8 @@ async def cut_scopes_analyze(
         time: timestamp in seconds (default: 0.0)
         scopes: comma-separated scope types (default: all three)
         size: scope resolution (default: 256, max: 512)
+        log_profile: optional camera log profile to apply before analysis
+        lut_path: optional LUT path to analyze post-grade frame instead of raw
     """
     from src.services.cut_scope_renderer import analyze_frame_scopes
 
@@ -4439,7 +4444,10 @@ async def cut_scopes_analyze(
     valid = {"histogram", "waveform", "vectorscope", "parade"}
     scope_list = [s for s in scope_list if s in valid] or ["histogram", "waveform", "vectorscope"]
 
-    return analyze_frame_scopes(source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size)
+    return analyze_frame_scopes(
+        source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size,
+        log_profile=log_profile, lut_path=lut_path,
+    )
 
 
 # ---------------------------------------------------------------------------
