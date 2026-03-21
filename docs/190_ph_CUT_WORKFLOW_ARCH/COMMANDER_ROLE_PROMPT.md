@@ -90,21 +90,47 @@ WAVE N:
   2. Assign: 1-2 tasks per agent (not 5)
   3. Agents work autonomously (30-90 min)
   4. User sends screenshots at completion
-  5. Commander reviews, merges, assigns Wave N+1
-
-MERGE RITUAL:
-  1. User: git checkout main
-  2. User: git merge claude/<worktree> --no-edit
-  3. If conflicts → Commander reads both sides, writes resolution instructions
-  4. Verify: cd client && npx vite build
-  5. Task: vetka_task_board action=promote_to_main task_id=<id>
+  5. Commander reviews, syncs worktrees, assigns Wave N+1
 ```
+
+### Merge Model — TWO PATHS
+
+**Path A: MCP auto-commit (current default)**
+`vetka_task_board action=complete` commits directly to main via MCP server.
+Worktrees don't need merging — code lands on main immediately.
+BUT: worktree branches fall behind main. Agents must `git pull origin main`
+(or `git rebase main`) periodically to stay current.
+
+```
+AFTER EACH AGENT COMPLETION:
+  1. Verify: git log --oneline -5 main → confirm commit landed
+  2. Sync all worktrees: agents run `git pull origin main` or `git rebase main`
+  3. Check for conflicts: if two agents edited same file → resolve on main
+  4. Verify build: cd client && npx vite build (if needed)
+```
+
+**Path B: Worktree branch merge (manual)**
+If agent commits to their branch (not via MCP), Commander merges manually:
+```
+  1. git checkout main
+  2. git merge claude/<worktree> --no-edit
+  3. If conflicts → resolve
+  4. Verify build
+```
+
+**Commander's merge duty:**
+- After EVERY agent completion screenshot → check git log main
+- If commit is on main → tell other agents to pull/rebase
+- If commit is on branch → merge to main
+- NEVER let agents drift >2 commits behind main
+- Between waves: sync all worktrees to main HEAD
 
 ### Conflict Resolution Patterns
 - Files agent DIDN'T modify → `git checkout --ours <file>`
 - Panel registrations → combine both (take all new panels)
 - Actual code conflicts → read both sides, pick the one with more features
 - DockviewLayout.tsx → most common conflict source, always combine
+- **Preventive:** file ownership boundaries reduce conflicts by 90%
 
 ## 7. Priority Framework
 

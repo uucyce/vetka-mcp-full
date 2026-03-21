@@ -205,7 +205,8 @@ const TRACK_SLIDER_WRAP: CSSProperties = {
   justifyContent: 'center',
 };
 
-type ClipDragMode = 'move' | 'trim_left' | 'trim_right';
+// MARKER_W5.TRIM: Extended drag modes (FCP7 Ch.44)
+type ClipDragMode = 'move' | 'trim_left' | 'trim_right' | 'slip' | 'slide' | 'ripple_left' | 'ripple_right' | 'roll';
 
 type ClipDragState = {
   mode: ClipDragMode;
@@ -218,6 +219,11 @@ type ClipDragState = {
   originalStartSec: number;
   originalDurationSec: number;
   grabOffsetSec: number;
+  // MARKER_W5.TRIM: Additional state for trim tools
+  sourceIn?: number;          // slip: tracks source_in offset
+  originalSourceIn?: number;  // slip: original source_in for delta calc
+  neighborLeft?: { clipId: string; startSec: number; durationSec: number } | null;
+  neighborRight?: { clipId: string; startSec: number; durationSec: number } | null;
 };
 
 type MarkerKind = 'favorite' | 'comment' | 'cam' | 'insight';
@@ -554,7 +560,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
-  const TOOL_CURSOR: Record<string, string> = { selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in' };
+  // MARKER_W5.TRIM: Cursor per tool
+  const TOOL_CURSOR: Record<string, string> = {
+    selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in',
+    slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
+  };
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
@@ -833,6 +843,23 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     [applyTimelineOps]
   );
 
+  // MARKER_W5.TRIM: Helper to find neighboring clips in a lane
+  const findNeighbors = useCallback(
+    (clipId: string, laneId: string) => {
+      const lane = displayLanesRef.current.find((l) => l.lane_id === laneId);
+      if (!lane) return { left: null, right: null };
+      const sorted = [...lane.clips].sort((a, b) => a.start_sec - b.start_sec);
+      const idx = sorted.findIndex((c) => c.clip_id === clipId);
+      const left = idx > 0 ? sorted[idx - 1] : null;
+      const right = idx < sorted.length - 1 ? sorted[idx + 1] : null;
+      return {
+        left: left ? { clipId: left.clip_id, startSec: left.start_sec, durationSec: left.duration_sec } : null,
+        right: right ? { clipId: right.clip_id, startSec: right.start_sec, durationSec: right.duration_sec } : null,
+      };
+    },
+    [],
+  );
+
   const beginClipInteraction = useCallback(
     (clip: TimelineClip, laneId: string, mode: ClipDragMode, event: MouseEvent<HTMLDivElement>) => {
       event.preventDefault();
@@ -852,8 +879,28 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const pointerTime = timeFromTrackClientX(event.clientX);
       const startSec = roundTimeline(clip.start_sec);
       const durationSec = roundTimeline(Math.max(MIN_CLIP_DURATION_SEC, clip.duration_sec));
+
+      // MARKER_W5.TRIM: Determine effective drag mode from activeTool
+      let effectiveMode = mode;
+      if (mode === 'move') {
+        switch (activeTool) {
+          case 'slip': effectiveMode = 'slip'; break;
+          case 'slide': effectiveMode = 'slide'; break;
+          case 'ripple': {
+            // Ripple: left or right edge based on cursor position relative to clip center
+            const clipCenter = startSec + durationSec / 2;
+            effectiveMode = pointerTime < clipCenter ? 'ripple_left' : 'ripple_right';
+            break;
+          }
+          case 'roll': effectiveMode = 'roll'; break;
+          default: break;
+        }
+      }
+
+      const neighbors = findNeighbors(clip.clip_id, laneId);
+
       setDragState({
-        mode,
+        mode: effectiveMode,
         clipId: clip.clip_id,
         sourcePath: clip.source_path,
         laneId,
@@ -863,9 +910,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         originalStartSec: startSec,
         originalDurationSec: durationSec,
         grabOffsetSec: clamp(pointerTime - clip.start_sec, 0, clip.duration_sec),
+        sourceIn: clip.source_in ?? 0,
+        originalSourceIn: clip.source_in ?? 0,
+        neighborLeft: neighbors.left,
+        neighborRight: neighbors.right,
       });
     },
-    [activeTool, applyTimelineOps, setActiveMedia, setSelectedClip, timeFromTrackClientX]
+    [activeTool, applyTimelineOps, findNeighbors, setActiveMedia, setSelectedClip, timeFromTrackClientX]
   );
 
   const handleWheel = useCallback(
@@ -1115,6 +1166,95 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         return;
       }
 
+      // MARKER_W5.TRIM: Slip — move source content inside clip boundaries
+      if (dragState.mode === 'slip') {
+        const pointerTime = timeFromTrackClientX(event.clientX);
+        setDragState((current) => {
+          if (!current) return current;
+          const delta = pointerTime - (current.originalStartSec + current.grabOffsetSec);
+          const newSourceIn = roundTimeline(Math.max(0, (current.originalSourceIn ?? 0) + delta));
+          return { ...current, sourceIn: newSourceIn };
+        });
+        return;
+      }
+
+      // MARKER_W5.TRIM: Slide — move clip between neighbors
+      if (dragState.mode === 'slide') {
+        const pointerTime = timeFromTrackClientX(event.clientX);
+        setDragState((current) => {
+          if (!current) return current;
+          const rawStart = roundTimeline(Math.max(0, pointerTime - current.grabOffsetSec));
+          // Constrain to neighbor boundaries
+          const minStart = current.neighborLeft
+            ? current.neighborLeft.startSec
+            : 0;
+          const maxStart = current.neighborRight
+            ? current.neighborRight.startSec + current.neighborRight.durationSec - current.durationSec
+            : rawStart;
+          const clampedStart = clamp(rawStart, minStart, Math.max(minStart, maxStart));
+          return { ...current, startSec: clampedStart };
+        });
+        return;
+      }
+
+      // MARKER_W5.TRIM: Ripple — extend/shorten edge, shift everything after
+      if (dragState.mode === 'ripple_left' || dragState.mode === 'ripple_right') {
+        const pointerTime = timeFromTrackClientX(event.clientX);
+        setDragState((current) => {
+          if (!current) return current;
+          if (current.mode === 'ripple_left') {
+            const clipEnd = current.originalStartSec + current.originalDurationSec;
+            const nextStart = clamp(pointerTime, 0, clipEnd - MIN_CLIP_DURATION_SEC);
+            return {
+              ...current,
+              startSec: roundTimeline(nextStart),
+              durationSec: roundTimeline(Math.max(MIN_CLIP_DURATION_SEC, clipEnd - nextStart)),
+            };
+          }
+          // ripple_right
+          const nextEnd = Math.max(current.originalStartSec + MIN_CLIP_DURATION_SEC, pointerTime);
+          return {
+            ...current,
+            durationSec: roundTimeline(Math.max(MIN_CLIP_DURATION_SEC, nextEnd - current.originalStartSec)),
+          };
+        });
+        return;
+      }
+
+      // MARKER_W5.TRIM: Roll — move edit point between two clips
+      if (dragState.mode === 'roll') {
+        const pointerTime = timeFromTrackClientX(event.clientX);
+        setDragState((current) => {
+          if (!current) return current;
+          // Roll adjusts the boundary between this clip and its left neighbor
+          // or this clip and its right neighbor based on grab position
+          const editingLeftEdge = current.grabOffsetSec < current.originalDurationSec / 2;
+          if (editingLeftEdge && current.neighborLeft) {
+            // Move left edge: shorten/extend left neighbor's end + this clip's start
+            const leftStart = current.neighborLeft.startSec;
+            const minBound = leftStart + MIN_CLIP_DURATION_SEC;
+            const maxBound = current.originalStartSec + current.originalDurationSec - MIN_CLIP_DURATION_SEC;
+            const newEditPoint = clamp(pointerTime, minBound, maxBound);
+            return {
+              ...current,
+              startSec: roundTimeline(newEditPoint),
+              durationSec: roundTimeline(current.originalStartSec + current.originalDurationSec - newEditPoint),
+            };
+          } else if (!editingLeftEdge && current.neighborRight) {
+            // Move right edge: extend/shorten this clip's end + right neighbor's start
+            const minBound = current.originalStartSec + MIN_CLIP_DURATION_SEC;
+            const maxBound = current.neighborRight.startSec + current.neighborRight.durationSec - MIN_CLIP_DURATION_SEC;
+            const newEditPoint = clamp(pointerTime, minBound, maxBound);
+            return {
+              ...current,
+              durationSec: roundTimeline(newEditPoint - current.originalStartSec),
+            };
+          }
+          return current;
+        });
+        return;
+      }
+
       const pointerTime = timeFromTrackClientX(event.clientX);
       setDragState((current) => {
         if (!current) return current;
@@ -1216,6 +1356,93 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           trimOp.start_sec = activeDrag.startSec;
         }
         ops.push(trimOp);
+      }
+
+      // MARKER_W5.TRIM: Slip — update source_in only
+      if (activeDrag.mode === 'slip' && activeDrag.sourceIn !== activeDrag.originalSourceIn) {
+        ops.push({
+          op: 'slip_clip',
+          clip_id: activeDrag.clipId,
+          source_in: activeDrag.sourceIn,
+        });
+      }
+
+      // MARKER_W5.TRIM: Slide — move clip, adjust neighbors
+      if (activeDrag.mode === 'slide' && Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
+        const delta = activeDrag.startSec - activeDrag.originalStartSec;
+        ops.push({ op: 'move_clip', clip_id: activeDrag.clipId, lane_id: activeDrag.laneId, start_sec: activeDrag.startSec });
+        // Adjust left neighbor's duration (extend/shrink right edge)
+        if (activeDrag.neighborLeft) {
+          ops.push({
+            op: 'trim_clip',
+            clip_id: activeDrag.neighborLeft.clipId,
+            duration_sec: roundTimeline(activeDrag.neighborLeft.durationSec + delta),
+          });
+        }
+        // Adjust right neighbor's start and duration
+        if (activeDrag.neighborRight) {
+          const clipEnd = activeDrag.startSec + activeDrag.durationSec;
+          const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
+          ops.push({
+            op: 'trim_clip',
+            clip_id: activeDrag.neighborRight.clipId,
+            start_sec: clipEnd,
+            duration_sec: roundTimeline(rightOrigEnd - clipEnd),
+          });
+        }
+      }
+
+      // MARKER_W5.TRIM: Ripple — trim edge + shift everything after
+      if (
+        (activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right')
+        && (
+          Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001
+          || Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001
+        )
+      ) {
+        const rippleOp: Record<string, unknown> = {
+          op: 'ripple_trim',
+          clip_id: activeDrag.clipId,
+          start_sec: activeDrag.startSec,
+          duration_sec: activeDrag.durationSec,
+        };
+        ops.push(rippleOp);
+      }
+
+      // MARKER_W5.TRIM: Roll — adjust edit point between two clips
+      if (activeDrag.mode === 'roll') {
+        const editingLeftEdge = activeDrag.grabOffsetSec < activeDrag.originalDurationSec / 2;
+        if (editingLeftEdge && activeDrag.neighborLeft) {
+          const newLeftDur = roundTimeline(activeDrag.startSec - activeDrag.neighborLeft.startSec);
+          if (Math.abs(newLeftDur - activeDrag.neighborLeft.durationSec) > 0.001) {
+            ops.push({
+              op: 'trim_clip',
+              clip_id: activeDrag.neighborLeft.clipId,
+              duration_sec: newLeftDur,
+            });
+            ops.push({
+              op: 'trim_clip',
+              clip_id: activeDrag.clipId,
+              start_sec: activeDrag.startSec,
+              duration_sec: activeDrag.durationSec,
+            });
+          }
+        } else if (!editingLeftEdge && activeDrag.neighborRight) {
+          const newEnd = activeDrag.startSec + activeDrag.durationSec;
+          if (Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001) {
+            ops.push({
+              op: 'trim_clip',
+              clip_id: activeDrag.clipId,
+              duration_sec: activeDrag.durationSec,
+            });
+            ops.push({
+              op: 'trim_clip',
+              clip_id: activeDrag.neighborRight.clipId,
+              start_sec: newEnd,
+              duration_sec: roundTimeline(activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec - newEnd),
+            });
+          }
+        }
       }
 
       if (ops.length) {
@@ -1914,6 +2141,37 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           <span style={{ position: 'relative', zIndex: 1, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
             {basename(dragState.sourcePath)}
           </span>
+          {/* MARKER_W5.TRIM: Delta indicator for trim tools */}
+          {(dragState.mode === 'slip' || dragState.mode === 'slide' || dragState.mode === 'ripple_left' || dragState.mode === 'ripple_right' || dragState.mode === 'roll') ? (() => {
+            const fps = projectFramerate || 25;
+            let deltaSec = 0;
+            let label = '';
+            if (dragState.mode === 'slip') {
+              deltaSec = (dragState.sourceIn ?? 0) - (dragState.originalSourceIn ?? 0);
+              label = 'SLIP';
+            } else if (dragState.mode === 'slide') {
+              deltaSec = dragState.startSec - dragState.originalStartSec;
+              label = 'SLIDE';
+            } else if (dragState.mode === 'ripple_left' || dragState.mode === 'ripple_right') {
+              deltaSec = dragState.durationSec - dragState.originalDurationSec;
+              label = 'RIPPLE';
+            } else if (dragState.mode === 'roll') {
+              deltaSec = dragState.startSec - dragState.originalStartSec;
+              label = 'ROLL';
+            }
+            const deltaFrames = Math.round(deltaSec * fps);
+            const sign = deltaFrames >= 0 ? '+' : '';
+            return (
+              <span style={{
+                position: 'absolute', top: 2, right: 4, zIndex: 2,
+                fontSize: 9, fontWeight: 700, fontFamily: 'monospace',
+                color: deltaFrames === 0 ? '#888' : (deltaFrames > 0 ? '#4ade80' : '#f87171'),
+                textShadow: '0 1px 2px rgba(0,0,0,0.9)',
+              }}>
+                {label} {sign}{deltaFrames}f
+              </span>
+            );
+          })() : null}
         </div>
       ) : null}
 

@@ -135,6 +135,11 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   // Tools — timeline only
   razorTool:           ['timeline'],
   selectTool:          ['timeline'],
+  // MARKER_W5.TRIM: Trim tools — timeline only
+  slipTool:            ['timeline'],
+  slideTool:           ['timeline'],
+  rippleTool:          ['timeline'],
+  rollTool:            ['timeline'],
 
   // Navigation — timeline only
   prevEditPoint:       ['timeline'],

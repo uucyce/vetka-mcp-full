@@ -4448,6 +4448,119 @@ async def cut_scopes_analyze(
     return result
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B18: Color Pipeline — LUT import, apply, camera log profiles
+# ---------------------------------------------------------------------------
+
+
+class CutColorApplyRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 540
+
+
+@router.post("/color/apply")
+async def cut_color_apply(body: CutColorApplyRequest) -> dict[str, Any]:
+    """
+    MARKER_B18 — Apply color pipeline (log decode + LUT) to a single frame.
+    Returns base64 JPEG preview.
+    """
+    import base64
+    from src.services.cut_scope_renderer import extract_frame_rgb
+    from src.services.cut_color_pipeline import apply_color_pipeline
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    graded = apply_color_pipeline(
+        frame,
+        log_profile=body.log_profile,
+        lut_path=body.lut_path,
+    )
+
+    # Encode as JPEG for preview
+    import subprocess
+    import io
+    h, w, _ = graded.shape
+    try:
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}",
+            "-i", "pipe:0",
+            "-vframes", "1",
+            "-f", "image2", "-vcodec", "mjpeg",
+            "-q:v", "4",
+            "pipe:1",
+        ]
+        proc = subprocess.run(cmd, input=graded.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode != 0:
+            return {"success": False, "error": "jpeg_encode_failed"}
+        jpeg_b64 = base64.b64encode(proc.stdout).decode("ascii")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {
+        "success": True,
+        "width": w,
+        "height": h,
+        "format": "jpeg",
+        "data": jpeg_b64,
+        "log_profile": body.log_profile,
+        "lut_path": body.lut_path,
+    }
+
+
+class CutLutImportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    source_path: str
+
+
+@router.post("/color/lut/import")
+async def cut_lut_import(body: CutLutImportRequest) -> dict[str, Any]:
+    """
+    MARKER_B18 — Import a .cube LUT file into project storage.
+    """
+    from src.services.cut_color_pipeline import import_lut
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    return import_lut(body.sandbox_root, body.source_path)
+
+
+@router.get("/color/lut/list")
+async def cut_lut_list(sandbox_root: str, project_id: str) -> dict[str, Any]:
+    """
+    MARKER_B18 — List LUT files available in project storage.
+    """
+    from src.services.cut_color_pipeline import list_project_luts
+
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    luts = list_project_luts(sandbox_root)
+    return {"success": True, "luts": luts, "count": len(luts)}
+
+
+@router.get("/color/profiles")
+async def cut_color_profiles() -> dict[str, Any]:
+    """
+    MARKER_B18 — List available camera log profiles.
+    """
+    from src.services.cut_color_pipeline import list_log_profiles
+
+    return {"success": True, "profiles": list_log_profiles()}
+
+
 @router.get("/waveform-peaks")
 async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
     """
