@@ -55,6 +55,11 @@ export type CutHotkeyAction =
   | 'selectTool'
   | 'insertEdit'
   | 'overwriteEdit'
+  // MARKER_W5.TRIM: Trim tools (FCP7 Ch.44)
+  | 'slipTool'
+  | 'slideTool'
+  | 'rippleTool'
+  | 'rollTool'
   // Markers
   | 'addMarker'
   | 'addComment'
@@ -221,6 +226,11 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectTool:        'v',
   insertEdit:        ',',
   overwriteEdit:     '.',
+  // MARKER_W5.TRIM: Premiere trim tools
+  slipTool:          'y',
+  slideTool:         'u',
+  rippleTool:        'b',
+  rollTool:          'n',
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
@@ -287,6 +297,11 @@ export const FCP7_PRESET: HotkeyMap = {
   selectTool:        'a',
   insertEdit:        'F9',
   overwriteEdit:     'F10',
+  // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
+  slipTool:          's',
+  slideTool:         'd',
+  rippleTool:        'r',
+  rollTool:          'Shift+r',
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
@@ -483,6 +498,11 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'selectTool', label: 'Selection Tool', group: 'Tools' },
   { action: 'insertEdit', label: 'Insert Edit', group: 'Tools' },
   { action: 'overwriteEdit', label: 'Overwrite Edit', group: 'Tools' },
+  // MARKER_W5.TRIM: Trim tools
+  { action: 'slipTool', label: 'Slip Tool', group: 'Tools' },
+  { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },
+  { action: 'rippleTool', label: 'Ripple Edit Tool', group: 'Tools' },
+  { action: 'rollTool', label: 'Roll Edit Tool', group: 'Tools' },
   // Markers
   { action: 'addMarker', label: 'Add Marker', group: 'Markers' },
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
