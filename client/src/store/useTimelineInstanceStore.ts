@@ -118,6 +118,14 @@ interface TimelineInstanceStoreState {
   getTimeline: (id: string) => TimelineInstance | undefined;
   updateTimeline: (id: string, partial: Partial<TimelineInstance>) => void;
 
+  // MARKER_W6.STORE: Re-snapshot from backend refresh
+  onProjectStateRefresh: (data: {
+    lanes: TimelineLane[];
+    waveforms: WaveformItem[];
+    thumbnails: ThumbnailItem[];
+    duration: number;
+  }) => void;
+
   // Serialization (C4: round-trip safe)
   serializeTimelines: () => Record<string, TimelineInstance>;
   hydrateTimelines: (data: Record<string, TimelineInstance>) => void;
@@ -187,6 +195,29 @@ export const useTimelineInstanceStore = create<TimelineInstanceStoreState>((set,
       next.set(id, { ...tl, ...partial });
       return { timelines: next };
     });
+  },
+
+  // MARKER_W6.STORE: Sync data from backend refresh into active instance
+  onProjectStateRefresh: (data: {
+    lanes: TimelineLane[];
+    waveforms: WaveformItem[];
+    thumbnails: ThumbnailItem[];
+    duration: number;
+  }) => {
+    const state = get();
+    const activeId = state.activeTimelineId;
+    if (!activeId) return;
+    const tl = state.timelines.get(activeId);
+    if (!tl) return;
+    const next = new Map(state.timelines);
+    next.set(activeId, {
+      ...tl,
+      lanes: data.lanes,
+      waveforms: data.waveforms,
+      thumbnails: data.thumbnails,
+      duration: data.duration,
+    });
+    set({ timelines: next });
   },
 
   // C4: Serialization round-trip

@@ -10,6 +10,7 @@ import {
   type CutSceneGraphView,
 } from './components/cut/sceneGraphViewportAdapter';
 import { useCutEditorStore } from './store/useCutEditorStore';
+import { useTimelineInstanceStore } from './store/useTimelineInstanceStore';
 import { usePanelSyncBridge } from './hooks/usePanelSyncBridge';
 
 type CutProject = {
@@ -766,10 +767,25 @@ export default function CutStandalone() {
   const editorSetMarkers = useCutEditorStore((s) => s.setMarkers);
   const editorSetSession = useCutEditorStore((s) => s.setEditorSession);
   const editorSetSceneGraphSurfaceMode = useCutEditorStore((s) => s.setSceneGraphSurfaceMode);
+  // MARKER_W6.STORE: Also sync to instance store for multi-timeline
+  const instanceRefresh = useTimelineInstanceStore((s) => s.onProjectStateRefresh);
 
   useEffect(() => {
     editorSetLanes(timelineLanes);
-  }, [timelineLanes, editorSetLanes]);
+    // MARKER_W6.STORE: Mirror to instance store
+    instanceRefresh({
+      lanes: timelineLanes,
+      waveforms: waveformItems as any,
+      thumbnails: thumbnailItems as any,
+      duration: timelineLanes.reduce((max, lane) => {
+        for (const clip of lane.clips) {
+          const end = clip.start_sec + clip.duration_sec;
+          if (end > max) max = end;
+        }
+        return max;
+      }, 0),
+    });
+  }, [timelineLanes, editorSetLanes, instanceRefresh]);
   useEffect(() => {
     editorSetWaveforms(waveformItems as Array<{ item_id: string; source_path: string; waveform_bins?: number[]; degraded_mode?: boolean }>);
   }, [waveformItems, editorSetWaveforms]);
