@@ -75,6 +75,9 @@ export type CutHotkeyAction =
   | 'extractClip'
   | 'closeGap'
   | 'extendEdit'
+  // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
+  | 'splitEditLCut'
+  | 'splitEditJCut'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
@@ -173,6 +176,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   extractClip:         ['timeline'],
   closeGap:            ['timeline'],
   extendEdit:          ['timeline'],
+  splitEditLCut:       ['timeline'],
+  splitEditJCut:       ['timeline'],
 
   // Global — always fire
   undo:                'global',
@@ -241,6 +246,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   extractClip:       "'",
   closeGap:          'Alt+Backspace',
   extendEdit:        'e',
+  // MARKER_SPLIT-EDIT: L-cut / J-cut
+  splitEditLCut:     'Alt+e',
+  splitEditJCut:     'Alt+Shift+e',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -322,6 +330,8 @@ export const FCP7_PRESET: HotkeyMap = {
   extractClip:       "'",
   closeGap:          'Alt+Backspace',
   extendEdit:        'e',
+  splitEditLCut:     'Alt+e',
+  splitEditJCut:     'Alt+Shift+e',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -564,6 +574,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'extractClip', label: 'Extract (close gap)', group: 'Sequence' },
   { action: 'closeGap', label: 'Close Gap', group: 'Sequence' },
   { action: 'extendEdit', label: 'Extend Edit', group: 'Sequence' },
+  { action: 'splitEditLCut', label: 'L-Cut (video ends, audio continues)', group: 'Sequence' },
+  { action: 'splitEditJCut', label: 'J-Cut (audio starts, video later)', group: 'Sequence' },
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
