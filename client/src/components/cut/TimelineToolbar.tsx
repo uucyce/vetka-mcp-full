@@ -76,17 +76,54 @@ const ZOOM_SLIDER: CSSProperties = {
   cursor: 'pointer',
 };
 
+// MARKER_W6.TOOL-SM: Tool display config
+const TOOL_DISPLAY: Record<string, { label: string; shortcut: string; color: string }> = {
+  selection: { label: 'Select', shortcut: 'V', color: '#ccc' },
+  razor:     { label: 'Razor',  shortcut: 'C', color: '#f87171' },
+  slip:      { label: 'Slip',   shortcut: 'Y', color: '#4ade80' },
+  slide:     { label: 'Slide',  shortcut: 'U', color: '#60a5fa' },
+  ripple:    { label: 'Ripple', shortcut: 'B', color: '#fbbf24' },
+  roll:      { label: 'Roll',   shortcut: 'N', color: '#c084fc' },
+  hand:      { label: 'Hand',   shortcut: 'H', color: '#888' },
+  zoom:      { label: 'Zoom',   shortcut: 'Z', color: '#888' },
+};
+
+const TOOL_INDICATOR: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 3,
+  fontSize: 9,
+  fontWeight: 700,
+  fontFamily: '"JetBrains Mono", "SF Mono", monospace',
+  letterSpacing: 0.5,
+  padding: '1px 6px',
+  borderRadius: 3,
+  background: '#1a1a1a',
+  lineHeight: '16px',
+};
+
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
+  const activeTool = useCutEditorStore((s) => s.activeTool);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
 
+  const toolInfo = TOOL_DISPLAY[activeTool] || TOOL_DISPLAY.selection;
+
   return (
     <div style={ROOT}>
+      {/* MARKER_W6.TOOL-SM: Active tool indicator */}
+      <div style={{ ...TOOL_INDICATOR, color: toolInfo.color }} title={`Active tool: ${toolInfo.label} (${toolInfo.shortcut})`}>
+        <span style={{ fontSize: 7, opacity: 0.5 }}>{toolInfo.shortcut}</span>
+        {toolInfo.label}
+      </div>
+
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+
       {/* Snap toggle */}
       <button
         style={{
