@@ -40,11 +40,19 @@ const STATUS_BAR: CSSProperties = {
   padding: '2px 8px', fontSize: 9, color: '#555', borderTop: '1px solid #1a1a1a', flexShrink: 0,
 };
 
+type BroadcastSafeData = {
+  over_white_pct: number;
+  under_black_pct: number;
+  chroma_illegal_pct: number;
+  total_illegal_pct: number;
+};
+
 type ScopeData = {
   histogram?: { r: number[]; g: number[]; b: number[] };
   waveform?: number[][];
   vectorscope?: number[][];
   parade?: { r: number[][]; g: number[][]; b: number[][] };
+  broadcast_safe?: BroadcastSafeData;
   frame_w?: number;
   frame_h?: number;
 };
@@ -212,8 +220,10 @@ export default function VideoScopes() {
     fetchTimerRef.current = window.setTimeout(async () => {
       setLoading(true); setError(null);
       try {
+        // MARKER_B26: Always fetch broadcast_safe alongside active scope
         const scopeParam = mode === 'parade' ? 'parade' : mode;
-        let url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopeParam}&size=256`;
+        const scopesList = `${scopeParam},broadcast_safe`;
+        let url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopesList}&size=256`;
 
         // MARKER_B25: Append grading params for post-grade scopes
         if (postGrade && selectedClipCC) {
@@ -280,10 +290,22 @@ export default function VideoScopes() {
           : error ? <span style={{ color: '#ef4444', fontSize: 10 }}>{error}</span>
           : <canvas ref={canvasRef} data-testid="scope-canvas" />}
       </div>
-      <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
         <span>
           {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
         </span>
+        {/* MARKER_B26: Broadcast safe indicator */}
+        {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct > 0 && (
+          <span
+            style={{ fontSize: 8, color: scopeData.broadcast_safe.total_illegal_pct > 5 ? '#ef4444' : '#f59e0b' }}
+            title={`Over white: ${scopeData.broadcast_safe.over_white_pct}% | Under black: ${scopeData.broadcast_safe.under_black_pct}% | Chroma: ${scopeData.broadcast_safe.chroma_illegal_pct}%`}
+          >
+            {scopeData.broadcast_safe.total_illegal_pct > 5 ? 'ILLEGAL' : 'WARN'} {scopeData.broadcast_safe.total_illegal_pct}%
+          </span>
+        )}
+        {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct === 0 && (
+          <span style={{ fontSize: 8, color: '#22c55e' }}>SAFE</span>
+        )}
         {/* MARKER_B25: Pre-grade / Post-grade toggle */}
         <button
           onClick={() => setPostGrade((v) => !v)}

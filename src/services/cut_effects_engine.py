@@ -261,6 +261,15 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         },
     ),
 
+    # === MARKER_B26: Broadcast Safe ===
+    "broadcast_safe": EffectDef(
+        type="broadcast_safe", label="Broadcast Safe", category="color",
+        params_schema={
+            "mode": {"type": "str", "default": "clamp",
+                     "options": ["clamp", "compress"]},
+        },
+    ),
+
     # === Time ===
     "fade_in": EffectDef(
         type="fade_in", label="Fade In", category="time",
@@ -444,6 +453,16 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
             w, h = int(p.get("w", 0)), int(p.get("h", 0))
             if w > 0 and h > 0:
                 filters.append(f"crop={w}:{h}:{x}:{y}")
+
+        elif t == "broadcast_safe":
+            # MARKER_B26: Broadcast Safe — clamp luma 16-235, chroma 16-240
+            mode = str(p.get("mode", "clamp"))
+            if mode == "compress":
+                # Compress full range into legal range (preserves detail)
+                filters.append("scale=in_range=full:out_range=tv")
+            else:
+                # Hard clamp via limiter filter
+                filters.append("limiter=min=16:max=235:planes=1")
 
         elif t == "hflip":
             filters.append("hflip")
