@@ -94,13 +94,7 @@ const IO_BTN: CSSProperties = {
 
 // ─── Helpers ───
 
-function formatTC(seconds: number, fps = 25): string {
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
-  const f = Math.floor((seconds % 1) * fps);
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
-}
+// MARKER_W5.TC: formatTC replaced by TimecodeField component and formatTimecodeDisplay import
 
 // ─── Component ───
 
@@ -137,8 +131,8 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
   const handleSkipStart = useCallback(() => seek(0), [seek]);
   const handleSkipEnd = useCallback(() => seek(duration), [seek, duration]);
-  const handleStepBack = useCallback(() => seek(Math.max(0, currentTime - 1 / 25)), [seek, currentTime]);
-  const handleStepForward = useCallback(() => seek(Math.min(duration, currentTime + 1 / 25)), [seek, currentTime, duration]);
+  const handleStepBack = useCallback(() => seek(Math.max(0, currentTime - 1 / projectFramerate)), [seek, currentTime, projectFramerate]);
+  const handleStepForward = useCallback(() => seek(Math.min(duration, currentTime + 1 / projectFramerate)), [seek, currentTime, duration, projectFramerate]);
 
   // MARKER_FIX-MONITOR-1: Navigate edit points (clip boundaries)
   const lanes = useCutEditorStore((s) => s.lanes);

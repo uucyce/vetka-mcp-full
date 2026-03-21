@@ -334,41 +334,131 @@ export default function MenuBar() {
       label: 'Mark',
       items: [
         { label: 'Mark In', shortcut: 'I', action: () => {
-          store.getState().setMarkIn(store.getState().currentTime);
+          const s = store.getState();
+          if (s.focusedPanel === 'source') s.setSourceMarkIn(s.currentTime);
+          else s.setSequenceMarkIn(s.currentTime);
         }},
         { label: 'Mark Out', shortcut: 'O', action: () => {
-          store.getState().setMarkOut(store.getState().currentTime);
+          const s = store.getState();
+          if (s.focusedPanel === 'source') s.setSourceMarkOut(s.currentTime);
+          else s.setSequenceMarkOut(s.currentTime);
+        }},
+        { label: 'Mark Clip', shortcut: 'X', action: () => {
+          const s = store.getState();
+          if (!s.selectedClipId) return;
+          for (const lane of s.lanes) {
+            const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+            if (clip) {
+              s.setMarkIn(clip.start_sec);
+              s.setMarkOut(clip.start_sec + clip.duration_sec);
+              return;
+            }
+          }
         }},
         { separator: true },
         { label: 'Go to In', shortcut: '⇧I', action: () => {
-          const m = store.getState().markIn;
-          if (m != null) store.getState().seek(m);
+          const s = store.getState();
+          const m = s.focusedPanel === 'source' ? s.sourceMarkIn : s.sequenceMarkIn;
+          if (m != null) s.seek(m);
         }},
         { label: 'Go to Out', shortcut: '⇧O', action: () => {
-          const m = store.getState().markOut;
-          if (m != null) store.getState().seek(m);
+          const s = store.getState();
+          const m = s.focusedPanel === 'source' ? s.sourceMarkOut : s.sequenceMarkOut;
+          if (m != null) s.seek(m);
         }},
         { separator: true },
-        { label: 'Clear In', shortcut: '⌥I', action: () => store.getState().setMarkIn(null) },
-        { label: 'Clear Out', shortcut: '⌥O', action: () => store.getState().setMarkOut(null) },
+        { label: 'Clear In', shortcut: '⌥I', action: () => {
+          const s = store.getState();
+          if (s.focusedPanel === 'source') s.setSourceMarkIn(null);
+          else s.setSequenceMarkIn(null);
+        }},
+        { label: 'Clear Out', shortcut: '⌥O', action: () => {
+          const s = store.getState();
+          if (s.focusedPanel === 'source') s.setSourceMarkOut(null);
+          else s.setSequenceMarkOut(null);
+        }},
         { label: 'Clear In and Out', shortcut: '⌥X', action: () => {
-          store.getState().setMarkIn(null);
-          store.getState().setMarkOut(null);
+          const s = store.getState();
+          if (s.focusedPanel === 'source') { s.setSourceMarkIn(null); s.setSourceMarkOut(null); }
+          else { s.setSequenceMarkIn(null); s.setSequenceMarkOut(null); }
         }},
         { separator: true },
-        { label: 'Add Marker', shortcut: 'M', disabled: true },
+        { label: 'Play', submenu: [
+          { label: 'Play In to Out', shortcut: '⇧\\', action: () => {
+            const s = store.getState();
+            const inPt = s.focusedPanel === 'source' ? s.sourceMarkIn : s.sequenceMarkIn;
+            const outPt = s.focusedPanel === 'source' ? s.sourceMarkOut : s.sequenceMarkOut;
+            if (inPt == null || outPt == null || outPt <= inPt) return;
+            s.seek(inPt);
+            s.play();
+          }},
+          { label: 'Play Around Current', shortcut: '\\', action: () => {
+            const s = store.getState();
+            s.seek(Math.max(0, s.currentTime - 2));
+            s.play();
+          }},
+        ]},
+        { separator: true },
+        { label: 'Markers', submenu: [
+          { label: 'Add Marker', shortcut: 'M', action: () => {
+            // Dispatch to hotkey handler (marker creation requires API call context)
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
+          }},
+          { label: 'Add Comment Marker', shortcut: '⇧M', action: () => {
+            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', shiftKey: true }));
+          }},
+          { separator: true },
+          { label: 'Next Marker', shortcut: '⇧↓', action: () => {
+            const s = store.getState();
+            const sorted = [...s.markers].sort((a, b) => a.start_sec - b.start_sec);
+            const next = sorted.find((m) => m.start_sec > s.currentTime + 0.001);
+            if (next) s.seek(next.start_sec);
+          }},
+          { label: 'Previous Marker', shortcut: '⇧↑', action: () => {
+            const s = store.getState();
+            const sorted = [...s.markers].sort((a, b) => b.start_sec - a.start_sec);
+            const prev = sorted.find((m) => m.start_sec < s.currentTime - 0.001);
+            if (prev) s.seek(prev.start_sec);
+          }},
+          { separator: true },
+          { label: 'Delete Marker', action: () => {
+            const s = store.getState();
+            const atPlayhead = s.markers.find((m) =>
+              s.currentTime >= m.start_sec - 0.05 && s.currentTime <= m.end_sec + 0.05
+            );
+            if (atPlayhead) {
+              s.setMarkers(s.markers.filter((m) => m.marker_id !== atPlayhead.marker_id));
+            }
+          }},
+        ]},
       ],
     },
     {
       label: 'Clip',
       items: [
-        { label: 'Insert', shortcut: ',', disabled: true },
-        { label: 'Overwrite', shortcut: '.', disabled: true },
+        { label: 'Insert', shortcut: ',', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
+        }},
+        { label: 'Overwrite', shortcut: '.', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
+        }},
         { separator: true },
         { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
+        { label: 'Make Subclip', disabled: true },
+        { label: 'Freeze Frame', disabled: true },
         { separator: true },
-        { label: 'Link/Unlink', shortcut: '⌘L', disabled: true },
+        { label: 'Link/Unlink', shortcut: '⌘L', action: () => {
+          store.getState().toggleLinkedSelection();
+        }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
+        { separator: true },
+        { label: 'Composite Mode', submenu: [
+          { label: 'Normal', disabled: true },
+          { label: 'Add', disabled: true },
+          { label: 'Multiply', disabled: true },
+          { label: 'Screen', disabled: true },
+          { label: 'Difference', disabled: true },
+        ]},
       ],
     },
     {
