@@ -21,6 +21,7 @@ import { useMemo, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
+import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 import DockviewLayout from './DockviewLayout';
 import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
@@ -65,6 +66,9 @@ interface CutEditorLayoutV2Props {
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   // ─── MARKER_W4.3: Autosave + manual save ───
   const { saveProject } = useCutAutosave();
+
+  // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
+  const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
@@ -176,77 +180,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setLanes(newLanes);
     },
 
-    // MARKER_W3.2: Insert/Overwrite with track targeting
-    insertEdit: () => {
-      const s = useCutEditorStore.getState();
-      if (!s.sourceMediaPath) return;
-      const markIn = s.sourceMarkIn ?? 0;
-      const markOut = s.sourceMarkOut ?? s.duration;
-      if (markOut <= markIn) return;
-      const clipDur = markOut - markIn;
-      const insertAt = s.currentTime;
-      const targets = s.getInsertTargets();
-      const targetLaneId = targets.videoLaneId;
-      if (!targetLaneId) return;
-      // Insert: push all clips at/after insertAt to the right by clipDur
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== targetLaneId) return lane;
-        const pushed = lane.clips.map((c) =>
-          c.start_sec >= insertAt ? { ...c, start_sec: c.start_sec + clipDur } : c,
-        );
-        const newClip = {
-          clip_id: `clip_${Date.now()}`,
-          source_path: s.sourceMediaPath!,
-          start_sec: insertAt,
-          duration_sec: clipDur,
-        };
-        return { ...lane, clips: [...pushed, newClip] };
-      });
-      s.setLanes(newLanes);
-      s.seek(insertAt + clipDur);
-    },
-    overwriteEdit: () => {
-      const s = useCutEditorStore.getState();
-      if (!s.sourceMediaPath) return;
-      const markIn = s.sourceMarkIn ?? 0;
-      const markOut = s.sourceMarkOut ?? s.duration;
-      if (markOut <= markIn) return;
-      const clipDur = markOut - markIn;
-      const insertAt = s.currentTime;
-      const targets = s.getInsertTargets();
-      const targetLaneId = targets.videoLaneId;
-      if (!targetLaneId) return;
-      // Overwrite: remove overlapping portions, then add new clip
-      const overEnd = insertAt + clipDur;
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== targetLaneId) return lane;
-        const trimmed = lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          // Fully covered → remove
-          if (c.start_sec >= insertAt && cEnd <= overEnd) return [];
-          // No overlap → keep
-          if (cEnd <= insertAt || c.start_sec >= overEnd) return [c];
-          // Partial overlap — trim
-          const result = [];
-          if (c.start_sec < insertAt) {
-            result.push({ ...c, duration_sec: insertAt - c.start_sec });
-          }
-          if (cEnd > overEnd) {
-            result.push({ ...c, clip_id: c.clip_id + '_ow', start_sec: overEnd, duration_sec: cEnd - overEnd });
-          }
-          return result;
-        });
-        const newClip = {
-          clip_id: `clip_${Date.now()}`,
-          source_path: s.sourceMediaPath!,
-          start_sec: insertAt,
-          duration_sec: clipDur,
-        };
-        return { ...lane, clips: [...trimmed, newClip] };
-      });
-      s.setLanes(newLanes);
-      s.seek(insertAt + clipDur);
-    },
+    // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
+    // Source IN/OUT + Sequence IN/OUT → auto-calculate 4th point
+    // Comma (,) = Insert (ripple). Period (.) = Overwrite (replace).
+    // Wired to useThreePointEdit hook which calls backend insert_at/overwrite_at.
+    insertEdit: () => { void threePointInsert(); },
+    overwriteEdit: () => { void threePointOverwrite(); },
 
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {
@@ -316,6 +255,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Tools
     razorTool: () => useCutEditorStore.getState().setActiveTool('razor'),
     selectTool: () => useCutEditorStore.getState().setActiveTool('selection'),
+    // MARKER_W5.TRIM: Trim tool hotkeys
+    slipTool: () => useCutEditorStore.getState().setActiveTool('slip'),
+    slideTool: () => useCutEditorStore.getState().setActiveTool('slide'),
+    rippleTool: () => useCutEditorStore.getState().setActiveTool('ripple'),
+    rollTool: () => useCutEditorStore.getState().setActiveTool('roll'),
 
     // View
     zoomIn: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.min(s.zoom * 1.25, 500)); },
@@ -347,7 +291,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
     focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
     focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
-  }), [saveProject]);
+  }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
