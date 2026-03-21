@@ -226,6 +226,13 @@ type ClipDragState = {
   neighborRight?: { clipId: string; startSec: number; durationSec: number } | null;
 };
 
+// MARKER_DND: Drop zone state for drag-to-timeline (FCP7 insert/overwrite zones)
+type DropZoneState = {
+  laneId: string;
+  mode: 'insert' | 'overwrite';
+  timeSec: number;  // where the drop would land on timeline
+};
+
 type MarkerKind = 'favorite' | 'comment' | 'cam' | 'insight';
 
 type MarkerDraftState = {
@@ -505,6 +512,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   });
 
   const [dragState, setDragState] = useState<ClipDragState | null>(null);
+  const [dropZone, setDropZone] = useState<DropZoneState | null>(null);
   const [scrubActive, setScrubActive] = useState(false);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraftState | null>(null);
   const [contextMenu, setContextMenu] = useState<ClipContextMenuState | null>(null);
@@ -955,6 +963,60 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       openMarkerDraft(event.clientX, event.clientY, timeSec, laneId);
     },
     [openMarkerDraft, seek, timeFromTrackClientX]
+  );
+
+  // MARKER_DND: Drag-to-Timeline handlers (FCP7 insert/overwrite zones)
+  const handleLaneDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      const rect = laneEl.getBoundingClientRect();
+      const relY = event.clientY - rect.top;
+      const laneH = rect.height;
+      const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
+      const timeSec = timeFromTrackClientX(event.clientX);
+      setDropZone({ laneId, mode, timeSec });
+    },
+    [timeFromTrackClientX]
+  );
+
+  const handleLaneDragLeave = useCallback(() => {
+    setDropZone(null);
+  }, []);
+
+  const handleLaneDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
+      event.preventDefault();
+      const rect = laneEl.getBoundingClientRect();
+      const relY = event.clientY - rect.top;
+      const laneH = rect.height;
+      const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
+      const dropTime = timeFromTrackClientX(event.clientX);
+
+      // Read dragged media path from dataTransfer
+      const mediaPath = event.dataTransfer.getData('text/cut-media-path')
+        || event.dataTransfer.getData('text/plain')
+        || '';
+
+      if (mediaPath) {
+        const s = useCutEditorStore.getState();
+        // Set source media so insert/overwrite handlers can use it
+        s.setSourceMedia(mediaPath);
+        // Seek to drop position
+        s.seek(dropTime);
+
+        // Use existing insert/overwrite logic from hotkey handlers
+        // Dispatch synthetic key event to trigger the handler
+        if (mode === 'insert') {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
+        } else {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
+        }
+      }
+
+      setDropZone(null);
+    },
+    [timeFromTrackClientX]
   );
 
   // MARKER_W3.6: Razor tool — click on clip splits at click position
@@ -1715,6 +1777,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 style={{ ...LANE_CONTENT, cursor: TOOL_CURSOR[activeTool] || 'default' }}
                 onClick={handleTrackClick}
                 onDoubleClick={(event) => handleTrackDoubleClick(event, lane.lane_id)}
+                onDragOver={(event) => handleLaneDragOver(event, lane.lane_id, event.currentTarget)}
+                onDragLeave={handleLaneDragLeave}
+                onDrop={(event) => handleLaneDrop(event, lane.lane_id, event.currentTarget)}
               >
                 {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
                 <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
@@ -1929,6 +1994,52 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     />
                   );
                 })}
+                {/* MARKER_DND: Drop zone visual indicator */}
+                {dropZone && dropZone.laneId === lane.lane_id ? (
+                  <>
+                    {/* Zone highlight — upper 1/3 insert (green), lower 2/3 overwrite (blue) */}
+                    <div style={{
+                      position: 'absolute',
+                      left: 0,
+                      right: 0,
+                      top: 0,
+                      height: dropZone.mode === 'insert' ? `${Math.round(laneH / 3)}px` : '100%',
+                      background: dropZone.mode === 'insert'
+                        ? 'rgba(74, 222, 128, 0.12)'
+                        : 'rgba(96, 165, 250, 0.12)',
+                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(74, 222, 128, 0.6)' : undefined,
+                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(96, 165, 250, 0.6)' : undefined,
+                      pointerEvents: 'none',
+                      zIndex: 50,
+                    }} />
+                    {/* Drop position indicator line */}
+                    <div style={{
+                      position: 'absolute',
+                      left: dropZone.timeSec * zoom - scrollLeft,
+                      top: 0,
+                      width: 2,
+                      height: '100%',
+                      background: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      pointerEvents: 'none',
+                      zIndex: 51,
+                    }} />
+                    {/* Mode label */}
+                    <div style={{
+                      position: 'absolute',
+                      left: dropZone.timeSec * zoom - scrollLeft + 6,
+                      top: dropZone.mode === 'insert' ? 2 : laneH / 3 + 2,
+                      fontSize: 9,
+                      fontWeight: 700,
+                      fontFamily: 'monospace',
+                      color: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                      pointerEvents: 'none',
+                      zIndex: 52,
+                    }}>
+                      {dropZone.mode === 'insert' ? 'INSERT' : 'OVERWRITE'}
+                    </div>
+                  </>
+                ) : null}
               </div>
               {/* MARKER_TIMELINE-1: Drag-to-resize handle on bottom edge */}
               <div
