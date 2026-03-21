@@ -179,6 +179,7 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
+// MARKER_W6.IMPORT-FIX: Infer folder path from file list (Tauri native or browser webkitdirectory)
 function inferFolderPath(files: FileList | null): string {
   if (!files || files.length === 0) return '';
   const first = files[0] as File & { path?: string; webkitRelativePath?: string };
@@ -186,7 +187,9 @@ function inferFolderPath(files: FileList | null): string {
   if (typeof first.path === 'string' && first.path) {
     return first.path.replace(/[\\/][^\\/]+$/, '');
   }
-  // Browser: no native path, return empty
+  // Browser webkitdirectory: webkitRelativePath = "folder/subfolder/file.mp4"
+  // We can't get absolute path in browser — return empty for now
+  // The uploadAndImport flow handles browser mode
   return '';
 }
 
@@ -245,11 +248,16 @@ export default function ProjectPanel() {
     fileInputRef.current?.click();
   }, [importing]);
 
-  // ─── Listen for Cmd+I from TransportBar hotkey ───
+  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
   useEffect(() => {
     const handler = () => openFilePicker();
+    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
+    window.addEventListener('cut:import-media', handler);
     window.addEventListener('cut:trigger-import', handler);
-    return () => window.removeEventListener('cut:trigger-import', handler);
+    return () => {
+      window.removeEventListener('cut:import-media', handler);
+      window.removeEventListener('cut:trigger-import', handler);
+    };
   }, [openFilePicker]);
 
   // ─── Job polling — returns the completed job result ───
@@ -351,8 +359,34 @@ export default function ProjectPanel() {
       }
       setImportProgress(0.8);
 
-      // Step 3: Refresh project state → populates thumbnails + lanes in store
+      // MARKER_W6.IMPORT-FIX: Refresh project state → populates thumbnails + lanes in store.
+      // Call refreshProjectState from store, but also trigger a direct re-fetch
+      // because the closure may have stale projectId.
       await refreshProjectState?.();
+      // Fallback: direct fetch to force store hydration with correct pid
+      try {
+        const stateRes = await fetch(
+          `${API_BASE}/cut/project-state?sandbox_root=${encodeURIComponent(sandboxRoot)}&project_id=${encodeURIComponent(pid)}`
+        );
+        if (stateRes.ok) {
+          const statePayload = await stateRes.json();
+          if (statePayload.success) {
+            const tl = statePayload.timeline_state;
+            if (tl?.lanes) {
+              useCutEditorStore.getState().setLanes(tl.lanes);
+            }
+            if (tl?.markers) {
+              useCutEditorStore.getState().setMarkers(tl.markers);
+            }
+            useCutEditorStore.getState().setEditorSession({
+              sandboxRoot,
+              projectId: pid,
+              sourcePath: trimmed,
+              timelineId: String(tl?.timeline_id || 'main'),
+            });
+          }
+        }
+      } catch { /* non-critical fallback */ }
       setImportStatus(`Imported ${labelForPath(trimmed)}`);
       setImportProgress(1);
     } catch (err) {
@@ -537,10 +571,13 @@ export default function ProjectPanel() {
             : 'Double-click or press ⌘I to import media'}
         </div>
 
-        {/* Hidden file picker — accepts media files */}
+        {/* MARKER_W6.IMPORT-FIX: Hidden file picker — folder mode for NLE import */}
         <input
           ref={fileInputRef}
           type="file"
+          // @ts-expect-error -- webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
+          directory=""
           multiple
           accept={MEDIA_ACCEPT}
           style={{ display: 'none' }}
