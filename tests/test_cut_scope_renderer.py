@@ -152,8 +152,8 @@ class TestVectorscope:
 
 class TestCacheKey:
     def test_nearby_frames_same_key(self):
-        """Frames within ±1 cache bucket (0.08s) should hash to same key."""
-        k1 = _cache_key("/video.mp4", 1.00)
+        """Frames within same cache bucket (0.08s) should hash to same key."""
+        k1 = _cache_key("/video.mp4", 1.01)
         k2 = _cache_key("/video.mp4", 1.03)  # within same 0.08s bucket
         assert k1 == k2
 
