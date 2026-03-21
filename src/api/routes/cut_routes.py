@@ -4438,6 +4438,21 @@ async def cut_scopes_analyze(
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B24: Camera Log auto-detect from metadata
+# ---------------------------------------------------------------------------
+
+
+@router.get("/probe/log-detect")
+async def cut_probe_log_detect(source_path: str) -> dict[str, Any]:
+    """
+    MARKER_B24 — Probe video file and auto-detect camera log profile.
+    Returns metadata + log detection (profile, gamut, camera, confidence).
+    """
+    from src.services.cut_codec_probe import probe_and_detect_log
+    return probe_and_detect_log(source_path)
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B23: LUT Browser — import, list, preview, delete
 # ---------------------------------------------------------------------------
 
