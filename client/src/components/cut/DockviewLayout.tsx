@@ -40,12 +40,14 @@ import {
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
+import ColorCorrectionPanel from './ColorCorrectionPanel';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
 
 const EffectsPanelDock = () => <EffectsPanel />;
 const VideoScopesPanelDock = () => <VideoScopes />;
+const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -59,6 +61,7 @@ const PANEL_COMPONENTS = {
   effects: EffectsPanelDock,
   mixer: AudioMixerPanelDock,
   scopes: VideoScopesPanelDock,
+  colorcorrector: ColorCorrectorPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -200,6 +203,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'scopes',
       component: 'scopes',
       title: 'Scopes',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // MARKER_CC3WAY: Color Corrector 3-Way panel (Analysis tab group)
+    event.api.addPanel({
+      id: 'colorcorrector',
+      component: 'colorcorrector',
+      title: 'Color',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
