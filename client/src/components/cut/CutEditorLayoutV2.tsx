@@ -28,6 +28,7 @@ import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SaveIndicator from './SaveIndicator';
+import DebugShellPanel from './DebugShellPanel';
 
 // ─── Styles ───
 
@@ -561,10 +562,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     };
   }, [shuttleSpeed]);
 
+  const viewMode = useCutEditorStore((s) => s.viewMode);
+
   return (
     <div style={ROOT} data-testid="cut-editor-layout">
       <MenuBar />
-      <DockviewLayout scriptText={scriptText} />
+      {viewMode === 'debug' ? <DebugShellPanel /> : <DockviewLayout scriptText={scriptText} />}
       <ProjectSettings />
       <ExportDialog />
       <SaveIndicator />

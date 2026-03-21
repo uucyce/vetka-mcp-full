@@ -256,6 +256,14 @@ interface CutEditorState {
   viewMode: 'nle' | 'debug'; // toggle between NLE and legacy debug view
   sceneGraphSurfaceMode: 'shell_only' | 'nle_ready';
 
+  // === Debug shell state (MARKER_QA.W5.1) ===
+  debugProjectState: Record<string, unknown> | null;
+  debugStatus: string;
+  debugHandlers: Record<string, (() => void | Promise<void>)> | null;
+  setDebugProjectState: (state: Record<string, unknown> | null) => void;
+  setDebugStatus: (status: string) => void;
+  setDebugHandlers: (handlers: Record<string, (() => void | Promise<void>)>) => void;
+
   // === Actions ===
   play: () => void;
   pause: () => void;
@@ -529,6 +537,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // Layout
   viewMode: 'nle',
+  debugProjectState: null,
+  debugStatus: 'Idle',
+  debugHandlers: null,
   sceneGraphSurfaceMode: 'shell_only',
 
   // Actions
@@ -892,6 +903,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
   setHoveredClip: (id) => set({ hoveredClipId: id }),
   setViewMode: (mode) => set({ viewMode: mode }),
+  setDebugProjectState: (state) => set({ debugProjectState: state }),
+  setDebugStatus: (status) => set({ debugStatus: status }),
+  setDebugHandlers: (handlers) => set({ debugHandlers: handlers }),
   setSceneGraphSurfaceMode: (mode) => set({ sceneGraphSurfaceMode: mode }),
   // MARKER_W1.2: Panel Focus
   setFocusedPanel: (panel) => set({ focusedPanel: panel }),

@@ -515,6 +515,13 @@ function persistSceneGraphPaneMode(mode: 'embedded' | 'peer_pane') {
 }
 
 export default function CutStandalone() {
+  // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E tests and Chrome DevTools.
+  // useEffect guarantees this runs after React mount, when all ESM modules are fully
+  // resolved — avoids circular dependency issues with top-level module side-effects.
+  useEffect(() => {
+    (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
+  }, []);
+
   // MARKER_W1.1: Bridge PanelSyncStore → EditorStore (script/DAG clicks → source monitor + playhead)
   usePanelSyncBridge();
 
@@ -813,6 +820,17 @@ export default function CutStandalone() {
   useEffect(() => {
     editorSetSceneGraphSurfaceMode(sceneGraphPaneMode === 'peer_pane' ? 'nle_ready' : 'shell_only');
   }, [sceneGraphPaneMode, editorSetSceneGraphSurfaceMode]);
+
+  // MARKER_QA.W5.1: Sync debug shell state → editor store for DebugShellPanel
+  const editorSetDebugState = useCutEditorStore((s) => s.setDebugProjectState);
+  const editorSetDebugStatus = useCutEditorStore((s) => s.setDebugStatus);
+  const editorSetDebugHandlers = useCutEditorStore((s) => s.setDebugHandlers);
+  useEffect(() => {
+    editorSetDebugState(projectState as Record<string, unknown> | null);
+  }, [projectState, editorSetDebugState]);
+  useEffect(() => {
+    editorSetDebugStatus(status);
+  }, [status, editorSetDebugStatus]);
 
   async function handleBootstrap() {
     setBusy(true);
@@ -1492,6 +1510,22 @@ export default function CutStandalone() {
       setBusy(false);
     }
   }
+
+  // MARKER_QA.W5.1: Expose debug handlers to store for DebugShellPanel
+  useEffect(() => {
+    editorSetDebugHandlers({
+      bootstrap: handleBootstrap,
+      sceneAssembly: handleSceneAssembly,
+      selectFirstClip: handleSelectFirstClip,
+      waveformBuild: handleWaveformBuild,
+      audioSyncBuild: handleAudioSyncBuild,
+      timecodeSyncBuild: handleTimecodeSyncBuild,
+      pauseSliceBuild: handlePauseSliceBuild,
+      thumbnailBuild: handleThumbnailBuild,
+      metaSync: handleRunMetaSync,
+      refreshProjectState: () => refreshProjectState(projectId),
+    });
+  });
 
   return <CutEditorLayoutV2 scriptText={scriptText} />;
 }
