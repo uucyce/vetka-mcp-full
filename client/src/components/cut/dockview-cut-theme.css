@@ -145,10 +145,14 @@
   border: 1px solid rgba(255, 255, 255, 0.15) !important;
 }
 
-/* ═══ Resize sash — invisible until hover ═══════════════════════════ */
+/* ═══ Resize sash — MARKER_DOCK-FIX-3: ensure draggable in Tauri prod ═ */
 
 .dockview-theme-dark .dv-sash {
   background-color: transparent !important;
+  pointer-events: auto !important;
+  min-width: 4px !important;
+  min-height: 4px !important;
+  z-index: 10 !important;
 }
 .dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark .dv-sash.dv-active {
@@ -168,25 +172,22 @@
   padding: 0 4px !important;
 }
 
-/* ═══ Kill ALL remaining blue — nuclear override ════════════════════ */
-/* MARKER_DOCK-FIX-2: Dockview uses #4a9eff / rgb(0,12,24) internally.
-   Previous *:not() missed pseudo-elements and deeply nested internals. */
-
-.dockview-theme-dark *:not(.lane-clip):not(.marker-dot) {
-  border-color: #222 !important;
-}
+/* ═══ Kill remaining blue — targeted overrides (NO wildcard *) ══════ */
+/* MARKER_DOCK-FIX-3: Previous wildcard (*) override broke dockview drag/resize
+   in Tauri production builds. Now targets only structural dockview elements. */
 
 /* Dockview group header border (active panel indicator) */
 .dockview-theme-dark .dv-tabs-container {
   border-bottom-color: #222 !important;
 }
 
-/* Panel highlight border when dragging over */
+/* Panel highlight border when dragging over — MARKER_DOCK-FIX-3: keep pointer-events */
 .dockview-theme-dark .dv-drop-target-content,
 .dockview-theme-dark .dv-overlay-render-container,
 .dockview-theme-dark .dv-render-overlay {
   border-color: rgba(255, 255, 255, 0.1) !important;
   outline: none !important;
+  pointer-events: auto !important;
 }
 
 /* Active group outline — dockview adds blue outline on focus */
@@ -217,11 +218,12 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
 
-/* Tab drag indicator / ghost */
+/* Tab drag indicator / ghost — MARKER_DOCK-FIX-3: ensure visible + interactive */
 .dockview-theme-dark .dv-tab-drag-ghost,
 .dockview-theme-dark .dv-tab-ghost {
   border-color: #555 !important;
   background-color: #1a1a1a !important;
+  pointer-events: none !important;
 }
 
 /* Restore specific borders that need different colors */
@@ -236,10 +238,10 @@
   border-color: transparent !important;
 }
 
-/* Final insurance: any element with inline blue style */
-.dockview-theme-dark [style*="border-color: rgb(0, 12, 24)"],
-.dockview-theme-dark [style*="border-color: #4a9eff"],
-.dockview-theme-dark [style*="outline-color: #4a9eff"] {
+/* Final insurance: blue inline styles — only on non-interactive containers */
+.dockview-theme-dark .dv-groupview[style*="border-color: rgb(0, 12, 24)"],
+.dockview-theme-dark .dv-groupview[style*="border-color: #4a9eff"],
+.dockview-theme-dark .dv-content-container[style*="outline-color: #4a9eff"] {
   border-color: #222 !important;
   outline-color: transparent !important;
 }
