@@ -10,7 +10,7 @@
  *
  * @phase 196
  */
-import { useCallback, useRef, useMemo } from 'react';
+import { useCallback, useRef, useMemo, useEffect } from 'react';
 import {
   DockviewReact,
   type DockviewApi,
@@ -92,19 +92,53 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef } = useDockviewStore();
 
+  // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
+  useEffect(() => {
+    for (const preset of ['editing', 'color', 'audio', 'custom'] as const) {
+      try {
+        const raw = localStorage.getItem('cut_dockview_' + preset);
+        if (!raw) continue;
+        const json = JSON.parse(raw);
+        const panels = json?.panels?.data;
+        if (!Array.isArray(panels)) continue;
+        const ids = panels.map((p: any) => p?.id).filter(Boolean);
+        if (ids.length !== new Set(ids).size) {
+          console.warn(`[CUT] Removing corrupt layout "${preset}" (duplicate panels)`);
+          localStorage.removeItem('cut_dockview_' + preset);
+        }
+      } catch { /* ignore parse errors */ }
+    }
+  }, []);
+
   const onReady = useCallback((event: DockviewReadyEvent) => {
     apiRef.current = event.api;
     // MARKER_C5: Expose API to store for workspace preset switching
     setApiRef(event.api);
 
-    // Try restoring saved layout
+    // MARKER_W6.DEDUP: Try restoring saved layout with duplicate panel guard
     const saved = loadLayout(activePreset);
     if (saved) {
       try {
-        event.api.fromJSON(saved);
-        return;
+        // Validate: check for duplicate panel IDs in saved layout
+        const panels = (saved as any)?.panels?.data;
+        if (Array.isArray(panels)) {
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
+          const uniqueIds = new Set(ids);
+          if (ids.length !== uniqueIds.size) {
+            // Corrupt layout with duplicate panels — skip restore
+            console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
+            try { localStorage.removeItem('cut_dockview_' + activePreset); } catch { /* ok */ }
+          } else {
+            event.api.fromJSON(saved);
+            return;
+          }
+        } else {
+          event.api.fromJSON(saved);
+          return;
+        }
       } catch {
         // Corrupt layout — fall through to default
+        console.warn('[CUT DockviewLayout] Failed to restore layout, using default');
       }
     }
 
@@ -290,10 +324,20 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       }
     });
 
-    // Auto-save layout on changes
+    // MARKER_W6.DEDUP: Auto-save layout on changes (with dedup guard)
     event.api.onDidLayoutChange(() => {
       if (apiRef.current) {
         const json = apiRef.current.toJSON();
+        // Validate before saving: no duplicate panel IDs
+        const panels = (json as any)?.panels?.data;
+        if (Array.isArray(panels)) {
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
+          const uniqueIds = new Set(ids);
+          if (ids.length !== uniqueIds.size) {
+            console.warn('[CUT DockviewLayout] Refusing to save layout with duplicate panels');
+            return; // Don't save corrupt state
+          }
+        }
         saveLayout(activePreset, json);
       }
     });
