@@ -73,6 +73,9 @@ export type CutHotkeyAction =
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
+  // MARKER_W5.MF: Match Frame + Q toggle (FCP7 Ch.50)
+  | 'matchFrame'
+  | 'toggleSourceProgram'
   // View
   | 'zoomIn'
   | 'zoomOut'
@@ -143,9 +146,12 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   rippleTool:          ['timeline'],
   rollTool:            ['timeline'],
 
-  // Navigation — timeline only
+  // Navigation — timeline/program
   prevEditPoint:       ['timeline'],
   nextEditPoint:       ['timeline'],
+  // MARKER_W5.MF: Match Frame + Q toggle
+  matchFrame:          ['program', 'timeline'],
+  toggleSourceProgram: 'global',
 
   // Markers — source, program, timeline
   addMarker:           ['source', 'program', 'timeline'],
@@ -250,6 +256,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
+  // MARKER_W5.MF: Match Frame + Q toggle
+  matchFrame:        'f',
+  toggleSourceProgram: 'q',
   // View
   zoomIn:            '=',
   zoomOut:           '-',
@@ -323,6 +332,9 @@ export const FCP7_PRESET: HotkeyMap = {
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
+  // MARKER_W5.MF: Match Frame + Q toggle (FCP7)
+  matchFrame:        'f',
+  toggleSourceProgram: 'q',
   // View
   zoomIn:            'Cmd+=',
   zoomOut:           'Cmd+-',
@@ -529,6 +541,9 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
+  // MARKER_W5.MF
+  { action: 'matchFrame', label: 'Match Frame (F)', group: 'Navigation' },
+  { action: 'toggleSourceProgram', label: 'Toggle Source/Program (Q)', group: 'Navigation' },
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
   { action: 'zoomOut', label: 'Zoom Out', group: 'View' },

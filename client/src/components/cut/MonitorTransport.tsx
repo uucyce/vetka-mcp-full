@@ -169,13 +169,22 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
     }
   }, [lanes, lockedLanes, currentTime, seek]);
 
+  // MARKER_W5.MF: Match Frame (FCP7 Ch.50)
+  // Find clip at playhead → load source in Source Monitor → seek to matching frame
   const handleMatchFrame = useCallback(() => {
-    // Match Frame: find clip at playhead → load into Source Monitor
-    const setSourceMedia = useCutEditorStore.getState().setSourceMedia;
+    const state = useCutEditorStore.getState();
     for (const lane of lanes) {
       for (const clip of lane.clips) {
         if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
-          setSourceMedia(clip.source_path);
+          // Calculate source-relative time
+          const sourceOffset = clip.source_in ?? 0;
+          const sourceTime = (currentTime - clip.start_sec) + sourceOffset;
+          // Load source into Source Monitor
+          state.setSourceMedia(clip.source_path);
+          // Set source mark IN to the matched frame so editor can see it
+          state.setSourceMarkIn(sourceTime);
+          // Focus Source Monitor
+          state.setFocusedPanel('source');
           return;
         }
       }
