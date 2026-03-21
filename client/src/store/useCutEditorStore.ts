@@ -28,6 +28,9 @@ export type TimelineClip = {
   start_sec: number;
   duration_sec: number;
   source_path: string;
+  // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
+  // Required for slip editing — changes source_in without moving clip on timeline.
+  source_in?: number;
   effects?: ClipEffects;
   sync?: {
     method?: string;

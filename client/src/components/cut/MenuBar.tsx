@@ -443,20 +443,37 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
         }},
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
-        { label: 'Make Subclip', disabled: true },
-        { label: 'Freeze Frame', disabled: true },
+        { label: 'Replace', shortcut: 'F11', disabled: true },
+        { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
+        { label: 'Superimpose', shortcut: 'F12', disabled: true },
         { separator: true },
-        { label: 'Link/Unlink', shortcut: '⌘L', action: () => {
+        { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
+        { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
+        { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
+        { label: 'Scale to Sequence', action: () => {
+          // Scale selected clip resolution to match sequence resolution
+          // TODO: requires per-clip transform state
+        }, disabled: true },
+        { separator: true },
+        { label: `${store.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
+          // TODO: toggle clip enabled/disabled state
+        }, disabled: true },
+        { label: `${store.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: '⌘L', action: () => {
           store.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
         { separator: true },
+        { label: 'Copy Filters', disabled: true },
+        { label: 'Paste Filters', disabled: true },
+        { label: 'Remove Filters', disabled: true },
+        { separator: true },
         { label: 'Composite Mode', submenu: [
           { label: 'Normal', disabled: true },
           { label: 'Add', disabled: true },
+          { label: 'Subtract', disabled: true },
           { label: 'Multiply', disabled: true },
           { label: 'Screen', disabled: true },
+          { label: 'Overlay', disabled: true },
           { label: 'Difference', disabled: true },
         ]},
       ],
