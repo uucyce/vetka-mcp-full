@@ -17,6 +17,8 @@
     "dev:cut:opus": "vite --host 127.0.0.1 --port 3111",
     "tauri:dev:cut:opus": "tauri dev --config src-tauri/tauri.opus.conf.json",
     "tauri:build:cut:opus": "tauri build --config src-tauri/tauri.opus.conf.json",
+    "tauri:dev:cut": "tauri dev --config src-tauri/tauri.cut.conf.json",
+    "tauri:build:cut": "tauri build --config src-tauri/tauri.cut.conf.json",
     "dev:mcc": "VITE_MODE=mcc vite",
     "build:mcc": "VITE_MODE=mcc vite build",
     "test:e2e": "playwright test",
