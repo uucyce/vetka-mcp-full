@@ -4421,10 +4421,10 @@ async def cut_scopes_analyze(
     size: int = 256,
 ) -> dict[str, Any]:
     """
-    MARKER_SCOPES — Video scope analysis for a single frame.
+    MARKER_B19 — Video scope analysis: waveform, parade, vectorscope, histogram.
 
     Extracts frame at given time via FFmpeg, computes requested scopes.
-    Returns JSON with histogram (RGB), waveform (luma), vectorscope (CbCr).
+    Returns JSON with histogram (RGB), waveform (luma), parade (RGB), vectorscope (CbCr).
 
     Query params:
         source_path: path to video file
@@ -4436,18 +4436,10 @@ async def cut_scopes_analyze(
 
     size = max(64, min(512, size))
     scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
-    valid_scopes = {"histogram", "waveform", "vectorscope"}
-    scope_list = [s for s in scope_list if s in valid_scopes]
-    if not scope_list:
-        scope_list = list(valid_scopes)
+    valid = {"histogram", "waveform", "vectorscope", "parade"}
+    scope_list = [s for s in scope_list if s in valid] or ["histogram", "waveform", "vectorscope"]
 
-    result = analyze_frame_scopes(
-        source_path=source_path,
-        time_sec=time,
-        scopes=scope_list,
-        scope_size=size,
-    )
-    return result
+    return analyze_frame_scopes(source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size)
 
 
 # ---------------------------------------------------------------------------

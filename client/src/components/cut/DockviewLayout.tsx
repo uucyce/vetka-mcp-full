@@ -198,7 +198,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
-    // MARKER_SCOPES: Video Scopes panel (Analysis tab group)
+    // MARKER_B19: Video Scopes panel (Analysis tab group)
     event.api.addPanel({
       id: 'scopes',
       component: 'scopes',
