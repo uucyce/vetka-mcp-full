@@ -300,33 +300,21 @@ export default function ColorCorrectionPanel() {
         <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 8 }}>
           <ColorWheel
             label="Shadows"
-            r={color.liftR}
-            g={color.liftG}
-            b={color.liftB}
+            r={color.liftR} g={color.liftG} b={color.liftB}
             size={90}
-            onChange={(r, g, b) => {
-              setColor((prev) => ({ ...prev, liftR: r, liftG: g, liftB: b }));
-            }}
+            onChange={(r, g, b) => setColor((prev) => ({ ...prev, liftR: r, liftG: g, liftB: b }))}
           />
           <ColorWheel
             label="Midtones"
-            r={color.midR}
-            g={color.midG}
-            b={color.midB}
+            r={color.midR} g={color.midG} b={color.midB}
             size={90}
-            onChange={(r, g, b) => {
-              setColor((prev) => ({ ...prev, midR: r, midG: g, midB: b }));
-            }}
+            onChange={(r, g, b) => setColor((prev) => ({ ...prev, midR: r, midG: g, midB: b }))}
           />
           <ColorWheel
             label="Highlights"
-            r={color.gainR}
-            g={color.gainG}
-            b={color.gainB}
+            r={color.gainR} g={color.gainG} b={color.gainB}
             size={90}
-            onChange={(r, g, b) => {
-              setColor((prev) => ({ ...prev, gainR: r, gainG: g, gainB: b }));
-            }}
+            onChange={(r, g, b) => setColor((prev) => ({ ...prev, gainR: r, gainG: g, gainB: b }))}
           />
         </div>
       </div>
