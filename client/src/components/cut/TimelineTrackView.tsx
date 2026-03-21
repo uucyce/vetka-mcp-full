@@ -101,6 +101,7 @@ const LANE_CONTENT: CSSProperties = {
   overflow: 'hidden',
 };
 
+// MARKER_W6.TOOL-SM: cursor set dynamically based on activeTool (not hardcoded)
 const CLIP_STYLE: CSSProperties = {
   position: 'absolute',
   top: 3,
@@ -111,7 +112,6 @@ const CLIP_STYLE: CSSProperties = {
   justifyContent: 'center',
   padding: '0 6px',
   overflow: 'hidden',
-  cursor: 'grab',
   transition: 'border-color 0.1s',
 };
 
@@ -575,11 +575,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
-  // MARKER_W5.TRIM: Cursor per tool
+  // MARKER_W6.TOOL-SM: Cursor maps per context
+  // Lane background cursor (when hovering empty space)
   const TOOL_CURSOR: Record<string, string> = {
     selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in',
     slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
   };
+  // Clip body cursor (when hovering over a clip)
+  const CLIP_CURSOR: Record<string, string> = {
+    selection: 'grab', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in',
+    slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
+  };
+  const clipCursor = CLIP_CURSOR[activeTool] || 'grab';
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
@@ -1808,6 +1815,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       data-testid={`cut-timeline-clip-${clip.clip_id}`}
                       style={{
                         ...CLIP_STYLE,
+                        cursor: clipCursor,
                         left: x,
                         width: Math.max(4, width),
                         background: `${config.color}${isSelected ? '44' : isHovered ? '33' : '22'}`,
