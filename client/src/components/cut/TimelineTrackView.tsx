@@ -453,14 +453,18 @@ function TimeRuler({
         >
           {tick.label ? (
             <span
+              data-ruler-label="1"
               style={{
                 position: 'absolute',
                 bottom: tick.major ? 15 : 9,
                 left: 2,
                 fontSize: 9,
-                color: tick.major ? '#888' : '#555',
+                fontFamily: 'monospace',
+                color: tick.major ? '#999' : '#666',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
+                pointerEvents: 'none',
+                zIndex: 1,
               }}
             >
               {tick.label}
