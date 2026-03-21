@@ -352,7 +352,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   useCutHotkeys({ handlers: hotkeyHandlers });
 
   return (
-    <div style={ROOT}>
+    <div style={ROOT} data-testid="cut-editor-layout">
       <MenuBar />
       <DockviewLayout scriptText={scriptText} />
       <ProjectSettings />
