@@ -567,7 +567,13 @@ export default function MenuBar() {
             }
           }},
           { label: 'Reset Workspace', shortcut: '⌥⇧0', action: () => {
-            try { localStorage.removeItem('cut_dockview_editing'); } catch {}
+            try {
+              localStorage.removeItem('cut_dockview_editing');
+              localStorage.removeItem('cut_dockview_color');
+              localStorage.removeItem('cut_dockview_audio');
+              localStorage.removeItem('cut_dockview_custom');
+              localStorage.removeItem('cut_dockview_active');
+            } catch {}
             window.location.reload();
           }},
         ]},
