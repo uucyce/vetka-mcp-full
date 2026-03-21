@@ -211,6 +211,81 @@ class CutProjectStore:
             raise ValueError("Invalid cut_timeline_state_v1 payload")
         self._atomic_write_json(self.paths.timeline_state_path, payload)
 
+    # ------------------------------------------------------------------
+    # MARKER_198.MULTI_TL: Per-timeline-id storage
+    # ------------------------------------------------------------------
+
+    def _timelines_dir(self) -> str:
+        """Directory for per-timeline-id state files."""
+        d = os.path.join(self.paths.runtime_state_dir, "timelines")
+        os.makedirs(d, exist_ok=True)
+        return d
+
+    def _timeline_path(self, timeline_id: str) -> str:
+        """Sanitized path for a specific timeline state file."""
+        safe_id = timeline_id.replace("/", "_").replace("..", "_")
+        return os.path.join(self._timelines_dir(), f"{safe_id}.json")
+
+    def load_timeline_by_id(self, timeline_id: str) -> dict[str, Any] | None:
+        """Load a single timeline's state by ID."""
+        path = self._timeline_path(timeline_id)
+        return self._load_json(path, expected_schema="cut_timeline_state_v1")
+
+    def save_timeline_by_id(self, timeline_id: str, state: dict[str, Any]) -> None:
+        """Save a single timeline's state by ID."""
+        payload = dict(state or {})
+        payload["timeline_id"] = timeline_id
+        if not self._validate_timeline_state_payload(payload):
+            raise ValueError(f"Invalid timeline state for {timeline_id}")
+        self._atomic_write_json(self._timeline_path(timeline_id), payload)
+
+    def list_timelines(self) -> list[dict[str, Any]]:
+        """List all timeline IDs and their metadata (without full lane data)."""
+        tl_dir = self._timelines_dir()
+        result = []
+        if not os.path.isdir(tl_dir):
+            return result
+        for fname in sorted(os.listdir(tl_dir)):
+            if not fname.endswith(".json"):
+                continue
+            path = os.path.join(tl_dir, fname)
+            data = self._load_json(path, expected_schema="cut_timeline_state_v1")
+            if data:
+                result.append({
+                    "timeline_id": data.get("timeline_id", fname.replace(".json", "")),
+                    "revision": data.get("revision", 0),
+                    "fps": data.get("fps", 25),
+                    "lane_count": len(data.get("lanes", [])),
+                    "updated_at": data.get("updated_at", ""),
+                })
+        return result
+
+    def delete_timeline(self, timeline_id: str) -> bool:
+        """Delete a timeline state file. Returns True if deleted."""
+        path = self._timeline_path(timeline_id)
+        if os.path.exists(path):
+            os.remove(path)
+            return True
+        return False
+
+    def clone_timeline(self, source_id: str, new_id: str) -> dict[str, Any] | None:
+        """Clone a timeline from source_id to new_id."""
+        from datetime import datetime, timezone
+
+        source = self.load_timeline_by_id(source_id)
+        if source is None:
+            # Try loading from legacy single-timeline file
+            source = self.load_timeline_state()
+        if source is None:
+            return None
+
+        clone = dict(source)
+        clone["timeline_id"] = new_id
+        clone["revision"] = 0
+        clone["updated_at"] = datetime.now(timezone.utc).isoformat()
+        self.save_timeline_by_id(new_id, clone)
+        return clone
+
     def load_scene_graph(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.scene_graph_path, expected_schema="cut_scene_graph_v1")
         if payload is None or not self._validate_scene_graph_payload(payload):

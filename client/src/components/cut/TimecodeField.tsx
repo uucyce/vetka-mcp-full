@@ -110,9 +110,14 @@ export function parseTimecodeInput(
   let h = 0, m = 0, s = 0, f = 0;
 
   if (parts.length === 1) {
-    // Numeric-only input: treat as frames if integer, or parse as padded TC
+    // Numeric-only input
     const num = parts[0];
     if (/^\d+$/.test(num)) {
+      if (isRelative) {
+        // Relative: treat as raw frame count (e.g. +10, -100)
+        const rawFrames = parseInt(num, 10);
+        return Math.max(0, currentTime + sign * rawFrames / fps);
+      }
       if (num.length <= 3) {
         // Pure frame count
         f = parseInt(num, 10);

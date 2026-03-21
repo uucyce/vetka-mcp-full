@@ -248,6 +248,54 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.seek(insertAt + clipDur);
     },
 
+    // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
+    markClip: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        if (clip) {
+          s.setMarkIn(clip.start_sec);
+          s.setMarkOut(clip.start_sec + clip.duration_sec);
+          return;
+        }
+      }
+    },
+
+    // MARKER_MARK-MENU: Play In to Out
+    playInToOut: () => {
+      const s = useCutEditorStore.getState();
+      const inPt = s.focusedPanel === 'source' ? s.sourceMarkIn : s.sequenceMarkIn;
+      const outPt = s.focusedPanel === 'source' ? s.sourceMarkOut : s.sequenceMarkOut;
+      if (inPt == null || outPt == null || outPt <= inPt) return;
+      s.seek(inPt);
+      s.play();
+      // Auto-stop at out point via interval
+      const stopCheck = setInterval(() => {
+        const cur = useCutEditorStore.getState().currentTime;
+        if (cur >= outPt) {
+          useCutEditorStore.getState().pause();
+          clearInterval(stopCheck);
+        }
+      }, 50);
+      // Safety: clear after 5 minutes max
+      setTimeout(() => clearInterval(stopCheck), 300000);
+    },
+
+    // MARKER_MARK-MENU: Next/Previous marker navigation
+    nextMarker: () => {
+      const s = useCutEditorStore.getState();
+      const sorted = [...s.markers].sort((a, b) => a.start_sec - b.start_sec);
+      const next = sorted.find((m) => m.start_sec > s.currentTime + 0.001);
+      if (next) s.seek(next.start_sec);
+    },
+    prevMarker: () => {
+      const s = useCutEditorStore.getState();
+      const sorted = [...s.markers].sort((a, b) => b.start_sec - a.start_sec);
+      const prev = sorted.find((m) => m.start_sec < s.currentTime - 0.001);
+      if (prev) s.seek(prev.start_sec);
+    },
+
     // Navigation — edit points
     prevEditPoint: () => {
       const s = useCutEditorStore.getState();

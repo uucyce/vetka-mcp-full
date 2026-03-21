@@ -58,6 +58,11 @@ export type CutHotkeyAction =
   // Markers
   | 'addMarker'
   | 'addComment'
+  | 'nextMarker'
+  | 'prevMarker'
+  // Mark operations
+  | 'markClip'
+  | 'playInToOut'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
@@ -133,6 +138,12 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   // Markers — source, program, timeline
   addMarker:           ['source', 'program', 'timeline'],
   addComment:          ['source', 'program', 'timeline'],
+  nextMarker:          ['source', 'program', 'timeline'],
+  prevMarker:          ['source', 'program', 'timeline'],
+
+  // Mark operations
+  markClip:            ['timeline'],
+  playInToOut:         ['source', 'program', 'timeline'],
 
   // Global — always fire
   undo:                'global',
@@ -192,6 +203,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   clearInOut:        'Cmd+Shift+x',
   goToIn:            'Shift+i',
   goToOut:           'Shift+o',
+  markClip:          'x',
+  playInToOut:       'Shift+\\',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -211,6 +224,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  nextMarker:        'Shift+ArrowDown',
+  prevMarker:        'Shift+ArrowUp',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -254,6 +269,8 @@ export const FCP7_PRESET: HotkeyMap = {
   goToIn:            'Shift+i',
   goToOut:           'Shift+o',
   clearInOut:        'Alt+x',
+  markClip:          'x',
+  playInToOut:       'Ctrl+\\',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -273,6 +290,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
+  nextMarker:        'Shift+ArrowDown',
+  prevMarker:        'Shift+ArrowUp',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -467,6 +486,11 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Markers
   { action: 'addMarker', label: 'Add Marker', group: 'Markers' },
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
+  { action: 'nextMarker', label: 'Next Marker', group: 'Markers' },
+  { action: 'prevMarker', label: 'Previous Marker', group: 'Markers' },
+  // Mark operations
+  { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
+  { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },

@@ -5828,6 +5828,193 @@ def _load_reference_audio_signal(
     return None
 
 
+# ---------------------------------------------------------------------------
+# MARKER_198.MULTI_TL: Multi-timeline CRUD API
+# ---------------------------------------------------------------------------
+
+
+class CutTimelineCreateRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str
+    label: str = ""
+    clone_from: str | None = None
+    fps: float = 25.0
+
+
+@router.post("/timeline/create")
+async def cut_timeline_create(body: CutTimelineCreateRequest) -> dict[str, Any]:
+    """
+    MARKER_198.MULTI_TL — Create a new timeline (optionally cloned from existing).
+    """
+    from datetime import datetime, timezone
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Check if timeline already exists
+    existing = store.load_timeline_by_id(body.timeline_id)
+    if existing is not None:
+        return {"success": False, "error": "timeline_exists", "timeline_id": body.timeline_id}
+
+    if body.clone_from:
+        clone = store.clone_timeline(body.clone_from, body.timeline_id)
+        if clone is None:
+            return {"success": False, "error": "clone_source_not_found", "source_id": body.clone_from}
+        return {
+            "success": True,
+            "timeline_id": body.timeline_id,
+            "cloned_from": body.clone_from,
+            "lane_count": len(clone.get("lanes", [])),
+        }
+
+    # Create empty timeline
+    now = datetime.now(timezone.utc).isoformat()
+    new_state = {
+        "schema_version": "cut_timeline_state_v1",
+        "project_id": body.project_id,
+        "timeline_id": body.timeline_id,
+        "revision": 0,
+        "fps": body.fps,
+        "lanes": [
+            {"lane_id": "v1", "lane_type": "video_main", "clips": []},
+            {"lane_id": "a1", "lane_type": "audio_sync", "clips": []},
+        ],
+        "selection": {"active_clip_id": None, "active_lane_id": None},
+        "view": {"zoom": 60, "scroll_left": 0, "track_height": 56},
+        "updated_at": now,
+    }
+    store.save_timeline_by_id(body.timeline_id, new_state)
+    return {
+        "success": True,
+        "timeline_id": body.timeline_id,
+        "created": True,
+    }
+
+
+@router.get("/timeline/{timeline_id}/state")
+async def cut_timeline_get_state(
+    timeline_id: str,
+    sandbox_root: str,
+    project_id: str,
+) -> dict[str, Any]:
+    """
+    MARKER_198.MULTI_TL — Get full state for a specific timeline by ID.
+    Returns lanes, markers, waveforms, duration.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    state = store.load_timeline_by_id(timeline_id)
+    if state is None:
+        # Fallback: try legacy single-timeline state
+        legacy = store.load_timeline_state()
+        if legacy and str(legacy.get("timeline_id", "main")) == timeline_id:
+            state = legacy
+        else:
+            return {"success": False, "error": "timeline_not_found", "timeline_id": timeline_id}
+
+    # Load supplementary data from project-level bundles
+    waveform_bundle = store._load_json(store.paths.waveform_bundle_path) or {}
+    marker_bundle = store._load_json(store.paths.time_marker_bundle_path) or {}
+
+    # Compute duration from lanes
+    duration = 0.0
+    for lane in state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            end = (clip.get("start_sec", 0) or 0) + (clip.get("duration_sec", 0) or 0)
+            if end > duration:
+                duration = end
+
+    return {
+        "success": True,
+        "timeline_id": timeline_id,
+        "state": state,
+        "waveforms": waveform_bundle.get("items", []),
+        "markers": [
+            m for m in marker_bundle.get("markers", [])
+            if m.get("timeline_id") in (timeline_id, None) or m.get("media_path")
+        ],
+        "duration": duration,
+    }
+
+
+@router.get("/timeline/list")
+async def cut_timeline_list(
+    sandbox_root: str,
+    project_id: str,
+) -> dict[str, Any]:
+    """
+    MARKER_198.MULTI_TL — List all timelines in the project.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    timelines = store.list_timelines()
+
+    # Also include legacy main timeline if it exists and isn't in per-id dir
+    legacy = store.load_timeline_state()
+    if legacy:
+        legacy_id = str(legacy.get("timeline_id", "main"))
+        if not any(t["timeline_id"] == legacy_id for t in timelines):
+            timelines.insert(0, {
+                "timeline_id": legacy_id,
+                "revision": legacy.get("revision", 0),
+                "fps": legacy.get("fps", 25),
+                "lane_count": len(legacy.get("lanes", [])),
+                "updated_at": legacy.get("updated_at", ""),
+                "legacy": True,
+            })
+
+    return {
+        "success": True,
+        "project_id": project_id,
+        "timelines": timelines,
+        "count": len(timelines),
+    }
+
+
+class CutTimelineDeleteRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    timeline_id: str
+
+
+@router.delete("/timeline/{timeline_id}")
+async def cut_timeline_delete(
+    timeline_id: str,
+    sandbox_root: str,
+    project_id: str,
+) -> dict[str, Any]:
+    """
+    MARKER_198.MULTI_TL — Delete a timeline by ID.
+    """
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    deleted = store.delete_timeline(timeline_id)
+    if not deleted:
+        return {"success": False, "error": "timeline_not_found", "timeline_id": timeline_id}
+
+    return {
+        "success": True,
+        "deleted": timeline_id,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Legacy timeline apply (pre-multi-timeline)
+# ---------------------------------------------------------------------------
+
+
 @router.post("/timeline/apply")
 async def cut_timeline_apply(body: CutTimelinePatchRequest) -> dict[str, Any]:
     """
