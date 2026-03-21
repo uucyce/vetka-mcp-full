@@ -217,30 +217,45 @@ export default function MenuBar() {
     {
       label: 'File',
       items: [
+        { label: 'New Project...', shortcut: '⌥⌘N', disabled: true },
         { label: 'New Sequence', shortcut: '⌘N', action: () => {
-          // TODO: create new sequence dialog
-        }, disabled: true },
+          const s = store.getState();
+          const name = s.projectId || 'untitled';
+          s.createVersionedTimeline(name, 'manual');
+        }},
+        { label: 'Open Project...', shortcut: '⌘O', disabled: true },
+        { label: 'Recent Projects', submenu: [
+          { label: '(no recent projects)', disabled: true },
+        ]},
+        { separator: true },
+        { label: 'Close Tab', shortcut: '⌘W', action: () => {
+          const s = store.getState();
+          if (s.timelineTabs.length > 1) {
+            s.removeTimelineTab(s.activeTimelineTabIndex);
+          }
+        }},
         { separator: true },
         { label: 'Save', shortcut: '⌘S', action: () => store.getState().refreshProjectState?.() },
         { label: 'Save As...', shortcut: '⌘⇧S', disabled: true },
+        { label: 'Save All', disabled: true },
+        { label: 'Revert', action: () => {
+          const s = store.getState();
+          if (s.refreshProjectState) { void s.refreshProjectState(); }
+        }},
         { separator: true },
         { label: 'Import Media...', shortcut: '⌘I', action: () => {
-          // Trigger import via existing hotkey action
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', metaKey: true }));
         }},
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Export', submenu: [
-          { label: 'Premiere XML', action: () => {}, disabled: true },
-          { label: 'FCPXML', action: () => {}, disabled: true },
-          { label: 'EDL', action: () => {}, disabled: true },
-          { label: 'OTIO', action: () => {}, disabled: true },
+          { label: 'Premiere XML', disabled: true },
+          { label: 'FCPXML', disabled: true },
+          { label: 'EDL', disabled: true },
+          { label: 'OTIO', disabled: true },
         ]},
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
-        { separator: true },
-        { label: 'Close', shortcut: '⌘W', disabled: true },
-        { label: 'Revert', disabled: true },
       ],
     },
     {

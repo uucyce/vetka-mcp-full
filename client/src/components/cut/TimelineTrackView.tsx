@@ -79,7 +79,7 @@ const LANE_ROW: CSSProperties = {
   flexShrink: 0,
 };
 
-// MARKER_192.3: Lane header — 100px with proper spacing
+// MARKER_192.3 + MARKER_COMPACT: Lane header — 100px, compact icon layout
 const LANE_HEADER: CSSProperties = {
   width: LANE_HEADER_WIDTH,
   flexShrink: 0,
@@ -87,11 +87,12 @@ const LANE_HEADER: CSSProperties = {
   flexDirection: 'column',
   alignItems: 'center',
   justifyContent: 'center',
-  gap: 2,
-  padding: '4px 4px',
+  gap: 1,
+  padding: '2px 3px',
   borderRight: '1px solid #222',
   background: '#080808',
   userSelect: 'none',
+  overflow: 'hidden',
 };
 
 const LANE_CONTENT: CSSProperties = {
@@ -164,25 +165,26 @@ const MARKER_COLORS: Record<string, string> = {
 // MARKER_192.3: 2x2 grid for track buttons — no overlap at 100px width
 const TRACK_BUTTON_ROW: CSSProperties = {
   display: 'flex',
-  gap: 2,
+  gap: 1,
 };
 
-// MARKER_192.3: Track buttons — sized for 100px header, 2x2 grid
+// MARKER_COMPACT: Track buttons — compact for 100px header
 const TRACK_BUTTON: CSSProperties = {
-  width: 20,
-  height: 16,
+  width: 16,
+  height: 14,
   borderRadius: 2,
   border: '1px solid #333',
   background: '#111',
   color: '#888',
-  fontSize: 8,
+  fontSize: 7,
   fontWeight: 700,
-  lineHeight: '14px',
+  lineHeight: '12px',
   padding: 0,
   cursor: 'pointer',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
+  flexShrink: 0,
 };
 
 const TRACK_SLIDER: CSSProperties = {
@@ -1691,34 +1693,31 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           return (
             <div key={lane.lane_id} data-testid={`cut-timeline-lane-${lane.lane_id}`} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
               <div style={LANE_HEADER}>
-                <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
-                <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>
-                {/* MARKER_FIX-TIMELINE-2: Eye icon — track visibility toggle */}
-                <button
-                  style={{
-                    ...TRACK_BUTTON,
-                    background: isHidden ? '#333' : '#111',
-                    borderColor: isHidden ? '#555' : '#333',
-                    marginRight: 2,
-                  }}
-                  title={isHidden ? 'Show track' : 'Hide track'}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    toggleVisibility(lane.lane_id);
-                  }}
-                >
-                  {isHidden
-                    ? <IconEyeOff size={12} color="#888" />
-                    : <IconEye size={12} color="#555" />
-                  }
-                </button>
-                {/* MARKER_W2.1 + W2.2: Track controls — patch indicator, target, lock, solo, mute */}
-                {/* MARKER_W2.2: Source patch indicator — shows source channel routed here */}
-                {targetedLanes.has(lane.lane_id) && (
-                  <span style={{ fontSize: 8, color: '#4a9eff', letterSpacing: 0.5, userSelect: 'none' }}>
-                    {lane.lane_type.startsWith('audio') ? 'A' : 'V'} {'\u2192'}
-                  </span>
-                )}
+                {/* MARKER_COMPACT: Label row — icon + label + eye toggle inline */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', justifyContent: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>{config.icon}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: config.color, flexShrink: 0 }}>{config.label}</span>
+                  <button
+                    style={{
+                      ...TRACK_BUTTON,
+                      width: 14, height: 12,
+                      background: isHidden ? '#333' : 'transparent',
+                      border: 'none',
+                      marginLeft: 'auto',
+                    }}
+                    title={isHidden ? 'Show track' : 'Hide track'}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleVisibility(lane.lane_id);
+                    }}
+                  >
+                    {isHidden
+                      ? <IconEyeOff size={9} color="#888" />
+                      : <IconEye size={9} color="#444" />
+                    }
+                  </button>
+                </div>
+                {/* MARKER_COMPACT: 2×2 button grid — [target lock] [solo mute] */}
                 <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
@@ -1726,13 +1725,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       background: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#111',
                       borderColor: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#333',
                     }}
-                    title="Target lane (insert/overwrite destination)"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleTarget(lane.lane_id);
-                    }}
+                    title="Target lane"
+                    onClick={(event) => { event.stopPropagation(); toggleTarget(lane.lane_id); }}
                   >
-                    <IconTarget size={12} color={targetedLanes.has(lane.lane_id) ? '#111' : '#555'} />
+                    <IconTarget size={9} color={targetedLanes.has(lane.lane_id) ? '#111' : '#555'} />
                   </button>
                   <button
                     style={{
@@ -1740,32 +1736,24 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       background: lockedLanes.has(lane.lane_id) ? '#888' : '#111',
                       borderColor: lockedLanes.has(lane.lane_id) ? '#888' : '#333',
                     }}
-                    title="Lock lane (prevent edits)"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleLock(lane.lane_id);
-                    }}
+                    title="Lock lane"
+                    onClick={(event) => { event.stopPropagation(); toggleLock(lane.lane_id); }}
                   >
                     {lockedLanes.has(lane.lane_id)
-                      ? <IconLock size={12} color="#111" />
-                      : <IconUnlock size={12} color="#555" />
+                      ? <IconLock size={9} color="#111" />
+                      : <IconUnlock size={9} color="#555" />
                     }
                   </button>
-                </div>
-                <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
                       ...TRACK_BUTTON,
                       background: soloLanes.has(lane.lane_id) ? '#facc15' : '#111',
                       borderColor: soloLanes.has(lane.lane_id) ? '#facc15' : '#333',
                     }}
-                    title="Solo lane"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleSolo(lane.lane_id);
-                    }}
+                    title="Solo"
+                    onClick={(event) => { event.stopPropagation(); toggleSolo(lane.lane_id); }}
                   >
-                    <IconSolo size={12} color={soloLanes.has(lane.lane_id) ? '#111' : '#888'} />
+                    <IconSolo size={9} color={soloLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                   <button
                     style={{
@@ -1773,13 +1761,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       background: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#111',
                       borderColor: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#333',
                     }}
-                    title="Mute lane"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      toggleMute(lane.lane_id);
-                    }}
+                    title="Mute"
+                    onClick={(event) => { event.stopPropagation(); toggleMute(lane.lane_id); }}
                   >
-                    <IconMute size={12} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
+                    <IconMute size={9} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                 </div>
               </div>
