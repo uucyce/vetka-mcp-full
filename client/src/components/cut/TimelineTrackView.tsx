@@ -569,18 +569,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
 
-  // ─── MARKER_C11: Multi-instance override ──────────────────────────
+  // ─── MARKER_W6.STORE: Multi-instance read migration (Phase 1) ──────
   // When timelineId prop is provided AND instance exists in the new store,
-  // shadow legacy selectors with instance-local data. This enables multiple
-  // independent TimelineTrackView instances without modifying useCutEditorStore.
-  // The updateTimeline helper writes view state changes back to the instance store.
+  // READS come from instance store. WRITES still go to singleton (Phase 2).
+  // This enables multiple independent TimelineTrackView instances.
   const inst = instanceStoreTimeline;
   const updateInstance = useTimelineInstanceStore((s) => s.updateTimeline);
 
-  // Phase 198 data resolution will go here when useCutEditorStore migrates.
-  // For now, all data comes from legacy store. The timelineId prop + isActive
-  // flag enables multi-instance rendering with visual differentiation.
-  void inst; // suppress unused warning — will be used in full migration
+  // MARKER_W6.STORE: Override read data from instance store when available
+  // Phase 1: redirect reads only — singleton writes untouched
+  const effectiveLanes = isMultiInstance && inst ? inst.lanes : lanes;
+  const effectiveWaveforms = isMultiInstance && inst ? inst.waveforms : waveforms;
+  const effectiveZoom = isMultiInstance && inst ? inst.zoom : zoom;
+  const effectiveScrollLeft = isMultiInstance && inst ? inst.scrollX : scrollLeft;
+  const effectiveTrackHeight = isMultiInstance && inst ? inst.trackHeight : trackHeight;
+  const effectiveCurrentTime = isMultiInstance && inst ? inst.playheadPosition : currentTime;
+  const effectiveDuration = isMultiInstance && inst ? inst.duration : duration;
+  const effectiveMarkIn = isMultiInstance && inst ? inst.markIn : markIn;
+  const effectiveMarkOut = isMultiInstance && inst ? inst.markOut : markOut;
+  const effectiveSelectedClipIds = isMultiInstance && inst
+    ? new Set(inst.selectedClipIds)
+    : selectedClipIds;
 
   // Click handler: activate this timeline if not active
   const handleTimelineActivate = useCallback(() => {
@@ -588,26 +597,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       setActiveTimeline(timelineIdProp);
     }
   }, [isMultiInstance, isActive, timelineIdProp, setActiveTimeline]);
-  // ─── END MARKER_C11 ──────────────────────────────────────────────
+  // ─── END MARKER_W6.STORE ──────────────────────────────────────────
 
+  // MARKER_W6.STORE: Refs sync from effective values (instance when available, else singleton)
   useEffect(() => {
-    zoomRef.current = zoom;
-  }, [zoom]);
+    zoomRef.current = effectiveZoom;
+  }, [effectiveZoom]);
   useEffect(() => {
-    scrollLeftRef.current = scrollLeft;
-  }, [scrollLeft]);
+    scrollLeftRef.current = effectiveScrollLeft;
+  }, [effectiveScrollLeft]);
   useEffect(() => {
-    trackHeightRef.current = trackHeight;
-  }, [trackHeight]);
+    trackHeightRef.current = effectiveTrackHeight;
+  }, [effectiveTrackHeight]);
   useEffect(() => {
-    currentTimeRef.current = currentTime;
-  }, [currentTime]);
+    currentTimeRef.current = effectiveCurrentTime;
+  }, [effectiveCurrentTime]);
   useEffect(() => {
-    markInRef.current = markIn;
-  }, [markIn]);
+    markInRef.current = effectiveMarkIn;
+  }, [effectiveMarkIn]);
   useEffect(() => {
-    markOutRef.current = markOut;
-  }, [markOut]);
+    markOutRef.current = effectiveMarkOut;
+  }, [effectiveMarkOut]);
   useEffect(() => {
     // MARKER_173.18.NLE.BEAT_SNAP: music_sync markers enter the generic snap target pool as beat cues.
     markerTimesRef.current = markers.map((marker) => marker.start_sec);
@@ -623,18 +633,19 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
   const waveformMap = useMemo(() => {
     const map = new Map<string, number[]>();
-    for (const item of waveforms) {
+    for (const item of effectiveWaveforms) {
       if (item.waveform_bins?.length) {
         map.set(item.source_path, item.waveform_bins);
       }
     }
     return map;
-  }, [waveforms]);
+  }, [effectiveWaveforms]);
 
   // MARKER_DISPLAY-CTRL: Filter lanes based on show video/audio track toggles
+  // MARKER_W6.STORE: Use effective lanes for display
   const isVideoLane = (t: string) => t.startsWith('video') || t.startsWith('take_alt');
   const isAudioLane = (t: string) => t.startsWith('audio');
-  const filteredLanes = lanes.filter((lane) => {
+  const filteredLanes = effectiveLanes.filter((lane) => {
     if (!showVideoTracks && isVideoLane(lane.lane_type)) return false;
     if (!showAudioTracks && isAudioLane(lane.lane_type)) return false;
     return true;
