@@ -205,7 +205,7 @@ test.describe.serial('phase170 cut debug scene graph surface smoke', () => {
     );
 
     await expect(page.getByText('Project').first()).toBeVisible();
-    await page.locator('button[title="Toggle NLE / Debug view"]').click();
+    await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText('Scene Graph Surface', { exact: true })).toBeVisible();
     await expect(page.getByText('Scene graph not ready.', { exact: true })).toBeVisible();

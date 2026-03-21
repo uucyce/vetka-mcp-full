@@ -1677,7 +1677,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const laneDimmed = isHidden || isMuted || (hasSolo && !isSolo);
           const laneH = trackHeights[lane.lane_id] ?? trackHeight;
           return (
-            <div key={lane.lane_id} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
+            <div key={lane.lane_id} data-testid={`cut-timeline-lane-${lane.lane_id}`} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
               <div style={LANE_HEADER}>
                 <span style={{ display: 'flex', alignItems: 'center' }}>{config.icon}</span>
                 <span style={{ fontSize: 11, fontWeight: 600, color: config.color }}>{config.label}</span>

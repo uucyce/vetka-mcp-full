@@ -264,7 +264,7 @@ test.describe.serial('phase170 cut debug marker archive/focus smoke', () => {
     );
 
     await expect(page.getByText('Project').first()).toBeVisible();
-    await page.locator('button[title="Toggle NLE / Debug view"]').click();
+    await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText(/markers for shot:\s*2/).first()).toBeVisible();
     await expect(page.getByText(/favorite:\s*1 .* comment:\s*0 .* cam:\s*1/).first()).toBeVisible();

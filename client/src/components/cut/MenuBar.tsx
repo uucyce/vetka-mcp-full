@@ -238,6 +238,9 @@ export default function MenuBar() {
         ]},
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
+        { separator: true },
+        { label: 'Close', shortcut: '⌘W', disabled: true },
+        { label: 'Revert', disabled: true },
       ],
     },
     {
@@ -410,38 +413,35 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
-        { label: 'Markers', submenu: [
-          { label: 'Add Marker', shortcut: 'M', action: () => {
-            // Dispatch to hotkey handler (marker creation requires API call context)
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
-          }},
-          { label: 'Add Comment Marker', shortcut: '⇧M', action: () => {
-            document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', shiftKey: true }));
-          }},
-          { separator: true },
-          { label: 'Next Marker', shortcut: '⇧↓', action: () => {
-            const s = store.getState();
-            const sorted = [...s.markers].sort((a, b) => a.start_sec - b.start_sec);
-            const next = sorted.find((m) => m.start_sec > s.currentTime + 0.001);
-            if (next) s.seek(next.start_sec);
-          }},
-          { label: 'Previous Marker', shortcut: '⇧↑', action: () => {
-            const s = store.getState();
-            const sorted = [...s.markers].sort((a, b) => b.start_sec - a.start_sec);
-            const prev = sorted.find((m) => m.start_sec < s.currentTime - 0.001);
-            if (prev) s.seek(prev.start_sec);
-          }},
-          { separator: true },
-          { label: 'Delete Marker', action: () => {
-            const s = store.getState();
-            const atPlayhead = s.markers.find((m) =>
-              s.currentTime >= m.start_sec - 0.05 && s.currentTime <= m.end_sec + 0.05
-            );
-            if (atPlayhead) {
-              s.setMarkers(s.markers.filter((m) => m.marker_id !== atPlayhead.marker_id));
-            }
-          }},
-        ]},
+        { label: 'Add Marker', shortcut: 'M', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
+        }},
+        { label: 'Add Comment Marker', shortcut: '⇧M', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', shiftKey: true }));
+        }},
+        { separator: true },
+        { label: 'Next Marker', shortcut: '⇧↓', action: () => {
+          const s = store.getState();
+          const sorted = [...s.markers].sort((a, b) => a.start_sec - b.start_sec);
+          const next = sorted.find((m) => m.start_sec > s.currentTime + 0.001);
+          if (next) s.seek(next.start_sec);
+        }},
+        { label: 'Previous Marker', shortcut: '⇧↑', action: () => {
+          const s = store.getState();
+          const sorted = [...s.markers].sort((a, b) => b.start_sec - a.start_sec);
+          const prev = sorted.find((m) => m.start_sec < s.currentTime - 0.001);
+          if (prev) s.seek(prev.start_sec);
+        }},
+        { separator: true },
+        { label: 'Delete Marker', action: () => {
+          const s = store.getState();
+          const atPlayhead = s.markers.find((m) =>
+            s.currentTime >= m.start_sec - 0.05 && s.currentTime <= m.end_sec + 0.05
+          );
+          if (atPlayhead) {
+            s.setMarkers(s.markers.filter((m) => m.marker_id !== atPlayhead.marker_id));
+          }
+        }},
       ],
     },
     {
