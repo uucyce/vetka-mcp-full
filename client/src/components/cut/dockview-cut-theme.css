@@ -243,3 +243,9 @@
   border-color: #222 !important;
   outline-color: transparent !important;
 }
+
+/* MARKER_FOCUS: Subtle focus indicator on active panel group */
+.dockview-theme-dark .dv-groupview[data-focused] {
+  outline: 1px solid #555 !important;
+  outline-offset: -1px;
+}

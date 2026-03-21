@@ -219,7 +219,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       try { timelinePanel.api.setSize({ height: 300 }); } catch { /* ok */ }
     }
 
-    // Wire panel focus to store
+    // MARKER_FOCUS: Wire panel focus to store + visual indicator
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
         // MARKER_C12: Detect timeline panels → setActiveTimeline + snapshot swap
@@ -228,11 +228,9 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           useCutEditorStore.getState().setFocusedPanel('timeline');
           if (tlId) {
             const editorStore = useCutEditorStore.getState();
-            // Snapshot current active timeline before switching
             if (editorStore.timelineId && editorStore.timelineId !== tlId) {
               editorStore.snapshotTimeline(editorStore.timelineId);
             }
-            // Restore target timeline data
             editorStore.restoreTimeline(tlId);
             useTimelineInstanceStore.getState().setActiveTimeline(tlId);
           }
@@ -242,6 +240,20 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
             useCutEditorStore.getState().setFocusedPanel(focus);
           }
         }
+
+        // MARKER_FOCUS: Visual focus indicator — set data-focused on active group
+        try {
+          const container = document.querySelector('.dockview-theme-dark');
+          if (container) {
+            container.querySelectorAll('.dv-groupview[data-focused]').forEach((el: Element) => el.removeAttribute('data-focused'));
+            // Navigate from panel's group to DOM element
+            const group = panel.group;
+            if (group) {
+              const groupEl = (group as unknown as { element?: HTMLElement }).element;
+              if (groupEl) groupEl.setAttribute('data-focused', 'true');
+            }
+          }
+        } catch { /* visual indicator is non-critical */ }
       }
     });
 

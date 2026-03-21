@@ -80,6 +80,82 @@ export type CutHotkeyAction =
   | 'toggleViewMode'
   | 'escapeContext';
 
+// ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
+// Defines which panels each action is allowed in.
+// 'global' = fires regardless of focusedPanel.
+// Array = fires only when focusedPanel is one of listed values.
+// null/undefined in focusedPanel = treated as 'timeline' (default focus).
+
+export type FocusPanelId = 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects';
+
+type ActionScope = 'global' | FocusPanelId[];
+
+export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
+  // Playback — works in source, program, and timeline
+  playPause:           ['source', 'program', 'timeline'],
+  stop:                ['source', 'program', 'timeline'],
+  shuttleBack:         ['source', 'program', 'timeline'],
+  shuttleForward:      ['source', 'program', 'timeline'],
+  frameStepBack:       ['source', 'program', 'timeline'],
+  frameStepForward:    ['source', 'program', 'timeline'],
+  goToStart:           ['source', 'program', 'timeline'],
+  goToEnd:             ['source', 'program', 'timeline'],
+  cyclePlaybackRate:   ['source', 'program', 'timeline'],
+  fiveFrameStepBack:   ['source', 'program', 'timeline'],
+  fiveFrameStepForward:['source', 'program', 'timeline'],
+
+  // Marking — source: source marks, program/timeline: sequence marks
+  markIn:              ['source', 'program', 'timeline'],
+  markOut:             ['source', 'program', 'timeline'],
+  clearIn:             ['source', 'program', 'timeline'],
+  clearOut:            ['source', 'program', 'timeline'],
+  clearInOut:          ['source', 'program', 'timeline'],
+  goToIn:              ['source', 'program', 'timeline'],
+  goToOut:             ['source', 'program', 'timeline'],
+
+  // Editing — timeline only
+  deleteClip:          ['timeline'],
+  splitClip:           ['timeline'],
+  rippleDelete:        ['timeline'],
+  nudgeLeft:           ['timeline'],
+  nudgeRight:          ['timeline'],
+  insertEdit:          ['timeline', 'source'],
+  overwriteEdit:       ['timeline', 'source'],
+
+  // Tools — timeline only
+  razorTool:           ['timeline'],
+  selectTool:          ['timeline'],
+
+  // Navigation — timeline only
+  prevEditPoint:       ['timeline'],
+  nextEditPoint:       ['timeline'],
+
+  // Markers — source, program, timeline
+  addMarker:           ['source', 'program', 'timeline'],
+  addComment:          ['source', 'program', 'timeline'],
+
+  // Global — always fire
+  undo:                'global',
+  redo:                'global',
+  selectAll:           'global',
+  copy:                'global',
+  paste:               'global',
+  zoomIn:              'global',
+  zoomOut:             'global',
+  zoomToFit:           'global',
+  cycleTrackHeight:    'global',
+  importMedia:         'global',
+  saveProject:         'global',
+  focusSource:         'global',
+  focusProgram:        'global',
+  focusTimeline:       'global',
+  focusProject:        'global',
+  focusEffects:        'global',
+  sceneDetect:         'global',
+  toggleViewMode:      'global',
+  escapeContext:       'global',
+};
+
 // ─── Key notation ───────────────────────────────────────────────────
 // Format: modifier+key or just key.
 // Modifiers: Cmd, Ctrl, Shift, Alt (Cmd = Meta on Mac, Ctrl on Win).
@@ -417,6 +493,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
 // ─── Hook ───────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useCutEditorStore } from '../store/useCutEditorStore';
 
 export type CutHotkeyHandlers = Partial<Record<CutHotkeyAction, () => void | Promise<void>>>;
 
@@ -489,8 +566,19 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
       if ((e.target as HTMLElement)?.isContentEditable) return;
 
       const resolved = resolvedRef.current;
+      // MARKER_FOCUS: Read current focused panel for scope check
+      const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
+
       for (const [action, parsed] of resolved) {
         if (matchesEvent(parsed, e)) {
+          // MARKER_FOCUS: Check panel scope before dispatching
+          const scope = ACTION_SCOPE[action];
+          if (scope !== 'global') {
+            if (!scope.includes(focusedPanel as FocusPanelId)) {
+              return; // action not allowed in this panel — swallow silently
+            }
+          }
+
           const handler = handlersRef.current[action];
           if (handler) {
             e.preventDefault();
