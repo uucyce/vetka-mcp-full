@@ -514,6 +514,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
     splitEditLCut: () => useCutEditorStore.getState().splitEditLCut(),
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
+    addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
