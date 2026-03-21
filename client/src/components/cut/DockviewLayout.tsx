@@ -41,6 +41,7 @@ import {
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
+import LutBrowserPanel from './LutBrowserPanel';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -48,6 +49,7 @@ import ColorCorrectionPanel from './ColorCorrectionPanel';
 const EffectsPanelDock = () => <EffectsPanel />;
 const VideoScopesPanelDock = () => <VideoScopes />;
 const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
+const LutBrowserPanelDock = () => <LutBrowserPanel />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -62,6 +64,7 @@ const PANEL_COMPONENTS = {
   mixer: AudioMixerPanelDock,
   scopes: VideoScopesPanelDock,
   colorcorrector: ColorCorrectorPanelDock,
+  lutbrowser: LutBrowserPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -211,6 +214,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'colorcorrector',
       component: 'colorcorrector',
       title: 'Color',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // MARKER_B23: LUT Browser panel (Analysis tab group)
+    event.api.addPanel({
+      id: 'lutbrowser',
+      component: 'lutbrowser',
+      title: 'LUTs',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
