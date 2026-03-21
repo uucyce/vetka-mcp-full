@@ -291,6 +291,34 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
     focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
     focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
+
+    // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
+    matchFrame: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead on any unlocked lane
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            const sourceOffset = clip.source_in ?? 0;
+            const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+            s.setSourceMedia(clip.source_path);
+            s.setSourceMarkIn(sourceTime);
+            s.setFocusedPanel('source');
+            return;
+          }
+        }
+      }
+    },
+    toggleSourceProgram: () => {
+      const s = useCutEditorStore.getState();
+      const current = s.focusedPanel;
+      if (current === 'source') {
+        s.setFocusedPanel('program');
+      } else {
+        s.setFocusedPanel('source');
+      }
+    },
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
