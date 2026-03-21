@@ -326,6 +326,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         s.setFocusedPanel('source');
       }
     },
+
+    // MARKER_SEQ-MENU: Sequence operations
+    liftClip: () => useCutEditorStore.getState().liftClip(),
+    extractClip: () => useCutEditorStore.getState().extractClip(),
+    closeGap: () => useCutEditorStore.getState().closeGap(),
+    extendEdit: () => useCutEditorStore.getState().extendEdit(),
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });

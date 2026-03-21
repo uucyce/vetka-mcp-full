@@ -492,39 +492,42 @@ export default function MenuBar() {
     {
       label: 'Sequence',
       items: [
+        { label: 'Render In to Out', shortcut: '⌥R', disabled: true },
+        { label: 'Render All', disabled: true },
+        { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
         }},
         { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => {
-          // Split on all tracks at playhead
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, shiftKey: true }));
         }},
         { separator: true },
-        { label: 'Lift', shortcut: ';', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: ';' }));
-        }},
-        { label: 'Extract', shortcut: "'", action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: "'" }));
-        }},
+        { label: 'Lift', shortcut: ';', action: () => store.getState().liftClip() },
+        { label: 'Extract', shortcut: "'", action: () => store.getState().extractClip() },
         { separator: true },
         { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true }));
         }},
-        { label: 'Close Gap', action: () => {
-          // Remove gap between clips at playhead
-          const s = store.getState();
-          s.closeGap?.();
-        }, disabled: !store.getState().closeGap },
-        { label: 'Extend Edit', shortcut: 'E', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
-        }},
+        { label: 'Close Gap', action: () => store.getState().closeGap() },
+        { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
         { separator: true },
-        { label: 'Add Video Transition', shortcut: '⌘T', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', metaKey: true }));
-        }},
+        { label: 'Trim Edit', shortcut: 'T', disabled: true },
+        { separator: true },
+        { label: 'Add Video Transition', shortcut: '⌘T', disabled: true },
         { label: 'Add Audio Transition', shortcut: '⌘⇧T', disabled: true },
+        { label: 'Transition Alignment', submenu: [
+          { label: 'Center on Edit', disabled: true },
+          { label: 'Start on Edit', disabled: true },
+          { label: 'End on Edit', disabled: true },
+        ]},
         { separator: true },
-        { label: 'Snap in Timeline', shortcut: 'S', action: () => store.getState().toggleSnap() },
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'S', action: () => store.getState().toggleSnap() },
+        { separator: true },
+        { label: 'Insert Tracks...', disabled: true },
+        { label: 'Delete Tracks...', disabled: true },
+        { separator: true },
+        { label: 'Nest Item(s)', disabled: true },
+        { label: 'Solo Selected Item(s)', disabled: true },
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true }));
