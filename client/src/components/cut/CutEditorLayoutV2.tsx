@@ -19,6 +19,7 @@
  */
 import { useMemo, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
@@ -133,6 +134,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     goToStart: () => useCutEditorStore.getState().seek(0),
     goToEnd: () => { const s = useCutEditorStore.getState(); s.seek(s.duration); },
+    // MARKER_W6.WIRE: Cycle playback rate (1x → 2x → 0.5x → 1x)
+    cyclePlaybackRate: () => {
+      const s = useCutEditorStore.getState();
+      const RATES = [0.5, 1, 2, 4];
+      const idx = RATES.indexOf(s.playbackRate);
+      const next = RATES[(idx + 1) % RATES.length];
+      s.setPlaybackRate(next);
+    },
 
     // Marking — context-aware: source panel → source marks, else → sequence marks
     markIn: () => {
@@ -171,6 +180,28 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (mark !== null) s.seek(mark);
     },
 
+    // MARKER_W6.WIRE: Undo/Redo via backend API
+    undo: async () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sandboxRoot || !s.projectId) return;
+      await fetch(`${API_BASE}/cut/undo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main' }),
+      });
+      await s.refreshProjectState?.();
+    },
+    redo: async () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sandboxRoot || !s.projectId) return;
+      await fetch(`${API_BASE}/cut/redo`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main' }),
+      });
+      await s.refreshProjectState?.();
+    },
+
     // Editing
     selectAll: () => useCutEditorStore.getState().selectAllClips(),
 
@@ -207,6 +238,57 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
           }
           return [c];
         }),
+      }));
+      s.setLanes(newLanes);
+    },
+
+    // MARKER_W6.WIRE: Ripple Delete — remove clip and close gap
+    rippleDelete: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      let clipStart = 0;
+      let clipDur = 0;
+      let clipLaneId = '';
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        if (clip) { clipStart = clip.start_sec; clipDur = clip.duration_sec; clipLaneId = lane.lane_id; break; }
+      }
+      if (!clipLaneId) return;
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== clipLaneId) return lane;
+        return {
+          ...lane,
+          clips: lane.clips
+            .filter((c) => c.clip_id !== s.selectedClipId)
+            .map((c) => c.start_sec > clipStart ? { ...c, start_sec: Math.max(0, c.start_sec - clipDur) } : c),
+        };
+      });
+      s.setLanes(newLanes);
+      s.setSelectedClip(null);
+    },
+
+    // MARKER_W6.WIRE: Nudge clip ±1 frame
+    nudgeLeft: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      const frameSec = 1 / s.projectFramerate;
+      const newLanes = s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === s.selectedClipId ? { ...c, start_sec: Math.max(0, c.start_sec - frameSec) } : c
+        ),
+      }));
+      s.setLanes(newLanes);
+    },
+    nudgeRight: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      const frameSec = 1 / s.projectFramerate;
+      const newLanes = s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === s.selectedClipId ? { ...c, start_sec: c.start_sec + frameSec } : c
+        ),
       }));
       s.setLanes(newLanes);
     },
@@ -250,6 +332,60 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }, 50);
       // Safety: clear after 5 minutes max
       setTimeout(() => clearInterval(stopCheck), 300000);
+    },
+
+    // MARKER_W6.WIRE: Add Marker (M) — create favorite marker at playhead
+    addMarker: async () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sandboxRoot || !s.projectId) return;
+      // Find clip at playhead for media_path
+      let mediaPath = s.sourceMediaPath || '';
+      for (const lane of s.lanes) {
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            mediaPath = clip.source_path;
+            break;
+          }
+        }
+        if (mediaPath) break;
+      }
+      if (!mediaPath) return;
+      await fetch(`${API_BASE}/cut/time-markers/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+          media_path: mediaPath, kind: 'favorite', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+          score: 1.0, text: '',
+        }),
+      });
+      await s.refreshProjectState?.();
+    },
+    // MARKER_W6.WIRE: Add Comment Marker (Shift+M)
+    addComment: async () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sandboxRoot || !s.projectId) return;
+      let mediaPath = s.sourceMediaPath || '';
+      for (const lane of s.lanes) {
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            mediaPath = clip.source_path;
+            break;
+          }
+        }
+        if (mediaPath) break;
+      }
+      if (!mediaPath) return;
+      await fetch(`${API_BASE}/cut/time-markers/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+          media_path: mediaPath, kind: 'comment', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+          score: 1.0, text: 'Comment',
+        }),
+      });
+      await s.refreshProjectState?.();
     },
 
     // MARKER_MARK-MENU: Next/Previous marker navigation
@@ -305,6 +441,25 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // Project
     saveProject: () => saveProject(),
+    // MARKER_W6.WIRE: Import Media (Cmd+I) — trigger native file picker
+    importMedia: () => {
+      // Trigger the file input via dispatching a custom event
+      // CutStandalone listens for this and handles the bootstrap flow
+      window.dispatchEvent(new CustomEvent('cut:import-media'));
+    },
+    // MARKER_W6.WIRE: Scene Detect (Cmd+D) — trigger scene detection
+    sceneDetect: async () => {
+      const s = useCutEditorStore.getState();
+      if (!s.sandboxRoot || !s.projectId) return;
+      await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+        }),
+      });
+      await s.refreshProjectState?.();
+    },
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');
