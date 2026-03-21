@@ -19,6 +19,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
+import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
@@ -57,7 +58,7 @@ const RULER_STYLE: CSSProperties = {
   position: 'relative',
   overflow: 'hidden',
   flexShrink: 0,
-  marginLeft: LANE_HEADER_WIDTH,
+  // MARKER_W5.TC: marginLeft removed — ruler now inside flex row with TC header
   cursor: 'pointer',
 };
 
@@ -548,6 +549,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
+  // MARKER_W5.TC: Project timecode settings for editable TC field
+  const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
+  const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
   const TOOL_CURSOR: Record<string, string> = { selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in' };
@@ -1245,15 +1249,39 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
   return (
     <div ref={containerRef} data-testid="cut-timeline-track-view" style={CONTAINER_STYLE} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
-      <TimeRuler
-        zoom={zoom}
-        scrollLeft={scrollLeft}
-        totalWidth={containerWidth - LANE_HEADER_WIDTH}
-        rulerRef={rulerRef}
-        onSeek={seek}
-        onScrubStart={handleRulerScrubStart}
-        onDoubleClick={handleRulerDoubleClick}
-      />
+      {/* MARKER_W5.TC: Ruler row — editable timecode field + time ruler */}
+      <div style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, height: RULER_HEIGHT }}>
+        {/* Timecode field in lane header area (FCP7 Current Timecode) */}
+        <div style={{
+          width: LANE_HEADER_WIDTH,
+          flexShrink: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#080808',
+          borderRight: '1px solid #222',
+          borderBottom: '1px solid #333',
+        }}>
+          <TimecodeField
+            seconds={currentTime}
+            fps={projectFramerate}
+            dropFrame={projectDropFrame}
+            onSeek={seek}
+            testId="timeline-tc-field"
+          />
+        </div>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <TimeRuler
+            zoom={zoom}
+            scrollLeft={scrollLeft}
+            totalWidth={containerWidth - LANE_HEADER_WIDTH}
+            rulerRef={rulerRef}
+            onSeek={seek}
+            onScrubStart={handleRulerScrubStart}
+            onDoubleClick={handleRulerDoubleClick}
+          />
+        </div>
+      </div>
 
       {markIn != null && markOut != null && markOut > markIn ? (
         <div

@@ -4411,6 +4411,43 @@ async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, A
     }
 
 
+@router.get("/scopes/analyze")
+async def cut_scopes_analyze(
+    source_path: str,
+    time: float = 0.0,
+    scopes: str = "histogram,waveform,vectorscope",
+    size: int = 256,
+) -> dict[str, Any]:
+    """
+    MARKER_SCOPES — Video scope analysis for a single frame.
+
+    Extracts frame at given time via FFmpeg, computes requested scopes.
+    Returns JSON with histogram (RGB), waveform (luma), vectorscope (CbCr).
+
+    Query params:
+        source_path: path to video file
+        time: timestamp in seconds (default: 0.0)
+        scopes: comma-separated scope types (default: all three)
+        size: scope resolution (default: 256, max: 512)
+    """
+    from src.services.cut_scope_renderer import analyze_frame_scopes
+
+    size = max(64, min(512, size))
+    scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
+    valid_scopes = {"histogram", "waveform", "vectorscope"}
+    scope_list = [s for s in scope_list if s in valid_scopes]
+    if not scope_list:
+        scope_list = list(valid_scopes)
+
+    result = analyze_frame_scopes(
+        source_path=source_path,
+        time_sec=time,
+        scopes=scope_list,
+        scope_size=size,
+    )
+    return result
+
+
 @router.get("/waveform-peaks")
 async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
     """

@@ -16,6 +16,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import {
   IconSkipStart, IconPlay, IconPause, IconSkipEnd,
 } from './icons/CutIcons';
+import TimecodeField, { formatTimecode as formatTimecodeDisplay } from './TimecodeField';
 
 // ─── Styles ───
 
@@ -126,6 +127,9 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const setMarkIn = feed === 'source' ? setSourceMarkIn : setSequenceMarkIn;
   const setMarkOut = feed === 'source' ? setSourceMarkOut : setSequenceMarkOut;
 
+  const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
+  const dropFrame = useCutEditorStore((s) => s.dropFrame);
+
   const togglePlay = useCutEditorStore((s) => s.togglePlay);
   const seek = useCutEditorStore((s) => s.seek);
 
@@ -203,8 +207,15 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
       {/* MARKER_FIX-MONITOR-1: Controls row — FCP7/Premiere centered layout */}
       <div style={CONTROLS_ROW}>
-        {/* Left: Timecode (absolute positioned) */}
-        <span style={{ ...TC_STYLE, position: 'absolute', left: 8 }}>{formatTC(currentTime)}</span>
+        {/* Left: Editable Timecode (MARKER_W5.TC) */}
+        <TimecodeField
+          seconds={currentTime}
+          fps={projectFramerate}
+          dropFrame={dropFrame}
+          onSeek={seek}
+          style={{ position: 'absolute', left: 8 }}
+          testId={`monitor-tc-${feed}`}
+        />
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
         <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to previous edit (Up)">
@@ -231,7 +242,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
         {/* Right: Duration + Marking (absolute positioned) */}
         <div style={{ position: 'absolute', right: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={DUR_STYLE}>{formatTC(duration)}</span>
+          <span style={DUR_STYLE}>{formatTimecodeDisplay(duration, projectFramerate, dropFrame)}</span>
           {/* IN / OUT + Match Frame — Source and Program both get marks */}
           <div style={{ width: 1, height: 14, background: '#333' }} />
           <button
