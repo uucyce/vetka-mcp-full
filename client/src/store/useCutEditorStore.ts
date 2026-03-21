@@ -292,6 +292,11 @@ interface CutEditorState {
   cutClips: () => void;                          // Cut selected clips (copy + remove)
   pasteClips: (mode: 'overwrite' | 'insert') => void;  // Paste at playhead
   pasteAttributes: () => void;                   // Paste effects from clipboard to selected
+  // MARKER_SEQ-MENU: Sequence editing operations
+  liftClip: () => void;                          // Remove selected clips, leave gap
+  extractClip: () => void;                       // Remove selected clips, close gap (ripple)
+  closeGap: () => void;                          // Find and remove gaps in targeted lanes
+  extendEdit: () => void;                        // Extend nearest edit to playhead
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -692,6 +697,133 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         selectedClipIds.has(c.clip_id) ? { ...c, effects: { ...sourceEffects } } : c,
       ),
     }));
+    set({ lanes: newLanes });
+  },
+
+  // MARKER_SEQ-MENU: Sequence editing operations
+  liftClip: () => {
+    // Lift: remove selected clips, leave gap (like Delete but respects In/Out range)
+    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut, currentTime } = get();
+    if (selectedClipIds.size > 0) {
+      // Remove selected clips, leave gap
+      const newLanes = lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.filter((c) => !selectedClipIds.has(c.clip_id)),
+      }));
+      set({ lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
+    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
+      // No selection: lift range between In/Out marks
+      const inPt = sequenceMarkIn;
+      const outPt = sequenceMarkOut;
+      const newLanes = lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          if (c.start_sec >= inPt && cEnd <= outPt) return []; // fully inside → remove
+          if (cEnd <= inPt || c.start_sec >= outPt) return [c]; // fully outside → keep
+          // Partial overlap → trim
+          const result: typeof lane.clips = [];
+          if (c.start_sec < inPt) result.push({ ...c, duration_sec: inPt - c.start_sec });
+          if (cEnd > outPt) result.push({ ...c, clip_id: c.clip_id + '_lift', start_sec: outPt, duration_sec: cEnd - outPt });
+          return result;
+        }),
+      }));
+      set({ lanes: newLanes });
+    }
+  },
+  extractClip: () => {
+    // Extract: remove selected clips, close gap (ripple downstream)
+    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    let gapDuration = 0;
+    let gapStart = Infinity;
+
+    if (selectedClipIds.size > 0) {
+      // Calculate gap from selected clips
+      for (const lane of lanes) {
+        for (const clip of lane.clips) {
+          if (selectedClipIds.has(clip.clip_id)) {
+            gapStart = Math.min(gapStart, clip.start_sec);
+            gapDuration = Math.max(gapDuration, clip.start_sec + clip.duration_sec - gapStart);
+          }
+        }
+      }
+      const newLanes = lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips
+          .filter((c) => !selectedClipIds.has(c.clip_id))
+          .map((c) => c.start_sec >= gapStart + gapDuration ? { ...c, start_sec: c.start_sec - gapDuration } : c),
+      }));
+      set({ lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
+    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
+      // Extract range: remove and ripple
+      gapDuration = sequenceMarkOut - sequenceMarkIn;
+      gapStart = sequenceMarkIn;
+      const newLanes = lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          if (c.start_sec >= gapStart && cEnd <= sequenceMarkOut) return [];
+          if (cEnd <= gapStart) return [c];
+          if (c.start_sec >= sequenceMarkOut) return [{ ...c, start_sec: c.start_sec - gapDuration }];
+          // Partial: trim then ripple remainder
+          const result: typeof lane.clips = [];
+          if (c.start_sec < gapStart) result.push({ ...c, duration_sec: gapStart - c.start_sec });
+          if (cEnd > sequenceMarkOut) result.push({ ...c, clip_id: c.clip_id + '_ext', start_sec: gapStart, duration_sec: cEnd - sequenceMarkOut });
+          return result;
+        }),
+      }));
+      set({ lanes: newLanes });
+    }
+  },
+  closeGap: () => {
+    // Close gap: for each targeted lane, remove empty space between clips
+    const { lanes, targetedLanes } = get();
+    const newLanes = lanes.map((lane) => {
+      if (targetedLanes.size > 0 && !targetedLanes.has(lane.lane_id)) return lane;
+      const sorted = [...lane.clips].sort((a, b) => a.start_sec - b.start_sec);
+      let cursor = 0;
+      const packed = sorted.map((clip) => {
+        const newStart = Math.max(cursor, 0);
+        const shifted = newStart < clip.start_sec ? { ...clip, start_sec: newStart } : clip;
+        cursor = shifted.start_sec + shifted.duration_sec;
+        return shifted;
+      });
+      return { ...lane, clips: packed };
+    });
+    set({ lanes: newLanes });
+  },
+  extendEdit: () => {
+    // Extend edit: extend nearest clip edge to playhead
+    const { lanes, currentTime, lockedLanes } = get();
+    let bestDist = Infinity;
+    let bestLaneIdx = -1;
+    let bestClipIdx = -1;
+    let bestEdge: 'start' | 'end' = 'end';
+
+    lanes.forEach((lane, li) => {
+      if (lockedLanes.has(lane.lane_id)) return;
+      lane.clips.forEach((clip, ci) => {
+        const endSec = clip.start_sec + clip.duration_sec;
+        const dStart = Math.abs(clip.start_sec - currentTime);
+        const dEnd = Math.abs(endSec - currentTime);
+        if (dEnd < bestDist) { bestDist = dEnd; bestLaneIdx = li; bestClipIdx = ci; bestEdge = 'end'; }
+        if (dStart < bestDist) { bestDist = dStart; bestLaneIdx = li; bestClipIdx = ci; bestEdge = 'start'; }
+      });
+    });
+
+    if (bestLaneIdx < 0) return;
+    const newLanes = lanes.map((lane, li) => {
+      if (li !== bestLaneIdx) return lane;
+      return { ...lane, clips: lane.clips.map((c, ci) => {
+        if (ci !== bestClipIdx) return c;
+        if (bestEdge === 'end') {
+          return { ...c, duration_sec: Math.max(0.01, currentTime - c.start_sec) };
+        } else {
+          const oldEnd = c.start_sec + c.duration_sec;
+          return { ...c, start_sec: currentTime, duration_sec: Math.max(0.01, oldEnd - currentTime) };
+        }
+      })};
+    });
     set({ lanes: newLanes });
   },
 

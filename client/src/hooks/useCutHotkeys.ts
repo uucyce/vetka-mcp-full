@@ -70,6 +70,11 @@ export type CutHotkeyAction =
   // Mark operations
   | 'markClip'
   | 'playInToOut'
+  // Sequence operations
+  | 'liftClip'
+  | 'extractClip'
+  | 'closeGap'
+  | 'extendEdit'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
@@ -163,6 +168,12 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   markClip:            ['timeline'],
   playInToOut:         ['source', 'program', 'timeline'],
 
+  // Sequence operations — timeline only
+  liftClip:            ['timeline'],
+  extractClip:         ['timeline'],
+  closeGap:            ['timeline'],
+  extendEdit:          ['timeline'],
+
   // Global — always fire
   undo:                'global',
   redo:                'global',
@@ -225,6 +236,11 @@ export const PREMIERE_PRESET: HotkeyMap = {
   goToOut:           'Shift+o',
   markClip:          'x',
   playInToOut:       'Shift+\\',
+  // Sequence operations
+  liftClip:          ';',
+  extractClip:       "'",
+  closeGap:          'Alt+Backspace',
+  extendEdit:        'e',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -301,6 +317,11 @@ export const FCP7_PRESET: HotkeyMap = {
   clearInOut:        'Alt+x',
   markClip:          'x',
   playInToOut:       'Ctrl+\\',
+  // Sequence operations (FCP7 Ch.32)
+  liftClip:          ';',
+  extractClip:       "'",
+  closeGap:          'Alt+Backspace',
+  extendEdit:        'e',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -538,6 +559,11 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
+  // Sequence operations
+  { action: 'liftClip', label: 'Lift (leave gap)', group: 'Sequence' },
+  { action: 'extractClip', label: 'Extract (close gap)', group: 'Sequence' },
+  { action: 'closeGap', label: 'Close Gap', group: 'Sequence' },
+  { action: 'extendEdit', label: 'Extend Edit', group: 'Sequence' },
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
