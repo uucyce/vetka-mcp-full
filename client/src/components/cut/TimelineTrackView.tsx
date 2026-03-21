@@ -528,6 +528,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const trackHeights = useCutEditorStore((state) => state.trackHeights);
   const setTrackHeightForLane = useCutEditorStore((state) => state.setTrackHeightForLane);
   const currentTime = useCutEditorStore((state) => state.currentTime);
+  const duration = useCutEditorStore((state) => state.duration);
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useCutEditorStore((state) => state.selectedClipId);
   const selectedClipIds = useCutEditorStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
