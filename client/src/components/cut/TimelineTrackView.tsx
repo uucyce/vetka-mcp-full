@@ -1950,6 +1950,28 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </span>
                       ) : null}
 
+                      {/* MARKER_TRANSITION: Cross dissolve gradient overlay at clip's right edge */}
+                      {clip.transition_out && width > 10 ? (() => {
+                        const txDurPx = clip.transition_out.duration_sec * zoom;
+                        const txWidth = Math.min(txDurPx, width * 0.5); // cap at half clip width
+                        return (
+                          <div
+                            style={{
+                              position: 'absolute',
+                              right: 0,
+                              top: 0,
+                              bottom: 0,
+                              width: txWidth,
+                              background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.15))',
+                              borderLeft: '1px dashed rgba(255,255,255,0.3)',
+                              pointerEvents: 'none',
+                              zIndex: 2,
+                            }}
+                            title={`${clip.transition_out.type.replace('_', ' ')} (${clip.transition_out.duration_sec.toFixed(1)}s)`}
+                          />
+                        );
+                      })() : null}
+
                       {/* MARKER_SPEED: Speed indicator badge */}
                       {clip.speed != null && clip.speed !== 1 && width > 30 ? (
                         <span

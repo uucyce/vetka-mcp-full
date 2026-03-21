@@ -78,6 +78,8 @@ export type CutHotkeyAction =
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   | 'splitEditLCut'
   | 'splitEditJCut'
+  // MARKER_TRANSITION: Default transition
+  | 'addDefaultTransition'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
@@ -178,6 +180,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   extendEdit:          ['timeline'],
   splitEditLCut:       ['timeline'],
   splitEditJCut:       ['timeline'],
+  addDefaultTransition:['timeline'],
 
   // Global — always fire
   undo:                'global',
@@ -249,6 +252,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // MARKER_SPLIT-EDIT: L-cut / J-cut
   splitEditLCut:     'Alt+e',
   splitEditJCut:     'Alt+Shift+e',
+  addDefaultTransition: 'Cmd+t',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -332,6 +336,7 @@ export const FCP7_PRESET: HotkeyMap = {
   extendEdit:        'e',
   splitEditLCut:     'Alt+e',
   splitEditJCut:     'Alt+Shift+e',
+  addDefaultTransition: 'Cmd+t',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -576,6 +581,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'extendEdit', label: 'Extend Edit', group: 'Sequence' },
   { action: 'splitEditLCut', label: 'L-Cut (video ends, audio continues)', group: 'Sequence' },
   { action: 'splitEditJCut', label: 'J-Cut (audio starts, video later)', group: 'Sequence' },
+  { action: 'addDefaultTransition', label: 'Add Default Transition (⌘T)', group: 'Sequence' },
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },

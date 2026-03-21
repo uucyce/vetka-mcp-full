@@ -22,6 +22,13 @@ export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
   opacity: 1,
 };
 
+// MARKER_TRANSITION: Transition between clips (FCP7 Ch.47)
+export type ClipTransition = {
+  type: 'cross_dissolve' | 'dip_to_black' | 'wipe';
+  duration_sec: number;    // typically 1.0s (30 frames at 30fps)
+  alignment: 'center' | 'start' | 'end';  // relative to edit point
+};
+
 export type TimelineClip = {
   clip_id: string;
   scene_id?: string;
@@ -33,6 +40,8 @@ export type TimelineClip = {
   source_in?: number;
   // MARKER_SPEED: Clip speed (1.0 = normal, 0.5 = half speed, 2.0 = double, -1 = reverse)
   speed?: number;
+  // MARKER_TRANSITION: Outgoing transition (rendered at clip's right edge)
+  transition_out?: ClipTransition;
   effects?: ClipEffects;
   sync?: {
     method?: string;
@@ -310,6 +319,8 @@ interface CutEditorState {
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
+  // MARKER_TRANSITION: Default transition (FCP7 Ch.47 ⌘T)
+  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -889,6 +900,51 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
             }];
           }
           return [c];
+        }),
+      };
+    });
+    set({ lanes: newLanes });
+  },
+
+  // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
+  addDefaultTransition: () => {
+    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
+    const transitionDur = 1.0; // 1 second default (FCP7 standard)
+    let bestDist = Infinity;
+    let bestLaneIdx = -1;
+    let bestClipIdx = -1;
+
+    // Find nearest clip end (outgoing edit point) to playhead
+    lanes.forEach((lane, li) => {
+      if (lockedLanes.has(lane.lane_id)) return;
+      lane.clips.forEach((clip, ci) => {
+        const clipEnd = clip.start_sec + clip.duration_sec;
+        const dist = Math.abs(clipEnd - currentTime);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestLaneIdx = li;
+          bestClipIdx = ci;
+        }
+      });
+    });
+
+    if (bestLaneIdx < 0 || bestDist > 2.0) return; // no nearby edit point
+
+    const newLanes = lanes.map((lane, li) => {
+      if (li !== bestLaneIdx) return lane;
+      return {
+        ...lane,
+        clips: lane.clips.map((c, ci) => {
+          if (ci !== bestClipIdx) return c;
+          // Add or replace transition_out
+          return {
+            ...c,
+            transition_out: {
+              type: 'cross_dissolve' as const,
+              duration_sec: transitionDur,
+              alignment: 'center' as const,
+            },
+          };
         }),
       };
     });
