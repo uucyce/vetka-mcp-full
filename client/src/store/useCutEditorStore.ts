@@ -838,3 +838,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 }));
 
+// MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E test access
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
+}
+

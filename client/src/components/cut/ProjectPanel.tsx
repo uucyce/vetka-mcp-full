@@ -488,7 +488,7 @@ export default function ProjectPanel() {
   const totalClips = projectItems.length;
 
   return (
-    <div style={PANEL}>
+    <div style={PANEL} data-testid="cut-source-browser">
       {/* Header with view mode switcher — MARKER_W5.4 */}
       <div style={HEADER}>
         <span>Project</span>

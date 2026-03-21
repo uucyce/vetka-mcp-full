@@ -12,6 +12,7 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import ColorWheel from './ColorWheel';
 
 // ─── Types ───
 
@@ -120,13 +121,6 @@ const RESET_BTN: CSSProperties = {
   cursor: 'pointer',
   fontSize: 9,
   fontFamily: 'system-ui',
-};
-
-const RGB_LABEL: CSSProperties = {
-  fontSize: 9,
-  fontWeight: 600,
-  width: 14,
-  textAlign: 'center' as const,
 };
 
 // ─── Component ───
@@ -240,58 +234,41 @@ export default function ColorCorrectionPanel() {
         </div>
       </div>
 
-      {/* Lift (Shadows) */}
+      {/* MARKER_CC3WAY: 3-Way Color Wheels (FCP7 Ch.79) */}
       <div style={SECTION}>
-        <div style={SECTION_TITLE}><span>Lift (Shadows)</span></div>
-        {(['R', 'G', 'B'] as const).map((ch) => {
-          const field = `lift${ch}` as keyof ColorState;
-          const clr = ch === 'R' ? '#e55' : ch === 'G' ? '#4ade80' : '#4a9eff';
-          return (
-            <div key={ch} style={ROW}>
-              <span style={{ ...RGB_LABEL, color: clr }}>{ch}</span>
-              <input type="range" style={SLIDER} min={-1} max={1} step={0.01}
-                value={color[field] as number}
-                onChange={(e) => updateField(field, Number(e.target.value))} />
-              <span style={VALUE}>{(color[field] as number).toFixed(2)}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Gamma (Midtones) */}
-      <div style={SECTION}>
-        <div style={SECTION_TITLE}><span>Gamma (Midtones)</span></div>
-        {(['R', 'G', 'B'] as const).map((ch) => {
-          const field = `mid${ch}` as keyof ColorState;
-          const clr = ch === 'R' ? '#e55' : ch === 'G' ? '#4ade80' : '#4a9eff';
-          return (
-            <div key={ch} style={ROW}>
-              <span style={{ ...RGB_LABEL, color: clr }}>{ch}</span>
-              <input type="range" style={SLIDER} min={-1} max={1} step={0.01}
-                value={color[field] as number}
-                onChange={(e) => updateField(field, Number(e.target.value))} />
-              <span style={VALUE}>{(color[field] as number).toFixed(2)}</span>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Gain (Highlights) */}
-      <div style={SECTION}>
-        <div style={SECTION_TITLE}><span>Gain (Highlights)</span></div>
-        {(['R', 'G', 'B'] as const).map((ch) => {
-          const field = `gain${ch}` as keyof ColorState;
-          const clr = ch === 'R' ? '#e55' : ch === 'G' ? '#4ade80' : '#4a9eff';
-          return (
-            <div key={ch} style={ROW}>
-              <span style={{ ...RGB_LABEL, color: clr }}>{ch}</span>
-              <input type="range" style={SLIDER} min={-1} max={1} step={0.01}
-                value={color[field] as number}
-                onChange={(e) => updateField(field, Number(e.target.value))} />
-              <span style={VALUE}>{(color[field] as number).toFixed(2)}</span>
-            </div>
-          );
-        })}
+        <div style={SECTION_TITLE}><span>3-Way Color Corrector</span></div>
+        <div style={{ display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: 8 }}>
+          <ColorWheel
+            label="Shadows"
+            r={color.liftR}
+            g={color.liftG}
+            b={color.liftB}
+            size={90}
+            onChange={(r, g, b) => {
+              setColor((prev) => ({ ...prev, liftR: r, liftG: g, liftB: b }));
+            }}
+          />
+          <ColorWheel
+            label="Midtones"
+            r={color.midR}
+            g={color.midG}
+            b={color.midB}
+            size={90}
+            onChange={(r, g, b) => {
+              setColor((prev) => ({ ...prev, midR: r, midG: g, midB: b }));
+            }}
+          />
+          <ColorWheel
+            label="Highlights"
+            r={color.gainR}
+            g={color.gainG}
+            b={color.gainB}
+            size={90}
+            onChange={(r, g, b) => {
+              setColor((prev) => ({ ...prev, gainR: r, gainG: g, gainB: b }));
+            }}
+          />
+        </div>
       </div>
 
       {/* Curves */}

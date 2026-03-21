@@ -142,7 +142,10 @@ function MenuItemRow({
       >
         <div style={ITEM}>
           <span>{item.label}</span>
-          <span style={SUBMENU_ARROW}>{'>'}</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            {item.shortcut && <span style={SHORTCUT}>{item.shortcut}</span>}
+            <span style={SUBMENU_ARROW}>{'>'}</span>
+          </span>
         </div>
         {subOpen && (
           <div style={{ ...DROPDOWN, top: -3, left: '100%' }}>
@@ -261,7 +264,9 @@ export default function MenuBar() {
         { label: 'Select All', shortcut: '⌘A', action: () => store.getState().selectAllClips() },
         { label: 'Deselect All', shortcut: 'Esc', action: () => store.getState().clearSelection() },
         { separator: true },
-        { label: 'Keyboard Shortcuts', submenu: [
+        { label: 'Find', shortcut: '⌘F', disabled: true },
+        { separator: true },
+        { label: 'Keyboard Shortcuts', shortcut: '⌘⌥K', submenu: [
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
           { separator: true },
           ...(['premiere', 'fcp7', 'custom'] as HotkeyPresetName[]).map((p) => ({

@@ -243,7 +243,7 @@ test.describe.serial('phase170 cut debug marker-actions smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Source Browser').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible();
     await page.locator('button[title="Toggle NLE / Debug view"]').click();
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText('clip_marker_a.mov', { exact: true }).first()).toBeVisible();
