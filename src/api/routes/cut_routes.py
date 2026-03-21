@@ -4411,6 +4411,26 @@ async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, A
     }
 
 
+@router.get("/scopes/analyze")
+async def cut_scopes_analyze(
+    source_path: str,
+    time: float = 0.0,
+    scopes: str = "histogram,waveform,vectorscope",
+    size: int = 256,
+) -> dict[str, Any]:
+    """
+    MARKER_B19 — Video scope analysis: waveform, parade, vectorscope, histogram.
+    """
+    from src.services.cut_scope_renderer import analyze_frame_scopes
+
+    size = max(64, min(512, size))
+    scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
+    valid = {"histogram", "waveform", "vectorscope", "parade"}
+    scope_list = [s for s in scope_list if s in valid] or ["histogram", "waveform", "vectorscope"]
+
+    return analyze_frame_scopes(source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size)
+
+
 @router.get("/waveform-peaks")
 async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
     """

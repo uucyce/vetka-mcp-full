@@ -39,11 +39,13 @@ import {
   AudioMixerPanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
+import VideoScopes from './VideoScopes';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
 
 const EffectsPanelDock = () => <EffectsPanel />;
+const VideoScopesPanelDock = () => <VideoScopes />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -56,6 +58,7 @@ const PANEL_COMPONENTS = {
   montage: AutoMontagePanelDock,
   effects: EffectsPanelDock,
   mixer: AudioMixerPanelDock,
+  scopes: VideoScopesPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -189,6 +192,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       id: 'mixer',
       component: 'mixer',
       title: 'Mixer',
+      position: { referencePanel: 'inspector', direction: 'within' },
+    });
+
+    // MARKER_B19: Video Scopes panel (Analysis tab group)
+    event.api.addPanel({
+      id: 'scopes',
+      component: 'scopes',
+      title: 'Scopes',
       position: { referencePanel: 'inspector', direction: 'within' },
     });
 
