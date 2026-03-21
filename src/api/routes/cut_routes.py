@@ -4431,6 +4431,117 @@ async def cut_scopes_analyze(
     return analyze_frame_scopes(source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size)
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B23: LUT Browser — import, list, preview, delete
+# ---------------------------------------------------------------------------
+
+
+class CutLutImportRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    source_path: str
+
+
+@router.post("/color/lut/import")
+async def cut_lut_import(body: CutLutImportRequest) -> dict[str, Any]:
+    """MARKER_B23 — Import a .cube LUT file into project storage."""
+    from src.services.cut_color_pipeline import import_lut
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+    return import_lut(body.sandbox_root, body.source_path)
+
+
+@router.get("/color/lut/list")
+async def cut_lut_list(sandbox_root: str, project_id: str) -> dict[str, Any]:
+    """MARKER_B23 — List LUT files in project storage."""
+    from src.services.cut_color_pipeline import list_project_luts
+    store = CutProjectStore(sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(project_id):
+        return {"success": False, "error": "project_not_found"}
+    luts = list_project_luts(sandbox_root)
+    return {"success": True, "luts": luts, "count": len(luts)}
+
+
+class CutLutDeleteRequest(BaseModel):
+    sandbox_root: str
+    project_id: str
+    lut_filename: str
+
+
+@router.post("/color/lut/delete")
+async def cut_lut_delete(body: CutLutDeleteRequest) -> dict[str, Any]:
+    """MARKER_B23 — Delete a LUT from project storage."""
+    from src.services.cut_color_pipeline import get_lut_storage_dir
+    import os
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+    lut_dir = get_lut_storage_dir(body.sandbox_root)
+    safe_name = os.path.basename(body.lut_filename)
+    path = os.path.join(lut_dir, safe_name)
+    if os.path.exists(path):
+        os.remove(path)
+        return {"success": True, "deleted": safe_name}
+    return {"success": False, "error": "lut_not_found"}
+
+
+class CutLutPreviewRequest(BaseModel):
+    source_path: str
+    lut_path: str
+    time: float = 0.0
+    proxy_height: int = 270
+
+
+@router.post("/color/lut/preview")
+async def cut_lut_preview(body: CutLutPreviewRequest) -> dict[str, Any]:
+    """MARKER_B23 — Preview a LUT on current frame. Returns before/after base64 JPEGs."""
+    import base64
+    from src.services.cut_scope_renderer import extract_frame_rgb
+    from src.services.cut_color_pipeline import apply_color_pipeline
+    import subprocess
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.proxy_height * 16 // 9)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    graded = apply_color_pipeline(frame, lut_path=body.lut_path)
+    h, w, _ = graded.shape
+
+    def encode_jpeg(f: "np.ndarray") -> str | None:
+        try:
+            cmd = ["ffmpeg", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                   "-s", f"{w}x{h}", "-i", "pipe:0", "-vframes", "1",
+                   "-f", "image2", "-vcodec", "mjpeg", "-q:v", "6", "pipe:1"]
+            proc = subprocess.run(cmd, input=f.tobytes(), capture_output=True, timeout=5)
+            if proc.returncode == 0 and proc.stdout:
+                return base64.b64encode(proc.stdout).decode("ascii")
+        except Exception:
+            pass
+        return None
+
+    before_b64 = encode_jpeg(frame)
+    after_b64 = encode_jpeg(graded)
+
+    return {
+        "success": True,
+        "width": w, "height": h,
+        "before": before_b64,
+        "after": after_b64,
+        "lut_path": body.lut_path,
+    }
+
+
+@router.get("/color/profiles")
+async def cut_color_profiles() -> dict[str, Any]:
+    """MARKER_B18 — List available camera log profiles."""
+    from src.services.cut_color_pipeline import list_log_profiles
+    return {"success": True, "profiles": list_log_profiles()}
+
+
 @router.get("/waveform-peaks")
 async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
     """
