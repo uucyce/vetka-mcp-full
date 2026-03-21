@@ -1,0 +1,465 @@
+"""
+MARKER_B20 — CUT Preview Decoder.
+
+Real-time preview pipeline: decode video frame → downscale → color pipeline → JPEG.
+Two decode backends:
+  1. PyAV (preferred): av.open() → container.decode() → numpy frame
+  2. FFmpeg subprocess (fallback): ffmpeg → rawvideo pipe → numpy
+
+Preview frames are sent to frontend via SocketIO or returned as base64 JPEG.
+
+Per Beta-1 feedback: "FFmpeg CLI for render, PyAV for preview/scopes/LUT. Don't mix layers."
+This module is the PyAV preview layer — or FFmpeg subprocess when PyAV is unavailable.
+
+Architecture:
+  decode_preview_frame(source, time, opts) → graded uint8 RGB
+  PreviewSession: stateful seek + decode for scrubbing (PyAV container reuse)
+
+Performance targets:
+  540p proxy decode + LUT: ~30fps on M-series Mac
+  1080p decode + LUT: ~15fps
+
+@status: active
+@phase: B20
+@task: tb_1773995026_5
+@depends: cut_color_pipeline (B18), cut_scope_renderer (frame extraction)
+"""
+from __future__ import annotations
+
+import base64
+import logging
+import subprocess
+import time as time_module
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+logger = logging.getLogger(__name__)
+
+# Try importing PyAV
+try:
+    import av
+    HAS_PYAV = True
+except ImportError:
+    av = None  # type: ignore[assignment]
+    HAS_PYAV = False
+
+from src.services.cut_color_pipeline import apply_color_pipeline
+
+
+# ---------------------------------------------------------------------------
+# Frame decode — dual backend (PyAV / FFmpeg subprocess)
+# ---------------------------------------------------------------------------
+
+def _probe_dimensions(source_path: str) -> tuple[int, int] | None:
+    """Get video dimensions via ffprobe."""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=width,height",
+            "-of", "csv=p=0:s=x",
+            str(source_path),
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode != 0:
+            return None
+        parts = result.stdout.strip().split("x")
+        if len(parts) >= 2:
+            return int(parts[0]), int(parts[1])
+    except Exception:
+        pass
+    return None
+
+
+def _compute_proxy_dims(
+    orig_w: int, orig_h: int, max_height: int = 540
+) -> tuple[int, int]:
+    """Compute proxy dimensions maintaining aspect ratio."""
+    if orig_h <= max_height:
+        return orig_w, orig_h
+    scale = max_height / orig_h
+    w = int(orig_w * scale)
+    # Ensure even dimensions
+    w = w + (w % 2)
+    h = max_height + (max_height % 2)
+    return w, h
+
+
+def decode_frame_pyav(
+    source_path: str,
+    time_sec: float,
+    proxy_height: int = 540,
+) -> np.ndarray | None:
+    """Decode a single frame using PyAV. Returns uint8 RGB numpy array."""
+    if not HAS_PYAV:
+        return None
+
+    try:
+        container = av.open(source_path)
+        stream = container.streams.video[0]
+
+        # Seek to nearest keyframe
+        pts = int(time_sec / stream.time_base)
+        container.seek(pts, stream=stream)
+
+        # Decode first frame after seek
+        for frame in container.decode(video=0):
+            # Convert to RGB numpy
+            rgb_frame = frame.to_ndarray(format="rgb24")
+
+            # Downscale if needed
+            orig_h, orig_w = rgb_frame.shape[:2]
+            if orig_h > proxy_height:
+                pw, ph = _compute_proxy_dims(orig_w, orig_h, proxy_height)
+                # Use PyAV's built-in reformatter for fast resize
+                reformatted = frame.reformat(width=pw, height=ph, format="rgb24")
+                rgb_frame = reformatted.to_ndarray(format="rgb24")
+
+            container.close()
+            return rgb_frame
+
+        container.close()
+    except Exception as e:
+        logger.warning("PyAV decode failed for %s @ %.2fs: %s", source_path, time_sec, e)
+
+    return None
+
+
+def decode_frame_ffmpeg(
+    source_path: str,
+    time_sec: float,
+    proxy_height: int = 540,
+) -> np.ndarray | None:
+    """Decode a single frame using FFmpeg subprocess. Returns uint8 RGB numpy array."""
+    dims = _probe_dimensions(source_path)
+    if dims is None:
+        return None
+
+    orig_w, orig_h = dims
+    pw, ph = _compute_proxy_dims(orig_w, orig_h, proxy_height)
+
+    try:
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-ss", str(max(0.0, time_sec)),
+            "-i", str(source_path),
+            "-vframes", "1",
+            "-vf", f"scale={pw}:{ph}",
+            "-f", "rawvideo",
+            "-pix_fmt", "rgb24",
+            "pipe:1",
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        if result.returncode != 0 or len(result.stdout) == 0:
+            return None
+
+        expected = pw * ph * 3
+        raw = result.stdout[:expected]
+        if len(raw) < expected:
+            return None
+
+        return np.frombuffer(raw, dtype=np.uint8).reshape(ph, pw, 3).copy()
+    except Exception as e:
+        logger.warning("FFmpeg decode failed: %s", e)
+        return None
+
+
+def decode_frame(
+    source_path: str,
+    time_sec: float = 0.0,
+    proxy_height: int = 540,
+) -> np.ndarray | None:
+    """Decode a single preview frame. Tries PyAV first, falls back to FFmpeg."""
+    if not Path(source_path).exists():
+        return None
+
+    # Try PyAV first (faster for sequential access)
+    if HAS_PYAV:
+        frame = decode_frame_pyav(source_path, time_sec, proxy_height)
+        if frame is not None:
+            return frame
+
+    # Fallback to FFmpeg subprocess
+    return decode_frame_ffmpeg(source_path, time_sec, proxy_height)
+
+
+# ---------------------------------------------------------------------------
+# Preview frame with full color pipeline
+# ---------------------------------------------------------------------------
+
+def decode_preview_frame(
+    source_path: str,
+    time_sec: float = 0.0,
+    proxy_height: int = 540,
+    log_profile: str | None = None,
+    lut_path: str | None = None,
+) -> np.ndarray | None:
+    """Decode + apply color pipeline. Returns graded uint8 RGB frame."""
+    frame = decode_frame(source_path, time_sec, proxy_height)
+    if frame is None:
+        return None
+
+    # Apply color pipeline (log decode + LUT)
+    if log_profile or lut_path:
+        frame = apply_color_pipeline(frame, log_profile=log_profile, lut_path=lut_path)
+
+    return frame
+
+
+def encode_preview_jpeg(frame_rgb: np.ndarray, quality: int = 80) -> bytes | None:
+    """Encode RGB frame to JPEG bytes using FFmpeg."""
+    h, w, _ = frame_rgb.shape
+    try:
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}",
+            "-i", "pipe:0",
+            "-vframes", "1",
+            "-f", "image2", "-vcodec", "mjpeg",
+            "-q:v", str(max(1, min(31, 31 - int(quality * 31 / 100)))),
+            "pipe:1",
+        ]
+        proc = subprocess.run(cmd, input=frame_rgb.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode == 0 and proc.stdout:
+            return proc.stdout
+    except Exception as e:
+        logger.warning("JPEG encode failed: %s", e)
+    return None
+
+
+def preview_frame_as_b64(
+    source_path: str,
+    time_sec: float = 0.0,
+    proxy_height: int = 540,
+    log_profile: str | None = None,
+    lut_path: str | None = None,
+    jpeg_quality: int = 80,
+) -> dict[str, Any]:
+    """Full preview pipeline: decode → color → JPEG → base64.
+
+    Returns dict with success, data (base64), width, height, timing_ms.
+    """
+    t0 = time_module.monotonic()
+
+    frame = decode_preview_frame(source_path, time_sec, proxy_height, log_profile, lut_path)
+    if frame is None:
+        return {"success": False, "error": "decode_failed"}
+
+    jpeg = encode_preview_jpeg(frame, jpeg_quality)
+    if jpeg is None:
+        return {"success": False, "error": "encode_failed"}
+
+    elapsed_ms = (time_module.monotonic() - t0) * 1000
+
+    return {
+        "success": True,
+        "width": frame.shape[1],
+        "height": frame.shape[0],
+        "format": "jpeg",
+        "data": base64.b64encode(jpeg).decode("ascii"),
+        "timing_ms": round(elapsed_ms, 1),
+        "decoder": "pyav" if HAS_PYAV else "ffmpeg",
+        "log_profile": log_profile,
+        "lut_path": lut_path,
+    }
+
+
+# ---------------------------------------------------------------------------
+# PyAV-based PreviewSession — stateful, for scrubbing (container reuse)
+# ---------------------------------------------------------------------------
+
+class PreviewSession:
+    """Stateful preview session with container reuse for fast scrubbing.
+
+    Keeps the PyAV container open between seeks, avoiding re-open overhead.
+    Falls back to per-frame FFmpeg subprocess if PyAV unavailable.
+    """
+
+    def __init__(
+        self,
+        source_path: str,
+        proxy_height: int = 540,
+        log_profile: str | None = None,
+        lut_path: str | None = None,
+    ):
+        self.source_path = source_path
+        self.proxy_height = proxy_height
+        self.log_profile = log_profile
+        self.lut_path = lut_path
+        self._container = None
+        self._stream = None
+        self._last_time: float = -1.0
+
+        if HAS_PYAV and Path(source_path).exists():
+            try:
+                self._container = av.open(source_path)
+                self._stream = self._container.streams.video[0]
+            except Exception as e:
+                logger.warning("Failed to open PyAV container: %s", e)
+
+    def seek_and_decode(self, time_sec: float) -> np.ndarray | None:
+        """Decode frame at time_sec, reusing container."""
+        if self._container and self._stream:
+            try:
+                pts = int(time_sec / self._stream.time_base)
+                self._container.seek(pts, stream=self._stream)
+
+                for frame in self._container.decode(video=0):
+                    rgb = frame.to_ndarray(format="rgb24")
+                    h, w = rgb.shape[:2]
+                    if h > self.proxy_height:
+                        pw, ph = _compute_proxy_dims(w, h, self.proxy_height)
+                        ref = frame.reformat(width=pw, height=ph, format="rgb24")
+                        rgb = ref.to_ndarray(format="rgb24")
+
+                    if self.log_profile or self.lut_path:
+                        rgb = apply_color_pipeline(rgb, self.log_profile, self.lut_path)
+
+                    self._last_time = time_sec
+                    return rgb
+            except Exception as e:
+                logger.debug("PyAV scrub failed, falling back: %s", e)
+
+        # Fallback
+        return decode_preview_frame(
+            self.source_path, time_sec, self.proxy_height,
+            self.log_profile, self.lut_path,
+        )
+
+    def get_preview_b64(self, time_sec: float, jpeg_quality: int = 80) -> dict[str, Any]:
+        """Decode + encode to base64 JPEG."""
+        t0 = time_module.monotonic()
+        frame = self.seek_and_decode(time_sec)
+        if frame is None:
+            return {"success": False, "error": "decode_failed"}
+
+        jpeg = encode_preview_jpeg(frame, jpeg_quality)
+        if jpeg is None:
+            return {"success": False, "error": "encode_failed"}
+
+        elapsed_ms = (time_module.monotonic() - t0) * 1000
+        return {
+            "success": True,
+            "width": frame.shape[1],
+            "height": frame.shape[0],
+            "data": base64.b64encode(jpeg).decode("ascii"),
+            "timing_ms": round(elapsed_ms, 1),
+            "time_sec": time_sec,
+        }
+
+    @property
+    def info(self) -> dict[str, Any]:
+        """Session metadata."""
+        duration = 0.0
+        fps = 25.0
+        if self._stream:
+            if self._stream.duration and self._stream.time_base:
+                duration = float(self._stream.duration * self._stream.time_base)
+            fps = float(self._stream.average_rate) if self._stream.average_rate else 25.0
+
+        return {
+            "source_path": self.source_path,
+            "proxy_height": self.proxy_height,
+            "decoder": "pyav" if self._container else "ffmpeg",
+            "duration": duration,
+            "fps": fps,
+            "log_profile": self.log_profile,
+            "lut_path": self.lut_path,
+        }
+
+    def close(self):
+        if self._container:
+            try:
+                self._container.close()
+            except Exception:
+                pass
+            self._container = None
+            self._stream = None
+
+    def __del__(self):
+        self.close()
+
+
+# ---------------------------------------------------------------------------
+# Numpy-based effects application (pixel-level, for preview)
+# ---------------------------------------------------------------------------
+
+def apply_numpy_effects(
+    frame_float32: np.ndarray,
+    effects: list[dict[str, Any]],
+) -> np.ndarray:
+    """Apply video effects at pixel level using numpy.
+
+    This is the preview-path equivalent of compile_video_filters() in cut_effects_engine.
+    Only handles effects that can be done efficiently in numpy.
+
+    Args:
+        frame_float32: float32 [0, 1], shape (H, W, 3)
+        effects: list of effect dicts with "type" and "params"
+
+    Returns:
+        Processed float32 frame [0, 1]
+    """
+    for e in effects:
+        if not e.get("enabled", True):
+            continue
+
+        t = e.get("type", "")
+        p = e.get("params", {})
+
+        if t == "brightness":
+            val = float(p.get("value", 0))
+            if val != 0:
+                frame_float32 = frame_float32 + val
+
+        elif t == "contrast":
+            val = float(p.get("value", 1))
+            if val != 1.0:
+                frame_float32 = (frame_float32 - 0.5) * val + 0.5
+
+        elif t == "saturation":
+            val = float(p.get("value", 1))
+            if val != 1.0:
+                luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])
+                luma3 = luma[:, :, np.newaxis]
+                frame_float32 = luma3 + (frame_float32 - luma3) * val
+
+        elif t == "gamma":
+            val = float(p.get("value", 1))
+            if val != 1.0:
+                frame_float32 = np.power(np.clip(frame_float32, 0, 1), 1.0 / val)
+
+        elif t == "exposure":
+            stops = float(p.get("stops", 0))
+            if stops != 0:
+                frame_float32 = frame_float32 * (2.0 ** stops)
+
+        elif t == "hue":
+            deg = float(p.get("degrees", 0))
+            if deg != 0:
+                # Simple hue rotation via matrix
+                rad = deg * np.pi / 180.0
+                cos_a, sin_a = np.cos(rad), np.sin(rad)
+                # Simplified hue rotation matrix
+                mat = np.array([
+                    [0.213 + cos_a * 0.787 - sin_a * 0.213,
+                     0.715 - cos_a * 0.715 - sin_a * 0.715,
+                     0.072 - cos_a * 0.072 + sin_a * 0.928],
+                    [0.213 - cos_a * 0.213 + sin_a * 0.143,
+                     0.715 + cos_a * 0.285 + sin_a * 0.140,
+                     0.072 - cos_a * 0.072 - sin_a * 0.283],
+                    [0.213 - cos_a * 0.213 - sin_a * 0.787,
+                     0.715 - cos_a * 0.715 + sin_a * 0.715,
+                     0.072 + cos_a * 0.928 + sin_a * 0.072],
+                ], dtype=np.float32)
+                frame_float32 = np.dot(frame_float32, mat.T)
+
+        elif t == "opacity":
+            val = float(p.get("value", 1))
+            if val < 1.0:
+                frame_float32 = frame_float32 * val
+
+    return np.clip(frame_float32, 0, 1).astype(np.float32)

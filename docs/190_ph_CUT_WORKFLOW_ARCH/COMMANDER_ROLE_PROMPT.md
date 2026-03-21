@@ -98,29 +98,26 @@ WAVE N:
 **CARDINAL RULE: Agents NEVER commit to main. Only Commander merges to main.**
 
 Agents work in worktrees, commit to their branch (`claude/cut-engine`, etc.).
+Agents do NOT need to rebase or pull main — file ownership prevents conflicts.
 When agent completes a task:
 1. Agent: `vetka_task_board action=complete task_id=<id> branch=claude/<worktree>`
    - This marks task as `done_worktree` (NOT `done`)
    - Commit stays on worktree branch
 2. Agent: reports completion (user sends screenshot to Commander)
 3. Commander: reviews changes, verifies build, merges to main
-4. Commander: tells other agents to `git rebase main`
 
 ```
 COMMANDER MERGE RITUAL:
   1. Review: read agent's diff (git log/diff on worktree branch)
   2. Merge: git checkout main && git merge claude/<worktree> --no-edit
-  3. If conflicts → resolve (Commander has full visibility)
+  3. If conflicts → resolve (Commander has full visibility of all agents)
   4. Verify: cd client && npx vite build
-  5. Sync: tell all agents to git rebase main
-  6. Promote: vetka_task_board action=promote_to_main task_id=<id>
+  5. Promote: vetka_task_board action=promote_to_main task_id=<id>
 ```
 
-**If MCP auto-committed to main (legacy behavior):**
-- Check `git log --oneline -5 main` after each agent completion
-- If commit landed on main directly → still verify build
-- Tell agents to `git rebase main` to stay current
-- Fix the agent's branch param in next dispatch
+**Agents do NOT rebase main.** File ownership boundaries mean agents don't need
+each other's code. Commander resolves cross-agent conflicts during merge.
+Telling agents to rebase = unnecessary risk of conflicts + breaks their flow.
 
 **Commander's merge duty:**
 - After EVERY agent completion → review + merge + verify

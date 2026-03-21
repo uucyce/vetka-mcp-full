@@ -214,6 +214,10 @@ export default function MenuBar() {
     {
       label: 'File',
       items: [
+        { label: 'New Sequence', shortcut: '⌘N', action: () => {
+          // TODO: create new sequence dialog
+        }, disabled: true },
+        { separator: true },
         { label: 'Save', shortcut: '⌘S', action: () => store.getState().refreshProjectState?.() },
         { label: 'Save As...', shortcut: '⌘⇧S', disabled: true },
         { separator: true },
@@ -243,9 +247,16 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true }));
         }},
         { separator: true },
-        { label: 'Cut', shortcut: '⌘X', disabled: true },
-        { label: 'Copy', shortcut: '⌘C', disabled: true },
-        { label: 'Paste', shortcut: '⌘V', disabled: true },
+        { label: 'Cut', shortcut: '⌘X', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true }));
+        }},
+        { label: 'Copy', shortcut: '⌘C', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true }));
+        }},
+        { label: 'Paste', shortcut: '⌘V', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true }));
+        }},
+        { label: 'Paste Attributes', shortcut: '⌥V', disabled: true },
         { separator: true },
         { label: 'Select All', shortcut: '⌘A', action: () => store.getState().selectAllClips() },
         { label: 'Deselect All', shortcut: 'Esc', action: () => store.getState().clearSelection() },
@@ -484,9 +495,34 @@ export default function MenuBar() {
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
         }},
+        { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => {
+          // Split on all tracks at playhead
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, shiftKey: true }));
+        }},
+        { separator: true },
+        { label: 'Lift', shortcut: ';', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: ';' }));
+        }},
+        { label: 'Extract', shortcut: "'", action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: "'" }));
+        }},
+        { separator: true },
         { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true }));
         }},
+        { label: 'Close Gap', action: () => {
+          // Remove gap between clips at playhead
+          const s = store.getState();
+          s.closeGap?.();
+        }, disabled: !store.getState().closeGap },
+        { label: 'Extend Edit', shortcut: 'E', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+        }},
+        { separator: true },
+        { label: 'Add Video Transition', shortcut: '⌘T', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 't', metaKey: true }));
+        }},
+        { label: 'Add Audio Transition', shortcut: '⌘⇧T', disabled: true },
         { separator: true },
         { label: 'Snap in Timeline', shortcut: 'S', action: () => store.getState().toggleSnap() },
         { separator: true },

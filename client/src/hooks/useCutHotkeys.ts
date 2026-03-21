@@ -290,7 +290,7 @@ export const FCP7_PRESET: HotkeyMap = {
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
   deleteClip:        'Delete',
-  splitClip:         'b',
+  splitClip:         'Ctrl+v',
   rippleDelete:      'Shift+Delete',
   selectAll:         'Cmd+a',
   copy:              'Cmd+c',

@@ -1716,6 +1716,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 onClick={handleTrackClick}
                 onDoubleClick={(event) => handleTrackDoubleClick(event, lane.lane_id)}
               >
+                {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
+                <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
+                <div data-drop-zone="overwrite" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '67%', pointerEvents: 'none' }} />
                 {lane.clips.map((clip) => {
                   if (dragState?.clipId === clip.clip_id) {
                     return null;

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import math
@@ -19,6 +20,7 @@ from types import SimpleNamespace
 from typing import Any, Literal
 from uuid import uuid4
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
@@ -4467,7 +4469,6 @@ async def cut_color_apply(body: CutColorApplyRequest) -> dict[str, Any]:
     MARKER_B18 — Apply color pipeline (log decode + LUT) to a single frame.
     Returns base64 JPEG preview.
     """
-    import base64
     from src.services.cut_scope_renderer import extract_frame_rgb
     from src.services.cut_color_pipeline import apply_color_pipeline
 
@@ -4559,6 +4560,85 @@ async def cut_color_profiles() -> dict[str, Any]:
     from src.services.cut_color_pipeline import list_log_profiles
 
     return {"success": True, "profiles": list_log_profiles()}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B20: Preview Decoder — real-time preview with color pipeline
+# ---------------------------------------------------------------------------
+
+
+class CutPreviewRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    proxy_height: int = 540
+    log_profile: str | None = None
+    lut_path: str | None = None
+    jpeg_quality: int = 80
+    effects: list[dict[str, Any]] | None = None
+
+
+@router.post("/preview/frame")
+async def cut_preview_frame(body: CutPreviewRequest) -> dict[str, Any]:
+    """
+    MARKER_B20 — Decode a preview frame with full color pipeline.
+    Returns base64 JPEG. Tries PyAV first, falls back to FFmpeg subprocess.
+    """
+    from src.services.cut_preview_decoder import (
+        decode_preview_frame,
+        encode_preview_jpeg,
+        apply_numpy_effects,
+    )
+    import time as time_mod
+
+    t0 = time_mod.monotonic()
+
+    frame = decode_preview_frame(
+        body.source_path, body.time, body.proxy_height,
+        body.log_profile, body.lut_path,
+    )
+    if frame is None:
+        return {"success": False, "error": "decode_failed"}
+
+    # Apply per-clip effects at pixel level
+    if body.effects:
+        frame_f = frame.astype(np.float32) / 255.0
+        frame_f = apply_numpy_effects(frame_f, body.effects)
+        frame = (np.clip(frame_f, 0, 1) * 255).astype(np.uint8)
+
+    jpeg = encode_preview_jpeg(frame, body.jpeg_quality)
+    if jpeg is None:
+        return {"success": False, "error": "encode_failed"}
+
+    elapsed_ms = (time_mod.monotonic() - t0) * 1000
+
+    return {
+        "success": True,
+        "width": frame.shape[1],
+        "height": frame.shape[0],
+        "format": "jpeg",
+        "data": base64.b64encode(jpeg).decode("ascii"),
+        "timing_ms": round(elapsed_ms, 1),
+        "time_sec": body.time,
+        "log_profile": body.log_profile,
+        "lut_applied": body.lut_path is not None,
+        "effects_applied": len(body.effects or []),
+    }
+
+
+@router.get("/preview/info")
+async def cut_preview_info() -> dict[str, Any]:
+    """
+    MARKER_B20 — Preview decoder capabilities.
+    """
+    from src.services.cut_preview_decoder import HAS_PYAV
+
+    return {
+        "success": True,
+        "pyav_available": HAS_PYAV,
+        "decoder": "pyav" if HAS_PYAV else "ffmpeg",
+        "proxy_heights": [360, 540, 720, 1080],
+        "default_proxy_height": 540,
+    }
 
 
 @router.get("/waveform-peaks")

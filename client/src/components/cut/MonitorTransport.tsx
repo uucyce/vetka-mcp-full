@@ -212,7 +212,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         />
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
-        <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to previous edit (Up)">
+        <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to Previous Edit (Up)" aria-label="Previous Edit" data-testid="prev-edit">
           <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'|◂◂'}</span>
         </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipStart} title="Go to start">
@@ -230,7 +230,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={TRANSPORT_BTN} onClick={handleSkipEnd} title="Go to end">
           <IconSkipEnd size={14} />
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to next edit (Down)">
+        <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to Next Edit (Down)" aria-label="Next Edit" data-testid="next-edit">
           <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'▸▸|'}</span>
         </button>
 
