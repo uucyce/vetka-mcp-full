@@ -47,7 +47,9 @@ export type CutHotkeyAction =
   | 'rippleDelete'
   | 'selectAll'
   | 'copy'
+  | 'cut'
   | 'paste'
+  | 'pasteInsert'
   | 'nudgeLeft'
   | 'nudgeRight'
   // Tools
@@ -160,7 +162,9 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   redo:                'global',
   selectAll:           'global',
   copy:                'global',
+  cut:                 'global',
   paste:               'global',
+  pasteInsert:         'global',
   zoomIn:              'global',
   zoomOut:             'global',
   zoomToFit:           'global',
@@ -223,7 +227,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   rippleDelete:      'Shift+Delete',
   selectAll:         'Cmd+a',
   copy:              'Cmd+c',
+  cut:               'Cmd+x',
   paste:             'Cmd+v',
+  pasteInsert:       'Cmd+Shift+v',
   nudgeLeft:         'Alt+ArrowLeft',
   nudgeRight:        'Alt+ArrowRight',
   // Tools
@@ -294,7 +300,9 @@ export const FCP7_PRESET: HotkeyMap = {
   rippleDelete:      'Shift+Delete',
   selectAll:         'Cmd+a',
   copy:              'Cmd+c',
+  cut:               'Cmd+x',
   paste:             'Cmd+v',
+  pasteInsert:       'Cmd+Shift+v',
   nudgeLeft:         'Alt+ArrowLeft',
   nudgeRight:        'Alt+ArrowRight',
   // Tools
@@ -495,7 +503,9 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'rippleDelete', label: 'Ripple Delete', group: 'Editing' },
   { action: 'selectAll', label: 'Select All', group: 'Editing' },
   { action: 'copy', label: 'Copy', group: 'Editing' },
+  { action: 'cut', label: 'Cut', group: 'Editing' },
   { action: 'paste', label: 'Paste', group: 'Editing' },
+  { action: 'pasteInsert', label: 'Paste Insert', group: 'Editing' },
   { action: 'nudgeLeft', label: 'Nudge Left', group: 'Editing' },
   { action: 'nudgeRight', label: 'Nudge Right', group: 'Editing' },
   // Tools
