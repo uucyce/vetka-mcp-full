@@ -149,6 +149,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // Editing
     selectAll: () => useCutEditorStore.getState().selectAllClips(),
+
+    // MARKER_CLIPBOARD: Clipboard operations
+    copy: () => useCutEditorStore.getState().copyClips(),
+    cut: () => useCutEditorStore.getState().cutClips(),
+    paste: () => useCutEditorStore.getState().pasteClips('overwrite'),
+    pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
+
     deleteClip: () => {
       const s = useCutEditorStore.getState();
       if (s.selectedClipId) {

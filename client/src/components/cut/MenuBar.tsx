@@ -250,21 +250,16 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', metaKey: true, shiftKey: true }));
         }},
         { separator: true },
-        { label: 'Cut', shortcut: '⌘X', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'x', metaKey: true }));
-        }},
-        { label: 'Copy', shortcut: '⌘C', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', metaKey: true }));
-        }},
-        { label: 'Paste', shortcut: '⌘V', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', metaKey: true }));
-        }},
-        { label: 'Paste Attributes', shortcut: '⌥V', disabled: true },
+        { label: 'Cut', shortcut: '⌘X', action: () => store.getState().cutClips() },
+        { label: 'Copy', shortcut: '⌘C', action: () => store.getState().copyClips() },
+        { label: 'Paste', shortcut: '⌘V', action: () => store.getState().pasteClips('overwrite') },
+        { label: 'Paste Insert', shortcut: '⌘⇧V', action: () => store.getState().pasteClips('insert') },
+        { label: 'Paste Attributes', shortcut: '⌥V', action: () => store.getState().pasteAttributes() },
         { separator: true },
         { label: 'Select All', shortcut: '⌘A', action: () => store.getState().selectAllClips() },
         { label: 'Deselect All', shortcut: 'Esc', action: () => store.getState().clearSelection() },
         { separator: true },
-        { label: 'Find', shortcut: '⌘F', disabled: true },
+        { label: 'Find...', shortcut: '⌘F', disabled: true },
         { separator: true },
         { label: 'Keyboard Shortcuts', shortcut: '⌘⌥K', submenu: [
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },

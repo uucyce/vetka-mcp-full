@@ -231,6 +231,9 @@ interface CutEditorState {
   showActionSafe: boolean;          // 4:3 action safe zone overlay
   showMonitorOverlays: boolean;     // timecode + clip name on monitor
 
+  // === MARKER_CLIPBOARD: Clipboard for Cut/Copy/Paste ===
+  clipboard: TimelineClip[];  // copied/cut clips
+
   // === Media status ===
   mediaError: string | null;
   mediaLoading: boolean;
@@ -284,6 +287,11 @@ interface CutEditorState {
   selectAllClips: () => void;                   // Cmd+A
   clearSelection: () => void;                   // Escape
   toggleLinkedSelection: () => void;            // linked selection toggle
+  // MARKER_CLIPBOARD: Clipboard actions
+  copyClips: () => void;                         // Copy selected clips to clipboard
+  cutClips: () => void;                          // Cut selected clips (copy + remove)
+  pasteClips: (mode: 'overwrite' | 'insert') => void;  // Paste at playhead
+  pasteAttributes: () => void;                   // Paste effects from clipboard to selected
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -484,6 +492,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   saveError: null,
   hasUnsavedChanges: false,
 
+  // MARKER_CLIPBOARD: Clipboard default
+  clipboard: [],
+
   // MARKER_W5.2: Monitor display defaults
   monitorZoom: 0,          // 0 = Fit
   showTitleSafe: false,
@@ -601,6 +612,89 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }),
   clearSelection: () => set({ selectedClipId: null, selectedClipIds: new Set() }),
   toggleLinkedSelection: () => set((state) => ({ linkedSelection: !state.linkedSelection })),
+
+  // MARKER_CLIPBOARD: Clipboard implementations
+  copyClips: () => {
+    const { lanes, selectedClipIds } = get();
+    if (selectedClipIds.size === 0) return;
+    const clips: TimelineClip[] = [];
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (selectedClipIds.has(clip.clip_id)) clips.push({ ...clip });
+      }
+    }
+    set({ clipboard: clips });
+  },
+  cutClips: () => {
+    const state = get();
+    const { lanes, selectedClipIds } = state;
+    if (selectedClipIds.size === 0) return;
+    const clips: TimelineClip[] = [];
+    const newLanes = lanes.map((lane) => ({
+      ...lane,
+      clips: lane.clips.filter((c) => {
+        if (selectedClipIds.has(c.clip_id)) { clips.push({ ...c }); return false; }
+        return true;
+      }),
+    }));
+    set({ clipboard: clips, lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
+  },
+  pasteClips: (mode) => {
+    const { clipboard, currentTime, lanes, getInsertTargets } = get();
+    if (clipboard.length === 0) return;
+    const targets = getInsertTargets();
+    const targetLaneId = targets.videoLaneId;
+    if (!targetLaneId) return;
+    // Calculate total duration of clipboard
+    const minStart = Math.min(...clipboard.map((c) => c.start_sec));
+    const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
+    const totalDur = maxEnd - minStart;
+
+    const newLanes = lanes.map((lane) => {
+      if (lane.lane_id !== targetLaneId) return lane;
+      const pastedClips = clipboard.map((c) => ({
+        ...c,
+        clip_id: `clip_paste_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        start_sec: currentTime + (c.start_sec - minStart),
+      }));
+      if (mode === 'insert') {
+        // Push existing clips right
+        const pushed = lane.clips.map((c) =>
+          c.start_sec >= currentTime ? { ...c, start_sec: c.start_sec + totalDur } : c,
+        );
+        return { ...lane, clips: [...pushed, ...pastedClips] };
+      } else {
+        // Overwrite: remove overlapping, then add
+        const overEnd = currentTime + totalDur;
+        const trimmed = lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          if (c.start_sec >= currentTime && cEnd <= overEnd) return [];
+          if (cEnd <= currentTime || c.start_sec >= overEnd) return [c];
+          const result = [];
+          if (c.start_sec < currentTime) result.push({ ...c, duration_sec: currentTime - c.start_sec });
+          if (cEnd > overEnd) result.push({ ...c, clip_id: c.clip_id + '_pw', start_sec: overEnd, duration_sec: cEnd - overEnd });
+          return result;
+        });
+        return { ...lane, clips: [...trimmed, ...pastedClips] };
+      }
+    });
+    set({ lanes: newLanes });
+    get().seek(currentTime + totalDur);
+  },
+  pasteAttributes: () => {
+    const { clipboard, selectedClipIds, lanes } = get();
+    if (clipboard.length === 0 || selectedClipIds.size === 0) return;
+    const sourceEffects = clipboard[0].effects;
+    if (!sourceEffects) return;
+    const newLanes = lanes.map((lane) => ({
+      ...lane,
+      clips: lane.clips.map((c) =>
+        selectedClipIds.has(c.clip_id) ? { ...c, effects: { ...sourceEffects } } : c,
+      ),
+    }));
+    set({ lanes: newLanes });
+  },
+
   setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
