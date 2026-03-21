@@ -462,4 +462,8 @@ def apply_numpy_effects(
             if val < 1.0:
                 frame_float32 = frame_float32 * val
 
+        elif t == "broadcast_safe":
+            # MARKER_B26: Clamp to broadcast-safe range (16-235 → 0.0627-0.9216)
+            frame_float32 = np.clip(frame_float32, 16.0 / 255.0, 235.0 / 255.0)
+
     return np.clip(frame_float32, 0, 1).astype(np.float32)

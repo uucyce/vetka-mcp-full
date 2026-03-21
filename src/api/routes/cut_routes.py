@@ -4441,7 +4441,7 @@ async def cut_scopes_analyze(
 
     size = max(64, min(512, size))
     scope_list = [s.strip() for s in scopes.split(",") if s.strip()]
-    valid = {"histogram", "waveform", "vectorscope", "parade"}
+    valid = {"histogram", "waveform", "vectorscope", "parade", "broadcast_safe"}
     scope_list = [s for s in scope_list if s in valid] or ["histogram", "waveform", "vectorscope"]
 
     return analyze_frame_scopes(

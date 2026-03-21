@@ -179,6 +179,97 @@ def compute_vectorscope(frame_rgb: "np.ndarray", scope_size: int = 256) -> list[
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B26: Broadcast Safe filter + zebra detection
+# ---------------------------------------------------------------------------
+
+# Rec.709 broadcast legal range (8-bit):
+#   Luma Y: 16-235 (studio swing)
+#   Chroma Cb/Cr: 16-240 (centered at 128)
+BROADCAST_LUMA_MIN = 16
+BROADCAST_LUMA_MAX = 235
+BROADCAST_CHROMA_MIN = 16
+BROADCAST_CHROMA_MAX = 240
+
+
+def broadcast_safe_clamp(frame_rgb: "np.ndarray") -> "np.ndarray":
+    """Clamp RGB frame to broadcast-safe Rec.709 levels.
+
+    Converts to YCbCr, clamps Y to 16-235 and Cb/Cr to 16-240,
+    converts back to RGB. Input/output: uint8 (0-255).
+    """
+    r = frame_rgb[:, :, 0].astype(np.float32)
+    g = frame_rgb[:, :, 1].astype(np.float32)
+    b = frame_rgb[:, :, 2].astype(np.float32)
+
+    # RGB → YCbCr (Rec.601/709 studio swing)
+    y = 16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255
+    cb = 128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255
+    cr = 128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255
+
+    # Clamp to legal range
+    y = np.clip(y, BROADCAST_LUMA_MIN, BROADCAST_LUMA_MAX)
+    cb = np.clip(cb, BROADCAST_CHROMA_MIN, BROADCAST_CHROMA_MAX)
+    cr = np.clip(cr, BROADCAST_CHROMA_MIN, BROADCAST_CHROMA_MAX)
+
+    # YCbCr → RGB
+    r_out = 1.164 * (y - 16) + 1.596 * (cr - 128)
+    g_out = 1.164 * (y - 16) - 0.392 * (cb - 128) - 0.813 * (cr - 128)
+    b_out = 1.164 * (y - 16) + 2.017 * (cb - 128)
+
+    result = np.stack([r_out, g_out, b_out], axis=-1)
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
+def detect_out_of_range(frame_rgb: "np.ndarray") -> dict[str, Any]:
+    """Detect pixels that exceed broadcast-safe levels.
+
+    Returns:
+        {
+            "over_white_pct": float,   # % pixels with Y > 235
+            "under_black_pct": float,  # % pixels with Y < 16
+            "chroma_illegal_pct": float, # % pixels with Cb/Cr outside 16-240
+            "total_illegal_pct": float,
+            "zebra_mask": list[list[int]]  # 2D mask: 1=over, 2=under, 3=chroma, 0=safe
+        }
+    """
+    r = frame_rgb[:, :, 0].astype(np.float32)
+    g = frame_rgb[:, :, 1].astype(np.float32)
+    b = frame_rgb[:, :, 2].astype(np.float32)
+
+    y = 16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255
+    cb = 128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255
+    cr = 128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255
+
+    total_px = float(y.size)
+    over_white = y > BROADCAST_LUMA_MAX
+    under_black = y < BROADCAST_LUMA_MIN
+    chroma_illegal = (cb < BROADCAST_CHROMA_MIN) | (cb > BROADCAST_CHROMA_MAX) | \
+                     (cr < BROADCAST_CHROMA_MIN) | (cr > BROADCAST_CHROMA_MAX)
+
+    # Build zebra mask (downsampled for JSON transport)
+    h, w = y.shape
+    ds = max(1, max(h, w) // 128)  # downsample to ~128px max
+    mask = np.zeros((h, w), dtype=np.uint8)
+    mask[over_white] = 1
+    mask[under_black] = 2
+    mask[chroma_illegal & (mask == 0)] = 3
+
+    # Downsample mask
+    if ds > 1:
+        mask_ds = mask[::ds, ::ds]
+    else:
+        mask_ds = mask
+
+    return {
+        "over_white_pct": round(float(over_white.sum()) / total_px * 100, 2),
+        "under_black_pct": round(float(under_black.sum()) / total_px * 100, 2),
+        "chroma_illegal_pct": round(float(chroma_illegal.sum()) / total_px * 100, 2),
+        "total_illegal_pct": round(float((over_white | under_black | chroma_illegal).sum()) / total_px * 100, 2),
+        "zebra_mask": mask_ds.tolist(),
+    }
+
+
+# ---------------------------------------------------------------------------
 # High-level API
 # ---------------------------------------------------------------------------
 
@@ -200,7 +291,7 @@ def analyze_frame_scopes(
 ) -> dict[str, Any]:
     """Extract frame and compute requested scopes.
 
-    Valid scopes: "histogram", "waveform", "vectorscope", "parade"
+    Valid scopes: "histogram", "waveform", "vectorscope", "parade", "broadcast_safe"
 
     If log_profile or lut_path provided, applies color pipeline BEFORE
     scope computation (post-grade scopes).
@@ -246,6 +337,8 @@ def analyze_frame_scopes(
         result["vectorscope"] = compute_vectorscope(frame, scope_size=scope_size)
     if "parade" in scopes:
         result["parade"] = compute_parade(frame, scope_w=scope_size, scope_h=scope_size)
+    if "broadcast_safe" in scopes:
+        result["broadcast_safe"] = detect_out_of_range(frame)
 
     if len(_scope_cache) >= _CACHE_MAX:
         del _scope_cache[next(iter(_scope_cache))]
