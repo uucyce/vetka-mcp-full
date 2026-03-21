@@ -297,6 +297,9 @@ interface CutEditorState {
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
   closeGap: () => void;                          // Find and remove gaps in targeted lanes
   extendEdit: () => void;                        // Extend nearest edit to playhead
+  // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
+  splitEditLCut: () => void;                     // Video ends at playhead, audio continues
+  splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -823,6 +826,58 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           return { ...c, start_sec: currentTime, duration_sec: Math.max(0.01, oldEnd - currentTime) };
         }
       })};
+    });
+    set({ lanes: newLanes });
+  },
+
+  // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
+  // L-cut: video ends at playhead, audio continues past. Creates dialogue overlap.
+  // J-cut: audio starts at playhead position, video starts later. Audio leads video.
+  // Both find clip under playhead, then trim only video lanes (L-cut) or only audio lanes (J-cut).
+  splitEditLCut: () => {
+    const { lanes, currentTime, lockedLanes } = get();
+    // Find clips under playhead
+    const newLanes = lanes.map((lane) => {
+      if (lockedLanes.has(lane.lane_id)) return lane;
+      const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
+      if (!isVideo) return lane; // L-cut: only trim video, leave audio untouched
+      return {
+        ...lane,
+        clips: lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          // Clip spans playhead → split: keep left part only (video ends at playhead)
+          if (c.start_sec < currentTime && cEnd > currentTime) {
+            return [{ ...c, duration_sec: currentTime - c.start_sec }];
+          }
+          return [c];
+        }),
+      };
+    });
+    set({ lanes: newLanes });
+  },
+  splitEditJCut: () => {
+    const { lanes, currentTime, lockedLanes } = get();
+    // J-cut: trim video to start at playhead, audio keeps its earlier start
+    const newLanes = lanes.map((lane) => {
+      if (lockedLanes.has(lane.lane_id)) return lane;
+      const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
+      if (!isVideo) return lane; // J-cut: only trim video start, leave audio untouched
+      return {
+        ...lane,
+        clips: lane.clips.flatMap((c) => {
+          const cEnd = c.start_sec + c.duration_sec;
+          // Clip spans playhead → trim start: video starts at playhead
+          if (c.start_sec < currentTime && cEnd > currentTime) {
+            return [{
+              ...c,
+              start_sec: currentTime,
+              duration_sec: cEnd - currentTime,
+              source_in: (c.source_in ?? 0) + (currentTime - c.start_sec),
+            }];
+          }
+          return [c];
+        }),
+      };
     });
     set({ lanes: newLanes });
   },
