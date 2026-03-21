@@ -464,12 +464,18 @@ export default function MenuBar() {
     {
       label: 'Sequence',
       items: [
-        { label: 'Add Edit', shortcut: '⌘K', disabled: true },
-        { label: 'Ripple Delete', shortcut: '⌥⌫', disabled: true },
+        { label: 'Add Edit', shortcut: '⌘K', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+        }},
+        { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true }));
+        }},
         { separator: true },
         { label: 'Snap in Timeline', shortcut: 'S', action: () => store.getState().toggleSnap() },
         { separator: true },
-        { label: 'Scene Detection', shortcut: '⌘D', disabled: true },
+        { label: 'Scene Detection', shortcut: '⌘D', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true }));
+        }},
       ],
     },
     {
