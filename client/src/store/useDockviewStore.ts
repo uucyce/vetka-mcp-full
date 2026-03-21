@@ -25,6 +25,8 @@ interface DockviewStoreState {
   setApiRef: (api: import('dockview-react').DockviewApi) => void;
   /** MARKER_C12: Add a timeline panel to dockview (multi-instance) */
   addTimelinePanel: (timelineId: string, label: string) => void;
+  /** MARKER_PANEL-TOGGLE: Toggle panel — if open, focus it. If closed, re-add it. */
+  togglePanel: (id: string, component: string, title: string) => void;
 }
 
 const LS_PREFIX = 'cut_dockview_';
@@ -71,6 +73,32 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   // MARKER_C5: API ref for workspace preset switching
   apiRef: null,
   setApiRef: (api) => set({ apiRef: api }),
+
+  // MARKER_PANEL-TOGGLE: Toggle panel — if exists, focus. If closed, re-add.
+  togglePanel: (id, component, title) => {
+    const api = get().apiRef;
+    if (!api) return;
+    try {
+      const existing = api.getPanel(id);
+      if (existing) {
+        // Panel exists — focus it
+        existing.api.setActive();
+        return;
+      }
+    } catch { /* panel not found */ }
+    // Panel was closed — re-add it (attached to inspector group or as new group)
+    try {
+      const refPanel = api.getPanel('inspector') || api.getPanel('project');
+      api.addPanel({
+        id,
+        component,
+        title,
+        position: refPanel
+          ? { referencePanel: refPanel.id, direction: 'within' }
+          : { direction: 'right' },
+      });
+    } catch { /* addPanel failed */ }
+  },
 
   // MARKER_C12: Add timeline panel to dockview
   addTimelinePanel: (timelineId, label) => {

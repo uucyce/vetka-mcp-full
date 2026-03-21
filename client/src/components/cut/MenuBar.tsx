@@ -572,16 +572,25 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
-        { label: 'Project Panel', shortcut: '⇧1', action: () => focusPanel('project') },
-        { label: 'Source Monitor', shortcut: '⇧2', action: () => focusPanel('source') },
-        { label: 'Timeline', shortcut: '⇧3', action: () => focusPanel('timeline') },
-        { label: 'Program Monitor', shortcut: '⇧4', action: () => focusPanel('program') },
-        { label: 'Inspector', shortcut: '⇧5', action: () => focusPanel('inspector') },
+        { label: 'Project Panel', shortcut: '⇧1', action: () => togglePanel('project', 'project', 'Project') },
+        { label: 'Source Monitor', shortcut: '⇧2', action: () => togglePanel('source', 'source', 'SOURCE') },
+        { label: 'Timeline', shortcut: '⇧3', action: () => togglePanel('timeline', 'timeline', 'Timeline') },
+        { label: 'Program Monitor', shortcut: '⇧4', action: () => togglePanel('program', 'program', 'PROGRAM') },
         { separator: true },
-        { label: 'History', action: () => focusPanel('history') },
-        { label: 'Audio Mixer', action: () => focusPanel('mixer') },
-        { label: 'Effects', action: () => focusPanel('effects') },
-        { label: 'Montage', action: () => focusPanel('montage') },
+        { label: 'Inspector', shortcut: '⇧5', action: () => togglePanel('inspector', 'inspector', 'Inspector') },
+        { label: 'Clip Inspector', action: () => togglePanel('clip', 'clip', 'Clip') },
+        { label: 'StorySpace 3D', action: () => togglePanel('storyspace', 'storyspace', 'StorySpace') },
+        { label: 'History', action: () => togglePanel('history', 'history', 'History') },
+        { separator: true },
+        { label: 'Audio Mixer', action: () => togglePanel('mixer', 'mixer', 'Mixer') },
+        { label: 'Effects', action: () => togglePanel('effects', 'effects', 'Effects') },
+        { label: 'Video Scopes', action: () => togglePanel('scopes', 'scopes', 'Scopes') },
+        { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },
+        { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
+        { separator: true },
+        { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
+        { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
+        { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
       ],
     },
     {
@@ -615,6 +624,11 @@ export default function MenuBar() {
       const panel = api.getPanel(panelId);
       if (panel) panel.api.setActive();
     } catch {}
+  }
+
+  // MARKER_PANEL-TOGGLE: Toggle panel — reopen if closed
+  function togglePanel(id: string, component: string, title: string) {
+    dockStore.getState().togglePanel(id, component, title);
   }
 
   return (
