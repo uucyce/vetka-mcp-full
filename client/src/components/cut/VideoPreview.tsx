@@ -157,6 +157,37 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
   const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
 
+  // MARKER_B22: Live grading — read color_correction from selected clip for CSS filter preview
+  const ccForCssFilter = useCutEditorStore((s) => {
+    if (!s.selectedClipId) return null;
+    for (const lane of s.lanes) {
+      for (const clip of lane.clips || []) {
+        if (clip.clip_id === s.selectedClipId) {
+          return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
+        }
+      }
+    }
+    return null;
+  });
+
+  const videoCssFilter = (() => {
+    if (!ccForCssFilter) return undefined;
+    const parts: string[] = [];
+    if (ccForCssFilter.exposure && ccForCssFilter.exposure !== 0) {
+      parts.push(`brightness(${Math.pow(2, ccForCssFilter.exposure).toFixed(3)})`);
+    }
+    if (ccForCssFilter.contrast !== undefined && ccForCssFilter.contrast !== 1) {
+      parts.push(`contrast(${ccForCssFilter.contrast.toFixed(3)})`);
+    }
+    if (ccForCssFilter.saturation !== undefined && ccForCssFilter.saturation !== 1) {
+      parts.push(`saturate(${ccForCssFilter.saturation.toFixed(3)})`);
+    }
+    if (ccForCssFilter.hue && ccForCssFilter.hue !== 0) {
+      parts.push(`hue-rotate(${ccForCssFilter.hue}deg)`);
+    }
+    return parts.length > 0 ? parts.join(' ') : undefined;
+  })();
+
   const extension = (activeMediaPath?.split('.').pop() || '').toLowerCase();
 
   // Find poster for current media
@@ -326,7 +357,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         ref={videoRef}
         src={resolvedSrc}
         poster={activeThumbnail?.poster_url || undefined}
-        style={VIDEO_STYLE}
+        style={{ ...VIDEO_STYLE, filter: videoCssFilter }}
         onLoadedMetadata={handleLoadedMetadata}
         onError={handleError}
         onEnded={handleEnded}

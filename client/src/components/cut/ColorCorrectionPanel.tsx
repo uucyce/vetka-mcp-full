@@ -10,8 +10,9 @@
  * Preview via CSS filters (brightness/contrast/saturate/hue-rotate).
  * Render via FFmpeg eq/colorbalance/curves filters.
  */
-import { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useState, useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { API_BASE } from '../../config/api.config';
 import ColorWheel from './ColorWheel';
 
 // ─── Types ───
@@ -169,6 +170,50 @@ export default function ColorCorrectionPanel() {
     return () => clearTimeout(timer);
   }, [color, selectedClipId, applyColor]);
 
+  // MARKER_B22: Graded preview thumbnail — fetch from /preview/frame
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const [previewTiming, setPreviewTiming] = useState<number | null>(null);
+  const previewTimerRef = useRef<number>(0);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
+
+  useEffect(() => {
+    if (!selectedClip?.source_path) {
+      setPreviewSrc(null);
+      return;
+    }
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    previewTimerRef.current = window.setTimeout(async () => {
+      try {
+        const effects: Array<{ type: string; params: Record<string, number>; enabled: boolean }> = [];
+        if (color.exposure !== 0) effects.push({ type: 'exposure', params: { stops: color.exposure }, enabled: true });
+        if (color.contrast !== 1) effects.push({ type: 'contrast', params: { value: color.contrast }, enabled: true });
+        if (color.saturation !== 1) effects.push({ type: 'saturation', params: { value: color.saturation }, enabled: true });
+        if (color.hue !== 0) effects.push({ type: 'hue', params: { degrees: color.hue }, enabled: true });
+
+        const resp = await fetch(`${API_BASE}/cut/preview/frame`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            source_path: selectedClip.source_path,
+            time: currentTime,
+            proxy_height: 270,
+            effects,
+            jpeg_quality: 70,
+          }),
+        });
+        const data = await resp.json();
+        if (data.success && data.data) {
+          setPreviewSrc(`data:image/jpeg;base64,${data.data}`);
+          setPreviewTiming(data.timing_ms);
+        }
+      } catch {
+        // Silent fail — preview is non-critical
+      }
+    }, 250);
+
+    return () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); };
+  }, [selectedClip?.source_path, currentTime, color]);
+
   if (!selectedClipId || !selectedClip) {
     return (
       <div style={PANEL}>
@@ -193,6 +238,21 @@ export default function ColorCorrectionPanel() {
           {isModified && <button style={RESET_BTN} onClick={resetColor}>Reset All</button>}
         </div>
       </div>
+
+      {/* MARKER_B22: Graded preview thumbnail */}
+      {previewSrc && (
+        <div style={{ ...SECTION, padding: '4px 10px', textAlign: 'center' as const }}>
+          <img
+            src={previewSrc}
+            alt="Graded preview"
+            data-testid="cc-graded-preview"
+            style={{ width: '100%', maxHeight: 120, objectFit: 'contain' as const, borderRadius: 3, border: '1px solid #222' }}
+          />
+          {previewTiming !== null && (
+            <div style={{ fontSize: 8, color: '#444', marginTop: 2 }}>{previewTiming}ms</div>
+          )}
+        </div>
+      )}
 
       {/* Basic */}
       <div style={SECTION}>
