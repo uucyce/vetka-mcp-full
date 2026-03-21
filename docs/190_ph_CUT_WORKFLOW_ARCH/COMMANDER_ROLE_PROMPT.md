@@ -93,37 +93,41 @@ WAVE N:
   5. Commander reviews, syncs worktrees, assigns Wave N+1
 ```
 
-### Merge Model — TWO PATHS
+### Merge Model — COMMANDER IS THE GATEKEEPER
 
-**Path A: MCP auto-commit (current default)**
-`vetka_task_board action=complete` commits directly to main via MCP server.
-Worktrees don't need merging — code lands on main immediately.
-BUT: worktree branches fall behind main. Agents must `git pull origin main`
-(or `git rebase main`) periodically to stay current.
+**CARDINAL RULE: Agents NEVER commit to main. Only Commander merges to main.**
+
+Agents work in worktrees, commit to their branch (`claude/cut-engine`, etc.).
+When agent completes a task:
+1. Agent: `vetka_task_board action=complete task_id=<id> branch=claude/<worktree>`
+   - This marks task as `done_worktree` (NOT `done`)
+   - Commit stays on worktree branch
+2. Agent: reports completion (user sends screenshot to Commander)
+3. Commander: reviews changes, verifies build, merges to main
+4. Commander: tells other agents to `git rebase main`
 
 ```
-AFTER EACH AGENT COMPLETION:
-  1. Verify: git log --oneline -5 main → confirm commit landed
-  2. Sync all worktrees: agents run `git pull origin main` or `git rebase main`
-  3. Check for conflicts: if two agents edited same file → resolve on main
-  4. Verify build: cd client && npx vite build (if needed)
+COMMANDER MERGE RITUAL:
+  1. Review: read agent's diff (git log/diff on worktree branch)
+  2. Merge: git checkout main && git merge claude/<worktree> --no-edit
+  3. If conflicts → resolve (Commander has full visibility)
+  4. Verify: cd client && npx vite build
+  5. Sync: tell all agents to git rebase main
+  6. Promote: vetka_task_board action=promote_to_main task_id=<id>
 ```
 
-**Path B: Worktree branch merge (manual)**
-If agent commits to their branch (not via MCP), Commander merges manually:
-```
-  1. git checkout main
-  2. git merge claude/<worktree> --no-edit
-  3. If conflicts → resolve
-  4. Verify build
-```
+**If MCP auto-committed to main (legacy behavior):**
+- Check `git log --oneline -5 main` after each agent completion
+- If commit landed on main directly → still verify build
+- Tell agents to `git rebase main` to stay current
+- Fix the agent's branch param in next dispatch
 
 **Commander's merge duty:**
-- After EVERY agent completion screenshot → check git log main
-- If commit is on main → tell other agents to pull/rebase
-- If commit is on branch → merge to main
+- After EVERY agent completion → review + merge + verify
+- NEVER let agents commit directly to main
 - NEVER let agents drift >2 commits behind main
 - Between waves: sync all worktrees to main HEAD
+- Commander is the ONLY path to main — quality gate
 
 ### Conflict Resolution Patterns
 - Files agent DIDN'T modify → `git checkout --ours <file>`
