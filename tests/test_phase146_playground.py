@@ -519,7 +519,6 @@ class TestPlaygroundExpiry(unittest.TestCase):
         mock_git.return_value = ""
 
         from src.orchestration.playground_manager import PlaygroundManager
-import pytest
 
         manager = PlaygroundManager(base_dir=self.temp_dir)
 

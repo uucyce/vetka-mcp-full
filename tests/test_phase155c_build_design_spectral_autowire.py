@@ -77,7 +77,6 @@ def test_build_design_autowires_spectral_diagnostics_by_default(tmp_path, monkey
 def test_build_design_can_disable_spectral_autowire(tmp_path, monkeypatch):
     from src.services.project_config import ProjectConfig
     import src.api.routes.mcc_routes as mcc_routes_module
-import pytest
 
     monkeypatch.setattr(
         ProjectConfig,

@@ -73,6 +73,15 @@ class ExperienceReportStore:
             report.domain,
             path.name,
         )
+
+        # MARKER_ZETA.F2: Smart Debrief — auto-create tasks + route to memory
+        try:
+            if report.lessons_learned or report.recommendations:
+                from src.services.smart_debrief import process_smart_debrief
+                process_smart_debrief(report)
+        except Exception as e:
+            logger.debug("[ExperienceReport] Smart debrief processing failed (non-fatal): %s", e)
+
         return path
 
     def get(self, session_id: str) -> Optional[ExperienceReport]:

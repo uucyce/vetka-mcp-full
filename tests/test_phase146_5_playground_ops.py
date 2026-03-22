@@ -637,7 +637,6 @@ class TestFullLifecycle(unittest.TestCase):
     def test_full_create_write_review_promote(self):
         """Full lifecycle: create → write file → review → promote → verify in main."""
         from src.orchestration.playground_manager import PlaygroundManager
-import pytest
 
         manager = PlaygroundManager(base_dir=self.test_base)
 

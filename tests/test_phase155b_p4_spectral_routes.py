@@ -58,7 +58,6 @@ def _seed_version(tmp_path, monkeypatch):
 
 def _client() -> TestClient:
     from src.api.routes.workflow_routes import router
-import pytest
 
     app = FastAPI()
     app.include_router(router)

@@ -62,7 +62,6 @@ def test_question_endpointing_ab_metrics(monkeypatch):
 
 def test_sentence_chunk_extraction():
     from src.api.handlers import jarvis_handler as jh
-import pytest
 
     ready, tail = jh._extract_ready_sentences("Привет. Как дела? Я")
     assert ready == ["Привет.", "Как дела?"]
