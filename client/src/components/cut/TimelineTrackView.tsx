@@ -717,7 +717,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     return displayLanesRef.current[laneIndex]?.lane_id || displayLanesRef.current[0]?.lane_id || 'video_main';
   }, []);
 
-  const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>) => {
+  const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
     const session = sessionRef.current;
     if (!session.sandboxRoot || !session.projectId) {
       return;
@@ -741,7 +741,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (!payload.success) {
       throw new Error(payload.error?.message || 'timeline apply failed');
     }
-    await session.refreshProjectState?.();
+    if (!opts?.skipRefresh) {
+      await session.refreshProjectState?.();
+    }
   }, []);
 
   const resolveMarkerMediaPath = useCallback(
@@ -898,10 +900,25 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown instead of drag
+      // MARKER_W3.6: Razor tool — split on mousedown (local-first, then async backend)
       if (activeTool === 'razor' && mode === 'move') {
         const splitTime = timeFromTrackClientX(event.clientX);
-        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }]).catch((err) =>
+        const s = useCutEditorStore.getState();
+        const newLanes = s.lanes.map(lane => ({
+          ...lane,
+          clips: lane.clips.flatMap(c => {
+            if (c.clip_id === clip.clip_id && splitTime > c.start_sec + 0.01 && splitTime < c.start_sec + c.duration_sec - 0.01) {
+              const leftDur = splitTime - c.start_sec;
+              return [
+                { ...c, clip_id: `${c.clip_id}_L`, duration_sec: leftDur },
+                { ...c, clip_id: `${c.clip_id}_R`, start_sec: splitTime, duration_sec: c.duration_sec - leftDur },
+              ];
+            }
+            return [c];
+          }),
+        }));
+        s.setLanes(newLanes);
+        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }], { skipRefresh: true }).catch((err) =>
           console.error('[CUT] razor split failed:', err)
         );
         return;
@@ -1069,8 +1086,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           }),
         }));
         s.setLanes(newLanes);
-        // Also notify backend asynchronously
-        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }]).catch(() => {});
+        // Also notify backend asynchronously (skipRefresh: local state is already updated)
+        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }], { skipRefresh: true }).catch(() => {});
         return;
       }
 
