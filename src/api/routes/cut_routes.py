@@ -8598,6 +8598,31 @@ class CutRenderMasterRequest(BaseModel):
 # Use cut_render_engine.CODEC_MAP and RESOLUTION_MAP instead.
 
 
+def _emit_render_progress(job_id: str, progress: float, message: str = "") -> None:
+    """MARKER_B2.6 — Emit render progress via SocketIO (best-effort, fire-and-forget)."""
+    try:
+        import asyncio
+        from src.api.main import sio
+        data = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        # Try to get running loop (if called from async context)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(
+                asyncio.ensure_future,
+                sio.emit("render_progress", data),
+            )
+        except RuntimeError:
+            # No running loop (background thread) — create one-shot
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(sio.emit("render_progress", data))
+                loop.close()
+            except Exception:
+                pass  # SocketIO emit is best-effort
+    except Exception:
+        pass  # Import or emit failure — don't break render
+
+
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
     """
     MARKER_B6 + B2.1 — Background thread: delegates to cut_render_engine.render_timeline().
@@ -8625,9 +8650,11 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
         sandbox = req.sandbox_root or "/tmp/cut_sandbox"
         output_dir = os.path.join(sandbox, "cut_runtime", "renders")
 
-        # Progress callback → job store updates
+        # Progress callback → job store updates + SocketIO emit
         def on_progress(p: float, msg: str = "") -> None:
             store.update_job(job_id, progress=p)
+            # MARKER_B2.6: Emit progress via SocketIO (best-effort, non-blocking)
+            _emit_render_progress(job_id, p, msg)
 
         # MARKER_B2.1: Cancel check — reads cancel_requested from job store
         def cancel_check() -> bool:
@@ -8659,13 +8686,16 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             progress=1.0,
             result=result,
         )
+        _emit_render_progress(job_id, 1.0, "done")
 
     except RenderCancelled:
         store.update_job(job_id, state="cancelled", progress=1.0,
                          error={"message": "Render cancelled by user"})
+        _emit_render_progress(job_id, 1.0, "cancelled")
 
     except Exception as exc:
         store.update_job(job_id, state="error", error={"message": str(exc)})
+        _emit_render_progress(job_id, 0.0, f"error: {exc}")
 
 
 @router.post("/render/master")

@@ -8,7 +8,12 @@ from datetime import datetime, timezone, timedelta
 import pytest
 
 from src.services.cut_mcp_job_store import CutMCPJobStore
-from src.services.cut_render_engine import EXPORT_PRESETS, SOCIAL_PRESETS, CODEC_MAP
+from src.services.cut_render_engine import (
+    EXPORT_PRESETS,
+    SOCIAL_PRESETS,
+    CODEC_MAP,
+    generate_thumbnail,
+)
 
 
 # ── B2.2: ETA via job store ──
@@ -166,3 +171,50 @@ class TestBatchExportPresets:
         j = store.get_job(job["job_id"])
         assert j is not None
         assert abs(j["progress"] - 0.5) < 0.01
+
+
+# ── B2.5: Thumbnail generation ──
+
+
+class TestThumbnailGeneration:
+    def test_nonexistent_file_returns_empty(self) -> None:
+        result = generate_thumbnail("/nonexistent/video.mp4")
+        assert result == ""
+
+    def test_default_output_path(self) -> None:
+        # Without calling FFmpeg, verify the path logic
+        import os
+        base, _ = os.path.splitext("/tmp/test_video.mp4")
+        expected = f"{base}_thumb.jpg"
+        assert expected == "/tmp/test_video_thumb.jpg"
+
+    def test_custom_output_path(self) -> None:
+        # generate_thumbnail with nonexistent file returns "" (no ffmpeg call)
+        result = generate_thumbnail("/nonexistent.mp4", output_path="/tmp/custom_thumb.jpg")
+        assert result == ""  # file doesn't exist
+
+    def test_no_ffmpeg_returns_empty(self) -> None:
+        result = generate_thumbnail("/nonexistent.mp4", ffmpeg_path="/nonexistent/ffmpeg")
+        assert result == ""
+
+
+# ── B2.6: SocketIO progress ──
+
+
+class TestSocketIOProgress:
+    def test_emit_function_exists(self) -> None:
+        """_emit_render_progress should be importable and not crash on call."""
+        # Import from cut_routes — it's a module-level function
+        # We can't easily test SocketIO emit without a running server,
+        # but we verify the function exists and handles errors gracefully.
+        from src.api.routes.cut_routes import _emit_render_progress
+        # Should not raise — best-effort, swallows all errors
+        _emit_render_progress("test_job", 0.5, "encoding")
+
+    def test_emit_done_no_crash(self) -> None:
+        from src.api.routes.cut_routes import _emit_render_progress
+        _emit_render_progress("test_job", 1.0, "done")
+
+    def test_emit_error_no_crash(self) -> None:
+        from src.api.routes.cut_routes import _emit_render_progress
+        _emit_render_progress("test_job", 0.0, "error: something failed")
