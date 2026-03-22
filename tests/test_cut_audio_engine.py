@@ -11,7 +11,10 @@ import pytest
 
 from src.services.cut_audio_engine import (
     LaneMixerState,
+    LoudnessResult,
+    LOUDNESS_STANDARDS,
     MixerState,
+    analyze_loudness,
     apply_mixer_to_plan,
     build_lane_audio_filters,
     compile_pan_filter,
@@ -218,3 +221,116 @@ class TestApplyMixerToPlan:
         types = {e["type"] for e in effects}
         assert "volume" in types
         assert "_pan" in types
+
+
+# ── B17: LUFS Loudness Analysis ──
+
+
+class TestLoudnessStandards:
+    def test_ebu_r128_exists(self) -> None:
+        assert "ebu_r128" in LOUDNESS_STANDARDS
+        std = LOUDNESS_STANDARDS["ebu_r128"]
+        assert std["target_lufs"] == -23.0
+        assert std["max_true_peak"] == -1.0
+
+    def test_atsc_a85_exists(self) -> None:
+        assert "atsc_a85" in LOUDNESS_STANDARDS
+        assert LOUDNESS_STANDARDS["atsc_a85"]["target_lufs"] == -24.0
+
+    def test_youtube_exists(self) -> None:
+        assert "youtube" in LOUDNESS_STANDARDS
+        assert LOUDNESS_STANDARDS["youtube"]["target_lufs"] == -14.0
+
+    def test_all_standards_have_required_fields(self) -> None:
+        for key, std in LOUDNESS_STANDARDS.items():
+            assert "target_lufs" in std, f"{key} missing target_lufs"
+            assert "tolerance" in std, f"{key} missing tolerance"
+            assert "max_true_peak" in std, f"{key} missing max_true_peak"
+            assert "label" in std, f"{key} missing label"
+
+    def test_at_least_7_standards(self) -> None:
+        assert len(LOUDNESS_STANDARDS) >= 7
+
+
+class TestLoudnessResult:
+    def test_defaults(self) -> None:
+        r = LoudnessResult()
+        assert r.success is False
+        assert r.integrated_lufs == -70.0
+        assert r.compliant is False
+
+    def test_to_dict(self) -> None:
+        r = LoudnessResult(
+            source_path="/tmp/test.mp4",
+            success=True,
+            integrated_lufs=-23.0,
+            true_peak_dbtp=-1.5,
+            lra=7.0,
+            standard="ebu_r128",
+            compliant=True,
+        )
+        d = r.to_dict()
+        assert d["success"] is True
+        assert d["integrated_lufs"] == -23.0
+        assert d["true_peak_dbtp"] == -1.5
+        assert d["lra"] == 7.0
+        assert d["compliant"] is True
+
+
+class TestAnalyzeLoudness:
+    def test_nonexistent_file(self) -> None:
+        r = analyze_loudness("/nonexistent/audio.wav")
+        assert r.success is False
+        assert r.error in ("file_not_found", "ffmpeg_not_found")
+
+    def test_returns_loudness_result(self) -> None:
+        r = analyze_loudness("/nonexistent/audio.wav")
+        assert isinstance(r, LoudnessResult)
+
+    def test_unknown_standard_no_crash(self) -> None:
+        r = analyze_loudness("/nonexistent/audio.wav", standard="unknown_standard")
+        assert r.success is False  # file doesn't exist, but no crash
+
+    def test_compliance_check_logic(self) -> None:
+        """Verify compliance logic with known values."""
+        r = LoudnessResult(
+            success=True,
+            integrated_lufs=-23.0,
+            true_peak_dbtp=-1.5,
+            standard="ebu_r128",
+        )
+        # Manually run compliance check
+        std = LOUDNESS_STANDARDS["ebu_r128"]
+        r.deviation_lu = round(r.integrated_lufs - std["target_lufs"], 1)
+        lufs_ok = abs(r.deviation_lu) <= std["tolerance"]
+        peak_ok = r.true_peak_dbtp <= std["max_true_peak"]
+        r.compliant = lufs_ok and peak_ok
+        assert r.compliant is True
+        assert r.deviation_lu == 0.0
+
+    def test_compliance_fails_on_loud(self) -> None:
+        """Too loud = not compliant."""
+        r = LoudnessResult(
+            success=True,
+            integrated_lufs=-18.0,  # 5 LU too loud for EBU R128
+            true_peak_dbtp=-1.0,
+        )
+        std = LOUDNESS_STANDARDS["ebu_r128"]
+        r.deviation_lu = round(r.integrated_lufs - std["target_lufs"], 1)
+        r.compliant = abs(r.deviation_lu) <= std["tolerance"]
+        assert r.compliant is False
+        assert r.deviation_lu == 5.0
+
+    def test_compliance_fails_on_peak(self) -> None:
+        """True peak above limit = not compliant."""
+        r = LoudnessResult(
+            success=True,
+            integrated_lufs=-23.0,
+            true_peak_dbtp=0.0,  # clipping!
+        )
+        std = LOUDNESS_STANDARDS["ebu_r128"]
+        r.deviation_lu = round(r.integrated_lufs - std["target_lufs"], 1)
+        lufs_ok = abs(r.deviation_lu) <= std["tolerance"]
+        peak_ok = r.true_peak_dbtp <= std["max_true_peak"]
+        r.compliant = lufs_ok and peak_ok
+        assert r.compliant is False
