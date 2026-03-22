@@ -604,8 +604,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
-  // MARKER_W1.3: Timeline clip click → Source Monitor
-  const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
+  // MARKER_DUAL-VIDEO: Timeline clip click → updates activeMedia (legacy) but NOT source monitor
+  const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
+  const setSourceMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
 
   // ─── MARKER_W6.STORE: Multi-instance read migration (Phase 1) ──────
@@ -2568,7 +2569,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
             const items: MenuItem[] = [
               // ── Selection ──
-              { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setSourceMedia(clipPath); setSelectedClip(clipId); close(); } },
               // MARKER_A13: Match Frame — find source frame under playhead
               { label: 'Match Frame', shortcut: 'F', action: () => {
                 const s = useCutEditorStore.getState();
