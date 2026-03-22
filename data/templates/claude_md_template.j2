@@ -32,6 +32,100 @@ You own quality: E2E tests, TDD specs, FCP7 compliance verification.
 3-tier strategy: DOM-only / store-based / backend-integrated.
 {% elif role.domain == "architect" %}
 You coordinate 4-5 Opus agents. You don't write feature code — you merge, dispatch, and decide.
+
+## Orchestration Workflows
+
+VETKA supports multiple orchestration patterns. Choose based on task scope:
+
+### Level 1: Pipeline Workflows (automated, MCC/Mycelium)
+Single-task automation — Dragon handles internally via `model_presets.json` tiers.
+
+| Workflow | Pattern | Use When |
+|----------|---------|----------|
+| **Solo** | 1 agent, 1 task | Simple fix, < 30 min |
+| **G3** | 3x Haiku scouts → Sonnet aggregator | Fast recon, code search |
+| **Ralph Loop** | code → test → fix → test (iterative) | Bug fix with tests |
+| **Mycelium Pipeline** | scout → architect → researcher → coder → verifier | Complex feature, needs planning |
+
+Trigger: `@dragon <task>` (auto-selects tier: bronze/silver/gold)
+
+### Level 2: Commander Fleet (manual, parallel Opus agents)
+Multi-session orchestration — multiple million-token agents in parallel worktrees.
+
+| Callsign | Domain | Worktree | Scope |
+|----------|--------|----------|-------|
+| **Alpha** | engine | cut-engine | Store, timeline, hotkeys, playback, Tauri |
+| **Beta** | media | cut-media | Codecs, color, scopes, render, effects |
+| **Gamma** | ux | cut-ux | Panels, menus, layout, dockview |
+| **Delta** | qa | cut-qa | E2E tests, TDD, FCP7 compliance |
+| **Epsilon** | (reserve) | (new) | Additional capacity |
+
+Pattern: Commander dispatches → agents claim tasks → work in isolation → Commander merges.
+Wave-based: 1-2 tasks per agent per wave, merge between waves.
+
+### Level 3: Master Plan (Sous-Chef pattern)
+For cross-cutting infrastructure work spanning multiple subsystems.
+
+| Role | Pattern | Use When |
+|------|---------|----------|
+| **Sous-Chef A** | Critical path, sequential | Blocking dependency chain |
+| **Sous-Chef B-C** | Parallel, independent | No cross-dependencies |
+| **Sous-Chef D** | Waits for A | Depends on A's output |
+
+Master Plan tasks are typically **cross-cutting** (REFLEX, pipeline, memory) → no domain role needed.
+
+### Choosing the Right Workflow
+```
+Is it a single task?
+  → Simple fix? → Solo / @dragon
+  → Needs research? → G3 scouts or Mycelium pipeline
+  → Complex feature? → Mycelium pipeline (auto-tier)
+
+Is it domain-specific CUT work?
+  → Assign Alpha/Beta/Gamma/Delta via role= and domain= fields
+  → Multiple domains in parallel? → Commander Fleet (wave-based)
+
+Is it cross-cutting infrastructure?
+  → Sous-Chef pattern (no domain roles)
+  → Or Mycelium pipeline for smaller pieces
+```
+
+## Creating Tasks with Role Assignment
+
+When creating CUT domain tasks, specify `role` and `domain`:
+```
+vetka_task_board action=add title="..." project_id=CUT \
+  role=Alpha domain=engine \
+  allowed_paths=["client/src/store/useTimelineInstanceStore.ts"]
+```
+
+| Domain | Role | Owned Files |
+|--------|------|-------------|
+| engine | Alpha | store/, hotkeys (editing), timeline, tauri |
+| media | Beta | scopes, color, render, effects, codecs, cut_routes (endpoints) |
+| ux | Gamma | MenuBar, DockviewLayout, panels/, workspace, dockview CSS |
+| qa | Delta | e2e/, tests/, RECON docs |
+| architect | Commander | docs/, CLAUDE.md, agent_registry.yaml |
+
+**Cross-cutting tasks** (REFLEX, Emotions, pipeline, memory): leave `role` and `domain` empty.
+**Unsure?** Leave empty — agent auto-assigns role on claim via registry lookup.
+
+See `data/templates/agent_registry.yaml` for full ownership map + shared zones.
+
+## Harness Stack (what agents have access to)
+
+```
+VETKA Harness = Task Board + Memory Systems + Guard Layer
+
+Task Board:  claim/complete lifecycle, role/domain validation
+Memory:      REFLEX (tool recs) + HOPE (LOD) + ARC (arch suggest)
+             MGC (file cache) + ENGRAM (user prefs) + AURA (comms style)
+             ELISION (compression) + ELYSIA (vector search)
+Guard:       Protocol Guard (7 rules) + Reflex Guard (CORTEX failures)
+Experience:  ExperienceReportStore → predecessor advice → CLAUDE.md Generator
+```
+
+All agents get this via `session_init`. No UI needed — the harness IS the coordination layer.
 {% endif %}
 
 **CARDINAL RULES:**
