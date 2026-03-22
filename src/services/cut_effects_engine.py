@@ -556,6 +556,12 @@ def compile_audio_filters(effects: list[EffectParam]) -> list[str]:
             ratio = float(p.get("ratio", 4))
             filters.append(f"acompressor=threshold={threshold:.3f}:ratio={ratio:.1f}")
 
+        # MARKER_B13: Mixer pan (injected by cut_audio_engine)
+        elif t == "_pan":
+            pan_val = float(p.get("pan", 0))
+            if pan_val != 0:
+                filters.append(f"stereotools=balance_out={pan_val:.3f}")
+
     return filters
 
 

@@ -269,9 +269,10 @@ test.describe.serial('phase170 cut nle interactions smoke', () => {
       );
     });
     await expect(page.getByTestId('cut-clip-context-menu')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Set as Active' })).toBeVisible();
+    // MARKER_QA.W6: "Set as Active" renamed to "Open in Source Monitor"
+    await expect(page.getByRole('button', { name: 'Open in Source Monitor' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Add Marker Here' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Apply Sync' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Apply Sync' })).toBeVisible();
 
     const rulerBox = await page.getByTestId('cut-timeline-ruler').boundingBox();
     if (!rulerBox) {

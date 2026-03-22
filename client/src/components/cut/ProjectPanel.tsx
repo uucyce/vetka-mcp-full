@@ -673,7 +673,7 @@ export default function ProjectPanel() {
           {bins.map((bin) => {
             const isCollapsed = collapsedBins.has(bin.key);
             return (
-              <div key={bin.key}>
+              <div key={bin.key} data-testid={`cut-source-bucket-${bin.key}`}>
                 <div style={BIN_HEADER} onClick={() => toggleBin(bin.key)}>
                   <span>
                     {isCollapsed ? '▸' : '▾'} {bin.icon} {bin.label}
@@ -685,6 +685,7 @@ export default function ProjectPanel() {
                   return (
                     <div
                       key={item.item_id}
+                      data-testid={`cut-source-item-${item.item_id}`}
                       draggable
                       onDragStart={(e) => {
                         e.dataTransfer.setData('text/cut-media-path', item.source_path);

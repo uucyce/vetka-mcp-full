@@ -8575,6 +8575,8 @@ class CutRenderMasterRequest(BaseModel):
     range_in: float | None = None   # seconds — export only this range
     range_out: float | None = None
     audio_stems: bool = False        # export per-track WAV files
+    # MARKER_B13: Mixer state for render
+    mixer: dict[str, Any] | None = None  # {lanes: {lane_id: {volume, pan, mute, solo}}, master_volume}
 
 
 # MARKER_B5-CLEANUP: _CODEC_MAP and _RESOLUTION_MAP removed.
@@ -8612,7 +8614,7 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
         def on_progress(p: float, msg: str = "") -> None:
             store.update_job(job_id, progress=p)
 
-        # Delegate to render engine (handles filter_complex, transitions, speed, stems)
+        # Delegate to render engine (handles filter_complex, transitions, speed, stems, mixer)
         result = render_timeline(
             timeline,
             codec=req.codec,
@@ -8627,6 +8629,7 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             timeline_id=req.timeline_id,
             preset=req.preset,
             on_progress=on_progress,
+            mixer=req.mixer,  # MARKER_B13
         )
 
         store.update_job(

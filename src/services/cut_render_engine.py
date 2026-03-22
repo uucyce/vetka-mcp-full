@@ -681,6 +681,7 @@ def render_timeline(
     ffmpeg_path: str | None = None,
     timeout: int = 600,
     on_progress: Any = None,
+    mixer: dict[str, Any] | None = None,  # MARKER_B13: mixer state
 ) -> dict[str, Any]:
     """
     Render a timeline to a video file.
@@ -721,6 +722,12 @@ def render_timeline(
         timeline_id=timeline_id,
         preset=preset,
     )
+
+    # MARKER_B13: Apply mixer state (volume/mute/solo/pan) to render plan
+    if mixer:
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        mixer_state = MixerState.from_dict(mixer)
+        apply_mixer_to_plan(plan, mixer_state)
 
     if not plan.clips:
         raise RuntimeError("No video clips found in timeline")

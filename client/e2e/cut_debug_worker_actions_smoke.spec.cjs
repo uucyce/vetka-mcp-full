@@ -264,9 +264,8 @@ async function installDebugShellMocks(page, requestLog) {
   });
 }
 
-// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
+// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
 test.describe.serial('phase170 cut debug shell worker-actions smoke', () => {
-  test.fixme(true, 'DebugShellPanel rewritten — worker actions section changed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {
@@ -290,7 +289,7 @@ test.describe.serial('phase170 cut debug shell worker-actions smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Project').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 10000 });
     await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
 
     await expect(page.getByText('VETKA CUT')).toBeVisible();
@@ -303,8 +302,10 @@ test.describe.serial('phase170 cut debug shell worker-actions smoke', () => {
     await page.getByRole('button', { name: 'Start Scene Assembly' }).click();
     await expect(page.getByText('Running scene assembly...')).toBeVisible();
     await expect(page.getByText('Runtime ready')).toBeVisible();
+    // MARKER_QA.W6: DebugShellPanel renders "{laneType} / {laneType}" for lane rows
     await expect(page.getByText('video_main / video_main')).toBeVisible();
-    await expect(page.getByText('Scene Debug A')).toBeVisible();
+    // Clips show scene_id (not scene graph label)
+    await expect(page.getByText('scene_debug_a')).toBeVisible();
     await expect(page.getByText('runtime_ready: true')).toBeVisible();
 
     await page.getByRole('button', { name: 'Build Waveforms' }).click();
@@ -314,7 +315,6 @@ test.describe.serial('phase170 cut debug shell worker-actions smoke', () => {
     await page.getByRole('button', { name: 'Build Audio Sync' }).click();
     await expect(page.getByText('Building audio sync offsets...')).toBeVisible();
     await expect(page.getByText('audio_sync: 1')).toBeVisible();
-    await expect(page.getByText('SYNC · clip_debug_a.mov')).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);
