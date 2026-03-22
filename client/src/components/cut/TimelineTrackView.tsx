@@ -2284,6 +2284,42 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           );
                         }) : null}
 
+                      {/* MARKER_KF-GRAPH: Keyframe interpolation lines (opacity/volume curves) */}
+                      {clip.keyframes && width > 30 ? (() => {
+                        const clipH = trackHeights[lane.lane_id] ?? trackHeight;
+                        const graphH = clipH - 8; // padding
+                        return Object.entries(clip.keyframes).map(([prop, kfs]) => {
+                          if (kfs.length < 2) return null;
+                          // Build SVG polyline points: x=time*zoom, y=inverted value (1=top, 0=bottom)
+                          const points = kfs
+                            .filter((kf) => kf.time_sec * zoom >= -1 && kf.time_sec * zoom <= width + 1)
+                            .map((kf) => {
+                              const x = kf.time_sec * zoom;
+                              const y = graphH - (Math.max(0, Math.min(1, kf.value)) * graphH);
+                              return `${x},${y}`;
+                            })
+                            .join(' ');
+                          if (!points) return null;
+                          return (
+                            <svg
+                              key={`kfline_${prop}`}
+                              style={{ position: 'absolute', left: 0, top: 4, width, height: graphH, pointerEvents: 'none', zIndex: 2 }}
+                              viewBox={`0 0 ${width} ${graphH}`}
+                              preserveAspectRatio="none"
+                            >
+                              <polyline
+                                points={points}
+                                fill="none"
+                                stroke="#999"
+                                strokeWidth="1"
+                                strokeOpacity="0.6"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            </svg>
+                          );
+                        });
+                      })() : null}
+
                       {/* MARKER_KF67: Keyframe diamonds inside clip */}
                       {clip.keyframes && width > 20 ? Object.entries(clip.keyframes).flatMap(([prop, kfs]) =>
                         kfs.map((kf) => {
