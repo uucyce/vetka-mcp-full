@@ -44,6 +44,7 @@ import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
 import SpeedControl from './SpeedControl';
 import TransitionsPanel from './TransitionsPanel';
+import ToolsPalette from './ToolsPalette';
 import WorkspacePresets from './WorkspacePresets';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -55,6 +56,7 @@ const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
 const LutBrowserPanelDock = () => <LutBrowserPanel />;
 const SpeedControlPanelDock = () => <div data-testid="speed-control-panel"><SpeedControl /></div>;
 const TransitionsPanelDock = () => <TransitionsPanel />;
+const ToolsPaletteDock = () => <ToolsPalette />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -72,6 +74,7 @@ const PANEL_COMPONENTS = {
   lutbrowser: LutBrowserPanelDock,
   speed: SpeedControlPanelDock,
   transitions: TransitionsPanelDock,
+  tools: ToolsPaletteDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,

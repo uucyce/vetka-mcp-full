@@ -677,6 +677,7 @@ export default function MenuBar() {
         { label: 'StorySpace 3D', action: () => togglePanel('storyspace', 'storyspace', 'StorySpace') },
         { label: 'History', action: () => togglePanel('history', 'history', 'History') },
         { separator: true },
+        { label: 'Tools', action: () => togglePanel('tools', 'tools', 'Tools') },
         { label: 'Audio Mixer', action: () => togglePanel('mixer', 'mixer', 'Mixer') },
         { label: 'Effects', action: () => togglePanel('effects', 'effects', 'Effects') },
         { label: 'Video Scopes', action: () => togglePanel('scopes', 'scopes', 'Scopes') },
