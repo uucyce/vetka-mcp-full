@@ -1448,12 +1448,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         activeDrag.mode === 'move'
         && (activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001)
       ) {
-        ops.push({
-          op: 'move_clip',
-          clip_id: activeDrag.clipId,
-          lane_id: activeDrag.laneId,
-          start_sec: activeDrag.startSec,
-        });
+        // MARKER_A2.4: Multi-clip drag — move all selected clips with same delta
+        const multiIds = useCutEditorStore.getState().selectedClipIds;
+        const delta = activeDrag.startSec - activeDrag.originalStartSec;
+        const laneDelta = activeDrag.laneId !== activeDrag.originalLaneId;
+
+        if (multiIds.size > 1 && multiIds.has(activeDrag.clipId) && !laneDelta) {
+          // Multi-clip move: apply same time delta to all selected clips
+          for (const lane of displayLanesRef.current) {
+            for (const clip of lane.clips) {
+              if (multiIds.has(clip.clip_id)) {
+                ops.push({
+                  op: 'move_clip',
+                  clip_id: clip.clip_id,
+                  lane_id: lane.lane_id,
+                  start_sec: roundTimeline(Math.max(0, clip.start_sec + delta)),
+                });
+              }
+            }
+          }
+        } else {
+          // Single clip move (original behavior)
+          ops.push({
+            op: 'move_clip',
+            clip_id: activeDrag.clipId,
+            lane_id: activeDrag.laneId,
+            start_sec: activeDrag.startSec,
+          });
+        }
       }
 
       if (
