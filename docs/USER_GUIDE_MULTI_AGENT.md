@@ -31,6 +31,7 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude` | **Beta** | Media | Codecs, color, scopes, render, effects |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
 | `cd ~/Documents/VETKA_Project/vetka_live_03 && claude` | **Sigma/Zeta/...** | Cross-cutting | Инфра, REFLEX, pipeline |
 
@@ -47,6 +48,9 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude
 
 # Delta
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude
+
+# Epsilon (QA2)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 
 # Commander
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
