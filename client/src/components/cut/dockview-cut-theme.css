@@ -21,7 +21,7 @@
  * - Dockview CSS is in @layer dockview (via dockview-layers.css)
  * - This file is UN-LAYERED → automatically wins over any layered CSS
  * - Single-class selectors are sufficient (no double-class needed)
- * - !important ONLY for: pointer-events (Tauri), MutationObserver-guarded inline styles
+ * - !important ONLY for: pointer-events (Tauri)
  */
 
 /* ═══ CSS Custom Properties (vars) — synced with tokens.css ═════════ */
