@@ -551,10 +551,16 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Tools
     razorTool: () => useCutEditorStore.getState().setActiveTool('razor'),
     selectTool: () => useCutEditorStore.getState().setActiveTool('selection'),
-    // MARKER_W5.TRIM: Trim tool hotkeys
-    slipTool: () => useCutEditorStore.getState().setActiveTool('slip'),
+    // MARKER_W5.TRIM: Trim tool hotkeys — FCP7 cycling (R→ripple→roll, S→slip→slide)
+    slipTool: () => {
+      const s = useCutEditorStore.getState();
+      s.setActiveTool(s.activeTool === 'slip' ? 'slide' : 'slip');
+    },
     slideTool: () => useCutEditorStore.getState().setActiveTool('slide'),
-    rippleTool: () => useCutEditorStore.getState().setActiveTool('ripple'),
+    rippleTool: () => {
+      const s = useCutEditorStore.getState();
+      s.setActiveTool(s.activeTool === 'ripple' ? 'roll' : 'ripple');
+    },
     rollTool: () => useCutEditorStore.getState().setActiveTool('roll'),
 
     // View

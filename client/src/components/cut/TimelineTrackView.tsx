@@ -1503,25 +1503,73 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       }
 
       // MARKER_TDD-TRIM: Local-first optimistic update — commit drag result to lanes
-      // before clearing dragState, so the visual change persists even if backend is unavailable
+      // before clearing dragState, so the visual change persists even if backend is unavailable.
+      // Handles all drag modes: move, trim, ripple, roll, slip, slide.
       const store = useCutEditorStore.getState();
-      if (activeDrag.mode !== 'move' || activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
-        const updatedLanes = store.lanes.map((lane) => ({
-          ...lane,
-          clips: lane.clips.map((c) => {
-            if (c.clip_id === activeDrag.clipId) {
-              return { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
-            }
-            // Ripple: shift subsequent clips
-            if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
-              const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
-              if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
-                return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+      const hasMoved = Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001
+        || Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001;
+
+      if (hasMoved || activeDrag.mode === 'slip') {
+        const updatedLanes = store.lanes.map((lane) => {
+          if (lane.lane_id !== activeDrag.originalLaneId && activeDrag.mode !== 'move') return lane;
+          return {
+            ...lane,
+            clips: lane.clips.map((c) => {
+              // Primary clip — always update position/duration
+              if (c.clip_id === activeDrag.clipId) {
+                const updated = { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
+                // Slip: update source_in (content scrolled within clip)
+                if (activeDrag.mode === 'slip' && activeDrag.sourceIn !== undefined) {
+                  updated.source_in = activeDrag.sourceIn;
+                }
+                return updated;
               }
-            }
-            return c;
-          }),
-        }));
+
+              // Ripple: shift subsequent clips by delta
+              if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
+                const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
+                if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
+                  return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+                }
+              }
+
+              // Roll: adjust neighbor clip at the edit point
+              if (activeDrag.mode === 'roll') {
+                if (activeDrag.neighborLeft && c.clip_id === activeDrag.neighborLeft.clipId) {
+                  const newLeftDur = activeDrag.startSec - activeDrag.neighborLeft.startSec;
+                  if (newLeftDur > 0) return { ...c, duration_sec: newLeftDur };
+                }
+                if (activeDrag.neighborRight && c.clip_id === activeDrag.neighborRight.clipId) {
+                  const newEnd = activeDrag.startSec + activeDrag.durationSec;
+                  const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
+                  const newRightDur = rightOrigEnd - newEnd;
+                  if (newRightDur > 0) return { ...c, start_sec: newEnd, duration_sec: newRightDur };
+                }
+              }
+
+              // Slide: adjust neighbor durations to accommodate moved clip
+              if (activeDrag.mode === 'slide') {
+                if (activeDrag.neighborLeft && c.clip_id === activeDrag.neighborLeft.clipId) {
+                  const newLeftDur = activeDrag.startSec - activeDrag.neighborLeft.startSec;
+                  if (newLeftDur > 0) return { ...c, duration_sec: newLeftDur };
+                }
+                if (activeDrag.neighborRight && c.clip_id === activeDrag.neighborRight.clipId) {
+                  const clipEnd = activeDrag.startSec + activeDrag.durationSec;
+                  const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
+                  const newRightDur = rightOrigEnd - clipEnd;
+                  if (newRightDur > 0) return { ...c, start_sec: clipEnd, duration_sec: newRightDur };
+                }
+              }
+
+              // Move to different lane
+              if (activeDrag.mode === 'move' && activeDrag.laneId !== activeDrag.originalLaneId) {
+                // handled by backend op
+              }
+
+              return c;
+            }),
+          };
+        });
         store.setLanes(updatedLanes);
       }
       setDragState(null);
