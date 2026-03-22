@@ -180,7 +180,7 @@ export default function TimelineDisplayControls() {
                   key={preset}
                   style={{
                     ...SIZE_BTN,
-                    background: trackHeightPreset === preset ? '#99933' : '#111',
+                    background: trackHeightPreset === preset ? '#222' : '#111',
                     borderColor: trackHeightPreset === preset ? '#999' : '#444',
                     color: trackHeightPreset === preset ? '#999' : '#aaa',
                   }}
