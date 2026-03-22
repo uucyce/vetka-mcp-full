@@ -1991,25 +1991,85 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </span>
                       ) : null}
 
-                      {/* MARKER_TRANSITION: Cross dissolve gradient overlay at clip's right edge */}
+                      {/* MARKER_TRANSITION: Transition overlay at clip's right edge (FCP7 Ch.47) */}
                       {clip.transition_out && width > 10 ? (() => {
-                        const txDurPx = clip.transition_out.duration_sec * zoom;
-                        const txWidth = Math.min(txDurPx, width * 0.5); // cap at half clip width
+                        const tx = clip.transition_out;
+                        const txDurPx = tx.duration_sec * zoom;
+                        const txWidth = Math.min(txDurPx, width * 0.5);
+                        const txLabel = tx.type === 'cross_dissolve' ? 'XD'
+                          : tx.type === 'dip_to_black' ? 'DB'
+                          : 'W';
+                        const txGrad = tx.type === 'dip_to_black'
+                          ? 'linear-gradient(to right, transparent 20%, rgba(0,0,0,0.6))'
+                          : tx.type === 'wipe'
+                            ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.12) 50%, transparent)'
+                            : 'linear-gradient(to right, transparent, rgba(255,255,255,0.15))';
                         return (
                           <div
+                            data-testid={`transition-${clip.clip_id}`}
                             style={{
                               position: 'absolute',
                               right: 0,
                               top: 0,
                               bottom: 0,
                               width: txWidth,
-                              background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.15))',
+                              background: txGrad,
                               borderLeft: '1px dashed rgba(255,255,255,0.3)',
-                              pointerEvents: 'none',
-                              zIndex: 2,
+                              zIndex: 4,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                             }}
-                            title={`${clip.transition_out.type.replace('_', ' ')} (${clip.transition_out.duration_sec.toFixed(1)}s)`}
-                          />
+                            title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              // Remove transition on click
+                              const s = useCutEditorStore.getState();
+                              const newLanes = s.lanes.map((l) => ({
+                                ...l,
+                                clips: l.clips.map((c) =>
+                                  c.clip_id === clip.clip_id
+                                    ? { ...c, transition_out: undefined }
+                                    : c
+                                ),
+                              }));
+                              s.setLanes(newLanes);
+                            }}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              // Cycle transition type on right-click
+                              const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
+                              const curIdx = types.indexOf(tx.type);
+                              const nextType = types[(curIdx + 1) % types.length];
+                              const s = useCutEditorStore.getState();
+                              const newLanes = s.lanes.map((l) => ({
+                                ...l,
+                                clips: l.clips.map((c) =>
+                                  c.clip_id === clip.clip_id
+                                    ? { ...c, transition_out: { ...tx, type: nextType } }
+                                    : c
+                                ),
+                              }));
+                              s.setLanes(newLanes);
+                            }}
+                          >
+                            {/* Diamond icon + type label */}
+                            {txWidth > 16 ? (
+                              <span style={{
+                                fontSize: 8,
+                                fontWeight: 700,
+                                fontFamily: 'system-ui',
+                                color: 'rgba(255,255,255,0.7)',
+                                textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                                letterSpacing: 0.5,
+                                pointerEvents: 'none',
+                              }}>
+                                {'◆ '}{txLabel}
+                              </span>
+                            ) : null}
+                          </div>
                         );
                       })() : null}
 
@@ -2323,6 +2383,25 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
+              'separator',
+              // ── Transitions ──
+              { label: contextMenu.clip.transition_out ? 'Remove Transition' : 'Add Cross Dissolve', shortcut: '\u2318T', action: () => {
+                close();
+                const s = useCutEditorStore.getState();
+                if (contextMenu.clip.transition_out) {
+                  // Remove
+                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
+                    c.clip_id === clipId ? { ...c, transition_out: undefined } : c
+                  )}));
+                  s.setLanes(newLanes);
+                } else {
+                  // Add default cross dissolve
+                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
+                    c.clip_id === clipId ? { ...c, transition_out: { type: 'cross_dissolve' as const, duration_sec: 1.0, alignment: 'center' as const } } : c
+                  )}));
+                  s.setLanes(newLanes);
+                }
+              }},
               'separator',
               // ── Export ──
               { label: 'Export XML', action: () => { close(); void exportPremiereXml(); } },
