@@ -168,6 +168,12 @@ interface CutEditorState {
   markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
   markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
 
+  // === MARKER_DUAL-VIDEO: Independent Source Monitor playback state ===
+  // Source monitor has its own video element and playback, decoupled from timeline
+  sourceCurrentTime: number;
+  sourceIsPlaying: boolean;
+  sourceDuration: number;
+
   // === MARKER_W1.4: Separate Source marks and Sequence marks ===
   sourceMarkIn: number | null;     // IN/OUT for raw clip in Source Monitor
   sourceMarkOut: number | null;
@@ -322,6 +328,12 @@ interface CutEditorState {
   togglePlay: () => void;
   seek: (time: number) => void;
   setDuration: (d: number) => void;
+  // MARKER_DUAL-VIDEO: Source monitor independent playback
+  playSource: () => void;
+  pauseSource: () => void;
+  togglePlaySource: () => void;
+  seekSource: (time: number) => void;
+  setSourceDuration: (d: number) => void;
   setMarkIn: (t: number | null) => void;
   setMarkOut: (t: number | null) => void;
   // MARKER_W1.4: Separate marks
@@ -476,6 +488,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Playback defaults
   currentTime: 0,
   isPlaying: false,
+  // MARKER_DUAL-VIDEO: Source monitor defaults
+  sourceCurrentTime: 0,
+  sourceIsPlaying: false,
+  sourceDuration: 0,
   playbackRate: 1,
   shuttleSpeed: 0,
   duration: 0,
@@ -612,6 +628,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
   seek: (time) => set({ currentTime: Math.max(0, time) }),
   setDuration: (d) => set({ duration: d }),
+  // MARKER_DUAL-VIDEO: Source monitor independent playback actions
+  playSource: () => set({ sourceIsPlaying: true }),
+  pauseSource: () => set({ sourceIsPlaying: false }),
+  togglePlaySource: () => set((s) => ({ sourceIsPlaying: !s.sourceIsPlaying })),
+  seekSource: (time) => set({ sourceCurrentTime: Math.max(0, time) }),
+  setSourceDuration: (d) => set({ sourceDuration: d }),
   setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
   setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
   // MARKER_W1.4: Separate marks
