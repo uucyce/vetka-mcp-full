@@ -23,7 +23,7 @@ import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  video_main: { label: 'V1', color: '#4a9eff', icon: <IconFilmStrip size={12} color="#888" /> },
+  video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
   audio_sync: { label: 'A1', color: '#22c55e', icon: <IconSpeaker size={12} color="#888" /> },
   take_alt_y: { label: 'V2', color: '#a855f7', icon: <IconCamera size={12} color="#888" /> },
   take_alt_z: { label: 'V3', color: '#f59e0b', icon: <IconCamera size={12} color="#888" /> },
@@ -165,7 +165,7 @@ const MARKER_COLORS: Record<string, string> = {
   chat: '#94a3b8',         // slate — chat reference
   // PULSE BPM markers
   bpm_audio: '#22c55e',    // green — audio beats
-  bpm_visual: '#4a9eff',   // blue — visual cut points
+  bpm_visual: '#4a9eff',   // blue — visual cut points (markers exempt from no-color rule)
   bpm_script: '#ffffff',   // white — script scene transitions
   sync_point: '#f59e0b',   // orange — multi-source sync
 };
@@ -1880,8 +1880,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#111',
-                      borderColor: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#333',
+                      background: targetedLanes.has(lane.lane_id) ? '#999' : '#111',
+                      borderColor: targetedLanes.has(lane.lane_id) ? '#999' : '#333',
                     }}
                     title="Target lane"
                     onClick={(event) => { event.stopPropagation(); toggleTarget(lane.lane_id); }}
@@ -2292,13 +2292,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           return (
                             <div
                               key={`kf_${prop}_${kf.time_sec}`}
+                              className="keyframe"
+                              data-testid="keyframe"
+                              data-property={prop}
+                              data-time={kf.time_sec}
                               style={{
                                 position: 'absolute',
-                                left: kfPx - 4,
+                                left: kfPx - 3,
                                 bottom: 2,
-                                width: 8,
-                                height: 8,
-                                background: '#f59e0b',
+                                width: 6,
+                                height: 6,
+                                background: '#999',
                                 transform: 'rotate(45deg)',
                                 zIndex: 6,
                                 pointerEvents: 'none',
