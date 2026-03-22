@@ -11,13 +11,13 @@
   },
   "vetka_edit_file": {
     "tool_id": "vetka_edit_file",
-    "curiosity": 1.3709572068578448e-06,
-    "trust": 0.43449768084484996,
+    "curiosity": 5.043474082014517e-07,
+    "trust": 0.18357527015694913,
     "caution": 0.1,
-    "usage_count": 32,
+    "usage_count": 34,
     "success_count": 20,
-    "failure_count": 12,
-    "last_updated": 1773970740.176
+    "failure_count": 14,
+    "last_updated": 1774155137.364994
   },
   "mycelium_pipeline": {
     "tool_id": "mycelium_pipeline",
@@ -1241,13 +1241,13 @@
   },
   "vetka_search_files": {
     "tool_id": "vetka_search_files",
-    "curiosity": 0.7310585786300049,
-    "trust": 0.1373125,
+    "curiosity": 0.6224593312018546,
+    "trust": 0.089253125,
     "caution": 0.1,
-    "usage_count": 3,
+    "usage_count": 4,
     "success_count": 0,
-    "failure_count": 3,
-    "last_updated": 1773970207.237186
+    "failure_count": 4,
+    "last_updated": 1774155137.3580768
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",

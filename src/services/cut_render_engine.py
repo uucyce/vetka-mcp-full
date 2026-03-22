@@ -111,6 +111,9 @@ class RenderClip:
     reverse: bool = False           # reverse playback
     frame_blend: bool = False       # smooth slow-mo via minterpolate
     maintain_pitch: bool = True     # preserve audio pitch during speed change
+    # MARKER_B16: Color pipeline for render
+    log_profile: str = ""           # camera log profile: "V-Log", "S-Log3", "LogC3", etc.
+    lut_path: str = ""              # path to .cube LUT file
 
 
 @dataclass
@@ -206,6 +209,9 @@ def build_render_plan(
                 reverse=bool(clip.get("reverse", False)),
                 frame_blend=bool(clip.get("frame_blend", False)),
                 maintain_pitch=bool(clip.get("maintain_pitch", True)),
+                # MARKER_B16: Color pipeline
+                log_profile=str(clip.get("log_profile") or ""),
+                lut_path=str(clip.get("lut_path") or ""),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -351,7 +357,19 @@ class FilterGraphBuilder:
             parts.append(trim)
             parts.append("setpts=PTS-STARTPTS")
 
-        # MARKER_B9: Insert video effects between trim and speed
+        # MARKER_B16: Color pipeline — log decode BEFORE effects (decode to linear first)
+        if clip.log_profile:
+            log_filter = _compile_log_decode_filter(clip.log_profile)
+            if log_filter:
+                parts.append(log_filter)
+
+        # MARKER_B16: LUT application — after log decode, before user effects
+        if clip.lut_path and os.path.isfile(clip.lut_path):
+            # Escape path for FFmpeg filter (single quotes, escape internal quotes)
+            escaped = clip.lut_path.replace("'", "'\\''")
+            parts.append(f"lut3d='{escaped}'")
+
+        # MARKER_B9: Insert video effects between color pipeline and speed
         if clip.video_effects:
             from src.services.cut_effects_engine import compile_video_filters
             effect_filters = compile_video_filters(clip.video_effects)
@@ -468,6 +486,43 @@ class FilterGraphBuilder:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B16: Log decode → FFmpeg filter compilation
+# ---------------------------------------------------------------------------
+
+# Camera log profiles → FFmpeg curves/eq approximation.
+# These map log-encoded footage to Rec.709 gamma for viewing/grading.
+# For best results, use a proper LUT instead (set lut_path on clip).
+_LOG_DECODE_FILTERS: dict[str, str] = {
+    # V-Log (Panasonic) → approximate Rec.709 via curves
+    "V-Log": "curves=master='0/0 0.09/0 0.13/0.05 0.25/0.15 0.42/0.35 0.52/0.50 0.65/0.70 0.78/0.85 0.90/0.95 1/1'",
+    # S-Log3 (Sony) → approximate Rec.709
+    "S-Log3": "curves=master='0/0 0.10/0 0.15/0.04 0.25/0.12 0.40/0.30 0.50/0.47 0.63/0.68 0.75/0.82 0.88/0.94 1/1'",
+    # ARRI LogC3 → approximate Rec.709
+    "LogC3": "curves=master='0/0 0.09/0 0.12/0.03 0.22/0.12 0.38/0.32 0.48/0.48 0.60/0.67 0.73/0.82 0.86/0.93 1/1'",
+    "ARRI LogC3": "curves=master='0/0 0.09/0 0.12/0.03 0.22/0.12 0.38/0.32 0.48/0.48 0.60/0.67 0.73/0.82 0.86/0.93 1/1'",
+    # Canon Log 3
+    "Canon Log 3": "curves=master='0/0 0.08/0 0.12/0.04 0.24/0.14 0.40/0.33 0.50/0.48 0.62/0.66 0.74/0.80 0.88/0.94 1/1'",
+    # sRGB → no decode needed (already Rec.709 gamma)
+    "sRGB": "",
+    # HLG (Hybrid Log-Gamma) → FFmpeg has native support
+    "HLG": "zscale=transfer=bt709:transferin=arib-std-b67",
+    # PQ (Perceptual Quantizer / HDR10) → tone-map to SDR
+    "PQ": "zscale=transfer=bt709:transferin=smpte2084:tonemap=hable",
+}
+
+
+def _compile_log_decode_filter(profile: str) -> str:
+    """
+    Get FFmpeg filter for decoding camera log profile to Rec.709.
+
+    Returns empty string if profile is unknown or no decode needed.
+    The curves approximation is serviceable for editing preview;
+    for final delivery, use a proper 3D LUT from the camera manufacturer.
+    """
+    return _LOG_DECODE_FILTERS.get(profile, "")
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -535,8 +590,11 @@ def build_ffmpeg_command(
     # MARKER_B11: reverse and frame_blend require filter_complex
     has_reverse = any(c.reverse for c in plan.clips)
     has_frame_blend = any(c.frame_blend and c.speed < 1.0 for c in plan.clips)
+    # MARKER_B16: color pipeline requires filter_complex
+    has_color = any(c.log_profile or c.lut_path for c in plan.clips)
     use_filter_complex = (has_transitions or has_speed_changes or has_trims
-                          or has_effects or has_reverse or has_frame_blend)
+                          or has_effects or has_reverse or has_frame_blend
+                          or has_color)
 
     if use_filter_complex:
         return _build_filter_complex_cmd(plan, ffmpeg_path)
