@@ -56,9 +56,12 @@ export default function WorkspacePresets() {
         // Corrupt layout — stay on current
         return;
       }
+      setActivePreset(name);
+    } else {
+      // MARKER_C5: No saved layout — reload to build preset-specific default
+      setActivePreset(name);
+      window.location.reload();
     }
-
-    setActivePreset(name);
   };
 
   const handleSaveCustom = () => {
