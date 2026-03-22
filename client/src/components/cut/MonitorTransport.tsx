@@ -169,6 +169,19 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
     }
   }, [lanes, lockedLanes, currentTime, seek]);
 
+  // MARKER_FCP7.MON2: Mark Clip (X) — set IN/OUT to boundaries of clip under playhead
+  const handleMarkClip = useCallback(() => {
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+          setMarkIn(clip.start_sec);
+          setMarkOut(clip.start_sec + clip.duration_sec);
+          return;
+        }
+      }
+    }
+  }, [lanes, currentTime, setMarkIn, setMarkOut]);
+
   // MARKER_W5.MF: Match Frame (FCP7 Ch.50)
   // Find clip at playhead → load source in Source Monitor → seek to matching frame
   const handleMatchFrame = useCallback(() => {
@@ -262,9 +275,16 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           >
             O
           </button>
-          {feed === 'program' && (
-            <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)">F</button>
-          )}
+          <button
+            style={IO_BTN}
+            onClick={handleMarkClip}
+            title="Mark Clip (X)"
+            data-testid="mark-clip"
+            aria-label="mark clip"
+          >
+            X
+          </button>
+          <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)" data-testid="match-frame" aria-label="match frame">F</button>
         </div>
       </div>
     </div>

@@ -439,7 +439,7 @@ test.describe.serial('FCP7 Deep Compliance: Monitors (TDD)', () => {
 
       const text = sourcePanel.textContent || '';
       const markClip = sourcePanel.querySelector(
-        '[aria-label*="mark clip"], [title*="Mark Clip"], [data-testid*="mark-clip"], button:has-text("X")'
+        '[aria-label*="mark clip"], [title*="Mark Clip"], [data-testid*="mark-clip"]'
       );
       const matchFrame = sourcePanel.querySelector(
         '[aria-label*="match frame"], [title*="Match Frame"], [data-testid*="match-frame"]'
