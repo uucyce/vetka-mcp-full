@@ -24,9 +24,12 @@ type StereoWaveformCanvasProps = {
   /** Right channel color */
   colorRight?: string;
   bgColor?: string;
-  /** Cursor position 0-1 for seek preview */
+  /** Hover/seek cursor position 0-1 */
   cursorRatio?: number | null;
   cursorColor?: string;
+  /** MARKER_B36: Playback cursor position 0-1 */
+  playbackRatio?: number | null;
+  playbackColor?: string;
   /** Show center divider line */
   showCenterLine?: boolean;
   /** Show L/R labels */
@@ -44,6 +47,8 @@ export default function StereoWaveformCanvas({
   bgColor = 'transparent',
   cursorRatio = null,
   cursorColor = 'rgba(255, 255, 255, 0.92)',
+  playbackRatio = null,
+  playbackColor = 'rgba(255, 255, 255, 0.55)',
   showCenterLine = true,
   showLabels = false,
   style,
@@ -108,13 +113,20 @@ export default function StereoWaveformCanvas({
       ctx.fillText('R', 2, height - 2);
     }
 
-    // Cursor
+    // MARKER_B36: Playback cursor
+    if (playbackRatio != null) {
+      const pbX = Math.max(0, Math.min(width - 1, playbackRatio * width));
+      ctx.fillStyle = playbackColor;
+      ctx.fillRect(pbX, 0, 1, height);
+    }
+
+    // Hover/seek cursor (on top)
     if (cursorRatio != null) {
       const cursorX = Math.max(0, Math.min(width - 1, cursorRatio * width));
       ctx.fillStyle = cursorColor;
       ctx.fillRect(cursorX, 0, 1, height);
     }
-  }, [binsLeft, binsRight, width, height, colorLeft, colorRight, bgColor, cursorRatio, cursorColor, showCenterLine, showLabels]);
+  }, [binsLeft, binsRight, width, height, colorLeft, colorRight, bgColor, cursorRatio, cursorColor, playbackRatio, playbackColor, showCenterLine, showLabels]);
 
   return (
     <canvas
