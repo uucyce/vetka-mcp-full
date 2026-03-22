@@ -1731,6 +1731,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       marginLeft: 'auto',
                     }}
                     title={isHidden ? 'Show track' : 'Hide track'}
+                    aria-label={isHidden ? 'Show visibility' : 'Hide visibility'}
+                    data-testid={`cut-lane-visibility-${lane.lane_id}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleVisibility(lane.lane_id);
