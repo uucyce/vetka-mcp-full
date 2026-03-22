@@ -1131,7 +1131,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const clip = lane.clips.find((c) => c.clip_id === clipId);
       if (clip) {
         const relTime = currentTime - clip.start_sec;
-        if (relTime >= 0 && relTime <= (clip.end_sec - clip.start_sec)) {
+        if (relTime >= 0 && relTime <= clip.duration_sec) {
           get().addKeyframe(clipId, property, relTime, value);
         }
         break;
