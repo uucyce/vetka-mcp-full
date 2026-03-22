@@ -68,9 +68,11 @@ function SpeedControlModal() {
   if (!show) return null;
   const close = () => useCutEditorStore.getState().setShowSpeedControl(false);
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+    <div data-testid="speed-control-overlay" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
          onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <SpeedControl onClose={close} />
+      <div data-testid="speed-control">
+        <SpeedControl onClose={close} />
+      </div>
     </div>
   );
 }
@@ -306,11 +308,75 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
-    // Source IN/OUT + Sequence IN/OUT → auto-calculate 4th point
     // Comma (,) = Insert (ripple). Period (.) = Overwrite (replace).
-    // Wired to useThreePointEdit hook which calls backend insert_at/overwrite_at.
-    insertEdit: () => { void threePointInsert(); },
-    overwriteEdit: () => { void threePointOverwrite(); },
+    // Tries backend via useThreePointEdit; falls back to local-first insert.
+    insertEdit: async () => {
+      const ok = await threePointInsert();
+      if (!ok) {
+        // MARKER_TDD-3PT1: Local-first fallback when backend unavailable
+        const s = useCutEditorStore.getState();
+        const srcIn = s.sourceMarkIn ?? 0;
+        const srcOut = s.sourceMarkOut ?? srcIn + 2;
+        const dur = srcOut - srcIn;
+        if (dur <= 0) return;
+        const { videoLaneId } = s.getInsertTargets();
+        if (!videoLaneId) return;
+        // Find source media — use sourceMediaPath or clip under playhead
+        let srcPath = s.sourceMediaPath;
+        if (!srcPath) {
+          for (const lane of s.lanes) {
+            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+            if (c) { srcPath = c.source_path; break; }
+          }
+        }
+        if (!srcPath) return;
+        const seqIn = s.sequenceMarkIn ?? s.currentTime;
+        const newClipId = `clip_3pt_${Date.now()}`;
+        const newLanes = s.lanes.map((lane) => {
+          if (lane.lane_id !== videoLaneId) return lane;
+          // Ripple: push subsequent clips right
+          const shifted = lane.clips.map((c) =>
+            c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
+          );
+          shifted.push({ clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
+          shifted.sort((a, b) => a.start_sec - b.start_sec);
+          return { ...lane, clips: shifted };
+        });
+        s.setLanes(newLanes);
+        s.seek(seqIn + dur);
+      }
+    },
+    overwriteEdit: async () => {
+      const ok = await threePointOverwrite();
+      if (!ok) {
+        // MARKER_TDD-3PT2: Local-first fallback for overwrite
+        const s = useCutEditorStore.getState();
+        const srcIn = s.sourceMarkIn ?? 0;
+        const srcOut = s.sourceMarkOut ?? srcIn + 2;
+        const dur = srcOut - srcIn;
+        if (dur <= 0) return;
+        const { videoLaneId } = s.getInsertTargets();
+        if (!videoLaneId) return;
+        let srcPath = s.sourceMediaPath;
+        if (!srcPath) {
+          for (const lane of s.lanes) {
+            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+            if (c) { srcPath = c.source_path; break; }
+          }
+        }
+        if (!srcPath) return;
+        const seqIn = s.sequenceMarkIn ?? s.currentTime;
+        const newClipId = `clip_3pt_${Date.now()}`;
+        const newLanes = s.lanes.map((lane) => {
+          if (lane.lane_id !== videoLaneId) return lane;
+          const clips = [...lane.clips, { clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
+          clips.sort((a, b) => a.start_sec - b.start_sec);
+          return { ...lane, clips };
+        });
+        s.setLanes(newLanes);
+        s.seek(seqIn + dur);
+      }
+    },
     // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
     // FCP7 Ch.36: F11 replaces clip at playhead position, keeping same duration
     // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support

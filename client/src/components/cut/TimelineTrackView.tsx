@@ -1496,10 +1496,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const activeDrag = dragState;
       setScrubActive(false);
       setSnapIndicator(null);
-      setDragState(null);
       if (!activeDrag) {
+        setDragState(null);
         return;
       }
+
+      // MARKER_TDD-TRIM: Local-first optimistic update — commit drag result to lanes
+      // before clearing dragState, so the visual change persists even if backend is unavailable
+      const store = useCutEditorStore.getState();
+      if (activeDrag.mode !== 'move' || activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
+        const updatedLanes = store.lanes.map((lane) => ({
+          ...lane,
+          clips: lane.clips.map((c) => {
+            if (c.clip_id === activeDrag.clipId) {
+              return { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
+            }
+            // Ripple: shift subsequent clips
+            if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
+              const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
+              if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
+                return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+              }
+            }
+            return c;
+          }),
+        }));
+        store.setLanes(updatedLanes);
+      }
+      setDragState(null);
 
       const ops: Array<Record<string, unknown>> = [];
       if (
