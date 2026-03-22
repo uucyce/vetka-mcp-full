@@ -8498,19 +8498,8 @@ class CutRenderMasterRequest(BaseModel):
     audio_stems: bool = False        # export per-track WAV files
 
 
-_CODEC_MAP = {
-    "prores_422": {"vcodec": "prores_ks", "profile": "2", "ext": ".mov", "pix_fmt": "yuv422p10le"},
-    "prores_4444": {"vcodec": "prores_ks", "profile": "4", "ext": ".mov", "pix_fmt": "yuva444p10le"},
-    "h264": {"vcodec": "libx264", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-    "h265": {"vcodec": "libx265", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-}
-
-_RESOLUTION_MAP = {
-    "4k": (3840, 2160),
-    "1080p": (1920, 1080),
-    "720p": (1280, 720),
-    "source": None,
-}
+    # MARKER_B5-CLEANUP: _CODEC_MAP and _RESOLUTION_MAP removed.
+    # Use cut_render_engine.CODEC_MAP and RESOLUTION_MAP instead.
 
 
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:

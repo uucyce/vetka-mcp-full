@@ -1,0 +1,166 @@
+# Agent Registry — Single Source of Truth for CUT agent roles
+# MARKER_ZETA.D1: Auto-loaded by AgentRegistry (src/services/agent_registry.py)
+# ═══════════════════════════════════════════════════════════════
+# This file defines WHO can touch WHAT in multi-agent CUT sessions.
+# Commander updates this file; agents read it via AgentRegistry loader.
+# ═══════════════════════════════════════════════════════════════
+
+version: "1.0"
+project_id: "CUT"
+
+roles:
+  # ── Alpha: Engine Domain ──────────────────────────────────
+  - callsign: "Alpha"
+    domain: "engine"
+    role_title: "Engine Architect"
+    worktree: "cut-engine"
+    branch: "claude/cut-engine"
+    owned_paths:
+      - "client/src/store/useTimelineInstanceStore.ts"
+      - "client/src/store/useCutEditorStore.ts"           # timeline fields ONLY
+      - "client/src/hooks/useCutHotkeys.ts"               # editing actions ONLY
+      - "client/src/components/cut/TimelineTrackView.tsx"
+      - "client/src/components/cut/CutEditorLayoutV2.tsx"  # editing handlers
+      - "client/src-tauri/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/components/cut/DockviewLayout.tsx"
+      - "client/src/components/cut/panels/"
+      - "client/src/components/cut/VideoScopesPanel.tsx"
+      - "client/src/components/cut/ColorCorrectionPanel.tsx"
+      - "client/src/components/cut/ColorWheel.tsx"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ALPHA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_A_ENGINE_DETAIL.md"
+    roadmap: "docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_A_ENGINE_DETAIL.md"
+
+  # ── Beta: Media/Color Domain ──────────────────────────────
+  - callsign: "Beta"
+    domain: "media"
+    role_title: "Media/Color Pipeline Architect"
+    worktree: "cut-media"
+    branch: "claude/cut-media"
+    owned_paths:
+      - "client/src/components/cut/panels/VideoScopesPanel.tsx"
+      - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
+      - "client/src/components/cut/panels/LUTBrowserPanel.tsx"
+      - "client/src/components/cut/TimelineDisplayControls.tsx"
+      - "client/src/components/cut/EffectsPanel.tsx"
+      - "client/src/components/cut/TransitionsPanel.tsx"
+      - "client/src/components/cut/SpeedControl.tsx"
+      - "client/src/components/cut/ColorWheel.tsx"
+      - "src/services/cut_codec_probe.py"
+      - "src/services/cut_render_engine.py"
+      - "src/services/cut_effects_engine.py"
+      - "src/services/cut_scope_renderer.py"
+      - "src/services/cut_color_pipeline.py"
+      - "src/services/cut_lut_manager.py"
+      - "src/api/routes/cut_routes.py"
+    blocked_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/hooks/useCutHotkeys.ts"
+      - "client/src/components/cut/TimelineTrackView.tsx"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_BETA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_B_MEDIA_DETAIL.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RESEARCH_COLOR_PROFILES_CUT_2026-03-20.md"
+    roadmap: "docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_B_MEDIA_DETAIL.md"
+
+  # ── Gamma: UX/Panel Domain ────────────────────────────────
+  - callsign: "Gamma"
+    domain: "ux"
+    role_title: "UX/Panel Architect"
+    worktree: "cut-ux"
+    branch: "claude/cut-ux"
+    owned_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/components/cut/DockviewLayout.tsx"
+      - "client/src/components/cut/dockview-cut-theme.css"
+      - "client/src/components/cut/VideoPreview.tsx"
+      - "client/src/components/cut/panels/*.tsx"           # all panel wrappers
+      - "client/src/components/cut/WorkspacePresets.tsx"
+      - "client/src/store/useDockviewStore.ts"
+    blocked_paths:
+      - "client/src/store/useTimelineInstanceStore.ts"
+      - "client/src/components/cut/TimelineTrackView.tsx"
+      - "src/services/cut_*.py"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Delta: QA Domain ──────────────────────────────────────
+  - callsign: "Delta"
+    domain: "qa"
+    role_title: "QA Engineer / FCP7 Compliance"
+    worktree: "cut-qa"
+    branch: "worktree-cut-qa"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "client/e2e/"
+      - "tests/test_*.py"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_FCP7_DELTA2_CH41_115_2026-03-20.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Commander: Architect Domain ───────────────────────────
+  - callsign: "Commander"
+    domain: "architect"
+    role_title: "Architect-Commander"
+    worktree: "pedantic-bell"
+    branch: "claude/pedantic-bell"
+    owned_paths:
+      - "docs/"
+      - "CLAUDE.md"
+      - ".claude/worktrees/*/CLAUDE.md"
+      - "data/templates/agent_registry.yaml"
+    blocked_paths:
+      - "client/src/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
+    roadmap: ""
+
+# ── Shared Zones ────────────────────────────────────────────
+# Files where multiple agents have partial ownership.
+# Protocol: declare scope in task description before touching.
+shared_zones:
+  - file: "client/src/hooks/useCutHotkeys.ts"
+    owners:
+      Alpha: "editing actions (JKL, 3-point, mark)"
+      Gamma: "panel focus dispatch, scope guard"
+    protocol: "Declare scope in task description"
+
+  - file: "client/src/components/cut/DockviewLayout.tsx"
+    owners:
+      Gamma: "panel registry, layout management"
+      Beta: "new panel registrations"
+    protocol: "Beta notifies Gamma of new panel names"
+
+  - file: "client/src/store/useCutEditorStore.ts"
+    owners:
+      Alpha: "timeline fields (currentTime, playhead, marks)"
+      Gamma: "UI fields (focusedPanel, viewMode)"
+    protocol: "New fields: declare ownership via task"
+
+  - file: "src/api/routes/cut_routes.py"
+    owners:
+      Beta: "color/*, scopes/*, lut/*, probe/* endpoints"
+    protocol: "Consider splitting per-domain route files"
