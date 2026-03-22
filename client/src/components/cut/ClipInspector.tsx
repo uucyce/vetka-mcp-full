@@ -5,6 +5,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import WaveformCanvas from './WaveformCanvas';
+import MotionControls from './MotionControls'; // MARKER_B4.1
 
 // ─── Styles ───
 const SECTION: CSSProperties = {
@@ -169,6 +170,9 @@ export default function ClipInspector() {
           <div style={ROW}><span style={LABEL}>Scene</span><span style={VALUE}>{clip.scene_id}</span></div>
         )}
       </div>
+
+      {/* MARKER_B4.1: Motion / Effects Inspector (Transform, Opacity, Crop) */}
+      <MotionControls />
 
       {/* Sync Info */}
       {(syncItem || clip.sync) && (

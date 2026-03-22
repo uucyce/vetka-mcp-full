@@ -21,6 +21,11 @@ interface MotionState {
   anchorX: number;
   anchorY: number;
   opacity: number;
+  // MARKER_B4.1: Crop (FCP7 Ch.16)
+  cropLeft: number;
+  cropRight: number;
+  cropTop: number;
+  cropBottom: number;
 }
 
 const DEFAULT_MOTION: MotionState = {
@@ -29,6 +34,7 @@ const DEFAULT_MOTION: MotionState = {
   rotation: 0,
   anchorX: 0.5, anchorY: 0.5,
   opacity: 1,
+  cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
 };
 
 // ─── Styles ───
@@ -167,7 +173,9 @@ export default function MotionControls() {
 
   const isModified = motion.posX !== 0 || motion.posY !== 0 ||
     motion.scaleX !== 1 || motion.scaleY !== 1 ||
-    motion.rotation !== 0 || motion.opacity !== 1;
+    motion.rotation !== 0 || motion.opacity !== 1 ||
+    motion.cropLeft !== 0 || motion.cropRight !== 0 ||
+    motion.cropTop !== 0 || motion.cropBottom !== 0;
 
   return (
     <>
@@ -272,9 +280,26 @@ export default function MotionControls() {
         </div>
       </div>
 
-      {/* Opacity */}
+      {/* Opacity — MARKER_B4.1: with keyframe button */}
       <div style={SECTION}>
-        <div style={SECTION_TITLE}><span>Opacity</span></div>
+        <div style={SECTION_TITLE}>
+          <span>Opacity</span>
+          <button
+            style={RESET_BTN}
+            title="Add keyframe at playhead"
+            onClick={() => {
+              if (!selectedClipId) return;
+              const s = useCutEditorStore.getState();
+              const clip = s.lanes.flatMap((l) => l.clips).find((c) => c.clip_id === selectedClipId);
+              if (clip) {
+                const relTime = s.currentTime - clip.start_sec;
+                if (relTime >= 0) s.addKeyframe(selectedClipId, 'opacity', relTime, motion.opacity);
+              }
+            }}
+          >
+            ◆ KF
+          </button>
+        </div>
         <div style={ROW}>
           <span style={LABEL}>Value</span>
           <input
@@ -282,7 +307,13 @@ export default function MotionControls() {
             style={SLIDER}
             min={0} max={1} step={0.01}
             value={motion.opacity}
-            onChange={(e) => updateField('opacity', Number(e.target.value))}
+            onChange={(e) => {
+              updateField('opacity', Number(e.target.value));
+              // MARKER_B3.2: auto-keyframe in record mode
+              if (selectedClipId) {
+                useCutEditorStore.getState().recordPropertyChange(selectedClipId, 'opacity', Number(e.target.value));
+              }
+            }}
           />
           <input
             type="number"
@@ -293,6 +324,31 @@ export default function MotionControls() {
           />
           <span style={{ color: '#555', fontSize: 10 }}>%</span>
         </div>
+      </div>
+
+      {/* Crop — MARKER_B4.1 (FCP7 Ch.16) */}
+      <div style={SECTION}>
+        <div style={SECTION_TITLE}><span>Crop</span></div>
+        {(['cropLeft', 'cropRight', 'cropTop', 'cropBottom'] as const).map((field) => (
+          <div style={ROW} key={field}>
+            <span style={LABEL}>{field.replace('crop', '')}</span>
+            <input
+              type="range"
+              style={SLIDER}
+              min={0} max={100} step={1}
+              value={motion[field] * 100}
+              onChange={(e) => updateField(field, Number(e.target.value) / 100)}
+            />
+            <input
+              type="number"
+              style={{ ...INPUT, width: 50 }}
+              value={Math.round(motion[field] * 100)}
+              onChange={(e) => updateField(field, Number(e.target.value) / 100)}
+              step={1}
+            />
+            <span style={{ color: '#555', fontSize: 10 }}>%</span>
+          </div>
+        ))}
       </div>
 
       {/* Anchor Point */}
