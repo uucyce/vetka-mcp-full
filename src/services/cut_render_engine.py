@@ -24,9 +24,19 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B2.1: Render cancellation exception
+# ---------------------------------------------------------------------------
+
+class RenderCancelled(RuntimeError):
+    """Raised when render is cancelled by user."""
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +750,7 @@ def render_timeline(
     timeout: int = 600,
     on_progress: Any = None,
     mixer: dict[str, Any] | None = None,  # MARKER_B13: mixer state
+    cancel_check: Any = None,  # MARKER_B2.1: callable() → bool, True = cancel requested
 ) -> dict[str, Any]:
     """
     Render a timeline to a video file.
@@ -747,6 +758,7 @@ def render_timeline(
     Args:
         timeline: Timeline state dict with lanes/clips.
         on_progress: Optional callback(progress: float, message: str).
+        cancel_check: Optional callable returning True if cancel requested.
         Other args: render settings.
 
     Returns:
@@ -754,6 +766,7 @@ def render_timeline(
 
     Raises:
         RuntimeError: If ffmpeg not found or render fails.
+        RenderCancelled: If cancel_check returns True during render.
     """
     if ffmpeg_path is None:
         ffmpeg_path = shutil.which("ffmpeg")
@@ -796,10 +809,50 @@ def render_timeline(
 
     _progress(0.3, "Running FFmpeg")
 
+    # MARKER_B2.1: Use Popen for cancel support + ETA tracking
+    t_start = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"FFmpeg timed out after {timeout}s")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"FFmpeg launch failed: {exc}")
+
+    # Poll loop: check cancel + timeout
+    cancelled = False
+    try:
+        while proc.poll() is None:
+            elapsed = time.monotonic() - t_start
+
+            # Check cancel
+            if cancel_check and cancel_check():
+                proc.kill()
+                proc.wait(timeout=5)
+                cancelled = True
+                break
+
+            # Check timeout
+            if elapsed > timeout:
+                proc.kill()
+                proc.wait(timeout=5)
+                raise RuntimeError(f"FFmpeg timed out after {timeout}s")
+
+            # Progress estimate: linear interpolation between 0.3 and 0.85
+            # (real FFmpeg progress parsing requires -progress pipe, future enhancement)
+            if elapsed > 0 and timeout > 0:
+                frac = min(elapsed / timeout, 1.0)
+                _progress(0.3 + frac * 0.55, "Encoding...")
+
+            time.sleep(0.5)
+    except Exception:
+        # Ensure process is killed on any error
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        raise
 
     # Cleanup concat file if used
     concat_path = getattr(plan, "_concat_path", None)
@@ -809,14 +862,32 @@ def render_timeline(
         except OSError:
             pass
 
+    # Handle cancellation
+    if cancelled:
+        # Cleanup partial output
+        if os.path.exists(plan.output_path):
+            try:
+                os.remove(plan.output_path)
+            except OSError:
+                pass
+        raise RenderCancelled("Render cancelled by user")
+
     if proc.returncode != 0:
-        stderr = (proc.stderr or "")[-500:]
+        stderr = ""
+        if proc.stderr:
+            try:
+                stderr = proc.stderr.read()[-500:]
+            except Exception:
+                pass
         raise RuntimeError(f"FFmpeg failed (exit {proc.returncode}): {stderr}")
+
+    elapsed_sec = round(time.monotonic() - t_start, 2)
 
     result: dict[str, Any] = {
         "output_path": plan.output_path,
         "codec": plan.codec,
         "resolution": plan.resolution,
+        "elapsed_sec": elapsed_sec,  # MARKER_B2.1
         "file_size_bytes": os.path.getsize(plan.output_path) if os.path.exists(plan.output_path) else 0,
         "clips_count": len(plan.clips),
         "transitions_count": len(plan.transitions),

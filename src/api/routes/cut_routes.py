@@ -8585,10 +8585,10 @@ class CutRenderMasterRequest(BaseModel):
 
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
     """
-    MARKER_B6 — Background thread: delegates to cut_render_engine.render_timeline().
-    Replaces inline FFmpeg concat pipeline with filter_complex-capable engine.
+    MARKER_B6 + B2.1 — Background thread: delegates to cut_render_engine.render_timeline().
+    Supports cancel via job store cancel_requested flag.
     """
-    from src.services.cut_render_engine import render_timeline
+    from src.services.cut_render_engine import render_timeline, RenderCancelled
 
     store = get_cut_mcp_job_store()
 
@@ -8614,7 +8614,12 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
         def on_progress(p: float, msg: str = "") -> None:
             store.update_job(job_id, progress=p)
 
-        # Delegate to render engine (handles filter_complex, transitions, speed, stems, mixer)
+        # MARKER_B2.1: Cancel check — reads cancel_requested from job store
+        def cancel_check() -> bool:
+            job = store.get_job(job_id)
+            return bool(job and job.get("cancel_requested"))
+
+        # Delegate to render engine (handles filter_complex, transitions, speed, stems, mixer, cancel)
         result = render_timeline(
             timeline,
             codec=req.codec,
@@ -8630,6 +8635,7 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             preset=req.preset,
             on_progress=on_progress,
             mixer=req.mixer,  # MARKER_B13
+            cancel_check=cancel_check,  # MARKER_B2.1
         )
 
         store.update_job(
@@ -8638,6 +8644,10 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             progress=1.0,
             result=result,
         )
+
+    except RenderCancelled:
+        store.update_job(job_id, state="cancelled", progress=1.0,
+                         error={"message": "Render cancelled by user"})
 
     except Exception as exc:
         store.update_job(job_id, state="error", error={"message": str(exc)})
