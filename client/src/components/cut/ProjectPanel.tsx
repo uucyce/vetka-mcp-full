@@ -179,6 +179,35 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
+// MARKER_GAMMA-14: Custom drag preview — thumbnail + filename badge
+function setDragPreview(
+  e: React.DragEvent,
+  name: string,
+  modality: string | undefined,
+  posterUrl: string | undefined,
+) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:-200px;left:-200px;width:80px;padding:4px;background:#1a1a1a;border:1px solid #555;border-radius:4px;font-size:8px;font-family:system-ui,sans-serif;color:#ccc;text-align:center;pointer-events:none;z-index:99999';
+  if (posterUrl) {
+    const img = document.createElement('img');
+    img.src = posterUrl;
+    img.style.cssText = 'width:72px;height:48px;object-fit:cover;border-radius:2px;display:block;margin:0 auto 3px';
+    el.appendChild(img);
+  } else {
+    const icon = document.createElement('div');
+    icon.style.cssText = 'width:72px;height:48px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#444;margin:0 auto 3px';
+    icon.textContent = modality === 'audio' ? '\u266A' : modality === 'image' ? '\u25FB' : '\u25B6';
+    el.appendChild(icon);
+  }
+  const label = document.createElement('div');
+  label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72px;margin:0 auto';
+  label.textContent = name;
+  el.appendChild(label);
+  document.body.appendChild(el);
+  e.dataTransfer.setDragImage(el, 40, 30);
+  requestAnimationFrame(() => document.body.removeChild(el));
+}
+
 // MARKER_W6.IMPORT-FIX: Infer folder path from file list (Tauri native or browser webkitdirectory)
 function inferFolderPath(files: FileList | null): string {
   if (!files || files.length === 0) return '';
@@ -620,6 +649,7 @@ export default function ProjectPanel() {
                   onDragStart={(e) => {
                     e.dataTransfer.setData('text/cut-media-path', item.source_path);
                     e.dataTransfer.effectAllowed = 'copy';
+                    setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
                     (e.currentTarget as HTMLElement).style.opacity = '0.5';
                   }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
@@ -690,6 +720,7 @@ export default function ProjectPanel() {
                       onDragStart={(e) => {
                         e.dataTransfer.setData('text/cut-media-path', item.source_path);
                         e.dataTransfer.effectAllowed = 'copy';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
                         (e.currentTarget as HTMLElement).style.opacity = '0.5';
                       }}
                       onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
