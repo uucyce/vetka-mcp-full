@@ -8,7 +8,6 @@ import math
 import mimetypes
 import os
 import re
-import shutil
 import subprocess
 import threading
 
@@ -73,6 +72,7 @@ from src.services.pulse_srt_bridge import (
 )
 from src.services.converters.premiere_xml_converter import build_premiere_xml
 from src.services.converters.fcpxml_converter import build_fcpxml
+from src.services.cut_codec_probe import probe_file, probe_duration
 from src.services.pulse_story_space import (
     TrianglePosition,
     StorySpacePoint,
@@ -537,7 +537,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
             mi_entry = media_index_files.get(path.path) or {}
             full_duration = float(mi_entry.get("duration_sec") or 0)
             if full_duration <= 0:
-                full_duration = _probe_clip_duration(path.path)
+                full_duration = probe_duration(path.path)
             if full_duration <= 0:
                 full_duration = 5.0  # ultimate fallback
 
@@ -2491,46 +2491,8 @@ def _resolve_asset_path(path: str, sandbox_root: str = "") -> Path:
     return p.resolve()
 
 
-def _probe_ffprobe_metadata(path: Path) -> dict[str, Any]:
-    ffprobe_bin = shutil.which("ffprobe")
-    if not ffprobe_bin:
-        return {"available": False, "error": "ffprobe_not_found"}
-    if not path.exists():
-        return {"available": True, "error": "file_not_found"}
-    try:
-        proc = subprocess.run(
-            [
-                ffprobe_bin,
-                "-v",
-                "error",
-                "-show_entries",
-                "stream=index,codec_name,codec_type,width,height,avg_frame_rate,r_frame_rate,pix_fmt,channels,sample_rate:format=format_name,duration,bit_rate",
-                "-of",
-                "json",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return {"available": True, "error": f"ffprobe_failed: {proc.stderr.strip() or proc.returncode}"}
-        payload = json.loads(proc.stdout or "{}")
-        return {"available": True, "metadata": payload}
-    except Exception as exc:
-        return {"available": True, "error": f"ffprobe_exception: {exc}"}
-
-
-def _probe_clip_duration(media_path: str) -> float:
-    """MARKER_189.2 — Quick ffprobe duration for a single clip. Returns 0.0 on failure."""
-    result = _probe_ffprobe_metadata(Path(media_path))
-    try:
-        metadata = result.get("metadata") or {}
-        fmt = metadata.get("format") or {}
-        return float(fmt.get("duration") or 0)
-    except (ValueError, TypeError):
-        return 0.0
+# MARKER_B1-CLEANUP: _probe_ffprobe_metadata and _probe_clip_duration removed.
+# Use cut_codec_probe.probe_file() and probe_duration() instead.
 
 
 def _collect_export_material(
@@ -4526,7 +4488,7 @@ async def cut_probe_log_detect(source_path: str) -> dict[str, Any]:
     MARKER_B24 — Probe video file and auto-detect camera log profile.
     Returns metadata + log detection (profile, gamut, camera, confidence).
     """
-    from src.services.cut_codec_probe import probe_and_detect_log
+    from src.services.cut_codec_probe import probe_and_detect_log  # noqa: F811
     return probe_and_detect_log(source_path)
 
 
@@ -5497,21 +5459,29 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
     path = _resolve_asset_path(body.source_path, body.sandbox_root)
     ext = path.suffix.lower().lstrip(".")
     mime_type, _ = mimetypes.guess_type(str(path))
-    # MARKER_B1.5: expanded playback class detection
-    if ext in NATIVE_VIDEO_EXT:
-        playback_class = "native"
-    elif ext in PROXY_RECOMMENDED_EXT:
-        playback_class = "proxy_recommended"
-    elif ext in TRANSCODE_REQUIRED_EXT:
-        playback_class = "transcode_required"
-    elif ext in AUDIO_EXT:
-        playback_class = "native"
+    # MARKER_B1-CLEANUP: Use cut_codec_probe for structured probe + playback class
+    if body.probe_ffprobe:
+        probe_result = probe_file(path)
+        playback_class = probe_result.playback_class or "unknown"
+        ffprobe_payload = {"available": probe_result.available, "probe": probe_result.to_dict()}
+        if probe_result.error:
+            ffprobe_payload["error"] = probe_result.error
     else:
-        playback_class = "unknown"
-    ffprobe_payload = _probe_ffprobe_metadata(path) if body.probe_ffprobe else {"available": False, "error": "disabled"}
+        ffprobe_payload = {"available": False, "error": "disabled"}
+        # Fallback to extension-based classification
+        if ext in NATIVE_VIDEO_EXT:
+            playback_class = "native"
+        elif ext in PROXY_RECOMMENDED_EXT:
+            playback_class = "proxy_recommended"
+        elif ext in TRANSCODE_REQUIRED_EXT:
+            playback_class = "transcode_required"
+        elif ext in AUDIO_EXT:
+            playback_class = "native"
+        else:
+            playback_class = "unknown"
     return {
         "success": True,
-        "schema_version": "cut_media_support_v1",
+        "schema_version": "cut_media_support_v2",
         "source_path": str(path),
         "exists": path.exists(),
         "mime_type": mime_type or "application/octet-stream",
