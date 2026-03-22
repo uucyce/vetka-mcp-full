@@ -411,8 +411,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-      {/* MARKER_GAMMA-8: Workspace preset bar (Editing/Color/Audio/Custom) */}
-      <WorkspacePresets />
+      {/* MARKER_GAMMA-25: WorkspacePresets removed from top bar (FCP7: Window menu only) */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"

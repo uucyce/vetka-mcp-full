@@ -100,9 +100,9 @@
   letter-spacing: 0.3px;
 }
 
-/* Active tab */
+/* Active tab — !important needed: dockview injects inline border-color on active group */
 .dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom: 1px solid var(--border-bright);
+  border-bottom: 1px solid var(--border-bright) !important;
   background-color: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -181,9 +181,25 @@
 /* ═══ Kill remaining blue — targeted overrides ══════════════════════ */
 /* MARKER_DOCK-FIX-3: No wildcard (*). Targets structural elements only. */
 
-/* Dockview group header border */
+/* Dockview group header border — !important: dockview injects blue inline */
 .dockview-theme-dark.dockview-theme-dark .dv-tabs-container {
-  border-bottom-color: var(--border-dim);
+  border-bottom-color: var(--border-dim) !important;
+}
+
+/* MARKER_GAMMA-25: Kill ALL active group blue indicators */
+.dockview-theme-dark .dv-tabs-and-actions-container[style],
+.dockview-theme-dark .dv-active-group .dv-tabs-and-actions-container {
+  border-color: var(--border-dim) !important;
+  border-bottom-color: var(--border-dim) !important;
+}
+.dockview-theme-dark .dv-active-group .dv-tabs-container {
+  border-bottom-color: var(--border-dim) !important;
+}
+/* Catch any element with inline blue border/outline */
+.dockview-theme-dark [style*="border-bottom-color"],
+.dockview-theme-dark [style*="border-color: rgb"] {
+  border-color: var(--border-dim) !important;
+  border-bottom-color: var(--border-dim) !important;
 }
 
 /* Panel highlight when dragging — !important for pointer-events (Tauri) */
@@ -231,12 +247,12 @@
   pointer-events: none !important;
 }
 
-/* Restore specific borders */
+/* Restore specific borders — !important to fight dockview inline styles */
 .dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom-color: var(--border-bright);
+  border-bottom-color: var(--border-bright) !important;
 }
 .dockview-theme-dark.dockview-theme-dark .dv-tabs-and-actions-container {
-  border-bottom-color: var(--border-dim);
+  border-bottom-color: var(--border-dim) !important;
 }
 .dockview-theme-dark.dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark.dockview-theme-dark .dv-sash.dv-active {
@@ -273,6 +289,7 @@
   background: #999;
   border: none;
   cursor: pointer;
+  margin-top: -3.5px; /* center 10px thumb on 3px track */
 }
 .dockview-theme-dark input[type="range"]::-webkit-slider-runnable-track {
   background: #333;
