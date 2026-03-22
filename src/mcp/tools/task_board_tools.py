@@ -626,13 +626,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}
 
-    # MARKER_186.4: promote_to_main — transition done_worktree → done_main after merge
+    # MARKER_195.20c: promote_to_main — delegates to merge_request for real merge
     elif action == "promote_to_main":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for promote_to_main"}
         merge_commit_hash = arguments.get("commit_hash")
-        return board.promote_to_main(task_id, merge_commit_hash)
+        role = arguments.get("role", "")
+        return board.promote_to_main(task_id, merge_commit_hash, role=role)
 
     # MARKER_195.20: QA Gate — verify a done_worktree task before merge
     elif action == "verify":
