@@ -1011,9 +1011,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }]);
   },
 
-  setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
-  // MARKER_W1.3: Source/Program routing
-  setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_DUAL-VIDEO: setActiveMedia is legacy — sets activeMediaPath only, does NOT bleed into source
+  setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_W1.3: Source/Program routing — fully decoupled
+  setSourceMedia: (path) => set({ sourceMediaPath: path }),
   setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
