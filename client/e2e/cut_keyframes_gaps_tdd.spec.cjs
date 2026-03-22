@@ -122,8 +122,8 @@ async function setupApiMocks(page) {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(state) });
       return;
     }
-    // Mock add-marker — return success with marker id
-    if (url.pathname === '/api/cut/add-marker') {
+    // Mock time-markers/apply — handler calls this endpoint (not /add-marker)
+    if (url.pathname === '/api/cut/time-markers/apply') {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, marker_id: 'mk_test_001' }) });
       return;
     }
@@ -414,6 +414,17 @@ test.describe('TDD4: Coverage Gaps', () => {
   test('GAP2: J key sets reverse shuttle speed', async ({ page }) => {
     await navigateToCut(page);
 
+    // Seek to middle first — reverse shuttle at t=0 immediately resets
+    // because TransportBar rAF loop sees newTime<=0 and calls setShuttleSpeed(0)
+    await page.evaluate(() => {
+      if (window.__CUT_STORE__) {
+        const s = window.__CUT_STORE__.getState();
+        if (s.duration === 0) s.setDuration(12);
+        s.seek(5.0);
+      }
+    });
+    await page.waitForTimeout(100);
+
     await page.keyboard.press('j');
     await page.waitForTimeout(100);
 
@@ -429,30 +440,34 @@ test.describe('TDD4: Coverage Gaps', () => {
   // GAP3: M key adds marker at playhead
   // FCP7 p.302: "Press M to add a marker at the playhead position"
   // -------------------------------------------------------------------------
-  test('GAP3: M key adds marker at current playhead position', async ({ page }) => {
+  test('GAP3: M key triggers add-marker API call at playhead position', async ({ page }) => {
     await navigateToCut(page);
 
-    // Seek to 3s
+    // Seek to 3s (must be within a clip for mediaPath to resolve)
     await page.evaluate(() => {
       if (window.__CUT_STORE__) window.__CUT_STORE__.getState().seek(3.0);
     });
     await page.waitForTimeout(100);
 
-    const markersBefore = await page.evaluate(() => {
-      if (!window.__CUT_STORE__) return 0;
-      return (window.__CUT_STORE__.getState().markers || []).length;
+    // Track API calls to time-markers/apply
+    let markerApiCalled = false;
+    let markerPayload = null;
+    await page.route(`${DEV_ORIGIN}/api/cut/time-markers/apply`, async (route) => {
+      markerApiCalled = true;
+      const body = route.request().postDataJSON();
+      markerPayload = body;
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
     });
 
     // Press M to add marker
     await page.keyboard.press('m');
-    await page.waitForTimeout(500); // async API call
+    await page.waitForTimeout(800); // async API call + refresh
 
-    const markersAfter = await page.evaluate(() => {
-      if (!window.__CUT_STORE__) return 0;
-      return (window.__CUT_STORE__.getState().markers || []).length;
-    });
-
-    expect(markersAfter).toBeGreaterThan(markersBefore);
+    // Verify the API was called with correct params
+    expect(markerApiCalled).toBe(true);
+    expect(markerPayload).not.toBeNull();
+    expect(markerPayload.kind).toBe('favorite');
+    expect(markerPayload.start_sec).toBeCloseTo(3.0, 1);
   });
 
   // -------------------------------------------------------------------------
