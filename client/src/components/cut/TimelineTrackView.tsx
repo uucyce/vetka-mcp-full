@@ -1707,7 +1707,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   }, [currentTime, dragState, isPlaying, scrubActive, scrollLeft, setScrollLeft, zoom]);
 
   return (
-    <div ref={containerRef} data-testid="cut-timeline-track-view" style={CONTAINER_STYLE} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
+    <div ref={containerRef} data-testid="cut-timeline-track-view" style={{ ...CONTAINER_STYLE, cursor: TOOL_CURSOR[activeTool] || 'default' }} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
       {/* MARKER_W5.TC: Ruler row — editable timecode field + time ruler */}
       <div style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, height: RULER_HEIGHT }}>
         {/* Timecode field in lane header area (FCP7 Current Timecode) */}
