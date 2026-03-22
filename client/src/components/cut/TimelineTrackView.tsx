@@ -2292,13 +2292,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           return (
                             <div
                               key={`kf_${prop}_${kf.time_sec}`}
+                              className="keyframe"
+                              data-testid="keyframe"
+                              data-property={prop}
+                              data-time={kf.time_sec}
                               style={{
                                 position: 'absolute',
-                                left: kfPx - 4,
+                                left: kfPx - 3,
                                 bottom: 2,
-                                width: 8,
-                                height: 8,
-                                background: '#f59e0b',
+                                width: 6,
+                                height: 6,
+                                background: '#999',
                                 transform: 'rotate(45deg)',
                                 zIndex: 6,
                                 pointerEvents: 'none',
