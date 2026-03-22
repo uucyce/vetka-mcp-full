@@ -27,6 +27,8 @@ interface DockviewStoreState {
   addTimelinePanel: (timelineId: string, label: string) => void;
   /** MARKER_PANEL-TOGGLE: Toggle panel — if open, focus it. If closed, re-add it. */
   togglePanel: (id: string, component: string, title: string) => void;
+  /** MARKER_GAMMA-3: Toggle maximize active panel group (backtick key, FCP7/Premiere style) */
+  toggleMaximize: () => void;
 }
 
 const LS_PREFIX = 'cut_dockview_';
@@ -98,6 +100,22 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
           : { direction: 'right' },
       });
     } catch { /* addPanel failed */ }
+  },
+
+  // MARKER_GAMMA-3: Toggle maximize active panel group (backtick key)
+  toggleMaximize: () => {
+    const api = get().apiRef;
+    if (!api) return;
+    try {
+      if (api.hasMaximizedGroup()) {
+        api.exitMaximizedGroup();
+      } else {
+        const active = api.activePanel;
+        if (active) {
+          api.maximizeGroup(active);
+        }
+      }
+    } catch { /* maximize API not available in this dockview version */ }
   },
 
   // MARKER_C12: Add timeline panel to dockview

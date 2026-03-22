@@ -90,7 +90,7 @@ interface DockviewLayoutProps {
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const { saveLayout, loadLayout, activePreset, setApiRef } = useDockviewStore();
+  const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 
   // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
@@ -342,6 +342,21 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       }
     });
   }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
+
+  // MARKER_GAMMA-3: Backtick key → toggle maximize active panel (Premiere/FCP7 style)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '`' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Don't intercept if user is typing in an input/textarea
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        toggleMaximize();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [toggleMaximize]);
 
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
