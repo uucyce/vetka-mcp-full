@@ -556,6 +556,17 @@ test.describe.serial('FCP7 Deep Compliance: Editing (TDD)', () => {
   test('EDIT3: through edits shown as red triangles after razor cut', async ({ page }) => {
     await navigateToCut(page);
 
+    // Perform a razor cut first to create a through-edit point
+    await page.keyboard.press('b'); // Activate razor tool
+    await page.waitForTimeout(200);
+    const firstClip = page.locator('[data-testid^="cut-timeline-clip-"]').first();
+    const box = await firstClip.boundingBox();
+    if (box) {
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+      await page.waitForTimeout(300);
+    }
+    await page.keyboard.press('v'); // Back to selection tool
+
     // After a razor cut, adjacent clips from same source show through edit indicators
     // This is a display feature — look for red triangle markers at edit points
     const hasThroughEditIndicator = await page.evaluate(() => {
