@@ -43,6 +43,8 @@
   --dv-drag-over-border-color: rgba(255, 255, 255, 0.15);
   --dv-active-sash-color: var(--border-default);
   --dv-icon-hover-background-color: var(--bg-active);
+  /* MARKER_GAMMA-31: Kill dodgerblue/purple active outline — grey only */
+  --dv-paneview-active-outline-color: #505050;
 }
 
 /* ═══ Structural overrides (double-class specificity) ═══════════════ */
