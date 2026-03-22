@@ -270,6 +270,8 @@ export default function ProjectPanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // MARKER_W5.4: View mode
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
+  // MARKER_GAMMA-19: Context menu for project items
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -653,6 +655,7 @@ export default function ProjectPanel() {
                     (e.currentTarget as HTMLElement).style.opacity = '0.5';
                   }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                   style={{
                     ...GRID_ITEM,
                     background: isActive ? '#1a1a2a' : 'transparent',
@@ -724,6 +727,7 @@ export default function ProjectPanel() {
                         (e.currentTarget as HTMLElement).style.opacity = '0.5';
                       }}
                       onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                       style={{
                         ...CLIP_ITEM,
                         background: isActive ? '#1a1a2a' : 'transparent',
@@ -780,6 +784,46 @@ export default function ProjectPanel() {
                 press above to import media
               </span>
             </div>
+          )}
+        </div>
+      )}
+      {/* MARKER_GAMMA-19: Project item context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
+            background: '#0b0b0b', border: '1px solid #333', borderRadius: 4,
+            padding: '3px 0', zIndex: 10000, minWidth: 160,
+            fontSize: 11, fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setCtxMenu(null)}
+        >
+          {[
+            { label: 'Open in Source Monitor', action: () => { setActiveMedia(ctxMenu.path); setCtxMenu(null); } },
+            { label: 'Add to Timeline', action: () => {
+              window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: ctxMenu.path } }));
+              setCtxMenu(null);
+            }},
+            { separator: true },
+            { label: 'Reveal in Finder', action: () => { setCtxMenu(null); }, disabled: true },
+          ].map((item, i) =>
+            'separator' in item ? (
+              <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+            ) : (
+              <div
+                key={i}
+                onClick={item.disabled ? undefined : item.action}
+                style={{
+                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {item.label}
+              </div>
+            ),
           )}
         </div>
       )}
