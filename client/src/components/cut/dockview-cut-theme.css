@@ -18,26 +18,26 @@
  * All colors from tokens.css only.
  */
 
-/* ═══ CSS Custom Properties (vars) ══════════════════════════════════ */
+/* ═══ CSS Custom Properties (vars) — synced with tokens.css ═════════ */
 .dockview-theme-dark {
-  --dv-background-color: #000;
-  --dv-paneview-header-border-color: #222;
-  --dv-tabs-and-actions-container-background-color: #0a0a0a;
-  --dv-activegroup-visiblepanel-tab-background-color: #1a1a1a;
-  --dv-activegroup-hiddenpanel-tab-background-color: #0a0a0a;
-  --dv-inactivegroup-visiblepanel-tab-background-color: #111;
-  --dv-inactivegroup-hiddenpanel-tab-background-color: #0a0a0a;
-  --dv-tab-divider-color: #222;
-  --dv-activegroup-visiblepanel-tab-color: #ccc;
-  --dv-activegroup-hiddenpanel-tab-color: #555;
-  --dv-inactivegroup-visiblepanel-tab-color: #888;
-  --dv-inactivegroup-hiddenpanel-tab-color: #555;
-  --dv-separator-border: #222;
-  --dv-group-view-background-color: #000;
+  --dv-background-color: var(--bg-primary);
+  --dv-paneview-header-border-color: var(--border-dim);
+  --dv-tabs-and-actions-container-background-color: var(--bg-secondary);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-hover);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-secondary);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-tertiary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-secondary);
+  --dv-tab-divider-color: var(--border-dim);
+  --dv-activegroup-visiblepanel-tab-color: var(--text-secondary);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-separator-border: var(--border-dim);
+  --dv-group-view-background-color: var(--bg-primary);
   --dv-drag-over-background-color: rgba(255, 255, 255, 0.05);
   --dv-drag-over-border-color: rgba(255, 255, 255, 0.15);
-  --dv-active-sash-color: #333;
-  --dv-icon-hover-background-color: #222;
+  --dv-active-sash-color: var(--border-default);
+  --dv-icon-hover-background-color: var(--bg-active);
 }
 
 /* ═══ Hard overrides (dockview ignores vars in some places) ═════════ */
@@ -45,36 +45,36 @@
 /* Grid container — kills the rgb(0,12,24) blue default */
 .dockview-theme-dark .dv-grid-view,
 .dockview-theme-dark .dv-dockview {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 /* Group views — active and inactive */
 .dockview-theme-dark .dv-groupview {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 .dockview-theme-dark .dv-active-group {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 .dockview-theme-dark .dv-inactive-group {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 /* Content area */
 .dockview-theme-dark .dv-content-container {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 /* Void / empty space */
 .dockview-theme-dark .dv-void-container {
-  background-color: #000 !important;
+  background-color: var(--bg-primary) !important;
 }
 
 /* Watermark */
 .dockview-theme-dark .dv-watermark {
-  background-color: #000 !important;
-  color: #333 !important;
+  background-color: var(--bg-primary) !important;
+  color: var(--text-disabled) !important;
 }
 
 /* ═══ Tab bar — 18px thin ═══════════════════════════════════════════ */
@@ -82,8 +82,8 @@
 .dockview-theme-dark .dv-tabs-and-actions-container {
   height: 18px !important;
   min-height: 18px !important;
-  background-color: #0a0a0a !important;
-  border-bottom: 1px solid #222 !important;
+  background-color: var(--bg-secondary) !important;
+  border-bottom: 1px solid var(--border-dim) !important;
 }
 
 .dockview-theme-dark .dv-tab {
@@ -95,18 +95,18 @@
   letter-spacing: 0.3px;
 }
 
-/* Active tab — tokens: bg-hover + border-bright + text-secondary */
+/* Active tab */
 .dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom: 1px solid #555 !important;
-  background-color: #1a1a1a !important;
-  color: #ccc !important;
+  border-bottom: 1px solid var(--border-bright) !important;
+  background-color: var(--bg-hover) !important;
+  color: var(--text-secondary) !important;
 }
 
-/* Inactive tab — tokens: bg-secondary + text-dim */
+/* Inactive tab */
 .dockview-theme-dark .dv-tab.dv-inactive-tab {
   border-bottom: 1px solid transparent !important;
-  background-color: #0a0a0a !important;
-  color: #555 !important;
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-dim) !important;
 }
 
 /* ═══ Tab close button — hidden until hover ═════════════════════════ */
@@ -156,7 +156,7 @@
 }
 .dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark .dv-sash.dv-active {
-  background-color: #333 !important;
+  background-color: var(--border-default) !important;
   transition: background-color 0.15s;
 }
 
@@ -178,7 +178,7 @@
 
 /* Dockview group header border (active panel indicator) */
 .dockview-theme-dark .dv-tabs-container {
-  border-bottom-color: #222 !important;
+  border-bottom-color: var(--border-dim) !important;
 }
 
 /* Panel highlight border when dragging over — MARKER_DOCK-FIX-3: keep pointer-events */
@@ -196,42 +196,42 @@
 .dockview-theme-dark .dv-content-container:focus,
 .dockview-theme-dark .dv-content-container:focus-within {
   outline: none !important;
-  border-color: #222 !important;
+  border-color: var(--border-dim) !important;
 }
 
 /* Pane header borders */
 .dockview-theme-dark .dv-pane-header {
-  border-color: #222 !important;
-  background-color: #0a0a0a !important;
+  border-color: var(--border-dim) !important;
+  background-color: var(--bg-secondary) !important;
 }
 
 /* Split view internal borders */
 .dockview-theme-dark .dv-split-view-container,
 .dockview-theme-dark .dv-grid-branch-node {
-  border-color: #222 !important;
+  border-color: var(--border-dim) !important;
 }
 
 /* Floating panels — no blue ring */
 .dockview-theme-dark .dv-floating-container,
 .dockview-theme-dark .dv-popout-window {
-  border-color: #333 !important;
+  border-color: var(--border-default) !important;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
 }
 
 /* Tab drag indicator / ghost — MARKER_DOCK-FIX-3: ensure visible + interactive */
 .dockview-theme-dark .dv-tab-drag-ghost,
 .dockview-theme-dark .dv-tab-ghost {
-  border-color: #555 !important;
-  background-color: #1a1a1a !important;
+  border-color: var(--border-bright) !important;
+  background-color: var(--bg-hover) !important;
   pointer-events: none !important;
 }
 
 /* Restore specific borders that need different colors */
 .dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom-color: #555 !important;
+  border-bottom-color: var(--border-bright) !important;
 }
 .dockview-theme-dark .dv-tabs-and-actions-container {
-  border-bottom-color: #222 !important;
+  border-bottom-color: var(--border-dim) !important;
 }
 .dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark .dv-sash.dv-active {
@@ -242,12 +242,12 @@
 .dockview-theme-dark .dv-groupview[style*="border-color: rgb(0, 12, 24)"],
 .dockview-theme-dark .dv-groupview[style*="border-color: #4a9eff"],
 .dockview-theme-dark .dv-content-container[style*="outline-color: #4a9eff"] {
-  border-color: #222 !important;
+  border-color: var(--border-dim) !important;
   outline-color: transparent !important;
 }
 
 /* MARKER_FOCUS: Subtle focus indicator on active panel group */
 .dockview-theme-dark .dv-groupview[data-focused] {
-  outline: 1px solid #555 !important;
+  outline: 1px solid var(--border-bright) !important;
   outline-offset: -1px;
 }
