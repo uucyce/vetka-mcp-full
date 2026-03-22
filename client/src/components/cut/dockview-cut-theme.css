@@ -259,3 +259,23 @@
   outline: 1px solid var(--border-bright) !important;
   outline-offset: -1px;
 }
+
+/* ═══ MARKER_GAMMA-23: Monochrome range inputs (kill blue slider thumb) ═══ */
+
+.dockview-theme-dark input[type="range"] {
+  accent-color: #999;
+}
+.dockview-theme-dark input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #999;
+  border: none;
+  cursor: pointer;
+}
+.dockview-theme-dark input[type="range"]::-webkit-slider-runnable-track {
+  background: #333;
+  height: 3px;
+  border-radius: 2px;
+}
