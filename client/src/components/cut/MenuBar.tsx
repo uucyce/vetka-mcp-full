@@ -347,7 +347,21 @@ export default function MenuBar() {
           { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
           { separator: true },
           { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
-          { label: 'Marker Overlay', disabled: true },
+          { label: 'Marker Overlay', submenu: [
+            ...([
+              ['favorite', 'Favorites'],
+              ['comment', 'Comments'],
+              ['cam', 'Camera Marks'],
+              ['insight', 'Insights'],
+              ['bpm_audio', 'BPM Audio'],
+              ['bpm_visual', 'BPM Visual'],
+              ['bpm_script', 'BPM Script'],
+              ['sync_point', 'Sync Points'],
+            ] as const).map(([kind, label]) => ({
+              label: `${dockStore.getState().isMarkerKindVisible(kind) ? '\u2713 ' : '  '}${label}`,
+              action: () => dockStore.getState().toggleMarkerKind(kind),
+            })),
+          ]},
         ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
