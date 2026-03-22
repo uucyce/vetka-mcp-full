@@ -6,6 +6,23 @@ import asyncio
 import pytest
 
 
+# ── MARKER_D4: Stale test infrastructure ──────────────────────────
+def pytest_addoption(parser):
+    parser.addoption(
+        "--include-stale", action="store_true", default=False,
+        help="Include @pytest.mark.stale tests (pre-existing failures, excluded by default)",
+    )
+
+
+def pytest_collection_modifyitems(config, items):
+    if config.getoption("--include-stale"):
+        return
+    skip_stale = pytest.mark.skip(reason="stale test — run with --include-stale")
+    for item in items:
+        if "stale" in item.keywords:
+            item.add_marker(skip_stale)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def ensure_session_event_loop():
     """

@@ -9,6 +9,7 @@
  * Requires: dockview API ref exposed via useDockviewStore.apiRef.
  */
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
+import { useCutEditorStore } from '../../store/useCutEditorStore';
 
 const PRESETS: { name: WorkspacePresetName; label: string }[] = [
   { name: 'editing', label: 'Edit' },
@@ -36,8 +37,15 @@ export default function WorkspacePresets() {
   const saveLayout = useDockviewStore((s) => s.saveLayout);
   const apiRef = useDockviewStore((s) => s.apiRef);
 
+  const saveFocusForPreset = useDockviewStore((s) => s.saveFocusForPreset);
+  const getFocusForPreset = useDockviewStore((s) => s.getFocusForPreset);
+
   const handleSwitch = (name: WorkspacePresetName) => {
     if (name === activePreset) return;
+
+    // MARKER_GAMMA-12: Save current focus before switching
+    const currentFocus = useCutEditorStore.getState().focusedPanel;
+    saveFocusForPreset(activePreset, currentFocus);
 
     // Save current layout before switching
     if (apiRef) {
@@ -53,12 +61,19 @@ export default function WorkspacePresets() {
       try {
         apiRef.fromJSON(saved);
       } catch {
-        // Corrupt layout — stay on current
         return;
       }
+      setActivePreset(name);
+      // MARKER_GAMMA-12: Restore focus for target preset
+      const targetFocus = getFocusForPreset(name);
+      if (targetFocus) {
+        useCutEditorStore.getState().setFocusedPanel(targetFocus as any);
+      }
+    } else {
+      // MARKER_C5: No saved layout — reload to build preset-specific default
+      setActivePreset(name);
+      window.location.reload();
     }
-
-    setActivePreset(name);
   };
 
   const handleSaveCustom = () => {

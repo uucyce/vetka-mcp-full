@@ -24,9 +24,19 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B2.1: Render cancellation exception
+# ---------------------------------------------------------------------------
+
+class RenderCancelled(RuntimeError):
+    """Raised when render is cancelled by user."""
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -80,13 +90,44 @@ RESOLUTION_MAP: dict[str, tuple[int, int] | None] = {
     "source": None,
 }
 
-# Social presets → override codec/resolution/bitrate
-SOCIAL_PRESETS: dict[str, dict[str, Any]] = {
-    "youtube": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 85},
-    "instagram_reels": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80, "aspect": "9:16"},
-    "tiktok": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80, "aspect": "9:16"},
-    "telegram": {"codec": "h264", "resolution": "720p", "fps": 30, "quality": 70},
+# MARKER_B2.3: Export presets — social + production
+EXPORT_PRESETS: dict[str, dict[str, Any]] = {
+    # === Social / Delivery ===
+    "youtube_1080": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 85,
+                     "label": "YouTube 1080p"},
+    "youtube_4k": {"codec": "h264", "resolution": "4k", "fps": 30, "quality": 90,
+                   "label": "YouTube 4K"},
+    "instagram_reels": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+                        "aspect": "9:16", "label": "Instagram Reels (9:16)"},
+    "instagram_story": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 75,
+                        "aspect": "9:16", "label": "Instagram Story (9:16)"},
+    "tiktok": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+               "aspect": "9:16", "label": "TikTok (9:16)"},
+    "telegram": {"codec": "h264", "resolution": "720p", "fps": 30, "quality": 70,
+                 "label": "Telegram (720p)"},
+    "twitter": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+                "label": "Twitter/X"},
+    "vimeo": {"codec": "h264", "resolution": "1080p", "fps": 25, "quality": 90,
+              "label": "Vimeo (high quality)"},
+    # === Production / Archive ===
+    "prores_master": {"codec": "prores_422hq", "resolution": "source", "fps": 25, "quality": 100,
+                      "label": "ProRes 422 HQ (Master)"},
+    "prores_4444": {"codec": "prores_4444", "resolution": "4k", "fps": 25, "quality": 100,
+                    "label": "ProRes 4444 (Archive)"},
+    "dnxhr_hq": {"codec": "dnxhr_hq", "resolution": "1080p", "fps": 25, "quality": 100,
+                 "label": "DNxHR HQ (Avid)"},
+    "review_h264": {"codec": "h264", "resolution": "720p", "fps": 25, "quality": 60,
+                    "label": "Review Copy (720p, fast)"},
+    # === Web / Modern ===
+    "av1_web": {"codec": "av1", "resolution": "1080p", "fps": 30, "quality": 80,
+                "label": "AV1 Web (small file)"},
+    "vp9_webm": {"codec": "vp9", "resolution": "1080p", "fps": 30, "quality": 80,
+                 "label": "VP9 WebM"},
 }
+
+# Backward compat aliases (old key names)
+EXPORT_PRESETS["youtube"] = EXPORT_PRESETS["youtube_1080"]
+SOCIAL_PRESETS = EXPORT_PRESETS
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +148,13 @@ class RenderClip:
     # MARKER_B9: Per-clip effects
     video_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
     audio_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
+    # MARKER_B11: Speed control extensions
+    reverse: bool = False           # reverse playback
+    frame_blend: bool = False       # smooth slow-mo via minterpolate
+    maintain_pitch: bool = True     # preserve audio pitch during speed change
+    # MARKER_B16: Color pipeline for render
+    log_profile: str = ""           # camera log profile: "V-Log", "S-Log3", "LogC3", etc.
+    lut_path: str = ""              # path to .cube LUT file
 
 
 @dataclass
@@ -115,6 +163,10 @@ class Transition:
     type: Literal["crossfade", "dip_to_black", "wipe", "dissolve"] = "crossfade"
     duration_sec: float = 1.0       # overlap duration
     between: tuple[int, int] = (0, 1)  # indices into clip list
+    # MARKER_B14: Audio crossfade curve type (FCP7 Ch.47)
+    audio_curve: Literal["equal_power", "linear"] = "equal_power"
+    # equal_power = +3dB at midpoint (default, sounds smooth)
+    # linear = 0dB at midpoint (straight fade, sounds dip)
 
 
 @dataclass
@@ -198,6 +250,13 @@ def build_render_plan(
                 clip_id=clip.get("clip_id", ""),
                 video_effects=effects_data.get("video_effects", []),
                 audio_effects=effects_data.get("audio_effects", []),
+                # MARKER_B11: Speed extensions
+                reverse=bool(clip.get("reverse", False)),
+                frame_blend=bool(clip.get("frame_blend", False)),
+                maintain_pitch=bool(clip.get("maintain_pitch", True)),
+                # MARKER_B16: Color pipeline
+                log_profile=str(clip.get("log_profile") or ""),
+                lut_path=str(clip.get("lut_path") or ""),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -229,12 +288,15 @@ def build_render_plan(
                 type=tr_meta.get("type", "crossfade"),
                 duration_sec=float(tr_meta.get("duration_sec", 1.0)),
                 between=(i, i + 1),
+                # MARKER_B14: Audio crossfade curve from metadata
+                audio_curve=tr_meta.get("audio_curve", "equal_power"),
             ))
         elif overlap > 0.01:  # >10ms overlap = auto crossfade
             transitions.append(Transition(
                 type="crossfade",
                 duration_sec=min(overlap, 5.0),
                 between=(i, i + 1),
+                audio_curve="equal_power",  # MARKER_B14: default +3dB
             ))
 
     return RenderPlan(
@@ -332,7 +394,7 @@ class FilterGraphBuilder:
         return input_args, filter_str
 
     def _clip_video_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip video: trim + effects + speed + label."""
+        """Per-clip video: trim + effects + speed + reverse + frame_blend + label."""
         parts: list[str] = []
 
         # Trim
@@ -343,7 +405,19 @@ class FilterGraphBuilder:
             parts.append(trim)
             parts.append("setpts=PTS-STARTPTS")
 
-        # MARKER_B9: Insert video effects between trim and speed
+        # MARKER_B16: Color pipeline — log decode BEFORE effects (decode to linear first)
+        if clip.log_profile:
+            log_filter = _compile_log_decode_filter(clip.log_profile)
+            if log_filter:
+                parts.append(log_filter)
+
+        # MARKER_B16: LUT application — after log decode, before user effects
+        if clip.lut_path and os.path.isfile(clip.lut_path):
+            # Escape path for FFmpeg filter (single quotes, escape internal quotes)
+            escaped = clip.lut_path.replace("'", "'\\''")
+            parts.append(f"lut3d='{escaped}'")
+
+        # MARKER_B9: Insert video effects between color pipeline and speed
         if clip.video_effects:
             from src.services.cut_effects_engine import compile_video_filters
             effect_filters = compile_video_filters(clip.video_effects)
@@ -354,13 +428,24 @@ class FilterGraphBuilder:
             pts_factor = 1.0 / clip.speed
             parts.append(f"setpts={pts_factor:.4f}*PTS")
 
+        # MARKER_B11: Reverse playback — must come after speed
+        if clip.reverse:
+            parts.append("reverse")
+            parts.append("setpts=PTS-STARTPTS")
+
+        # MARKER_B11: Frame blending for smooth slow-mo (FCP7 Ch.73)
+        # minterpolate generates intermediate frames via motion estimation
+        if clip.frame_blend and clip.speed < 1.0 and clip.speed > 0:
+            target_fps = self.plan.fps
+            parts.append(f"minterpolate=fps={target_fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
+
         if not parts:
             parts.append("null")
 
         return f"[{idx}:v]{','.join(parts)}[v{idx}]"
 
     def _clip_audio_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip audio: atrim + effects + speed."""
+        """Per-clip audio: atrim + effects + speed + reverse."""
         parts: list[str] = []
 
         if clip.source_in > 0 or clip.source_out > 0:
@@ -376,11 +461,21 @@ class FilterGraphBuilder:
             effect_filters = compile_audio_filters(clip.audio_effects)
             parts.extend(effect_filters)
 
+        # MARKER_B11: Speed change with pitch control
         if clip.speed != 1.0 and clip.speed > 0:
-            # atempo only supports 0.5-2.0, chain for wider range
-            speed = clip.speed
-            tempo_chain = _build_atempo_chain(speed)
-            parts.extend(tempo_chain)
+            if clip.maintain_pitch:
+                # atempo preserves pitch (default, FCP7 behavior)
+                tempo_chain = _build_atempo_chain(clip.speed)
+                parts.extend(tempo_chain)
+            else:
+                # asetrate shifts pitch with speed (chipmunk/slow effect)
+                parts.append(f"asetrate=r={clip.speed:.4f}*44100")
+                parts.append("aresample=44100")
+
+        # MARKER_B11: Reverse audio — must come after speed
+        if clip.reverse:
+            parts.append("areverse")
+            parts.append("asetpts=PTS-STARTPTS")
 
         if not parts:
             parts.append("anull")
@@ -418,10 +513,17 @@ class FilterGraphBuilder:
                 running_offset = offset + clips[i].duration_sec
 
             elif t and is_audio:
-                # Audio crossfade
+                # MARKER_B14: Audio crossfade with curve selection
+                # equal_power (+3dB) = qsin (quarter sine), sounds smooth
+                # linear (0dB) = tri (triangle), sounds dip at midpoint
+                curve = getattr(t, "audio_curve", "equal_power")
+                if curve == "linear":
+                    c1, c2 = "tri", "tri"
+                else:
+                    c1, c2 = "qsin", "qsin"  # equal_power (default, FCP7 +3dB)
                 filters.append(
                     f"{current}{next_label}acrossfade=d={t.duration_sec:.3f}"
-                    f":c1=tri:c2=tri{out_label}"
+                    f":c1={c1}:c2={c2}{out_label}"
                 )
                 running_offset = running_offset - t.duration_sec + clips[i].duration_sec
 
@@ -436,6 +538,43 @@ class FilterGraphBuilder:
             current = out_label
 
         return filters
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B16: Log decode → FFmpeg filter compilation
+# ---------------------------------------------------------------------------
+
+# Camera log profiles → FFmpeg curves/eq approximation.
+# These map log-encoded footage to Rec.709 gamma for viewing/grading.
+# For best results, use a proper LUT instead (set lut_path on clip).
+_LOG_DECODE_FILTERS: dict[str, str] = {
+    # V-Log (Panasonic) → approximate Rec.709 via curves
+    "V-Log": "curves=master='0/0 0.09/0 0.13/0.05 0.25/0.15 0.42/0.35 0.52/0.50 0.65/0.70 0.78/0.85 0.90/0.95 1/1'",
+    # S-Log3 (Sony) → approximate Rec.709
+    "S-Log3": "curves=master='0/0 0.10/0 0.15/0.04 0.25/0.12 0.40/0.30 0.50/0.47 0.63/0.68 0.75/0.82 0.88/0.94 1/1'",
+    # ARRI LogC3 → approximate Rec.709
+    "LogC3": "curves=master='0/0 0.09/0 0.12/0.03 0.22/0.12 0.38/0.32 0.48/0.48 0.60/0.67 0.73/0.82 0.86/0.93 1/1'",
+    "ARRI LogC3": "curves=master='0/0 0.09/0 0.12/0.03 0.22/0.12 0.38/0.32 0.48/0.48 0.60/0.67 0.73/0.82 0.86/0.93 1/1'",
+    # Canon Log 3
+    "Canon Log 3": "curves=master='0/0 0.08/0 0.12/0.04 0.24/0.14 0.40/0.33 0.50/0.48 0.62/0.66 0.74/0.80 0.88/0.94 1/1'",
+    # sRGB → no decode needed (already Rec.709 gamma)
+    "sRGB": "",
+    # HLG (Hybrid Log-Gamma) → FFmpeg has native support
+    "HLG": "zscale=transfer=bt709:transferin=arib-std-b67",
+    # PQ (Perceptual Quantizer / HDR10) → tone-map to SDR
+    "PQ": "zscale=transfer=bt709:transferin=smpte2084:tonemap=hable",
+}
+
+
+def _compile_log_decode_filter(profile: str) -> str:
+    """
+    Get FFmpeg filter for decoding camera log profile to Rec.709.
+
+    Returns empty string if profile is unknown or no decode needed.
+    The curves approximation is serviceable for editing preview;
+    for final delivery, use a proper 3D LUT from the camera manufacturer.
+    """
+    return _LOG_DECODE_FILTERS.get(profile, "")
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +642,14 @@ def build_ffmpeg_command(
     has_speed_changes = any(c.speed != 1.0 for c in plan.clips)
     has_trims = any(c.source_in > 0 or c.source_out > 0 for c in plan.clips)
     has_effects = any(c.video_effects or c.audio_effects for c in plan.clips)
-    use_filter_complex = has_transitions or has_speed_changes or has_trims or has_effects
+    # MARKER_B11: reverse and frame_blend require filter_complex
+    has_reverse = any(c.reverse for c in plan.clips)
+    has_frame_blend = any(c.frame_blend and c.speed < 1.0 for c in plan.clips)
+    # MARKER_B16: color pipeline requires filter_complex
+    has_color = any(c.log_profile or c.lut_path for c in plan.clips)
+    use_filter_complex = (has_transitions or has_speed_changes or has_trims
+                          or has_effects or has_reverse or has_frame_blend
+                          or has_color)
 
     if use_filter_complex:
         return _build_filter_complex_cmd(plan, ffmpeg_path)
@@ -628,6 +774,83 @@ def export_audio_stems(
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B2.5: Thumbnail generation
+# ---------------------------------------------------------------------------
+
+def generate_thumbnail(
+    video_path: str,
+    *,
+    output_path: str = "",
+    seek_sec: float | None = None,
+    width: int = 1280,
+    height: int = 720,
+    ffmpeg_path: str | None = None,
+    timeout: int = 30,
+) -> str:
+    """
+    Extract a thumbnail JPEG from a video file.
+
+    Args:
+        video_path: Path to source video.
+        output_path: Where to save thumbnail. Default: {video}_thumb.jpg
+        seek_sec: Timestamp to extract. Default: middle of video.
+        width/height: Thumbnail dimensions (maintains aspect ratio).
+
+    Returns:
+        Path to generated thumbnail, or "" on failure.
+    """
+    if not os.path.isfile(video_path):
+        return ""
+
+    if ffmpeg_path is None:
+        ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return ""
+
+    if not output_path:
+        base, _ = os.path.splitext(video_path)
+        output_path = f"{base}_thumb.jpg"
+
+    # Determine seek position
+    if seek_sec is None:
+        # Probe duration, seek to middle
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            try:
+                proc = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", video_path],
+                    capture_output=True, text=True, timeout=10,
+                )
+                dur = float(proc.stdout.strip() or "0")
+                seek_sec = dur / 2.0
+            except Exception:
+                seek_sec = 1.0
+        else:
+            seek_sec = 1.0
+
+    cmd = [
+        ffmpeg_path, "-y",
+        "-ss", str(seek_sec),
+        "-i", video_path,
+        "-frames:v", "1",
+        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+               f"pad={width}:{height}:-1:-1:color=black",
+        "-q:v", "3",  # JPEG quality (2-5 is good, lower=better)
+        output_path,
+    ]
+
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=timeout)
+        if os.path.isfile(output_path):
+            return output_path
+    except Exception:
+        pass
+
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # High-level render runner (for job system integration)
 # ---------------------------------------------------------------------------
 
@@ -648,6 +871,8 @@ def render_timeline(
     ffmpeg_path: str | None = None,
     timeout: int = 600,
     on_progress: Any = None,
+    mixer: dict[str, Any] | None = None,  # MARKER_B13: mixer state
+    cancel_check: Any = None,  # MARKER_B2.1: callable() → bool, True = cancel requested
 ) -> dict[str, Any]:
     """
     Render a timeline to a video file.
@@ -655,6 +880,7 @@ def render_timeline(
     Args:
         timeline: Timeline state dict with lanes/clips.
         on_progress: Optional callback(progress: float, message: str).
+        cancel_check: Optional callable returning True if cancel requested.
         Other args: render settings.
 
     Returns:
@@ -662,6 +888,7 @@ def render_timeline(
 
     Raises:
         RuntimeError: If ffmpeg not found or render fails.
+        RenderCancelled: If cancel_check returns True during render.
     """
     if ffmpeg_path is None:
         ffmpeg_path = shutil.which("ffmpeg")
@@ -689,6 +916,12 @@ def render_timeline(
         preset=preset,
     )
 
+    # MARKER_B13: Apply mixer state (volume/mute/solo/pan) to render plan
+    if mixer:
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        mixer_state = MixerState.from_dict(mixer)
+        apply_mixer_to_plan(plan, mixer_state)
+
     if not plan.clips:
         raise RuntimeError("No video clips found in timeline")
 
@@ -698,10 +931,50 @@ def render_timeline(
 
     _progress(0.3, "Running FFmpeg")
 
+    # MARKER_B2.1: Use Popen for cancel support + ETA tracking
+    t_start = time.monotonic()
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"FFmpeg timed out after {timeout}s")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        raise RuntimeError(f"FFmpeg launch failed: {exc}")
+
+    # Poll loop: check cancel + timeout
+    cancelled = False
+    try:
+        while proc.poll() is None:
+            elapsed = time.monotonic() - t_start
+
+            # Check cancel
+            if cancel_check and cancel_check():
+                proc.kill()
+                proc.wait(timeout=5)
+                cancelled = True
+                break
+
+            # Check timeout
+            if elapsed > timeout:
+                proc.kill()
+                proc.wait(timeout=5)
+                raise RuntimeError(f"FFmpeg timed out after {timeout}s")
+
+            # Progress estimate: linear interpolation between 0.3 and 0.85
+            # (real FFmpeg progress parsing requires -progress pipe, future enhancement)
+            if elapsed > 0 and timeout > 0:
+                frac = min(elapsed / timeout, 1.0)
+                _progress(0.3 + frac * 0.55, "Encoding...")
+
+            time.sleep(0.5)
+    except Exception:
+        # Ensure process is killed on any error
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        raise
 
     # Cleanup concat file if used
     concat_path = getattr(plan, "_concat_path", None)
@@ -711,18 +984,40 @@ def render_timeline(
         except OSError:
             pass
 
+    # Handle cancellation
+    if cancelled:
+        # Cleanup partial output
+        if os.path.exists(plan.output_path):
+            try:
+                os.remove(plan.output_path)
+            except OSError:
+                pass
+        raise RenderCancelled("Render cancelled by user")
+
     if proc.returncode != 0:
-        stderr = (proc.stderr or "")[-500:]
+        stderr = ""
+        if proc.stderr:
+            try:
+                stderr = proc.stderr.read()[-500:]
+            except Exception:
+                pass
         raise RuntimeError(f"FFmpeg failed (exit {proc.returncode}): {stderr}")
+
+    elapsed_sec = round(time.monotonic() - t_start, 2)
 
     result: dict[str, Any] = {
         "output_path": plan.output_path,
         "codec": plan.codec,
         "resolution": plan.resolution,
+        "elapsed_sec": elapsed_sec,  # MARKER_B2.1
         "file_size_bytes": os.path.getsize(plan.output_path) if os.path.exists(plan.output_path) else 0,
         "clips_count": len(plan.clips),
         "transitions_count": len(plan.transitions),
         "used_filter_complex": bool(plan.transitions) or any(c.speed != 1.0 for c in plan.clips),
+        # MARKER_B11: Speed/reverse stats
+        "speed_clips": sum(1 for c in plan.clips if c.speed != 1.0),
+        "reversed_clips": sum(1 for c in plan.clips if c.reverse),
+        "frame_blend_clips": sum(1 for c in plan.clips if c.frame_blend and c.speed < 1.0),
         "stem_paths": [],
         "stem_count": 0,
     }
@@ -737,6 +1032,11 @@ def render_timeline(
         )
         result["stem_paths"] = stem_paths
         result["stem_count"] = len(stem_paths)
+
+    # MARKER_B2.5: Generate thumbnail
+    _progress(0.95, "Generating thumbnail")
+    thumb_path = generate_thumbnail(plan.output_path, ffmpeg_path=ffmpeg_path)
+    result["thumbnail_path"] = thumb_path
 
     _progress(1.0, "Render complete")
     return result

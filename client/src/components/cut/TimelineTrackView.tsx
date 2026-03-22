@@ -23,7 +23,7 @@ import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  video_main: { label: 'V1', color: '#4a9eff', icon: <IconFilmStrip size={12} color="#888" /> },
+  video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
   audio_sync: { label: 'A1', color: '#22c55e', icon: <IconSpeaker size={12} color="#888" /> },
   take_alt_y: { label: 'V2', color: '#a855f7', icon: <IconCamera size={12} color="#888" /> },
   take_alt_z: { label: 'V3', color: '#f59e0b', icon: <IconCamera size={12} color="#888" /> },
@@ -156,11 +156,22 @@ const MARKER_STYLE: CSSProperties = {
 };
 
 const MARKER_COLORS: Record<string, string> = {
-  favorite: '#f59e0b',
-  comment: '#3b82f6',
-  cam: '#a855f7',
-  insight: '#22c55e',
+  // Editorial markers
+  favorite: '#f59e0b',     // amber — positive / keep
+  negative: '#ef4444',     // red — anti-favorite / reject
+  comment: '#3b82f6',      // blue — annotation
+  cam: '#a855f7',          // purple — camera note
+  insight: '#22c55e',      // green — AI insight
+  chat: '#94a3b8',         // slate — chat reference
+  // PULSE BPM markers
+  bpm_audio: '#22c55e',    // green — audio beats
+  bpm_visual: '#4a9eff',   // blue — visual cut points (markers exempt from no-color rule)
+  bpm_script: '#ffffff',   // white — script scene transitions
+  sync_point: '#f59e0b',   // orange — multi-source sync
 };
+
+// MARKER_A3.1: BPM marker kinds — rendered as thin lines, not blocks
+const BPM_MARKER_KINDS = new Set(['bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point']);
 
 // MARKER_192.3: 2x2 grid for track buttons — no overlap at 100px width
 const TRACK_BUTTON_ROW: CSSProperties = {
@@ -448,7 +459,7 @@ function TimeRuler({
             bottom: 0,
             width: 1,
             height: tick.major ? 14 : 8,
-            background: tick.major ? '#555' : '#333',
+            background: tick.major ? '#666' : '#444',
           }}
         >
           {tick.label ? (
@@ -458,9 +469,9 @@ function TimeRuler({
                 position: 'absolute',
                 bottom: tick.major ? 15 : 9,
                 left: 2,
-                fontSize: 9,
-                fontFamily: 'monospace',
-                color: tick.major ? '#999' : '#666',
+                fontSize: 10,
+                fontFamily: '"JetBrains Mono", "SF Mono", monospace',
+                color: tick.major ? '#bbb' : '#777',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
                 pointerEvents: 'none',
@@ -587,6 +598,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const clipCursor = CLIP_CURSOR[activeTool] || 'grab';
+  // MARKER_TRIM.CURSOR: Edge cursor reflects active tool (FCP7 Ch.56-60)
+  const EDGE_CURSOR: Record<string, string> = {
+    selection: 'ew-resize', razor: 'crosshair', hand: 'ew-resize', zoom: 'ew-resize',
+    slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
+  };
+  const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
@@ -642,7 +659,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   }, [effectiveMarkOut]);
   useEffect(() => {
     // MARKER_173.18.NLE.BEAT_SNAP: music_sync markers enter the generic snap target pool as beat cues.
-    markerTimesRef.current = markers.map((marker) => marker.start_sec);
+    // MARKER_A3.6: Snap to both start_sec AND end_sec of markers
+    markerTimesRef.current = markers.flatMap((marker) => {
+      const times = [marker.start_sec];
+      if (marker.end_sec > marker.start_sec + 0.01) times.push(marker.end_sec);
+      return times;
+    });
   }, [markers]);
   useEffect(() => {
     snapEnabledRef.current = snapEnabled;
@@ -651,7 +673,20 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     sessionRef.current = { sandboxRoot, projectId, timelineId, refreshProjectState };
   }, [sandboxRoot, projectId, timelineId, refreshProjectState]);
 
-  const containerWidth = containerRef.current?.clientWidth || 800;
+  // MARKER_W6.RULER-FIX: Reactive container width via ResizeObserver
+  const [containerWidth, setContainerWidth] = useState(800);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const waveformMap = useMemo(() => {
     const map = new Map<string, number[]>();
@@ -955,19 +990,29 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const durationSec = roundTimeline(Math.max(MIN_CLIP_DURATION_SEC, clip.duration_sec));
 
       // MARKER_W5.TRIM: Determine effective drag mode from activeTool
+      // MARKER_TRIM.EDGE: Tool override applies to edges too (FCP7 Ch.56-60)
+      // Clicking an edge with ripple tool → ripple trim, not basic trim.
       let effectiveMode = mode;
       if (mode === 'move') {
         switch (activeTool) {
           case 'slip': effectiveMode = 'slip'; break;
           case 'slide': effectiveMode = 'slide'; break;
           case 'ripple': {
-            // Ripple: left or right edge based on cursor position relative to clip center
             const clipCenter = startSec + durationSec / 2;
             effectiveMode = pointerTime < clipCenter ? 'ripple_left' : 'ripple_right';
             break;
           }
           case 'roll': effectiveMode = 'roll'; break;
           default: break;
+        }
+      } else if (mode === 'trim_left' || mode === 'trim_right') {
+        // Edge interactions: tool overrides basic trim
+        switch (activeTool) {
+          case 'ripple':
+            effectiveMode = mode === 'trim_left' ? 'ripple_left' : 'ripple_right';
+            break;
+          case 'roll': effectiveMode = 'roll'; break;
+          default: break; // selection/razor/hand/zoom → keep basic trim
         }
       }
 
@@ -997,11 +1042,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     (event: ReactWheelEvent) => {
       const containerRect = containerRef.current?.getBoundingClientRect();
       const localX = containerRect ? (event.clientX - containerRect.left) : Number.POSITIVE_INFINITY;
+
+      // Shift+Wheel over lane headers → adjust track height
       if (event.shiftKey && localX <= LANE_HEADER_WIDTH) {
         setTrackHeight(trackHeight - event.deltaY * 0.08);
         event.preventDefault();
         return;
       }
+
+      // MARKER_A3.3: Pinch-to-zoom (ctrlKey = trackpad pinch) + Cmd+Wheel zoom
+      // Zooms centered on cursor position (not left edge)
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const zoomRef = useCutEditorStore.getState().zoom;
+        const scrollRef = useCutEditorStore.getState().scrollLeft;
+        // Cursor time before zoom
+        const cursorLocalX = localX - LANE_HEADER_WIDTH;
+        const cursorTime = (cursorLocalX + scrollRef) / zoomRef;
+        // Apply zoom delta
+        const factor = event.deltaY > 0 ? 0.92 : 1.08; // smoother steps
+        const newZoom = Math.max(10, Math.min(500, zoomRef * factor));
+        // Adjust scroll so cursor stays over same time position
+        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
+        useCutEditorStore.getState().setZoom(newZoom);
+        useCutEditorStore.getState().setScrollLeft(newScroll);
+        return;
+      }
+
+      // Horizontal scroll (Shift+Wheel or horizontal trackpad swipe)
       if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
         setScrollLeft(Math.max(0, scrollLeft + (event.deltaX || event.deltaY)));
         event.preventDefault();
@@ -1474,12 +1542,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         activeDrag.mode === 'move'
         && (activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001)
       ) {
-        ops.push({
-          op: 'move_clip',
-          clip_id: activeDrag.clipId,
-          lane_id: activeDrag.laneId,
-          start_sec: activeDrag.startSec,
-        });
+        // MARKER_A2.4: Multi-clip drag — move all selected clips with same delta
+        const multiIds = useCutEditorStore.getState().selectedClipIds;
+        const delta = activeDrag.startSec - activeDrag.originalStartSec;
+        const laneDelta = activeDrag.laneId !== activeDrag.originalLaneId;
+
+        if (multiIds.size > 1 && multiIds.has(activeDrag.clipId) && !laneDelta) {
+          // Multi-clip move: apply same time delta to all selected clips
+          for (const lane of displayLanesRef.current) {
+            for (const clip of lane.clips) {
+              if (multiIds.has(clip.clip_id)) {
+                ops.push({
+                  op: 'move_clip',
+                  clip_id: clip.clip_id,
+                  lane_id: lane.lane_id,
+                  start_sec: roundTimeline(Math.max(0, clip.start_sec + delta)),
+                });
+              }
+            }
+          }
+        } else {
+          // Single clip move (original behavior)
+          ops.push({
+            op: 'move_clip',
+            clip_id: activeDrag.clipId,
+            lane_id: activeDrag.laneId,
+            start_sec: activeDrag.startSec,
+          });
+        }
       }
 
       if (
@@ -1617,7 +1707,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   }, [currentTime, dragState, isPlaying, scrubActive, scrollLeft, setScrollLeft, zoom]);
 
   return (
-    <div ref={containerRef} data-testid="cut-timeline-track-view" style={CONTAINER_STYLE} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
+    <div ref={containerRef} data-testid="cut-timeline-track-view" style={{ ...CONTAINER_STYLE, cursor: TOOL_CURSOR[activeTool] || 'default' }} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
       {/* MARKER_W5.TC: Ruler row — editable timecode field + time ruler */}
       <div style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, height: RULER_HEIGHT }}>
         {/* Timecode field in lane header area (FCP7 Current Timecode) */}
@@ -1790,8 +1880,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#111',
-                      borderColor: targetedLanes.has(lane.lane_id) ? '#4a9eff' : '#333',
+                      background: targetedLanes.has(lane.lane_id) ? '#999' : '#111',
+                      borderColor: targetedLanes.has(lane.lane_id) ? '#999' : '#333',
                     }}
                     title="Target lane"
                     onClick={(event) => { event.stopPropagation(); toggleTarget(lane.lane_id); }}
@@ -1894,7 +1984,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           top: 0,
                           bottom: 0,
                           width: TRIM_HANDLE_WIDTH,
-                          cursor: 'ew-resize',
+                          cursor: edgeCursor,
                           zIndex: 3,
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_left', event)}
@@ -1907,7 +1997,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           top: 0,
                           bottom: 0,
                           width: TRIM_HANDLE_WIDTH,
-                          cursor: 'ew-resize',
+                          cursor: edgeCursor,
                           zIndex: 3,
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
@@ -2021,25 +2111,85 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </span>
                       ) : null}
 
-                      {/* MARKER_TRANSITION: Cross dissolve gradient overlay at clip's right edge */}
+                      {/* MARKER_TRANSITION: Transition overlay at clip's right edge (FCP7 Ch.47) */}
                       {clip.transition_out && width > 10 ? (() => {
-                        const txDurPx = clip.transition_out.duration_sec * zoom;
-                        const txWidth = Math.min(txDurPx, width * 0.5); // cap at half clip width
+                        const tx = clip.transition_out;
+                        const txDurPx = tx.duration_sec * zoom;
+                        const txWidth = Math.min(txDurPx, width * 0.5);
+                        const txLabel = tx.type === 'cross_dissolve' ? 'XD'
+                          : tx.type === 'dip_to_black' ? 'DB'
+                          : 'W';
+                        const txGrad = tx.type === 'dip_to_black'
+                          ? 'linear-gradient(to right, transparent 20%, rgba(0,0,0,0.6))'
+                          : tx.type === 'wipe'
+                            ? 'linear-gradient(to right, transparent, rgba(255,255,255,0.12) 50%, transparent)'
+                            : 'linear-gradient(to right, transparent, rgba(255,255,255,0.15))';
                         return (
                           <div
+                            data-testid={`transition-${clip.clip_id}`}
                             style={{
                               position: 'absolute',
                               right: 0,
                               top: 0,
                               bottom: 0,
                               width: txWidth,
-                              background: 'linear-gradient(to right, transparent, rgba(255,255,255,0.15))',
+                              background: txGrad,
                               borderLeft: '1px dashed rgba(255,255,255,0.3)',
-                              pointerEvents: 'none',
-                              zIndex: 2,
+                              zIndex: 4,
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
                             }}
-                            title={`${clip.transition_out.type.replace('_', ' ')} (${clip.transition_out.duration_sec.toFixed(1)}s)`}
-                          />
+                            title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              // Remove transition on click
+                              const s = useCutEditorStore.getState();
+                              const newLanes = s.lanes.map((l) => ({
+                                ...l,
+                                clips: l.clips.map((c) =>
+                                  c.clip_id === clip.clip_id
+                                    ? { ...c, transition_out: undefined }
+                                    : c
+                                ),
+                              }));
+                              s.setLanes(newLanes);
+                            }}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              // Cycle transition type on right-click
+                              const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
+                              const curIdx = types.indexOf(tx.type);
+                              const nextType = types[(curIdx + 1) % types.length];
+                              const s = useCutEditorStore.getState();
+                              const newLanes = s.lanes.map((l) => ({
+                                ...l,
+                                clips: l.clips.map((c) =>
+                                  c.clip_id === clip.clip_id
+                                    ? { ...c, transition_out: { ...tx, type: nextType } }
+                                    : c
+                                ),
+                              }));
+                              s.setLanes(newLanes);
+                            }}
+                          >
+                            {/* Diamond icon + type label */}
+                            {txWidth > 16 ? (
+                              <span style={{
+                                fontSize: 8,
+                                fontWeight: 700,
+                                fontFamily: 'system-ui',
+                                color: 'rgba(255,255,255,0.7)',
+                                textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+                                letterSpacing: 0.5,
+                                pointerEvents: 'none',
+                              }}>
+                                {'◆ '}{txLabel}
+                              </span>
+                            ) : null}
+                          </div>
                         );
                       })() : null}
 
@@ -2085,6 +2235,120 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           {syncInfo?.method ? <span style={{ color: '#22c55e', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
                         </span>
                       ) : null}
+
+                      {/* MARKER_A3.1-FIX: Clip-bound markers — ALL markers with media_path matching
+                          this clip render INSIDE the clip, positioned relative to source media time.
+                          Moves WITH the clip. Shifts on slip (source_in changes).
+                          Includes: BPM (audio/visual/script/sync), favorite, negative, comment, cam, insight */}
+                      {width > 10 ? markers
+                        .filter((m) => m.media_path === clip.source_path)
+                        .map((m) => {
+                          const isBpm = BPM_MARKER_KINDS.has(m.kind);
+                          if (isBpm && zoom < 30) return null; // hide BPM at low zoom
+                          const clipSourceIn = clip.source_in ?? 0;
+                          const relativeTime = m.start_sec - clipSourceIn;
+                          if (relativeTime < -0.01 || relativeTime > durationSec + 0.01) return null;
+                          const pxFromClipLeft = relativeTime * zoom;
+                          if (pxFromClipLeft < 0 || pxFromClipLeft > width) return null;
+                          const mColor = MARKER_COLORS[m.kind] || '#888';
+                          if (isBpm) {
+                            // BPM: thin 1px line, opacity from score
+                            return (
+                              <div
+                                key={`cm_${m.marker_id}`}
+                                style={{
+                                  position: 'absolute', left: pxFromClipLeft, width: 1,
+                                  top: 1, bottom: 1, background: mColor,
+                                  opacity: Math.max(0.15, Math.min(0.8, m.score ?? 0.5)),
+                                  pointerEvents: 'none', zIndex: 1,
+                                }}
+                                title={`${m.kind.replace('bpm_', '')} beat (${(m.score ?? 0).toFixed(2)}) @ src ${m.start_sec.toFixed(2)}s`}
+                              />
+                            );
+                          }
+                          // Editorial (favorite/negative/comment/cam/insight): 2px line + flag
+                          const mEndRel = m.end_sec - clipSourceIn;
+                          const mWidth = Math.max(2, (Math.min(mEndRel, durationSec) - relativeTime) * zoom);
+                          return (
+                            <div
+                              key={`cm_${m.marker_id}`}
+                              style={{
+                                position: 'absolute', left: pxFromClipLeft,
+                                width: mWidth, top: 0, height: 4,
+                                background: mColor, opacity: 0.9,
+                                borderRadius: '0 0 2px 2px',
+                                pointerEvents: 'none', zIndex: 5,
+                              }}
+                              title={`${m.kind}: ${m.text || ''} @ src ${m.start_sec.toFixed(1)}s`}
+                            />
+                          );
+                        }) : null}
+
+                      {/* MARKER_KF-GRAPH: Keyframe interpolation lines (opacity/volume curves) */}
+                      {clip.keyframes && width > 30 ? (() => {
+                        const clipH = trackHeights[lane.lane_id] ?? trackHeight;
+                        const graphH = clipH - 8; // padding
+                        return Object.entries(clip.keyframes).map(([prop, kfs]) => {
+                          if (kfs.length < 2) return null;
+                          // Build SVG polyline points: x=time*zoom, y=inverted value (1=top, 0=bottom)
+                          const points = kfs
+                            .filter((kf) => kf.time_sec * zoom >= -1 && kf.time_sec * zoom <= width + 1)
+                            .map((kf) => {
+                              const x = kf.time_sec * zoom;
+                              const y = graphH - (Math.max(0, Math.min(1, kf.value)) * graphH);
+                              return `${x},${y}`;
+                            })
+                            .join(' ');
+                          if (!points) return null;
+                          return (
+                            <svg
+                              key={`kfline_${prop}`}
+                              style={{ position: 'absolute', left: 0, top: 4, width, height: graphH, pointerEvents: 'none', zIndex: 2 }}
+                              viewBox={`0 0 ${width} ${graphH}`}
+                              preserveAspectRatio="none"
+                            >
+                              <polyline
+                                points={points}
+                                fill="none"
+                                stroke="#999"
+                                strokeWidth="1"
+                                strokeOpacity="0.6"
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            </svg>
+                          );
+                        });
+                      })() : null}
+
+                      {/* MARKER_KF67: Keyframe diamonds inside clip */}
+                      {clip.keyframes && width > 20 ? Object.entries(clip.keyframes).flatMap(([prop, kfs]) =>
+                        kfs.map((kf) => {
+                          const kfPx = kf.time_sec * zoom;
+                          if (kfPx < 0 || kfPx > width) return null;
+                          return (
+                            <div
+                              key={`kf_${prop}_${kf.time_sec}`}
+                              className="keyframe"
+                              data-testid="keyframe"
+                              data-property={prop}
+                              data-time={kf.time_sec}
+                              style={{
+                                position: 'absolute',
+                                left: kfPx - 3,
+                                bottom: 2,
+                                width: 6,
+                                height: 6,
+                                background: '#999',
+                                transform: 'rotate(45deg)',
+                                zIndex: 6,
+                                pointerEvents: 'none',
+                                boxShadow: '0 0 3px rgba(0,0,0,0.8)',
+                              }}
+                              title={`${prop}: ${kf.value.toFixed(2)} @ ${kf.time_sec.toFixed(2)}s (${kf.easing})`}
+                            />
+                          );
+                        })
+                      ) : null}
                     </div>
                   );
                 })}
@@ -2121,12 +2385,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   );
                 })}
 
-                {markers.map((marker) => {
+                {/* Timeline-level markers — only markers WITHOUT media_path (sequence markers).
+                    Clip-bound markers (with media_path) render inside their clip above. */}
+                {markers.filter((m) => !m.media_path).map((marker) => {
                   const markerX = marker.start_sec * zoom - scrollLeft;
                   const markerWidth = Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
-                  if (markerX + markerWidth < 0 || markerX > containerWidth) {
-                    return null;
-                  }
+                  if (markerX + markerWidth < 0 || markerX > containerWidth) return null;
                   const color = MARKER_COLORS[marker.kind] || '#888';
                   return (
                     <div
@@ -2317,13 +2581,52 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
             const items: MenuItem[] = [
               // ── Selection ──
-              { label: 'Set as Active', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
               { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              // MARKER_A13: Match Frame — find source frame under playhead
+              { label: 'Match Frame', shortcut: 'F', action: () => {
+                const s = useCutEditorStore.getState();
+                const clip = contextMenu.clip;
+                const sourceOffset = (clip as any).source_in ?? 0;
+                const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+                s.setSourceMedia(clip.source_path);
+                s.setSourceMarkIn(sourceTime);
+                s.setFocusedPanel('source');
+                close();
+              }},
+              'separator',
+              // ── Clipboard ──
+              { label: 'Cut', shortcut: '\u2318X', action: () => { close(); useCutEditorStore.getState().cutClips(); } },
+              { label: 'Copy', shortcut: '\u2318C', action: () => { close(); useCutEditorStore.getState().copyClips(); } },
+              { label: 'Paste', shortcut: '\u2318V', action: () => { close(); useCutEditorStore.getState().pasteClips('overwrite'); } },
               'separator',
               // ── Edit operations ──
-              { label: 'Split at Playhead', shortcut: '\u2318K', action: () => { close(); /* splitAtPlayhead dispatched via hotkey */ } },
+              { label: 'Split at Playhead', shortcut: '\u2318K', action: () => {
+                close();
+                // MARKER_A13: Actually split — find clip under playhead and split
+                const s = useCutEditorStore.getState();
+                const t = s.currentTime;
+                const newLanes = s.lanes.map((lane) => ({
+                  ...lane,
+                  clips: lane.clips.flatMap((c) => {
+                    if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
+                      const leftDur = t - c.start_sec;
+                      const rightDur = c.duration_sec - leftDur;
+                      return [
+                        { ...c, duration_sec: leftDur },
+                        { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur },
+                      ];
+                    }
+                    return [c];
+                  }),
+                }));
+                s.setLanes(newLanes);
+              }},
               { label: 'Remove Clip', shortcut: 'Del', action: () => { close(); void removeClip(clipId); } },
-              { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => { close(); void removeClip(clipId); } },
+              { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => {
+                close();
+                // MARKER_A13: Proper ripple delete via backend op
+                void applyTimelineOps([{ op: 'ripple_delete', clip_id: clipId }]);
+              }},
               'separator',
               // ── Markers ──
               { label: 'Add Marker Here', shortcut: 'M', action: () => {
@@ -2346,6 +2649,25 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
+              'separator',
+              // ── Transitions ──
+              { label: contextMenu.clip.transition_out ? 'Remove Transition' : 'Add Cross Dissolve', shortcut: '\u2318T', action: () => {
+                close();
+                const s = useCutEditorStore.getState();
+                if (contextMenu.clip.transition_out) {
+                  // Remove
+                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
+                    c.clip_id === clipId ? { ...c, transition_out: undefined } : c
+                  )}));
+                  s.setLanes(newLanes);
+                } else {
+                  // Add default cross dissolve
+                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
+                    c.clip_id === clipId ? { ...c, transition_out: { type: 'cross_dissolve' as const, duration_sec: 1.0, alignment: 'center' as const } } : c
+                  )}));
+                  s.setLanes(newLanes);
+                }
+              }},
               'separator',
               // ── Export ──
               { label: 'Export XML', action: () => { close(); void exportPremiereXml(); } },

@@ -6,12 +6,12 @@ MARKER_195.2.1
 Layer of REFLEX (Reactive Execution & Function Linking EXchange).
 Three emotional dimensions modulate base tool scores AFTER scoring:
 
-  final_score = base_score × emotion_modifier(curiosity, trust, caution)
+  final_score = base_score * emotion_modifier(curiosity, trust, caution)
 
 Dimensions:
-  1. CURIOSITY  — exploration drive, boosts novel/fresh tools    [0,1] → ×1.0–1.3
-  2. TRUST      — reliability confidence, asymmetric EMA         [0,1] → ×0.5–1.0
-  3. CAUTION    — risk awareness, penalises dangerous operations  [0,1] → ×0.6–1.0
+  1. CURIOSITY  — exploration drive, boosts novel/fresh tools    [0,1]
+  2. TRUST      — reliability confidence, asymmetric EMA         [0,1]
+  3. CAUTION    — risk awareness, penalises dangerous operations  [0,1]
 
 Combined modifier clamped to [0.3, 1.5].
 
@@ -22,8 +22,8 @@ Part of VETKA OS:
 
 @status: active
 @phase: 195.2.1
-@depends: (none — standalone)
-@used_by: reflex_scorer (post-scoring), reflex_integration
+@depends: engram_cache (optional, for persistence)
+@used_by: reflex_scorer (post-scoring), reflex_feedback (outcome), reflex_integration
 """
 
 import json
@@ -34,12 +34,17 @@ import threading
 import time
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Paths
+# Feature flag: emotions enabled by default
+# ---------------------------------------------------------------------------
+REFLEX_EMOTIONS_ENABLED = os.getenv("REFLEX_EMOTIONS_ENABLED", "true").lower() in ("true", "1", "yes")
+
+# ---------------------------------------------------------------------------
+# Paths (JSON file persistence as primary, ENGRAM as secondary)
 # ---------------------------------------------------------------------------
 _DATA_DIR = Path(os.getenv(
     "REFLEX_EMOTIONS_DIR",
@@ -52,7 +57,7 @@ _STATE_FILE = _DATA_DIR / "emotion_states.json"
 # ---------------------------------------------------------------------------
 _COLD_CURIOSITY = 0.6
 _COLD_TRUST = 0.5
-_COLD_CAUTION = 0.0
+_COLD_CAUTION = 0.3
 
 # Trust EMA rates (asymmetric)
 _TRUST_GAIN = 0.15
@@ -67,6 +72,10 @@ _SIDE_EFFECT_RISK: Dict[str, float] = {
     "EXTERNAL": 0.8,
 }
 
+# ENGRAM persistence key prefix and category
+_ENGRAM_KEY_PREFIX = "emo"
+_ENGRAM_CATEGORY = "emotion_state"
+
 # ---------------------------------------------------------------------------
 # Dataclasses
 # ---------------------------------------------------------------------------
@@ -74,11 +83,15 @@ _SIDE_EFFECT_RISK: Dict[str, float] = {
 
 @dataclass
 class EmotionState:
-    """Per-tool emotional state, persisted across sessions."""
+    """Per-tool emotional state, persisted across sessions.
+
+    MARKER_195.2.STATE
+    """
     tool_id: str
     curiosity: float = _COLD_CURIOSITY
     trust: float = _COLD_TRUST
     caution: float = _COLD_CAUTION
+    mood_label: str = "neutral"      # computed: curious/confident/cautious/neutral
     usage_count: int = 0
     success_count: int = 0
     failure_count: int = 0
@@ -87,14 +100,23 @@ class EmotionState:
 
 @dataclass
 class EmotionContext:
-    """Context provided at scoring time — describes the current invocation."""
+    """Context provided at scoring time — describes the current invocation.
+
+    MARKER_195.2.CONTEXT
+    """
     agent_id: str = ""
     phase_type: str = ""
+    project_id: str = ""
     tool_permission: str = "READ"
     is_foreign_file: bool = False
     has_recon: bool = True
     guard_warnings: List[str] = field(default_factory=list)
     freshness_score: float = 0.0
+    tool_freshness: Dict[str, float] = field(default_factory=dict)
+    tool_usage_history: Dict[str, List[dict]] = field(default_factory=dict)
+    tool_metadata: Dict[str, dict] = field(default_factory=dict)
+    file_ownership: Dict[str, str] = field(default_factory=dict)
+    current_task_recon_docs: List[str] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +195,7 @@ def compute_caution(
             risks.append(0.9)
 
         if not risks:
-            # READ-only with no risk flags → minimal caution
+            # READ-only with no risk flags -> minimal caution
             return 0.1 if perm == "READ" else 0.0
 
         return max(risks)
@@ -185,7 +207,7 @@ def compute_caution(
 def compute_emotion_modifier(curiosity: float, trust: float, caution: float) -> float:
     """Combined post-scoring modifier, clamped to [0.3, 1.5].
 
-    modifier = (0.5 + trust * 0.5) × (1.0 + curiosity * 0.3) × (1.0 - caution * 0.4)
+    modifier = (0.5 + trust * 0.5) * (1.0 + curiosity * 0.3) * (1.0 - caution * 0.4)
     """
     try:
         trust_factor = 0.5 + float(trust) * 0.5
@@ -198,15 +220,37 @@ def compute_emotion_modifier(curiosity: float, trust: float, caution: float) -> 
         return 1.0
 
 
+def get_mood_label(curiosity: float, trust: float, caution: float) -> str:
+    """Derive mood label from dominant emotion.
+
+    - curious: curiosity > 0.7 and curiosity is dominant
+    - confident: trust > 0.7 and trust is dominant
+    - cautious: caution > 0.6 and caution is dominant
+    - neutral: otherwise
+    """
+    if curiosity > 0.7 and curiosity >= trust and curiosity >= caution:
+        return "curious"
+    if trust > 0.7 and trust >= curiosity and trust >= caution:
+        return "confident"
+    if caution > 0.6 and caution >= curiosity and caution >= trust:
+        return "cautious"
+    return "neutral"
+
+
 # ---------------------------------------------------------------------------
 # EmotionEngine
 # ---------------------------------------------------------------------------
 
 
 class EmotionEngine:
-    """Manages per-tool emotional states with JSON persistence.
+    """Manages per-tool emotional states with JSON + ENGRAM persistence.
 
     MARKER_195.2.1: Core emotion modulator for REFLEX.
+
+    Persistence hierarchy:
+      1. In-memory dict (fastest)
+      2. JSON file (data/reflex/emotions/emotion_states.json)
+      3. ENGRAM L1 cache (per agent+tool pair, optional)
     """
 
     def __init__(self, data_dir: Optional[str] = None) -> None:
@@ -229,6 +273,7 @@ class EmotionEngine:
                         curiosity=blob.get("curiosity", _COLD_CURIOSITY),
                         trust=blob.get("trust", _COLD_TRUST),
                         caution=blob.get("caution", _COLD_CAUTION),
+                        mood_label=blob.get("mood_label", "neutral"),
                         usage_count=blob.get("usage_count", 0),
                         success_count=blob.get("success_count", 0),
                         failure_count=blob.get("failure_count", 0),
@@ -254,6 +299,49 @@ class EmotionEngine:
         except Exception:
             logger.warning("Failed to save emotion states", exc_info=True)
 
+    def _save_to_engram(self, agent_id: str, tool_id: str, state: EmotionState) -> None:
+        """Persist emotion state to ENGRAM L1 cache (secondary persistence)."""
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            cache = get_engram_cache()
+            key = f"{_ENGRAM_KEY_PREFIX}::{agent_id or 'default'}::{tool_id}::emotion"
+            value = json.dumps({
+                "curiosity": state.curiosity,
+                "trust": state.trust,
+                "caution": state.caution,
+                "mood_label": state.mood_label,
+                "usage_count": state.usage_count,
+                "success_count": state.success_count,
+                "failure_count": state.failure_count,
+            })
+            cache.put(key, value, category=_ENGRAM_CATEGORY)
+        except Exception as e:
+            logger.debug("[EMOTIONS] ENGRAM save failed (non-fatal): %s", e)
+
+    def _load_from_engram(self, agent_id: str, tool_id: str) -> Optional[EmotionState]:
+        """Load emotion state from ENGRAM L1 cache."""
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            cache = get_engram_cache()
+            all_entries = cache.get_all()
+            key = f"{_ENGRAM_KEY_PREFIX}::{agent_id or 'default'}::{tool_id}::emotion"
+            entry = all_entries.get(key)
+            if entry:
+                data = json.loads(entry.get("value", "{}"))
+                return EmotionState(
+                    tool_id=tool_id,
+                    curiosity=data.get("curiosity", _COLD_CURIOSITY),
+                    trust=data.get("trust", _COLD_TRUST),
+                    caution=data.get("caution", _COLD_CAUTION),
+                    mood_label=data.get("mood_label", "neutral"),
+                    usage_count=data.get("usage_count", 0),
+                    success_count=data.get("success_count", 0),
+                    failure_count=data.get("failure_count", 0),
+                )
+        except Exception as e:
+            logger.debug("[EMOTIONS] ENGRAM load failed (non-fatal): %s", e)
+        return None
+
     # -- public API ----------------------------------------------------------
 
     def get_emotion_state(self, tool_id: str) -> EmotionState:
@@ -263,11 +351,50 @@ class EmotionEngine:
                 self._states[tool_id] = EmotionState(tool_id=tool_id)
             return self._states[tool_id]
 
+    def compute_emotions(self, tool_id: str, context: Optional[EmotionContext] = None) -> EmotionState:
+        """Full emotion computation: curiosity, trust, caution, mood_label.
+
+        Returns EmotionState with all dimensions computed from context.
+        """
+        if not REFLEX_EMOTIONS_ENABLED:
+            return EmotionState(tool_id=tool_id)
+
+        try:
+            ctx = context or EmotionContext()
+            state = self.get_emotion_state(tool_id)
+
+            curiosity = compute_curiosity(state.usage_count, ctx.freshness_score)
+            trust = state.trust
+            caution = compute_caution(
+                ctx.tool_permission,
+                ctx.is_foreign_file,
+                ctx.has_recon,
+                ctx.guard_warnings,
+            )
+
+            # Guard warning caps trust
+            if ctx.guard_warnings:
+                trust = min(trust, _TRUST_GUARD_CAP)
+
+            state.curiosity = curiosity
+            state.trust = trust
+            state.caution = caution
+            state.mood_label = get_mood_label(curiosity, trust, caution)
+
+            return state
+        except Exception:
+            logger.debug("compute_emotions failed for %s, returning defaults", tool_id, exc_info=True)
+            return EmotionState(tool_id=tool_id)
+
     def compute_modifier(self, tool_id: str, context: Optional[EmotionContext] = None) -> float:
         """Compute the combined emotion modifier for a tool.
 
         Returns a float in [0.3, 1.5] that multiplies the base score.
+        When REFLEX_EMOTIONS_ENABLED=false, returns 1.0 (no modulation).
         """
+        if not REFLEX_EMOTIONS_ENABLED:
+            return 1.0
+
         try:
             state = self.get_emotion_state(tool_id)
             ctx = context or EmotionContext()
@@ -284,6 +411,7 @@ class EmotionEngine:
             # Update state snapshot (not persisted until record_outcome)
             state.curiosity = curiosity
             state.caution = caution
+            state.mood_label = get_mood_label(curiosity, trust, caution)
 
             return compute_emotion_modifier(curiosity, trust, caution)
         except Exception:
@@ -293,8 +421,12 @@ class EmotionEngine:
     def record_outcome(self, tool_id: str, success: bool, context: Optional[EmotionContext] = None) -> EmotionState:
         """Record a tool invocation outcome and update emotional state.
 
-        Persists to disk after every call.
+        Persists to disk (JSON + ENGRAM) after every call.
+        When REFLEX_EMOTIONS_ENABLED=false, still returns current state but skips update.
         """
+        if not REFLEX_EMOTIONS_ENABLED:
+            return self.get_emotion_state(tool_id)
+
         try:
             ctx = context or EmotionContext()
 
@@ -320,16 +452,37 @@ class EmotionEngine:
                     ctx.has_recon,
                     ctx.guard_warnings,
                 )
+                state.mood_label = get_mood_label(state.curiosity, state.trust, state.caution)
                 state.last_updated = time.time()
 
                 self._save()
-                return state
+
+            # ENGRAM persistence (outside lock, non-fatal)
+            self._save_to_engram(ctx.agent_id, tool_id, state)
+
+            return state
         except Exception:
             logger.warning("record_outcome failed for %s", tool_id, exc_info=True)
             return self.get_emotion_state(tool_id)
 
-    def get_modifier_breakdown(self, tool_id: str, context: Optional[EmotionContext] = None) -> Dict[str, float]:
-        """Return a breakdown dict for debugging / UI display."""
+    def get_modifier_breakdown(self, tool_id: str, context: Optional[EmotionContext] = None) -> Dict[str, Any]:
+        """Return a breakdown dict for debugging / UI display.
+
+        When REFLEX_EMOTIONS_ENABLED=false, returns neutral breakdown with modifier=1.0.
+        """
+        if not REFLEX_EMOTIONS_ENABLED:
+            return {
+                "tool_id": tool_id,
+                "curiosity": _COLD_CURIOSITY,
+                "trust": _COLD_TRUST,
+                "caution": _COLD_CAUTION,
+                "modifier": 1.0,
+                "mood_label": "neutral",
+                "usage_count": 0,
+                "success_count": 0,
+                "failure_count": 0,
+            }
+
         try:
             state = self.get_emotion_state(tool_id)
             ctx = context or EmotionContext()
@@ -343,6 +496,7 @@ class EmotionEngine:
                 ctx.guard_warnings,
             )
             modifier = compute_emotion_modifier(curiosity, trust, caution)
+            mood = get_mood_label(curiosity, trust, caution)
 
             return {
                 "tool_id": tool_id,
@@ -350,6 +504,7 @@ class EmotionEngine:
                 "trust": round(trust, 4),
                 "caution": round(caution, 4),
                 "modifier": round(modifier, 4),
+                "mood_label": mood,
                 "usage_count": state.usage_count,
                 "success_count": state.success_count,
                 "failure_count": state.failure_count,
@@ -362,10 +517,15 @@ class EmotionEngine:
                 "trust": _COLD_TRUST,
                 "caution": _COLD_CAUTION,
                 "modifier": 1.0,
+                "mood_label": "neutral",
                 "usage_count": 0,
                 "success_count": 0,
                 "failure_count": 0,
             }
+
+    def get_state_from_engram(self, agent_id: str, tool_id: str) -> Optional[EmotionState]:
+        """Load emotion state from ENGRAM (for cross-session recovery)."""
+        return self._load_from_engram(agent_id, tool_id)
 
 
 # ---------------------------------------------------------------------------

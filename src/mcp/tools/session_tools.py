@@ -621,6 +621,65 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Protocol status never blocks session init
 
+        # MARKER_ZETA.INT: Role context from Agent Registry
+        try:
+            from src.services.agent_registry import get_agent_registry
+            import subprocess as _sp
+
+            _reg = get_agent_registry()
+            _branch_result = _sp.run(
+                ["git", "branch", "--show-current"],
+                capture_output=True, text=True, timeout=5,
+                cwd=str(Path(__file__).resolve().parent.parent.parent),
+            )
+            _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
+            _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+
+            if _role:
+                _role_ctx = {
+                    "callsign": _role.callsign,
+                    "domain": _role.domain,
+                    "role_title": _role.role_title,
+                    "branch": _role.branch,
+                    "worktree": _role.worktree,
+                    "owned_paths": list(_role.owned_paths),
+                    "blocked_paths": list(_role.blocked_paths),
+                }
+
+                # Workflow hints based on domain
+                if _role.domain == "architect":
+                    _role_ctx["workflow_hints"] = [
+                        "Create CUT tasks with role= and domain= fields (see agent_registry.yaml)",
+                        "Workflow patterns: Solo / G3 / Ralph Loop / Mycelium Pipeline / Commander Fleet / Sous-Chef",
+                        "Merge ritual: pre-check → merge → vite build → promote_to_main",
+                        "Wave-based: 1-2 tasks per agent per wave, merge between waves",
+                    ]
+                elif _role.domain == "qa":
+                    _role_ctx["workflow_hints"] = [
+                        "Run tests: node node_modules/@playwright/test/cli.js test (NOT npx playwright)",
+                        "3-tier strategy: DOM-only / store-based / backend-integrated",
+                        "data-testid convention: cut-editor-layout, cut-timeline-track-view, cut-timeline-clip-{id}",
+                    ]
+                else:
+                    _role_ctx["workflow_hints"] = [
+                        f"You own {_role.domain} domain — only touch files in owned_paths",
+                        f"Always pass branch={_role.branch} to task_board action=complete",
+                        "Write experience report before session end",
+                    ]
+
+                # Shared zones relevant to this role
+                _shared = [
+                    {"file": z.file, "owners": z.owners, "protocol": z.protocol}
+                    for z in _reg.shared_zones
+                    if _role.callsign in z.owners
+                ]
+                if _shared:
+                    _role_ctx["shared_zones"] = _shared
+
+                context["role_context"] = _role_ctx
+        except Exception:
+            pass  # Role context never blocks session init
+
         # MARKER_178.1.4: Build actionable next_steps from context
         try:
             next_steps = []

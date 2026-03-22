@@ -55,7 +55,7 @@ const CHUNK_BASE: CSSProperties = {
 
 const CHUNK_ACTIVE: CSSProperties = {
   ...CHUNK_BASE,
-  borderLeftColor: '#4a9eff',
+  borderLeftColor: '#999',
   background: 'rgba(74, 158, 255, 0.08)',
 };
 

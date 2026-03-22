@@ -5,6 +5,13 @@
  */
 import { create } from 'zustand';
 
+// MARKER_KF67: Keyframe system (FCP7 Ch.67)
+export type Keyframe = {
+  time_sec: number;     // time relative to clip start (0 = clip beginning)
+  value: number;        // parameter value at this keypoint
+  easing: 'linear' | 'ease_in' | 'ease_out' | 'bezier';
+};
+
 // MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
 export type ClipEffects = {
   brightness: number;   // -1..1, default 0
@@ -43,6 +50,8 @@ export type TimelineClip = {
   // MARKER_TRANSITION: Outgoing transition (rendered at clip's right edge)
   transition_out?: ClipTransition;
   effects?: ClipEffects;
+  // MARKER_KF67: Per-property keyframes (opacity, volume, brightness, etc.)
+  keyframes?: Record<string, Keyframe[]>;
   sync?: {
     method?: string;
     offset_sec?: number;
@@ -226,6 +235,7 @@ interface CutEditorState {
 
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
+  showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -350,6 +360,7 @@ interface CutEditorState {
   setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
+  setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -389,6 +400,11 @@ interface CutEditorState {
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
   resetClipEffects: (clipId: string) => void;
+
+  // MARKER_KF67: Keyframe actions (FCP7 Ch.67)
+  addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
+  removeKeyframe: (clipId: string, property: string, timeSec: number) => void;
+  getKeyframeTimes: () => number[];  // all keyframe times on timeline (for navigation)
 
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
@@ -505,6 +521,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
+  showSpeedControl: false,          // MARKER_B11
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -989,6 +1006,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
+  setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),
@@ -1043,6 +1061,55 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         ),
       })),
     })),
+
+  // MARKER_KF67: Keyframe actions
+  addKeyframe: (clipId, property, timeSec, value) =>
+    set((state) => ({
+      lanes: state.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) => {
+          if (c.clip_id !== clipId) return c;
+          const kfs = { ...(c.keyframes || {}) };
+          const arr = [...(kfs[property] || [])];
+          // Replace existing keyframe at same time or add new
+          const idx = arr.findIndex((k) => Math.abs(k.time_sec - timeSec) < 0.001);
+          const kf: Keyframe = { time_sec: timeSec, value, easing: 'linear' };
+          if (idx >= 0) arr[idx] = kf;
+          else arr.push(kf);
+          arr.sort((a, b) => a.time_sec - b.time_sec);
+          kfs[property] = arr;
+          return { ...c, keyframes: kfs };
+        }),
+      })),
+    })),
+  removeKeyframe: (clipId, property, timeSec) =>
+    set((state) => ({
+      lanes: state.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) => {
+          if (c.clip_id !== clipId || !c.keyframes?.[property]) return c;
+          const arr = c.keyframes[property].filter((k) => Math.abs(k.time_sec - timeSec) > 0.001);
+          const kfs = { ...c.keyframes, [property]: arr };
+          return { ...c, keyframes: kfs };
+        }),
+      })),
+    })),
+  getKeyframeTimes: () => {
+    const { lanes, lockedLanes } = get();
+    const times = new Set<number>();
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        if (!clip.keyframes) continue;
+        for (const kfs of Object.values(clip.keyframes)) {
+          for (const kf of kfs) {
+            times.add(clip.start_sec + kf.time_sec);
+          }
+        }
+      }
+    }
+    return [...times].sort((a, b) => a - b);
+  },
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes
   // Lane types: video_main, take_alt_y, take_alt_z = video; audio_sync = audio

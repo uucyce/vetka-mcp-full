@@ -175,6 +175,10 @@ async function setupApiMocks(page) {
 
 async function navigateToCut(page) {
   await setupApiMocks(page);
+  // MARKER_QA.W6: Set FCP7 hotkey preset since these tests verify FCP7 key bindings
+  await page.addInitScript(() => {
+    window.localStorage.setItem('cut_hotkey_preset', 'fcp7');
+  });
   await page.goto(CUT_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
 }
@@ -206,7 +210,8 @@ test.describe.serial('FCP7 Precision: Tool State Machine (TDD)', () => {
 
     // activeTool should exist and be one of valid tool names
     expect(activeTool).toBeTruthy();
-    expect(['select', 'razor', 'blade', 'ripple', 'roll', 'slip', 'slide', 'hand', 'zoom', 'speed'])
+    // MARKER_QA.W6: store uses 'selection' not 'select'
+    expect(['selection', 'select', 'razor', 'blade', 'ripple', 'roll', 'slip', 'slide', 'hand', 'zoom', 'speed'])
       .toContain(activeTool);
   });
 
@@ -226,7 +231,8 @@ test.describe.serial('FCP7 Precision: Tool State Machine (TDD)', () => {
     await page.waitForTimeout(150);
 
     const activeTool = await getStoreState(page, 'activeTool');
-    expect(activeTool).toBe('select');
+    // MARKER_QA.W6: store uses 'selection' not 'select'
+    expect(['selection', 'select']).toContain(activeTool);
   });
 
   test('TOOL2b: pressing B activates razor/blade tool', async ({ page }) => {

@@ -27,9 +27,10 @@ import DockviewLayout from './DockviewLayout';
 import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
+import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
-import TransportBar from './TransportBar';
+
 
 // ─── Styles ───
 
@@ -61,6 +62,19 @@ function collectEditPoints(
 
 // ─── Component ───
 
+// MARKER_B11: Speed/Duration modal overlay
+function SpeedControlModal() {
+  const show = useCutEditorStore((s) => s.showSpeedControl);
+  if (!show) return null;
+  const close = () => useCutEditorStore.getState().setShowSpeedControl(false);
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+         onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <SpeedControl onClose={close} />
+    </div>
+  );
+}
+
 interface CutEditorLayoutV2Props {
   /** Script text for ScriptPanel and BPMTrack */
   scriptText?: string;
@@ -72,6 +86,22 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
   const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
+
+  // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
+  const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
+    const startZoom = s.zoom;
+    const startScroll = s.scrollLeft;
+    const duration = 150; // ms
+    const startTime = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      useCutEditorStore.getState().setZoom(startZoom + (targetZoom - startZoom) * ease);
+      useCutEditorStore.getState().setScrollLeft(startScroll + (targetScroll - startScroll) * ease);
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, []);
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
@@ -301,6 +331,31 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Wired to useThreePointEdit hook which calls backend insert_at/overwrite_at.
     insertEdit: () => { void threePointInsert(); },
     overwriteEdit: () => { void threePointOverwrite(); },
+    // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
+    // FCP7 Ch.36: F11 replaces clip at playhead position, keeping same duration
+    replaceEdit: () => {
+      const s = useCutEditorStore.getState();
+      const sourcePath = s.sourceMediaPath;
+      if (!sourcePath) return;
+      // Find clip under playhead
+      for (const lane of s.lanes) {
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            // Replace source_path, keep position and duration
+            const newLanes = s.lanes.map((l) => ({
+              ...l,
+              clips: l.clips.map((c) =>
+                c.clip_id === clip.clip_id
+                  ? { ...c, source_path: sourcePath, source_in: s.sourceMarkIn ?? 0 }
+                  : c
+              ),
+            }));
+            s.setLanes(newLanes);
+            return;
+          }
+        }
+      }
+    },
 
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {
@@ -404,6 +459,37 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (prev) s.seek(prev.start_sec);
     },
 
+    // MARKER_KF67: Keyframe navigation + add (FCP7 Ch.67)
+    nextKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      const times = s.getKeyframeTimes();
+      const next = times.find((t) => t > s.currentTime + 0.001);
+      if (next !== undefined) s.seek(next);
+    },
+    prevKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      const times = s.getKeyframeTimes().reverse();
+      const prev = times.find((t) => t < s.currentTime - 0.001);
+      if (prev !== undefined) s.seek(prev);
+    },
+    addKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      // Find selected clip to calculate relative time
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        if (clip) {
+          const relTime = s.currentTime - clip.start_sec;
+          if (relTime >= 0 && relTime <= clip.duration_sec) {
+            // Add opacity keyframe at current value (default 1.0)
+            const currentOpacity = clip.effects?.opacity ?? 1.0;
+            s.addKeyframe(clip.clip_id, 'opacity', relTime, currentOpacity);
+          }
+          return;
+        }
+      }
+    },
+
     // Navigation — edit points
     prevEditPoint: () => {
       const s = useCutEditorStore.getState();
@@ -433,11 +519,34 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // View
     zoomIn: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.min(s.zoom * 1.25, 500)); },
     zoomOut: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.max(s.zoom / 1.25, 10)); },
+    // MARKER_A2.5: Zoom to fit / zoom to selection with smooth animation
     zoomToFit: () => {
       const s = useCutEditorStore.getState();
+      // If clips are selected, zoom to selection bounds (A2.5)
+      const ids = s.selectedClipIds;
+      if (ids.size > 0) {
+        let minT = Infinity, maxT = -Infinity;
+        for (const lane of s.lanes) {
+          for (const clip of lane.clips) {
+            if (ids.has(clip.clip_id)) {
+              minT = Math.min(minT, clip.start_sec);
+              maxT = Math.max(maxT, clip.start_sec + clip.duration_sec);
+            }
+          }
+        }
+        if (minT < maxT) {
+          const selDur = maxT - minT;
+          const viewWidth = window.innerWidth - 560;
+          const targetZoom = Math.max(10, Math.min(500, viewWidth / (selDur * 1.2))); // 20% padding
+          const targetScroll = Math.max(0, minT * targetZoom - viewWidth * 0.1);
+          smoothZoomTo(s, targetZoom, targetScroll);
+          return;
+        }
+      }
+      // Default: zoom to fit entire timeline
       if (s.duration > 0) {
-        s.setZoom(Math.max(10, Math.min(500, (window.innerWidth - 560) / s.duration)));
-        s.setScrollLeft(0);
+        const targetZoom = Math.max(10, Math.min(500, (window.innerWidth - 560) / s.duration));
+        smoothZoomTo(s, targetZoom, 0);
       }
     },
 
@@ -518,6 +627,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     splitEditLCut: () => useCutEditorStore.getState().splitEditLCut(),
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
+    // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
+    openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
@@ -532,8 +643,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const shuttlePrevTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    if (shuttleSpeed === 0 || shuttleSpeed === 1) {
-      // Speed 0 = stopped, speed 1 = normal forward (video element handles it)
+    if (shuttleSpeed === 0) {
       if (shuttleRafRef.current) {
         cancelAnimationFrame(shuttleRafRef.current);
         shuttleRafRef.current = 0;
@@ -541,7 +651,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       return;
     }
 
-    // For speeds ≠ 0 and ≠ 1, run a rAF loop that manually seeks
+    // MARKER_JKL1-FIX: rAF loop for ALL non-zero speeds including 1x.
+    // Previously speed=1 was skipped (relied on video element), but that fails
+    // when no video is loaded (tests, audio-only clips, proxy not ready).
     shuttlePrevTimeRef.current = performance.now();
 
     const step = (now: number) => {
@@ -565,15 +677,36 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     };
   }, [shuttleSpeed]);
 
+  // MARKER_P0.PROGRAM: Derive programMediaPath from topmost clip under playhead
+  // Without this, Program Monitor stays empty — setProgramMedia() was never called.
+  const currentTime = useCutEditorStore((s) => s.currentTime);
+  const lanes = useCutEditorStore((s) => s.lanes);
+  const setProgramMedia = useCutEditorStore((s) => s.setProgramMedia);
+
+  useEffect(() => {
+    // Scan lanes top-to-bottom (V1 first) for the first clip overlapping currentTime
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+          setProgramMedia(clip.source_path);
+          return;
+        }
+      }
+    }
+    // No clip under playhead — clear program monitor
+    setProgramMedia(null);
+  }, [currentTime, lanes, setProgramMedia]);
+
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
   return (
     <div style={ROOT} data-testid="cut-editor-layout">
       <MenuBar />
       {viewMode === 'debug' ? <DebugShellPanel /> : <DockviewLayout scriptText={scriptText} />}
-      <TransportBar />
       <ProjectSettings />
       <ExportDialog />
+      {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
+      <SpeedControlModal />
       <SaveIndicator />
     </div>
   );

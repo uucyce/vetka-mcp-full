@@ -5,7 +5,7 @@
  * This panel manages imported media assets, organized by bins (buckets).
  *
  * Import methods (matching Premiere Pro):
- * 1. Cmd+I hotkey (via 'cut:trigger-import' custom event from TransportBar)
+ * 1. Cmd+I hotkey (via 'cut:import-media' custom event from MenuBar/hotkeys)
  * 2. Double-click dropzone to open native file picker
  * 3. Drag & drop files/folders into the panel (future: Tauri native)
  *
@@ -179,6 +179,35 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
+// MARKER_GAMMA-14: Custom drag preview — thumbnail + filename badge
+function setDragPreview(
+  e: React.DragEvent,
+  name: string,
+  modality: string | undefined,
+  posterUrl: string | undefined,
+) {
+  const el = document.createElement('div');
+  el.style.cssText = 'position:fixed;top:-200px;left:-200px;width:80px;padding:4px;background:#1a1a1a;border:1px solid #555;border-radius:4px;font-size:8px;font-family:system-ui,sans-serif;color:#ccc;text-align:center;pointer-events:none;z-index:99999';
+  if (posterUrl) {
+    const img = document.createElement('img');
+    img.src = posterUrl;
+    img.style.cssText = 'width:72px;height:48px;object-fit:cover;border-radius:2px;display:block;margin:0 auto 3px';
+    el.appendChild(img);
+  } else {
+    const icon = document.createElement('div');
+    icon.style.cssText = 'width:72px;height:48px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#444;margin:0 auto 3px';
+    icon.textContent = modality === 'audio' ? '\u266A' : modality === 'image' ? '\u25FB' : '\u25B6';
+    el.appendChild(icon);
+  }
+  const label = document.createElement('div');
+  label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72px;margin:0 auto';
+  label.textContent = name;
+  el.appendChild(label);
+  document.body.appendChild(el);
+  e.dataTransfer.setDragImage(el, 40, 30);
+  requestAnimationFrame(() => document.body.removeChild(el));
+}
+
 // MARKER_W6.IMPORT-FIX: Infer folder path from file list (Tauri native or browser webkitdirectory)
 function inferFolderPath(files: FileList | null): string {
   if (!files || files.length === 0) return '';
@@ -241,6 +270,8 @@ export default function ProjectPanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // MARKER_W5.4: View mode
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
+  // MARKER_GAMMA-19: Context menu for project items
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -553,9 +584,9 @@ export default function ProjectPanel() {
         <div
           style={{
             ...DROPZONE,
-            borderColor: dragging ? '#4a9eff' : '#2f2f2f',
-            background: dragging ? '#081120' : 'transparent',
-            color: dragging ? '#bfdbfe' : '#555',
+            borderColor: dragging ? '#999' : '#2f2f2f',
+            background: dragging ? '#0a0a0a' : 'transparent',
+            color: dragging ? '#ccc' : '#555',
           }}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -616,10 +647,20 @@ export default function ProjectPanel() {
               return (
                 <div
                   key={item.item_id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                  }}
+                  onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                   style={{
                     ...GRID_ITEM,
-                    background: isActive ? '#1a1a2a' : 'transparent',
-                    border: isActive ? '1px solid #4a9eff' : '1px solid transparent',
+                    background: isActive ? '#1a1a1a' : 'transparent',
+                    border: isActive ? '1px solid #999' : '1px solid transparent',
+                    cursor: 'grab',
                   }}
                   onClick={() => handleClipClick(item.source_path)}
                 >
@@ -665,7 +706,7 @@ export default function ProjectPanel() {
           {bins.map((bin) => {
             const isCollapsed = collapsedBins.has(bin.key);
             return (
-              <div key={bin.key}>
+              <div key={bin.key} data-testid={`cut-source-bucket-${bin.key}`}>
                 <div style={BIN_HEADER} onClick={() => toggleBin(bin.key)}>
                   <span>
                     {isCollapsed ? '▸' : '▾'} {bin.icon} {bin.label}
@@ -677,10 +718,21 @@ export default function ProjectPanel() {
                   return (
                     <div
                       key={item.item_id}
+                      data-testid={`cut-source-item-${item.item_id}`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        e.dataTransfer.effectAllowed = 'copy';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                        (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                       style={{
                         ...CLIP_ITEM,
-                        background: isActive ? '#1a1a2a' : 'transparent',
-                        borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                        background: isActive ? '#1a1a1a' : 'transparent',
+                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
+                        cursor: 'grab',
                       }}
                       onClick={() => handleClipClick(item.source_path)}
                     >
@@ -732,6 +784,46 @@ export default function ProjectPanel() {
                 press above to import media
               </span>
             </div>
+          )}
+        </div>
+      )}
+      {/* MARKER_GAMMA-19: Project item context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
+            background: '#0b0b0b', border: '1px solid #333', borderRadius: 4,
+            padding: '3px 0', zIndex: 10000, minWidth: 160,
+            fontSize: 11, fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setCtxMenu(null)}
+        >
+          {[
+            { label: 'Open in Source Monitor', action: () => { setActiveMedia(ctxMenu.path); setCtxMenu(null); } },
+            { label: 'Add to Timeline', action: () => {
+              window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: ctxMenu.path } }));
+              setCtxMenu(null);
+            }},
+            { separator: true },
+            { label: 'Reveal in Finder', action: () => { setCtxMenu(null); }, disabled: true },
+          ].map((item, i) =>
+            'separator' in item ? (
+              <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+            ) : (
+              <div
+                key={i}
+                onClick={item.disabled ? undefined : item.action}
+                style={{
+                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {item.label}
+              </div>
+            ),
           )}
         </div>
       )}

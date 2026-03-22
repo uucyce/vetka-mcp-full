@@ -10,7 +10,7 @@
  *
  * @phase 196
  */
-import { useCallback, useRef, useMemo, useEffect } from 'react';
+import { useCallback, useRef, useMemo, useEffect, useState } from 'react';
 import {
   DockviewReact,
   type DockviewApi,
@@ -42,6 +42,10 @@ import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
+import SpeedControl from './SpeedControl';
+import TransitionsPanel from './TransitionsPanel';
+import ToolsPalette from './ToolsPalette';
+import WorkspacePresets from './WorkspacePresets';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -50,6 +54,9 @@ const EffectsPanelDock = () => <EffectsPanel />;
 const VideoScopesPanelDock = () => <VideoScopes />;
 const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
 const LutBrowserPanelDock = () => <LutBrowserPanel />;
+const SpeedControlPanelDock = () => <div data-testid="speed-control-panel"><SpeedControl /></div>;
+const TransitionsPanelDock = () => <TransitionsPanel />;
+const ToolsPaletteDock = () => <ToolsPalette />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -65,6 +72,9 @@ const PANEL_COMPONENTS = {
   scopes: VideoScopesPanelDock,
   colorcorrector: ColorCorrectorPanelDock,
   lutbrowser: LutBrowserPanelDock,
+  speed: SpeedControlPanelDock,
+  transitions: TransitionsPanelDock,
+  tools: ToolsPaletteDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -82,6 +92,122 @@ const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'proje
   effects: 'effects',
 };
 
+// ─── MARKER_C5: Preset-specific default layouts ─────────────────────
+// Each function builds a workspace layout using dockview addPanel API.
+// Called when no saved layout exists for the active preset.
+
+type PresetBuilder = (api: DockviewApi, scriptText: string) => void;
+
+function buildEditingLayout(api: DockviewApi, scriptText: string) {
+  // Left column: Project (with Script and Graph as tabs)
+  api.addPanel({ id: 'project', component: 'project', title: 'Project' });
+  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'project', direction: 'within' } });
+  // Source Monitor (center) + Program Monitor (right)
+  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE', position: { referencePanel: 'project', direction: 'right' } });
+  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
+  // MARKER_GAMMA-22: Split analysis into 2 groups for better tab visibility
+  // Group 1 (Editorial) — below Project
+  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'below' } });
+  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
+  // Group 2 (Media) — right of Editorial group
+  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
+  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  // Timeline (full-width bottom)
+  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
+  // Sizes
+  try { api.getPanel('project')?.api.setSize({ width: 320 }); } catch { /* ok */ }
+  try { api.getPanel('timeline')?.api.setSize({ height: 300 }); } catch { /* ok */ }
+  // MARKER_GAMMA-22: Ensure key panels are foreground in their groups
+  try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+}
+
+function buildColorLayout(api: DockviewApi, scriptText: string) {
+  // Color grading: Program Monitor dominant, Scopes + Color Corrector + LUTs prominent
+  // Left: Source (smaller) with Project tabs below
+  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE' });
+  api.addPanel({ id: 'project', component: 'project', title: 'Project', position: { referencePanel: 'source', direction: 'below' } });
+  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
+  // MARKER_GAMMA-22: Split left panel into project nav + media tools
+  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'project', direction: 'within' } });
+  // Media tools below project nav
+  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'project', direction: 'below' } });
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  // Center: Program Monitor (large — grading preview)
+  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
+  // Right: Color tools stack (Color Corrector top, Scopes bottom)
+  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'program', direction: 'right' } });
+  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'colorcorrector', direction: 'within' } });
+  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'colorcorrector', direction: 'below' } });
+  // Timeline (full-width bottom — compact for grading)
+  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
+  // Sizes: source column narrow, program large, color tools ~300px
+  try { api.getPanel('source')?.api.setSize({ width: 260 }); } catch { /* ok */ }
+  try { api.getPanel('colorcorrector')?.api.setSize({ width: 300 }); } catch { /* ok */ }
+  try { api.getPanel('timeline')?.api.setSize({ height: 240 }); } catch { /* ok */ }
+  // MARKER_GAMMA-22: Foreground key panels
+  try { api.getPanel('colorcorrector')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+}
+
+function buildAudioLayout(api: DockviewApi, scriptText: string) {
+  // Audio mixing: Mixer prominent, larger timeline for waveform visibility
+  // Left: Project (compact)
+  api.addPanel({ id: 'project', component: 'project', title: 'Project' });
+  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
+  // Center: Source + Program monitors (tabbed — audio doesn't need dual preview)
+  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE', position: { referencePanel: 'project', direction: 'right' } });
+  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'within' } });
+  // Right: Mixer (dominant — full height)
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'source', direction: 'right' } });
+  // MARKER_GAMMA-22: Split into editorial + media groups
+  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'below' } });
+  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
+  // Media group (right of editorial)
+  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
+  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  // Timeline (full-width bottom — taller for waveform visibility)
+  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
+  // Sizes: project narrow, mixer ~280px, timeline tall
+  try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
+  try { api.getPanel('mixer')?.api.setSize({ width: 280 }); } catch { /* ok */ }
+  try { api.getPanel('timeline')?.api.setSize({ height: 380 }); } catch { /* ok */ }
+  // MARKER_GAMMA-22: Foreground key panels
+  try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+}
+
+const PRESET_BUILDERS: Record<string, PresetBuilder> = {
+  editing: buildEditingLayout,
+  color: buildColorLayout,
+  audio: buildAudioLayout,
+  custom: buildEditingLayout,
+};
+
 // ─── Main component ─────────────────────────────────────────────────
 
 interface DockviewLayoutProps {
@@ -90,7 +216,7 @@ interface DockviewLayoutProps {
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
   const apiRef = useRef<DockviewApi | null>(null);
-  const { saveLayout, loadLayout, activePreset, setApiRef } = useDockviewStore();
+  const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 
   // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
@@ -142,149 +268,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       }
     }
 
-    // ─── Default layout (matches CutEditorLayoutV2 positions) ───
+    // ─── MARKER_C5: Build preset-specific default layout ───
+    const builder = PRESET_BUILDERS[activePreset] || buildEditingLayout;
+    builder(event.api, scriptText);
 
-    // Left column: Project (with Script and Graph as tabs)
-    event.api.addPanel({
-      id: 'project',
-      component: 'project',
-      title: 'Project',
+    // MARKER_C5: Save built layout so switchWorkspace doesn't reload back to this preset.
+    requestAnimationFrame(() => {
+      try { saveLayout(activePreset, event.api.toJSON()); } catch { /* ok */ }
     });
-
-    event.api.addPanel({
-      id: 'script',
-      component: 'script',
-      title: 'Script',
-      params: { scriptText },
-      position: { referencePanel: 'project', direction: 'within' },
-    });
-
-    event.api.addPanel({
-      id: 'graph',
-      component: 'graph',
-      title: 'Graph',
-      position: { referencePanel: 'project', direction: 'within' },
-    });
-
-    // Source Monitor (center)
-    event.api.addPanel({
-      id: 'source',
-      component: 'source',
-      title: 'SOURCE',
-      position: { referencePanel: 'project', direction: 'right' },
-    });
-
-    // Program Monitor (right)
-    event.api.addPanel({
-      id: 'program',
-      component: 'program',
-      title: 'PROGRAM',
-      position: { referencePanel: 'source', direction: 'right' },
-    });
-
-    // Analysis tabs (below Project)
-    event.api.addPanel({
-      id: 'inspector',
-      component: 'inspector',
-      title: 'Inspector',
-      position: { referencePanel: 'project', direction: 'below' },
-    });
-
-    event.api.addPanel({
-      id: 'clip',
-      component: 'clip',
-      title: 'Clip',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    event.api.addPanel({
-      id: 'storyspace',
-      component: 'storyspace',
-      title: 'StorySpace',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    event.api.addPanel({
-      id: 'history',
-      component: 'history',
-      title: 'History',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_C14: Auto-Montage panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'montage',
-      component: 'montage',
-      title: 'Montage',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_B9: Effects panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'effects',
-      component: 'effects',
-      title: 'Effects',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_B13: Audio Mixer panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'mixer',
-      component: 'mixer',
-      title: 'Mixer',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_B19: Video Scopes panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'scopes',
-      component: 'scopes',
-      title: 'Scopes',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_CC3WAY: Color Corrector 3-Way panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'colorcorrector',
-      component: 'colorcorrector',
-      title: 'Color',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // MARKER_B23: LUT Browser panel (Analysis tab group)
-    event.api.addPanel({
-      id: 'lutbrowser',
-      component: 'lutbrowser',
-      title: 'LUTs',
-      position: { referencePanel: 'inspector', direction: 'within' },
-    });
-
-    // Timeline (full-width bottom)
-    event.api.addPanel({
-      id: 'timeline',
-      component: 'timeline',
-      title: 'Timeline',
-      params: { scriptText },
-      position: { direction: 'below' },
-    });
-    // Dockview native tabs now visible — supports multi-instance via drag/split/tab
-
-    // Set approximate sizes to match current layout proportions
-    // Left column ~260px, right monitor area fills rest
-    const projectPanel = event.api.getPanel('project');
-    const sourcePanel = event.api.getPanel('source');
-    const timelinePanel = event.api.getPanel('timeline');
-
-    if (projectPanel) {
-      // MARKER_LAYOUT-4: Widen left column 260→320px (~22% at 1440p, matches Premiere)
-      try { projectPanel.api.setSize({ width: 320 }); } catch { /* ok */ }
-    }
-    if (sourcePanel && event.api.getPanel('program')) {
-      // Source and program share center-right equally
-    }
-    if (timelinePanel) {
-      try { timelinePanel.api.setSize({ height: 300 }); } catch { /* ok */ }
-    }
 
     // MARKER_FOCUS: Wire panel focus to store + visual indicator
     event.api.onDidActivePanelChange((panel) => {
@@ -343,14 +334,137 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     });
   }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
 
+  // MARKER_GAMMA-3: Backtick key → toggle maximize active panel (Premiere/FCP7 style)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === '`' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        // Don't intercept if user is typing in an input/textarea
+        const tag = (e.target as HTMLElement)?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+        e.preventDefault();
+        toggleMaximize();
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [toggleMaximize]);
+
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
 
+  // MARKER_GAMMA-15: Panel tab context menu
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; panelId: string } | null>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      // Find closest .dv-tab ancestor
+      const tab = (e.target as HTMLElement).closest?.('.dv-tab') as HTMLElement | null;
+      if (!tab) { setTabMenu(null); return; }
+      // Dockview stores panel ID as data attribute or we read from API
+      const api = apiRef.current;
+      if (!api) return;
+      e.preventDefault();
+      // Find panel ID: walk dockview panels, match by active tab text
+      const tabText = tab.textContent?.trim().toUpperCase() || '';
+      let panelId = '';
+      for (const p of api.panels) {
+        if (p.title?.toUpperCase() === tabText || p.id.toUpperCase() === tabText) {
+          panelId = p.id;
+          break;
+        }
+      }
+      if (!panelId) return;
+      setTabMenu({ x: e.clientX, y: e.clientY, panelId });
+    };
+    const dismiss = () => setTabMenu(null);
+    document.addEventListener('contextmenu', handler);
+    document.addEventListener('click', dismiss);
+    return () => {
+      document.removeEventListener('contextmenu', handler);
+      document.removeEventListener('click', dismiss);
+    };
+  }, []);
+
+  const handleTabMenuAction = useCallback((action: string) => {
+    const api = apiRef.current;
+    if (!api || !tabMenu) return;
+    const panel = api.getPanel(tabMenu.panelId);
+    if (!panel) { setTabMenu(null); return; }
+    switch (action) {
+      case 'close':
+        api.removePanel(panel);
+        break;
+      case 'close-others': {
+        const group = panel.group;
+        if (group) {
+          const others = api.panels.filter((p) => p.group === group && p.id !== tabMenu.panelId);
+          others.forEach((p) => { try { api.removePanel(p); } catch { /* ok */ } });
+        }
+        break;
+      }
+      case 'maximize':
+        toggleMaximize();
+        break;
+    }
+    setTabMenu(null);
+  }, [tabMenu, toggleMaximize]);
+
   return (
-    <DockviewReact
-      className="dockview-theme-dark"
-      components={components}
-      onReady={onReady}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+      {/* MARKER_GAMMA-8: Workspace preset bar (Editing/Color/Audio/Custom) */}
+      <WorkspacePresets />
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
+        <DockviewReact
+          className="dockview-theme-dark"
+          components={components}
+          onReady={onReady}
+        />
+        {/* MARKER_GAMMA-15: Tab context menu */}
+        {tabMenu && (
+          <div
+            style={{
+              position: 'fixed',
+              top: tabMenu.y,
+              left: tabMenu.x,
+              background: '#0b0b0b',
+              border: '1px solid #333',
+              borderRadius: 4,
+              padding: '3px 0',
+              zIndex: 10000,
+              minWidth: 140,
+              fontSize: 11,
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              color: '#ccc',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+            }}
+          >
+            {[
+              { label: 'Close Panel', action: 'close' },
+              { label: 'Close Others in Group', action: 'close-others' },
+              { separator: true },
+              { label: 'Maximize / Restore', action: 'maximize' },
+            ].map((item, i) =>
+              'separator' in item ? (
+                <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+              ) : (
+                <div
+                  key={i}
+                  onClick={() => handleTabMenuAction(item.action)}
+                  style={{
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  {item.label}
+                </div>
+              ),
+            )}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

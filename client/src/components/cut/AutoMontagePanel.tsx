@@ -154,7 +154,7 @@ export default function AutoMontagePanel() {
       {running && progress && (
         <div style={{
           fontSize: 9,
-          color: '#4a9eff',
+          color: '#999',
           fontFamily: 'monospace',
           padding: '4px 0',
           display: 'flex',
@@ -166,7 +166,7 @@ export default function AutoMontagePanel() {
             width: 6,
             height: 6,
             borderRadius: '50%',
-            background: '#4a9eff',
+            background: '#999',
             animation: 'pulse 1s infinite',
           }} />
           {progress}

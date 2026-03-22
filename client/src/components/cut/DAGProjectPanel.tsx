@@ -3,14 +3,14 @@
  *
  * Script Spine = central vertical chain of scene_chunk nodes.
  * Media nodes: video left, audio right of linked scene.
- * Y-axis = start_sec * PX_PER_SEC (chronological).
+ * Y-axis = start_sec * PX_PER_SEC (chronological, top-to-bottom by default).
  *
  * Fetches from GET /api/cut/project/dag/{timeline_id}.
  * Scene chunks created by POST /api/cut/project/apply-script (CUT-2.1).
  *
  * Ref: CUT_TARGET_ARCHITECTURE.md §2.2, CUT_DATA_MODEL.md
  */
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -58,8 +58,8 @@ function SceneChunkNode({ data }: NodeProps<Node<DAGNodeData>>) {
 
   return (
     <div style={{
-      background: isActive ? '#1a2a3a' : '#141414',
-      border: `1px solid ${isActive ? '#4a9eff' : '#333'}`,
+      background: isActive ? '#1a1a1a' : '#141414',
+      border: `1px solid ${isActive ? '#999' : '#333'}`,
       borderRadius: 4,
       padding: '4px 8px',
       minWidth: 100,
@@ -67,7 +67,7 @@ function SceneChunkNode({ data }: NodeProps<Node<DAGNodeData>>) {
       fontSize: 9,
       fontFamily: 'Inter, system-ui, sans-serif',
       color: '#ccc',
-      boxShadow: isActive ? '0 0 8px rgba(74, 158, 255, 0.3)' : 'none',
+      boxShadow: isActive ? '0 0 8px rgba(153, 153, 153, 0.3)' : 'none',
     }}>
       <Handle type="target" position={Position.Top} style={{ background: '#555', width: 4, height: 4 }} />
       <Handle type="source" position={Position.Bottom} style={{ background: '#555', width: 4, height: 4 }} />
@@ -98,14 +98,14 @@ function MediaAssetNode({ data }: NodeProps<Node<DAGNodeData>>) {
   return (
     <div style={{
       background: '#1A1A1A',
-      border: `1px solid ${isLinked ? '#4a9eff' : '#2a2a2a'}`,
+      border: `1px solid ${isLinked ? '#999' : '#2a2a2a'}`,
       borderRadius: 3,
       padding: '3px 6px',
       minWidth: 80,
       maxWidth: 120,
       fontSize: 8,
       color: '#888',
-      boxShadow: isLinked ? '0 0 6px rgba(74, 158, 255, 0.2)' : 'none',
+      boxShadow: isLinked ? '0 0 6px rgba(153, 153, 153, 0.2)' : 'none',
     }}>
       <Handle type="target" position={Position.Left} style={{ background: '#555', width: 3, height: 3 }} />
       <Handle type="source" position={Position.Right} style={{ background: '#555', width: 3, height: 3 }} />
@@ -128,9 +128,10 @@ const NODE_TYPES: NodeTypes = {
 };
 
 // ─── Layout: Y = chronology, spine center ───
-// MARKER_C8.1: flipY=true → START at bottom, END at top (architecture default)
+// MARKER_C8.1: flipY=false → START at top, END at bottom (natural reading order)
+// flipY=true → inverted (START bottom, END top) — available via toggle button
 
-function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[], flipY = true): { rfNodes: Node[]; rfEdges: Edge[] } {
+function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[], flipY = false): { rfNodes: Node[]; rfEdges: Edge[] } {
   const rfNodes: Node[] = [];
 
   // Separate spine nodes from media nodes
@@ -140,7 +141,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
   // Find max time for Y inversion
   const maxSec = spineNodes.reduce((mx, n) => Math.max(mx, (n.start_sec ?? 0) + (n.duration_sec ?? 0)), 0);
 
-  // MARKER_C8.1: Y direction — flipY true = START bottom, END top (negative Y = up in ReactFlow)
+  // MARKER_C8.1: Y direction — flipY false = START top, END bottom (positive Y = down in ReactFlow)
   const yPos = (sec: number) => flipY ? -(sec * PX_PER_SEC) : sec * PX_PER_SEC;
 
   // Place spine nodes: center X, Y = chronological position
@@ -228,7 +229,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
     target: e.target,
     type: e.edge_type === 'next_scene' ? 'default' : 'default',
     style: {
-      stroke: e.edge_type === 'next_scene' ? '#4a9eff' : '#333',
+      stroke: e.edge_type === 'next_scene' ? '#999' : '#333',
       strokeWidth: e.edge_type === 'next_scene' ? 2 : 1,
     },
     animated: false,
@@ -269,8 +270,8 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
   const [dagEdges, setDagEdges] = useState<{ source: string; target: string; edge_type: string }[]>([]);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([] as Node[]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([] as Edge[]);
-  // MARKER_C8.1: Flip Y toggle — START bottom (true) or START top (false)
-  const [flipY, setFlipY] = useState(true);
+  // MARKER_C8.1: Flip Y toggle — START top (false, default) or START bottom (true)
+  const [flipY, setFlipY] = useState(false);
 
   const syncFromDAG = usePanelSyncStore((s) => s.syncFromDAG);
 
@@ -319,6 +320,19 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
     [syncFromDAG],
   );
 
+  // MARKER_GAMMA-19: DAG node context menu
+  const [dagCtx, setDagCtx] = useState<{ x: number; y: number; nodeId: string; path: string } | null>(null);
+  const setSourceMedia = useCutEditorStore((s) => s.setSourceMedia);
+
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      const data = node.data as DAGNodeData;
+      setDagCtx({ x: event.clientX, y: event.clientY, nodeId: data.node_id, path: data.source_path || '' });
+    },
+    [],
+  );
+
   return (
     <div style={PANEL}>
       {/* MARKER_C8.1: Flip Y toggle */}
@@ -338,9 +352,9 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
           padding: '2px 6px',
           cursor: 'pointer',
         }}
-        title={flipY ? 'Y: START bottom → flip to top' : 'Y: START top → flip to bottom'}
+        title={flipY ? 'START at bottom — click for top-down' : 'START at top — click for bottom-up'}
       >
-        {flipY ? 'Y ↑' : 'Y ↓'}
+        {flipY ? '↑ START' : '↓ START'}
       </button>
       {dagNodes.length === 0 ? (
         <div style={{
@@ -363,6 +377,8 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onNodeContextMenu={handleNodeContextMenu}
+          onPaneClick={() => setDagCtx(null)}
           nodeTypes={NODE_TYPES}
           fitView
           proOptions={{ hideAttribution: true }}
@@ -372,6 +388,46 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
         >
           <Background color="#1A1A1A" gap={20} size={1} />
         </ReactFlow>
+      )}
+      {/* MARKER_GAMMA-19: DAG node context menu */}
+      {dagCtx && (
+        <div
+          style={{
+            position: 'fixed', top: dagCtx.y, left: dagCtx.x,
+            background: '#0b0b0b', border: '1px solid #333', borderRadius: 4,
+            padding: '3px 0', zIndex: 10000, minWidth: 160,
+            fontSize: 11, fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setDagCtx(null)}
+        >
+          {[
+            { label: 'Open in Source Monitor', action: () => { if (dagCtx.path) setSourceMedia(dagCtx.path); setDagCtx(null); }, disabled: !dagCtx.path },
+            { label: 'Add to Timeline', action: () => {
+              if (dagCtx.path) window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: dagCtx.path } }));
+              setDagCtx(null);
+            }, disabled: !dagCtx.path },
+            { separator: true },
+            { label: 'Focus in Project Panel', action: () => { syncFromDAG(dagCtx.nodeId, dagCtx.path); setDagCtx(null); } },
+          ].map((item, i) =>
+            'separator' in item ? (
+              <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+            ) : (
+              <div
+                key={i}
+                onClick={item.disabled ? undefined : item.action}
+                style={{
+                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {item.label}
+              </div>
+            ),
+          )}
+        </div>
       )}
     </div>
   );

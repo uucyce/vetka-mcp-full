@@ -225,7 +225,7 @@ export default function ClipInspector() {
       {waveformBins && waveformBins.length > 0 && (
         <div style={SECTION}>
           <div style={HEADER}>Waveform</div>
-          <WaveformCanvas bins={waveformBins} width={240} height={40} color="#4a9eff" bgColor="#080808" />
+          <WaveformCanvas bins={waveformBins} width={240} height={40} color="#999" bgColor="#080808" />
         </div>
       )}
 

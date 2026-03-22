@@ -99,9 +99,9 @@ const PRESET_BTN: CSSProperties = {
 
 const PRESET_BTN_ACTIVE: CSSProperties = {
   ...PRESET_BTN,
-  border: '1px solid #4a9eff',
-  background: '#1a1a2a',
-  color: '#4a9eff',
+  border: '1px solid #999',
+  background: '#1a1a1a',
+  color: '#999',
 };
 
 const SLIDER_ROW: CSSProperties = {
@@ -126,7 +126,7 @@ const BTN: CSSProperties = {
   fontFamily: 'system-ui',
 };
 
-const BTN_PRIMARY: CSSProperties = { ...BTN, background: '#4a9eff', color: '#fff' };
+const BTN_PRIMARY: CSSProperties = { ...BTN, background: '#999', color: '#fff' };
 const BTN_SECONDARY: CSSProperties = { ...BTN, background: '#333', color: '#ccc' };
 
 // ─── Component ───
@@ -243,7 +243,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
         </div>
         <div style={ROW}>
           <span style={LABEL}>New Duration</span>
-          <span style={{ ...VALUE, color: speed !== 1 ? '#4a9eff' : '#ccc' }}>
+          <span style={{ ...VALUE, color: speed !== 1 ? '#999' : '#ccc' }}>
             {newDuration.toFixed(2)}s
           </span>
         </div>

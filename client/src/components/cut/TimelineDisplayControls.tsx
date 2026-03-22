@@ -69,7 +69,7 @@ const SIZE_BTN: CSSProperties = {
 
 function CheckMark({ checked }: { checked: boolean }) {
   return (
-    <span style={{ width: 14, textAlign: 'center', color: checked ? '#4a9eff' : '#444' }}>
+    <span style={{ width: 14, textAlign: 'center', color: checked ? '#999' : '#444' }}>
       {checked ? '✓' : ''}
     </span>
   );
@@ -180,9 +180,9 @@ export default function TimelineDisplayControls() {
                   key={preset}
                   style={{
                     ...SIZE_BTN,
-                    background: trackHeightPreset === preset ? '#4a9eff33' : '#111',
-                    borderColor: trackHeightPreset === preset ? '#4a9eff' : '#444',
-                    color: trackHeightPreset === preset ? '#4a9eff' : '#aaa',
+                    background: trackHeightPreset === preset ? '#99933' : '#111',
+                    borderColor: trackHeightPreset === preset ? '#999' : '#444',
+                    color: trackHeightPreset === preset ? '#999' : '#aaa',
                   }}
                   onClick={() => {
                     // Cycle until we reach the target preset

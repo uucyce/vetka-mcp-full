@@ -116,7 +116,7 @@ const TAB: CSSProperties = {
 const TAB_ACTIVE: CSSProperties = {
   ...TAB,
   color: '#ccc',
-  borderBottom: '2px solid #4a9eff',
+  borderBottom: '2px solid #999',
 };
 
 const BODY: CSSProperties = {
@@ -170,7 +170,7 @@ const BTN: CSSProperties = {
 
 const BTN_PRIMARY: CSSProperties = {
   ...BTN,
-  background: '#4a9eff',
+  background: '#999',
   color: '#fff',
 };
 
@@ -601,7 +601,7 @@ export default function ExportDialog() {
           {isRendering && (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 10, color: '#4a9eff' }}>{renderStatus}</div>
+                <div style={{ fontSize: 10, color: '#999' }}>{renderStatus}</div>
                 <div style={{ fontSize: 9, color: '#555' }}>
                   {(renderProgress ?? 0) < 0.1 ? 'Preparing...'
                     : (renderProgress ?? 0) < 0.3 ? 'Building graph...'
@@ -614,7 +614,7 @@ export default function ExportDialog() {
                 <div style={{
                   width: `${Math.round((renderProgress ?? 0) * 100)}%`,
                   height: '100%',
-                  background: '#4a9eff',
+                  background: '#999',
                   borderRadius: 3,
                   transition: 'width 0.3s',
                 }} />

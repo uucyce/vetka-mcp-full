@@ -218,6 +218,8 @@ async function installDebugMarkerMocks(page, requestLog, markerBodies) {
   });
 }
 
+// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
+// Old marker create/toggle buttons removed — tests simplified to verify marker display.
 test.describe.serial('phase170 cut debug marker-actions smoke', () => {
   test.setTimeout(90000);
 
@@ -230,7 +232,7 @@ test.describe.serial('phase170 cut debug marker-actions smoke', () => {
     cleanupServer();
   });
 
-  test('creates selected-shot markers and toggles archived marker visibility safely', async ({ page }) => {
+  test('displays time markers from fixture in debug shell and verifies cam marker status', async ({ page }) => {
     const pageErrors = [];
     const requestLog = [];
     const markerBodies = [];
@@ -243,53 +245,29 @@ test.describe.serial('phase170 cut debug marker-actions smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Project').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 10000 });
     await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
-    await expect(page.getByText('clip_marker_a.mov', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText(/markers for shot:\s*1/)).toBeVisible();
-    await expect(page.getByText('Favorite Markers').first()).toBeVisible();
-    await expect(page.getByText('Comment Markers')).toHaveCount(0);
 
-    await page.getByRole('button', { name: 'Show All Markers' }).click();
-    await expect(page.getByRole('button', { name: 'Show Active Only' })).toBeVisible();
-    await expect(page.getByText(/markers for shot:\s*2/)).toBeVisible();
-    await expect(page.getByText('Comment Markers').first()).toBeVisible();
+    // MARKER_QA.W6: DebugShellPanel Time Markers section shows "markers: N" + per-marker rows
+    await expect(page.getByText('Time Markers', { exact: true })).toBeVisible();
+    await expect(page.getByText('markers: 2', { exact: true })).toBeVisible();
+    // Each marker shows "{kind}: {text} ({status}) {filename}"
+    await expect(page.getByText('favorite:').first()).toBeVisible();
+    await expect(page.getByText('comment:').first()).toBeVisible();
+    await expect(page.getByText('(active)', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('(archived)', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText('clip_marker_a.mov').first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Show Active Only' }).click();
-    await expect(page.getByRole('button', { name: 'Show All Markers' })).toBeVisible();
-    await expect(page.getByText(/markers for shot:\s*1/)).toBeVisible();
-
-    await page.getByRole('button', { name: 'Favorite Selected' }).click();
-    await expect(page.getByText('Creating favorite moment...')).toBeVisible();
-
-    page.once('dialog', (dialog) => dialog.accept('smoke comment'));
-    await page.getByRole('button', { name: 'Comment Selected' }).click();
-    await expect(page.getByText('Creating comment marker...')).toBeVisible();
-
-    page.once('dialog', (dialog) => dialog.accept('cam context'));
-    await page.getByRole('button', { name: 'CAM Selected' }).click();
-    await expect(page.getByText('Creating CAM marker...')).toBeVisible();
-
-    await expect(page.getByText(/markers for shot:\s*4/)).toBeVisible();
-    await expect(page.getByText('Favorite Markers').first()).toBeVisible();
-    await expect(page.getByText('Comment Markers').first()).toBeVisible();
-    await expect(page.getByText('CAM Markers').first()).toBeVisible();
-    await expect(page.getByText(/cam markers:\s*1/)).toBeVisible();
-    await expect(page.getByText(/status:\s*context-linked markers detected/)).toBeVisible();
-    await expect(page.getByText('smoke comment').first()).toBeVisible();
-    await expect(page.getByText('cam context').first()).toBeVisible();
+    // CAM Ready section — no cam markers in fixture
+    await expect(page.getByText('CAM Ready', { exact: true })).toBeVisible();
+    await expect(page.getByText('cam markers: 0')).toBeVisible();
+    await expect(page.getByText('status: waiting for CAM payloads')).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);
     expect(await page.evaluate(() => window.localStorage.getItem('vetka_last_runtime_error'))).toBeNull();
 
-    expect(markerBodies).toHaveLength(3);
-    expect(markerBodies.map((body) => body.kind)).toEqual(['favorite', 'comment', 'cam']);
-    expect(markerBodies.every((body) => body.op === 'create')).toBe(true);
-    expect(markerBodies[1].text).toBe('smoke comment');
-    expect(markerBodies[2].cam_payload.hint).toBe('cam context');
     expect(requestLog.some((entry) => entry.pathname === '/api/cut/project-state')).toBe(true);
-    expect(requestLog.filter((entry) => entry.pathname === '/api/cut/time-markers/apply')).toHaveLength(3);
   });
 });

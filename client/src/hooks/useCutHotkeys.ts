@@ -57,6 +57,7 @@ export type CutHotkeyAction =
   | 'selectTool'
   | 'insertEdit'
   | 'overwriteEdit'
+  | 'replaceEdit'
   // MARKER_W5.TRIM: Trim tools (FCP7 Ch.44)
   | 'slipTool'
   | 'slideTool'
@@ -67,6 +68,12 @@ export type CutHotkeyAction =
   | 'addComment'
   | 'nextMarker'
   | 'prevMarker'
+  // MARKER_KF67: Keyframe navigation
+  | 'nextKeyframe'
+  | 'prevKeyframe'
+  | 'addKeyframe'
+  // MARKER_FCP7.SPEED: Speed dialog
+  | 'openSpeedControl'
   // Mark operations
   | 'markClip'
   | 'playInToOut'
@@ -148,6 +155,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nudgeRight:          ['timeline'],
   insertEdit:          ['timeline', 'source'],
   overwriteEdit:       ['timeline', 'source'],
+  replaceEdit:         ['timeline', 'source'],
 
   // Tools — timeline only
   razorTool:           ['timeline'],
@@ -170,6 +178,10 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   addComment:          ['source', 'program', 'timeline'],
   nextMarker:          ['source', 'program', 'timeline'],
   prevMarker:          ['source', 'program', 'timeline'],
+  nextKeyframe:        ['timeline'],
+  prevKeyframe:        ['timeline'],
+  addKeyframe:         ['timeline'],
+  openSpeedControl:    'global',
 
   // Mark operations
   markClip:            ['timeline'],
@@ -274,6 +286,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectTool:        'v',
   insertEdit:        ',',
   overwriteEdit:     '.',
+  replaceEdit:       'F11',
   // MARKER_W5.TRIM: Premiere trim tools
   slipTool:          'y',
   slideTool:         'u',
@@ -284,6 +297,10 @@ export const PREMIERE_PRESET: HotkeyMap = {
   addComment:        'Shift+m',
   nextMarker:        'Shift+ArrowDown',
   prevMarker:        'Shift+ArrowUp',
+  nextKeyframe:      'Shift+k',
+  prevKeyframe:      'Alt+k',
+  addKeyframe:       'Ctrl+k',
+  openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -305,7 +322,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
   // Linked selection
-  toggleLinkedSelection: 'Shift+l',
+  toggleLinkedSelection: 'Cmd+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -360,6 +377,7 @@ export const FCP7_PRESET: HotkeyMap = {
   selectTool:        'a',
   insertEdit:        'F9',
   overwriteEdit:     'F10',
+  replaceEdit:       'F11',
   // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
   slipTool:          's',
   slideTool:         'd',
@@ -370,6 +388,10 @@ export const FCP7_PRESET: HotkeyMap = {
   addComment:        'Shift+m',
   nextMarker:        'Shift+ArrowDown',
   prevMarker:        'Shift+ArrowUp',
+  nextKeyframe:      'Shift+k',
+  prevKeyframe:      'Alt+k',
+  addKeyframe:       'Ctrl+k',
+  openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -391,7 +413,7 @@ export const FCP7_PRESET: HotkeyMap = {
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
   // Linked selection
-  toggleLinkedSelection: 'Shift+l',
+  toggleLinkedSelection: 'Cmd+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -568,6 +590,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'selectTool', label: 'Selection Tool', group: 'Tools' },
   { action: 'insertEdit', label: 'Insert Edit', group: 'Tools' },
   { action: 'overwriteEdit', label: 'Overwrite Edit', group: 'Tools' },
+  { action: 'replaceEdit', label: 'Replace Edit (F11)', group: 'Tools' },
   // MARKER_W5.TRIM: Trim tools
   { action: 'slipTool', label: 'Slip Tool', group: 'Tools' },
   { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },
@@ -578,6 +601,10 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
   { action: 'nextMarker', label: 'Next Marker', group: 'Markers' },
   { action: 'prevMarker', label: 'Previous Marker', group: 'Markers' },
+  { action: 'nextKeyframe', label: 'Next Keyframe', group: 'Keyframes' },
+  { action: 'prevKeyframe', label: 'Previous Keyframe', group: 'Keyframes' },
+  { action: 'addKeyframe', label: 'Add Keyframe', group: 'Keyframes' },
+  { action: 'openSpeedControl', label: 'Change Speed (⌘J)', group: 'Tools' },
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },

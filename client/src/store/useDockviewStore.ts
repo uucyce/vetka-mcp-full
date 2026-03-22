@@ -27,10 +27,21 @@ interface DockviewStoreState {
   addTimelinePanel: (timelineId: string, label: string) => void;
   /** MARKER_PANEL-TOGGLE: Toggle panel — if open, focus it. If closed, re-add it. */
   togglePanel: (id: string, component: string, title: string) => void;
+  /** MARKER_GAMMA-3: Toggle maximize active panel group (backtick key, FCP7/Premiere style) */
+  toggleMaximize: () => void;
+  /** MARKER_GAMMA-12: Save/restore focused panel per workspace preset */
+  focusPerPreset: Record<WorkspacePresetName, string | null>;
+  saveFocusForPreset: (preset: WorkspacePresetName, panelId: string | null) => void;
+  getFocusForPreset: (preset: WorkspacePresetName) => string | null;
+  /** MARKER_GAMMA-20: Marker kind filter — which marker types are visible on timeline */
+  visibleMarkerKinds: Set<string>;
+  toggleMarkerKind: (kind: string) => void;
+  isMarkerKindVisible: (kind: string) => boolean;
 }
 
 const LS_PREFIX = 'cut_dockview_';
 const LS_ACTIVE = 'cut_dockview_active';
+const LS_FOCUS = 'cut_focus_per_preset';
 
 export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   activePreset: (() => {
@@ -100,6 +111,22 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
     } catch { /* addPanel failed */ }
   },
 
+  // MARKER_GAMMA-3: Toggle maximize active panel group (backtick key)
+  toggleMaximize: () => {
+    const api = get().apiRef;
+    if (!api) return;
+    try {
+      if (api.hasMaximizedGroup()) {
+        api.exitMaximizedGroup();
+      } else {
+        const active = api.activePanel;
+        if (active) {
+          api.maximizeGroup(active);
+        }
+      }
+    } catch { /* maximize API not available in this dockview version */ }
+  },
+
   // MARKER_C12: Add timeline panel to dockview
   addTimelinePanel: (timelineId, label) => {
     const api = get().apiRef;
@@ -121,4 +148,33 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
         : { direction: 'below' },
     });
   },
+
+  // MARKER_GAMMA-12 + GAMMA-13: Focus persistence per workspace preset (localStorage-backed)
+  focusPerPreset: (() => {
+    const defaults = { editing: 'timeline', color: 'program', audio: 'timeline', custom: null };
+    try {
+      const raw = localStorage.getItem(LS_FOCUS);
+      if (raw) return { ...defaults, ...JSON.parse(raw) };
+    } catch { /* corrupt */ }
+    return defaults;
+  })() as Record<WorkspacePresetName, string | null>,
+  saveFocusForPreset: (preset, panelId) => {
+    const updated = { ...get().focusPerPreset, [preset]: panelId };
+    set({ focusPerPreset: updated });
+    try { localStorage.setItem(LS_FOCUS, JSON.stringify(updated)); } catch { /* noop */ }
+  },
+  getFocusForPreset: (preset) => get().focusPerPreset[preset],
+
+  // MARKER_GAMMA-20: Marker kind filter (all visible by default)
+  visibleMarkerKinds: new Set([
+    'favorite', 'comment', 'cam', 'insight', 'chat',
+    'bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point',
+  ]),
+  toggleMarkerKind: (kind) => {
+    const current = new Set(get().visibleMarkerKinds);
+    if (current.has(kind)) current.delete(kind);
+    else current.add(kind);
+    set({ visibleMarkerKinds: current });
+  },
+  isMarkerKindVisible: (kind) => get().visibleMarkerKinds.has(kind),
 }));

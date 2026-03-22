@@ -8,7 +8,6 @@ import math
 import mimetypes
 import os
 import re
-import shutil
 import subprocess
 import threading
 
@@ -73,6 +72,7 @@ from src.services.pulse_srt_bridge import (
 )
 from src.services.converters.premiere_xml_converter import build_premiere_xml
 from src.services.converters.fcpxml_converter import build_fcpxml
+from src.services.cut_codec_probe import probe_file, probe_duration
 from src.services.pulse_story_space import (
     TrianglePosition,
     StorySpacePoint,
@@ -537,7 +537,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
             mi_entry = media_index_files.get(path.path) or {}
             full_duration = float(mi_entry.get("duration_sec") or 0)
             if full_duration <= 0:
-                full_duration = _probe_clip_duration(path.path)
+                full_duration = probe_duration(path.path)
             if full_duration <= 0:
                 full_duration = 5.0  # ultimate fallback
 
@@ -1240,6 +1240,63 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 clip["start_sec"] = start_sec
                 applied["start_sec"] = start_sec
             applied_ops.append(applied)
+            continue
+
+        # MARKER_A2.1 — slip_clip: change source_in without moving clip on timeline
+        # FCP7 slip = move content within fixed clip window (Ch.57)
+        if op_type == "slip_clip":
+            clip_id = str(op.get("clip_id") or "")
+            source_in = float(op.get("source_in", 0.0))
+            if source_in < 0:
+                source_in = 0.0
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip["source_in"] = round(source_in, 4)
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "source_in": round(source_in, 4)})
+            continue
+
+        # MARKER_A2.2 — ripple_trim: trim edge + shift all subsequent clips in lane
+        # FCP7 ripple trim = extend/shorten clip, everything after shifts (Ch.56)
+        if op_type == "ripple_trim":
+            clip_id = str(op.get("clip_id") or "")
+            new_start = float(op.get("start_sec", -1))
+            new_dur = float(op.get("duration_sec", -1))
+            if new_dur <= 0:
+                raise ValueError("duration_sec must be > 0")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            old_start = float(clip.get("start_sec") or 0.0)
+            old_dur = float(clip.get("duration_sec") or 0.0)
+            old_end = old_start + old_dur
+            # Apply new values
+            if new_start >= 0:
+                clip["start_sec"] = round(new_start, 4)
+            else:
+                new_start = old_start
+            clip["duration_sec"] = round(new_dur, 4)
+            new_end = new_start + new_dur
+            # Delta = how much the clip's end moved
+            delta = round(new_end - old_end, 4)
+            # Shift all subsequent clips in same lane by delta
+            if abs(delta) > 0.0001:
+                for c in source_lane.get("clips", []):
+                    if c is clip:
+                        continue
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c_start >= old_end - 0.001:
+                        c["start_sec"] = max(0.0, round(c_start + delta, 4))
+            source_lane["clips"] = sorted(
+                source_lane["clips"],
+                key=lambda c: float(c.get("start_sec") or 0.0),
+            )
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id,
+                "lane_id": str(source_lane.get("lane_id") or ""),
+                "start_sec": round(new_start, 4), "duration_sec": round(new_dur, 4),
+                "delta_sec": delta,
+            })
             continue
 
         if op_type == "apply_sync_offset":
@@ -2491,46 +2548,8 @@ def _resolve_asset_path(path: str, sandbox_root: str = "") -> Path:
     return p.resolve()
 
 
-def _probe_ffprobe_metadata(path: Path) -> dict[str, Any]:
-    ffprobe_bin = shutil.which("ffprobe")
-    if not ffprobe_bin:
-        return {"available": False, "error": "ffprobe_not_found"}
-    if not path.exists():
-        return {"available": True, "error": "file_not_found"}
-    try:
-        proc = subprocess.run(
-            [
-                ffprobe_bin,
-                "-v",
-                "error",
-                "-show_entries",
-                "stream=index,codec_name,codec_type,width,height,avg_frame_rate,r_frame_rate,pix_fmt,channels,sample_rate:format=format_name,duration,bit_rate",
-                "-of",
-                "json",
-                str(path),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=10,
-            check=False,
-        )
-        if proc.returncode != 0:
-            return {"available": True, "error": f"ffprobe_failed: {proc.stderr.strip() or proc.returncode}"}
-        payload = json.loads(proc.stdout or "{}")
-        return {"available": True, "metadata": payload}
-    except Exception as exc:
-        return {"available": True, "error": f"ffprobe_exception: {exc}"}
-
-
-def _probe_clip_duration(media_path: str) -> float:
-    """MARKER_189.2 — Quick ffprobe duration for a single clip. Returns 0.0 on failure."""
-    result = _probe_ffprobe_metadata(Path(media_path))
-    try:
-        metadata = result.get("metadata") or {}
-        fmt = metadata.get("format") or {}
-        return float(fmt.get("duration") or 0)
-    except (ValueError, TypeError):
-        return 0.0
+# MARKER_B1-CLEANUP: _probe_ffprobe_metadata and _probe_clip_duration removed.
+# Use cut_codec_probe.probe_file() and probe_duration() instead.
 
 
 def _collect_export_material(
@@ -4526,7 +4545,7 @@ async def cut_probe_log_detect(source_path: str) -> dict[str, Any]:
     MARKER_B24 — Probe video file and auto-detect camera log profile.
     Returns metadata + log detection (profile, gamut, camera, confidence).
     """
-    from src.services.cut_codec_probe import probe_and_detect_log
+    from src.services.cut_codec_probe import probe_and_detect_log  # noqa: F811
     return probe_and_detect_log(source_path)
 
 
@@ -5138,12 +5157,27 @@ async def cut_timecode_sync_async(body: CutTimecodeSyncRequest) -> dict[str, Any
 @router.get("/job/{job_id}")
 async def cut_job_status(job_id: str) -> dict[str, Any]:
     """
-    MARKER_170.MCP.JOB_STATUS_V1
+    MARKER_170.MCP.JOB_STATUS_V1 + B2.2 — ETA calculation.
     """
     store = get_cut_mcp_job_store()
     job = store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"CUT job not found: {job_id}")
+
+    # MARKER_B2.2: Compute elapsed + ETA for running jobs
+    started_at = job.get("started_at")
+    progress = float(job.get("progress") or 0)
+    if started_at and job.get("state") == "running" and progress > 0.01:
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            start = _dt.fromisoformat(started_at)
+            elapsed = (_dt.now(_tz.utc) - start).total_seconds()
+            job["elapsed_sec"] = round(elapsed, 1)
+            job["eta_sec"] = round(elapsed * (1.0 - progress) / progress, 1)
+        except Exception:
+            job["elapsed_sec"] = 0
+            job["eta_sec"] = 0
+
     return {"success": True, "job": job}
 
 
@@ -5497,21 +5531,29 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
     path = _resolve_asset_path(body.source_path, body.sandbox_root)
     ext = path.suffix.lower().lstrip(".")
     mime_type, _ = mimetypes.guess_type(str(path))
-    # MARKER_B1.5: expanded playback class detection
-    if ext in NATIVE_VIDEO_EXT:
-        playback_class = "native"
-    elif ext in PROXY_RECOMMENDED_EXT:
-        playback_class = "proxy_recommended"
-    elif ext in TRANSCODE_REQUIRED_EXT:
-        playback_class = "transcode_required"
-    elif ext in AUDIO_EXT:
-        playback_class = "native"
+    # MARKER_B1-CLEANUP: Use cut_codec_probe for structured probe + playback class
+    if body.probe_ffprobe:
+        probe_result = probe_file(path)
+        playback_class = probe_result.playback_class or "unknown"
+        ffprobe_payload = {"available": probe_result.available, "probe": probe_result.to_dict()}
+        if probe_result.error:
+            ffprobe_payload["error"] = probe_result.error
     else:
-        playback_class = "unknown"
-    ffprobe_payload = _probe_ffprobe_metadata(path) if body.probe_ffprobe else {"available": False, "error": "disabled"}
+        ffprobe_payload = {"available": False, "error": "disabled"}
+        # Fallback to extension-based classification
+        if ext in NATIVE_VIDEO_EXT:
+            playback_class = "native"
+        elif ext in PROXY_RECOMMENDED_EXT:
+            playback_class = "proxy_recommended"
+        elif ext in TRANSCODE_REQUIRED_EXT:
+            playback_class = "transcode_required"
+        elif ext in AUDIO_EXT:
+            playback_class = "native"
+        else:
+            playback_class = "unknown"
     return {
         "success": True,
-        "schema_version": "cut_media_support_v1",
+        "schema_version": "cut_media_support_v2",
         "source_path": str(path),
         "exists": path.exists(),
         "mime_type": mime_type or "application/octet-stream",
@@ -6847,21 +6889,25 @@ async def cut_montage_suggestions(
 
 
 class CutProxyGenerateRequest(BaseModel):
-    """MARKER_173.6 — Proxy generation request."""
+    """MARKER_173.6 + B2 — Proxy generation request."""
     sandbox_root: str
     project_id: str
     source_paths: list[str] = Field(default_factory=list, description="Media files to proxy. If empty, uses all clips from timeline.")
-    resolution: str = Field(default="720p", description="Proxy resolution: 720p, 480p, 360p")
+    resolution: str = Field(default="auto", description="Proxy resolution: auto, 720p, 480p, 360p. 'auto' probes each file and picks optimal spec.")
     force: bool = Field(default=False, description="Force regeneration even if proxy exists")
 
 
 @router.post("/proxy/generate")
 async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
     """
-    MARKER_173.6 — Generate proxy files for timeline clips.
+    MARKER_173.6 + B2 — Generate proxy files for timeline clips.
 
-    Creates lightweight 720p/480p/360p H.264 proxies for faster scrubbing.
-    Skips if fresh proxy already exists. Stores in cut_runtime/proxies/.
+    Creates lightweight proxies for faster scrubbing.
+    resolution="auto" probes each file via ProbeResult and picks optimal spec:
+      - transcode_required / 4K heavy → 480p
+      - proxy_recommended 1080p → 720p
+      - native < 4K → skip (no proxy needed)
+    Explicit modes: 720p, 480p, 360p apply same spec to all files.
     """
     from src.services.cut_proxy_worker import PROXY_480P, PROXY_360P
 
@@ -6869,10 +6915,6 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
     project = store.load_project()
     if project is None or str(project.get("project_id") or "") != str(body.project_id):
         return {"success": False, "error": "project_not_found"}
-
-    # Select resolution preset
-    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
-    spec = spec_map.get(body.resolution)
 
     # Discover source paths
     source_paths = list(body.source_paths)
@@ -6898,6 +6940,27 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
             p = Path(body.sandbox_root) / sp
         resolved.append(str(p))
 
+    # MARKER_B2: Auto mode — probe each file, decide per-file spec
+    if body.resolution == "auto":
+        worker = ProxyWorker(body.sandbox_root, force=body.force)
+        auto_results = worker.generate_auto(resolved)
+
+        return {
+            "success": True,
+            "schema_version": "cut_proxy_generate_v2",
+            "mode": "auto",
+            "results": auto_results,
+            "total": len(auto_results),
+            "generated": sum(1 for r in auto_results if r.get("proxy_success") and not r.get("proxy_skipped")),
+            "skipped": sum(1 for r in auto_results if not r.get("needs_proxy") or r.get("proxy_skipped")),
+            "failed": sum(1 for r in auto_results if r.get("needs_proxy") and not r.get("proxy_success")),
+            "resolution": "auto",
+        }
+
+    # Explicit resolution mode (720p / 480p / 360p)
+    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
+    spec = spec_map.get(body.resolution)
+
     worker = ProxyWorker(body.sandbox_root, spec=spec, force=body.force)
     results = worker.generate_batch(resolved)
 
@@ -6916,7 +6979,8 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
 
     return {
         "success": True,
-        "schema_version": "cut_proxy_generate_v1",
+        "schema_version": "cut_proxy_generate_v2",
+        "mode": "explicit",
         "results": proxy_results,
         "total": len(proxy_results),
         "generated": sum(1 for r in results if r.success and not r.skipped),
@@ -8526,29 +8590,45 @@ class CutRenderMasterRequest(BaseModel):
     range_in: float | None = None   # seconds — export only this range
     range_out: float | None = None
     audio_stems: bool = False        # export per-track WAV files
+    # MARKER_B13: Mixer state for render
+    mixer: dict[str, Any] | None = None  # {lanes: {lane_id: {volume, pan, mute, solo}}, master_volume}
 
 
-_CODEC_MAP = {
-    "prores_422": {"vcodec": "prores_ks", "profile": "2", "ext": ".mov", "pix_fmt": "yuv422p10le"},
-    "prores_4444": {"vcodec": "prores_ks", "profile": "4", "ext": ".mov", "pix_fmt": "yuva444p10le"},
-    "h264": {"vcodec": "libx264", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-    "h265": {"vcodec": "libx265", "profile": "", "ext": ".mp4", "pix_fmt": "yuv420p"},
-}
+# MARKER_B5-CLEANUP: _CODEC_MAP and _RESOLUTION_MAP removed.
+# Use cut_render_engine.CODEC_MAP and RESOLUTION_MAP instead.
 
-_RESOLUTION_MAP = {
-    "4k": (3840, 2160),
-    "1080p": (1920, 1080),
-    "720p": (1280, 720),
-    "source": None,
-}
+
+def _emit_render_progress(job_id: str, progress: float, message: str = "") -> None:
+    """MARKER_B2.6 — Emit render progress via SocketIO (best-effort, fire-and-forget)."""
+    try:
+        import asyncio
+        from src.api.main import sio
+        data = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        # Try to get running loop (if called from async context)
+        try:
+            loop = asyncio.get_running_loop()
+            loop.call_soon_threadsafe(
+                asyncio.ensure_future,
+                sio.emit("render_progress", data),
+            )
+        except RuntimeError:
+            # No running loop (background thread) — create one-shot
+            try:
+                loop = asyncio.new_event_loop()
+                loop.run_until_complete(sio.emit("render_progress", data))
+                loop.close()
+            except Exception:
+                pass  # SocketIO emit is best-effort
+    except Exception:
+        pass  # Import or emit failure — don't break render
 
 
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
     """
-    MARKER_B6 — Background thread: delegates to cut_render_engine.render_timeline().
-    Replaces inline FFmpeg concat pipeline with filter_complex-capable engine.
+    MARKER_B6 + B2.1 — Background thread: delegates to cut_render_engine.render_timeline().
+    Supports cancel via job store cancel_requested flag.
     """
-    from src.services.cut_render_engine import render_timeline
+    from src.services.cut_render_engine import render_timeline, RenderCancelled
 
     store = get_cut_mcp_job_store()
 
@@ -8570,11 +8650,18 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
         sandbox = req.sandbox_root or "/tmp/cut_sandbox"
         output_dir = os.path.join(sandbox, "cut_runtime", "renders")
 
-        # Progress callback → job store updates
+        # Progress callback → job store updates + SocketIO emit
         def on_progress(p: float, msg: str = "") -> None:
             store.update_job(job_id, progress=p)
+            # MARKER_B2.6: Emit progress via SocketIO (best-effort, non-blocking)
+            _emit_render_progress(job_id, p, msg)
 
-        # Delegate to render engine (handles filter_complex, transitions, speed, stems)
+        # MARKER_B2.1: Cancel check — reads cancel_requested from job store
+        def cancel_check() -> bool:
+            job = store.get_job(job_id)
+            return bool(job and job.get("cancel_requested"))
+
+        # Delegate to render engine (handles filter_complex, transitions, speed, stems, mixer, cancel)
         result = render_timeline(
             timeline,
             codec=req.codec,
@@ -8589,6 +8676,8 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             timeline_id=req.timeline_id,
             preset=req.preset,
             on_progress=on_progress,
+            mixer=req.mixer,  # MARKER_B13
+            cancel_check=cancel_check,  # MARKER_B2.1
         )
 
         store.update_job(
@@ -8597,9 +8686,16 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             progress=1.0,
             result=result,
         )
+        _emit_render_progress(job_id, 1.0, "done")
+
+    except RenderCancelled:
+        store.update_job(job_id, state="cancelled", progress=1.0,
+                         error={"message": "Render cancelled by user"})
+        _emit_render_progress(job_id, 1.0, "cancelled")
 
     except Exception as exc:
         store.update_job(job_id, state="error", error={"message": str(exc)})
+        _emit_render_progress(job_id, 0.0, f"error: {exc}")
 
 
 @router.post("/render/master")
@@ -8630,6 +8726,203 @@ async def cut_render_master(req: CutRenderMasterRequest) -> dict[str, Any]:
         "schema_version": "cut_render_master_v1",
         "job_id": str(job["job_id"]),
         "job": job,
+    }
+
+
+# ─── MARKER_B17: LUFS Loudness Analysis ───────────────────────────────
+
+@router.get("/audio/loudness")
+async def cut_audio_loudness(
+    source_path: str,
+    standard: str = "ebu_r128",
+) -> dict[str, Any]:
+    """
+    MARKER_B17 — Analyze audio loudness (EBU R128 / ATSC A/85 / YouTube / etc).
+    Returns integrated LUFS, true peak, LRA, and compliance status.
+    Uses FFmpeg ebur128 filter — no external deps.
+    """
+    from src.services.cut_audio_engine import analyze_loudness, LOUDNESS_STANDARDS
+    result = analyze_loudness(source_path, standard=standard)
+    return {
+        **result.to_dict(),
+        "standards_available": list(LOUDNESS_STANDARDS.keys()),
+    }
+
+
+@router.get("/audio/loudness-standards")
+async def cut_loudness_standards() -> dict[str, Any]:
+    """MARKER_B17 — List available loudness standards with targets."""
+    from src.services.cut_audio_engine import LOUDNESS_STANDARDS
+    return {"success": True, "standards": LOUDNESS_STANDARDS}
+
+
+# ─── MARKER_B2.3: Export Presets listing ───────────────────────────────
+
+@router.get("/render/presets")
+async def cut_render_presets() -> dict[str, Any]:
+    """MARKER_B2.3 — List available export presets for ExportDialog dropdown."""
+    from src.services.cut_render_engine import EXPORT_PRESETS
+    presets = []
+    for key, cfg in EXPORT_PRESETS.items():
+        if key == "youtube":  # skip backward compat alias
+            continue
+        presets.append({
+            "key": key,
+            "label": cfg.get("label", key),
+            "codec": cfg.get("codec", "h264"),
+            "resolution": cfg.get("resolution", "1080p"),
+            "fps": cfg.get("fps", 25),
+            "quality": cfg.get("quality", 80),
+            "aspect": cfg.get("aspect"),
+        })
+    return {"success": True, "presets": presets, "total": len(presets)}
+
+
+# ─── MARKER_B2.4: Batch Export ─────────────────────────────────────────
+
+
+class CutRenderBatchRequest(BaseModel):
+    """MARKER_B2.4 — Batch render: multiple presets in one job."""
+    sandbox_root: str = ""
+    project_id: str = "project"
+    timeline_id: str = "main"
+    presets: list[str] = Field(description="List of preset keys from EXPORT_PRESETS, e.g. ['youtube_1080', 'instagram_reels', 'prores_master']")
+    mixer: dict[str, Any] | None = None
+
+
+def _run_batch_render_job(job_id: str, req: CutRenderBatchRequest) -> None:
+    """
+    MARKER_B2.4 — Sequential batch render. Runs each preset one at a time.
+    Parent job tracks aggregate progress. Cancel stops current + skips rest.
+    """
+    from src.services.cut_render_engine import render_timeline, RenderCancelled, EXPORT_PRESETS
+
+    store = get_cut_mcp_job_store()
+
+    try:
+        store.update_job(job_id, state="running", progress=0.0)
+
+        project_store = CutProjectStore.get_instance()
+        if not project_store:
+            store.update_job(job_id, state="error", error={"message": "No project store"})
+            return
+
+        timeline = project_store.load_timeline(req.timeline_id)
+        if not timeline:
+            store.update_job(job_id, state="error", error={"message": f"Timeline '{req.timeline_id}' not found"})
+            return
+
+        sandbox = req.sandbox_root or "/tmp/cut_sandbox"
+        output_dir = os.path.join(sandbox, "cut_runtime", "renders")
+
+        total = len(req.presets)
+        results: list[dict[str, Any]] = []
+        completed = 0
+        cancelled = False
+
+        def cancel_check() -> bool:
+            job = store.get_job(job_id)
+            return bool(job and job.get("cancel_requested"))
+
+        for i, preset_key in enumerate(req.presets):
+            # Check cancel before starting next preset
+            if cancel_check():
+                cancelled = True
+                break
+
+            preset_cfg = EXPORT_PRESETS.get(preset_key)
+            if not preset_cfg:
+                results.append({"preset": preset_key, "success": False, "error": f"Unknown preset: {preset_key}"})
+                completed += 1
+                continue
+
+            # Progress callback: maps sub-job progress into batch slice
+            def on_progress(p: float, msg: str = "", _i: int = i) -> None:
+                batch_progress = (_i + p) / total
+                store.update_job(job_id, progress=round(batch_progress, 3))
+
+            on_progress(0.0, f"Starting {preset_key}")
+
+            try:
+                result = render_timeline(
+                    timeline,
+                    codec=preset_cfg.get("codec", "h264"),
+                    resolution=preset_cfg.get("resolution", "1080p"),
+                    fps=preset_cfg.get("fps", 25),
+                    quality=preset_cfg.get("quality", 80),
+                    preset=preset_key,
+                    output_dir=output_dir,
+                    project_id=req.project_id,
+                    timeline_id=req.timeline_id,
+                    mixer=req.mixer,
+                    cancel_check=cancel_check,
+                    on_progress=on_progress,
+                )
+                results.append({"preset": preset_key, "success": True, "label": preset_cfg.get("label", preset_key), **result})
+                completed += 1
+
+            except RenderCancelled:
+                results.append({"preset": preset_key, "success": False, "error": "cancelled"})
+                cancelled = True
+                break
+
+            except Exception as exc:
+                results.append({"preset": preset_key, "success": False, "error": str(exc)})
+                completed += 1
+
+        if cancelled:
+            # Mark remaining presets as skipped
+            for j in range(len(results), total):
+                results.append({"preset": req.presets[j], "success": False, "error": "skipped (batch cancelled)"})
+            store.update_job(job_id, state="cancelled", progress=1.0, result={
+                "results": results,
+                "completed": completed,
+                "total": total,
+                "cancelled": True,
+            })
+        else:
+            store.update_job(job_id, state="done", progress=1.0, result={
+                "results": results,
+                "completed": completed,
+                "total": total,
+                "cancelled": False,
+                "success_count": sum(1 for r in results if r.get("success")),
+                "failed_count": sum(1 for r in results if not r.get("success")),
+            })
+
+    except Exception as exc:
+        store.update_job(job_id, state="error", error={"message": str(exc)})
+
+
+@router.post("/render/batch")
+async def cut_render_batch(req: CutRenderBatchRequest) -> dict[str, Any]:
+    """
+    MARKER_B2.4 — Batch render: export multiple presets sequentially.
+    Creates async batch job. Poll via GET /cut/job/{job_id}.
+    Result contains per-preset success/output_path.
+    """
+    if not req.presets:
+        return {"success": False, "error": "No presets specified"}
+
+    store = get_cut_mcp_job_store()
+    job = store.create_job(
+        "render_batch",
+        {
+            "sandbox_root": req.sandbox_root,
+            "project_id": req.project_id,
+            "timeline_id": req.timeline_id,
+            "presets": req.presets,
+            "preset_count": len(req.presets),
+        },
+    )
+    thread = threading.Thread(target=_run_batch_render_job, args=(str(job["job_id"]), req), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_render_batch_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+        "preset_count": len(req.presets),
     }
 
 

@@ -13,6 +13,7 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
+import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
   loadPresetName,
@@ -20,6 +21,7 @@ import {
 } from '../../hooks/useCutHotkeys';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
+const SpeedControl = lazy(() => import('./SpeedControl'));
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -184,6 +186,7 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
+  const [speedControlOpen, setSpeedControlOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -244,7 +247,7 @@ export default function MenuBar() {
         }},
         { separator: true },
         { label: 'Import Media...', shortcut: '⌘I', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', metaKey: true }));
+          window.dispatchEvent(new CustomEvent('cut:import-media'));
         }},
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
@@ -344,7 +347,21 @@ export default function MenuBar() {
           { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
           { separator: true },
           { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
-          { label: 'Marker Overlay', disabled: true },
+          { label: 'Marker Overlay', submenu: [
+            ...([
+              ['favorite', 'Favorites'],
+              ['comment', 'Comments'],
+              ['cam', 'Camera Marks'],
+              ['insight', 'Insights'],
+              ['bpm_audio', 'BPM Audio'],
+              ['bpm_visual', 'BPM Visual'],
+              ['bpm_script', 'BPM Script'],
+              ['sync_point', 'Sync Points'],
+            ] as const).map(([kind, label]) => ({
+              label: `${dockStore.getState().isMarkerKindVisible(kind) ? '\u2713 ' : '  '}${label}`,
+              action: () => dockStore.getState().toggleMarkerKind(kind),
+            })),
+          ]},
         ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
@@ -473,7 +490,7 @@ export default function MenuBar() {
         { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
         { label: 'Superimpose', shortcut: 'F12', disabled: true },
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
+        { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
@@ -511,17 +528,76 @@ export default function MenuBar() {
         { label: 'Render All', disabled: true },
         { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true }));
+          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
+          // TODO: Replace with store.getState().splitClip() when Alpha adds store action
+          const s = store.getState();
+          const t = s.currentTime;
+          const newLanes = s.lanes.map((lane) => ({
+            ...lane,
+            clips: lane.clips.flatMap((c) => {
+              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
+                const leftDur = t - c.start_sec;
+                const rightDur = c.duration_sec - leftDur;
+                return [
+                  { ...c, duration_sec: leftDur },
+                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
+                    source_in: (c.source_in ?? 0) + leftDur },
+                ];
+              }
+              return [c];
+            }),
+          }));
+          s.setLanes(newLanes);
         }},
         { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', metaKey: true, shiftKey: true }));
+          // MARKER_GAMMA-2: Split on ALL tracks at playhead
+          const s = store.getState();
+          const t = s.currentTime;
+          const newLanes = s.lanes.map((lane) => ({
+            ...lane,
+            clips: lane.clips.flatMap((c) => {
+              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
+                const leftDur = t - c.start_sec;
+                const rightDur = c.duration_sec - leftDur;
+                return [
+                  { ...c, duration_sec: leftDur },
+                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
+                    source_in: (c.source_in ?? 0) + leftDur },
+                ];
+              }
+              return [c];
+            }),
+          }));
+          s.setLanes(newLanes);
         }},
         { separator: true },
         { label: 'Lift', shortcut: ';', action: () => store.getState().liftClip() },
         { label: 'Extract', shortcut: "'", action: () => store.getState().extractClip() },
         { separator: true },
         { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', shiftKey: true }));
+          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
+          // TODO: Replace with store.getState().rippleDelete() when Alpha adds store action
+          const s = store.getState();
+          if (!s.selectedClipId) return;
+          let clipStart = 0;
+          let clipDur = 0;
+          let clipLaneId = '';
+          for (const lane of s.lanes) {
+            const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+            if (clip) { clipStart = clip.start_sec; clipDur = clip.duration_sec; clipLaneId = lane.lane_id; break; }
+          }
+          if (!clipLaneId) return;
+          const newLanes = s.lanes.map((lane) => {
+            if (lane.lane_id !== clipLaneId) return lane;
+            return {
+              ...lane,
+              clips: lane.clips
+                .filter((c) => c.clip_id !== s.selectedClipId)
+                .map((c) => c.start_sec > clipStart ? { ...c, start_sec: Math.max(0, c.start_sec - clipDur) } : c),
+            };
+          });
+          s.setLanes(newLanes);
+          s.setSelectedClip(null);
         }},
         { label: 'Close Gap', action: () => store.getState().closeGap() },
         { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
@@ -545,7 +621,20 @@ export default function MenuBar() {
         { label: 'Solo Selected Item(s)', disabled: true },
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', metaKey: true }));
+          // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
+          // TODO: Replace with store.getState().runSceneDetection() when Alpha adds store action
+          const s = store.getState();
+          if (!s.sandboxRoot || !s.projectId) return;
+          void (async () => {
+            await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+              }),
+            });
+            await s.refreshProjectState?.();
+          })();
         }},
       ],
     },
@@ -588,15 +677,20 @@ export default function MenuBar() {
         { label: 'StorySpace 3D', action: () => togglePanel('storyspace', 'storyspace', 'StorySpace') },
         { label: 'History', action: () => togglePanel('history', 'history', 'History') },
         { separator: true },
+        { label: 'Tools', action: () => togglePanel('tools', 'tools', 'Tools') },
         { label: 'Audio Mixer', action: () => togglePanel('mixer', 'mixer', 'Mixer') },
         { label: 'Effects', action: () => togglePanel('effects', 'effects', 'Effects') },
         { label: 'Video Scopes', action: () => togglePanel('scopes', 'scopes', 'Scopes') },
         { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
+        { label: 'Speed Control', action: () => togglePanel('speed', 'speed', 'Speed') },
+        { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
+        { separator: true },
+        { label: 'Maximize Panel', shortcut: '`', action: () => dockStore.getState().toggleMaximize() },
       ],
     },
     {
@@ -613,14 +707,26 @@ export default function MenuBar() {
     const ds = dockStore.getState();
     const api = ds.apiRef;
     if (!api) return;
-    // Save current first
+    // MARKER_GAMMA-12: Save current focus before switching
+    const currentFocus = store.getState().focusedPanel;
+    ds.saveFocusForPreset(ds.activePreset, currentFocus);
+    // Save current layout before switching
     try { ds.saveLayout(ds.activePreset, api.toJSON()); } catch {}
-    // Load target
+    // Load target preset
     const saved = ds.loadLayout(name);
     if (saved) {
       try { api.fromJSON(saved); } catch {}
+      ds.setActivePreset(name);
+      // MARKER_GAMMA-12: Restore focus for target preset
+      const targetFocus = ds.getFocusForPreset(name);
+      if (targetFocus) {
+        store.getState().setFocusedPanel(targetFocus as any);
+      }
+    } else {
+      // MARKER_C5: No saved layout for this preset — set preset and reload.
+      ds.setActivePreset(name);
+      window.location.reload();
     }
-    ds.setActivePreset(name);
   }
 
   function focusPanel(panelId: string) {
@@ -664,6 +770,11 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
+        </Suspense>
+      )}
+      {speedControlOpen && (
+        <Suspense fallback={null}>
+          <SpeedControl onClose={() => setSpeedControlOpen(false)} />
         </Suspense>
       )}
     </>
