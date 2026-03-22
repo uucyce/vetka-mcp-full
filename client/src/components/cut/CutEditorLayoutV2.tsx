@@ -29,6 +29,7 @@ import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
+import TransportBar from './TransportBar';
 
 // ─── Styles ───
 
@@ -569,6 +570,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     <div style={ROOT} data-testid="cut-editor-layout">
       <MenuBar />
       {viewMode === 'debug' ? <DebugShellPanel /> : <DockviewLayout scriptText={scriptText} />}
+      <TransportBar />
       <ProjectSettings />
       <ExportDialog />
       <SaveIndicator />

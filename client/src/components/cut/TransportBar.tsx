@@ -160,6 +160,17 @@ function formatTimecode(seconds: number, fps = 25): string {
 
 const RATES = [0.25, 0.5, 1, 1.5, 2, 4];
 
+/** MARKER_QA.W5.2: Debug status from CutStandalone */
+function DebugStatusText() {
+  const debugStatus = useCutEditorStore((s) => s.debugStatus);
+  if (!debugStatus || debugStatus === 'Idle') return null;
+  return (
+    <span style={{ fontSize: 9, color: '#888', fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+      {debugStatus}
+    </span>
+  );
+}
+
 export default function TransportBar() {
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
@@ -873,6 +884,8 @@ export default function TransportBar() {
           </span>
         </>
       )}
+
+      <DebugStatusText />
 
       {/* View mode toggle */}
       <button
