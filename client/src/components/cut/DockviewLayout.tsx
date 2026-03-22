@@ -16,8 +16,8 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
 } from 'dockview-react';
-// MARKER_GAMMA-32: @layer cascade — dockview CSS wrapped in layer(dockview),
-// our theme CSS stays un-layered (highest priority, no double-class needed)
+// MARKER_GAMMA-32: dockview-layers.css declares @layer order + wraps dockview CSS.
+// dockview-cut-theme.css is un-layered → always wins over @layer(dockview).
 import './dockview-layers.css';
 import './dockview-cut-theme.css';
 

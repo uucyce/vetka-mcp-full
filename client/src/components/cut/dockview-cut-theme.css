@@ -102,16 +102,39 @@
   letter-spacing: 0.3px;
 }
 
-/* Active tab */
+/* Active tab — MARKER_GAMMA-FIX: Kill ALL colored underlines/accents */
 .dockview-theme-dark .dv-tab.dv-active-tab {
   border-bottom: 1px solid var(--border-bright);
+  border-top: none;
   background-color: var(--bg-hover);
   color: var(--text-secondary);
+}
+/* Kill pseudo-element underlines (dracula/vs theme ::after indicators) */
+.dockview-theme-dark .dv-tab.dv-active-tab::after,
+.dockview-theme-dark .dv-tab.dv-active-tab::before,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::after,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::before {
+  display: none;
+}
+/* Active group tab container — no colored bottom border */
+.dockview-theme-dark .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+.dockview-theme-dark .dv-groupview.dv-inactive-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+/* Active group tabs — no colored top border (kills vs-theme 2px indicator) */
+.dockview-theme-dark .dv-groupview .dv-tab.dv-active-tab {
+  border-top: none;
+}
+.dockview-theme-dark .dv-groupview .dv-tab.dv-inactive-tab {
+  border-top: none;
 }
 
 /* Inactive tab */
 .dockview-theme-dark .dv-tab.dv-inactive-tab {
   border-bottom: 1px solid transparent;
+  border-top: none;
   background-color: var(--bg-secondary);
   color: var(--text-dim);
 }
