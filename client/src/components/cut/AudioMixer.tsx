@@ -16,7 +16,7 @@
  *
  * @phase 198
  */
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore, type TimelineLane } from '../../store/useCutEditorStore';
 
 // ─── Styles ────────────────────────────────────────────────────────
@@ -154,20 +154,88 @@ function VuIndicator({ level, muted }: { level: number; muted: boolean }) {
   );
 }
 
-// ─── Pan display ───────────────────────────────────────────────────
+// ─── MARKER_GAMMA-17: Interactive pan knob ────────────────────────
 
-function PanDisplay({ value }: { value: number }) {
+function PanKnob({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   // value: -1 (L) to +1 (R), 0 = center
   const label = value === 0 ? 'C' : value < 0 ? `L${Math.round(-value * 100)}` : `R${Math.round(value * 100)}`;
+  const pct = (value + 1) / 2; // 0..1
+  const ref = useRef<HTMLDivElement>(null);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const el = ref.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const update = (clientX: number) => {
+      const raw = (clientX - rect.left) / rect.width; // 0..1
+      const clamped = Math.max(0, Math.min(1, raw));
+      const panVal = Math.round((clamped * 2 - 1) * 20) / 20; // snap to 0.05
+      onChange(panVal);
+    };
+    update(e.clientX);
+    const onMove = (ev: MouseEvent) => update(ev.clientX);
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  }, [onChange]);
+
+  const handleDoubleClick = useCallback(() => onChange(0), [onChange]);
+
   return (
-    <div style={{
-      fontSize: 7,
-      fontFamily: 'monospace',
-      color: '#555',
-      textAlign: 'center',
-      width: '100%',
-    }}>
-      {label}
+    <div
+      ref={ref}
+      onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
+      title={`Pan: ${label} (double-click to center)`}
+      style={{
+        width: '100%',
+        height: 8,
+        background: '#111',
+        borderRadius: 2,
+        position: 'relative',
+        cursor: 'ew-resize',
+        marginTop: 2,
+        marginBottom: 2,
+      }}
+    >
+      {/* Center mark */}
+      <div style={{
+        position: 'absolute',
+        left: '50%',
+        top: 0,
+        width: 1,
+        height: '100%',
+        background: '#333',
+      }} />
+      {/* Thumb */}
+      <div style={{
+        position: 'absolute',
+        left: `${pct * 100}%`,
+        top: 0,
+        width: 4,
+        height: '100%',
+        background: value === 0 ? '#666' : '#999',
+        borderRadius: 1,
+        transform: 'translateX(-2px)',
+      }} />
+      {/* Label */}
+      <div style={{
+        position: 'absolute',
+        top: -8,
+        left: 0,
+        right: 0,
+        fontSize: 6,
+        fontFamily: 'monospace',
+        color: '#555',
+        textAlign: 'center',
+        pointerEvents: 'none',
+      }}>
+        {label}
+      </div>
     </div>
   );
 }
@@ -182,6 +250,7 @@ function ChannelStrip({
   muted,
   soloed,
   onVolumeChange,
+  onPanChange,
   onToggleMute,
   onToggleSolo,
 }: {
@@ -192,6 +261,7 @@ function ChannelStrip({
   muted: boolean;
   soloed: boolean;
   onVolumeChange: (v: number) => void;
+  onPanChange: (v: number) => void;
   onToggleMute: () => void;
   onToggleSolo: () => void;
 }) {
@@ -203,7 +273,7 @@ function ChannelStrip({
       <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666' }}>
         {Math.round(volume * 100)}%
       </div>
-      <PanDisplay value={pan} />
+      <PanKnob value={pan} onChange={onPanChange} />
       <div style={{ display: 'flex', gap: 2 }}>
         <button style={SMALL_BTN(muted, '#e44')} onClick={onToggleMute}>M</button>
         <button style={SMALL_BTN(soloed, '#eab308')} onClick={onToggleSolo}>S</button>
@@ -233,6 +303,12 @@ export default function AudioMixer() {
 
   // Master volume (local state — not in store yet)
   const [masterVolume, setMasterVolume] = useState(1.0);
+  // MARKER_GAMMA-17: Pan per lane (local state — move to store when Alpha adds lanePans)
+  const [lanePans, setLanePans] = useState<Record<string, number>>({});
+  const [masterPan, setMasterPan] = useState(0);
+  const setPan = useCallback((laneId: string, v: number) => {
+    setLanePans((prev) => ({ ...prev, [laneId]: v }));
+  }, []);
 
   // Filter to audio-relevant lanes (audio_sync, aux, or all if < 6 lanes)
   const audioLanes = lanes.length > 0 ? lanes : [];
@@ -256,10 +332,11 @@ export default function AudioMixer() {
           laneId={lane.lane_id}
           label={LANE_LABELS[lane.lane_type] || lane.lane_id.slice(0, 4).toUpperCase()}
           volume={laneVolumes[lane.lane_id] ?? 1.0}
-          pan={0}
+          pan={lanePans[lane.lane_id] ?? 0}
           muted={mutedLanes.has(lane.lane_id)}
           soloed={soloLanes.has(lane.lane_id)}
           onVolumeChange={(v) => setLaneVolume(lane.lane_id, v)}
+          onPanChange={(v) => setPan(lane.lane_id, v)}
           onToggleMute={() => toggleMute(lane.lane_id)}
           onToggleSolo={() => toggleSolo(lane.lane_id)}
         />
@@ -276,7 +353,7 @@ export default function AudioMixer() {
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
           {Math.round(masterVolume * 100)}%
         </div>
-        <PanDisplay value={0} />
+        <PanKnob value={masterPan} onChange={setMasterPan} />
         <div style={{ display: 'flex', gap: 2 }}>
           <button style={SMALL_BTN(false, '#e44')} disabled>M</button>
           <button style={SMALL_BTN(false, '#eab308')} disabled>S</button>

@@ -21,6 +21,7 @@ import {
 } from '../../hooks/useCutHotkeys';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
+const SpeedControl = lazy(() => import('./SpeedControl'));
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -185,6 +186,7 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
+  const [speedControlOpen, setSpeedControlOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -751,6 +753,11 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
+        </Suspense>
+      )}
+      {speedControlOpen && (
+        <Suspense fallback={null}>
+          <SpeedControl onClose={() => setSpeedControlOpen(false)} />
         </Suspense>
       )}
     </>
