@@ -200,15 +200,17 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setPlaybackRate(next);
     },
 
-    // Marking — context-aware: source panel → source marks, else → sequence marks
+    // Marking — context-aware: source panel → source marks + sourceCurrentTime,
+    // else → sequence marks + timeline currentTime
+    // MARKER_DUAL-VIDEO: Source uses sourceCurrentTime, not timeline currentTime
     markIn: () => {
       const s = useCutEditorStore.getState();
-      if (s.focusedPanel === 'source') s.setSourceMarkIn(s.currentTime);
+      if (s.focusedPanel === 'source') s.setSourceMarkIn(s.sourceCurrentTime);
       else s.setSequenceMarkIn(s.currentTime);
     },
     markOut: () => {
       const s = useCutEditorStore.getState();
-      if (s.focusedPanel === 'source') s.setSourceMarkOut(s.currentTime);
+      if (s.focusedPanel === 'source') s.setSourceMarkOut(s.sourceCurrentTime);
       else s.setSequenceMarkOut(s.currentTime);
     },
     clearIn: () => {
@@ -228,13 +230,19 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     goToIn: () => {
       const s = useCutEditorStore.getState();
-      const mark = s.focusedPanel === 'source' ? s.sourceMarkIn : s.sequenceMarkIn;
-      if (mark !== null) s.seek(mark);
+      if (s.focusedPanel === 'source') {
+        if (s.sourceMarkIn !== null) s.seekSource(s.sourceMarkIn);
+      } else {
+        if (s.sequenceMarkIn !== null) s.seek(s.sequenceMarkIn);
+      }
     },
     goToOut: () => {
       const s = useCutEditorStore.getState();
-      const mark = s.focusedPanel === 'source' ? s.sourceMarkOut : s.sequenceMarkOut;
-      if (mark !== null) s.seek(mark);
+      if (s.focusedPanel === 'source') {
+        if (s.sourceMarkOut !== null) s.seekSource(s.sourceMarkOut);
+      } else {
+        if (s.sequenceMarkOut !== null) s.seek(s.sequenceMarkOut);
+      }
     },
 
     // MARKER_W6.WIRE: Undo/Redo via backend API
@@ -436,22 +444,23 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_MARK-MENU: Play In to Out
+    // MARKER_DUAL-VIDEO: Source panel uses source playback, program uses timeline
     playInToOut: () => {
       const s = useCutEditorStore.getState();
-      const inPt = s.focusedPanel === 'source' ? s.sourceMarkIn : s.sequenceMarkIn;
-      const outPt = s.focusedPanel === 'source' ? s.sourceMarkOut : s.sequenceMarkOut;
+      const isSourcePanel = s.focusedPanel === 'source';
+      const inPt = isSourcePanel ? s.sourceMarkIn : s.sequenceMarkIn;
+      const outPt = isSourcePanel ? s.sourceMarkOut : s.sequenceMarkOut;
       if (inPt == null || outPt == null || outPt <= inPt) return;
-      s.seek(inPt);
-      s.play();
-      // Auto-stop at out point via interval
+      if (isSourcePanel) { s.seekSource(inPt); s.playSource(); }
+      else { s.seek(inPt); s.play(); }
       const stopCheck = setInterval(() => {
-        const cur = useCutEditorStore.getState().currentTime;
+        const st = useCutEditorStore.getState();
+        const cur = isSourcePanel ? st.sourceCurrentTime : st.currentTime;
         if (cur >= outPt) {
-          useCutEditorStore.getState().pause();
+          if (isSourcePanel) st.pauseSource(); else st.pause();
           clearInterval(stopCheck);
         }
       }, 50);
-      // Safety: clear after 5 minutes max
       setTimeout(() => clearInterval(stopCheck), 300000);
     },
 
