@@ -72,6 +72,22 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
   const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
 
+  // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
+  const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
+    const startZoom = s.zoom;
+    const startScroll = s.scrollLeft;
+    const duration = 150; // ms
+    const startTime = performance.now();
+    const step = (now: number) => {
+      const t = Math.min(1, (now - startTime) / duration);
+      const ease = 1 - Math.pow(1 - t, 3); // ease-out cubic
+      useCutEditorStore.getState().setZoom(startZoom + (targetZoom - startZoom) * ease);
+      useCutEditorStore.getState().setScrollLeft(startScroll + (targetScroll - startScroll) * ease);
+      if (t < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }, []);
+
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
     // Playback
@@ -432,11 +448,34 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // View
     zoomIn: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.min(s.zoom * 1.25, 500)); },
     zoomOut: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.max(s.zoom / 1.25, 10)); },
+    // MARKER_A2.5: Zoom to fit / zoom to selection with smooth animation
     zoomToFit: () => {
       const s = useCutEditorStore.getState();
+      // If clips are selected, zoom to selection bounds (A2.5)
+      const ids = s.selectedClipIds;
+      if (ids.size > 0) {
+        let minT = Infinity, maxT = -Infinity;
+        for (const lane of s.lanes) {
+          for (const clip of lane.clips) {
+            if (ids.has(clip.clip_id)) {
+              minT = Math.min(minT, clip.start_sec);
+              maxT = Math.max(maxT, clip.start_sec + clip.duration_sec);
+            }
+          }
+        }
+        if (minT < maxT) {
+          const selDur = maxT - minT;
+          const viewWidth = window.innerWidth - 560;
+          const targetZoom = Math.max(10, Math.min(500, viewWidth / (selDur * 1.2))); // 20% padding
+          const targetScroll = Math.max(0, minT * targetZoom - viewWidth * 0.1);
+          smoothZoomTo(s, targetZoom, targetScroll);
+          return;
+        }
+      }
+      // Default: zoom to fit entire timeline
       if (s.duration > 0) {
-        s.setZoom(Math.max(10, Math.min(500, (window.innerWidth - 560) / s.duration)));
-        s.setScrollLeft(0);
+        const targetZoom = Math.max(10, Math.min(500, (window.innerWidth - 560) / s.duration));
+        smoothZoomTo(s, targetZoom, 0);
       }
     },
 
