@@ -1,16 +1,13 @@
 /**
- * MARKER_W10.6 + GAMMA-18: EffectsPanel — per-clip video effects controls.
+ * MARKER_W10.6 + GAMMA-18 + GAMMA-36: EffectsPanel
  *
- * Categorized effects panel with collapsible groups:
- *   - Color: brightness, contrast, saturation, gamma
- *   - Blur/Sharpen: blur, sharpen, denoise
- *   - Transform: vignette, crop (T/B/L/R), flip H/V
- *   - Time: fade in, fade out
- *   - Opacity: opacity
+ * Two modes:
+ * 1. No clip selected → Effects Browser (FCP7 Ch.13): browsable list of
+ *    available effects organized by category. Drag effect onto timeline clip
+ *    to apply. Search/filter at top.
+ * 2. Clip selected → Effect sliders (per-clip adjustment).
  *
- * Core 5 effects (brightness, contrast, saturation, blur, opacity) persist
- * to store via ClipEffects type. Extended effects use local state until
- * Alpha extends ClipEffects type. Backend EFFECT_DEFS supports all 32.
+ * Categories: Video Filters, Audio Filters, Transitions, Generators.
  */
 import { useState, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
@@ -248,8 +245,9 @@ export default function EffectsPanel() {
     });
   }, []);
 
+  // MARKER_GAMMA-36: Effects Browser mode (no clip selected)
   if (!selectedClip) {
-    return <div style={EMPTY}>Select a clip to adjust effects</div>;
+    return <EffectsBrowser />;
   }
 
   const hasStoreChanges = (Object.keys(DEFAULT_CLIP_EFFECTS) as (keyof ClipEffects)[]).some(
@@ -311,6 +309,172 @@ export default function EffectsPanel() {
                 )}
               </>
             )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ═══ MARKER_GAMMA-36: Effects Browser ════════════════════════════════
+
+type BrowserEffect = {
+  id: string;
+  name: string;
+  description: string;
+};
+
+type BrowserCategory = {
+  name: string;
+  effects: BrowserEffect[];
+};
+
+const BROWSER_CATEGORIES: BrowserCategory[] = [
+  {
+    name: 'Video Filters',
+    effects: [
+      { id: 'brightness', name: 'Brightness & Contrast', description: 'Adjust brightness and contrast levels' },
+      { id: 'color_balance', name: 'Color Balance', description: 'Shift color balance between shadows, midtones, highlights' },
+      { id: 'saturation', name: 'Hue/Saturation', description: 'Adjust hue, saturation, and lightness' },
+      { id: 'gamma', name: 'Gamma Correction', description: 'Adjust gamma curve for exposure control' },
+      { id: 'blur', name: 'Gaussian Blur', description: 'Apply gaussian blur to soften image' },
+      { id: 'sharpen', name: 'Unsharp Mask', description: 'Sharpen edges using unsharp mask algorithm' },
+      { id: 'denoise', name: 'Noise Reduction', description: 'Reduce video noise and grain' },
+      { id: 'vignette', name: 'Vignette', description: 'Darken edges of frame for cinematic look' },
+      { id: 'chroma_key', name: 'Chroma Key', description: 'Green/blue screen keying for compositing' },
+      { id: 'lut_apply', name: 'LUT Apply', description: 'Apply Look-Up Table for color grading' },
+    ],
+  },
+  {
+    name: 'Audio Filters',
+    effects: [
+      { id: 'eq', name: 'Equalizer', description: '10-band parametric equalizer' },
+      { id: 'compressor', name: 'Compressor', description: 'Dynamic range compression' },
+      { id: 'limiter', name: 'Limiter', description: 'Peak limiting to prevent clipping' },
+      { id: 'noise_gate', name: 'Noise Gate', description: 'Remove background noise below threshold' },
+      { id: 'reverb', name: 'Reverb', description: 'Add room ambience and space' },
+      { id: 'delay', name: 'Delay', description: 'Echo and delay effects' },
+      { id: 'pitch_shift', name: 'Pitch Shift', description: 'Change audio pitch without affecting speed' },
+      { id: 'normalize', name: 'Normalize', description: 'Normalize audio levels to target loudness' },
+    ],
+  },
+  {
+    name: 'Transitions',
+    effects: [
+      { id: 'cross_dissolve', name: 'Cross Dissolve', description: 'Standard dissolve between two clips' },
+      { id: 'dip_to_black', name: 'Dip to Black', description: 'Fade through black between clips' },
+      { id: 'dip_to_white', name: 'Dip to White', description: 'Fade through white between clips' },
+      { id: 'wipe_left', name: 'Wipe Left', description: 'Linear wipe from right to left' },
+      { id: 'wipe_down', name: 'Wipe Down', description: 'Linear wipe from top to bottom' },
+      { id: 'push_left', name: 'Push Left', description: 'New clip pushes old clip off screen' },
+      { id: 'slide_left', name: 'Slide Left', description: 'New clip slides over old clip' },
+    ],
+  },
+  {
+    name: 'Generators',
+    effects: [
+      { id: 'color_matte', name: 'Color Matte', description: 'Solid color background generator' },
+      { id: 'bars_and_tone', name: 'Bars and Tone', description: 'SMPTE color bars with 1kHz tone' },
+      { id: 'slug', name: 'Slug', description: 'Black video placeholder' },
+      { id: 'title', name: 'Text Generator', description: 'Simple title/text overlay generator' },
+      { id: 'countdown', name: 'Countdown Leader', description: 'Countdown leader for program start' },
+    ],
+  },
+];
+
+function EffectsBrowser() {
+  const [search, setSearch] = useState('');
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  const toggleCat = useCallback((name: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const searchLower = search.toLowerCase();
+
+  const handleDragStart = useCallback((e: React.DragEvent, effect: BrowserEffect) => {
+    e.dataTransfer.setData('application/x-cut-effect', JSON.stringify({ id: effect.id, name: effect.name }));
+    e.dataTransfer.effectAllowed = 'copy';
+  }, []);
+
+  return (
+    <div style={PANEL} data-testid="effects-browser">
+      <div style={{ fontSize: 10, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>
+        Effects
+      </div>
+
+      {/* Search */}
+      <input
+        type="text"
+        placeholder="Search effects..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={{
+          width: '100%',
+          padding: '3px 6px',
+          background: '#111',
+          border: '1px solid #333',
+          borderRadius: 3,
+          color: '#ccc',
+          fontSize: 9,
+          outline: 'none',
+          marginBottom: 6,
+          boxSizing: 'border-box',
+        }}
+      />
+
+      {/* Category list */}
+      {BROWSER_CATEGORIES.map((cat) => {
+        const filtered = searchLower
+          ? cat.effects.filter((e) => e.name.toLowerCase().includes(searchLower) || e.description.toLowerCase().includes(searchLower))
+          : cat.effects;
+        if (searchLower && filtered.length === 0) return null;
+        const isOpen = !collapsed.has(cat.name) || !!searchLower;
+
+        return (
+          <div key={cat.name}>
+            <div
+              onClick={() => toggleCat(cat.name)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '4px 0',
+                cursor: 'pointer',
+                borderBottom: '1px solid #1a1a1a',
+                marginTop: 2,
+              }}
+            >
+              <span style={{ fontSize: 8, color: '#555' }}>{isOpen ? '\u25BE' : '\u25B8'}</span>
+              <span style={{ fontSize: 9, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                {cat.name}
+              </span>
+              <span style={{ fontSize: 8, color: '#444', marginLeft: 'auto' }}>{filtered.length}</span>
+            </div>
+            {isOpen && filtered.map((effect) => (
+              <div
+                key={effect.id}
+                draggable
+                onDragStart={(e) => handleDragStart(e, effect)}
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  padding: '3px 4px 3px 16px',
+                  cursor: 'grab',
+                  borderBottom: '1px solid #111',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                title={effect.description}
+              >
+                <span style={{ fontSize: 9, color: '#ccc' }}>{effect.name}</span>
+                <span style={{ fontSize: 8, color: '#555', marginTop: 1 }}>{effect.description}</span>
+              </div>
+            ))}
           </div>
         );
       })}
