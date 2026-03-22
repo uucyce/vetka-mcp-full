@@ -19,6 +19,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
+import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
@@ -694,6 +695,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     for (const item of effectiveWaveforms) {
       if (item.waveform_bins?.length) {
         map.set(item.source_path, item.waveform_bins);
+      }
+    }
+    return map;
+  }, [effectiveWaveforms]);
+
+  // MARKER_B31: Stereo waveform lookup (L/R channel data)
+  const stereoWaveformMap = useMemo(() => {
+    const map = new Map<string, { left: number[]; right: number[] }>();
+    for (const item of effectiveWaveforms) {
+      if (item.waveform_bins_left?.length && item.waveform_bins_right?.length) {
+        map.set(item.source_path, { left: item.waveform_bins_left, right: item.waveform_bins_right });
       }
     }
     return map;
@@ -1990,6 +2002,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
                   const isHovered = hoveredClipId === clip.clip_id;
                   const waveformBins = waveformMap.get(clip.source_path);
+                  const stereoData = stereoWaveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
 
                   return (
@@ -2061,7 +2074,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           onClick={(event) => handleWaveformSeek(clip, event)}
                           title={waveformBins ? 'Click waveform to seek inside clip' : 'No waveform bins yet'}
                         >
-                          {waveformBins ? (
+                          {stereoData ? (
+                            <StereoWaveformCanvas
+                              binsLeft={stereoData.left}
+                              binsRight={stereoData.right}
+                              width={Math.max(4, width) - 2}
+                              height={trackHeight - 8}
+                              colorLeft={config.color}
+                              colorRight={config.color}
+                              cursorRatio={waveformHover?.clipId === clip.clip_id ? waveformHover.ratio : null}
+                            />
+                          ) : waveformBins ? (
                             <WaveformCanvas
                               bins={waveformBins}
                               width={Math.max(4, width) - 2}
