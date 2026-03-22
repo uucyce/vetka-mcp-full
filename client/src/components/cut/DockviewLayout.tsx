@@ -349,6 +349,72 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     return () => document.removeEventListener('keydown', handler);
   }, [toggleMaximize]);
 
+  // MARKER_GAMMA-26: MutationObserver to kill dockview inline blue styles at JS level.
+  // Dockview injects style="border-bottom-color: rgb(0, 12, 24)" and similar colored
+  // borders on group focus. CSS !important + [style*=] selectors are fragile hacks.
+  // This observer strips any non-gray inline border/outline colors in real time.
+  useEffect(() => {
+    const container = document.querySelector('.dockview-theme-dark');
+    if (!container) return;
+
+    // Gray-safe check: allow only achromatic colors (r===g===b) and transparent
+    const isGrayOrTransparent = (color: string): boolean => {
+      if (!color || color === 'transparent' || color === 'initial' || color === 'inherit') return true;
+      // Match rgb(r, g, b) / rgba(r, g, b, a)
+      const rgbMatch = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (rgbMatch) {
+        const [, r, g, b] = rgbMatch;
+        return r === g && g === b; // achromatic = gray
+      }
+      // Match hex #rgb / #rrggbb
+      const hexMatch = color.match(/^#([0-9a-f]{3,8})$/i);
+      if (hexMatch) {
+        const hex = hexMatch[1];
+        if (hex.length === 3) return hex[0] === hex[1] && hex[1] === hex[2];
+        if (hex.length >= 6) return hex.slice(0,2) === hex.slice(2,4) && hex.slice(2,4) === hex.slice(4,6);
+      }
+      // CSS var() or named colors — pass through (CSS handles these)
+      if (color.startsWith('var(')) return true;
+      return false;
+    };
+
+    const BORDER_PROPS = [
+      'borderColor', 'borderTopColor', 'borderBottomColor',
+      'borderLeftColor', 'borderRightColor', 'outlineColor',
+    ] as const;
+
+    const stripColoredBorders = (el: HTMLElement) => {
+      const style = el.style;
+      for (const prop of BORDER_PROPS) {
+        const val = style.getPropertyValue(
+          prop.replace(/([A-Z])/g, '-$1').toLowerCase()
+        );
+        if (val && !isGrayOrTransparent(val)) {
+          style.removeProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase());
+        }
+      }
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === 'attributes' && m.attributeName === 'style' && m.target instanceof HTMLElement) {
+          stripColoredBorders(m.target);
+        }
+      }
+    });
+
+    observer.observe(container, {
+      attributes: true,
+      attributeFilter: ['style'],
+      subtree: true,
+    });
+
+    // Initial sweep — strip any existing inline colors
+    container.querySelectorAll<HTMLElement>('[style]').forEach(stripColoredBorders);
+
+    return () => observer.disconnect();
+  }, []);
+
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
 

@@ -195,12 +195,7 @@
 .dockview-theme-dark .dv-active-group .dv-tabs-container {
   border-bottom-color: var(--border-dim) !important;
 }
-/* Catch any element with inline blue border/outline */
-.dockview-theme-dark [style*="border-bottom-color"],
-.dockview-theme-dark [style*="border-color: rgb"] {
-  border-color: var(--border-dim) !important;
-  border-bottom-color: var(--border-dim) !important;
-}
+/* MARKER_GAMMA-26: [style*=] selectors removed — MutationObserver in DockviewLayout handles inline blues */
 
 /* Panel highlight when dragging — !important for pointer-events (Tauri) */
 .dockview-theme-dark.dockview-theme-dark .dv-drop-target-content,
@@ -259,15 +254,7 @@
   border-color: transparent;
 }
 
-/* ═══ Inline style overrides — !important REQUIRED ══════════════════ */
-/* Dockview injects style="" attributes at runtime. Only !important beats them. */
-
-.dockview-theme-dark .dv-groupview[style*="border-color: rgb(0, 12, 24)"],
-.dockview-theme-dark .dv-groupview[style*="border-color: #4a9eff"],
-.dockview-theme-dark .dv-content-container[style*="outline-color: #4a9eff"] {
-  border-color: var(--border-dim) !important;
-  outline-color: transparent !important;
-}
+/* MARKER_GAMMA-26: Inline style [style*=] overrides removed — JS MutationObserver handles this now */
 
 /* MARKER_FOCUS: Subtle focus indicator on active panel group */
 /* !important needed: competes with outline:none above for non-focused groups */
