@@ -448,7 +448,7 @@ function TimeRuler({
             bottom: 0,
             width: 1,
             height: tick.major ? 14 : 8,
-            background: tick.major ? '#555' : '#333',
+            background: tick.major ? '#666' : '#444',
           }}
         >
           {tick.label ? (
@@ -458,9 +458,9 @@ function TimeRuler({
                 position: 'absolute',
                 bottom: tick.major ? 15 : 9,
                 left: 2,
-                fontSize: 9,
-                fontFamily: 'monospace',
-                color: tick.major ? '#999' : '#666',
+                fontSize: 10,
+                fontFamily: '"JetBrains Mono", "SF Mono", monospace',
+                color: tick.major ? '#bbb' : '#777',
                 whiteSpace: 'nowrap',
                 userSelect: 'none',
                 pointerEvents: 'none',
@@ -651,7 +651,20 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     sessionRef.current = { sandboxRoot, projectId, timelineId, refreshProjectState };
   }, [sandboxRoot, projectId, timelineId, refreshProjectState]);
 
-  const containerWidth = containerRef.current?.clientWidth || 800;
+  // MARKER_W6.RULER-FIX: Reactive container width via ResizeObserver
+  const [containerWidth, setContainerWidth] = useState(800);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    setContainerWidth(el.clientWidth);
+    const ro = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const waveformMap = useMemo(() => {
     const map = new Map<string, number[]>();
