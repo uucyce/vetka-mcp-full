@@ -402,25 +402,23 @@ test.describe('TDD2: Speed Control', () => {
     });
     await page.waitForTimeout(300);
 
-    // Check for green-tinted speed badge
-    const badgeColor = await page.evaluate(() => {
+    // Check for green-tinted speed badge (background color, not text color)
+    const badgeBg = await page.evaluate(() => {
       const clip = document.querySelector('[data-testid="cut-timeline-clip-v_b"]');
       if (!clip) return null;
       const allEls = clip.querySelectorAll('span');
       for (const el of allEls) {
         const text = el.textContent || '';
         if (text.includes('%')) {
-          const style = window.getComputedStyle(el);
-          return style.color || style.backgroundColor;
+          return window.getComputedStyle(el).backgroundColor;
         }
       }
       return null;
     });
 
-    // Should be green-ish for slow motion
-    expect(badgeColor).toBeTruthy();
-    // Green: rgb(74, 222, 128) or similar
-    expect(badgeColor).toMatch(/74.*222.*128|4ade80|green/i);
+    // Should be green-ish for slow motion: rgba(74, 222, 128, 0.7)
+    expect(badgeBg).toBeTruthy();
+    expect(badgeBg).toMatch(/74.*222.*128/i);
   });
 
   // -------------------------------------------------------------------------
@@ -449,13 +447,12 @@ test.describe('TDD2: Speed Control', () => {
       if (!clip) return { hasArrow: false, hasRed: false };
       const text = clip.textContent || '';
       const hasArrow = text.includes('◀') || text.includes('←') || text.includes('reverse');
-      // Check for red color
+      // Check for red background color on speed badge
       let hasRed = false;
       const allEls = clip.querySelectorAll('span');
       for (const el of allEls) {
-        const style = window.getComputedStyle(el);
-        const color = style.color || '';
-        if (color.includes('239, 68, 68') || color.includes('ef4444')) hasRed = true;
+        const bg = window.getComputedStyle(el).backgroundColor || '';
+        if (bg.includes('239, 68, 68') || bg.includes('239,68,68')) hasRed = true;
       }
       return { hasArrow, hasRed };
     });
@@ -629,14 +626,9 @@ test.describe('TDD2: Trim Operations', () => {
     await navigateToCut(page);
 
     // Activate slip tool and simulate a slip operation via store
-    const result = await page.evaluate(() => {
-      if (!window.__CUT_STORE__) return null;
+    await page.evaluate(() => {
+      if (!window.__CUT_STORE__) return;
       const s = window.__CUT_STORE__.getState();
-      const clip = s.lanes[0].clips[1]; // v_b at 5s
-      const originalStart = clip.start_sec;
-      const originalDuration = clip.duration_sec;
-
-      // Simulate slip: change source_in without changing position
       const newLanes = s.lanes.map(lane => ({
         ...lane,
         clips: lane.clips.map(c =>
@@ -646,13 +638,18 @@ test.describe('TDD2: Trim Operations', () => {
         ),
       }));
       s.setLanes(newLanes);
+    });
+    await page.waitForTimeout(200);
 
-      // Verify: position unchanged, source_in changed
-      const updated = s.lanes[0].clips[1];
+    // Read state after React re-render
+    const result = await page.evaluate(() => {
+      if (!window.__CUT_STORE__) return null;
+      const lanes = window.__CUT_STORE__.getState().lanes;
+      const clip = lanes[0].clips[1]; // v_b
       return {
-        startUnchanged: updated.start_sec === originalStart,
-        durationUnchanged: updated.duration_sec === originalDuration,
-        sourceInChanged: updated.source_in === 1.0,
+        startUnchanged: clip.start_sec === 5,
+        durationUnchanged: clip.duration_sec === 4,
+        sourceInChanged: clip.source_in === 1.0,
       };
     });
 
@@ -669,13 +666,11 @@ test.describe('TDD2: Trim Operations', () => {
   test('TR8: ripple trim extends clip and shifts following clips', async ({ page }) => {
     await navigateToCut(page);
 
-    const result = await page.evaluate(() => {
-      if (!window.__CUT_STORE__) return null;
+    // Simulate ripple: extend v_b by 1s → v_c shifts right by 1s
+    await page.evaluate(() => {
+      if (!window.__CUT_STORE__) return;
       const s = window.__CUT_STORE__.getState();
-      const clipB = s.lanes[0].clips[1]; // v_b at 5s, dur 4s
-      const clipC = s.lanes[0].clips[2]; // v_c at 9s
-
-      // Simulate ripple: extend v_b by 1s → v_c shifts right by 1s
+      const clipB = s.lanes[0].clips[1];
       const rippleAmount = 1.0;
       const newLanes = s.lanes.map(lane => ({
         ...lane,
@@ -686,12 +681,16 @@ test.describe('TDD2: Trim Operations', () => {
         }),
       }));
       s.setLanes(newLanes);
+    });
+    await page.waitForTimeout(200);
 
-      const updatedB = s.lanes[0].clips[1];
-      const updatedC = s.lanes[0].clips[2];
+    // Read state after React re-render
+    const result = await page.evaluate(() => {
+      if (!window.__CUT_STORE__) return null;
+      const lanes = window.__CUT_STORE__.getState().lanes;
       return {
-        bDuration: updatedB.duration_sec,
-        cStart: updatedC.start_sec,
+        bDuration: lanes[0].clips[1].duration_sec,
+        cStart: lanes[0].clips[2].start_sec,
       };
     });
 
