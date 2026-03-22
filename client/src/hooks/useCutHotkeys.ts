@@ -57,6 +57,7 @@ export type CutHotkeyAction =
   | 'selectTool'
   | 'insertEdit'
   | 'overwriteEdit'
+  | 'replaceEdit'
   // MARKER_W5.TRIM: Trim tools (FCP7 Ch.44)
   | 'slipTool'
   | 'slideTool'
@@ -154,6 +155,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nudgeRight:          ['timeline'],
   insertEdit:          ['timeline', 'source'],
   overwriteEdit:       ['timeline', 'source'],
+  replaceEdit:         ['timeline', 'source'],
 
   // Tools — timeline only
   razorTool:           ['timeline'],
@@ -284,6 +286,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectTool:        'v',
   insertEdit:        ',',
   overwriteEdit:     '.',
+  replaceEdit:       'F11',
   // MARKER_W5.TRIM: Premiere trim tools
   slipTool:          'y',
   slideTool:         'u',
@@ -374,6 +377,7 @@ export const FCP7_PRESET: HotkeyMap = {
   selectTool:        'a',
   insertEdit:        'F9',
   overwriteEdit:     'F10',
+  replaceEdit:       'F11',
   // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
   slipTool:          's',
   slideTool:         'd',
@@ -586,6 +590,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'selectTool', label: 'Selection Tool', group: 'Tools' },
   { action: 'insertEdit', label: 'Insert Edit', group: 'Tools' },
   { action: 'overwriteEdit', label: 'Overwrite Edit', group: 'Tools' },
+  { action: 'replaceEdit', label: 'Replace Edit (F11)', group: 'Tools' },
   // MARKER_W5.TRIM: Trim tools
   { action: 'slipTool', label: 'Slip Tool', group: 'Tools' },
   { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },

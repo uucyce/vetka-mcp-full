@@ -331,6 +331,31 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Wired to useThreePointEdit hook which calls backend insert_at/overwrite_at.
     insertEdit: () => { void threePointInsert(); },
     overwriteEdit: () => { void threePointOverwrite(); },
+    // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
+    // FCP7 Ch.36: F11 replaces clip at playhead position, keeping same duration
+    replaceEdit: () => {
+      const s = useCutEditorStore.getState();
+      const sourcePath = s.sourceMediaPath;
+      if (!sourcePath) return;
+      // Find clip under playhead
+      for (const lane of s.lanes) {
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            // Replace source_path, keep position and duration
+            const newLanes = s.lanes.map((l) => ({
+              ...l,
+              clips: l.clips.map((c) =>
+                c.clip_id === clip.clip_id
+                  ? { ...c, source_path: sourcePath, source_in: s.sourceMarkIn ?? 0 }
+                  : c
+              ),
+            }));
+            s.setLanes(newLanes);
+            return;
+          }
+        }
+      }
+    },
 
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {

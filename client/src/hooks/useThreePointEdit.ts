@@ -173,14 +173,31 @@ export function useThreePointEdit() {
         return false;
       }
 
+      // MARKER_3PT1-FIX: If no source media loaded, fall back to clip under playhead.
+      // FCP7 behavior: if Source Monitor is empty, use the clip at playhead as source.
+      let effectiveSourcePath = state.sourceMediaPath;
+      let effectiveSourceDuration = state.duration;
+      if (!effectiveSourcePath) {
+        for (const lane of state.lanes) {
+          for (const clip of lane.clips) {
+            if (state.currentTime >= clip.start_sec && state.currentTime < clip.start_sec + clip.duration_sec) {
+              effectiveSourcePath = clip.source_path;
+              effectiveSourceDuration = clip.duration_sec;
+              break;
+            }
+          }
+          if (effectiveSourcePath) break;
+        }
+      }
+
       const resolved = resolveThreePointEdit({
         sourceMarkIn: state.sourceMarkIn,
         sourceMarkOut: state.sourceMarkOut,
         sequenceMarkIn: state.sequenceMarkIn,
         sequenceMarkOut: state.sequenceMarkOut,
         currentTime: state.currentTime,
-        sourceDuration: state.duration,
-        sourceMediaPath: state.sourceMediaPath,
+        sourceDuration: effectiveSourceDuration,
+        sourceMediaPath: effectiveSourcePath,
         videoLaneId,
         audioLaneId,
       });
