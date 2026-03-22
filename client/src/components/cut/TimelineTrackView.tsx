@@ -2283,6 +2283,32 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             />
                           );
                         }) : null}
+
+                      {/* MARKER_KF67: Keyframe diamonds inside clip */}
+                      {clip.keyframes && width > 20 ? Object.entries(clip.keyframes).flatMap(([prop, kfs]) =>
+                        kfs.map((kf) => {
+                          const kfPx = kf.time_sec * zoom;
+                          if (kfPx < 0 || kfPx > width) return null;
+                          return (
+                            <div
+                              key={`kf_${prop}_${kf.time_sec}`}
+                              style={{
+                                position: 'absolute',
+                                left: kfPx - 4,
+                                bottom: 2,
+                                width: 8,
+                                height: 8,
+                                background: '#f59e0b',
+                                transform: 'rotate(45deg)',
+                                zIndex: 6,
+                                pointerEvents: 'none',
+                                boxShadow: '0 0 3px rgba(0,0,0,0.8)',
+                              }}
+                              title={`${prop}: ${kf.value.toFixed(2)} @ ${kf.time_sec.toFixed(2)}s (${kf.easing})`}
+                            />
+                          );
+                        })
+                      ) : null}
                     </div>
                   );
                 })}
