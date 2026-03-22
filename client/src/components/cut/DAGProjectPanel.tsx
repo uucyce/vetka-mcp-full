@@ -58,8 +58,8 @@ function SceneChunkNode({ data }: NodeProps<Node<DAGNodeData>>) {
 
   return (
     <div style={{
-      background: isActive ? '#1a2a3a' : '#141414',
-      border: `1px solid ${isActive ? '#4a9eff' : '#333'}`,
+      background: isActive ? '#1a1a1a' : '#141414',
+      border: `1px solid ${isActive ? '#999' : '#333'}`,
       borderRadius: 4,
       padding: '4px 8px',
       minWidth: 100,
@@ -67,7 +67,7 @@ function SceneChunkNode({ data }: NodeProps<Node<DAGNodeData>>) {
       fontSize: 9,
       fontFamily: 'Inter, system-ui, sans-serif',
       color: '#ccc',
-      boxShadow: isActive ? '0 0 8px rgba(74, 158, 255, 0.3)' : 'none',
+      boxShadow: isActive ? '0 0 8px rgba(153, 153, 153, 0.3)' : 'none',
     }}>
       <Handle type="target" position={Position.Top} style={{ background: '#555', width: 4, height: 4 }} />
       <Handle type="source" position={Position.Bottom} style={{ background: '#555', width: 4, height: 4 }} />
@@ -98,14 +98,14 @@ function MediaAssetNode({ data }: NodeProps<Node<DAGNodeData>>) {
   return (
     <div style={{
       background: '#1A1A1A',
-      border: `1px solid ${isLinked ? '#4a9eff' : '#2a2a2a'}`,
+      border: `1px solid ${isLinked ? '#999' : '#2a2a2a'}`,
       borderRadius: 3,
       padding: '3px 6px',
       minWidth: 80,
       maxWidth: 120,
       fontSize: 8,
       color: '#888',
-      boxShadow: isLinked ? '0 0 6px rgba(74, 158, 255, 0.2)' : 'none',
+      boxShadow: isLinked ? '0 0 6px rgba(153, 153, 153, 0.2)' : 'none',
     }}>
       <Handle type="target" position={Position.Left} style={{ background: '#555', width: 3, height: 3 }} />
       <Handle type="source" position={Position.Right} style={{ background: '#555', width: 3, height: 3 }} />
@@ -229,7 +229,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
     target: e.target,
     type: e.edge_type === 'next_scene' ? 'default' : 'default',
     style: {
-      stroke: e.edge_type === 'next_scene' ? '#4a9eff' : '#333',
+      stroke: e.edge_type === 'next_scene' ? '#999' : '#333',
       strokeWidth: e.edge_type === 'next_scene' ? 2 : 1,
     },
     animated: false,

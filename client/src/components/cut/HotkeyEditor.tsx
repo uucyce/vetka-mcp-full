@@ -390,7 +390,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                   >
                     <span style={{ flex: 1, color: '#ccc' }}>{def.label}</span>
                     {isCapturing ? (
-                      <span style={{ ...BINDING_BADGE, borderColor: '#4a9eff', color: '#4a9eff' }}>
+                      <span style={{ ...BINDING_BADGE, borderColor: '#999', color: '#999' }}>
                         Press key...
                       </span>
                     ) : (

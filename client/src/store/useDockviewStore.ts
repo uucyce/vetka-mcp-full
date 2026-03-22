@@ -33,6 +33,10 @@ interface DockviewStoreState {
   focusPerPreset: Record<WorkspacePresetName, string | null>;
   saveFocusForPreset: (preset: WorkspacePresetName, panelId: string | null) => void;
   getFocusForPreset: (preset: WorkspacePresetName) => string | null;
+  /** MARKER_GAMMA-20: Marker kind filter — which marker types are visible on timeline */
+  visibleMarkerKinds: Set<string>;
+  toggleMarkerKind: (kind: string) => void;
+  isMarkerKindVisible: (kind: string) => boolean;
 }
 
 const LS_PREFIX = 'cut_dockview_';
@@ -160,4 +164,17 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
     try { localStorage.setItem(LS_FOCUS, JSON.stringify(updated)); } catch { /* noop */ }
   },
   getFocusForPreset: (preset) => get().focusPerPreset[preset],
+
+  // MARKER_GAMMA-20: Marker kind filter (all visible by default)
+  visibleMarkerKinds: new Set([
+    'favorite', 'comment', 'cam', 'insight', 'chat',
+    'bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point',
+  ]),
+  toggleMarkerKind: (kind) => {
+    const current = new Set(get().visibleMarkerKinds);
+    if (current.has(kind)) current.delete(kind);
+    else current.add(kind);
+    set({ visibleMarkerKinds: current });
+  },
+  isMarkerKindVisible: (kind) => get().visibleMarkerKinds.has(kind),
 }));

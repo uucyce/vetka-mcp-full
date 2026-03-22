@@ -213,7 +213,7 @@ export default function AutoMontageMenu() {
           <div style={{
             width: '100%',
             height: '100%',
-            background: '#4a9eff',
+            background: '#999',
             borderRadius: 2,
             animation: 'pulse-montage 1.2s ease-in-out infinite',
           }} />
