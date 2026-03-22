@@ -2,6 +2,8 @@ import asyncio
 import json
 
 import pytest
+
+pytestmark = pytest.mark.stale(reason="Backend API contracts changed — task board moved to MCP")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

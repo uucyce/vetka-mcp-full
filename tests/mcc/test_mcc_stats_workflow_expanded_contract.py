@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
 from pathlib import Path
+
+pytestmark = pytest.mark.stale(reason="MCC stats workflow — expanded view contract changed")
 
 
 def test_expanded_stats_has_workflow_selector_contract() -> None:

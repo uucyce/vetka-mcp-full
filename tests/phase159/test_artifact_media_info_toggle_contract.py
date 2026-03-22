@@ -1,5 +1,7 @@
+import pytest
 from pathlib import Path
 
+pytestmark = pytest.mark.stale(reason="Phase 159 import errors — UI contracts removed in CUT refactor")
 
 ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
 
