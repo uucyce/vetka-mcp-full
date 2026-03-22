@@ -71,6 +71,8 @@ export type CutHotkeyAction =
   | 'nextKeyframe'
   | 'prevKeyframe'
   | 'addKeyframe'
+  // MARKER_FCP7.SPEED: Speed dialog
+  | 'openSpeedControl'
   // Mark operations
   | 'markClip'
   | 'playInToOut'
@@ -177,6 +179,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nextKeyframe:        ['timeline'],
   prevKeyframe:        ['timeline'],
   addKeyframe:         ['timeline'],
+  openSpeedControl:    'global',
 
   // Mark operations
   markClip:            ['timeline'],
@@ -294,6 +297,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -315,7 +319,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
   // Linked selection
-  toggleLinkedSelection: 'Shift+l',
+  toggleLinkedSelection: 'Cmd+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -383,6 +387,7 @@ export const FCP7_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -404,7 +409,7 @@ export const FCP7_PRESET: HotkeyMap = {
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
   // Linked selection
-  toggleLinkedSelection: 'Shift+l',
+  toggleLinkedSelection: 'Cmd+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -594,6 +599,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'nextKeyframe', label: 'Next Keyframe', group: 'Keyframes' },
   { action: 'prevKeyframe', label: 'Previous Keyframe', group: 'Keyframes' },
   { action: 'addKeyframe', label: 'Add Keyframe', group: 'Keyframes' },
+  { action: 'openSpeedControl', label: 'Change Speed (⌘J)', group: 'Tools' },
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
