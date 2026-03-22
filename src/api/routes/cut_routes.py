@@ -8498,8 +8498,8 @@ class CutRenderMasterRequest(BaseModel):
     audio_stems: bool = False        # export per-track WAV files
 
 
-    # MARKER_B5-CLEANUP: _CODEC_MAP and _RESOLUTION_MAP removed.
-    # Use cut_render_engine.CODEC_MAP and RESOLUTION_MAP instead.
+# MARKER_B5-CLEANUP: _CODEC_MAP and _RESOLUTION_MAP removed.
+# Use cut_render_engine.CODEC_MAP and RESOLUTION_MAP instead.
 
 
 def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
