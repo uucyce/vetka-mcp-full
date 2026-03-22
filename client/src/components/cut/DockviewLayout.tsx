@@ -42,6 +42,7 @@ import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
+import WorkspacePresets from './WorkspacePresets';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -323,10 +324,16 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   const components = useMemo(() => PANEL_COMPONENTS, []);
 
   return (
-    <DockviewReact
-      className="dockview-theme-dark"
-      components={components}
-      onReady={onReady}
-    />
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
+      {/* MARKER_GAMMA-8: Workspace preset bar (Editing/Color/Audio/Custom) */}
+      <WorkspacePresets />
+      <div style={{ flex: 1, minHeight: 0 }}>
+        <DockviewReact
+          className="dockview-theme-dark"
+          components={components}
+          onReady={onReady}
+        />
+      </div>
+    </div>
   );
 }
