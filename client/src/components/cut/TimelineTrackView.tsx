@@ -156,11 +156,14 @@ const MARKER_STYLE: CSSProperties = {
 };
 
 const MARKER_COLORS: Record<string, string> = {
-  favorite: '#f59e0b',
-  comment: '#3b82f6',
-  cam: '#a855f7',
-  insight: '#22c55e',
-  // MARKER_A3.1: PULSE BPM marker colors
+  // Editorial markers
+  favorite: '#f59e0b',     // amber — positive / keep
+  negative: '#ef4444',     // red — anti-favorite / reject
+  comment: '#3b82f6',      // blue — annotation
+  cam: '#a855f7',          // purple — camera note
+  insight: '#22c55e',      // green — AI insight
+  chat: '#94a3b8',         // slate — chat reference
+  // PULSE BPM markers
   bpm_audio: '#22c55e',    // green — audio beats
   bpm_visual: '#4a9eff',   // blue — visual cut points
   bpm_script: '#ffffff',   // white — script scene transitions
@@ -2173,42 +2176,65 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           {syncInfo?.method ? <span style={{ color: '#22c55e', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
                         </span>
                       ) : null}
+
+                      {/* MARKER_A3.1-FIX: Clip-bound markers — ALL markers with media_path matching
+                          this clip render INSIDE the clip, positioned relative to source media time.
+                          Moves WITH the clip. Shifts on slip (source_in changes).
+                          Includes: BPM (audio/visual/script/sync), favorite, negative, comment, cam, insight */}
+                      {width > 10 ? markers
+                        .filter((m) => m.media_path === clip.source_path)
+                        .map((m) => {
+                          const isBpm = BPM_MARKER_KINDS.has(m.kind);
+                          if (isBpm && zoom < 30) return null; // hide BPM at low zoom
+                          const clipSourceIn = clip.source_in ?? 0;
+                          const relativeTime = m.start_sec - clipSourceIn;
+                          if (relativeTime < -0.01 || relativeTime > durationSec + 0.01) return null;
+                          const pxFromClipLeft = relativeTime * zoom;
+                          if (pxFromClipLeft < 0 || pxFromClipLeft > width) return null;
+                          const mColor = MARKER_COLORS[m.kind] || '#888';
+                          if (isBpm) {
+                            // BPM: thin 1px line, opacity from score
+                            return (
+                              <div
+                                key={`cm_${m.marker_id}`}
+                                style={{
+                                  position: 'absolute', left: pxFromClipLeft, width: 1,
+                                  top: 1, bottom: 1, background: mColor,
+                                  opacity: Math.max(0.15, Math.min(0.8, m.score ?? 0.5)),
+                                  pointerEvents: 'none', zIndex: 1,
+                                }}
+                                title={`${m.kind.replace('bpm_', '')} beat (${(m.score ?? 0).toFixed(2)}) @ src ${m.start_sec.toFixed(2)}s`}
+                              />
+                            );
+                          }
+                          // Editorial (favorite/negative/comment/cam/insight): 2px line + flag
+                          const mEndRel = m.end_sec - clipSourceIn;
+                          const mWidth = Math.max(2, (Math.min(mEndRel, durationSec) - relativeTime) * zoom);
+                          return (
+                            <div
+                              key={`cm_${m.marker_id}`}
+                              style={{
+                                position: 'absolute', left: pxFromClipLeft,
+                                width: mWidth, top: 0, height: 4,
+                                background: mColor, opacity: 0.9,
+                                borderRadius: '0 0 2px 2px',
+                                pointerEvents: 'none', zIndex: 5,
+                              }}
+                              title={`${m.kind}: ${m.text || ''} @ src ${m.start_sec.toFixed(1)}s`}
+                            />
+                          );
+                        }) : null}
                     </div>
                   );
                 })}
 
-                {markers.map((marker) => {
-                  const isBpm = BPM_MARKER_KINDS.has(marker.kind);
-                  // MARKER_A3.1: Hide BPM markers at low zoom (too dense)
-                  if (isBpm && zoom < 30) return null;
+                {/* Timeline-level markers — only markers WITHOUT media_path (sequence markers).
+                    Clip-bound markers (with media_path) render inside their clip above. */}
+                {markers.filter((m) => !m.media_path).map((marker) => {
                   const markerX = marker.start_sec * zoom - scrollLeft;
-                  const markerWidth = isBpm ? 1 : Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
-                  if (markerX + markerWidth < 0 || markerX > containerWidth) {
-                    return null;
-                  }
+                  const markerWidth = Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
+                  if (markerX + markerWidth < 0 || markerX > containerWidth) return null;
                   const color = MARKER_COLORS[marker.kind] || '#888';
-                  // MARKER_A3.1: BPM markers = thin vertical lines, opacity from score
-                  if (isBpm) {
-                    const opacity = Math.max(0.15, Math.min(0.8, marker.score ?? 0.5));
-                    return (
-                      <div
-                        key={`${lane.lane_id}_${marker.marker_id}`}
-                        style={{
-                          position: 'absolute',
-                          left: markerX,
-                          width: 1,
-                          height: laneH - 4,
-                          top: 2,
-                          background: color,
-                          opacity,
-                          pointerEvents: 'none',
-                          zIndex: 1,
-                        }}
-                        title={`${marker.kind.replace('bpm_', '').replace('_', ' ')} beat (${(marker.score ?? 0).toFixed(2)}) @ ${marker.start_sec.toFixed(2)}s`}
-                      />
-                    );
-                  }
-                  // Editorial markers — block rendering (unchanged)
                   return (
                     <div
                       key={`${lane.lane_id}_${marker.marker_id}`}
