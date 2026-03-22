@@ -10,7 +10,7 @@
  *
  * @phase 196
  */
-import { useCallback, useRef, useMemo, useEffect } from 'react';
+import { useCallback, useRef, useMemo, useEffect, useState } from 'react';
 import {
   DockviewReact,
   type DockviewApi,
@@ -323,16 +323,118 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
 
+  // MARKER_GAMMA-15: Panel tab context menu
+  const [tabMenu, setTabMenu] = useState<{ x: number; y: number; panelId: string } | null>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      // Find closest .dv-tab ancestor
+      const tab = (e.target as HTMLElement).closest?.('.dv-tab') as HTMLElement | null;
+      if (!tab) { setTabMenu(null); return; }
+      // Dockview stores panel ID as data attribute or we read from API
+      const api = apiRef.current;
+      if (!api) return;
+      e.preventDefault();
+      // Find panel ID: walk dockview panels, match by active tab text
+      const tabText = tab.textContent?.trim().toUpperCase() || '';
+      let panelId = '';
+      for (const p of api.panels) {
+        if (p.title?.toUpperCase() === tabText || p.id.toUpperCase() === tabText) {
+          panelId = p.id;
+          break;
+        }
+      }
+      if (!panelId) return;
+      setTabMenu({ x: e.clientX, y: e.clientY, panelId });
+    };
+    const dismiss = () => setTabMenu(null);
+    document.addEventListener('contextmenu', handler);
+    document.addEventListener('click', dismiss);
+    return () => {
+      document.removeEventListener('contextmenu', handler);
+      document.removeEventListener('click', dismiss);
+    };
+  }, []);
+
+  const handleTabMenuAction = useCallback((action: string) => {
+    const api = apiRef.current;
+    if (!api || !tabMenu) return;
+    const panel = api.getPanel(tabMenu.panelId);
+    if (!panel) { setTabMenu(null); return; }
+    switch (action) {
+      case 'close':
+        api.removePanel(panel);
+        break;
+      case 'close-others': {
+        const group = panel.group;
+        if (group) {
+          const others = api.panels.filter((p) => p.group === group && p.id !== tabMenu.panelId);
+          others.forEach((p) => { try { api.removePanel(p); } catch { /* ok */ } });
+        }
+        break;
+      }
+      case 'maximize':
+        toggleMaximize();
+        break;
+    }
+    setTabMenu(null);
+  }, [tabMenu, toggleMaximize]);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
       {/* MARKER_GAMMA-8: Workspace preset bar (Editing/Color/Audio/Custom) */}
       <WorkspacePresets />
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"
           components={components}
           onReady={onReady}
         />
+        {/* MARKER_GAMMA-15: Tab context menu */}
+        {tabMenu && (
+          <div
+            style={{
+              position: 'fixed',
+              top: tabMenu.y,
+              left: tabMenu.x,
+              background: '#0b0b0b',
+              border: '1px solid #333',
+              borderRadius: 4,
+              padding: '3px 0',
+              zIndex: 10000,
+              minWidth: 140,
+              fontSize: 11,
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              color: '#ccc',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+            }}
+          >
+            {[
+              { label: 'Close Panel', action: 'close' },
+              { label: 'Close Others in Group', action: 'close-others' },
+              { separator: true },
+              { label: 'Maximize / Restore', action: 'maximize' },
+            ].map((item, i) =>
+              'separator' in item ? (
+                <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+              ) : (
+                <div
+                  key={i}
+                  onClick={() => handleTabMenuAction(item.action)}
+                  style={{
+                    padding: '4px 12px',
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                  }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                >
+                  {item.label}
+                </div>
+              ),
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
