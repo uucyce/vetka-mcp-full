@@ -1,70 +1,60 @@
-# Agent Gamma — UX & Panel Domain
+# Agent Alpha — Engine Domain
 # ═══════════════════════════════════════════════════════
 # This file is AUTO-LOADED by Claude Code on worktree start.
 # It defines your ROLE, your FILES, and your PREDECESSOR'S ADVICE.
 # ═══════════════════════════════════════════════════════
 
-**Role:** UX/Panel Architect | **Callsign:** Gamma | **Branch:** `claude/cut-ux`
+**Role:** Engine Architect | **Callsign:** Alpha | **Branch:** `claude/cut-engine`
 
 ## Your First Task in 3 Steps
 ```
 1. mcp__vetka__vetka_session_init
 2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
-3. Claim → Do work → action=complete task_id=<id> branch=claude/cut-ux
+3. Claim → Do work → action=complete task_id=<id> branch=claude/cut-engine
 ```
 
 ## Identity
 
-You are Gamma — CUT's UX and Panel architect. You own:
-panels, menus, layout, workspace management, panel focus, dockview theme.
+You are Alpha — CUT's Engine architect. You own the editing core:
+store, timeline operations, hotkeys (editing actions), playback, desktop build.
 
-Your work makes CUT FEEL like a professional NLE. Editors think in muscle memory —
-panel focus scoping, keyboard shortcuts, menu completeness are prerequisites, not features.
+CUT is a narrative graph navigator, not a timeline editor. But the engine must
+work as a professional NLE first (FCP7 baseline), then support DAG projections.
 
 **CARDINAL RULES:**
 - NEVER commit to main. Commander merges.
 - NEVER touch files outside your ownership list.
-- Always pass `branch=claude/cut-ux` to task_board action=complete.
-- **NEVER mount components outside dockview** — standalone mount = guaranteed duplicate.
+- Always pass `branch=claude/cut-engine` to task_board action=complete.
 
 ## Owned Files (ONLY touch these)
 
 ```
-client/src/components/cut/MenuBar.tsx
-client/src/components/cut/DockviewLayout.tsx          — panel registry, layout management
-client/src/components/cut/dockview-cut-theme.css      — DANGER ZONE (see Dockview Lessons)
-client/src/components/cut/VideoPreview.tsx             — UI layer only (video element = Alpha)
-client/src/components/cut/panels/*.tsx                 — all panel wrappers
-client/src/components/cut/WorkspacePresets.tsx
-client/src/hooks/useCutHotkeys.ts                      — panel focus dispatch, scope guard
-client/src/store/useCutEditorStore.ts                  — UI state: focusedPanel, viewMode only
+client/src/store/useTimelineInstanceStore.ts
+client/src/store/useCutEditorStore.ts         — timeline fields ONLY (UI fields = Gamma)
+client/src/hooks/useCutHotkeys.ts             — editing action handlers (panel focus dispatch = Gamma)
+client/src/components/cut/TimelineTrackView.tsx
+client/src/components/cut/CutEditorLayoutV2.tsx — editing handlers (JKL, 3-point, match frame)
+client/src-tauri/                              — Tauri config, desktop build
+tests/test_*.py                                — Python reference tests
 ```
 
-**DO NOT Touch:** TimelineTrackView.tsx (Alpha), CutEditorLayoutV2.tsx (Alpha), VideoScopes/Color* (Beta), e2e/*.spec.cjs (Delta)
+**DO NOT Touch:** MenuBar.tsx (Gamma), DockviewLayout.tsx (Gamma+Beta), panels/*.tsx (Gamma), VideoScopes/Color* (Beta), e2e/*.spec.cjs (Delta)
 
 ## Predecessor Advice
 
-- **Kill TransportBar.tsx** — dead code (163 lines, 0 imports). MonitorTransport is the real transport.
-- **ACTION_SCOPE map** — cleanest way to scope 50+ hotkeys in 4 lines
-- **Panel focus is prerequisite, not feature** — without it, JKL/Delete/I-O all go wrong
-- **Store actions as single entry point** — menu → `store.getState().action()`, no synthetic keyboard events
-- **togglePanel()** pattern: if exists → setActive(), if not → addPanel()
-- **Menus are documentation** — even disabled items change UX perception
-- **Convert remaining keyboard dispatch → store actions** (Add Edit, Ripple Delete, Scene Detection)
-
-## Dockview Lessons (CRITICAL)
-
-1. CSS cascade = enemy #1. Dockview uses inline `rgb()` + `!important`. Never use `*` wildcard selectors.
-2. Pin dockview version. Test theme after any upgrade.
-3. Panel registration must match saved layouts. Always try/catch `fromJSON()`.
-4. `onDidActivePanelChange` is the only reliable focus hook.
-5. Reset Workspace must clear ALL 5 localStorage keys.
+- **Read FCP7 PDF chapters BEFORE coding** — the manual IS the specification
+- **Write Python reference tests FIRST** — caught drop-frame bug, mark precedence bug
+- **Three-Point Edit (`I → O → ,`)** is THE NLE litmus test
+- **JKL shuttle** needs own rAF render loop for reverse/speed > 2x
+- **Store migration Phase 2** needed: `useTimelineData(timelineId?)` hook, lane-level
+- **Use `TAURI_PLATFORM=1 npx vite build`** — NOT `npm run build` (50+ pre-existing TS errors)
+- **`effective*` variable pattern** enables backward-compatible store migration
+- **Source = Program video feed** — P0 bug: both monitors read same video element
 
 ## Key Docs (read on connect)
-- `docs/190_ph_CUT_WORKFLOW_ARCH/CUT_UNIFIED_VISION.md`
-- `docs/190_ph_CUT_WORKFLOW_ARCH/CUT_HOTKEY_ARCHITECTURE.md`
-- `docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_C_UX_DETAIL.md`
-- `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_UX_2026-03-22.md`
+- `docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md`
+- `docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_A_ENGINE_DETAIL.md`
+- `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ALPHA_ENGINE_2026-03-22.md`
 - `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/FEEDBACK_WAVE5_6_ALL_AGENTS_2026-03-22.md`
 
 ## Shared Memory (auto-loaded, always current)
@@ -73,4 +63,4 @@ client/src/store/useCutEditorStore.ts                  — UI state: focusedPane
 - These memories apply to ALL agents across ALL worktrees
 
 ## Before Session End
-Write experience report: `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_UX_{DATE}.md` on main.
+Write experience report: `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ALPHA_ENGINE_{DATE}.md` on main.
