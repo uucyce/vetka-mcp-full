@@ -160,7 +160,15 @@ const MARKER_COLORS: Record<string, string> = {
   comment: '#3b82f6',
   cam: '#a855f7',
   insight: '#22c55e',
+  // MARKER_A3.1: PULSE BPM marker colors
+  bpm_audio: '#22c55e',    // green — audio beats
+  bpm_visual: '#4a9eff',   // blue — visual cut points
+  bpm_script: '#ffffff',   // white — script scene transitions
+  sync_point: '#f59e0b',   // orange — multi-source sync
 };
+
+// MARKER_A3.1: BPM marker kinds — rendered as thin lines, not blocks
+const BPM_MARKER_KINDS = new Set(['bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point']);
 
 // MARKER_192.3: 2x2 grid for track buttons — no overlap at 100px width
 const TRACK_BUTTON_ROW: CSSProperties = {
@@ -648,7 +656,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   }, [effectiveMarkOut]);
   useEffect(() => {
     // MARKER_173.18.NLE.BEAT_SNAP: music_sync markers enter the generic snap target pool as beat cues.
-    markerTimesRef.current = markers.map((marker) => marker.start_sec);
+    // MARKER_A3.6: Snap to both start_sec AND end_sec of markers
+    markerTimesRef.current = markers.flatMap((marker) => {
+      const times = [marker.start_sec];
+      if (marker.end_sec > marker.start_sec + 0.01) times.push(marker.end_sec);
+      return times;
+    });
   }, [markers]);
   useEffect(() => {
     snapEnabledRef.current = snapEnabled;
@@ -985,11 +998,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     (event: ReactWheelEvent) => {
       const containerRect = containerRef.current?.getBoundingClientRect();
       const localX = containerRect ? (event.clientX - containerRect.left) : Number.POSITIVE_INFINITY;
+
+      // Shift+Wheel over lane headers → adjust track height
       if (event.shiftKey && localX <= LANE_HEADER_WIDTH) {
         setTrackHeight(trackHeight - event.deltaY * 0.08);
         event.preventDefault();
         return;
       }
+
+      // MARKER_A3.3: Pinch-to-zoom (ctrlKey = trackpad pinch) + Cmd+Wheel zoom
+      // Zooms centered on cursor position (not left edge)
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        const zoomRef = useCutEditorStore.getState().zoom;
+        const scrollRef = useCutEditorStore.getState().scrollLeft;
+        // Cursor time before zoom
+        const cursorLocalX = localX - LANE_HEADER_WIDTH;
+        const cursorTime = (cursorLocalX + scrollRef) / zoomRef;
+        // Apply zoom delta
+        const factor = event.deltaY > 0 ? 0.92 : 1.08; // smoother steps
+        const newZoom = Math.max(10, Math.min(500, zoomRef * factor));
+        // Adjust scroll so cursor stays over same time position
+        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
+        useCutEditorStore.getState().setZoom(newZoom);
+        useCutEditorStore.getState().setScrollLeft(newScroll);
+        return;
+      }
+
+      // Horizontal scroll (Shift+Wheel or horizontal trackpad swipe)
       if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
         setScrollLeft(Math.max(0, scrollLeft + (event.deltaX || event.deltaY)));
         event.preventDefault();
@@ -2142,12 +2178,37 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 })}
 
                 {markers.map((marker) => {
+                  const isBpm = BPM_MARKER_KINDS.has(marker.kind);
+                  // MARKER_A3.1: Hide BPM markers at low zoom (too dense)
+                  if (isBpm && zoom < 30) return null;
                   const markerX = marker.start_sec * zoom - scrollLeft;
-                  const markerWidth = Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
+                  const markerWidth = isBpm ? 1 : Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
                   if (markerX + markerWidth < 0 || markerX > containerWidth) {
                     return null;
                   }
                   const color = MARKER_COLORS[marker.kind] || '#888';
+                  // MARKER_A3.1: BPM markers = thin vertical lines, opacity from score
+                  if (isBpm) {
+                    const opacity = Math.max(0.15, Math.min(0.8, marker.score ?? 0.5));
+                    return (
+                      <div
+                        key={`${lane.lane_id}_${marker.marker_id}`}
+                        style={{
+                          position: 'absolute',
+                          left: markerX,
+                          width: 1,
+                          height: laneH - 4,
+                          top: 2,
+                          background: color,
+                          opacity,
+                          pointerEvents: 'none',
+                          zIndex: 1,
+                        }}
+                        title={`${marker.kind.replace('bpm_', '').replace('_', ' ')} beat (${(marker.score ?? 0).toFixed(2)}) @ ${marker.start_sec.toFixed(2)}s`}
+                      />
+                    );
+                  }
+                  // Editorial markers — block rendering (unchanged)
                   return (
                     <div
                       key={`${lane.lane_id}_${marker.marker_id}`}
