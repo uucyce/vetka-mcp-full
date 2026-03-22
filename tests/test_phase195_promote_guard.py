@@ -220,3 +220,92 @@ def test_worktree_branch_yields_done_worktree(tmp_path):
     assert task["status"] == "done_worktree", (
         f"Expected done_worktree for branch claude/cut-media, got {task['status']}"
     )
+
+
+# ── Test 12: verify pass → verified ──────────────────────────
+
+def test_verify_pass(tmp_path):
+    """MARKER_195.20: QA gate — verdict=pass transitions done_worktree → verified."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Task to verify", priority=3)
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
+
+    result = board.verify_task(tid, "pass", "All tests green", "Delta")
+
+    assert result["success"] is True
+    assert result["status"] == "verified"
+    assert result["verdict"] == "pass"
+    task = board.get_task(tid)
+    assert task["status"] == "verified"
+    assert task["verification_agent"] == "Delta"
+
+
+# ── Test 13: verify fail → needs_fix ─────────────────────────
+
+def test_verify_fail(tmp_path):
+    """MARKER_195.20: QA gate — verdict=fail transitions done_worktree → needs_fix."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Buggy task", priority=3)
+    board.update_task(tid, status="done_worktree")
+
+    result = board.verify_task(tid, "fail", "Test X fails on edge case", "Delta")
+
+    assert result["success"] is True
+    assert result["status"] == "needs_fix"
+    task = board.get_task(tid)
+    assert task["status"] == "needs_fix"
+
+
+# ── Test 14: verify wrong status → error ─────────────────────
+
+def test_verify_wrong_status(tmp_path):
+    """MARKER_195.20: verify only accepts done_worktree tasks."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Pending task", priority=3)
+
+    result = board.verify_task(tid, "pass")
+    assert result["success"] is False
+    assert "expected done_worktree" in result["error"]
+
+
+# ── Test 15: reclaim needs_fix → claimed ─────────────────────
+
+def test_reclaim_needs_fix(tmp_path):
+    """MARKER_195.20: needs_fix tasks can be re-claimed for retry."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Fix me", priority=3)
+    board.update_task(tid, status="needs_fix")
+
+    result = board.claim_task(tid, "Alpha", "claude_code")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "claimed"
+
+
+# ── Test 16: promote verified → done_main ────────────────────
+
+def test_promote_verified(tmp_path):
+    """MARKER_195.20: verified tasks can be promoted to done_main."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Verified task", priority=3)
+    board.update_task(tid, status="verified", commit_hash="abc123")
+
+    with patch.object(type(board), '_is_commit_on_main', return_value=True):
+        result = board.promote_to_main(tid)
+
+    assert result["success"] is True
+    assert result["status"] == "done_main"
+
+
+# ── Test 17: verify invalid verdict → error ──────────────────
+
+def test_verify_invalid_verdict(tmp_path):
+    """MARKER_195.20: invalid verdict returns error."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Task", priority=3)
+    board.update_task(tid, status="done_worktree")
+
+    result = board.verify_task(tid, "maybe")
+    assert result["success"] is False
+    assert "Invalid verdict" in result["error"]

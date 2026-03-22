@@ -73,7 +73,9 @@ PRIORITY_SOMEDAY = 5
 # MARKER_186.4: Added "done_worktree" / "done_main" — worktree-aware lifecycle
 #   done_worktree = committed on branch, pending merge to main
 #   done_main = merged to main (or committed directly on main)
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval"}
+#   verified = QA gate passed (MARKER_195.20), ready for merge
+#   needs_fix = QA gate failed, needs re-work
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -1380,7 +1382,7 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued"):
+        if task["status"] not in ("pending", "queued", "needs_fix"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
@@ -1622,6 +1624,66 @@ class TaskBoard:
             f"3. What would you change if doing this phase again?"
         )
 
+    # ==========================================
+    # MARKER_195.20: QA VERIFICATION GATE
+    # ==========================================
+
+    def verify_task(
+        self,
+        task_id: str,
+        verdict: str,
+        notes: str = "",
+        verified_by: str = "",
+    ) -> Dict[str, Any]:
+        """MARKER_195.20: QA gate — verify a completed worktree task.
+
+        Args:
+            task_id: Task to verify
+            verdict: 'pass' or 'fail'
+            notes: Verification notes (truncated to 300 chars)
+            verified_by: Agent performing verification (default: 'Delta')
+
+        Returns:
+            Result dict with new status (verified or needs_fix)
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        if task["status"] != "done_worktree":
+            return {
+                "success": False,
+                "error": f"Task {task_id} is '{task['status']}', expected done_worktree",
+            }
+
+        if verdict == "pass":
+            new_status = "verified"
+        elif verdict == "fail":
+            new_status = "needs_fix"
+        else:
+            return {"success": False, "error": f"Invalid verdict: '{verdict}'. Use 'pass' or 'fail'"}
+
+        verifier = verified_by or "Delta"
+        self.update_task(
+            task_id,
+            status=new_status,
+            verification_agent=verifier,
+            _history_event="verified" if verdict == "pass" else "verification_failed",
+            _history_source="qa_gate",
+            _history_reason=notes[:300] or f"QA verdict: {verdict}",
+            _history_agent_name=verifier,
+        )
+
+        if verdict == "fail":
+            self._notify_board_update("task_needs_fix", {
+                "task_id": task_id,
+                "title": task.get("title", ""),
+                "notes": notes[:200],
+            })
+
+        logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
+        return {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
+
     @staticmethod
     def _is_commit_on_main(commit_hash: str) -> bool:
         """MARKER_195.1: Verify commit is actually on main branch using git merge-base."""
@@ -1638,14 +1700,15 @@ class TaskBoard:
     def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None) -> Dict[str, Any]:
         """MARKER_186.4: Transition done_worktree → done_main after merge.
         MARKER_195.1: Added git merge-base verification to prevent false positives.
+        MARKER_195.20: Also accepts 'verified' status (QA gate passed).
 
         Called when a worktree branch is merged to main.
         """
         task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
-        if task.get("status") not in ("done_worktree", "done"):
-            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree"}
+        if task.get("status") not in ("done_worktree", "done", "verified"):
+            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree or verified"}
 
         # MARKER_195.1: Verify the commit is actually on main before promoting
         verify_hash = merge_commit_hash or task.get("commit_hash")
