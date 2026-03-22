@@ -51,23 +51,18 @@ _FEEDBACK_DOCS_DIR = _PROJECT_ROOT / "docs" / "190_ph_CUT_WORKFLOW_ARCH" / "feed
 _WORKTREES_DIR = _PROJECT_ROOT / ".claude" / "worktrees"
 
 
-def _set_skip_worktree(worktree_dir: Path) -> None:
-    """MARKER_195.20: Tell git to ignore CLAUDE.md changes in this worktree.
+def _get_claude_projects_dir(worktree_dir: Path) -> Path:
+    """MARKER_195.20b: Get ~/.claude/projects/<sanitized-path>/ for a worktree.
 
-    Prevents agents from accidentally committing role-specific CLAUDE.md
-    to their branch, which would cause merge conflicts on main.
+    Claude Code reads CLAUDE.md from both project root AND ~/.claude/projects/.
+    Writing role-specific content here avoids git conflicts entirely —
+    the file is never tracked, never committed, never conflicts on pull.
+
+    Claude Code sanitizes paths: /a_b/c.d → -a-b-c-d
+    (replaces /, _, . with -)
     """
-    import subprocess
-    try:
-        subprocess.run(
-            ["git", "update-index", "--skip-worktree", "CLAUDE.md"],
-            cwd=str(worktree_dir),
-            capture_output=True, text=True, timeout=5,
-        )
-        logger.debug("[generate_claude_md] Set skip-worktree for %s/CLAUDE.md", worktree_dir)
-    except Exception as e:
-        # Non-fatal: skip-worktree is a safety net, not a requirement
-        logger.debug("[generate_claude_md] skip-worktree failed (non-fatal): %s", e)
+    sanitized = re.sub(r"[/_.]", "-", str(worktree_dir.resolve()))
+    return Path.home() / ".claude" / "projects" / sanitized
 
 
 def _load_template(template_path: Optional[Path] = None) -> jinja2.Template:
@@ -240,15 +235,15 @@ def write_claude_md(
         return None
 
     if output_dir is None:
-        output_dir = _WORKTREES_DIR / role.worktree
+        # MARKER_195.20b: Write to ~/.claude/projects/ instead of worktree root.
+        # This avoids git conflicts — the file is never tracked.
+        worktree_dir = _WORKTREES_DIR / role.worktree
+        output_dir = _get_claude_projects_dir(worktree_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "CLAUDE.md"
     output_path.write_text(content, encoding="utf-8")
     logger.info("[generate_claude_md] Wrote %s (%d bytes)", output_path, len(content))
-
-    # MARKER_195.20: Set skip-worktree so agents don't accidentally commit role-specific CLAUDE.md
-    _set_skip_worktree(output_dir)
 
     return output_path
 
@@ -274,12 +269,12 @@ def generate_all(dry_run: bool = False, output_base: Optional[Path] = None) -> d
         results[role.callsign] = content
 
         if not dry_run:
-            out_dir = (output_base or _WORKTREES_DIR) / role.worktree
+            # MARKER_195.20b: Write to ~/.claude/projects/ — never conflicts with git
+            worktree_dir = (output_base or _WORKTREES_DIR) / role.worktree
+            out_dir = _get_claude_projects_dir(worktree_dir) if not output_base else worktree_dir
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
             logger.info("[generate_claude_md] Wrote %s/CLAUDE.md", out_dir)
-            # MARKER_195.20: Prevent accidental commit of role-specific CLAUDE.md
-            _set_skip_worktree(out_dir)
 
     return results
 
