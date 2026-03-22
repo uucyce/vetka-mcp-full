@@ -688,14 +688,19 @@ export default function MenuBar() {
     const ds = dockStore.getState();
     const api = ds.apiRef;
     if (!api) return;
-    // Save current first
+    // Save current layout before switching
     try { ds.saveLayout(ds.activePreset, api.toJSON()); } catch {}
-    // Load target
+    // Load target preset
     const saved = ds.loadLayout(name);
     if (saved) {
       try { api.fromJSON(saved); } catch {}
+      ds.setActivePreset(name);
+    } else {
+      // MARKER_C5: No saved layout for this preset — set preset and reload.
+      // onReady will fire with the new activePreset and build the correct default layout.
+      ds.setActivePreset(name);
+      window.location.reload();
     }
-    ds.setActivePreset(name);
   }
 
   function focusPanel(panelId: string) {
