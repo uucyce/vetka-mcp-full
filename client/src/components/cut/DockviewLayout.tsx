@@ -46,6 +46,7 @@ import SpeedControl from './SpeedControl';
 import TransitionsPanel from './TransitionsPanel';
 import ToolsPalette from './ToolsPalette';
 import WorkspacePresets from './WorkspacePresets';
+import StatusBar from './StatusBar';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -530,6 +531,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           </div>
         )}
       </div>
+      {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
+      <StatusBar />
     </div>
   );
 }
