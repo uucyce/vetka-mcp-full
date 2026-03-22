@@ -5,7 +5,7 @@
  * This panel manages imported media assets, organized by bins (buckets).
  *
  * Import methods (matching Premiere Pro):
- * 1. Cmd+I hotkey (via 'cut:trigger-import' custom event from TransportBar)
+ * 1. Cmd+I hotkey (via 'cut:import-media' custom event from MenuBar/hotkeys)
  * 2. Double-click dropzone to open native file picker
  * 3. Drag & drop files/folders into the panel (future: Tauri native)
  *
