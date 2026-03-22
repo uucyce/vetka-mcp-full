@@ -959,27 +959,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown (local-first, then async backend)
+      // MARKER_W3.6: Razor tool — split on mousedown
+      // MARKER_UNDO-FIX: Routes through backend applyTimelineOps for undo support
       if (activeTool === 'razor' && mode === 'move') {
         const splitTime = timeFromTrackClientX(event.clientX);
-        const s = useCutEditorStore.getState();
-        const newLanes = s.lanes.map(lane => ({
-          ...lane,
-          clips: lane.clips.flatMap(c => {
-            if (c.clip_id === clip.clip_id && splitTime > c.start_sec + 0.01 && splitTime < c.start_sec + c.duration_sec - 0.01) {
-              const leftDur = splitTime - c.start_sec;
-              return [
-                { ...c, clip_id: `${c.clip_id}_L`, duration_sec: leftDur },
-                { ...c, clip_id: `${c.clip_id}_R`, start_sec: splitTime, duration_sec: c.duration_sec - leftDur },
-              ];
-            }
-            return [c];
-          }),
-        }));
-        s.setLanes(newLanes);
-        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }], { skipRefresh: true }).catch((err) =>
-          console.error('[CUT] razor split failed:', err)
-        );
+        if (splitTime > clip.start_sec + 0.01 && splitTime < clip.start_sec + clip.duration_sec - 0.01) {
+          void useCutEditorStore.getState().applyTimelineOps([
+            { op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime },
+          ]);
+        }
         return;
       }
 
@@ -2599,26 +2587,14 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               { label: 'Paste', shortcut: '\u2318V', action: () => { close(); useCutEditorStore.getState().pasteClips('overwrite'); } },
               'separator',
               // ── Edit operations ──
+              // MARKER_UNDO-FIX: Split via backend op for undo support
               { label: 'Split at Playhead', shortcut: '\u2318K', action: () => {
                 close();
-                // MARKER_A13: Actually split — find clip under playhead and split
                 const s = useCutEditorStore.getState();
                 const t = s.currentTime;
-                const newLanes = s.lanes.map((lane) => ({
-                  ...lane,
-                  clips: lane.clips.flatMap((c) => {
-                    if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                      const leftDur = t - c.start_sec;
-                      const rightDur = c.duration_sec - leftDur;
-                      return [
-                        { ...c, duration_sec: leftDur },
-                        { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur },
-                      ];
-                    }
-                    return [c];
-                  }),
-                }));
-                s.setLanes(newLanes);
+                if (t > contextMenu.clip.start_sec && t < contextMenu.clip.start_sec + contextMenu.clip.duration_sec) {
+                  void s.applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: t }]);
+                }
               }},
               { label: 'Remove Clip', shortcut: 'Del', action: () => { close(); void removeClip(clipId); } },
               { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => {
@@ -2650,22 +2626,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
               'separator',
               // ── Transitions ──
+              // MARKER_UNDO-FIX: Transition via backend op for undo support
               { label: contextMenu.clip.transition_out ? 'Remove Transition' : 'Add Cross Dissolve', shortcut: '\u2318T', action: () => {
                 close();
                 const s = useCutEditorStore.getState();
-                if (contextMenu.clip.transition_out) {
-                  // Remove
-                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
-                    c.clip_id === clipId ? { ...c, transition_out: undefined } : c
-                  )}));
-                  s.setLanes(newLanes);
-                } else {
-                  // Add default cross dissolve
-                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
-                    c.clip_id === clipId ? { ...c, transition_out: { type: 'cross_dissolve' as const, duration_sec: 1.0, alignment: 'center' as const } } : c
-                  )}));
-                  s.setLanes(newLanes);
-                }
+                void s.applyTimelineOps([{
+                  op: 'set_transition', clip_id: clipId,
+                  transition: contextMenu.clip.transition_out
+                    ? null  // remove
+                    : { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+                }]);
               }},
               'separator',
               // ── Export ──

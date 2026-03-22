@@ -1346,6 +1346,60 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             )
             continue
 
+        # MARKER_UNDO-FIX: remove_clip — delete clip without closing gap (lift)
+        if op_type == "remove_clip":
+            clip_id = str(op.get("clip_id") or "")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            lane_id = str(source_lane.get("lane_id") or "")
+            source_lane["clips"] = [c for c in source_lane.get("clips", []) if str(c.get("clip_id") or "") != clip_id]
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "lane_id": lane_id})
+            continue
+
+        # MARKER_UNDO-FIX: replace_media — swap source_path on clip at playhead position
+        if op_type == "replace_media":
+            clip_id = str(op.get("clip_id") or "")
+            source_path = str(op.get("source_path") or "")
+            source_in = float(op.get("source_in", 0.0))
+            if not source_path:
+                raise ValueError("source_path is required for replace_media")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            old_source = str(clip.get("source_path") or "")
+            clip["source_path"] = source_path
+            clip["source_in"] = round(max(0.0, source_in), 4)
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id,
+                "source_path": source_path, "source_in": round(max(0.0, source_in), 4),
+                "old_source_path": old_source,
+            })
+            continue
+
+        # MARKER_UNDO-FIX: set_transition — add or remove transition_out on a clip
+        if op_type == "set_transition":
+            clip_id = str(op.get("clip_id") or "")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            transition = op.get("transition")  # None = remove, dict = set
+            old_transition = clip.get("transition_out")
+            if transition is None:
+                clip.pop("transition_out", None)
+            else:
+                clip["transition_out"] = {
+                    "type": str(transition.get("type", "cross_dissolve")),
+                    "duration_sec": float(transition.get("duration_sec", 1.0)),
+                    "alignment": str(transition.get("alignment", "center")),
+                }
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id,
+                "transition": transition,
+                "old_transition": old_transition,
+            })
+            continue
+
         # MARKER_173.2 — ripple_delete: remove clip, shift subsequent clips left
         if op_type == "ripple_delete":
             clip_id = str(op.get("clip_id") or "")

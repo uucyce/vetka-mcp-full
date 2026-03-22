@@ -4,6 +4,7 @@
  * Both Opus (timeline) and Codex (player/transport) streams write/read from this.
  */
 import { create } from 'zustand';
+import { API_BASE } from '../config/api.config';
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -451,6 +452,9 @@ interface CutEditorState {
     timelineId?: string;
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
+
+  // MARKER_UNDO-FIX: Shared applyTimelineOps — routes edits through backend undo stack
+  applyTimelineOps: (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => Promise<void>;
 
   // Multi-timeline tab actions (MARKER_170.12 + MARKER_180.14)
   addTimelineTab: (id: string, label: string) => void;
@@ -956,48 +960,32 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
+  // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
   addDefaultTransition: () => {
-    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
-    const transitionDur = 1.0; // 1 second default (FCP7 standard)
+    const { lanes, currentTime, lockedLanes } = get();
     let bestDist = Infinity;
-    let bestLaneIdx = -1;
-    let bestClipIdx = -1;
+    let bestClipId = '';
 
     // Find nearest clip end (outgoing edit point) to playhead
-    lanes.forEach((lane, li) => {
+    lanes.forEach((lane) => {
       if (lockedLanes.has(lane.lane_id)) return;
-      lane.clips.forEach((clip, ci) => {
+      lane.clips.forEach((clip) => {
         const clipEnd = clip.start_sec + clip.duration_sec;
         const dist = Math.abs(clipEnd - currentTime);
         if (dist < bestDist) {
           bestDist = dist;
-          bestLaneIdx = li;
-          bestClipIdx = ci;
+          bestClipId = clip.clip_id;
         }
       });
     });
 
-    if (bestLaneIdx < 0 || bestDist > 2.0) return; // no nearby edit point
+    if (!bestClipId || bestDist > 2.0) return;
 
-    const newLanes = lanes.map((lane, li) => {
-      if (li !== bestLaneIdx) return lane;
-      return {
-        ...lane,
-        clips: lane.clips.map((c, ci) => {
-          if (ci !== bestClipIdx) return c;
-          // Add or replace transition_out
-          return {
-            ...c,
-            transition_out: {
-              type: 'cross_dissolve' as const,
-              duration_sec: transitionDur,
-              alignment: 'center' as const,
-            },
-          };
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+    void get().applyTimelineOps([{
+      op: 'set_transition',
+      clip_id: bestClipId,
+      transition: { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+    }]);
   },
 
   setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
@@ -1193,6 +1181,36 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,
     })),
+
+  // MARKER_UNDO-FIX: Shared applyTimelineOps — all editing ops route through backend undo stack
+  applyTimelineOps: async (ops, opts) => {
+    const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] applyTimelineOps: no project session — op dropped', ops);
+      return;
+    }
+    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sandbox_root: sandboxRoot,
+        project_id: projectId,
+        timeline_id: timelineId || 'main',
+        author: 'cut_nle_ui',
+        ops,
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`timeline apply failed: HTTP ${response.status}`);
+    }
+    const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
+    if (!payload.success) {
+      throw new Error(payload.error?.message || 'timeline apply failed');
+    }
+    if (!opts?.skipRefresh) {
+      await refreshProjectState?.();
+    }
+  },
 
   // MARKER_170.12: Multi-timeline tab management
   addTimelineTab: (id, label) =>
