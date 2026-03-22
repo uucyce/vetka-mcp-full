@@ -1,0 +1,13 @@
+/**
+ * MARKER_GAMMA-32: CSS @layer cascade control for dockview.
+ *
+ * Layer order declaration: dockview (lowest) → cut (highest).
+ * Un-layered CSS (our theme overrides) automatically wins over layered CSS.
+ *
+ * This file wraps dockview's base CSS in @layer dockview, giving our
+ * single-class selectors in dockview-cut-theme.css higher priority
+ * WITHOUT needing double-class or !important hacks.
+ */
+@layer dockview;
+
+@import url('dockview-react/dist/styles/dockview.css') layer(dockview);

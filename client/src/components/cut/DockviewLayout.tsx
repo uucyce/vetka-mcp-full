@@ -16,7 +16,9 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
 } from 'dockview-react';
-import 'dockview-react/dist/styles/dockview.css';
+// MARKER_GAMMA-32: @layer cascade — dockview CSS wrapped in layer(dockview),
+// our theme CSS stays un-layered (highest priority, no double-class needed)
+import './dockview-layers.css';
 import './dockview-cut-theme.css';
 
 import { useCutEditorStore } from '../../store/useCutEditorStore';
