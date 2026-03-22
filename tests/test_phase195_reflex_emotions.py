@@ -402,7 +402,7 @@ class TestEngramPersistence:
         mock_cache.put = mock_put
         mock_cache.get_all = mock_get_all
 
-        with patch("src.services.reflex_emotions.get_engram_cache", return_value=mock_cache):
+        with patch("src.memory.engram_cache.get_engram_cache", return_value=mock_cache):
             # Record outcome which triggers ENGRAM save
             ctx = EmotionContext(agent_id="opus")
             engine.record_outcome("tool_a", success=True, context=ctx)
@@ -421,7 +421,7 @@ class TestEngramPersistence:
         mock_cache = MagicMock()
         mock_cache.get_all.return_value = {}
 
-        with patch("src.services.reflex_emotions.get_engram_cache", return_value=mock_cache):
+        with patch("src.memory.engram_cache.get_engram_cache", return_value=mock_cache):
             loaded = engine.get_state_from_engram("agent_x", "nonexistent_tool")
             assert loaded is None, "Should return None for missing key"
 
@@ -429,7 +429,7 @@ class TestEngramPersistence:
         """ENGRAM save failure is non-fatal — engine continues."""
         engine = EmotionEngine(data_dir=str(tmp_path))
 
-        with patch("src.services.reflex_emotions.get_engram_cache", side_effect=ImportError("no engram")):
+        with patch("src.memory.engram_cache.get_engram_cache", side_effect=ImportError("no engram")):
             # Should not raise
             ctx = EmotionContext(agent_id="a1")
             state = engine.record_outcome("tool_y", success=True, context=ctx)
