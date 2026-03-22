@@ -670,6 +670,8 @@ export default function MenuBar() {
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
+        { separator: true },
+        { label: 'Maximize Panel', shortcut: '`', action: () => dockStore.getState().toggleMaximize() },
       ],
     },
     {

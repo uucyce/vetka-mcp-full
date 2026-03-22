@@ -3,7 +3,7 @@
  *
  * Script Spine = central vertical chain of scene_chunk nodes.
  * Media nodes: video left, audio right of linked scene.
- * Y-axis = start_sec * PX_PER_SEC (chronological).
+ * Y-axis = start_sec * PX_PER_SEC (chronological, top-to-bottom by default).
  *
  * Fetches from GET /api/cut/project/dag/{timeline_id}.
  * Scene chunks created by POST /api/cut/project/apply-script (CUT-2.1).
@@ -128,9 +128,10 @@ const NODE_TYPES: NodeTypes = {
 };
 
 // ─── Layout: Y = chronology, spine center ───
-// MARKER_C8.1: flipY=true → START at bottom, END at top (architecture default)
+// MARKER_C8.1: flipY=false → START at top, END at bottom (natural reading order)
+// flipY=true → inverted (START bottom, END top) — available via toggle button
 
-function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[], flipY = true): { rfNodes: Node[]; rfEdges: Edge[] } {
+function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: string; edge_type: string }[], flipY = false): { rfNodes: Node[]; rfEdges: Edge[] } {
   const rfNodes: Node[] = [];
 
   // Separate spine nodes from media nodes
@@ -140,7 +141,7 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
   // Find max time for Y inversion
   const maxSec = spineNodes.reduce((mx, n) => Math.max(mx, (n.start_sec ?? 0) + (n.duration_sec ?? 0)), 0);
 
-  // MARKER_C8.1: Y direction — flipY true = START bottom, END top (negative Y = up in ReactFlow)
+  // MARKER_C8.1: Y direction — flipY false = START top, END bottom (positive Y = down in ReactFlow)
   const yPos = (sec: number) => flipY ? -(sec * PX_PER_SEC) : sec * PX_PER_SEC;
 
   // Place spine nodes: center X, Y = chronological position
@@ -269,8 +270,8 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
   const [dagEdges, setDagEdges] = useState<{ source: string; target: string; edge_type: string }[]>([]);
   const [rfNodes, setRfNodes, onNodesChange] = useNodesState([] as Node[]);
   const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState([] as Edge[]);
-  // MARKER_C8.1: Flip Y toggle — START bottom (true) or START top (false)
-  const [flipY, setFlipY] = useState(true);
+  // MARKER_C8.1: Flip Y toggle — START top (false, default) or START bottom (true)
+  const [flipY, setFlipY] = useState(false);
 
   const syncFromDAG = usePanelSyncStore((s) => s.syncFromDAG);
 
@@ -338,9 +339,9 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
           padding: '2px 6px',
           cursor: 'pointer',
         }}
-        title={flipY ? 'Y: START bottom → flip to top' : 'Y: START top → flip to bottom'}
+        title={flipY ? 'START at bottom — click for top-down' : 'START at top — click for bottom-up'}
       >
-        {flipY ? 'Y ↑' : 'Y ↓'}
+        {flipY ? '↑ START' : '↓ START'}
       </button>
       {dagNodes.length === 0 ? (
         <div style={{
