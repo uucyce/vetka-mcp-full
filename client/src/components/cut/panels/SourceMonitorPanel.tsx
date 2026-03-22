@@ -19,6 +19,7 @@ export default function SourceMonitorPanel(_props: IDockviewPanelProps) {
   return (
     <div
       style={PANEL_STYLE}
+      data-testid="cut-panel-source"
       onMouseDown={() => useCutEditorStore.getState().setFocusedPanel('source')}
     >
       <div style={{ flex: 1, overflow: 'hidden' }}>

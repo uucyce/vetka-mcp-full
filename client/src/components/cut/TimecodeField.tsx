@@ -278,6 +278,7 @@ export default function TimecodeField({
       <input
         ref={inputRef}
         data-testid={`${testId}-input`}
+        aria-label="timecode"
         type="text"
         value={editValue}
         placeholder={displayTC}

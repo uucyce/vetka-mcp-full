@@ -702,6 +702,30 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     displayLanesRef.current = displayLanes;
   }, [displayLanes]);
 
+  // MARKER_FCP7.EDIT2: Compute linked clip IDs — clips sharing scene_id across video + audio lanes
+  // FCP7 p.592: "The names of the linked clip items are underlined"
+  const linkedClipIds = useMemo(() => {
+    const sceneToLaneTypes = new Map<string, Set<string>>();
+    const sceneToClipIds = new Map<string, string[]>();
+    for (const lane of displayLanes) {
+      for (const clip of lane.clips) {
+        const key = clip.scene_id || clip.source_path.replace(/\.[^.]+$/, '');
+        if (!sceneToLaneTypes.has(key)) sceneToLaneTypes.set(key, new Set());
+        sceneToLaneTypes.get(key)!.add(lane.lane_type);
+        if (!sceneToClipIds.has(key)) sceneToClipIds.set(key, []);
+        sceneToClipIds.get(key)!.push(clip.clip_id);
+      }
+    }
+    const linked = new Set<string>();
+    for (const [key, laneTypes] of sceneToLaneTypes) {
+      // Linked = appears in at least 2 different lane types (e.g., video + audio)
+      if (laneTypes.size >= 2) {
+        for (const id of sceneToClipIds.get(key) || []) linked.add(id);
+      }
+    }
+    return linked;
+  }, [displayLanes]);
+
   const clipOverlayTop = useMemo(() => {
     if (!dragState) return null;
     const laneIndex = displayLanes.findIndex((lane) => lane.lane_id === dragState.laneId);
@@ -736,7 +760,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     return displayLanesRef.current[laneIndex]?.lane_id || displayLanesRef.current[0]?.lane_id || 'video_main';
   }, []);
 
-  const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>) => {
+  const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
     const session = sessionRef.current;
     if (!session.sandboxRoot || !session.projectId) {
       return;
@@ -760,7 +784,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (!payload.success) {
       throw new Error(payload.error?.message || 'timeline apply failed');
     }
-    await session.refreshProjectState?.();
+    if (!opts?.skipRefresh) {
+      await session.refreshProjectState?.();
+    }
   }, []);
 
   const resolveMarkerMediaPath = useCallback(
@@ -917,10 +943,25 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown instead of drag
+      // MARKER_W3.6: Razor tool — split on mousedown (local-first, then async backend)
       if (activeTool === 'razor' && mode === 'move') {
         const splitTime = timeFromTrackClientX(event.clientX);
-        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }]).catch((err) =>
+        const s = useCutEditorStore.getState();
+        const newLanes = s.lanes.map(lane => ({
+          ...lane,
+          clips: lane.clips.flatMap(c => {
+            if (c.clip_id === clip.clip_id && splitTime > c.start_sec + 0.01 && splitTime < c.start_sec + c.duration_sec - 0.01) {
+              const leftDur = splitTime - c.start_sec;
+              return [
+                { ...c, clip_id: `${c.clip_id}_L`, duration_sec: leftDur },
+                { ...c, clip_id: `${c.clip_id}_R`, start_sec: splitTime, duration_sec: c.duration_sec - leftDur },
+              ];
+            }
+            return [c];
+          }),
+        }));
+        s.setLanes(newLanes);
+        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }], { skipRefresh: true }).catch((err) =>
           console.error('[CUT] razor split failed:', err)
         );
         return;
@@ -1098,8 +1139,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           }),
         }));
         s.setLanes(newLanes);
-        // Also notify backend asynchronously
-        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }]).catch(() => {});
+        // Also notify backend asynchronously (skipRefresh: local state is already updated)
+        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }], { skipRefresh: true }).catch(() => {});
         return;
       }
 
@@ -1624,7 +1665,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             fps={projectFramerate}
             dropFrame={projectDropFrame}
             onSeek={seek}
-            testId="timeline-tc-field"
+            testId="cut-timeline-timecode-display"
           />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
@@ -1760,6 +1801,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       marginLeft: 'auto',
                     }}
                     title={isHidden ? 'Show track' : 'Hide track'}
+                    aria-label={isHidden ? 'Show visibility' : 'Hide visibility'}
+                    data-testid={`cut-lane-visibility-${lane.lane_id}`}
                     onClick={(event) => {
                       event.stopPropagation();
                       toggleVisibility(lane.lane_id);
@@ -1999,6 +2042,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             overflow: 'hidden',
                             whiteSpace: 'nowrap',
                             textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                            // MARKER_FCP7.EDIT2: Underline linked clip names (FCP7 p.592)
+                            textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
                           }}
                         >
                           {basename(clip.source_path)}
@@ -2130,6 +2175,38 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </span>
                       ) : null}
                     </div>
+                  );
+                })}
+
+                {/* MARKER_FCP7.EDIT3: Through edit indicators — red triangles at edit points
+                    between adjacent clips from the same source (FCP7 p.588) */}
+                {lane.clips.map((clip, ci) => {
+                  if (ci === 0) return null;
+                  const prev = lane.clips[ci - 1];
+                  // Through edit: adjacent clips from same source (razor split artifacts)
+                  const prevBase = prev.source_path.replace(/\.[^.]+$/, '');
+                  const curBase = clip.source_path.replace(/\.[^.]+$/, '');
+                  if (prevBase !== curBase) return null;
+                  const editX = clip.start_sec * zoom - scrollLeft;
+                  if (editX < -8 || editX > containerWidth + 8) return null;
+                  return (
+                    <div
+                      key={`through-edit-${prev.clip_id}-${clip.clip_id}`}
+                      data-testid="through-edit"
+                      className="through-edit"
+                      style={{
+                        position: 'absolute',
+                        left: editX - 4,
+                        top: 0,
+                        width: 0,
+                        height: 0,
+                        borderLeft: '4px solid transparent',
+                        borderRight: '4px solid transparent',
+                        borderTop: '6px solid #ef4444',
+                        zIndex: 10,
+                        pointerEvents: 'none',
+                      }}
+                    />
                   );
                 })}
 
