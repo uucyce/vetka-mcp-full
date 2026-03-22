@@ -616,10 +616,18 @@ export default function ProjectPanel() {
               return (
                 <div
                   key={item.item_id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                  }}
+                  onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   style={{
                     ...GRID_ITEM,
                     background: isActive ? '#1a1a2a' : 'transparent',
                     border: isActive ? '1px solid #4a9eff' : '1px solid transparent',
+                    cursor: 'grab',
                   }}
                   onClick={() => handleClipClick(item.source_path)}
                 >
@@ -677,10 +685,18 @@ export default function ProjectPanel() {
                   return (
                     <div
                       key={item.item_id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        e.dataTransfer.effectAllowed = 'copy';
+                        (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                       style={{
                         ...CLIP_ITEM,
                         background: isActive ? '#1a1a2a' : 'transparent',
                         borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                        cursor: 'grab',
                       }}
                       onClick={() => handleClipClick(item.source_path)}
                     >
