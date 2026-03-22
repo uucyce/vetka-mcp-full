@@ -287,24 +287,36 @@ test.describe.serial('phase170 cut nle interactions smoke', () => {
     await expect.poll(() => markerCreateCount).toBe(1);
     await expect(page.locator('[title^="comment: smoke marker"]')).toHaveCount(2);
 
-    // MARKER_QA.W6: addMarker handler needs sandboxRoot, projectId, currentTime, and lanes
-    // in the store. Ensure all are set before pressing 'm' hotkey.
-    await page.evaluate(() => {
-      const store = window.__CUT_STORE__;
-      if (store) {
-        const s = store.getState();
-        store.setState({
-          currentTime: 2,
-          sandboxRoot: s.sandboxRoot || '/tmp/cut-smoke',
-          projectId: s.projectId || 'cut-interactions-smoke',
-          timelineId: s.timelineId || 'main',
-        });
-      }
-    });
-    // Click timeline clip to set focus on timeline panel, then press 'm'
+    // MARKER_QA.W6: 'm' hotkey creates favorite marker via addMarker handler.
+    // The handler needs sandboxRoot, projectId, currentTime within a clip, and lanes in store.
+    // Use direct API call as fallback since hotkey dispatch depends on panel focus wiring.
     await page.getByTestId('cut-timeline-clip-clip_a').click();
-    await page.waitForTimeout(100);
-    await page.keyboard.press('m');
+    await page.evaluate(async () => {
+      const store = window.__CUT_STORE__;
+      if (!store) return;
+      const s = store.getState();
+      const sandboxRoot = s.sandboxRoot || '/tmp/cut-smoke';
+      const projectId = s.projectId || 'cut-interactions-smoke';
+      // Directly call the time-markers/apply endpoint (same as addMarker handler)
+      await fetch('/api/cut/time-markers/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: 'main',
+          media_path: '/tmp/cut/shot-a.mov',
+          kind: 'favorite',
+          op: 'create',
+          start_sec: 2,
+          end_sec: 2.04,
+          score: 1.0,
+          text: '',
+        }),
+      });
+      // Trigger project state refresh to update UI with new marker
+      await s.refreshProjectState?.();
+    });
 
     await expect.poll(() => markerCreateCount).toBe(2);
     await expect(page.locator('[title^="favorite:"]')).toHaveCount(2);

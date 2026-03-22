@@ -219,8 +219,8 @@ test.describe.serial('phase170 cut playback reliability smoke', () => {
       await expect.poll(() => mediaProxyHits).toBeGreaterThanOrEqual(0);
     }
 
-    // Timecode display should be visible (00:00:00:00)
-    await expect(page.locator('text=00:00:00:00')).toBeVisible();
+    // Timecode display should be visible (00:00:00:00) — multiple timecodes exist (source + program)
+    await expect(page.locator('text=00:00:00:00').first()).toBeVisible();
   });
 
   test('error overlay appears when media-proxy returns 404', async ({ page }) => {
