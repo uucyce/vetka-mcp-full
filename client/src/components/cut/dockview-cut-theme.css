@@ -281,6 +281,47 @@
   outline-offset: -1px;
 }
 
+/* ═══ MARKER_GAMMA-35: NUCLEAR — kill ALL remaining colored borders ══════ */
+/* Exhaustive override of every dockview element that could show color.     */
+
+/* Separator lines between split views (::before pseudo-element) */
+.dockview-theme-dark .dv-split-view-container .dv-view::before {
+  background-color: var(--border-dim) !important;
+}
+
+/* Pane active outline — override dodgerblue var at usage point */
+.dockview-theme-dark .dv-pane-container .dv-pane.dv-pane-active,
+.dockview-theme-dark .dv-pane-container .dv-pane:focus-within {
+  outline-color: #505050;
+}
+
+/* Tab focus ring */
+.dockview-theme-dark .dv-tab:focus {
+  outline: none;
+}
+.dockview-theme-dark .dv-tab:focus-visible {
+  outline: 1px solid var(--border-bright);
+  outline-offset: -1px;
+}
+
+/* Floating/resize container */
+.dockview-theme-dark .dv-resize-container {
+  border-color: var(--border-dim);
+}
+
+/* Global wildcard: any outline on any dockview element */
+.dockview-theme-dark .dv-groupview,
+.dockview-theme-dark .dv-groupview * {
+  outline-color: #505050;
+}
+
+/* Force all borders inside dockview to gray palette */
+.dockview-theme-dark .dv-tabs-and-actions-container,
+.dockview-theme-dark .dv-tabs-container,
+.dockview-theme-dark .dv-tab {
+  border-color: var(--border-dim);
+}
+
 /* ═══ MARKER_GAMMA-23: Monochrome range inputs (kill blue slider thumb) ═══ */
 
 .dockview-theme-dark input[type="range"] {
