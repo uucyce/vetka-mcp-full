@@ -11,6 +11,7 @@ import fnmatch
 import json
 import logging
 import os
+import re
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "session_init_first": {"severity": "warn", "enabled": True},
         "roadmap_before_tasks": {"severity": "warn", "enabled": True},
         "experience_report_after_task": {"severity": "warn", "enabled": True},
+        "recon_relevance": {"severity": "warn", "enabled": True},
     },
     "exempt_paths": ["docs/", "tests/", "data/"],
     "enforce_paths": ["src/**/*.py", "client/src/**/*.ts", "client/src/**/*.tsx"],
@@ -268,6 +270,95 @@ class ProtocolGuard:
             suggestion="Create or verify a roadmap before adding tasks to the board.",
         )
 
+    def _check_recon_relevance(
+        self, session: Any, tool_name: str, args: Dict
+    ) -> Optional[ProtocolViolation]:
+        """MARKER_SC_C.D6: Warn if claimed task's recon_docs don't mention the phase or task keywords."""
+        if tool_name not in _EDIT_TOOL_NAMES:
+            return None
+        if not self._is_enabled("recon_relevance"):
+            return None
+        if not session.task_claimed or not session.claimed_task_id:
+            return None
+
+        try:
+            from src.orchestration.task_board import TaskBoard
+            board = TaskBoard()
+            task = board.get_task(session.claimed_task_id)
+            if not task:
+                return None
+
+            recon_docs = task.get("recon_docs") or []
+            if not recon_docs:
+                return None  # No docs to check — recon_before_code handles that
+
+            # Extract phase number and title keywords for relevance matching
+            title = task.get("title", "")
+            phase_match = re.match(r'^(\d+)', title)
+            phase_number = phase_match.group(1) if phase_match else None
+
+            # Build keyword set from title (words >= 4 chars, excluding common noise)
+            _NOISE_WORDS = {"this", "that", "with", "from", "into", "some", "task", "work", "make", "code"}
+            title_words = set()
+            for word in re.findall(r'[A-Za-z]{4,}', title):
+                w = word.lower()
+                if w not in _NOISE_WORDS:
+                    title_words.add(w)
+
+            if not phase_number and not title_words:
+                return None  # Nothing to check against
+
+            any_relevant = False
+            docs_evaluated = 0
+            for doc_path in recon_docs:
+                try:
+                    doc_full = Path(doc_path)
+                    if not doc_full.is_absolute():
+                        # Resolve relative to project root
+                        project_root = Path(__file__).resolve().parent.parent.parent
+                        doc_full = project_root / doc_path
+                    if not doc_full.exists():
+                        continue  # Skip unreadable docs gracefully
+                    # Read first 50 lines for relevance check
+                    with open(doc_full, "r", encoding="utf-8", errors="replace") as fh:
+                        head_lines = []
+                        for i, line in enumerate(fh):
+                            if i >= 50:
+                                break
+                            head_lines.append(line)
+                    head_text = "".join(head_lines)
+                    docs_evaluated += 1
+
+                    # Check phase number as whole word
+                    if phase_number and re.search(r'\b' + re.escape(phase_number) + r'\b', head_text):
+                        any_relevant = True
+                        break
+
+                    # Check title keywords (at least one match)
+                    for kw in title_words:
+                        if kw.lower() in head_text.lower():
+                            any_relevant = True
+                            break
+                    if any_relevant:
+                        break
+                except Exception:
+                    continue  # Skip unreadable docs gracefully
+
+            # Only warn if at least one doc was readable but none were relevant.
+            # If all docs were unreadable (file not found), skip gracefully.
+            if not any_relevant and docs_evaluated > 0:
+                return ProtocolViolation(
+                    rule_id="recon_relevance",
+                    severity=self._severity("recon_relevance"),
+                    message=f"None of the {len(recon_docs)} recon_docs mention phase '{phase_number or '?'}' or task keywords.",
+                    suggestion="Update recon_docs to reference documents relevant to your current task and phase.",
+                )
+        except Exception:
+            logger.debug("protocol_guard: recon_relevance check failed (non-fatal)")
+            return None
+
+        return None
+
     def _check_experience_report_after_task(
         self, session: Any, tool_name: str, args: Dict
     ) -> Optional[ProtocolViolation]:
@@ -306,6 +397,7 @@ class ProtocolGuard:
             self._check_session_init_first,
             self._check_roadmap_before_tasks,
             self._check_experience_report_after_task,
+            self._check_recon_relevance,
         ]
 
         for checker in checkers:

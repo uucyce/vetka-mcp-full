@@ -428,11 +428,32 @@ class ReflexScorer:
         return scored[:top_n]
 
     def score(self, tool: Any, context: ReflexContext) -> float:
-        """Score a single tool against context. Returns 0.0-1.0."""
+        """Score a single tool against context. Returns 0.0-1.0.
+
+        MARKER_195.2.3: Now applies emotion modifier (same as recommend()).
+        """
         if not REFLEX_ENABLED:
             return 0.0
         signals = self.score_signals(tool, context)
-        return round(self._weighted_sum(signals), 4)
+        total = self._weighted_sum(signals)
+
+        # MARKER_195.2.3: Apply emotion modifier to single-tool scoring
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext as EmoCtx
+            emotion_engine = get_reflex_emotions()
+            tool_id = getattr(tool, "tool_id", str(tool))
+            emo_ctx = EmoCtx(
+                agent_id=context.extra.get("agent_type", ""),
+                phase_type=context.phase_type,
+                tool_permission=getattr(tool, "permission", "READ"),
+            )
+            breakdown = emotion_engine.get_modifier_breakdown(tool_id, emo_ctx)
+            emo_modifier = breakdown.get("modifier", 1.0)
+            total = max(0.0, min(1.0, total * emo_modifier))
+        except Exception:
+            pass  # Emotion errors never break scoring
+
+        return round(total, 4)
 
     def score_signals(self, tool: Any, context: ReflexContext) -> Dict[str, float]:
         """Compute all 8 signal scores for a tool. Each returns 0.0-1.0."""

@@ -1557,7 +1557,65 @@ class TaskBoard:
         result = {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
         if ownership_warnings:
             result["ownership_warnings"] = ownership_warnings
+
+        # MARKER_SC_C.D5: Auto-debrief on phase closure
+        try:
+            phase_prefix = self._extract_phase_prefix(task.get("title", ""))
+            if phase_prefix:
+                remaining = self._count_pending_for_phase(phase_prefix)
+                if remaining == 0:
+                    debrief_prompt = self._generate_debrief_prompt(phase_prefix, task)
+                    result["debrief_prompt"] = debrief_prompt
+                    result["is_last_phase_task"] = True
+                    logger.info(f"[TaskBoard] Phase {phase_prefix} complete — debrief prompt attached")
+        except Exception as e:
+            logger.debug(f"[TaskBoard] Auto-debrief check skipped (non-fatal): {e}")
+
         return result
+
+    # ------------------------------------------------------------------
+    # MARKER_SC_C.D5: Phase-closure debrief helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _extract_phase_prefix(title: str) -> Optional[str]:
+        """Extract numeric phase prefix from task title.
+
+        Examples:
+            "195.2.1: Some title" → "195"
+            "42.3: Another task"  → "42"
+            "D4: Non-numeric"     → None
+            ""                    → None
+        """
+        if not title:
+            return None
+        m = re.match(r'^(\d+)\.', title)
+        return m.group(1) if m else None
+
+    def _count_pending_for_phase(self, prefix: str) -> int:
+        """Count tasks with matching phase prefix still pending or claimed."""
+        count = 0
+        pattern = re.compile(r'^' + re.escape(prefix) + r'\.')
+        try:
+            for status in ("pending", "claimed"):
+                tasks = self.list_tasks(status=status)
+                for t in tasks:
+                    if pattern.match(t.get("title", "")):
+                        count += 1
+        except Exception:
+            logger.debug("[TaskBoard] _count_pending_for_phase failed, returning 0")
+        return count
+
+    @staticmethod
+    def _generate_debrief_prompt(phase: str, task: Dict[str, Any]) -> str:
+        """Return a structured 3-question debrief prompt for the completed phase."""
+        return (
+            f"Phase {phase} complete (last task: {task.get('title', 'unknown')}). "
+            f"Please write a debrief:\n"
+            f"1. Top broken tool or pain point this phase?\n"
+            f"2. Best discovery or technique that worked well?\n"
+            f"3. What would you change if doing this phase again?"
+        )
 
     @staticmethod
     def _is_commit_on_main(commit_hash: str) -> bool:

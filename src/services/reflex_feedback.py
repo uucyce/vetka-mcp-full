@@ -214,6 +214,20 @@ class ReflexFeedback:
             )
             self._append_entry(entry)
             count += 1
+
+        # MARKER_195.2.3 IP-E2: Update emotion state for verifier outcomes
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+            emo = get_reflex_emotions()
+            emo_ctx = EmotionContext(
+                agent_id=agent_role,
+                phase_type=phase_type,
+            )
+            for tool_id in tools_used:
+                emo.record_outcome(tool_id, success=verifier_passed, context=emo_ctx)
+        except Exception:
+            pass  # Emotion errors never break feedback recording
+
         return count
 
     def get_score(self, tool_id: str, phase_type: str = "*") -> float:

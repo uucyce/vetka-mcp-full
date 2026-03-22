@@ -1,16 +1,18 @@
 """
-Phase 195 -- Protocol Guard Layer test suite (24 tests).
+Phase 195 -- Protocol Guard Layer test suite (24 + 6 tests).
 
 Cat 1: SessionActionTracker (8 tests) -- record/reset/defaults
 Cat 2: ProtocolGuard Rules (8 tests) -- 6 rules enforcement
 Cat 3: Path Exemptions (3 tests) -- docs/tests/data exempt from read_before_edit
 Cat 4: Full Workflow (3 tests) -- happy path, worst case, partial compliance
 Cat 5: Singleton & Config (2 tests) -- get_* singletons, config overrides
+Cat 6: Recon Relevance Rule (3 tests) -- MARKER_SC_C.D6
+Cat 7: Auto-Debrief Phase Closure (3 tests) -- MARKER_SC_C.D5
 """
 
 import time
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from src.services.session_tracker import (
     SessionActions,
@@ -452,3 +454,128 @@ class TestSingletonAndConfig:
         assert len(read_violations) == 1
         assert read_violations[0].severity == "block"
         print("  test_config_override_severity")
+
+
+# ════════════════════════════════════════════════════════════════
+# Cat 6 -- Recon Relevance Rule (3 tests) MARKER_SC_C.D6
+# ════════════════════════════════════════════════════════════════
+
+def _mock_session_for_recon(task_claimed=True, claimed_task_id="tb_recon_1"):
+    """Helper: build a mock session with recon-relevance-friendly defaults."""
+    s = MagicMock()
+    s.task_claimed = task_claimed
+    s.claimed_task_id = claimed_task_id
+    s.claimed_task_has_recon_docs = True
+    s.files_read = {"src/services/foo.py"}
+    s.task_board_checked = True
+    s.session_init_called = True
+    s.roadmap_exists = True
+    s.tasks_completed = 0
+    s.experience_report_submitted = False
+    return s
+
+
+class TestReconRelevance:
+    """Category 6: recon_relevance rule — warn when recon_docs are irrelevant."""
+
+    # -- 25. Irrelevant doc warns --
+    def test_recon_relevance_warns_on_irrelevant_doc(self, guard, tmp_path):
+        """Doc doesn't mention phase number or task keywords -> warn."""
+        doc_file = tmp_path / "irrelevant_doc.md"
+        doc_file.write_text("# Generic Architecture\nThis is about nothing specific.\n")
+
+        mock_task = {
+            "title": "195.2.1: Implement debrief capture",
+            "recon_docs": [str(doc_file)],
+        }
+        session = _mock_session_for_recon()
+
+        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
+            MockBoard.return_value.get_task.return_value = mock_task
+            violation = guard._check_recon_relevance(
+                session, "Edit", {"file_path": "src/foo.py"}
+            )
+
+        assert violation is not None
+        assert violation.rule_id == "recon_relevance"
+        assert violation.severity == "warn"
+        assert "195" in violation.message
+        print("  test_recon_relevance_warns_on_irrelevant_doc")
+
+    # -- 26. Relevant doc (mentions phase number) -> no warn --
+    def test_recon_relevance_ok_when_doc_mentions_phase(self, guard, tmp_path):
+        """Doc mentions phase number -> no warn."""
+        doc_file = tmp_path / "relevant_doc.md"
+        doc_file.write_text("# Phase 195 Architecture\nThis covers phase 195 debrief.\n")
+
+        mock_task = {
+            "title": "195.2.1: Implement debrief capture",
+            "recon_docs": [str(doc_file)],
+        }
+        session = _mock_session_for_recon()
+
+        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
+            MockBoard.return_value.get_task.return_value = mock_task
+            violation = guard._check_recon_relevance(
+                session, "Edit", {"file_path": "src/foo.py"}
+            )
+
+        assert violation is None
+        print("  test_recon_relevance_ok_when_doc_mentions_phase")
+
+    # -- 27. Unreadable doc -> no warn (graceful) --
+    def test_recon_relevance_skips_when_doc_unreadable(self, guard):
+        """File not found -> no warn (graceful skip). All-unreadable = non-fatal pass."""
+        mock_task = {
+            "title": "195.2.1: Implement debrief capture",
+            "recon_docs": ["/nonexistent/path/doc_that_does_not_exist.md"],
+        }
+        session = _mock_session_for_recon()
+
+        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
+            MockBoard.return_value.get_task.return_value = mock_task
+            violation = guard._check_recon_relevance(
+                session, "Edit", {"file_path": "src/foo.py"}
+            )
+
+        # All docs unreadable -> graceful skip -> no violation
+        assert violation is None
+        print("  test_recon_relevance_skips_when_doc_unreadable")
+
+
+# ════════════════════════════════════════════════════════════════
+# Cat 7 -- Auto-Debrief Phase Closure (3 tests) MARKER_SC_C.D5
+# ════════════════════════════════════════════════════════════════
+
+class TestPhaseClosureDebrief:
+    """Category 7: _extract_phase_prefix, _count_pending_for_phase, _generate_debrief_prompt."""
+
+    # -- 28. Extract numeric phase prefix --
+    def test_extract_phase_prefix_numeric(self):
+        """'195.2.1: Some title' -> '195'; '42.3: Task' -> '42'."""
+        from src.orchestration.task_board import TaskBoard
+        assert TaskBoard._extract_phase_prefix("195.2.1: Some title") == "195"
+        assert TaskBoard._extract_phase_prefix("42.3: Another task") == "42"
+        print("  test_extract_phase_prefix_numeric")
+
+    # -- 29. Non-numeric prefix returns None --
+    def test_extract_phase_prefix_non_numeric(self):
+        """'D4: Non-numeric' -> None; '' -> None."""
+        from src.orchestration.task_board import TaskBoard
+        assert TaskBoard._extract_phase_prefix("D4: Non-numeric") is None
+        assert TaskBoard._extract_phase_prefix("") is None
+        assert TaskBoard._extract_phase_prefix("No prefix here") is None
+        print("  test_extract_phase_prefix_non_numeric")
+
+    # -- 30. Generate debrief prompt contains 3 questions --
+    def test_generate_debrief_prompt(self):
+        """Debrief prompt includes phase number, task title, and 3 questions."""
+        from src.orchestration.task_board import TaskBoard
+        task = {"title": "195.2.1: Final task"}
+        prompt = TaskBoard._generate_debrief_prompt("195", task)
+        assert "Phase 195 complete" in prompt
+        assert "pain point" in prompt
+        assert "discovery" in prompt
+        assert "change" in prompt
+        assert "195.2.1: Final task" in prompt
+        print("  test_generate_debrief_prompt")
