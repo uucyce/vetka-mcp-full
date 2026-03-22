@@ -261,6 +261,41 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         },
     ),
 
+    # === MARKER_FCP7-66: Drop Shadow (FCP7 Ch.66 p.1087) ===
+    "drop_shadow": EffectDef(
+        type="drop_shadow", label="Drop Shadow", category="motion",
+        params_schema={
+            "offset": {"type": "float", "min": 0, "max": 200, "default": 10, "step": 1},
+            "angle": {"type": "float", "min": 0, "max": 360, "default": 135, "step": 1},
+            "color": {"type": "str", "default": "black"},  # CSS color name or hex
+            "softness": {"type": "float", "min": 0, "max": 100, "default": 5, "step": 1},
+            "opacity": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.5, "step": 0.01},
+        },
+    ),
+    # === MARKER_FCP7-66: Distort — 4-corner pin perspective (FCP7 Ch.66 p.1089) ===
+    "distort": EffectDef(
+        type="distort", label="Distort (Corner Pin)", category="motion",
+        params_schema={
+            # Corner coordinates as fraction of frame (0.0-1.0)
+            "tl_x": {"type": "float", "min": -0.5, "max": 1.5, "default": 0.0, "step": 0.01},
+            "tl_y": {"type": "float", "min": -0.5, "max": 1.5, "default": 0.0, "step": 0.01},
+            "tr_x": {"type": "float", "min": -0.5, "max": 1.5, "default": 1.0, "step": 0.01},
+            "tr_y": {"type": "float", "min": -0.5, "max": 1.5, "default": 0.0, "step": 0.01},
+            "bl_x": {"type": "float", "min": -0.5, "max": 1.5, "default": 0.0, "step": 0.01},
+            "bl_y": {"type": "float", "min": -0.5, "max": 1.5, "default": 1.0, "step": 0.01},
+            "br_x": {"type": "float", "min": -0.5, "max": 1.5, "default": 1.0, "step": 0.01},
+            "br_y": {"type": "float", "min": -0.5, "max": 1.5, "default": 1.0, "step": 0.01},
+        },
+    ),
+    # === MARKER_FCP7-66: Motion Blur (FCP7 Ch.66 p.1091) ===
+    "motion_blur": EffectDef(
+        type="motion_blur", label="Motion Blur", category="motion",
+        params_schema={
+            "amount": {"type": "float", "min": 0, "max": 100, "default": 0, "step": 1},
+            "samples": {"type": "int", "min": 1, "max": 32, "default": 4, "step": 1},
+        },
+    ),
+
     # === MARKER_B26: Broadcast Safe ===
     "broadcast_safe": EffectDef(
         type="broadcast_safe", label="Broadcast Safe", category="color",
@@ -510,6 +545,67 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
                 # Format as alpha via colorchannelmixer
                 filters.append(f"colorchannelmixer=aa={val:.3f}")
 
+        # MARKER_FCP7-66: Drop Shadow
+        # FFmpeg: drawbox overlay approach — pad canvas, draw shadow, overlay original
+        # Simplified: boxblur a shifted copy. For proper shadow, needs 2-pass or overlay.
+        # Practical approach: use pad + colorize + overlay in a single filter chain.
+        elif t == "drop_shadow":
+            offset = float(p.get("offset", 10))
+            angle = float(p.get("angle", 135))
+            softness = float(p.get("softness", 5))
+            opacity = float(p.get("opacity", 0.5))
+            if offset > 0 and opacity > 0:
+                import math
+                rad = angle * math.pi / 180.0
+                dx = round(offset * math.cos(rad))
+                dy = round(offset * math.sin(rad))
+                # Draw a darkened, blurred rectangle offset from the frame
+                # Using drawbox with shadow simulation via colorize + boxblur
+                color_hex = p.get("color", "black")
+                if color_hex == "black":
+                    color_hex = "0x000000"
+                # Shadow: pad canvas larger, fill offset area, blur, then overlay
+                # FFmpeg one-liner: split, colorize shadow copy, blur, shift, overlay
+                blur_size = max(1, int(softness))
+                filters.append(
+                    f"split[shadow][orig];"
+                    f"[shadow]colorchannelmixer=rr=0:gg=0:bb=0:aa={opacity:.2f},"
+                    f"boxblur={blur_size}:{blur_size},"
+                    f"pad=iw+{abs(dx)*2}:ih+{abs(dy)*2}:{max(0,-dx)}:{max(0,-dy)}:color=black@0[shd];"
+                    f"[shd][orig]overlay={max(0,dx)}:{max(0,dy)}"
+                )
+
+        # MARKER_FCP7-66: Distort — 4-corner perspective via perspective filter
+        elif t == "distort":
+            tl_x = float(p.get("tl_x", 0)); tl_y = float(p.get("tl_y", 0))
+            tr_x = float(p.get("tr_x", 1)); tr_y = float(p.get("tr_y", 0))
+            bl_x = float(p.get("bl_x", 0)); bl_y = float(p.get("bl_y", 1))
+            br_x = float(p.get("br_x", 1)); br_y = float(p.get("br_y", 1))
+            # Check if non-identity
+            is_identity = (tl_x == 0 and tl_y == 0 and tr_x == 1 and tr_y == 0
+                          and bl_x == 0 and bl_y == 1 and br_x == 1 and br_y == 1)
+            if not is_identity:
+                # FFmpeg perspective filter: x0:y0:x1:y1:x2:y2:x3:y3
+                # Coords are absolute pixels — we use expressions with iw/ih
+                filters.append(
+                    f"perspective="
+                    f"x0={tl_x:.4f}*iw:y0={tl_y:.4f}*ih:"
+                    f"x1={tr_x:.4f}*iw:y1={tr_y:.4f}*ih:"
+                    f"x2={bl_x:.4f}*iw:y2={bl_y:.4f}*ih:"
+                    f"x3={br_x:.4f}*iw:y3={br_y:.4f}*ih:"
+                    f"interpolation=linear"
+                )
+
+        # MARKER_FCP7-66: Motion Blur — directional blur via avgblur/boxblur
+        elif t == "motion_blur":
+            amount = float(p.get("amount", 0))
+            samples = int(p.get("samples", 4))
+            if amount > 0:
+                # Use avgblur for motion blur approximation
+                # Higher samples = smoother but slower
+                radius = max(1, int(amount * samples / 10))
+                filters.append(f"avgblur=sizeX={radius}:sizeY=0:planes=7")
+
     # Build merged eq filter
     if eq_parts:
         eq_str = ":".join(f"{k}={v}" for k, v in eq_parts.items())
@@ -613,6 +709,18 @@ def compile_css_filters(effects: list[EffectParam]) -> str:
             val = float(p.get("value", 1))
             if val < 1.0:
                 parts.append(f"opacity({val:.3f})")
+
+        # MARKER_FCP7-66: CSS drop-shadow
+        elif t == "drop_shadow":
+            offset = float(p.get("offset", 10))
+            angle = float(p.get("angle", 135))
+            softness = float(p.get("softness", 5))
+            opacity = float(p.get("opacity", 0.5))
+            if offset > 0 and opacity > 0:
+                import math
+                dx = round(offset * math.cos(angle * math.pi / 180))
+                dy = round(offset * math.sin(angle * math.pi / 180))
+                parts.append(f"drop-shadow({dx}px {dy}px {softness:.0f}px rgba(0,0,0,{opacity:.2f}))")
 
     # Collect CSS transforms separately
     transforms: list[str] = []
