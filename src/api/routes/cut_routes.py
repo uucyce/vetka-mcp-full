@@ -1242,6 +1242,63 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append(applied)
             continue
 
+        # MARKER_A2.1 — slip_clip: change source_in without moving clip on timeline
+        # FCP7 slip = move content within fixed clip window (Ch.57)
+        if op_type == "slip_clip":
+            clip_id = str(op.get("clip_id") or "")
+            source_in = float(op.get("source_in", 0.0))
+            if source_in < 0:
+                source_in = 0.0
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip["source_in"] = round(source_in, 4)
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "source_in": round(source_in, 4)})
+            continue
+
+        # MARKER_A2.2 — ripple_trim: trim edge + shift all subsequent clips in lane
+        # FCP7 ripple trim = extend/shorten clip, everything after shifts (Ch.56)
+        if op_type == "ripple_trim":
+            clip_id = str(op.get("clip_id") or "")
+            new_start = float(op.get("start_sec", -1))
+            new_dur = float(op.get("duration_sec", -1))
+            if new_dur <= 0:
+                raise ValueError("duration_sec must be > 0")
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            old_start = float(clip.get("start_sec") or 0.0)
+            old_dur = float(clip.get("duration_sec") or 0.0)
+            old_end = old_start + old_dur
+            # Apply new values
+            if new_start >= 0:
+                clip["start_sec"] = round(new_start, 4)
+            else:
+                new_start = old_start
+            clip["duration_sec"] = round(new_dur, 4)
+            new_end = new_start + new_dur
+            # Delta = how much the clip's end moved
+            delta = round(new_end - old_end, 4)
+            # Shift all subsequent clips in same lane by delta
+            if abs(delta) > 0.0001:
+                for c in source_lane.get("clips", []):
+                    if c is clip:
+                        continue
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c_start >= old_end - 0.001:
+                        c["start_sec"] = max(0.0, round(c_start + delta, 4))
+            source_lane["clips"] = sorted(
+                source_lane["clips"],
+                key=lambda c: float(c.get("start_sec") or 0.0),
+            )
+            applied_ops.append({
+                "op": op_type, "clip_id": clip_id,
+                "lane_id": str(source_lane.get("lane_id") or ""),
+                "start_sec": round(new_start, 4), "duration_sec": round(new_dur, 4),
+                "delta_sec": delta,
+            })
+            continue
+
         if op_type == "apply_sync_offset":
             clip_id = str(op.get("clip_id") or "")
             offset_sec = float(op.get("offset_sec"))
