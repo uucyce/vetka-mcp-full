@@ -1,8 +1,8 @@
 # Gamma-4 UX/Panel Architect — Experience Report
 **Date:** 2026-03-22
 **Agent:** OPUS-GAMMA-4 (claude/cut-ux)
-**Session:** Wave 8, 8 tasks (7 code + 1 research), 8 commits
-**Scope:** Workspace presets, CSS architecture, DnD, panel verification, focus persistence
+**Session:** Wave 8, 12 tasks (10 code + 2 research), 12 commits
+**Scope:** Workspace presets, CSS architecture, DnD, panel verification, focus persistence, tab context menus
 
 ---
 
@@ -18,6 +18,10 @@
 | GAMMA-10: Project→Timeline DnD | `2da1aee0` | Clips draggable from Project to Timeline |
 | GAMMA-11: HotkeyPresetSelector | — | Already integrated in MenuBar submenu |
 | GAMMA-12: Focus persistence | `27316e41` | focusedPanel saved/restored per workspace |
+| GAMMA-13: focusPerPreset localStorage | `f7449889` | Focus survives page reload |
+| GAMMA-14: Custom drag preview | `cb49df0c` | Thumbnail + filename badge on drag |
+| GAMMA-15: Panel tab context menu | `3f6c147f` | Close, Close Others, Maximize on right-click |
+| — | `715fd731` | Experience report + ROADMAP_C2 sub-roadmap |
 
 ---
 
@@ -126,8 +130,36 @@ MODIFIED:
   client/src/store/useDockviewStore.ts               — focusPerPreset, toggleMaximize
   client/src/components/cut/MenuBar.tsx              — switchWorkspace focus save/restore
   client/src/components/cut/WorkspacePresets.tsx     — focus save/restore, reload fallback
-  client/src/components/cut/ProjectPanel.tsx         — draggable clips (grid + list)
+  client/src/components/cut/ProjectPanel.tsx         — draggable clips + custom drag preview
 ```
+
+---
+
+## 8. LATE-SESSION ADDITIONS (GAMMA-13 through GAMMA-15)
+
+### Custom drag preview (GAMMA-14)
+`setDragImage()` with an offscreen div: 80px card, dark background, thumbnail (or modality icon for audio), filename with ellipsis. Created on dragstart, removed on next animation frame. Applied to both grid and list views. The browser's default ghost was a full DOM clone — ugly and uninformative. The custom preview shows exactly what you're dragging.
+
+### Panel tab context menu (GAMMA-15)
+Document-level contextmenu listener checks if target is inside `.dv-tab`. If yes, finds the panel ID by matching tab text to `api.panels`, renders a dark menu at click position. Three items: Close Panel (`api.removePanel`), Close Others in Group (iterate group panels, remove all except clicked), Maximize/Restore (same as backtick key). Dismisses on any click. Styled to match TimelineTrackView's clip context menu.
+
+### focusPerPreset localStorage (GAMMA-13)
+10-line addition: read `cut_focus_per_preset` from localStorage on store init, write on every `saveFocusForPreset()`. Defaults: editing→timeline, color→program, audio→timeline.
+
+---
+
+## 9. DOMAIN EXHAUSTION REPORT
+
+All Gamma-owned features are now implemented or blocked on Alpha:
+
+| Status | Items |
+|--------|-------|
+| **DONE** | Workspace presets (C5), Panel wrappers (C4), DAG Y-axis (C8), Panel audit (C9), CSS architecture, DnD, Focus persistence, Tab context menu, Maximize, WorkspacePresets mount, 5 menu dispatches |
+| **BLOCKED on Alpha** | 6 remaining MenuBar dispatches (need store actions from CutEditorLayoutV2) |
+| **LOW PRIORITY** | Pre-seed workspace layouts (R2), CSS @layer (R7), Hotkey Editor improvements (R6) |
+| **FUTURE** | Multi-timeline dockview wiring (C12/C13 — blocked on Alpha C10/C11) |
+
+**Gamma domain is exhausted.** No more unblocked high-priority work.
 
 ---
 
