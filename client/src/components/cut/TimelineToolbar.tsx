@@ -72,6 +72,7 @@ const ZOOM_SLIDER: CSSProperties = {
   appearance: 'none' as const,
   background: '#222',
   borderRadius: 2,
+  accentColor: '#999',
   outline: 'none',
   cursor: 'pointer',
 };
