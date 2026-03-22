@@ -21,6 +21,7 @@ import {
 } from '../../hooks/useCutHotkeys';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
+const SpeedControl = lazy(() => import('./SpeedControl'));
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -185,6 +186,7 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
+  const [speedControlOpen, setSpeedControlOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -474,7 +476,7 @@ export default function MenuBar() {
         { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
         { label: 'Superimpose', shortcut: 'F12', disabled: true },
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
+        { label: 'Speed/Duration...', shortcut: '⌘R', action: () => setSpeedControlOpen(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
@@ -751,6 +753,11 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
+        </Suspense>
+      )}
+      {speedControlOpen && (
+        <Suspense fallback={null}>
+          <SpeedControl onClose={() => setSpeedControlOpen(false)} />
         </Suspense>
       )}
     </>
