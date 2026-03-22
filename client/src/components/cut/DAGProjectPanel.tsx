@@ -10,7 +10,7 @@
  *
  * Ref: CUT_TARGET_ARCHITECTURE.md §2.2, CUT_DATA_MODEL.md
  */
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -320,6 +320,19 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
     [syncFromDAG],
   );
 
+  // MARKER_GAMMA-19: DAG node context menu
+  const [dagCtx, setDagCtx] = useState<{ x: number; y: number; nodeId: string; path: string } | null>(null);
+  const setSourceMedia = useCutEditorStore((s) => s.setSourceMedia);
+
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node) => {
+      event.preventDefault();
+      const data = node.data as DAGNodeData;
+      setDagCtx({ x: event.clientX, y: event.clientY, nodeId: data.node_id, path: data.source_path || '' });
+    },
+    [],
+  );
+
   return (
     <div style={PANEL}>
       {/* MARKER_C8.1: Flip Y toggle */}
@@ -364,6 +377,8 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
           onNodesChange={onNodesChange}
           onEdgesChange={onEdgesChange}
           onNodeClick={handleNodeClick}
+          onNodeContextMenu={handleNodeContextMenu}
+          onPaneClick={() => setDagCtx(null)}
           nodeTypes={NODE_TYPES}
           fitView
           proOptions={{ hideAttribution: true }}
@@ -373,6 +388,46 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
         >
           <Background color="#1A1A1A" gap={20} size={1} />
         </ReactFlow>
+      )}
+      {/* MARKER_GAMMA-19: DAG node context menu */}
+      {dagCtx && (
+        <div
+          style={{
+            position: 'fixed', top: dagCtx.y, left: dagCtx.x,
+            background: '#0b0b0b', border: '1px solid #333', borderRadius: 4,
+            padding: '3px 0', zIndex: 10000, minWidth: 160,
+            fontSize: 11, fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setDagCtx(null)}
+        >
+          {[
+            { label: 'Open in Source Monitor', action: () => { if (dagCtx.path) setSourceMedia(dagCtx.path); setDagCtx(null); }, disabled: !dagCtx.path },
+            { label: 'Add to Timeline', action: () => {
+              if (dagCtx.path) window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: dagCtx.path } }));
+              setDagCtx(null);
+            }, disabled: !dagCtx.path },
+            { separator: true },
+            { label: 'Focus in Project Panel', action: () => { syncFromDAG(dagCtx.nodeId, dagCtx.path); setDagCtx(null); } },
+          ].map((item, i) =>
+            'separator' in item ? (
+              <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+            ) : (
+              <div
+                key={i}
+                onClick={item.disabled ? undefined : item.action}
+                style={{
+                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {item.label}
+              </div>
+            ),
+          )}
+        </div>
       )}
     </div>
   );
