@@ -228,6 +228,8 @@ export default function ExportDialog() {
   const [editorialFormat, setEditorialFormat] = useState<EditorialFormat>('premiere_xml');
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
+  // MARKER_B4.1: Track active job for cancel
+  const activeJobIdRef = useRef<string | null>(null);
 
   const hasSelection = sequenceMarkIn !== null && sequenceMarkOut !== null;
   const audioLanes = lanes.filter((l) => l.lane_type.startsWith('audio'));
@@ -271,6 +273,8 @@ export default function ExportDialog() {
 
       const data = await res.json();
       if (data.job_id) {
+        // MARKER_B4.1: Store job_id for cancel
+        activeJobIdRef.current = data.job_id;
         // Poll for progress
         setRenderStatus('Encoding...');
         for (let i = 0; i < 600; i++) {
@@ -288,14 +292,24 @@ export default function ExportDialog() {
             const transitions = result?.transitions_count ? ` | ${result.transitions_count} transition(s)` : '';
             const fc = result?.used_filter_complex ? ' | filter_complex' : '';
             setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB}${transitions}${fc})` : ''}`);
+            activeJobIdRef.current = null;
             setRenderProgress(null);
             setRenderStatus(null);
             return;
           }
           if (state === 'error') {
+            activeJobIdRef.current = null;
             throw new Error(job.job?.error?.message || 'Render failed');
           }
+          if (state === 'cancelled') {
+            activeJobIdRef.current = null;
+            setRenderStatus('Cancelled');
+            setRenderProgress(null);
+            setTimeout(() => setRenderStatus(null), 1500);
+            return;
+          }
         }
+        activeJobIdRef.current = null;
         throw new Error('Render timed out');
       } else if (data.output_path) {
         setExportResult(data.output_path);
@@ -305,6 +319,7 @@ export default function ExportDialog() {
         throw new Error(data.error || 'Unknown render error');
       }
     } catch (err) {
+      activeJobIdRef.current = null;
       setRenderError(err instanceof Error ? err.message : 'Render failed');
       setRenderProgress(null);
       setRenderStatus(null);
@@ -373,6 +388,7 @@ export default function ExportDialog() {
       const data = await res.json();
 
       if (data.job_id) {
+        activeJobIdRef.current = data.job_id;
         setRenderStatus(`Encoding for ${presetId}...`);
         for (let i = 0; i < 600; i++) {
           await new Promise((r) => setTimeout(r, 500));
@@ -387,25 +403,48 @@ export default function ExportDialog() {
             const result = job.job?.result;
             const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
             setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB})` : ''}`);
+            activeJobIdRef.current = null;
             setRenderProgress(null);
             setRenderStatus(null);
             return;
           }
           if (state === 'error') {
+            activeJobIdRef.current = null;
             throw new Error(job.job?.error?.message || 'Publish render failed');
           }
+          if (state === 'cancelled') {
+            activeJobIdRef.current = null;
+            setRenderStatus('Cancelled');
+            setRenderProgress(null);
+            setTimeout(() => setRenderStatus(null), 1500);
+            return;
+          }
         }
+        activeJobIdRef.current = null;
         throw new Error('Publish render timed out');
       } else {
         throw new Error(data.error || 'Unknown publish error');
       }
     } catch (err) {
+      activeJobIdRef.current = null;
       setRenderError(err instanceof Error ? err.message : 'Publish failed');
       setRenderProgress(null);
       setRenderStatus(null);
     }
   }, [sandboxRoot, projectId, timelineId, projectFramerate, selectionOnly, hasSelection,
       sequenceMarkIn, sequenceMarkOut, setRenderProgress, setRenderStatus, setRenderError]);
+
+  // MARKER_B4.1: Cancel active render job
+  const cancelRender = useCallback(async () => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) return;
+    try {
+      await fetch(`${API_BASE}/cut/job/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+      setRenderStatus('Cancelling...');
+    } catch {
+      // Best-effort cancel — polling loop will detect state change
+    }
+  }, [setRenderStatus]);
 
   if (!show) return null;
 
@@ -619,8 +658,17 @@ export default function ExportDialog() {
                   transition: 'width 0.3s',
                 }} />
               </div>
-              <div style={{ fontSize: 9, color: '#444', marginTop: 3, textAlign: 'right' }}>
-                {Math.round((renderProgress ?? 0) * 100)}%
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
+                <button
+                  style={{ ...BTN, background: '#333', color: '#ccc', fontSize: 9, padding: '2px 10px' }}
+                  onClick={cancelRender}
+                  data-testid="export-cancel-render"
+                >
+                  Cancel Render
+                </button>
+                <span style={{ fontSize: 9, color: '#444' }}>
+                  {Math.round((renderProgress ?? 0) * 100)}%
+                </span>
               </div>
             </div>
           )}
