@@ -2253,13 +2253,52 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
             const items: MenuItem[] = [
               // ── Selection ──
-              { label: 'Set as Active', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
               { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              // MARKER_A13: Match Frame — find source frame under playhead
+              { label: 'Match Frame', shortcut: 'F', action: () => {
+                const s = useCutEditorStore.getState();
+                const clip = contextMenu.clip;
+                const sourceOffset = (clip as any).source_in ?? 0;
+                const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+                s.setSourceMedia(clip.source_path);
+                s.setSourceMarkIn(sourceTime);
+                s.setFocusedPanel('source');
+                close();
+              }},
+              'separator',
+              // ── Clipboard ──
+              { label: 'Cut', shortcut: '\u2318X', action: () => { close(); useCutEditorStore.getState().cutClips(); } },
+              { label: 'Copy', shortcut: '\u2318C', action: () => { close(); useCutEditorStore.getState().copyClips(); } },
+              { label: 'Paste', shortcut: '\u2318V', action: () => { close(); useCutEditorStore.getState().pasteClips('overwrite'); } },
               'separator',
               // ── Edit operations ──
-              { label: 'Split at Playhead', shortcut: '\u2318K', action: () => { close(); /* splitAtPlayhead dispatched via hotkey */ } },
+              { label: 'Split at Playhead', shortcut: '\u2318K', action: () => {
+                close();
+                // MARKER_A13: Actually split — find clip under playhead and split
+                const s = useCutEditorStore.getState();
+                const t = s.currentTime;
+                const newLanes = s.lanes.map((lane) => ({
+                  ...lane,
+                  clips: lane.clips.flatMap((c) => {
+                    if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
+                      const leftDur = t - c.start_sec;
+                      const rightDur = c.duration_sec - leftDur;
+                      return [
+                        { ...c, duration_sec: leftDur },
+                        { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur },
+                      ];
+                    }
+                    return [c];
+                  }),
+                }));
+                s.setLanes(newLanes);
+              }},
               { label: 'Remove Clip', shortcut: 'Del', action: () => { close(); void removeClip(clipId); } },
-              { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => { close(); void removeClip(clipId); } },
+              { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => {
+                close();
+                // MARKER_A13: Proper ripple delete via backend op
+                void applyTimelineOps([{ op: 'ripple_delete', clip_id: clipId }]);
+              }},
               'separator',
               // ── Markers ──
               { label: 'Add Marker Here', shortcut: 'M', action: () => {
