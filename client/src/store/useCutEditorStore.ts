@@ -12,6 +12,38 @@ export type Keyframe = {
   easing: 'linear' | 'ease_in' | 'ease_out' | 'bezier';
 };
 
+// MARKER_KF-BEZIER: Keyframe interpolation with easing curves
+// Exported for use in timeline rendering and effect application
+export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): number {
+  if (keyframes.length === 0) return 0;
+  if (keyframes.length === 1) return keyframes[0].value;
+
+  // Before first keyframe → hold first value
+  if (timeSec <= keyframes[0].time_sec) return keyframes[0].value;
+  // After last keyframe → hold last value
+  if (timeSec >= keyframes[keyframes.length - 1].time_sec) return keyframes[keyframes.length - 1].value;
+
+  // Find surrounding keyframes
+  let i = 0;
+  while (i < keyframes.length - 1 && keyframes[i + 1].time_sec <= timeSec) i++;
+  const kfA = keyframes[i];
+  const kfB = keyframes[i + 1];
+  const dt = kfB.time_sec - kfA.time_sec;
+  if (dt <= 0) return kfA.value;
+  const t = (timeSec - kfA.time_sec) / dt; // 0..1 normalized
+
+  // Apply easing (use outgoing easing from kfA)
+  let eased: number;
+  switch (kfA.easing) {
+    case 'ease_in':    eased = t * t; break;
+    case 'ease_out':   eased = 1 - (1 - t) * (1 - t); break;
+    case 'bezier':     eased = t * t * (3 - 2 * t); break; // smooth step (cubic hermite)
+    default:           eased = t; // linear
+  }
+
+  return kfA.value + (kfB.value - kfA.value) * eased;
+}
+
 // MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
 export type ClipEffects = {
   brightness: number;   // -1..1, default 0
