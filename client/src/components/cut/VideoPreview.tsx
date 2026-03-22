@@ -138,17 +138,19 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const activeMediaPath = feed === 'source' ? sourceMediaPath
     : feed === 'program' ? programMediaPath
     : legacyMediaPath;
-  const isPlaying = useCutEditorStore((s) => s.isPlaying);
-  const currentTime = useCutEditorStore((s) => s.currentTime);
+  // MARKER_DUAL-VIDEO: Source monitor uses its own playback state, program uses timeline's
+  const isSource = feed === 'source';
+  const isPlaying = useCutEditorStore((s) => isSource ? s.sourceIsPlaying : s.isPlaying);
+  const currentTime = useCutEditorStore((s) => isSource ? s.sourceCurrentTime : s.currentTime);
   const playbackRate = useCutEditorStore((s) => s.playbackRate);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const mediaError = useCutEditorStore((s) => s.mediaError);
   const mediaLoading = useCutEditorStore((s) => s.mediaLoading);
-  const seek = useCutEditorStore((s) => s.seek);
-  const setDuration = useCutEditorStore((s) => s.setDuration);
-  const play = useCutEditorStore((s) => s.play);
-  const pause = useCutEditorStore((s) => s.pause);
+  const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
+  const setDuration = useCutEditorStore((s) => isSource ? s.setSourceDuration : s.setDuration);
+  const play = useCutEditorStore((s) => isSource ? s.playSource : s.play);
+  const pause = useCutEditorStore((s) => isSource ? s.pauseSource : s.pause);
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
 

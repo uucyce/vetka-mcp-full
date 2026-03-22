@@ -643,6 +643,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
             const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
             s.setSourceMedia(clip.source_path);
             s.setSourceMarkIn(sourceTime);
+            // MARKER_DUAL-VIDEO: Seek source monitor to matched frame
+            s.seekSource(sourceTime);
             s.setFocusedPanel('source');
             return;
           }
