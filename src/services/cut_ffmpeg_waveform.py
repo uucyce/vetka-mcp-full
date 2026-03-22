@@ -153,6 +153,131 @@ def build_waveform_with_fallback(
     return _byte_scan_fallback(media_path, bins)
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B29: Stereo waveform extraction
+# ---------------------------------------------------------------------------
+
+def extract_pcm_stereo_16bit(
+    media_path: str,
+    *,
+    sample_rate: int = 16000,
+    max_duration_sec: float = 0.0,
+    timeout_sec: float = 30.0,
+) -> bytes | None:
+    """Extract stereo 16-bit PCM from any media file via FFmpeg.
+
+    Returns raw PCM bytes (signed 16-bit LE, 2 channels interleaved: L R L R ...)
+    or None on failure.
+    """
+    if not HAS_FFMPEG:
+        return None
+    if not os.path.isfile(media_path):
+        return None
+
+    cmd = [
+        FFMPEG,  # type: ignore[list-item]
+        "-i", media_path,
+        "-vn",                      # skip video
+        "-ac", "2",                 # stereo
+        "-ar", str(sample_rate),    # resample
+        "-f", "s16le",              # raw signed 16-bit LE
+        "-acodec", "pcm_s16le",
+    ]
+    if max_duration_sec > 0:
+        cmd.extend(["-t", str(max_duration_sec)])
+    cmd.append("pipe:1")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout_sec,
+        )
+        if result.returncode != 0:
+            return None
+        return result.stdout if result.stdout else None
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
+def pcm_stereo_to_rms_bins(
+    pcm_data: bytes,
+    *,
+    bins: int = 64,
+) -> tuple[list[float], list[float]]:
+    """Compute per-channel RMS bins from interleaved stereo 16-bit PCM.
+
+    Stereo PCM layout: L0 R0 L1 R1 L2 R2 ... (each sample = 2 bytes)
+    Returns (left_bins, right_bins), each list of floats in [0.0, 1.0].
+    """
+    # Each stereo frame = 4 bytes (2 bytes L + 2 bytes R)
+    num_frames = len(pcm_data) // 4
+    if num_frames == 0:
+        return ([0.0] * bins, [0.0] * bins)
+
+    frames_per_bin = max(1, num_frames // bins)
+    left_bins: list[float] = []
+    right_bins: list[float] = []
+
+    for i in range(bins):
+        start = i * frames_per_bin
+        end = min(start + frames_per_bin, num_frames)
+        if start >= num_frames:
+            left_bins.append(0.0)
+            right_bins.append(0.0)
+            continue
+
+        # Extract interleaved stereo samples for this bin
+        chunk = pcm_data[start * 4 : end * 4]
+        n = len(chunk) // 4  # number of stereo frames
+        if n == 0:
+            left_bins.append(0.0)
+            right_bins.append(0.0)
+            continue
+
+        # Unpack all samples (interleaved L R L R)
+        all_samples = struct.unpack(f"<{n * 2}h", chunk)
+        left_samples = all_samples[0::2]
+        right_samples = all_samples[1::2]
+
+        # RMS per channel
+        l_rms = math.sqrt(sum(s * s for s in left_samples) / n) / 32768.0
+        r_rms = math.sqrt(sum(s * s for s in right_samples) / n) / 32768.0
+        left_bins.append(round(min(1.0, l_rms), 4))
+        right_bins.append(round(min(1.0, r_rms), 4))
+
+    return (left_bins, right_bins)
+
+
+def build_stereo_waveform(
+    media_path: str,
+    bins: int = 64,
+    *,
+    sample_rate: int = 16000,
+    max_duration_sec: float = 600.0,
+) -> tuple[list[float], list[float], bool, str]:
+    """Build stereo waveform bins (L/R channels separately).
+
+    Returns: (left_bins, right_bins, degraded, reason)
+    """
+    pcm = extract_pcm_stereo_16bit(
+        media_path,
+        sample_rate=sample_rate,
+        max_duration_sec=max_duration_sec,
+    )
+    if pcm is None:
+        empty = [0.0] * bins
+        reason = "ffmpeg_unavailable" if not HAS_FFMPEG else "ffmpeg_extraction_failed"
+        return (empty, empty, True, reason)
+
+    if len(pcm) < 8:  # need at least 2 stereo frames
+        empty = [0.0] * bins
+        return (empty, empty, True, "no_audio_data")
+
+    left, right = pcm_stereo_to_rms_bins(pcm, bins=bins)
+    return (left, right, False, "")
+
+
 def _byte_scan_fallback(path: str, bins: int) -> tuple[list[float], bool, str]:
     """Original byte-scanning stub — used when FFmpeg unavailable."""
     try:

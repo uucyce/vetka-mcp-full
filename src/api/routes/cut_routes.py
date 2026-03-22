@@ -4744,24 +4744,40 @@ async def cut_color_profiles() -> dict[str, Any]:
 
 
 @router.get("/waveform-peaks")
-async def cut_waveform_peaks(source_path: str, bins: int = 128) -> dict[str, Any]:
+async def cut_waveform_peaks(source_path: str, bins: int = 128, stereo: bool = False) -> dict[str, Any]:
     """
     MARKER_B15 — Per-clip on-demand waveform peaks.
+    MARKER_B29 — stereo=true returns separate L/R channel peaks.
     Lightweight: extract PCM → RMS bins → return JSON array.
     Frontend calls this when a clip has no cached waveform.
     """
-    from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback
+    from src.services.cut_ffmpeg_waveform import build_waveform_with_fallback, build_stereo_waveform
 
     bins = max(16, min(512, bins))
     p = Path(source_path)
     if not p.exists():
         return {"success": False, "error": "file_not_found", "peaks": []}
 
+    if stereo:
+        left, right, degraded, reason = build_stereo_waveform(str(p), bins)
+        return {
+            "success": True,
+            "source_path": str(p),
+            "bins": bins,
+            "stereo": True,
+            "peaks_left": left,
+            "peaks_right": right,
+            "peaks": left,  # backward compat: mono consumers get left channel
+            "degraded": degraded,
+            "degraded_reason": reason,
+        }
+
     peak_bins, degraded, reason = build_waveform_with_fallback(str(p), bins)
     return {
         "success": True,
         "source_path": str(p),
         "bins": bins,
+        "stereo": False,
         "peaks": peak_bins,
         "degraded": degraded,
         "degraded_reason": reason,
