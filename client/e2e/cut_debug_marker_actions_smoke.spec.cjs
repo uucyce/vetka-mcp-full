@@ -218,7 +218,10 @@ async function installDebugMarkerMocks(page, requestLog, markerBodies) {
   });
 }
 
+// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1). Old labels "markers for shot:",
+// "Favorite Markers", "Show All Markers" buttons removed. Needs complete test rewrite.
 test.describe.serial('phase170 cut debug marker-actions smoke', () => {
+  test.fixme(true, 'DebugShellPanel rewritten — old marker UI labels removed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {

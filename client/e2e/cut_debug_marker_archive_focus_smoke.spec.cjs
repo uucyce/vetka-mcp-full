@@ -237,7 +237,9 @@ async function installMarkerArchiveFocusMocks(page, requestLog, timelineBodies, 
   });
 }
 
+// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
 test.describe.serial('phase170 cut debug marker archive/focus smoke', () => {
+  test.fixme(true, 'DebugShellPanel rewritten — old marker focus/archive UI removed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {

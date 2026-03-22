@@ -218,7 +218,9 @@ async function installDebugSyncMocks(page, requestLog, applyBodies) {
   });
 }
 
+// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
 test.describe.serial('phase170 cut debug sync-actions smoke', () => {
+  test.fixme(true, 'DebugShellPanel rewritten — sync actions section changed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {

@@ -288,6 +288,12 @@ test.describe.serial('phase170 cut nle interactions smoke', () => {
     await expect(page.locator('[title^="comment: smoke marker"]')).toHaveCount(2);
 
     await page.getByTestId('cut-timeline-clip-clip_a').click();
+    // MARKER_QA.W6: addMarker handler needs currentTime within a clip (clip_a starts at 1s).
+    // Clicking clip doesn't move playhead, so set it explicitly.
+    await page.evaluate(() => {
+      const store = window.__CUT_STORE__;
+      if (store) store.setState({ currentTime: 2 });
+    });
     await page.keyboard.press('m');
 
     await expect.poll(() => markerCreateCount).toBe(2);

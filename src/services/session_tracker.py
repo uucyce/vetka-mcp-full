@@ -38,6 +38,11 @@ class SessionActions:
     files_read: Set[str] = field(default_factory=set)
     files_edited: Set[str] = field(default_factory=set)
 
+    # Experience lifecycle (MARKER_ZETA.D2)
+    tasks_completed: int = 0
+    experience_report_submitted: bool = False
+    experience_report_path: Optional[str] = None
+
     # Counters
     read_count: int = 0
     edit_count: int = 0
@@ -130,6 +135,13 @@ class SessionActionTracker:
                 elif action == "claim":
                     session.task_claimed = True
                     session.claimed_task_id = args.get("task_id")
+                elif action == "complete":
+                    session.tasks_completed += 1
+
+            # --- experience report (MARKER_ZETA.D2) ---
+            if tool_name == "vetka_submit_experience_report":
+                session.experience_report_submitted = True
+                session.experience_report_path = args.get("report_path")
 
             # --- session_init ---
             if tool_name == "vetka_session_init":

@@ -6817,21 +6817,25 @@ async def cut_montage_suggestions(
 
 
 class CutProxyGenerateRequest(BaseModel):
-    """MARKER_173.6 — Proxy generation request."""
+    """MARKER_173.6 + B2 — Proxy generation request."""
     sandbox_root: str
     project_id: str
     source_paths: list[str] = Field(default_factory=list, description="Media files to proxy. If empty, uses all clips from timeline.")
-    resolution: str = Field(default="720p", description="Proxy resolution: 720p, 480p, 360p")
+    resolution: str = Field(default="auto", description="Proxy resolution: auto, 720p, 480p, 360p. 'auto' probes each file and picks optimal spec.")
     force: bool = Field(default=False, description="Force regeneration even if proxy exists")
 
 
 @router.post("/proxy/generate")
 async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
     """
-    MARKER_173.6 — Generate proxy files for timeline clips.
+    MARKER_173.6 + B2 — Generate proxy files for timeline clips.
 
-    Creates lightweight 720p/480p/360p H.264 proxies for faster scrubbing.
-    Skips if fresh proxy already exists. Stores in cut_runtime/proxies/.
+    Creates lightweight proxies for faster scrubbing.
+    resolution="auto" probes each file via ProbeResult and picks optimal spec:
+      - transcode_required / 4K heavy → 480p
+      - proxy_recommended 1080p → 720p
+      - native < 4K → skip (no proxy needed)
+    Explicit modes: 720p, 480p, 360p apply same spec to all files.
     """
     from src.services.cut_proxy_worker import PROXY_480P, PROXY_360P
 
@@ -6839,10 +6843,6 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
     project = store.load_project()
     if project is None or str(project.get("project_id") or "") != str(body.project_id):
         return {"success": False, "error": "project_not_found"}
-
-    # Select resolution preset
-    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
-    spec = spec_map.get(body.resolution)
 
     # Discover source paths
     source_paths = list(body.source_paths)
@@ -6868,6 +6868,27 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
             p = Path(body.sandbox_root) / sp
         resolved.append(str(p))
 
+    # MARKER_B2: Auto mode — probe each file, decide per-file spec
+    if body.resolution == "auto":
+        worker = ProxyWorker(body.sandbox_root, force=body.force)
+        auto_results = worker.generate_auto(resolved)
+
+        return {
+            "success": True,
+            "schema_version": "cut_proxy_generate_v2",
+            "mode": "auto",
+            "results": auto_results,
+            "total": len(auto_results),
+            "generated": sum(1 for r in auto_results if r.get("proxy_success") and not r.get("proxy_skipped")),
+            "skipped": sum(1 for r in auto_results if not r.get("needs_proxy") or r.get("proxy_skipped")),
+            "failed": sum(1 for r in auto_results if r.get("needs_proxy") and not r.get("proxy_success")),
+            "resolution": "auto",
+        }
+
+    # Explicit resolution mode (720p / 480p / 360p)
+    spec_map = {"720p": None, "480p": PROXY_480P, "360p": PROXY_360P}
+    spec = spec_map.get(body.resolution)
+
     worker = ProxyWorker(body.sandbox_root, spec=spec, force=body.force)
     results = worker.generate_batch(resolved)
 
@@ -6886,7 +6907,8 @@ async def cut_proxy_generate(body: CutProxyGenerateRequest) -> dict[str, Any]:
 
     return {
         "success": True,
-        "schema_version": "cut_proxy_generate_v1",
+        "schema_version": "cut_proxy_generate_v2",
+        "mode": "explicit",
         "results": proxy_results,
         "total": len(proxy_results),
         "generated": sum(1 for r in results if r.success and not r.skipped),

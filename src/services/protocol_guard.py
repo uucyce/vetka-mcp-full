@@ -44,6 +44,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "recon_before_code": {"severity": "warn", "enabled": True},
         "session_init_first": {"severity": "warn", "enabled": True},
         "roadmap_before_tasks": {"severity": "warn", "enabled": True},
+        "experience_report_after_task": {"severity": "warn", "enabled": True},
     },
     "exempt_paths": ["docs/", "tests/", "data/"],
     "enforce_paths": ["src/**/*.py", "client/src/**/*.ts", "client/src/**/*.tsx"],
@@ -267,6 +268,24 @@ class ProtocolGuard:
             suggestion="Create or verify a roadmap before adding tasks to the board.",
         )
 
+    def _check_experience_report_after_task(
+        self, session: Any, tool_name: str, args: Dict
+    ) -> Optional[ProtocolViolation]:
+        """MARKER_ZETA.D2: Warn if tasks were completed but no experience report submitted."""
+        if not self._is_enabled("experience_report_after_task"):
+            return None
+        if not hasattr(session, "tasks_completed") or session.tasks_completed == 0:
+            return None
+        if hasattr(session, "experience_report_submitted") and session.experience_report_submitted:
+            return None
+
+        return ProtocolViolation(
+            rule_id="experience_report_after_task",
+            severity=self._severity("experience_report_after_task"),
+            message=f"Completed {session.tasks_completed} task(s) but no experience report submitted.",
+            suggestion="Submit an experience report via vetka_submit_experience_report before ending session.",
+        )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -286,6 +305,7 @@ class ProtocolGuard:
             self._check_recon_before_code,
             self._check_session_init_first,
             self._check_roadmap_before_tasks,
+            self._check_experience_report_after_task,
         ]
 
         for checker in checkers:
@@ -344,6 +364,20 @@ class ProtocolGuard:
                     severity=self._severity("roadmap_before_tasks"),
                     message="No roadmap found.",
                     suggestion="Create or verify a roadmap before adding tasks to the board.",
+                ))
+
+            # MARKER_ZETA.D2: Experience report after task completion
+            if (
+                self._is_enabled("experience_report_after_task")
+                and hasattr(session, "tasks_completed")
+                and session.tasks_completed > 0
+                and not getattr(session, "experience_report_submitted", False)
+            ):
+                violations.append(ProtocolViolation(
+                    rule_id="experience_report_after_task",
+                    severity=self._severity("experience_report_after_task"),
+                    message=f"Completed {session.tasks_completed} task(s) but no experience report submitted.",
+                    suggestion="Submit an experience report via vetka_submit_experience_report before ending session.",
                 ))
         except Exception:
             logger.exception("protocol_guard: check_all_pending failed")
