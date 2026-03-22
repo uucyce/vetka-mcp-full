@@ -29,6 +29,10 @@ interface DockviewStoreState {
   togglePanel: (id: string, component: string, title: string) => void;
   /** MARKER_GAMMA-3: Toggle maximize active panel group (backtick key, FCP7/Premiere style) */
   toggleMaximize: () => void;
+  /** MARKER_GAMMA-12: Save/restore focused panel per workspace preset */
+  focusPerPreset: Record<WorkspacePresetName, string | null>;
+  saveFocusForPreset: (preset: WorkspacePresetName, panelId: string | null) => void;
+  getFocusForPreset: (preset: WorkspacePresetName) => string | null;
 }
 
 const LS_PREFIX = 'cut_dockview_';
@@ -139,4 +143,13 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
         : { direction: 'below' },
     });
   },
+
+  // MARKER_GAMMA-12: Focus persistence per workspace preset
+  focusPerPreset: { editing: 'timeline', color: 'program', audio: 'timeline', custom: null },
+  saveFocusForPreset: (preset, panelId) => {
+    set((s) => ({
+      focusPerPreset: { ...s.focusPerPreset, [preset]: panelId },
+    }));
+  },
+  getFocusForPreset: (preset) => get().focusPerPreset[preset],
 }));
