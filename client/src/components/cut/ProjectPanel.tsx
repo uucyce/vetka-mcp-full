@@ -584,9 +584,9 @@ export default function ProjectPanel() {
         <div
           style={{
             ...DROPZONE,
-            borderColor: dragging ? '#4a9eff' : '#2f2f2f',
-            background: dragging ? '#081120' : 'transparent',
-            color: dragging ? '#bfdbfe' : '#555',
+            borderColor: dragging ? '#999' : '#2f2f2f',
+            background: dragging ? '#0a0a0a' : 'transparent',
+            color: dragging ? '#ccc' : '#555',
           }}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -658,8 +658,8 @@ export default function ProjectPanel() {
                   onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                   style={{
                     ...GRID_ITEM,
-                    background: isActive ? '#1a1a2a' : 'transparent',
-                    border: isActive ? '1px solid #4a9eff' : '1px solid transparent',
+                    background: isActive ? '#1a1a1a' : 'transparent',
+                    border: isActive ? '1px solid #999' : '1px solid transparent',
                     cursor: 'grab',
                   }}
                   onClick={() => handleClipClick(item.source_path)}
@@ -730,8 +730,8 @@ export default function ProjectPanel() {
                       onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                       style={{
                         ...CLIP_ITEM,
-                        background: isActive ? '#1a1a2a' : 'transparent',
-                        borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                        background: isActive ? '#1a1a1a' : 'transparent',
+                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
                         cursor: 'grab',
                       }}
                       onClick={() => handleClipClick(item.source_path)}

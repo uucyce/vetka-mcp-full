@@ -32,7 +32,7 @@ const TAB_BTN: CSSProperties = {
   padding: '4px 10px', background: 'none', border: 'none', borderBottom: '2px solid transparent',
   color: '#888', fontSize: 10, cursor: 'pointer', fontWeight: 500,
 };
-const TAB_ACTIVE: CSSProperties = { ...TAB_BTN, color: '#ccc', borderBottomColor: '#4a9eff' };
+const TAB_ACTIVE: CSSProperties = { ...TAB_BTN, color: '#ccc', borderBottomColor: '#999' };
 const CANVAS_WRAP: CSSProperties = {
   flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, minHeight: 0,
 };
@@ -313,7 +313,7 @@ export default function VideoScopes() {
           style={{
             background: 'none', border: '1px solid #333', borderRadius: 3,
             padding: '1px 6px', cursor: 'pointer', fontSize: 8,
-            color: postGrade ? '#4a9eff' : '#666',
+            color: postGrade ? '#999' : '#666',
           }}
           title={postGrade ? 'Showing post-grade (click for raw)' : 'Showing raw (click for post-grade)'}
         >

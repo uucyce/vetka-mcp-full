@@ -78,8 +78,8 @@ const TRANSITION_ITEM: CSSProperties = {
 
 const TRANSITION_ITEM_SELECTED: CSSProperties = {
   ...TRANSITION_ITEM,
-  border: '1px solid #4a9eff',
-  background: '#1a1a2a',
+  border: '1px solid #999',
+  background: '#1a1a1a',
 };
 
 const ICON: CSSProperties = {
@@ -120,7 +120,7 @@ const BTN: CSSProperties = {
   borderRadius: 4,
   cursor: 'pointer',
   fontFamily: 'system-ui',
-  background: '#4a9eff',
+  background: '#999',
   color: '#fff',
 };
 
@@ -245,7 +245,7 @@ export default function TransitionsPanel() {
           <div style={SECTION_TITLE}>Applied</div>
           <div style={ROW}>
             <span style={{ color: '#888' }}>Type</span>
-            <span style={{ color: '#4a9eff' }}>
+            <span style={{ color: '#999' }}>
               {TRANSITIONS.find((t) => t.id === currentTransition.type)?.label || currentTransition.type}
             </span>
           </div>

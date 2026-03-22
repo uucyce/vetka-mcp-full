@@ -50,7 +50,7 @@ const LUT_ITEM: CSSProperties = {
 };
 
 const LUT_ITEM_SELECTED: CSSProperties = {
-  ...LUT_ITEM, background: '#1a2a3a',
+  ...LUT_ITEM, background: '#1a1a1a',
 };
 
 const BTN: CSSProperties = {
@@ -267,7 +267,7 @@ export default function LutBrowserPanel() {
           )}
           {preview.after && (
             <div style={{ flex: 1, textAlign: 'center' as const }}>
-              <div style={{ fontSize: 8, color: '#4a9eff', marginBottom: 2 }}>{preview.lutName}</div>
+              <div style={{ fontSize: 8, color: '#999', marginBottom: 2 }}>{preview.lutName}</div>
               <img src={preview.after} alt="After" style={PREVIEW_IMG} />
             </div>
           )}

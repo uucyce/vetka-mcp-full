@@ -76,16 +76,16 @@ const ZOOM_SLIDER: CSSProperties = {
   cursor: 'pointer',
 };
 
-// MARKER_W6.TOOL-SM: Tool display config
+// MARKER_W6.TOOL-SM + GAMMA-P0: Tool display — FCP7 names, monochrome only
 const TOOL_DISPLAY: Record<string, { label: string; shortcut: string; color: string }> = {
-  selection: { label: 'Select', shortcut: 'V', color: '#ccc' },
-  razor:     { label: 'Razor',  shortcut: 'C', color: '#f87171' },
-  slip:      { label: 'Slip',   shortcut: 'Y', color: '#4ade80' },
-  slide:     { label: 'Slide',  shortcut: 'U', color: '#60a5fa' },
-  ripple:    { label: 'Ripple', shortcut: 'B', color: '#fbbf24' },
-  roll:      { label: 'Roll',   shortcut: 'N', color: '#c084fc' },
-  hand:      { label: 'Hand',   shortcut: 'H', color: '#888' },
-  zoom:      { label: 'Zoom',   shortcut: 'Z', color: '#888' },
+  selection: { label: '\u2191',    shortcut: 'A', color: '#ccc' },  // Arrow tool (↑ cursor icon)
+  razor:     { label: '\u2702',    shortcut: 'B', color: '#ccc' },  // Blade (scissors icon)
+  slip:      { label: 'Slip',     shortcut: 'S', color: '#999' },
+  slide:     { label: 'Slide',    shortcut: 'U', color: '#999' },
+  ripple:    { label: 'Ripple',   shortcut: 'R', color: '#999' },
+  roll:      { label: 'Roll',     shortcut: 'N', color: '#999' },
+  hand:      { label: '\u270B',    shortcut: 'H', color: '#999' },  // Hand (open hand icon)
+  zoom:      { label: '\u2315',    shortcut: 'Z', color: '#999' },  // Zoom (magnifier icon)
 };
 
 const TOOL_INDICATOR: CSSProperties = {

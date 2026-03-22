@@ -369,7 +369,7 @@ export default function PanelShell({ panelId, children, title, hideTitleBar }: P
   }
 
   // MARKER_W1.2: Focus border style
-  const focusBorder = isFocused ? { outline: '1px solid #4A9EFF', outlineOffset: -1 } : {};
+  const focusBorder = isFocused ? { outline: '1px solid #999', outlineOffset: -1 } : {};
 
   return (
     <div ref={rootRef} style={{ ...SHELL_DOCKED, ...focusBorder }} onMouseDown={handleFocus}>

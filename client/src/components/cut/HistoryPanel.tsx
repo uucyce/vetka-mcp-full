@@ -193,8 +193,8 @@ export default function HistoryPanel() {
                 style={{
                   ...ENTRY_BASE,
                   color: isRedoable ? '#3a3a3a' : isCurrent ? '#e0e0e0' : '#888',
-                  background: isCurrent ? '#1a2a3a' : 'transparent',
-                  borderLeft: isCurrent ? '2px solid #4a9eff' : '2px solid transparent',
+                  background: isCurrent ? '#1a1a1a' : 'transparent',
+                  borderLeft: isCurrent ? '2px solid #999' : '2px solid transparent',
                 }}
               >
                 <span style={{
@@ -211,7 +211,7 @@ export default function HistoryPanel() {
                   {entry.label}
                 </span>
                 {isCurrent && (
-                  <span style={{ color: '#4a9eff', fontSize: 9, marginLeft: 6, flexShrink: 0 }}>
+                  <span style={{ color: '#999', fontSize: 9, marginLeft: 6, flexShrink: 0 }}>
                     current
                   </span>
                 )}

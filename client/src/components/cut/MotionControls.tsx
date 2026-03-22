@@ -202,7 +202,7 @@ export default function MotionControls() {
         <div style={SECTION_TITLE}>
           <span>Scale</span>
           <button
-            style={{ ...LINK_BTN, color: motion.uniform ? '#4a9eff' : '#555' }}
+            style={{ ...LINK_BTN, color: motion.uniform ? '#999' : '#555' }}
             onClick={() => updateField('uniform', !motion.uniform)}
             title={motion.uniform ? 'Linked (uniform)' : 'Independent X/Y'}
           >
@@ -328,7 +328,7 @@ export default function MotionControls() {
                 ...LINK_BTN,
                 fontSize: 8,
                 padding: '2px 3px',
-                color: motion.anchorX === pt.x && motion.anchorY === pt.y ? '#4a9eff' : '#555',
+                color: motion.anchorX === pt.x && motion.anchorY === pt.y ? '#999' : '#555',
               }}
               onClick={() => { updateField('anchorX', pt.x); updateField('anchorY', pt.y); }}
               title={`Anchor ${pt.label}`}
