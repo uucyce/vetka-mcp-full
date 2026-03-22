@@ -500,8 +500,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         exec_mode = arguments.get("execution_mode")
 
         # Case A: agent already committed — just close
+        # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
-            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, execution_mode=exec_mode)
+            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -523,7 +524,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if merge_result.get("success") and merge_result.get("commit_hash"):
                     # Verifier merge succeeded — close task
-                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, execution_mode=exec_mode)
+                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
                     result["verifier_merge"] = merge_result
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
@@ -560,7 +561,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Close task (commit succeeded or nothing to commit)
-        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, execution_mode=exec_mode)
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
         result["auto_commit"] = auto
 
         # MARKER_ZETA.F1: Smart Debrief — inject questions on task complete
@@ -636,6 +637,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 def _detect_git_branch(cwd: str = None) -> str:
     """MARKER_186.4: Detect current git branch. Works in worktrees.
     MARKER_188.2: Accept cwd override for worktree context.
+    MARKER_195.20: Return empty string on failure (not "main") to avoid false done_main.
     """
     import subprocess
     from pathlib import Path
@@ -649,7 +651,7 @@ def _detect_git_branch(cwd: str = None) -> str:
             return result.stdout.strip()
     except Exception:
         pass
-    return "main"  # fallback — assume main
+    return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None) -> dict:

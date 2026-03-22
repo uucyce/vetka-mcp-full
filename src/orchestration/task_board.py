@@ -844,16 +844,18 @@ class TaskBoard:
         return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
 
     @staticmethod
-    def _detect_current_branch() -> Optional[str]:
+    def _detect_current_branch(cwd: str = None) -> Optional[str]:
         """MARKER_186.4: Detect current git branch. Works in worktrees.
         MARKER_195.1: Returns None instead of silently falling back to 'main'.
+        MARKER_195.20: Accept cwd override for worktree-correct detection.
         Callers must handle None explicitly to avoid false branch attribution.
         """
         import subprocess
+        git_cwd = cwd or str(PROJECT_ROOT)
         try:
             result = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                cwd=git_cwd, capture_output=True, text=True, timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
@@ -1363,7 +1365,7 @@ class TaskBoard:
     # MARKER_130.C16A: AGENT COORDINATION
     # ==========================================
 
-    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown") -> Dict[str, Any]:
+    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown", *, worktree_path: Optional[str] = None) -> Dict[str, Any]:
         """Claim a task for an agent.
 
         Args:
@@ -1416,7 +1418,7 @@ class TaskBoard:
         try:
             from src.services.agent_registry import get_agent_registry
             registry = get_agent_registry()
-            agent_role = registry.get_by_branch(self._detect_current_branch() or "")
+            agent_role = registry.get_by_branch(self._detect_current_branch(cwd=worktree_path) or "")
             task_domain = task.get("domain", "")
             if agent_role and task_domain:
                 matches, msg = registry.validate_domain_match(agent_role.callsign, task_domain)
@@ -1446,11 +1448,13 @@ class TaskBoard:
         manual_override: bool = False,
         override_reason: Optional[str] = None,
         branch: Optional[str] = None,
+        worktree_path: Optional[str] = None,  # MARKER_195.20: cwd for branch detection
         execution_mode: Optional[str] = None,  # MARKER_192.2: override task's execution_mode at close time
     ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
         MARKER_186.4: Worktree-aware completion.
+        MARKER_195.20: worktree_path used as cwd for branch auto-detection.
         If branch is provided and is not 'main', status = done_worktree.
         If branch is 'main' or None (legacy), status = done_main.
         'done' is kept as alias for done_main for backward compat.
@@ -1491,8 +1495,9 @@ class TaskBoard:
             return {"success": False, "error": proof_error, "task_id": task_id}
 
         # MARKER_186.4: Auto-detect branch if not provided
+        # MARKER_195.20: Use worktree_path as cwd for correct branch detection
         if branch is None:
-            branch = self._detect_current_branch()
+            branch = self._detect_current_branch(cwd=worktree_path)
         is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 

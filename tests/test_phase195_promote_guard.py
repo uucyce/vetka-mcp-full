@@ -2,6 +2,7 @@
 Phase 195.1 — Promote-to-main Guard Tests
 
 MARKER_195.1: Prevent false done_main when commits are not on main branch.
+MARKER_195.20: _detect_current_branch accepts cwd override for worktree-correct detection.
 
 Tests:
 1. promote_to_main rejects when commit is not on main (git merge-base fails)
@@ -11,6 +12,10 @@ Tests:
 5. _is_commit_on_main returns False on subprocess error
 6. Hook dedup: only .git/hooks/post-merge should exist
 7. complete_task with None branch → done_worktree (safe default)
+8. promote uses task's stored commit hash
+9. _detect_current_branch passes cwd to subprocess
+10. complete_task with worktree_path uses it for branch detection
+11. complete_task worktree_path detects worktree branch → done_worktree
 """
 
 import pytest
@@ -158,3 +163,60 @@ def test_promote_uses_task_commit_hash(tmp_path):
     mock_check.assert_called_once_with("stored_hash_123")
     assert result["success"] is False
     assert "NOT on main" in result["error"]
+
+
+# ── Test 9: _detect_current_branch passes cwd to subprocess ───
+
+def test_detect_branch_uses_cwd_override():
+    """MARKER_195.20: _detect_current_branch(cwd=X) should pass X to subprocess."""
+    from src.orchestration.task_board import TaskBoard
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "claude/cut-engine\n"
+
+    with patch('subprocess.run', return_value=mock_result) as mock_run:
+        result = TaskBoard._detect_current_branch(cwd="/fake/worktree/path")
+
+    assert result == "claude/cut-engine"
+    call_kwargs = mock_run.call_args
+    assert call_kwargs.kwargs.get("cwd") == "/fake/worktree/path" or call_kwargs[1].get("cwd") == "/fake/worktree/path"
+
+
+# ── Test 10: complete_task with worktree_path detects branch ──
+
+def test_complete_task_with_worktree_path(tmp_path):
+    """MARKER_195.20: worktree_path is passed to _detect_current_branch for auto-detection."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Worktree task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Alpha")
+
+    with patch.object(type(board), '_detect_current_branch', return_value="claude/cut-engine") as mock_detect:
+        with patch.object(type(board), '_validate_closure_proof', return_value=None):
+            result = board.complete_task(tid, commit_hash="abc123", worktree_path="/fake/wt")
+
+    assert result["success"] is True
+    # Verify cwd was passed through
+    mock_detect.assert_called_once_with(cwd="/fake/wt")
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
+
+
+# ── Test 11: worktree branch → done_worktree, not done_main ──
+
+def test_worktree_branch_yields_done_worktree(tmp_path):
+    """MARKER_195.20: When worktree cwd detects a non-main branch → done_worktree."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Media task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Beta")
+
+    # Simulate: no explicit branch, but worktree_path resolves to claude/cut-media
+    with patch.object(type(board), '_detect_current_branch', return_value="claude/cut-media"):
+        with patch.object(type(board), '_validate_closure_proof', return_value=None):
+            result = board.complete_task(tid, commit_hash="def456", worktree_path="/wt/cut-media")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree", (
+        f"Expected done_worktree for branch claude/cut-media, got {task['status']}"
+    )
