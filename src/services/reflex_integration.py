@@ -380,6 +380,74 @@ def reflex_session(
         except Exception as e:
             logger.debug("[REFLEX IP-6] Guard filtering failed (non-fatal): %s", e)
 
+        # MARKER_196.1: D2 → D3 wiring — populate EmotionContext.tool_freshness from ToolSourceWatch
+        # MARKER_196.2: D1 → D3 wiring — populate EmotionContext.guard_warnings from ProtocolGuard
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+            emo_engine = get_reflex_emotions()
+
+            # --- 196.1: Freshness → Curiosity ---
+            tool_freshness: Dict[str, float] = {}
+            try:
+                from src.services.tool_source_watch import get_tool_source_watch, FRESHNESS_WINDOW_HOURS
+                watch = get_tool_source_watch()
+                all_freshness = watch.get_all()
+                for tid, entry in all_freshness.items():
+                    if entry.is_recently_updated():
+                        hours = entry.hours_since_update()
+                        # Linear decay: 1.0 at update, 0.0 at 48h
+                        score = max(0.0, 1.0 - hours / FRESHNESS_WINDOW_HOURS)
+                        tool_freshness[tid] = round(score, 4)
+                if tool_freshness:
+                    logger.debug("[REFLEX IP-6] 196.1: %d fresh tools populated", len(tool_freshness))
+            except Exception as e:
+                logger.debug("[REFLEX IP-6] 196.1 freshness wiring failed (non-fatal): %s", e)
+
+            # --- 196.2: Guard → Caution ---
+            guard_warnings_list: list = []
+            try:
+                from src.services.protocol_guard import get_protocol_guard as _get_pg
+                from src.services.session_tracker import get_session_tracker as _get_st
+                _tracker = _get_st()
+                _guard = _get_pg()
+                _sid = session_data.get("session_id", "reflex_default")
+                _session = _tracker.get_session(_sid)
+                _pending = _guard.check_all_pending(_session)
+                for v in _pending:
+                    guard_warnings_list.append(v.rule_id)
+                if guard_warnings_list:
+                    logger.debug("[REFLEX IP-6] 196.2: %d guard warnings populated", len(guard_warnings_list))
+            except Exception as e:
+                logger.debug("[REFLEX IP-6] 196.2 guard wiring failed (non-fatal): %s", e)
+
+            # Build a shared EmotionContext with wired data for session-level emotion compute
+            emo_ctx = EmotionContext(
+                agent_id=agent_type,
+                phase_type=phase_type,
+                tool_freshness=tool_freshness,
+                guard_warnings=guard_warnings_list,
+            )
+
+            # Recompute emotions for each recommended tool with wired context
+            for rec in recs:
+                tid = rec.get("tool_id", "")
+                if not tid or tid == "protocol_guard":
+                    continue
+                try:
+                    # Set per-tool freshness_score from the tool_freshness dict
+                    emo_ctx.freshness_score = tool_freshness.get(tid, 0.0)
+                    state = emo_engine.compute_emotions(tid, emo_ctx)
+                    rec["emotions"] = {
+                        "curiosity": round(state.curiosity, 4),
+                        "trust": round(state.trust, 4),
+                        "caution": round(state.caution, 4),
+                        "mood": state.mood_label,
+                    }
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.debug("[REFLEX IP-6] 196.1/196.2 emotion wiring failed (non-fatal): %s", e)
+
         # MARKER_195.7: Protocol violations as REFLEX warnings
         try:
             from src.services.protocol_guard import get_protocol_guard

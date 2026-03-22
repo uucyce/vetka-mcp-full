@@ -381,8 +381,16 @@ class ProtocolGuard:
     # Public API
     # ------------------------------------------------------------------
 
+    # MARKER_196.3: Critical rules that must NEVER have severity downgraded by trust
+    _CRITICAL_RULES = {"task_before_code", "taskboard_before_work"}
+
     def check(self, session: Any, tool_name: str, args: Optional[Dict] = None) -> List[ProtocolViolation]:
         """Evaluate all rules against the given tool invocation.
+
+        MARKER_196.3: D3 → D1 wiring — trust-based severity modulation.
+        High trust (>0.7) downgrades minor violations from "block" to "warn".
+        Low trust (<0.3) keeps severity as-is (or upgrades "warn" to "block").
+        Critical rules (task_before_code, taskboard_before_work) are never downgraded.
 
         Returns a list of violations (may be empty).
         """
@@ -407,6 +415,49 @@ class ProtocolGuard:
                     violations.append(v)
             except Exception:
                 logger.exception("protocol_guard: rule check failed in %s", checker.__name__)
+
+        # MARKER_196.3: Modulate severity based on REFLEX trust scores
+        if violations:
+            violations = self._modulate_severity_by_trust(violations, tool_name)
+
+        return violations
+
+    def _modulate_severity_by_trust(
+        self, violations: List[ProtocolViolation], tool_name: str
+    ) -> List[ProtocolViolation]:
+        """MARKER_196.3: D3 → D1 — Adjust violation severity using emotion trust.
+
+        - Trust > 0.7 → downgrade "block" to "warn" for non-critical rules
+        - Trust < 0.3 → upgrade "warn" to "block" for non-critical rules
+        - Trust 0.3–0.7 → no change
+        - Critical rules (task_before_code, taskboard_before_work) → NEVER downgrade
+        """
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions
+            emo_engine = get_reflex_emotions()
+            state = emo_engine.get_emotion_state(tool_name)
+            trust = state.trust
+
+            for v in violations:
+                if v.rule_id in self._CRITICAL_RULES:
+                    continue  # Never modulate critical rules
+
+                if trust > 0.7 and v.severity == "block":
+                    v.severity = "warn"
+                    v.message = f"{v.message} (softened: trust={trust:.2f})"
+                    logger.debug(
+                        "protocol_guard 196.3: downgraded %s to warn (trust=%.2f)",
+                        v.rule_id, trust,
+                    )
+                elif trust < 0.3 and v.severity == "warn":
+                    v.severity = "block"
+                    v.message = f"{v.message} (escalated: trust={trust:.2f})"
+                    logger.debug(
+                        "protocol_guard 196.3: upgraded %s to block (trust=%.2f)",
+                        v.rule_id, trust,
+                    )
+        except Exception as e:
+            logger.debug("protocol_guard 196.3: trust modulation failed (non-fatal): %s", e)
 
         return violations
 
