@@ -373,8 +373,18 @@ class ProtocolGuard:
         return ProtocolViolation(
             rule_id="experience_report_after_task",
             severity=self._severity("experience_report_after_task"),
-            message=f"Completed {session.tasks_completed} task(s) but no experience report submitted.",
-            suggestion="Submit an experience report via vetka_submit_experience_report before ending session.",
+            message=(
+                f"Completed {session.tasks_completed} task(s) — your experience will be lost. "
+                "Answer 3 questions before exit (2-3 lines each):"
+            ),
+            suggestion=(
+                "Q1: What's broken? Bugs you noticed — including outside your zone "
+                "(stale code, broken tools, bad process others walk past).\n"
+                "Q2: What unexpectedly worked? A workaround or pattern worth making standard.\n"
+                "Q3: What idea came to mind that nobody asked about? "
+                "What would you do with 2 more hours?\n"
+                "→ vetka_submit_experience_report lessons_learned=[Q1, Q2] recommendations=[Q3]"
+            ),
         )
 
     # ------------------------------------------------------------------
@@ -519,8 +529,18 @@ class ProtocolGuard:
                 violations.append(ProtocolViolation(
                     rule_id="experience_report_after_task",
                     severity=self._severity("experience_report_after_task"),
-                    message=f"Completed {session.tasks_completed} task(s) but no experience report submitted.",
-                    suggestion="Submit an experience report via vetka_submit_experience_report before ending session.",
+                    message=(
+                        f"Completed {session.tasks_completed} task(s) — your experience will be lost. "
+                        "Answer 3 questions before exit (2-3 lines each):"
+                    ),
+                    suggestion=(
+                        "Q1: What's broken? Bugs you noticed — including outside your zone "
+                        "(stale code, broken tools, bad process others walk past).\n"
+                        "Q2: What unexpectedly worked? A workaround or pattern worth making standard.\n"
+                        "Q3: What idea came to mind that nobody asked about? "
+                        "What would you do with 2 more hours?\n"
+                        "→ vetka_submit_experience_report lessons_learned=[Q1, Q2] recommendations=[Q3]"
+                    ),
                 ))
         except Exception:
             logger.exception("protocol_guard: check_all_pending failed")

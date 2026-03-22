@@ -562,6 +562,36 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Close task (commit succeeded or nothing to commit)
         result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, execution_mode=exec_mode)
         result["auto_commit"] = auto
+
+        # MARKER_ZETA.F1: Smart Debrief — inject questions on task complete
+        try:
+            from src.services.session_tracker import get_session_tracker
+            _db_tracker = get_session_tracker()
+            _db_sid = arguments.get("session_id", "default")
+            _db_session = _db_tracker.get_session(_db_sid)
+            if (
+                result.get("success")
+                and _db_session.tasks_completed > 0
+                and not _db_session.experience_report_submitted
+            ):
+                result["debrief_requested"] = True
+                result["debrief_questions"] = {
+                    "q1_bugs": (
+                        "What's broken? Bugs you noticed — including outside your zone. "
+                        "Stale code, broken tools, bad process that everyone walks past?"
+                    ),
+                    "q2_worked": (
+                        "What unexpectedly worked? A workaround or pattern "
+                        "worth making standard?"
+                    ),
+                    "q3_idea": (
+                        "What idea came to mind that nobody asked about? "
+                        "What would you do with 2 more hours?"
+                    ),
+                }
+        except Exception:
+            pass  # Debrief injection never blocks completion
+
         return result
 
     # MARKER_130.C16B: active_agents action
