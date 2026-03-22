@@ -643,8 +643,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const shuttlePrevTimeRef = useRef<number>(0);
 
   useEffect(() => {
-    if (shuttleSpeed === 0 || shuttleSpeed === 1) {
-      // Speed 0 = stopped, speed 1 = normal forward (video element handles it)
+    if (shuttleSpeed === 0) {
       if (shuttleRafRef.current) {
         cancelAnimationFrame(shuttleRafRef.current);
         shuttleRafRef.current = 0;
@@ -652,7 +651,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       return;
     }
 
-    // For speeds ≠ 0 and ≠ 1, run a rAF loop that manually seeks
+    // MARKER_JKL1-FIX: rAF loop for ALL non-zero speeds including 1x.
+    // Previously speed=1 was skipped (relied on video element), but that fails
+    // when no video is loaded (tests, audio-only clips, proxy not ready).
     shuttlePrevTimeRef.current = performance.now();
 
     const step = (now: number) => {
