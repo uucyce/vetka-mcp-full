@@ -37,6 +37,7 @@ interface DockviewStoreState {
 
 const LS_PREFIX = 'cut_dockview_';
 const LS_ACTIVE = 'cut_dockview_active';
+const LS_FOCUS = 'cut_focus_per_preset';
 
 export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   activePreset: (() => {
@@ -144,12 +145,19 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
     });
   },
 
-  // MARKER_GAMMA-12: Focus persistence per workspace preset
-  focusPerPreset: { editing: 'timeline', color: 'program', audio: 'timeline', custom: null },
+  // MARKER_GAMMA-12 + GAMMA-13: Focus persistence per workspace preset (localStorage-backed)
+  focusPerPreset: (() => {
+    const defaults = { editing: 'timeline', color: 'program', audio: 'timeline', custom: null };
+    try {
+      const raw = localStorage.getItem(LS_FOCUS);
+      if (raw) return { ...defaults, ...JSON.parse(raw) };
+    } catch { /* corrupt */ }
+    return defaults;
+  })() as Record<WorkspacePresetName, string | null>,
   saveFocusForPreset: (preset, panelId) => {
-    set((s) => ({
-      focusPerPreset: { ...s.focusPerPreset, [preset]: panelId },
-    }));
+    const updated = { ...get().focusPerPreset, [preset]: panelId };
+    set({ focusPerPreset: updated });
+    try { localStorage.setItem(LS_FOCUS, JSON.stringify(updated)); } catch { /* noop */ }
   },
   getFocusForPreset: (preset) => get().focusPerPreset[preset],
 }));
