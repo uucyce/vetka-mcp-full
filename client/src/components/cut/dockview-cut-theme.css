@@ -43,6 +43,8 @@
   --dv-drag-over-border-color: rgba(255, 255, 255, 0.15);
   --dv-active-sash-color: var(--border-default);
   --dv-icon-hover-background-color: var(--bg-active);
+  /* MARKER_GAMMA-31: Kill dodgerblue/purple active outline — grey only */
+  --dv-paneview-active-outline-color: #505050;
 }
 
 /* ═══ Structural overrides (double-class specificity) ═══════════════ */
@@ -100,9 +102,9 @@
   letter-spacing: 0.3px;
 }
 
-/* Active tab */
+/* Active tab — !important needed: dockview injects inline border-color on active group */
 .dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom: 1px solid var(--border-bright);
+  border-bottom: 1px solid var(--border-bright) !important;
   background-color: var(--bg-hover);
   color: var(--text-secondary);
 }
@@ -181,10 +183,21 @@
 /* ═══ Kill remaining blue — targeted overrides ══════════════════════ */
 /* MARKER_DOCK-FIX-3: No wildcard (*). Targets structural elements only. */
 
-/* Dockview group header border */
+/* Dockview group header border — !important: dockview injects blue inline */
 .dockview-theme-dark.dockview-theme-dark .dv-tabs-container {
-  border-bottom-color: var(--border-dim);
+  border-bottom-color: var(--border-dim) !important;
 }
+
+/* MARKER_GAMMA-25: Kill ALL active group blue indicators */
+.dockview-theme-dark .dv-tabs-and-actions-container[style],
+.dockview-theme-dark .dv-active-group .dv-tabs-and-actions-container {
+  border-color: var(--border-dim) !important;
+  border-bottom-color: var(--border-dim) !important;
+}
+.dockview-theme-dark .dv-active-group .dv-tabs-container {
+  border-bottom-color: var(--border-dim) !important;
+}
+/* MARKER_GAMMA-26: [style*=] selectors removed — MutationObserver in DockviewLayout handles inline blues */
 
 /* Panel highlight when dragging — !important for pointer-events (Tauri) */
 .dockview-theme-dark.dockview-theme-dark .dv-drop-target-content,
@@ -231,27 +244,19 @@
   pointer-events: none !important;
 }
 
-/* Restore specific borders */
+/* Restore specific borders — !important to fight dockview inline styles */
 .dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom-color: var(--border-bright);
+  border-bottom-color: var(--border-bright) !important;
 }
 .dockview-theme-dark.dockview-theme-dark .dv-tabs-and-actions-container {
-  border-bottom-color: var(--border-dim);
+  border-bottom-color: var(--border-dim) !important;
 }
 .dockview-theme-dark.dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark.dockview-theme-dark .dv-sash.dv-active {
   border-color: transparent;
 }
 
-/* ═══ Inline style overrides — !important REQUIRED ══════════════════ */
-/* Dockview injects style="" attributes at runtime. Only !important beats them. */
-
-.dockview-theme-dark .dv-groupview[style*="border-color: rgb(0, 12, 24)"],
-.dockview-theme-dark .dv-groupview[style*="border-color: #4a9eff"],
-.dockview-theme-dark .dv-content-container[style*="outline-color: #4a9eff"] {
-  border-color: var(--border-dim) !important;
-  outline-color: transparent !important;
-}
+/* MARKER_GAMMA-26: Inline style [style*=] overrides removed — JS MutationObserver handles this now */
 
 /* MARKER_FOCUS: Subtle focus indicator on active panel group */
 /* !important needed: competes with outline:none above for non-focused groups */
@@ -273,6 +278,7 @@
   background: #999;
   border: none;
   cursor: pointer;
+  margin-top: -3.5px; /* center 10px thumb on 3px track */
 }
 .dockview-theme-dark input[type="range"]::-webkit-slider-runnable-track {
   background: #333;

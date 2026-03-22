@@ -13,6 +13,7 @@
 import { useState, useCallback, useEffect, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
+import { PRESET_BUILDERS } from './presetBuilders';
 import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
@@ -723,9 +724,16 @@ export default function MenuBar() {
         store.getState().setFocusedPanel(targetFocus as any);
       }
     } else {
-      // MARKER_C5: No saved layout for this preset — set preset and reload.
+      // MARKER_GAMMA-28: No saved layout — build via API instead of reload
       ds.setActivePreset(name);
-      window.location.reload();
+      try {
+        api.clear();
+        const builder = PRESET_BUILDERS[name] || PRESET_BUILDERS.editing;
+        builder(api, '');
+        requestAnimationFrame(() => {
+          try { ds.saveLayout(name, api.toJSON()); } catch { /* ok */ }
+        });
+      } catch { /* builder failed — layout will rebuild on next mount */ }
     }
   }
 

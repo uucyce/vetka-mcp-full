@@ -375,8 +375,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // Tools
   razorTool:         'b',
   selectTool:        'a',
-  insertEdit:        'F9',
-  overwriteEdit:     'F10',
+  insertEdit:        ',',
+  overwriteEdit:     '.',
   replaceEdit:       'F11',
   // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
   slipTool:          's',

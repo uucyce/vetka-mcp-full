@@ -16,7 +16,7 @@ import {
 } from 'react';
 
 import { API_BASE } from '../../config/api.config';
-import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
+import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
 import TimecodeField from './TimecodeField';
@@ -24,9 +24,9 @@ import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock,
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
-  audio_sync: { label: 'A1', color: '#22c55e', icon: <IconSpeaker size={12} color="#888" /> },
-  take_alt_y: { label: 'V2', color: '#a855f7', icon: <IconCamera size={12} color="#888" /> },
-  take_alt_z: { label: 'V3', color: '#f59e0b', icon: <IconCamera size={12} color="#888" /> },
+  audio_sync: { label: 'A1', color: '#888', icon: <IconSpeaker size={12} color="#888" /> },
+  take_alt_y: { label: 'V2', color: '#888', icon: <IconCamera size={12} color="#888" /> },
+  take_alt_z: { label: 'V3', color: '#777', icon: <IconCamera size={12} color="#888" /> },
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
@@ -604,8 +604,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
-  // MARKER_W1.3: Timeline clip click → Source Monitor
-  const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
+  // MARKER_DUAL-VIDEO: Timeline clip click → updates activeMedia (legacy) but NOT source monitor
+  const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
+  const setSourceMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
 
   // ─── MARKER_W6.STORE: Multi-instance read migration (Phase 1) ──────
@@ -776,33 +777,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     return displayLanesRef.current[laneIndex]?.lane_id || displayLanesRef.current[0]?.lane_id || 'video_main';
   }, []);
 
+  // MARKER_UNDO-FIX-23: Delegates to store applyTimelineOps for consistent error handling + toast
   const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
-    const session = sessionRef.current;
-    if (!session.sandboxRoot || !session.projectId) {
-      return;
-    }
-
-    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sandbox_root: session.sandboxRoot,
-        project_id: session.projectId,
-        timeline_id: session.timelineId || 'main',
-        author: 'cut_nle_ui',
-        ops,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`timeline apply failed: HTTP ${response.status}`);
-    }
-    const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
-    if (!payload.success) {
-      throw new Error(payload.error?.message || 'timeline apply failed');
-    }
-    if (!opts?.skipRefresh) {
-      await session.refreshProjectState?.();
-    }
+    await useCutEditorStore.getState().applyTimelineOps(ops, opts);
   }, []);
 
   const resolveMarkerMediaPath = useCallback(
@@ -959,27 +936,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown (local-first, then async backend)
+      // MARKER_W3.6: Razor tool — split on mousedown
+      // MARKER_UNDO-FIX: Routes through backend applyTimelineOps for undo support
       if (activeTool === 'razor' && mode === 'move') {
         const splitTime = timeFromTrackClientX(event.clientX);
-        const s = useCutEditorStore.getState();
-        const newLanes = s.lanes.map(lane => ({
-          ...lane,
-          clips: lane.clips.flatMap(c => {
-            if (c.clip_id === clip.clip_id && splitTime > c.start_sec + 0.01 && splitTime < c.start_sec + c.duration_sec - 0.01) {
-              const leftDur = splitTime - c.start_sec;
-              return [
-                { ...c, clip_id: `${c.clip_id}_L`, duration_sec: leftDur },
-                { ...c, clip_id: `${c.clip_id}_R`, start_sec: splitTime, duration_sec: c.duration_sec - leftDur },
-              ];
-            }
-            return [c];
-          }),
-        }));
-        s.setLanes(newLanes);
-        applyTimelineOps([{ op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime }], { skipRefresh: true }).catch((err) =>
-          console.error('[CUT] razor split failed:', err)
-        );
+        if (splitTime > clip.start_sec + 0.01 && splitTime < clip.start_sec + clip.duration_sec - 0.01) {
+          void useCutEditorStore.getState().applyTimelineOps([
+            { op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime },
+          ]);
+        }
         return;
       }
 
@@ -1532,10 +1497,34 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const activeDrag = dragState;
       setScrubActive(false);
       setSnapIndicator(null);
-      setDragState(null);
       if (!activeDrag) {
+        setDragState(null);
         return;
       }
+
+      // MARKER_TDD-TRIM: Local-first optimistic update — commit drag result to lanes
+      // before clearing dragState, so the visual change persists even if backend is unavailable
+      const store = useCutEditorStore.getState();
+      if (activeDrag.mode !== 'move' || activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
+        const updatedLanes = store.lanes.map((lane) => ({
+          ...lane,
+          clips: lane.clips.map((c) => {
+            if (c.clip_id === activeDrag.clipId) {
+              return { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
+            }
+            // Ripple: shift subsequent clips
+            if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
+              const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
+              if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
+                return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+              }
+            }
+            return c;
+          }),
+        }));
+        store.setLanes(updatedLanes);
+      }
+      setDragState(null);
 
       const ops: Array<Record<string, unknown>> = [];
       if (
@@ -1766,7 +1755,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             height: 0,
             borderLeft: '5px solid transparent',
             borderRight: '5px solid transparent',
-            borderTop: '8px solid #22c55e',
+            borderTop: '8px solid #ccc',
             zIndex: 21,
             pointerEvents: 'none',
           }}
@@ -1782,7 +1771,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             height: 0,
             borderLeft: '5px solid transparent',
             borderRight: '5px solid transparent',
-            borderTop: '8px solid #ef4444',
+            borderTop: '8px solid #888',
             zIndex: 21,
             pointerEvents: 'none',
           }}
@@ -1829,8 +1818,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             top: RULER_HEIGHT,
             bottom: 0,
             width: 1,
-            borderLeft: '1px dashed rgba(250, 204, 21, 0.95)',
-            boxShadow: '0 0 10px rgba(250, 204, 21, 0.35)',
+            borderLeft: '1px dashed rgba(200, 200, 200, 0.8)',
+            boxShadow: '0 0 10px rgba(200, 200, 200, 0.2)',
             zIndex: 130,
             pointerEvents: 'none',
           }}
@@ -1905,8 +1894,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: soloLanes.has(lane.lane_id) ? '#facc15' : '#111',
-                      borderColor: soloLanes.has(lane.lane_id) ? '#facc15' : '#333',
+                      background: soloLanes.has(lane.lane_id) ? '#aaa' : '#111',
+                      borderColor: soloLanes.has(lane.lane_id) ? '#aaa' : '#333',
                     }}
                     title="Solo"
                     onClick={(event) => { event.stopPropagation(); toggleSolo(lane.lane_id); }}
@@ -1916,8 +1905,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#111',
-                      borderColor: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#333',
+                      background: mutedLanes.has(lane.lane_id) ? '#888' : '#111',
+                      borderColor: mutedLanes.has(lane.lane_id) ? '#888' : '#333',
                     }}
                     title="Mute"
                     onClick={(event) => { event.stopPropagation(); toggleMute(lane.lane_id); }}
@@ -2232,7 +2221,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           }}
                         >
                           {durationSec.toFixed(1)}s
-                          {syncInfo?.method ? <span style={{ color: '#22c55e', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
+                          {syncInfo?.method ? <span style={{ color: '#888', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
                         </span>
                       ) : null}
 
@@ -2284,22 +2273,21 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           );
                         }) : null}
 
-                      {/* MARKER_KF-GRAPH: Keyframe interpolation lines (opacity/volume curves) */}
+                      {/* MARKER_KF-GRAPH: Keyframe interpolation curves (bezier-aware) */}
                       {clip.keyframes && width > 30 ? (() => {
                         const clipH = trackHeights[lane.lane_id] ?? trackHeight;
-                        const graphH = clipH - 8; // padding
+                        const graphH = clipH - 8;
                         return Object.entries(clip.keyframes).map(([prop, kfs]) => {
                           if (kfs.length < 2) return null;
-                          // Build SVG polyline points: x=time*zoom, y=inverted value (1=top, 0=bottom)
-                          const points = kfs
-                            .filter((kf) => kf.time_sec * zoom >= -1 && kf.time_sec * zoom <= width + 1)
-                            .map((kf) => {
-                              const x = kf.time_sec * zoom;
-                              const y = graphH - (Math.max(0, Math.min(1, kf.value)) * graphH);
-                              return `${x},${y}`;
-                            })
-                            .join(' ');
-                          if (!points) return null;
+                          // Sample the interpolation curve at 2px intervals for smooth bezier rendering
+                          const step = Math.max(2, width / 200); // max 200 samples
+                          const pts: string[] = [];
+                          for (let px = 0; px <= width; px += step) {
+                            const t = px / zoom; // time in seconds relative to clip start
+                            const val = interpolateKeyframes(kfs, t);
+                            const y = graphH - (Math.max(0, Math.min(1, val)) * graphH);
+                            pts.push(`${px},${y}`);
+                          }
                           return (
                             <svg
                               key={`kfline_${prop}`}
@@ -2308,7 +2296,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               preserveAspectRatio="none"
                             >
                               <polyline
-                                points={points}
+                                points={pts.join(' ')}
                                 fill="none"
                                 stroke="#999"
                                 strokeWidth="1"
@@ -2377,7 +2365,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         height: 0,
                         borderLeft: '4px solid transparent',
                         borderRight: '4px solid transparent',
-                        borderTop: '6px solid #ef4444',
+                        borderTop: '6px solid #888',
                         zIndex: 10,
                         pointerEvents: 'none',
                       }}
@@ -2433,7 +2421,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       top: 0,
                       width: 2,
                       height: '100%',
-                      background: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      background: dropZone.mode === 'insert' ? '#aaa' : '#888',
                       pointerEvents: 'none',
                       zIndex: 51,
                     }} />
@@ -2445,7 +2433,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       fontSize: 9,
                       fontWeight: 700,
                       fontFamily: 'monospace',
-                      color: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      color: dropZone.mode === 'insert' ? '#aaa' : '#888',
                       textShadow: '0 1px 3px rgba(0,0,0,0.9)',
                       pointerEvents: 'none',
                       zIndex: 52,
@@ -2534,7 +2522,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             </button>
             <button
               data-testid="cut-marker-draft-create"
-              style={{ background: '#1d4ed8', color: '#fff', border: '1px solid #2563eb', borderRadius: 4, padding: '5px 10px', cursor: 'pointer' }}
+              style={{ background: '#555', color: '#fff', border: '1px solid #666', borderRadius: 4, padding: '5px 10px', cursor: 'pointer' }}
               onClick={() => {
                 if (!markerDraft) return;
                 const draft = markerDraft;
@@ -2581,7 +2569,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
             const items: MenuItem[] = [
               // ── Selection ──
-              { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setActiveMedia(clipPath); setSelectedClip(clipId); close(); } },
+              { label: 'Open in Source Monitor', shortcut: 'Enter', action: () => { setSourceMedia(clipPath); setSelectedClip(clipId); close(); } },
               // MARKER_A13: Match Frame — find source frame under playhead
               { label: 'Match Frame', shortcut: 'F', action: () => {
                 const s = useCutEditorStore.getState();
@@ -2600,26 +2588,14 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               { label: 'Paste', shortcut: '\u2318V', action: () => { close(); useCutEditorStore.getState().pasteClips('overwrite'); } },
               'separator',
               // ── Edit operations ──
+              // MARKER_UNDO-FIX: Split via backend op for undo support
               { label: 'Split at Playhead', shortcut: '\u2318K', action: () => {
                 close();
-                // MARKER_A13: Actually split — find clip under playhead and split
                 const s = useCutEditorStore.getState();
                 const t = s.currentTime;
-                const newLanes = s.lanes.map((lane) => ({
-                  ...lane,
-                  clips: lane.clips.flatMap((c) => {
-                    if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                      const leftDur = t - c.start_sec;
-                      const rightDur = c.duration_sec - leftDur;
-                      return [
-                        { ...c, duration_sec: leftDur },
-                        { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur },
-                      ];
-                    }
-                    return [c];
-                  }),
-                }));
-                s.setLanes(newLanes);
+                if (t > contextMenu.clip.start_sec && t < contextMenu.clip.start_sec + contextMenu.clip.duration_sec) {
+                  void s.applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: t }]);
+                }
               }},
               { label: 'Remove Clip', shortcut: 'Del', action: () => { close(); void removeClip(clipId); } },
               { label: 'Ripple Delete', shortcut: '\u21e7Del', action: () => {
@@ -2651,22 +2627,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
               'separator',
               // ── Transitions ──
+              // MARKER_UNDO-FIX: Transition via backend op for undo support
               { label: contextMenu.clip.transition_out ? 'Remove Transition' : 'Add Cross Dissolve', shortcut: '\u2318T', action: () => {
                 close();
                 const s = useCutEditorStore.getState();
-                if (contextMenu.clip.transition_out) {
-                  // Remove
-                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
-                    c.clip_id === clipId ? { ...c, transition_out: undefined } : c
-                  )}));
-                  s.setLanes(newLanes);
-                } else {
-                  // Add default cross dissolve
-                  const newLanes = s.lanes.map((l) => ({ ...l, clips: l.clips.map((c) =>
-                    c.clip_id === clipId ? { ...c, transition_out: { type: 'cross_dissolve' as const, duration_sec: 1.0, alignment: 'center' as const } } : c
-                  )}));
-                  s.setLanes(newLanes);
-                }
+                void s.applyTimelineOps([{
+                  op: 'set_transition', clip_id: clipId,
+                  transition: contextMenu.clip.transition_out
+                    ? null  // remove
+                    : { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+                }]);
               }},
               'separator',
               // ── Export ──
@@ -2751,7 +2721,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               <span style={{
                 position: 'absolute', top: 2, right: 4, zIndex: 2,
                 fontSize: 9, fontWeight: 700, fontFamily: 'monospace',
-                color: deltaFrames === 0 ? '#888' : (deltaFrames > 0 ? '#4ade80' : '#f87171'),
+                color: deltaFrames === 0 ? '#888' : (deltaFrames > 0 ? '#bbb' : '#666'),
                 textShadow: '0 1px 2px rgba(0,0,0,0.9)',
               }}>
                 {label} {sign}{deltaFrames}f

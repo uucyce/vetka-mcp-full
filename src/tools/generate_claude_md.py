@@ -51,6 +51,20 @@ _FEEDBACK_DOCS_DIR = _PROJECT_ROOT / "docs" / "190_ph_CUT_WORKFLOW_ARCH" / "feed
 _WORKTREES_DIR = _PROJECT_ROOT / ".claude" / "worktrees"
 
 
+def _get_claude_projects_dir(worktree_dir: Path) -> Path:
+    """MARKER_195.20b: Get ~/.claude/projects/<sanitized-path>/ for a worktree.
+
+    Claude Code reads CLAUDE.md from both project root AND ~/.claude/projects/.
+    Writing role-specific content here avoids git conflicts entirely —
+    the file is never tracked, never committed, never conflicts on pull.
+
+    Claude Code sanitizes paths: /a_b/c.d → -a-b-c-d
+    (replaces /, _, . with -)
+    """
+    sanitized = re.sub(r"[/_.]", "-", str(worktree_dir.resolve()))
+    return Path.home() / ".claude" / "projects" / sanitized
+
+
 def _load_template(template_path: Optional[Path] = None) -> jinja2.Template:
     """Load Jinja2 template from disk."""
     path = template_path or _TEMPLATE_PATH
@@ -221,12 +235,16 @@ def write_claude_md(
         return None
 
     if output_dir is None:
-        output_dir = _WORKTREES_DIR / role.worktree
+        # MARKER_195.20b: Write to ~/.claude/projects/ instead of worktree root.
+        # This avoids git conflicts — the file is never tracked.
+        worktree_dir = _WORKTREES_DIR / role.worktree
+        output_dir = _get_claude_projects_dir(worktree_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "CLAUDE.md"
     output_path.write_text(content, encoding="utf-8")
     logger.info("[generate_claude_md] Wrote %s (%d bytes)", output_path, len(content))
+
     return output_path
 
 
@@ -251,7 +269,9 @@ def generate_all(dry_run: bool = False, output_base: Optional[Path] = None) -> d
         results[role.callsign] = content
 
         if not dry_run:
-            out_dir = (output_base or _WORKTREES_DIR) / role.worktree
+            # MARKER_195.20b: Write to ~/.claude/projects/ — never conflicts with git
+            worktree_dir = (output_base or _WORKTREES_DIR) / role.worktree
+            out_dir = _get_claude_projects_dir(worktree_dir) if not output_base else worktree_dir
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
             logger.info("[generate_claude_md] Wrote %s/CLAUDE.md", out_dir)

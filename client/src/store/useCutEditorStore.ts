@@ -4,6 +4,7 @@
  * Both Opus (timeline) and Codex (player/transport) streams write/read from this.
  */
 import { create } from 'zustand';
+import { API_BASE } from '../config/api.config';
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -11,6 +12,38 @@ export type Keyframe = {
   value: number;        // parameter value at this keypoint
   easing: 'linear' | 'ease_in' | 'ease_out' | 'bezier';
 };
+
+// MARKER_KF-BEZIER: Keyframe interpolation with easing curves
+// Exported for use in timeline rendering and effect application
+export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): number {
+  if (keyframes.length === 0) return 0;
+  if (keyframes.length === 1) return keyframes[0].value;
+
+  // Before first keyframe → hold first value
+  if (timeSec <= keyframes[0].time_sec) return keyframes[0].value;
+  // After last keyframe → hold last value
+  if (timeSec >= keyframes[keyframes.length - 1].time_sec) return keyframes[keyframes.length - 1].value;
+
+  // Find surrounding keyframes
+  let i = 0;
+  while (i < keyframes.length - 1 && keyframes[i + 1].time_sec <= timeSec) i++;
+  const kfA = keyframes[i];
+  const kfB = keyframes[i + 1];
+  const dt = kfB.time_sec - kfA.time_sec;
+  if (dt <= 0) return kfA.value;
+  const t = (timeSec - kfA.time_sec) / dt; // 0..1 normalized
+
+  // Apply easing (use outgoing easing from kfA)
+  let eased: number;
+  switch (kfA.easing) {
+    case 'ease_in':    eased = t * t; break;
+    case 'ease_out':   eased = 1 - (1 - t) * (1 - t); break;
+    case 'bezier':     eased = t * t * (3 - 2 * t); break; // smooth step (cubic hermite)
+    default:           eased = t; // linear
+  }
+
+  return kfA.value + (kfB.value - kfA.value) * eased;
+}
 
 // MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
 export type ClipEffects = {
@@ -134,6 +167,12 @@ interface CutEditorState {
   duration: number;
   markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
   markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
+
+  // === MARKER_DUAL-VIDEO: Independent Source Monitor playback state ===
+  // Source monitor has its own video element and playback, decoupled from timeline
+  sourceCurrentTime: number;
+  sourceIsPlaying: boolean;
+  sourceDuration: number;
 
   // === MARKER_W1.4: Separate Source marks and Sequence marks ===
   sourceMarkIn: number | null;     // IN/OUT for raw clip in Source Monitor
@@ -289,6 +328,12 @@ interface CutEditorState {
   togglePlay: () => void;
   seek: (time: number) => void;
   setDuration: (d: number) => void;
+  // MARKER_DUAL-VIDEO: Source monitor independent playback
+  playSource: () => void;
+  pauseSource: () => void;
+  togglePlaySource: () => void;
+  seekSource: (time: number) => void;
+  setSourceDuration: (d: number) => void;
   setMarkIn: (t: number | null) => void;
   setMarkOut: (t: number | null) => void;
   // MARKER_W1.4: Separate marks
@@ -420,6 +465,9 @@ interface CutEditorState {
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
 
+  // MARKER_UNDO-FIX: Shared applyTimelineOps — routes edits through backend undo stack
+  applyTimelineOps: (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => Promise<void>;
+
   // Multi-timeline tab actions (MARKER_170.12 + MARKER_180.14)
   addTimelineTab: (id: string, label: string) => void;
   removeTimelineTab: (index: number) => void;
@@ -440,6 +488,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Playback defaults
   currentTime: 0,
   isPlaying: false,
+  // MARKER_DUAL-VIDEO: Source monitor defaults
+  sourceCurrentTime: 0,
+  sourceIsPlaying: false,
+  sourceDuration: 0,
   playbackRate: 1,
   shuttleSpeed: 0,
   duration: 0,
@@ -478,7 +530,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   programMediaPath: null,
 
   // MARKER_W1.2: Panel Focus
-  focusedPanel: null,
+  // MARKER_GAMMA-29: Default to 'timeline' so hotkeys work on load (was null → silent failures)
+  focusedPanel: 'timeline',
   activeTool: 'selection',
 
   // MARKER_W4.5: Project Settings defaults
@@ -576,6 +629,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
   seek: (time) => set({ currentTime: Math.max(0, time) }),
   setDuration: (d) => set({ duration: d }),
+  // MARKER_DUAL-VIDEO: Source monitor independent playback actions
+  playSource: () => set({ sourceIsPlaying: true }),
+  pauseSource: () => set({ sourceIsPlaying: false }),
+  togglePlaySource: () => set((s) => ({ sourceIsPlaying: !s.sourceIsPlaying })),
+  seekSource: (time) => set({ sourceCurrentTime: Math.max(0, time) }),
+  setSourceDuration: (d) => set({ sourceDuration: d }),
   setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
   setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
   // MARKER_W1.4: Separate marks
@@ -924,53 +983,38 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
+  // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
   addDefaultTransition: () => {
-    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
-    const transitionDur = 1.0; // 1 second default (FCP7 standard)
+    const { lanes, currentTime, lockedLanes } = get();
     let bestDist = Infinity;
-    let bestLaneIdx = -1;
-    let bestClipIdx = -1;
+    let bestClipId = '';
 
     // Find nearest clip end (outgoing edit point) to playhead
-    lanes.forEach((lane, li) => {
+    lanes.forEach((lane) => {
       if (lockedLanes.has(lane.lane_id)) return;
-      lane.clips.forEach((clip, ci) => {
+      lane.clips.forEach((clip) => {
         const clipEnd = clip.start_sec + clip.duration_sec;
         const dist = Math.abs(clipEnd - currentTime);
         if (dist < bestDist) {
           bestDist = dist;
-          bestLaneIdx = li;
-          bestClipIdx = ci;
+          bestClipId = clip.clip_id;
         }
       });
     });
 
-    if (bestLaneIdx < 0 || bestDist > 2.0) return; // no nearby edit point
+    if (!bestClipId || bestDist > 2.0) return;
 
-    const newLanes = lanes.map((lane, li) => {
-      if (li !== bestLaneIdx) return lane;
-      return {
-        ...lane,
-        clips: lane.clips.map((c, ci) => {
-          if (ci !== bestClipIdx) return c;
-          // Add or replace transition_out
-          return {
-            ...c,
-            transition_out: {
-              type: 'cross_dissolve' as const,
-              duration_sec: transitionDur,
-              alignment: 'center' as const,
-            },
-          };
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+    void get().applyTimelineOps([{
+      op: 'set_transition',
+      clip_id: bestClipId,
+      transition: { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+    }]);
   },
 
-  setActiveMedia: (path) => set({ activeMediaPath: path, sourceMediaPath: path, mediaError: null, mediaLoading: !!path }),
-  // MARKER_W1.3: Source/Program routing
-  setSourceMedia: (path) => set({ sourceMediaPath: path, activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_DUAL-VIDEO: setActiveMedia is legacy — sets activeMediaPath only, does NOT bleed into source
+  setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
+  // MARKER_W1.3: Source/Program routing — fully decoupled
+  setSourceMedia: (path) => set({ sourceMediaPath: path }),
   setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
@@ -1161,6 +1205,52 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,
     })),
+
+  // MARKER_UNDO-FIX: Shared applyTimelineOps — all editing ops route through backend undo stack
+  applyTimelineOps: async (ops, opts) => {
+    const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] applyTimelineOps: no project session — op dropped', ops);
+      // MARKER_UNDO-FIX-23: Dispatch toast event so user sees feedback
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: 'No project loaded — open or create a project first' },
+        }));
+      }
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          author: 'cut_nle_ui',
+          ops,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Timeline op failed: HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
+      if (!payload.success) {
+        throw new Error(payload.error?.message || 'Timeline op failed');
+      }
+      if (!opts?.skipRefresh) {
+        await refreshProjectState?.();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Timeline op failed';
+      console.error('[CUT] applyTimelineOps error:', msg, ops);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: msg },
+        }));
+      }
+    }
+  },
 
   // MARKER_170.12: Multi-timeline tab management
   addTimelineTab: (id, label) =>

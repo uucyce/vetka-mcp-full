@@ -73,7 +73,9 @@ PRIORITY_SOMEDAY = 5
 # MARKER_186.4: Added "done_worktree" / "done_main" — worktree-aware lifecycle
 #   done_worktree = committed on branch, pending merge to main
 #   done_main = merged to main (or committed directly on main)
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval"}
+#   verified = QA gate passed (MARKER_195.20), ready for merge
+#   needs_fix = QA gate failed, needs re-work
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -844,16 +846,18 @@ class TaskBoard:
         return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
 
     @staticmethod
-    def _detect_current_branch() -> Optional[str]:
+    def _detect_current_branch(cwd: str = None) -> Optional[str]:
         """MARKER_186.4: Detect current git branch. Works in worktrees.
         MARKER_195.1: Returns None instead of silently falling back to 'main'.
+        MARKER_195.20: Accept cwd override for worktree-correct detection.
         Callers must handle None explicitly to avoid false branch attribution.
         """
         import subprocess
+        git_cwd = cwd or str(PROJECT_ROOT)
         try:
             result = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                cwd=git_cwd, capture_output=True, text=True, timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
@@ -1363,7 +1367,7 @@ class TaskBoard:
     # MARKER_130.C16A: AGENT COORDINATION
     # ==========================================
 
-    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown") -> Dict[str, Any]:
+    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown", *, worktree_path: Optional[str] = None) -> Dict[str, Any]:
         """Claim a task for an agent.
 
         Args:
@@ -1378,7 +1382,7 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued"):
+        if task["status"] not in ("pending", "queued", "needs_fix"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
@@ -1416,7 +1420,7 @@ class TaskBoard:
         try:
             from src.services.agent_registry import get_agent_registry
             registry = get_agent_registry()
-            agent_role = registry.get_by_branch(self._detect_current_branch() or "")
+            agent_role = registry.get_by_branch(self._detect_current_branch(cwd=worktree_path) or "")
             task_domain = task.get("domain", "")
             if agent_role and task_domain:
                 matches, msg = registry.validate_domain_match(agent_role.callsign, task_domain)
@@ -1446,11 +1450,13 @@ class TaskBoard:
         manual_override: bool = False,
         override_reason: Optional[str] = None,
         branch: Optional[str] = None,
+        worktree_path: Optional[str] = None,  # MARKER_195.20: cwd for branch detection
         execution_mode: Optional[str] = None,  # MARKER_192.2: override task's execution_mode at close time
     ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
         MARKER_186.4: Worktree-aware completion.
+        MARKER_195.20: worktree_path used as cwd for branch auto-detection.
         If branch is provided and is not 'main', status = done_worktree.
         If branch is 'main' or None (legacy), status = done_main.
         'done' is kept as alias for done_main for backward compat.
@@ -1491,8 +1497,9 @@ class TaskBoard:
             return {"success": False, "error": proof_error, "task_id": task_id}
 
         # MARKER_186.4: Auto-detect branch if not provided
+        # MARKER_195.20: Use worktree_path as cwd for correct branch detection
         if branch is None:
-            branch = self._detect_current_branch()
+            branch = self._detect_current_branch(cwd=worktree_path)
         is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 
@@ -1617,6 +1624,66 @@ class TaskBoard:
             f"3. What would you change if doing this phase again?"
         )
 
+    # ==========================================
+    # MARKER_195.20: QA VERIFICATION GATE
+    # ==========================================
+
+    def verify_task(
+        self,
+        task_id: str,
+        verdict: str,
+        notes: str = "",
+        verified_by: str = "",
+    ) -> Dict[str, Any]:
+        """MARKER_195.20: QA gate — verify a completed worktree task.
+
+        Args:
+            task_id: Task to verify
+            verdict: 'pass' or 'fail'
+            notes: Verification notes (truncated to 300 chars)
+            verified_by: Agent performing verification (default: 'Delta')
+
+        Returns:
+            Result dict with new status (verified or needs_fix)
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        if task["status"] != "done_worktree":
+            return {
+                "success": False,
+                "error": f"Task {task_id} is '{task['status']}', expected done_worktree",
+            }
+
+        if verdict == "pass":
+            new_status = "verified"
+        elif verdict == "fail":
+            new_status = "needs_fix"
+        else:
+            return {"success": False, "error": f"Invalid verdict: '{verdict}'. Use 'pass' or 'fail'"}
+
+        verifier = verified_by or "Delta"
+        self.update_task(
+            task_id,
+            status=new_status,
+            verification_agent=verifier,
+            _history_event="verified" if verdict == "pass" else "verification_failed",
+            _history_source="qa_gate",
+            _history_reason=notes[:300] or f"QA verdict: {verdict}",
+            _history_agent_name=verifier,
+        )
+
+        if verdict == "fail":
+            self._notify_board_update("task_needs_fix", {
+                "task_id": task_id,
+                "title": task.get("title", ""),
+                "notes": notes[:200],
+            })
+
+        logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
+        return {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
+
     @staticmethod
     def _is_commit_on_main(commit_hash: str) -> bool:
         """MARKER_195.1: Verify commit is actually on main branch using git merge-base."""
@@ -1633,14 +1700,15 @@ class TaskBoard:
     def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None) -> Dict[str, Any]:
         """MARKER_186.4: Transition done_worktree → done_main after merge.
         MARKER_195.1: Added git merge-base verification to prevent false positives.
+        MARKER_195.20: Also accepts 'verified' status (QA gate passed).
 
         Called when a worktree branch is merged to main.
         """
         task = self.get_task(task_id)
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
-        if task.get("status") not in ("done_worktree", "done"):
-            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree"}
+        if task.get("status") not in ("done_worktree", "done", "verified"):
+            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected done_worktree or verified"}
 
         # MARKER_195.1: Verify the commit is actually on main before promoting
         verify_hash = merge_commit_hash or task.get("commit_hash")

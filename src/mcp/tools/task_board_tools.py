@@ -121,7 +121,8 @@ TASK_BOARD_SCHEMA = {
             "type": "string",
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main"],
+            # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "verify"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -153,7 +154,11 @@ TASK_BOARD_SCHEMA = {
         # For "get", "update", "remove", "claim", "complete":
         "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled"]},
+        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
+        # For "verify":
+        "verdict": {"type": "string", "enum": ["pass", "fail"], "description": "QA verdict for action=verify: pass → verified, fail → needs_fix"},
+        "verified_by": {"type": "string", "description": "Agent performing verification (default: Delta)"},
+        "notes": {"type": "string", "description": "Verification notes (for verify action)"},
         # For "list":
         "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
         "limit": {"type": "number", "description": "Max tasks to return in list (default: 40, max: 100)"},
@@ -500,8 +505,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         exec_mode = arguments.get("execution_mode")
 
         # Case A: agent already committed — just close
+        # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
-            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, execution_mode=exec_mode)
+            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -523,7 +529,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if merge_result.get("success") and merge_result.get("commit_hash"):
                     # Verifier merge succeeded — close task
-                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, execution_mode=exec_mode)
+                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
                     result["verifier_merge"] = merge_result
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
@@ -560,7 +566,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
 
         # Close task (commit succeeded or nothing to commit)
-        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, execution_mode=exec_mode)
+        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
         result["auto_commit"] = auto
 
         # MARKER_ZETA.F1: Smart Debrief — inject questions on task complete
@@ -628,6 +634,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         merge_commit_hash = arguments.get("commit_hash")
         return board.promote_to_main(task_id, merge_commit_hash)
 
+    # MARKER_195.20: QA Gate — verify a done_worktree task before merge
+    elif action == "verify":
+        task_id = arguments.get("task_id")
+        verdict = arguments.get("verdict")  # "pass" or "fail"
+        if not task_id or not verdict:
+            return {"success": False, "error": "task_id and verdict ('pass' or 'fail') required for verify"}
+        notes = arguments.get("notes", "")
+        verified_by = arguments.get("verified_by", arguments.get("assigned_to", ""))
+        return board.verify_task(task_id, verdict, notes, verified_by)
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
@@ -636,6 +652,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 def _detect_git_branch(cwd: str = None) -> str:
     """MARKER_186.4: Detect current git branch. Works in worktrees.
     MARKER_188.2: Accept cwd override for worktree context.
+    MARKER_195.20: Return empty string on failure (not "main") to avoid false done_main.
     """
     import subprocess
     from pathlib import Path
@@ -649,7 +666,7 @@ def _detect_git_branch(cwd: str = None) -> str:
             return result.stdout.strip()
     except Exception:
         pass
-    return "main"  # fallback — assume main
+    return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None) -> dict:

@@ -45,7 +45,9 @@ import LutBrowserPanel from './LutBrowserPanel';
 import SpeedControl from './SpeedControl';
 import TransitionsPanel from './TransitionsPanel';
 import ToolsPalette from './ToolsPalette';
-import WorkspacePresets from './WorkspacePresets';
+// MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
+import StatusBar from './StatusBar';
+import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -92,121 +94,7 @@ const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'proje
   effects: 'effects',
 };
 
-// ─── MARKER_C5: Preset-specific default layouts ─────────────────────
-// Each function builds a workspace layout using dockview addPanel API.
-// Called when no saved layout exists for the active preset.
-
-type PresetBuilder = (api: DockviewApi, scriptText: string) => void;
-
-function buildEditingLayout(api: DockviewApi, scriptText: string) {
-  // Left column: Project (with Script and Graph as tabs)
-  api.addPanel({ id: 'project', component: 'project', title: 'Project' });
-  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'project', direction: 'within' } });
-  // Source Monitor (center) + Program Monitor (right)
-  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE', position: { referencePanel: 'project', direction: 'right' } });
-  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
-  // MARKER_GAMMA-22: Split analysis into 2 groups for better tab visibility
-  // Group 1 (Editorial) — below Project
-  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'below' } });
-  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
-  // Group 2 (Media) — right of Editorial group
-  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
-  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
-  // Timeline (full-width bottom)
-  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
-  // Sizes
-  try { api.getPanel('project')?.api.setSize({ width: 320 }); } catch { /* ok */ }
-  try { api.getPanel('timeline')?.api.setSize({ height: 300 }); } catch { /* ok */ }
-  // MARKER_GAMMA-22: Ensure key panels are foreground in their groups
-  try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
-  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
-}
-
-function buildColorLayout(api: DockviewApi, scriptText: string) {
-  // Color grading: Program Monitor dominant, Scopes + Color Corrector + LUTs prominent
-  // Left: Source (smaller) with Project tabs below
-  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE' });
-  api.addPanel({ id: 'project', component: 'project', title: 'Project', position: { referencePanel: 'source', direction: 'below' } });
-  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
-  // MARKER_GAMMA-22: Split left panel into project nav + media tools
-  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'project', direction: 'within' } });
-  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'project', direction: 'within' } });
-  // Media tools below project nav
-  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'project', direction: 'below' } });
-  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
-  // Center: Program Monitor (large — grading preview)
-  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
-  // Right: Color tools stack (Color Corrector top, Scopes bottom)
-  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'program', direction: 'right' } });
-  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'colorcorrector', direction: 'within' } });
-  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'colorcorrector', direction: 'below' } });
-  // Timeline (full-width bottom — compact for grading)
-  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
-  // Sizes: source column narrow, program large, color tools ~300px
-  try { api.getPanel('source')?.api.setSize({ width: 260 }); } catch { /* ok */ }
-  try { api.getPanel('colorcorrector')?.api.setSize({ width: 300 }); } catch { /* ok */ }
-  try { api.getPanel('timeline')?.api.setSize({ height: 240 }); } catch { /* ok */ }
-  // MARKER_GAMMA-22: Foreground key panels
-  try { api.getPanel('colorcorrector')?.api.setActive(); } catch { /* ok */ }
-  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
-}
-
-function buildAudioLayout(api: DockviewApi, scriptText: string) {
-  // Audio mixing: Mixer prominent, larger timeline for waveform visibility
-  // Left: Project (compact)
-  api.addPanel({ id: 'project', component: 'project', title: 'Project' });
-  api.addPanel({ id: 'script', component: 'script', title: 'Script', params: { scriptText }, position: { referencePanel: 'project', direction: 'within' } });
-  // Center: Source + Program monitors (tabbed — audio doesn't need dual preview)
-  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE', position: { referencePanel: 'project', direction: 'right' } });
-  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'within' } });
-  // Right: Mixer (dominant — full height)
-  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'source', direction: 'right' } });
-  // MARKER_GAMMA-22: Split into editorial + media groups
-  api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'below' } });
-  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
-  api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
-  // Media group (right of editorial)
-  api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
-  api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
-  // Timeline (full-width bottom — taller for waveform visibility)
-  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
-  // Sizes: project narrow, mixer ~280px, timeline tall
-  try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
-  try { api.getPanel('mixer')?.api.setSize({ width: 280 }); } catch { /* ok */ }
-  try { api.getPanel('timeline')?.api.setSize({ height: 380 }); } catch { /* ok */ }
-  // MARKER_GAMMA-22: Foreground key panels
-  try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
-  try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
-}
-
-const PRESET_BUILDERS: Record<string, PresetBuilder> = {
-  editing: buildEditingLayout,
-  color: buildColorLayout,
-  audio: buildAudioLayout,
-  custom: buildEditingLayout,
-};
+// MARKER_GAMMA-28: Preset builders extracted to presetBuilders.ts (shared with MenuBar)
 
 // ─── Main component ─────────────────────────────────────────────────
 
@@ -241,43 +129,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // MARKER_C5: Expose API to store for workspace preset switching
     setApiRef(event.api);
 
-    // MARKER_W6.DEDUP: Try restoring saved layout with duplicate panel guard
-    const saved = loadLayout(activePreset);
-    if (saved) {
-      try {
-        // Validate: check for duplicate panel IDs in saved layout
-        const panels = (saved as any)?.panels?.data;
-        if (Array.isArray(panels)) {
-          const ids = panels.map((p: any) => p?.id).filter(Boolean);
-          const uniqueIds = new Set(ids);
-          if (ids.length !== uniqueIds.size) {
-            // Corrupt layout with duplicate panels — skip restore
-            console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
-            try { localStorage.removeItem('cut_dockview_' + activePreset); } catch { /* ok */ }
-          } else {
-            event.api.fromJSON(saved);
-            return;
-          }
-        } else {
-          event.api.fromJSON(saved);
-          return;
-        }
-      } catch {
-        // Corrupt layout — fall through to default
-        console.warn('[CUT DockviewLayout] Failed to restore layout, using default');
-      }
-    }
-
-    // ─── MARKER_C5: Build preset-specific default layout ───
-    const builder = PRESET_BUILDERS[activePreset] || buildEditingLayout;
-    builder(event.api, scriptText);
-
-    // MARKER_C5: Save built layout so switchWorkspace doesn't reload back to this preset.
-    requestAnimationFrame(() => {
-      try { saveLayout(activePreset, event.api.toJSON()); } catch { /* ok */ }
-    });
-
     // MARKER_FOCUS: Wire panel focus to store + visual indicator
+    // MARKER_GAMMA-29: Wired BEFORE layout restore so it fires on all paths
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
         // MARKER_C12: Detect timeline panels → setActiveTimeline + snapshot swap
@@ -304,7 +157,6 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           const container = document.querySelector('.dockview-theme-dark');
           if (container) {
             container.querySelectorAll('.dv-groupview[data-focused]').forEach((el: Element) => el.removeAttribute('data-focused'));
-            // Navigate from panel's group to DOM element
             const group = panel.group;
             if (group) {
               const groupEl = (group as unknown as { element?: HTMLElement }).element;
@@ -319,17 +171,73 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     event.api.onDidLayoutChange(() => {
       if (apiRef.current) {
         const json = apiRef.current.toJSON();
-        // Validate before saving: no duplicate panel IDs
         const panels = (json as any)?.panels?.data;
         if (Array.isArray(panels)) {
           const ids = panels.map((p: any) => p?.id).filter(Boolean);
           const uniqueIds = new Set(ids);
           if (ids.length !== uniqueIds.size) {
             console.warn('[CUT DockviewLayout] Refusing to save layout with duplicate panels');
-            return; // Don't save corrupt state
+            return;
           }
         }
         saveLayout(activePreset, json);
+      }
+    });
+
+    // ─── Layout restore / build ───
+    let layoutRestored = false;
+
+    // MARKER_W6.DEDUP: Try restoring saved layout with duplicate panel guard
+    const saved = loadLayout(activePreset);
+    if (saved) {
+      try {
+        const panels = (saved as any)?.panels?.data;
+        if (Array.isArray(panels)) {
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
+          const uniqueIds = new Set(ids);
+          if (ids.length !== uniqueIds.size) {
+            console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
+            try { localStorage.removeItem('cut_dockview_' + activePreset); } catch { /* ok */ }
+          } else {
+            event.api.fromJSON(saved);
+            layoutRestored = true;
+          }
+        } else {
+          event.api.fromJSON(saved);
+          layoutRestored = true;
+        }
+      } catch {
+        console.warn('[CUT DockviewLayout] Failed to restore layout, using default');
+      }
+    }
+
+    if (!layoutRestored) {
+      // MARKER_C5: Build preset-specific default layout
+      const builder = PRESET_BUILDERS[activePreset] || buildEditingLayout;
+      builder(event.api, scriptText);
+
+      requestAnimationFrame(() => {
+        try { saveLayout(activePreset, event.api.toJSON()); } catch { /* ok */ }
+      });
+    }
+
+    // MARKER_GAMMA-29: Set initial focusedPanel from active panel after layout load.
+    // Without this, focusedPanel stays null and hotkeys silently fail.
+    requestAnimationFrame(() => {
+      const active = event.api.activePanel;
+      if (active) {
+        const tlId = active.params?.timelineId as string | undefined;
+        if (tlId || active.id === 'timeline' || active.id.startsWith('timeline-')) {
+          useCutEditorStore.getState().setFocusedPanel('timeline');
+        } else {
+          const focus = PANEL_FOCUS_MAP[active.id];
+          if (focus) {
+            useCutEditorStore.getState().setFocusedPanel(focus);
+          }
+        }
+      } else {
+        // Fallback: default to timeline if no active panel detected
+        useCutEditorStore.getState().setFocusedPanel('timeline');
       }
     });
   }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
@@ -348,6 +256,72 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [toggleMaximize]);
+
+  // MARKER_GAMMA-26: MutationObserver to kill dockview inline blue styles at JS level.
+  // Dockview injects style="border-bottom-color: rgb(0, 12, 24)" and similar colored
+  // borders on group focus. CSS !important + [style*=] selectors are fragile hacks.
+  // This observer strips any non-gray inline border/outline colors in real time.
+  useEffect(() => {
+    const container = document.querySelector('.dockview-theme-dark');
+    if (!container) return;
+
+    // Gray-safe check: allow only achromatic colors (r===g===b) and transparent
+    const isGrayOrTransparent = (color: string): boolean => {
+      if (!color || color === 'transparent' || color === 'initial' || color === 'inherit') return true;
+      // Match rgb(r, g, b) / rgba(r, g, b, a)
+      const rgbMatch = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+      if (rgbMatch) {
+        const [, r, g, b] = rgbMatch;
+        return r === g && g === b; // achromatic = gray
+      }
+      // Match hex #rgb / #rrggbb
+      const hexMatch = color.match(/^#([0-9a-f]{3,8})$/i);
+      if (hexMatch) {
+        const hex = hexMatch[1];
+        if (hex.length === 3) return hex[0] === hex[1] && hex[1] === hex[2];
+        if (hex.length >= 6) return hex.slice(0,2) === hex.slice(2,4) && hex.slice(2,4) === hex.slice(4,6);
+      }
+      // CSS var() or named colors — pass through (CSS handles these)
+      if (color.startsWith('var(')) return true;
+      return false;
+    };
+
+    const BORDER_PROPS = [
+      'borderColor', 'borderTopColor', 'borderBottomColor',
+      'borderLeftColor', 'borderRightColor', 'outlineColor',
+    ] as const;
+
+    const stripColoredBorders = (el: HTMLElement) => {
+      const style = el.style;
+      for (const prop of BORDER_PROPS) {
+        const val = style.getPropertyValue(
+          prop.replace(/([A-Z])/g, '-$1').toLowerCase()
+        );
+        if (val && !isGrayOrTransparent(val)) {
+          style.removeProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase());
+        }
+      }
+    };
+
+    const observer = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type === 'attributes' && m.attributeName === 'style' && m.target instanceof HTMLElement) {
+          stripColoredBorders(m.target);
+        }
+      }
+    });
+
+    observer.observe(container, {
+      attributes: true,
+      attributeFilter: ['style'],
+      subtree: true,
+    });
+
+    // Initial sweep — strip any existing inline colors
+    container.querySelectorAll<HTMLElement>('[style]').forEach(stripColoredBorders);
+
+    return () => observer.disconnect();
+  }, []);
 
   // Memoize components object to prevent re-renders
   const components = useMemo(() => PANEL_COMPONENTS, []);
@@ -411,8 +385,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
-      {/* MARKER_GAMMA-8: Workspace preset bar (Editing/Color/Audio/Custom) */}
-      <WorkspacePresets />
+      {/* MARKER_GAMMA-25: WorkspacePresets removed from top bar (FCP7: Window menu only) */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"
@@ -465,6 +438,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           </div>
         )}
       </div>
+      {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
+      <StatusBar />
     </div>
   );
 }

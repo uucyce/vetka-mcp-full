@@ -15,8 +15,11 @@ from src.services.cut_ffmpeg_waveform import (
     HAS_FFMPEG,
     build_waveform_ffmpeg,
     build_waveform_with_fallback,
+    build_stereo_waveform,
     extract_pcm_mono_16bit,
+    extract_pcm_stereo_16bit,
     pcm_to_rms_bins,
+    pcm_stereo_to_rms_bins,
     _byte_scan_fallback,
 )
 
@@ -182,7 +185,126 @@ def test_ffmpeg_nonexistent_file():
     assert len(bins) == 8
 
 
+# ─── MARKER_B29: Stereo waveform tests ───
+
+
+def test_stereo_rms_silence():
+    """Silent stereo PCM should produce all-zero L/R bins."""
+    # Stereo: 4 bytes per frame (2 bytes L + 2 bytes R)
+    pcm = b"\x00\x00\x00\x00" * 1600
+    left, right = pcm_stereo_to_rms_bins(pcm, bins=8)
+    assert len(left) == 8
+    assert len(right) == 8
+    assert all(b == 0.0 for b in left)
+    assert all(b == 0.0 for b in right)
+
+
+def test_stereo_rms_left_only():
+    """Left channel loud, right silent → left bins high, right bins zero."""
+    frames = []
+    for _ in range(1600):
+        frames.append(struct.pack("<hh", 32000, 0))  # L=loud, R=silent
+    pcm = b"".join(frames)
+    left, right = pcm_stereo_to_rms_bins(pcm, bins=4)
+    assert all(b > 0.9 for b in left)
+    assert all(b == 0.0 for b in right)
+
+
+def test_stereo_rms_right_only():
+    """Right channel loud, left silent."""
+    frames = []
+    for _ in range(1600):
+        frames.append(struct.pack("<hh", 0, 32000))
+    pcm = b"".join(frames)
+    left, right = pcm_stereo_to_rms_bins(pcm, bins=4)
+    assert all(b == 0.0 for b in left)
+    assert all(b > 0.9 for b in right)
+
+
+def test_stereo_rms_both_channels():
+    """Both channels loud."""
+    frames = []
+    for _ in range(1600):
+        frames.append(struct.pack("<hh", 16384, 32000))
+    pcm = b"".join(frames)
+    left, right = pcm_stereo_to_rms_bins(pcm, bins=4)
+    assert all(0.45 < b < 0.55 for b in left)   # ~0.5
+    assert all(b > 0.9 for b in right)            # ~1.0
+
+
+def test_stereo_rms_empty():
+    """Empty stereo PCM → zero bins."""
+    left, right = pcm_stereo_to_rms_bins(b"", bins=4)
+    assert len(left) == 4
+    assert len(right) == 4
+    assert all(b == 0.0 for b in left)
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_stereo_extract_from_wav(tmp_path: Path):
+    """Extract stereo PCM from a stereo WAV."""
+    wav_path = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav_path, freq_l=440, freq_r=880, duration_sec=0.5, sample_rate=16000)
+    pcm = extract_pcm_stereo_16bit(str(wav_path), sample_rate=16000)
+    assert pcm is not None
+    # 0.5 sec × 16000 Hz × 4 bytes/frame = 32000 bytes
+    assert len(pcm) == 32000
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_build_stereo_waveform(tmp_path: Path):
+    """Full stereo waveform pipeline."""
+    wav_path = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav_path, freq_l=440, freq_r=880, duration_sec=1.0, sample_rate=16000)
+    left, right, degraded, reason = build_stereo_waveform(str(wav_path), bins=16)
+    assert len(left) == 16
+    assert len(right) == 16
+    assert degraded is False
+    assert all(b > 0.0 for b in left)
+    assert all(b > 0.0 for b in right)
+
+
+def test_build_stereo_nonexistent():
+    """Nonexistent file → degraded."""
+    left, right, degraded, reason = build_stereo_waveform("/nonexistent/file.mp4", bins=8)
+    assert degraded is True
+    assert len(left) == 8
+    assert len(right) == 8
+
+
 # ─── Helpers ───
+
+
+def _write_stereo_sine_wav(
+    path: Path, freq_l: float, freq_r: float, duration_sec: float, sample_rate: int
+) -> None:
+    """Write a stereo WAV file with different sine tones per channel."""
+    num_samples = int(sample_rate * duration_sec)
+    samples = []
+    for i in range(num_samples):
+        t = i / sample_rate
+        left = int(32000 * math.sin(2 * math.pi * freq_l * t))
+        right = int(32000 * math.sin(2 * math.pi * freq_r * t))
+        samples.append(max(-32768, min(32767, left)))
+        samples.append(max(-32768, min(32767, right)))
+
+    pcm_data = struct.pack(f"<{num_samples * 2}h", *samples)
+
+    data_size = len(pcm_data)
+    file_size = 36 + data_size
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", file_size, b"WAVE",
+        b"fmt ", 16,
+        1,                   # PCM
+        2,                   # stereo
+        sample_rate,
+        sample_rate * 4,     # byte rate (2 ch × 2 bytes)
+        4,                   # block align (2 ch × 2 bytes)
+        16,                  # bits per sample
+        b"data", data_size,
+    )
+    path.write_bytes(header + pcm_data)
 
 
 def _write_sine_wav(path: Path, freq: float, duration_sec: float, sample_rate: int) -> None:
