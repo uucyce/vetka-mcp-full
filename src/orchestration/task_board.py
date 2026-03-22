@@ -1510,6 +1510,9 @@ class TaskBoard:
             "closed_by": closed_by or task.get("assigned_to"),
             "closure_proof": proof or None,
         }
+        # MARKER_195.20c: Save branch as branch_name — needed by merge_request later
+        if branch and branch != "main":
+            update["branch_name"] = branch
         if commit_hash:
             update["commit_hash"] = commit_hash
         if commit_message:
@@ -1698,16 +1701,17 @@ class TaskBoard:
             return False
 
     def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None, *, role: str = "") -> Dict[str, Any]:
-        """MARKER_195.20c: Promote = real merge via merge_request. No paper status changes.
+        """MARKER_195.20c: Validate that merge happened, then set done_main.
 
-        Requirements:
-        - Task must be 'verified' (QA gate passed) or 'done_worktree' (backward compat)
-        - Only Commander role should call this (warn if not)
-        - Delegates to merge_request for real cherry-pick + tests + ActionRegistry
+        REQUIRES commit_hash proving the merge is on main.
+        Without commit_hash → ERROR. No paper status changes.
 
-        If merge_commit_hash is provided, the merge was already done externally
-        (e.g., manual cherry-pick by user) — in that case, verify commit is on main
-        and update status directly.
+        To actually merge, use action=merge_request first, then promote_to_main
+        with the resulting commit_hash. Or pass commit_hash from manual cherry-pick.
+
+        Intended flow:
+          merge_request → cherry-pick + tests + ActionRegistry → returns commit_hash
+          promote_to_main commit_hash=<hash> → verify on main → done_main
         """
         task = self.get_task(task_id)
         if not task:
@@ -1715,68 +1719,37 @@ class TaskBoard:
         if task.get("status") not in ("done_worktree", "done", "verified"):
             return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected verified or done_worktree"}
 
-        # Warn if not Commander (soft enforcement — don't block, just warn)
+        # Warn if not Commander (soft enforcement)
         if role and role != "Commander":
             logger.warning(f"[TaskBoard] promote_to_main called by {role} (expected Commander)")
 
-        # Case A: External merge — commit_hash provided, verify it's on main
-        if merge_commit_hash:
-            if not self._is_commit_on_main(merge_commit_hash):
-                reason = f"Task {task_id} commit {merge_commit_hash[:8]} is NOT on main branch (git merge-base failed)"
-                logger.warning(f"[TaskBoard] BLOCKED promote: {reason}")
-                return {"success": False, "error": reason}
-
-            self.update_task(
-                task_id,
-                status="done_main",
-                commit_hash=merge_commit_hash,
-                _history_event="promoted_to_main",
-                _history_source="task_board",
-                _history_reason="external merge verified on main",
-            )
-            logger.info(f"[TaskBoard] Task {task_id} promoted (external merge): → done_main")
-            return {"success": True, "task_id": task_id, "status": "done_main"}
-
-        # Case B: No commit_hash — delegate to merge_request for real merge
-        branch = task.get("branch_name") or task.get("branch")
-        if not branch:
-            # Try to infer branch from worktree_hint or status history
-            for entry in reversed(task.get("status_history", [])):
-                if entry.get("extra", {}).get("branch"):
-                    branch = entry["extra"]["branch"]
-                    break
-
-        if not branch:
+        # REQUIRE commit_hash — no paper promotions
+        if not merge_commit_hash:
             return {
                 "success": False,
-                "error": f"Task {task_id} has no branch_name — cannot merge. "
-                         f"Set branch_name via action=update, or pass commit_hash if already merged.",
+                "error": (
+                    f"commit_hash required — promote_to_main does not merge code. "
+                    f"Use action=merge_request first to cherry-pick, then promote_to_main "
+                    f"with the resulting commit_hash."
+                ),
             }
 
-        # Ensure task has branch_name set for merge_request
-        if not task.get("branch_name"):
-            self.update_task(task_id, branch_name=branch)
+        # Verify commit is actually on main
+        if not self._is_commit_on_main(merge_commit_hash):
+            reason = f"Task {task_id} commit {merge_commit_hash[:8]} is NOT on main branch (git merge-base failed)"
+            logger.warning(f"[TaskBoard] BLOCKED promote: {reason}")
+            return {"success": False, "error": reason}
 
-        # Delegate to merge_request — real cherry-pick + tests + ActionRegistry
-        import asyncio
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # Already in async context — can't nest. Fall back to thread.
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as pool:
-                    result = pool.submit(
-                        asyncio.run, self.merge_request(task_id)
-                    ).result(timeout=120)
-            else:
-                result = loop.run_until_complete(self.merge_request(task_id))
-        except Exception as e:
-            logger.error(f"[TaskBoard] merge_request failed for {task_id}: {e}")
-            return {"success": False, "error": f"merge_request failed: {e}"}
-
-        if result.get("success"):
-            logger.info(f"[TaskBoard] Task {task_id} promoted via merge_request → done_main")
-        return result
+        self.update_task(
+            task_id,
+            status="done_main",
+            commit_hash=merge_commit_hash,
+            _history_event="promoted_to_main",
+            _history_source="task_board",
+            _history_reason="merge verified on main",
+        )
+        logger.info(f"[TaskBoard] Task {task_id} promoted: → done_main (commit {merge_commit_hash[:8]} verified on main)")
+        return {"success": True, "task_id": task_id, "status": "done_main"}
 
     async def run_closure_protocol(
         self,

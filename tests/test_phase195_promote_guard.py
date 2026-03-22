@@ -148,18 +148,21 @@ def test_complete_with_none_branch_is_safe(tmp_path):
     )
 
 
-# ── Test 8: promote without commit_hash requires branch_name ──
+# ── Test 8: promote without commit_hash → BLOCKED ────────────
 
-def test_promote_without_hash_requires_branch(tmp_path):
-    """MARKER_195.20c: promote without commit_hash needs branch_name to delegate to merge_request."""
+def test_promote_without_hash_blocked(tmp_path):
+    """MARKER_195.20c: promote without commit_hash is blocked — no paper promotions."""
     board = _make_board(tmp_path)
-    tid = board.add_task("Task without branch", priority=3)
+    tid = board.add_task("Task without proof", priority=3)
     board.update_task(tid, status="done_worktree", commit_hash="stored_hash_123")
 
-    result = board.promote_to_main(tid)  # No merge_commit_hash, no branch_name
+    result = board.promote_to_main(tid)  # No merge_commit_hash
 
     assert result["success"] is False
-    assert "no branch_name" in result["error"]
+    assert "commit_hash required" in result["error"]
+    # Status must NOT have changed
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
 
 
 # ── Test 9: _detect_current_branch passes cwd to subprocess ───
