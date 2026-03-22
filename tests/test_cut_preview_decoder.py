@@ -178,6 +178,97 @@ class TestNumpyEffects:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B28: Motion effects preview tests
+# ---------------------------------------------------------------------------
+
+class TestDropShadowEffect:
+    def test_shadow_darkens_frame(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "drop_shadow", "params": {"offset": 10, "angle": 135, "softness": 3, "opacity": 0.5}, "enabled": True}
+        ])
+        # Shadow compositing should alter the frame
+        assert not np.allclose(result, mid_grey_frame, atol=0.01)
+        assert result.shape == mid_grey_frame.shape
+
+    def test_shadow_zero_offset_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "drop_shadow", "params": {"offset": 0, "angle": 135, "softness": 5, "opacity": 0.5}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_shadow_zero_opacity_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "drop_shadow", "params": {"offset": 10, "angle": 135, "softness": 5, "opacity": 0.0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_shadow_output_clamped(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "drop_shadow", "params": {"offset": 50, "angle": 45, "softness": 20, "opacity": 1.0}, "enabled": True}
+        ])
+        assert result.min() >= 0.0
+        assert result.max() <= 1.0
+
+
+class TestDistortEffect:
+    def test_distort_identity_noop(self, mid_grey_frame):
+        """Default corners (identity) should leave frame unchanged."""
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "distort", "params": {
+                "tl_x": 0.0, "tl_y": 0.0, "tr_x": 1.0, "tr_y": 0.0,
+                "bl_x": 0.0, "bl_y": 1.0, "br_x": 1.0, "br_y": 1.0,
+            }, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_distort_modifies_frame(self, gradient_frame):
+        """Non-identity corners should warp the frame."""
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "distort", "params": {
+                "tl_x": 0.1, "tl_y": 0.1, "tr_x": 0.9, "tr_y": 0.05,
+                "bl_x": 0.05, "bl_y": 0.95, "br_x": 0.95, "br_y": 0.9,
+            }, "enabled": True}
+        ])
+        assert not np.allclose(result, gradient_frame)
+        assert result.shape == gradient_frame.shape
+
+    def test_distort_output_valid(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "distort", "params": {
+                "tl_x": 0.2, "tl_y": 0.2, "tr_x": 0.8, "tr_y": 0.1,
+                "bl_x": 0.1, "bl_y": 0.9, "br_x": 0.9, "br_y": 0.8,
+            }, "enabled": True}
+        ])
+        assert result.min() >= 0.0
+        assert result.max() <= 1.0
+
+
+class TestMotionBlurEffect:
+    def test_blur_smooths_gradient(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "motion_blur", "params": {"amount": 20}, "enabled": True}
+        ])
+        # Motion blur reduces sharp transitions
+        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        blur_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
+        assert blur_diff < orig_diff
+
+    def test_blur_zero_amount_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "motion_blur", "params": {"amount": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_blur_preserves_shape(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "motion_blur", "params": {"amount": 30}, "enabled": True}
+        ])
+        assert result.shape == gradient_frame.shape
+        assert result.min() >= 0.0
+        assert result.max() <= 1.0
+
+
+# ---------------------------------------------------------------------------
 # JPEG encode tests
 # ---------------------------------------------------------------------------
 

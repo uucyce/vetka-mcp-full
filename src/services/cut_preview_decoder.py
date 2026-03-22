@@ -466,4 +466,108 @@ def apply_numpy_effects(
             # MARKER_B26: Clamp to broadcast-safe range (16-235 → 0.0627-0.9216)
             frame_float32 = np.clip(frame_float32, 16.0 / 255.0, 235.0 / 255.0)
 
+        # === MARKER_B28: Motion effects (FCP7 Ch.66) ===
+
+        elif t == "drop_shadow":
+            # Drop shadow: create dark shifted copy, blur, composite behind
+            offset = float(p.get("offset", 10))
+            angle_deg = float(p.get("angle", 135))
+            softness = float(p.get("softness", 5))
+            shadow_opacity = float(p.get("opacity", 0.5))
+            if offset > 0 and shadow_opacity > 0:
+                h, w = frame_float32.shape[:2]
+                rad = angle_deg * np.pi / 180.0
+                dx = int(round(offset * np.cos(rad)))
+                dy = int(round(-offset * np.sin(rad)))  # screen Y is inverted
+                # Shadow = solid dark, shifted by (dx, dy)
+                shadow = np.zeros_like(frame_float32)
+                # Compute source and dest slices for the shift
+                src_y0 = max(0, -dy)
+                src_y1 = min(h, h - dy)
+                src_x0 = max(0, -dx)
+                src_x1 = min(w, w - dx)
+                dst_y0 = max(0, dy)
+                dst_y1 = min(h, h + dy)
+                dst_x0 = max(0, dx)
+                dst_x1 = min(w, w + dx)
+                if dst_y1 > dst_y0 and dst_x1 > dst_x0:
+                    shadow[dst_y0:dst_y1, dst_x0:dst_x1] = shadow_opacity
+                # Blur the shadow mask (box blur approximation)
+                if softness > 0:
+                    k = max(1, int(softness))
+                    # Separable box blur: horizontal then vertical
+                    kernel = np.ones(2 * k + 1, dtype=np.float32) / (2 * k + 1)
+                    for ch in range(3):
+                        col = shadow[:, :, ch]
+                        # Horizontal pass
+                        padded = np.pad(col, ((0, 0), (k, k)), mode='edge')
+                        conv_h = np.cumsum(padded, axis=1)
+                        col_h = (conv_h[:, 2*k:] - conv_h[:, :padded.shape[1]-2*k]) / (2*k+1)
+                        # Vertical pass
+                        padded_v = np.pad(col_h, ((k, k), (0, 0)), mode='edge')
+                        conv_v = np.cumsum(padded_v, axis=0)
+                        shadow[:, :, ch] = (conv_v[2*k:, :] - conv_v[:padded_v.shape[0]-2*k, :]) / (2*k+1)
+                # Composite: shadow behind frame (where frame is transparent = dark areas)
+                # For opaque frames: blend shadow under, then frame on top
+                frame_float32 = shadow * (1.0 - frame_float32) + frame_float32 * (1.0 - shadow * 0.3) + shadow * 0.3 * frame_float32
+                # Simplified: darken areas where shadow falls, keep frame pixels
+                frame_float32 = np.clip(frame_float32, 0, 1)
+
+        elif t == "distort":
+            # 4-corner perspective warp (corner pin)
+            tl_x = float(p.get("tl_x", 0.0))
+            tl_y = float(p.get("tl_y", 0.0))
+            tr_x = float(p.get("tr_x", 1.0))
+            tr_y = float(p.get("tr_y", 0.0))
+            bl_x = float(p.get("bl_x", 0.0))
+            bl_y = float(p.get("bl_y", 1.0))
+            br_x = float(p.get("br_x", 1.0))
+            br_y = float(p.get("br_y", 1.0))
+            # Skip if all corners are at default positions
+            is_default = (
+                abs(tl_x) < 0.001 and abs(tl_y) < 0.001 and
+                abs(tr_x - 1.0) < 0.001 and abs(tr_y) < 0.001 and
+                abs(bl_x) < 0.001 and abs(bl_y - 1.0) < 0.001 and
+                abs(br_x - 1.0) < 0.001 and abs(br_y - 1.0) < 0.001
+            )
+            if not is_default:
+                h, w = frame_float32.shape[:2]
+                # Build inverse perspective mapping using bilinear interpolation
+                # For each output pixel, find the source pixel via inverse bilinear
+                oy, ox = np.mgrid[0:h, 0:w].astype(np.float32)
+                ny = oy / max(h - 1, 1)  # normalized 0-1
+                nx = ox / max(w - 1, 1)
+                # Bilinear interpolation of corner positions
+                src_x = (
+                    tl_x * (1 - nx) * (1 - ny) +
+                    tr_x * nx * (1 - ny) +
+                    bl_x * (1 - nx) * ny +
+                    br_x * nx * ny
+                )
+                src_y = (
+                    tl_y * (1 - nx) * (1 - ny) +
+                    tr_y * nx * (1 - ny) +
+                    bl_y * (1 - nx) * ny +
+                    br_y * nx * ny
+                )
+                # Convert back to pixel coordinates
+                map_x = (src_x * (w - 1)).astype(np.int32)
+                map_y = (src_y * (h - 1)).astype(np.int32)
+                # Clamp to valid range
+                map_x = np.clip(map_x, 0, w - 1)
+                map_y = np.clip(map_y, 0, h - 1)
+                # Apply remapping
+                frame_float32 = frame_float32[map_y, map_x]
+
+        elif t == "motion_blur":
+            # Directional motion blur via box kernel convolution
+            amount = float(p.get("amount", 0))
+            if amount > 0:
+                k = max(1, int(amount / 2))  # half-kernel size
+                # Horizontal motion blur (separable, fast)
+                # Use cumsum trick for O(1) per-pixel box blur
+                padded = np.pad(frame_float32, ((0, 0), (k, k), (0, 0)), mode='edge')
+                cumsum = np.cumsum(padded, axis=1)
+                frame_float32 = (cumsum[:, 2*k:, :] - cumsum[:, :padded.shape[1]-2*k, :]) / (2*k + 1)
+
     return np.clip(frame_float32, 0, 1).astype(np.float32)
