@@ -67,6 +67,10 @@ export type CutHotkeyAction =
   | 'addComment'
   | 'nextMarker'
   | 'prevMarker'
+  // MARKER_KF67: Keyframe navigation
+  | 'nextKeyframe'
+  | 'prevKeyframe'
+  | 'addKeyframe'
   // Mark operations
   | 'markClip'
   | 'playInToOut'
@@ -170,6 +174,9 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   addComment:          ['source', 'program', 'timeline'],
   nextMarker:          ['source', 'program', 'timeline'],
   prevMarker:          ['source', 'program', 'timeline'],
+  nextKeyframe:        ['timeline'],
+  prevKeyframe:        ['timeline'],
+  addKeyframe:         ['timeline'],
 
   // Mark operations
   markClip:            ['timeline'],
@@ -284,6 +291,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   addComment:        'Shift+m',
   nextMarker:        'Shift+ArrowDown',
   prevMarker:        'Shift+ArrowUp',
+  nextKeyframe:      'Shift+k',
+  prevKeyframe:      'Alt+k',
+  addKeyframe:       'Ctrl+k',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -370,6 +380,9 @@ export const FCP7_PRESET: HotkeyMap = {
   addComment:        'Shift+m',
   nextMarker:        'Shift+ArrowDown',
   prevMarker:        'Shift+ArrowUp',
+  nextKeyframe:      'Shift+k',
+  prevKeyframe:      'Alt+k',
+  addKeyframe:       'Ctrl+k',
   // Navigation
   prevEditPoint:     'ArrowUp',
   nextEditPoint:     'ArrowDown',
@@ -578,6 +591,9 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },
   { action: 'nextMarker', label: 'Next Marker', group: 'Markers' },
   { action: 'prevMarker', label: 'Previous Marker', group: 'Markers' },
+  { action: 'nextKeyframe', label: 'Next Keyframe', group: 'Keyframes' },
+  { action: 'prevKeyframe', label: 'Previous Keyframe', group: 'Keyframes' },
+  { action: 'addKeyframe', label: 'Add Keyframe', group: 'Keyframes' },
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
