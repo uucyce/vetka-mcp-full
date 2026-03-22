@@ -51,6 +51,25 @@ _FEEDBACK_DOCS_DIR = _PROJECT_ROOT / "docs" / "190_ph_CUT_WORKFLOW_ARCH" / "feed
 _WORKTREES_DIR = _PROJECT_ROOT / ".claude" / "worktrees"
 
 
+def _set_skip_worktree(worktree_dir: Path) -> None:
+    """MARKER_195.20: Tell git to ignore CLAUDE.md changes in this worktree.
+
+    Prevents agents from accidentally committing role-specific CLAUDE.md
+    to their branch, which would cause merge conflicts on main.
+    """
+    import subprocess
+    try:
+        subprocess.run(
+            ["git", "update-index", "--skip-worktree", "CLAUDE.md"],
+            cwd=str(worktree_dir),
+            capture_output=True, text=True, timeout=5,
+        )
+        logger.debug("[generate_claude_md] Set skip-worktree for %s/CLAUDE.md", worktree_dir)
+    except Exception as e:
+        # Non-fatal: skip-worktree is a safety net, not a requirement
+        logger.debug("[generate_claude_md] skip-worktree failed (non-fatal): %s", e)
+
+
 def _load_template(template_path: Optional[Path] = None) -> jinja2.Template:
     """Load Jinja2 template from disk."""
     path = template_path or _TEMPLATE_PATH
@@ -227,6 +246,10 @@ def write_claude_md(
     output_path = output_dir / "CLAUDE.md"
     output_path.write_text(content, encoding="utf-8")
     logger.info("[generate_claude_md] Wrote %s (%d bytes)", output_path, len(content))
+
+    # MARKER_195.20: Set skip-worktree so agents don't accidentally commit role-specific CLAUDE.md
+    _set_skip_worktree(output_dir)
+
     return output_path
 
 
@@ -255,6 +278,8 @@ def generate_all(dry_run: bool = False, output_base: Optional[Path] = None) -> d
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
             logger.info("[generate_claude_md] Wrote %s/CLAUDE.md", out_dir)
+            # MARKER_195.20: Prevent accidental commit of role-specific CLAUDE.md
+            _set_skip_worktree(out_dir)
 
     return results
 
