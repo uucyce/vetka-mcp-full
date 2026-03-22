@@ -90,13 +90,44 @@ RESOLUTION_MAP: dict[str, tuple[int, int] | None] = {
     "source": None,
 }
 
-# Social presets → override codec/resolution/bitrate
-SOCIAL_PRESETS: dict[str, dict[str, Any]] = {
-    "youtube": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 85},
-    "instagram_reels": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80, "aspect": "9:16"},
-    "tiktok": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80, "aspect": "9:16"},
-    "telegram": {"codec": "h264", "resolution": "720p", "fps": 30, "quality": 70},
+# MARKER_B2.3: Export presets — social + production
+EXPORT_PRESETS: dict[str, dict[str, Any]] = {
+    # === Social / Delivery ===
+    "youtube_1080": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 85,
+                     "label": "YouTube 1080p"},
+    "youtube_4k": {"codec": "h264", "resolution": "4k", "fps": 30, "quality": 90,
+                   "label": "YouTube 4K"},
+    "instagram_reels": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+                        "aspect": "9:16", "label": "Instagram Reels (9:16)"},
+    "instagram_story": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 75,
+                        "aspect": "9:16", "label": "Instagram Story (9:16)"},
+    "tiktok": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+               "aspect": "9:16", "label": "TikTok (9:16)"},
+    "telegram": {"codec": "h264", "resolution": "720p", "fps": 30, "quality": 70,
+                 "label": "Telegram (720p)"},
+    "twitter": {"codec": "h264", "resolution": "1080p", "fps": 30, "quality": 80,
+                "label": "Twitter/X"},
+    "vimeo": {"codec": "h264", "resolution": "1080p", "fps": 25, "quality": 90,
+              "label": "Vimeo (high quality)"},
+    # === Production / Archive ===
+    "prores_master": {"codec": "prores_422hq", "resolution": "source", "fps": 25, "quality": 100,
+                      "label": "ProRes 422 HQ (Master)"},
+    "prores_4444": {"codec": "prores_4444", "resolution": "4k", "fps": 25, "quality": 100,
+                    "label": "ProRes 4444 (Archive)"},
+    "dnxhr_hq": {"codec": "dnxhr_hq", "resolution": "1080p", "fps": 25, "quality": 100,
+                 "label": "DNxHR HQ (Avid)"},
+    "review_h264": {"codec": "h264", "resolution": "720p", "fps": 25, "quality": 60,
+                    "label": "Review Copy (720p, fast)"},
+    # === Web / Modern ===
+    "av1_web": {"codec": "av1", "resolution": "1080p", "fps": 30, "quality": 80,
+                "label": "AV1 Web (small file)"},
+    "vp9_webm": {"codec": "vp9", "resolution": "1080p", "fps": 30, "quality": 80,
+                 "label": "VP9 WebM"},
 }
+
+# Backward compat aliases (old key names)
+EXPORT_PRESETS["youtube"] = EXPORT_PRESETS["youtube_1080"]
+SOCIAL_PRESETS = EXPORT_PRESETS
 
 
 # ---------------------------------------------------------------------------

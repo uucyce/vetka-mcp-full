@@ -5157,12 +5157,27 @@ async def cut_timecode_sync_async(body: CutTimecodeSyncRequest) -> dict[str, Any
 @router.get("/job/{job_id}")
 async def cut_job_status(job_id: str) -> dict[str, Any]:
     """
-    MARKER_170.MCP.JOB_STATUS_V1
+    MARKER_170.MCP.JOB_STATUS_V1 + B2.2 — ETA calculation.
     """
     store = get_cut_mcp_job_store()
     job = store.get_job(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"CUT job not found: {job_id}")
+
+    # MARKER_B2.2: Compute elapsed + ETA for running jobs
+    started_at = job.get("started_at")
+    progress = float(job.get("progress") or 0)
+    if started_at and job.get("state") == "running" and progress > 0.01:
+        try:
+            from datetime import datetime as _dt, timezone as _tz
+            start = _dt.fromisoformat(started_at)
+            elapsed = (_dt.now(_tz.utc) - start).total_seconds()
+            job["elapsed_sec"] = round(elapsed, 1)
+            job["eta_sec"] = round(elapsed * (1.0 - progress) / progress, 1)
+        except Exception:
+            job["elapsed_sec"] = 0
+            job["eta_sec"] = 0
+
     return {"success": True, "job": job}
 
 
@@ -8682,6 +8697,28 @@ async def cut_render_master(req: CutRenderMasterRequest) -> dict[str, Any]:
         "job_id": str(job["job_id"]),
         "job": job,
     }
+
+
+# ─── MARKER_B2.3: Export Presets listing ───────────────────────────────
+
+@router.get("/render/presets")
+async def cut_render_presets() -> dict[str, Any]:
+    """MARKER_B2.3 — List available export presets for ExportDialog dropdown."""
+    from src.services.cut_render_engine import EXPORT_PRESETS
+    presets = []
+    for key, cfg in EXPORT_PRESETS.items():
+        if key == "youtube":  # skip backward compat alias
+            continue
+        presets.append({
+            "key": key,
+            "label": cfg.get("label", key),
+            "codec": cfg.get("codec", "h264"),
+            "resolution": cfg.get("resolution", "1080p"),
+            "fps": cfg.get("fps", 25),
+            "quality": cfg.get("quality", 80),
+            "aspect": cfg.get("aspect"),
+        })
+    return {"success": True, "presets": presets, "total": len(presets)}
 
 
 # ─── MARKER_W4.3: Save / Save As / Autosave ───────────────────────────
