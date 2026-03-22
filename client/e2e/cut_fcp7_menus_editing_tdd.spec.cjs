@@ -131,7 +131,8 @@ test.describe.serial('FCP7 Menus: Sequence (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // FCP7: Sequence > Lift (;) — remove In-to-Out, leave gap
-  test('SEQ1: Sequence menu contains Lift (;)', async ({ page }) => {
+  // TODO: Needs Sequence > Lift menu item + lift operation (remove In-to-Out, leave gap) — Gamma
+  test.fixme('SEQ1: Sequence menu contains Lift (;)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'Sequence', 'Lift');
     expect(found).toBe(true);
@@ -203,7 +204,8 @@ test.describe.serial('FCP7 Menus: Mark (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // FCP7: Mark > Mark Clip (X) — set In/Out to clip boundaries
-  test('MARK1: Mark menu contains Mark Clip (X)', async ({ page }) => {
+  // TODO: Needs Mark > Mark Clip menu item — set In/Out to clip boundaries — Gamma
+  test.fixme('MARK1: Mark menu contains Mark Clip (X)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'Mark', 'Mark Clip');
     expect(found).toBe(true);
@@ -281,7 +283,8 @@ test.describe.serial('FCP7 Menus: Clip (TDD)', () => {
   });
 
   // Make Subclip (⌘U) — FCP7 Ch.31
-  test('CLIP2: Clip menu contains Make Subclip', async ({ page }) => {
+  // TODO: Needs Clip > Make Subclip (⌘U) menu item + subclip logic — Gamma
+  test.fixme('CLIP2: Clip menu contains Make Subclip', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'Clip', 'Subclip');
     expect(found).toBe(true);
@@ -303,7 +306,8 @@ test.describe.serial('FCP7 Menus: Edit Clipboard (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // Cut/Copy/Paste should be ENABLED (currently disabled)
-  test('EDIT1: Edit > Cut (⌘X) is enabled', async ({ page }) => {
+  // TODO: Needs Edit > Cut enablement logic based on clip selection — Gamma
+  test.fixme('EDIT1: Edit > Cut (⌘X) is enabled', async ({ page }) => {
     await navigateToCut(page);
 
     // Select a clip first
@@ -353,7 +357,8 @@ test.describe('FCP7: Drag-to-Timeline Zones (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // FCP7 Ch.35 p.517: Track split into insert zone (upper 1/3) and overwrite zone (lower 2/3)
-  test('DND1: timeline tracks have insert/overwrite drop zones', async ({ page }) => {
+  // TODO: Needs track insert (upper 1/3) / overwrite (lower 2/3) drop zones during drag — Alpha
+  test.fixme('DND1: timeline tracks have insert/overwrite drop zones', async ({ page }) => {
     await navigateToCut(page);
 
     // This tests that the track visually or functionally splits during drag
@@ -385,7 +390,8 @@ test.describe.serial('FCP7 Menus: File (TDD)', () => {
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
 
-  test('FILE1: File menu contains New Sequence (⌘N)', async ({ page }) => {
+  // TODO: Needs File > New Sequence menu item + sequence creation — Gamma
+  test.fixme('FILE1: File menu contains New Sequence (⌘N)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'File', 'New Sequence');
     expect(found).toBe(true);

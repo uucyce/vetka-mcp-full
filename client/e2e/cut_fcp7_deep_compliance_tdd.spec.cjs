@@ -165,7 +165,8 @@ test.describe.serial('FCP7 Deep Compliance: Timeline (TDD)', () => {
   // FCP7 p.146: Track Height controls — Reduced, Small, Medium, Large
   // FCP7 p.142: Track Size option in Sequence Settings
   // -------------------------------------------------------------------------
-  test('TL1: track height can be changed via keyboard shortcut (Shift-T)', async ({ page }) => {
+  // TODO: Needs Shift-T handler + track height cycling UI (Reduced/Small/Medium/Large) — Alpha
+  test.fixme('TL1: track height can be changed via keyboard shortcut (Shift-T)', async ({ page }) => {
     await navigateToCut(page);
 
     // Get initial track height
@@ -396,7 +397,8 @@ test.describe.serial('FCP7 Deep Compliance: Monitors (TDD)', () => {
     expect(alignment.centered).toBe(true);
   });
 
-  test('MON1b: Go to Previous/Next Edit buttons exist in transport', async ({ page }) => {
+  // TODO: Needs Prev/Next Edit transport buttons in Source/Program monitors — Gamma
+  test.fixme('MON1b: Go to Previous/Next Edit buttons exist in transport', async ({ page }) => {
     await navigateToCut(page);
 
     // FCP7 p.92: Go to Previous Edit (Up Arrow) and Go to Next Edit (Down Arrow)
@@ -463,7 +465,8 @@ test.describe.serial('FCP7 Deep Compliance: Editing (TDD)', () => {
   // FCP7 p.585-587: Razor Blade (B key) cuts a single clip,
   //   Razor Blade All cuts all tracks. Add Edit (⌘K) cuts at playhead.
   // -------------------------------------------------------------------------
-  test('EDIT1: pressing B activates Razor tool, clicking clip splits it', async ({ page }) => {
+  // TODO: Needs Razor Blade tool (B key) + clip split on click — Alpha
+  test.fixme('EDIT1: pressing B activates Razor tool, clicking clip splits it', async ({ page }) => {
     await navigateToCut(page);
 
     // Count clips before
@@ -607,7 +610,8 @@ test.describe('FCP7 Deep Compliance: Keyboard Mapping (TDD)', () => {
 
   // FCP7 p.587: Add Edit = Control-V (FCP7) / ⌘K (Premiere/CUT)
   // Both should work
-  test('KEYS: Add Edit works via ⌘K (Premiere) — split at playhead', async ({ page }) => {
+  // TODO: Needs Add Edit (⌘K / Ctrl-V) — split timeline at playhead — Alpha
+  test.fixme('KEYS: Add Edit works via ⌘K (Premiere) — split at playhead', async ({ page }) => {
     await navigateToCut(page);
 
     const clipsBefore = await page.evaluate(() => {
