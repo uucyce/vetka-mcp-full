@@ -8721,6 +8721,154 @@ async def cut_render_presets() -> dict[str, Any]:
     return {"success": True, "presets": presets, "total": len(presets)}
 
 
+# ─── MARKER_B2.4: Batch Export ─────────────────────────────────────────
+
+
+class CutRenderBatchRequest(BaseModel):
+    """MARKER_B2.4 — Batch render: multiple presets in one job."""
+    sandbox_root: str = ""
+    project_id: str = "project"
+    timeline_id: str = "main"
+    presets: list[str] = Field(description="List of preset keys from EXPORT_PRESETS, e.g. ['youtube_1080', 'instagram_reels', 'prores_master']")
+    mixer: dict[str, Any] | None = None
+
+
+def _run_batch_render_job(job_id: str, req: CutRenderBatchRequest) -> None:
+    """
+    MARKER_B2.4 — Sequential batch render. Runs each preset one at a time.
+    Parent job tracks aggregate progress. Cancel stops current + skips rest.
+    """
+    from src.services.cut_render_engine import render_timeline, RenderCancelled, EXPORT_PRESETS
+
+    store = get_cut_mcp_job_store()
+
+    try:
+        store.update_job(job_id, state="running", progress=0.0)
+
+        project_store = CutProjectStore.get_instance()
+        if not project_store:
+            store.update_job(job_id, state="error", error={"message": "No project store"})
+            return
+
+        timeline = project_store.load_timeline(req.timeline_id)
+        if not timeline:
+            store.update_job(job_id, state="error", error={"message": f"Timeline '{req.timeline_id}' not found"})
+            return
+
+        sandbox = req.sandbox_root or "/tmp/cut_sandbox"
+        output_dir = os.path.join(sandbox, "cut_runtime", "renders")
+
+        total = len(req.presets)
+        results: list[dict[str, Any]] = []
+        completed = 0
+        cancelled = False
+
+        def cancel_check() -> bool:
+            job = store.get_job(job_id)
+            return bool(job and job.get("cancel_requested"))
+
+        for i, preset_key in enumerate(req.presets):
+            # Check cancel before starting next preset
+            if cancel_check():
+                cancelled = True
+                break
+
+            preset_cfg = EXPORT_PRESETS.get(preset_key)
+            if not preset_cfg:
+                results.append({"preset": preset_key, "success": False, "error": f"Unknown preset: {preset_key}"})
+                completed += 1
+                continue
+
+            # Progress callback: maps sub-job progress into batch slice
+            def on_progress(p: float, msg: str = "", _i: int = i) -> None:
+                batch_progress = (_i + p) / total
+                store.update_job(job_id, progress=round(batch_progress, 3))
+
+            on_progress(0.0, f"Starting {preset_key}")
+
+            try:
+                result = render_timeline(
+                    timeline,
+                    codec=preset_cfg.get("codec", "h264"),
+                    resolution=preset_cfg.get("resolution", "1080p"),
+                    fps=preset_cfg.get("fps", 25),
+                    quality=preset_cfg.get("quality", 80),
+                    preset=preset_key,
+                    output_dir=output_dir,
+                    project_id=req.project_id,
+                    timeline_id=req.timeline_id,
+                    mixer=req.mixer,
+                    cancel_check=cancel_check,
+                    on_progress=on_progress,
+                )
+                results.append({"preset": preset_key, "success": True, "label": preset_cfg.get("label", preset_key), **result})
+                completed += 1
+
+            except RenderCancelled:
+                results.append({"preset": preset_key, "success": False, "error": "cancelled"})
+                cancelled = True
+                break
+
+            except Exception as exc:
+                results.append({"preset": preset_key, "success": False, "error": str(exc)})
+                completed += 1
+
+        if cancelled:
+            # Mark remaining presets as skipped
+            for j in range(len(results), total):
+                results.append({"preset": req.presets[j], "success": False, "error": "skipped (batch cancelled)"})
+            store.update_job(job_id, state="cancelled", progress=1.0, result={
+                "results": results,
+                "completed": completed,
+                "total": total,
+                "cancelled": True,
+            })
+        else:
+            store.update_job(job_id, state="done", progress=1.0, result={
+                "results": results,
+                "completed": completed,
+                "total": total,
+                "cancelled": False,
+                "success_count": sum(1 for r in results if r.get("success")),
+                "failed_count": sum(1 for r in results if not r.get("success")),
+            })
+
+    except Exception as exc:
+        store.update_job(job_id, state="error", error={"message": str(exc)})
+
+
+@router.post("/render/batch")
+async def cut_render_batch(req: CutRenderBatchRequest) -> dict[str, Any]:
+    """
+    MARKER_B2.4 — Batch render: export multiple presets sequentially.
+    Creates async batch job. Poll via GET /cut/job/{job_id}.
+    Result contains per-preset success/output_path.
+    """
+    if not req.presets:
+        return {"success": False, "error": "No presets specified"}
+
+    store = get_cut_mcp_job_store()
+    job = store.create_job(
+        "render_batch",
+        {
+            "sandbox_root": req.sandbox_root,
+            "project_id": req.project_id,
+            "timeline_id": req.timeline_id,
+            "presets": req.presets,
+            "preset_count": len(req.presets),
+        },
+    )
+    thread = threading.Thread(target=_run_batch_render_job, args=(str(job["job_id"]), req), daemon=True)
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_render_batch_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+        "preset_count": len(req.presets),
+    }
+
+
 # ─── MARKER_W4.3: Save / Save As / Autosave ───────────────────────────
 
 

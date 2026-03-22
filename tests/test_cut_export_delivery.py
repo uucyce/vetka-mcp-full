@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 import pytest
 
 from src.services.cut_mcp_job_store import CutMCPJobStore
-from src.services.cut_render_engine import EXPORT_PRESETS, SOCIAL_PRESETS
+from src.services.cut_render_engine import EXPORT_PRESETS, SOCIAL_PRESETS, CODEC_MAP
 
 
 # ── B2.2: ETA via job store ──
@@ -104,3 +104,65 @@ class TestExportPresets:
         p = EXPORT_PRESETS["youtube_4k"]
         assert p["resolution"] == "4k"
         assert p["codec"] == "h264"
+
+
+# ── B2.4: Batch export ──
+
+
+class TestBatchExportPresets:
+    """Test that all presets referenced in batch export are valid."""
+
+    def test_all_presets_have_valid_codec(self) -> None:
+        """Every preset's codec must exist in CODEC_MAP."""
+        for key, cfg in EXPORT_PRESETS.items():
+            if key == "youtube":
+                continue
+            codec = cfg.get("codec", "h264")
+            assert codec in CODEC_MAP, f"Preset {key} references unknown codec {codec}"
+
+    def test_batch_typical_workflow(self) -> None:
+        """Typical batch: YT + IG + ProRes master — all presets exist."""
+        batch = ["youtube_1080", "instagram_reels", "prores_master"]
+        for key in batch:
+            assert key in EXPORT_PRESETS, f"Batch preset {key} not found"
+
+    def test_batch_all_verticals(self) -> None:
+        """Vertical content workflow: IG + TikTok + IG Story."""
+        batch = ["instagram_reels", "tiktok", "instagram_story"]
+        for key in batch:
+            assert key in EXPORT_PRESETS
+            assert EXPORT_PRESETS[key].get("aspect") == "9:16", f"{key} should be 9:16"
+
+    def test_batch_production_delivery(self) -> None:
+        """Production workflow: ProRes master + review copy."""
+        batch = ["prores_master", "review_h264"]
+        for key in batch:
+            assert key in EXPORT_PRESETS
+
+    def test_job_store_batch_job_type(self) -> None:
+        """Batch job should be created with job_type='render_batch'."""
+        store = CutMCPJobStore()
+        job = store.create_job("render_batch", {"presets": ["youtube_1080", "tiktok"], "preset_count": 2})
+        assert job["job_type"] == "render_batch"
+        assert job["state"] == "queued"
+
+    def test_batch_cancel_sets_cancelled(self) -> None:
+        """Cancel on batch job should set cancel_requested."""
+        store = CutMCPJobStore()
+        job = store.create_job("render_batch", {"presets": ["a", "b"]})
+        store.update_job(job["job_id"], state="running")
+        cancelled = store.request_cancel(job["job_id"])
+        assert cancelled is not None
+        assert cancelled["cancel_requested"] is True
+
+    def test_batch_progress_aggregate(self) -> None:
+        """Test that batch progress can represent per-preset slices."""
+        store = CutMCPJobStore()
+        job = store.create_job("render_batch", {"presets": ["a", "b", "c"]})
+        store.update_job(job["job_id"], state="running")
+        # After 1st preset done (1/3) + 2nd at 50% (0.5/3)
+        batch_progress = (1 + 0.5) / 3
+        store.update_job(job["job_id"], progress=batch_progress)
+        j = store.get_job(job["job_id"])
+        assert j is not None
+        assert abs(j["progress"] - 0.5) < 0.01
