@@ -669,6 +669,7 @@ export default function MenuBar() {
         { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
+        { label: 'Speed Control', action: () => togglePanel('speed', 'speed', 'Speed') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
