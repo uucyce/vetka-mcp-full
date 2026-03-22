@@ -2,7 +2,8 @@
  * MARKER_B19: Video Scopes panel — Waveform, Parade, Vectorscope, Histogram.
  *
  * FCP7 Reference: Ch.78 "Measuring and Setting Video Levels"
- * Canvas-based rendering from backend GET /cut/scopes/analyze.
+ * MARKER_B27: SocketIO real-time scopes (scope_request → scope_data).
+ * Falls back to HTTP GET /cut/scopes/analyze when socket disconnected.
  *
  * Four modes (tabs):
  *   - Waveform: Y=luma (0-100 IRE), X=pixel column, green phosphor
@@ -10,14 +11,13 @@
  *   - Vectorscope: circular CbCr plot with skin tone line
  *   - Histogram: stacked R/G/B curves
  *
- * Debounced 200ms on playhead change.
- *
- * @phase B19
- * @task tb_1773995025_4
+ * @phase B27
+ * @task tb_1774165550_2
  */
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { io, type Socket } from 'socket.io-client';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
+import { API_BASE, getSocketUrl } from '../../config/api.config';
 
 type ScopeMode = 'waveform' | 'parade' | 'vectorscope' | 'histogram';
 
@@ -186,6 +186,24 @@ function drawHistogram(
   ctx.fillText('0', 2, h - 2); ctx.fillText('255', w - 22, h - 2);
 }
 
+// ─── Shared scope socket (singleton across all VideoScopes instances) ───
+
+let scopeSocket: Socket | null = null;
+let scopeSocketConsumers = 0;
+
+function getScopeSocket(): Socket {
+  if (!scopeSocket) {
+    scopeSocket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      autoConnect: true,
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionAttempts: 10,
+    });
+  }
+  return scopeSocket;
+}
+
 // ─── Main component ───
 
 export default function VideoScopes() {
@@ -194,8 +212,10 @@ export default function VideoScopes() {
   const [scopeData, setScopeData] = useState<ScopeData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [socketConnected, setSocketConnected] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fetchTimerRef = useRef<number>(0);
+  const mountedRef = useRef(true);
 
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
@@ -215,44 +235,104 @@ export default function VideoScopes() {
     return null;
   });
 
-  const fetchScopes = useCallback((path: string, time: number) => {
-    if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
-    fetchTimerRef.current = window.setTimeout(async () => {
-      setLoading(true); setError(null);
-      try {
-        // MARKER_B26: Always fetch broadcast_safe alongside active scope
-        const scopeParam = mode === 'parade' ? 'parade' : mode;
-        const scopesList = `${scopeParam},broadcast_safe`;
-        let url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopesList}&size=256`;
+  // MARKER_B27: SocketIO lifecycle — connect, listen, cleanup
+  useEffect(() => {
+    mountedRef.current = true;
+    const socket = getScopeSocket();
+    scopeSocketConsumers++;
 
-        // MARKER_B25: Append grading params for post-grade scopes
-        if (postGrade && selectedClipCC) {
-          if (selectedClipCC.lutPath) {
-            url += `&lut_path=${encodeURIComponent(selectedClipCC.lutPath)}`;
-          }
-          if (selectedClipCC.logProfile) {
-            url += `&log_profile=${encodeURIComponent(selectedClipCC.logProfile)}`;
-          }
-        }
-
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        if (data.success) setScopeData(data);
-        else setError(data.error || 'analysis_failed');
-      } catch (e: any) {
-        setError(e.message || 'fetch_failed');
-      } finally {
-        setLoading(false);
+    const onConnect = () => { if (mountedRef.current) setSocketConnected(true); };
+    const onDisconnect = () => { if (mountedRef.current) setSocketConnected(false); };
+    const onScopeData = (data: any) => {
+      if (!mountedRef.current) return;
+      setLoading(false);
+      if (data.success) {
+        setScopeData(data);
+        setError(null);
+      } else {
+        setError(data.error || 'analysis_failed');
       }
-    }, 500); // MARKER_B25: 500ms debounce (heavier with grading)
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('scope_data', onScopeData);
+    if (socket.connected) setSocketConnected(true);
+
+    return () => {
+      mountedRef.current = false;
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('scope_data', onScopeData);
+      scopeSocketConsumers--;
+      if (scopeSocketConsumers <= 0 && scopeSocket) {
+        scopeSocket.disconnect();
+        scopeSocket = null;
+        scopeSocketConsumers = 0;
+      }
+    };
+  }, []);
+
+  // MARKER_B27: Build scope request payload
+  const buildScopePayload = useCallback((path: string, time: number) => {
+    const scopeParam = mode === 'parade' ? 'parade' : mode;
+    const payload: Record<string, any> = {
+      source_path: path,
+      time: time,
+      scopes: `${scopeParam},broadcast_safe`,
+      size: 256,
+      mode: 'full',
+    };
+    if (postGrade && selectedClipCC) {
+      if (selectedClipCC.lutPath) payload.lut_path = selectedClipCC.lutPath;
+      if (selectedClipCC.logProfile) payload.log_profile = selectedClipCC.logProfile;
+    }
+    return payload;
   }, [mode, postGrade, selectedClipCC]);
 
+  // MARKER_B27: HTTP fallback (used when socket disconnected)
+  const fetchScopesHttp = useCallback(async (path: string, time: number) => {
+    setLoading(true); setError(null);
+    try {
+      const scopeParam = mode === 'parade' ? 'parade' : mode;
+      const scopesList = `${scopeParam},broadcast_safe`;
+      let url = `${API_BASE}/cut/scopes/analyze?source_path=${encodeURIComponent(path)}&time=${time}&scopes=${scopesList}&size=256`;
+      if (postGrade && selectedClipCC) {
+        if (selectedClipCC.lutPath) url += `&lut_path=${encodeURIComponent(selectedClipCC.lutPath)}`;
+        if (selectedClipCC.logProfile) url += `&log_profile=${encodeURIComponent(selectedClipCC.logProfile)}`;
+      }
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (mountedRef.current) {
+        if (data.success) setScopeData(data);
+        else setError(data.error || 'analysis_failed');
+      }
+    } catch (e: any) {
+      if (mountedRef.current) setError(e.message || 'fetch_failed');
+    } finally {
+      if (mountedRef.current) setLoading(false);
+    }
+  }, [mode, postGrade, selectedClipCC]);
+
+  // MARKER_B27: Emit scope_request via SocketIO, fall back to HTTP
   useEffect(() => {
     if (!mediaPath) { setScopeData(null); return; }
-    fetchScopes(mediaPath, currentTime);
+
+    if (socketConnected && scopeSocket) {
+      // SocketIO path — server handles debounce, emit immediately
+      setLoading(true);
+      scopeSocket.emit('scope_request', buildScopePayload(mediaPath, currentTime));
+    } else {
+      // HTTP fallback with 500ms client debounce
+      if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+      fetchTimerRef.current = window.setTimeout(() => {
+        fetchScopesHttp(mediaPath, currentTime);
+      }, 500);
+    }
+
     return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
-  }, [mediaPath, currentTime, mode, postGrade, selectedClipCC, fetchScopes]);
+  }, [mediaPath, currentTime, mode, postGrade, selectedClipCC, socketConnected, buildScopePayload, fetchScopesHttp]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -293,6 +373,7 @@ export default function VideoScopes() {
       <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
         <span>
           {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
+          {' '}<span style={{ color: socketConnected ? '#555' : '#664400', fontSize: 8 }}>{socketConnected ? 'WS' : 'HTTP'}</span>
         </span>
         {/* MARKER_B26: Broadcast safe indicator */}
         {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct > 0 && (
