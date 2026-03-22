@@ -16,7 +16,7 @@ import {
 } from 'react';
 
 import { API_BASE } from '../../config/api.config';
-import { useCutEditorStore, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
+import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
 import TimecodeField from './TimecodeField';
@@ -2284,22 +2284,21 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           );
                         }) : null}
 
-                      {/* MARKER_KF-GRAPH: Keyframe interpolation lines (opacity/volume curves) */}
+                      {/* MARKER_KF-GRAPH: Keyframe interpolation curves (bezier-aware) */}
                       {clip.keyframes && width > 30 ? (() => {
                         const clipH = trackHeights[lane.lane_id] ?? trackHeight;
-                        const graphH = clipH - 8; // padding
+                        const graphH = clipH - 8;
                         return Object.entries(clip.keyframes).map(([prop, kfs]) => {
                           if (kfs.length < 2) return null;
-                          // Build SVG polyline points: x=time*zoom, y=inverted value (1=top, 0=bottom)
-                          const points = kfs
-                            .filter((kf) => kf.time_sec * zoom >= -1 && kf.time_sec * zoom <= width + 1)
-                            .map((kf) => {
-                              const x = kf.time_sec * zoom;
-                              const y = graphH - (Math.max(0, Math.min(1, kf.value)) * graphH);
-                              return `${x},${y}`;
-                            })
-                            .join(' ');
-                          if (!points) return null;
+                          // Sample the interpolation curve at 2px intervals for smooth bezier rendering
+                          const step = Math.max(2, width / 200); // max 200 samples
+                          const pts: string[] = [];
+                          for (let px = 0; px <= width; px += step) {
+                            const t = px / zoom; // time in seconds relative to clip start
+                            const val = interpolateKeyframes(kfs, t);
+                            const y = graphH - (Math.max(0, Math.min(1, val)) * graphH);
+                            pts.push(`${px},${y}`);
+                          }
                           return (
                             <svg
                               key={`kfline_${prop}`}
@@ -2308,7 +2307,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               preserveAspectRatio="none"
                             >
                               <polyline
-                                points={points}
+                                points={pts.join(' ')}
                                 fill="none"
                                 stroke="#999"
                                 strokeWidth="1"
