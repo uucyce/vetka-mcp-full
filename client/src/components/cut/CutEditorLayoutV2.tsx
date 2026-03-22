@@ -574,7 +574,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Tools
     razorTool: () => useCutEditorStore.getState().setActiveTool('razor'),
     selectTool: () => useCutEditorStore.getState().setActiveTool('selection'),
-    // MARKER_W5.TRIM: Trim tool hotkeys — FCP7 cycling (R→ripple→roll, S→slip→slide)
+    // MARKER_W5.TRIM: Trim tool hotkeys — cycling (R→ripple→roll, Y→slip→slide)
     slipTool: () => {
       const s = useCutEditorStore.getState();
       s.setActiveTool(s.activeTool === 'slip' ? 'slide' : 'slip');

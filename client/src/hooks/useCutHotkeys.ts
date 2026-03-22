@@ -378,9 +378,9 @@ export const FCP7_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
-  // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
-  slipTool:          's',
-  slideTool:         'd',
+  // MARKER_W5.TRIM: FCP7 trim tools — Y=slip, U=slide (S conflicts with snap toggle)
+  slipTool:          'y',
+  slideTool:         'u',
   rippleTool:        'r',
   rollTool:          'Shift+r',
   // Markers
