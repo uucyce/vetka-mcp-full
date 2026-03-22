@@ -72,6 +72,8 @@ export type CutHotkeyAction =
   | 'nextKeyframe'
   | 'prevKeyframe'
   | 'addKeyframe'
+  // MARKER_B3.2: Record Mode
+  | 'toggleRecordMode'
   // MARKER_FCP7.SPEED: Speed dialog
   | 'openSpeedControl'
   // Mark operations
@@ -181,6 +183,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nextKeyframe:        ['timeline'],
   prevKeyframe:        ['timeline'],
   addKeyframe:         ['timeline'],
+  toggleRecordMode:    ['timeline'],  // MARKER_B3.2
   openSpeedControl:    'global',
 
   // Mark operations
@@ -300,6 +303,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  toggleRecordMode:  'Cmd+Shift+k',  // MARKER_B3.2
   openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
@@ -391,6 +395,7 @@ export const FCP7_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  toggleRecordMode:  'Cmd+Shift+k',  // MARKER_B3.2
   openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
@@ -604,6 +609,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'nextKeyframe', label: 'Next Keyframe', group: 'Keyframes' },
   { action: 'prevKeyframe', label: 'Previous Keyframe', group: 'Keyframes' },
   { action: 'addKeyframe', label: 'Add Keyframe', group: 'Keyframes' },
+  { action: 'toggleRecordMode', label: 'Toggle Record Mode', group: 'Keyframes' },
   { action: 'openSpeedControl', label: 'Change Speed (⌘J)', group: 'Tools' },
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
