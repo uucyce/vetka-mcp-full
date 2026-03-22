@@ -760,6 +760,83 @@ def export_audio_stems(
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B2.5: Thumbnail generation
+# ---------------------------------------------------------------------------
+
+def generate_thumbnail(
+    video_path: str,
+    *,
+    output_path: str = "",
+    seek_sec: float | None = None,
+    width: int = 1280,
+    height: int = 720,
+    ffmpeg_path: str | None = None,
+    timeout: int = 30,
+) -> str:
+    """
+    Extract a thumbnail JPEG from a video file.
+
+    Args:
+        video_path: Path to source video.
+        output_path: Where to save thumbnail. Default: {video}_thumb.jpg
+        seek_sec: Timestamp to extract. Default: middle of video.
+        width/height: Thumbnail dimensions (maintains aspect ratio).
+
+    Returns:
+        Path to generated thumbnail, or "" on failure.
+    """
+    if not os.path.isfile(video_path):
+        return ""
+
+    if ffmpeg_path is None:
+        ffmpeg_path = shutil.which("ffmpeg")
+    if not ffmpeg_path:
+        return ""
+
+    if not output_path:
+        base, _ = os.path.splitext(video_path)
+        output_path = f"{base}_thumb.jpg"
+
+    # Determine seek position
+    if seek_sec is None:
+        # Probe duration, seek to middle
+        ffprobe = shutil.which("ffprobe")
+        if ffprobe:
+            try:
+                proc = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", video_path],
+                    capture_output=True, text=True, timeout=10,
+                )
+                dur = float(proc.stdout.strip() or "0")
+                seek_sec = dur / 2.0
+            except Exception:
+                seek_sec = 1.0
+        else:
+            seek_sec = 1.0
+
+    cmd = [
+        ffmpeg_path, "-y",
+        "-ss", str(seek_sec),
+        "-i", video_path,
+        "-frames:v", "1",
+        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+               f"pad={width}:{height}:-1:-1:color=black",
+        "-q:v", "3",  # JPEG quality (2-5 is good, lower=better)
+        output_path,
+    ]
+
+    try:
+        subprocess.run(cmd, capture_output=True, timeout=timeout)
+        if os.path.isfile(output_path):
+            return output_path
+    except Exception:
+        pass
+
+    return ""
+
+
+# ---------------------------------------------------------------------------
 # High-level render runner (for job system integration)
 # ---------------------------------------------------------------------------
 
@@ -941,6 +1018,11 @@ def render_timeline(
         )
         result["stem_paths"] = stem_paths
         result["stem_count"] = len(stem_paths)
+
+    # MARKER_B2.5: Generate thumbnail
+    _progress(0.95, "Generating thumbnail")
+    thumb_path = generate_thumbnail(plan.output_path, ffmpeg_path=ffmpeg_path)
+    result["thumbnail_path"] = thumb_path
 
     _progress(1.0, "Render complete")
     return result
