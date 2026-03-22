@@ -107,6 +107,10 @@ class RenderClip:
     # MARKER_B9: Per-clip effects
     video_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
     audio_effects: list[Any] = field(default_factory=list)  # list[EffectParam]
+    # MARKER_B11: Speed control extensions
+    reverse: bool = False           # reverse playback
+    frame_blend: bool = False       # smooth slow-mo via minterpolate
+    maintain_pitch: bool = True     # preserve audio pitch during speed change
 
 
 @dataclass
@@ -198,6 +202,10 @@ def build_render_plan(
                 clip_id=clip.get("clip_id", ""),
                 video_effects=effects_data.get("video_effects", []),
                 audio_effects=effects_data.get("audio_effects", []),
+                # MARKER_B11: Speed extensions
+                reverse=bool(clip.get("reverse", False)),
+                frame_blend=bool(clip.get("frame_blend", False)),
+                maintain_pitch=bool(clip.get("maintain_pitch", True)),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -332,7 +340,7 @@ class FilterGraphBuilder:
         return input_args, filter_str
 
     def _clip_video_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip video: trim + effects + speed + label."""
+        """Per-clip video: trim + effects + speed + reverse + frame_blend + label."""
         parts: list[str] = []
 
         # Trim
@@ -354,13 +362,24 @@ class FilterGraphBuilder:
             pts_factor = 1.0 / clip.speed
             parts.append(f"setpts={pts_factor:.4f}*PTS")
 
+        # MARKER_B11: Reverse playback — must come after speed
+        if clip.reverse:
+            parts.append("reverse")
+            parts.append("setpts=PTS-STARTPTS")
+
+        # MARKER_B11: Frame blending for smooth slow-mo (FCP7 Ch.73)
+        # minterpolate generates intermediate frames via motion estimation
+        if clip.frame_blend and clip.speed < 1.0 and clip.speed > 0:
+            target_fps = self.plan.fps
+            parts.append(f"minterpolate=fps={target_fps}:mi_mode=mci:mc_mode=aobmc:me_mode=bidir:vsbmc=1")
+
         if not parts:
             parts.append("null")
 
         return f"[{idx}:v]{','.join(parts)}[v{idx}]"
 
     def _clip_audio_filter(self, idx: int, clip: RenderClip) -> str:
-        """Per-clip audio: atrim + effects + speed."""
+        """Per-clip audio: atrim + effects + speed + reverse."""
         parts: list[str] = []
 
         if clip.source_in > 0 or clip.source_out > 0:
@@ -376,11 +395,21 @@ class FilterGraphBuilder:
             effect_filters = compile_audio_filters(clip.audio_effects)
             parts.extend(effect_filters)
 
+        # MARKER_B11: Speed change with pitch control
         if clip.speed != 1.0 and clip.speed > 0:
-            # atempo only supports 0.5-2.0, chain for wider range
-            speed = clip.speed
-            tempo_chain = _build_atempo_chain(speed)
-            parts.extend(tempo_chain)
+            if clip.maintain_pitch:
+                # atempo preserves pitch (default, FCP7 behavior)
+                tempo_chain = _build_atempo_chain(clip.speed)
+                parts.extend(tempo_chain)
+            else:
+                # asetrate shifts pitch with speed (chipmunk/slow effect)
+                parts.append(f"asetrate=r={clip.speed:.4f}*44100")
+                parts.append("aresample=44100")
+
+        # MARKER_B11: Reverse audio — must come after speed
+        if clip.reverse:
+            parts.append("areverse")
+            parts.append("asetpts=PTS-STARTPTS")
 
         if not parts:
             parts.append("anull")
@@ -503,7 +532,11 @@ def build_ffmpeg_command(
     has_speed_changes = any(c.speed != 1.0 for c in plan.clips)
     has_trims = any(c.source_in > 0 or c.source_out > 0 for c in plan.clips)
     has_effects = any(c.video_effects or c.audio_effects for c in plan.clips)
-    use_filter_complex = has_transitions or has_speed_changes or has_trims or has_effects
+    # MARKER_B11: reverse and frame_blend require filter_complex
+    has_reverse = any(c.reverse for c in plan.clips)
+    has_frame_blend = any(c.frame_blend and c.speed < 1.0 for c in plan.clips)
+    use_filter_complex = (has_transitions or has_speed_changes or has_trims
+                          or has_effects or has_reverse or has_frame_blend)
 
     if use_filter_complex:
         return _build_filter_complex_cmd(plan, ffmpeg_path)
@@ -723,6 +756,10 @@ def render_timeline(
         "clips_count": len(plan.clips),
         "transitions_count": len(plan.transitions),
         "used_filter_complex": bool(plan.transitions) or any(c.speed != 1.0 for c in plan.clips),
+        # MARKER_B11: Speed/reverse stats
+        "speed_clips": sum(1 for c in plan.clips if c.speed != 1.0),
+        "reversed_clips": sum(1 for c in plan.clips if c.reverse),
+        "frame_blend_clips": sum(1 for c in plan.clips if c.frame_blend and c.speed < 1.0),
         "stem_paths": [],
         "stem_count": 0,
     }

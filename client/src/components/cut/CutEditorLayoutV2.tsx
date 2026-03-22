@@ -27,6 +27,7 @@ import DockviewLayout from './DockviewLayout';
 import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
+import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 
@@ -60,6 +61,19 @@ function collectEditPoints(
 }
 
 // ─── Component ───
+
+// MARKER_B11: Speed/Duration modal overlay
+function SpeedControlModal() {
+  const show = useCutEditorStore((s) => s.showSpeedControl);
+  if (!show) return null;
+  const close = () => useCutEditorStore.getState().setShowSpeedControl(false);
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+         onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+      <SpeedControl onClose={close} />
+    </div>
+  );
+}
 
 interface CutEditorLayoutV2Props {
   /** Script text for ScriptPanel and BPMTrack */
@@ -593,6 +607,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       {viewMode === 'debug' ? <DebugShellPanel /> : <DockviewLayout scriptText={scriptText} />}
       <ProjectSettings />
       <ExportDialog />
+      {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
+      <SpeedControlModal />
       <SaveIndicator />
     </div>
   );

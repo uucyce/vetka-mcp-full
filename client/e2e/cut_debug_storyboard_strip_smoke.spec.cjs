@@ -200,9 +200,8 @@ async function installStoryboardMocks(page, requestLog) {
   });
 }
 
-// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
+// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
 test.describe.serial('phase170 cut debug storyboard strip smoke', () => {
-  test.fixme(true, 'DebugShellPanel rewritten — storyboard strip section changed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {
@@ -214,7 +213,7 @@ test.describe.serial('phase170 cut debug storyboard strip smoke', () => {
     cleanupServer();
   });
 
-  test('renders storyboard empty state, then hydrates cards and selection after refresh', async ({ page }) => {
+  test('renders storyboard empty state, then hydrates card count after refresh', async ({ page }) => {
     const pageErrors = [];
     const requestLog = [];
     await installStoryboardMocks(page, requestLog);
@@ -226,29 +225,20 @@ test.describe.serial('phase170 cut debug storyboard strip smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Project').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 10000 });
     await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText('Storyboard Strip', { exact: true })).toBeVisible();
-    await expect(page.getByText('No thumbnails yet. Run thumbnail build.', { exact: true })).toBeVisible();
-    await expect(page.getByText('No storyboard item selected.', { exact: true })).toBeVisible();
+    // MARKER_QA.W6: DebugShellPanel shows "No thumbnails" for empty state
+    await expect(page.getByText('No thumbnails')).toBeVisible();
 
     await page.getByRole('button', { name: 'Refresh Project State' }).click();
     await expect.poll(() => requestLog.filter((entry) => entry.pathname === '/api/cut/project-state').length).toBeGreaterThan(1);
-    await expect(page.getByText('clip_story_a.mov', { exact: true })).toHaveCount(2);
-    await expect(page.getByText('clip_story_b.mov', { exact: true })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Select Shot' })).toHaveCount(2);
-    await expect(page.getByRole('link', { name: 'Open Preview' })).toHaveCount(2);
-    await expect(page.getByText('Sync Badge meta_sync 0.480s (88%)', { exact: true })).toBeVisible();
-    await expect(page.getByText('marker window 2s - 4s', { exact: true })).toHaveCount(2);
-    await expect(page.getByText('marker window 6s - 9s', { exact: true })).toBeVisible();
-    await expect(page.getByText('slice source: pause_slice_worker', { exact: true })).toBeVisible();
-
-    await expect(page.getByText('clip_story_a.mov', { exact: true })).toHaveCount(2);
-    await page.getByRole('button', { name: 'Select Shot' }).nth(1).click();
-    await expect(page.getByText('clip_story_b.mov', { exact: true })).toHaveCount(2);
-    await expect(page.getByText('recommended sync: meta_sync 0.480s', { exact: true })).toBeVisible();
-    await expect(page.getByText('marker window 6s - 9s', { exact: true })).toHaveCount(2);
+    // MARKER_QA.W6: DebugShellPanel shows "{N} card(s)" after hydration
+    await expect(page.getByText('2 card(s)', { exact: true })).toBeVisible();
+    // Source browser section also shows filenames
+    await expect(page.getByText('clip_story_a.mov').first()).toBeVisible();
+    await expect(page.getByText('clip_story_b.mov').first()).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);

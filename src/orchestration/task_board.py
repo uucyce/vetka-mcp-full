@@ -971,6 +971,8 @@ class TaskBoard:
         closure_files: Optional[List[str]] = None,
         implementation_hints: Optional[str] = None,  # MARKER_191.6: Algorithm/approach guidance
         execution_mode: Optional[str] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
+        role: Optional[str] = None,    # MARKER_ZETA.D4: Agent callsign (Alpha/Beta/Gamma/Delta/Commander)
+        domain: Optional[str] = None,  # MARKER_ZETA.D4: Domain (engine/media/ux/qa/architect)
     ) -> str:
         """Add a new task to the board.
 
@@ -1078,6 +1080,9 @@ class TaskBoard:
             # "pipeline" = full proof (pipeline_success + verifier + tests)
             # "manual" = relaxed proof (commit_hash only, closure_tests if defined)
             "execution_mode": execution_mode or self._infer_execution_mode(agent_type),
+            # MARKER_ZETA.D4: Agent role/domain binding
+            "role": role or "",        # Agent callsign from agent_registry.yaml
+            "domain": domain or "",    # Domain from agent_registry.yaml
             "closure_subtask": {
                 "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
                 "tests": [],
@@ -1406,8 +1411,29 @@ class TaskBoard:
             "agent_type": agent_type,
         })
 
+        # MARKER_ZETA.D4: Warn-mode domain validation via AgentRegistry
+        domain_warning = None
+        try:
+            from src.services.agent_registry import get_agent_registry
+            registry = get_agent_registry()
+            agent_role = registry.get_by_branch(self._detect_current_branch() or "")
+            task_domain = task.get("domain", "")
+            if agent_role and task_domain:
+                matches, msg = registry.validate_domain_match(agent_role.callsign, task_domain)
+                if not matches:
+                    domain_warning = msg
+                    logger.warning(f"[TaskBoard] ZETA domain warning on claim: {msg}")
+                # Auto-set role on task if not already set
+                if not task.get("role"):
+                    self.update_task(task_id, role=agent_role.callsign)
+        except Exception as e:
+            logger.debug(f"[TaskBoard] ZETA domain check skipped (non-fatal): {e}")
+
         logger.info(f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})")
-        return {"success": True, "task_id": task_id, "assigned_to": agent_name}
+        result = {"success": True, "task_id": task_id, "assigned_to": agent_name}
+        if domain_warning:
+            result["domain_warning"] = domain_warning
+        return result
 
     def complete_task(
         self,
@@ -1508,10 +1534,30 @@ class TaskBoard:
             "commit_message": commit_message[:50] if commit_message else None,
         })
 
+        # MARKER_ZETA.D4: Warn-mode allowed_paths validation on complete
+        ownership_warnings = []
+        try:
+            task_role = task.get("role", "")
+            task_allowed = task.get("allowed_paths", [])
+            if task_role and task_allowed:
+                from src.services.agent_registry import get_agent_registry
+                registry = get_agent_registry()
+                for ap in task_allowed:
+                    result_check = registry.validate_file_ownership(task_role, ap)
+                    if result_check.is_blocked:
+                        warn_msg = f"File '{ap}' is BLOCKED for {task_role}"
+                        ownership_warnings.append(warn_msg)
+                        logger.warning(f"[TaskBoard] ZETA ownership warning: {warn_msg}")
+        except Exception as e:
+            logger.debug(f"[TaskBoard] ZETA ownership check skipped (non-fatal): {e}")
+
         branch_info = f" on {branch}" if branch else ""
         logger.info(f"[TaskBoard] Task {task_id} → {final_status}{branch_info}" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
-        return {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
+        result = {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
+        if ownership_warnings:
+            result["ownership_warnings"] = ownership_warnings
+        return result
 
     @staticmethod
     def _is_commit_on_main(commit_hash: str) -> bool:

@@ -474,7 +474,7 @@ export default function MenuBar() {
         { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
         { label: 'Superimpose', shortcut: 'F12', disabled: true },
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', disabled: true },
+        { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {

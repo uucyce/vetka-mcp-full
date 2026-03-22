@@ -142,6 +142,9 @@ TASK_BOARD_SCHEMA = {
         "allowed_paths": {"type": "array", "items": {"type": "string"}, "description": "Target files/directories this task should modify. Also serves as ownership guard — agent should not touch files outside this list. Example: ['src/orchestration/task_board.py', 'src/mcp/tools/']"},
         "completion_contract": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria checklist. Each item = one verifiable condition the agent must satisfy. Example: ['API returns 200 on valid input', 'unit tests pass', 'no console errors in browser']"},
         "implementation_hints": {"type": "string", "description": "Algorithm hints, approach notes, or technical guidance for the implementing agent. Free text. Example: 'Use re.search with word boundary, not substring match. Check _commit_matches_task for the pattern.'"},
+        # MARKER_ZETA.D4: Agent role/domain binding fields
+        "role": {"type": "string", "description": "Agent callsign from agent_registry.yaml: Alpha, Beta, Gamma, Delta, Commander"},
+        "domain": {"type": "string", "description": "Task domain from agent_registry.yaml: engine, media, ux, qa, architect"},
         "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Shell commands required for closure proof. Example: ['python -m pytest tests/test_task_board.py -v', 'python -c \"import ast; ast.parse(open(f).read())\"']"},
         "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit at task completion. If set, only these files are staged."},
         # MARKER_130.C16B: Agent assignment fields
@@ -346,6 +349,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 implementation_hints=payload.get("implementation_hints"),
                 depends_on_docs=payload.get("depends_on_docs"),
                 execution_mode=payload.get("execution_mode"),
+                role=payload.get("role"),        # MARKER_ZETA.D4
+                domain=payload.get("domain"),    # MARKER_ZETA.D4
             )
         except ValueError as exc:
             return {"success": False, "error": str(exc)}
@@ -416,7 +421,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                        "preset", "status", "tags", "dependencies", "project_id",
                        "project_lane", "architecture_docs", "recon_docs",
                        "closure_tests", "closure_files",
-                       "allowed_paths", "completion_contract", "implementation_hints"]:
+                       "allowed_paths", "completion_contract", "implementation_hints",
+                       "role", "domain"]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 

@@ -230,9 +230,8 @@ async function installSyncHintMocks(page, requestLog) {
   });
 }
 
-// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
+// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
 test.describe.serial('phase170 cut debug sync hints smoke', () => {
-  test.fixme(true, 'DebugShellPanel rewritten — sync hints section changed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {
@@ -256,30 +255,16 @@ test.describe.serial('phase170 cut debug sync hints smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Project').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 10000 });
     await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText('Sync Hints', { exact: true })).toBeVisible();
-    await expect(page.getByText('sync_surface items: 1')).toBeVisible();
-    await expect(page.getByText('timecode_sync results: 1')).toBeVisible();
-    await expect(page.getByText('audio_sync results: 1')).toBeVisible();
-    await expect(page.getByText('clip_tc.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('ref: master_tc.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('01:00:00:00 → 01:00:00:06 · 0.240s', { exact: true })).toBeVisible();
-    await expect(page.getByText('peaks+correlation')).toHaveCount(2);
-    await expect(page.getByText('recommended: waveform')).toBeVisible();
+    // MARKER_QA.W6: DebugShellPanel uses "sync items: N" (not "sync_surface items:")
+    await expect(page.getByText('sync items: 1')).toBeVisible();
 
     await page.getByRole('button', { name: 'Refresh Project State' }).click();
     await expect.poll(() => requestLog.filter((entry) => entry.pathname === '/api/cut/project-state').length).toBeGreaterThan(1);
-    await expect(page.getByText('sync_surface items: 2')).toBeVisible();
-    await expect(page.getByText('timecode_sync results: 1')).toBeVisible();
-    await expect(page.getByText('audio_sync results: 1')).toBeVisible();
-    await expect(page.getByText('clip_tc_b.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('ref: master_tc_v2.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('02:00:00:00 → 02:00:00:12 · 0.480s', { exact: true })).toBeVisible();
-    await expect(page.getByText('fft+peaks')).toHaveCount(2);
-    await expect(page.getByText('recommended: meta_sync')).toBeVisible();
-    await expect(page.getByText('recommended: waveform')).toHaveCount(1);
+    await expect(page.getByText('sync items: 2')).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);

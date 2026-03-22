@@ -226,6 +226,7 @@ interface CutEditorState {
 
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
+  showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -350,6 +351,7 @@ interface CutEditorState {
   setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
+  setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -505,6 +507,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
+  showSpeedControl: false,          // MARKER_B11
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -989,6 +992,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
+  setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),
