@@ -478,7 +478,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   programMediaPath: null,
 
   // MARKER_W1.2: Panel Focus
-  focusedPanel: null,
+  // MARKER_GAMMA-29: Default to 'timeline' so hotkeys work on load (was null → silent failures)
+  focusedPanel: 'timeline',
   activeTool: 'selection',
 
   // MARKER_W4.5: Project Settings defaults

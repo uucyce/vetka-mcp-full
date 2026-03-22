@@ -129,43 +129,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // MARKER_C5: Expose API to store for workspace preset switching
     setApiRef(event.api);
 
-    // MARKER_W6.DEDUP: Try restoring saved layout with duplicate panel guard
-    const saved = loadLayout(activePreset);
-    if (saved) {
-      try {
-        // Validate: check for duplicate panel IDs in saved layout
-        const panels = (saved as any)?.panels?.data;
-        if (Array.isArray(panels)) {
-          const ids = panels.map((p: any) => p?.id).filter(Boolean);
-          const uniqueIds = new Set(ids);
-          if (ids.length !== uniqueIds.size) {
-            // Corrupt layout with duplicate panels — skip restore
-            console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
-            try { localStorage.removeItem('cut_dockview_' + activePreset); } catch { /* ok */ }
-          } else {
-            event.api.fromJSON(saved);
-            return;
-          }
-        } else {
-          event.api.fromJSON(saved);
-          return;
-        }
-      } catch {
-        // Corrupt layout — fall through to default
-        console.warn('[CUT DockviewLayout] Failed to restore layout, using default');
-      }
-    }
-
-    // ─── MARKER_C5: Build preset-specific default layout ───
-    const builder = PRESET_BUILDERS[activePreset] || buildEditingLayout;
-    builder(event.api, scriptText);
-
-    // MARKER_C5: Save built layout so switchWorkspace doesn't reload back to this preset.
-    requestAnimationFrame(() => {
-      try { saveLayout(activePreset, event.api.toJSON()); } catch { /* ok */ }
-    });
-
     // MARKER_FOCUS: Wire panel focus to store + visual indicator
+    // MARKER_GAMMA-29: Wired BEFORE layout restore so it fires on all paths
     event.api.onDidActivePanelChange((panel) => {
       if (panel) {
         // MARKER_C12: Detect timeline panels → setActiveTimeline + snapshot swap
@@ -192,7 +157,6 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           const container = document.querySelector('.dockview-theme-dark');
           if (container) {
             container.querySelectorAll('.dv-groupview[data-focused]').forEach((el: Element) => el.removeAttribute('data-focused'));
-            // Navigate from panel's group to DOM element
             const group = panel.group;
             if (group) {
               const groupEl = (group as unknown as { element?: HTMLElement }).element;
@@ -207,17 +171,73 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     event.api.onDidLayoutChange(() => {
       if (apiRef.current) {
         const json = apiRef.current.toJSON();
-        // Validate before saving: no duplicate panel IDs
         const panels = (json as any)?.panels?.data;
         if (Array.isArray(panels)) {
           const ids = panels.map((p: any) => p?.id).filter(Boolean);
           const uniqueIds = new Set(ids);
           if (ids.length !== uniqueIds.size) {
             console.warn('[CUT DockviewLayout] Refusing to save layout with duplicate panels');
-            return; // Don't save corrupt state
+            return;
           }
         }
         saveLayout(activePreset, json);
+      }
+    });
+
+    // ─── Layout restore / build ───
+    let layoutRestored = false;
+
+    // MARKER_W6.DEDUP: Try restoring saved layout with duplicate panel guard
+    const saved = loadLayout(activePreset);
+    if (saved) {
+      try {
+        const panels = (saved as any)?.panels?.data;
+        if (Array.isArray(panels)) {
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
+          const uniqueIds = new Set(ids);
+          if (ids.length !== uniqueIds.size) {
+            console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
+            try { localStorage.removeItem('cut_dockview_' + activePreset); } catch { /* ok */ }
+          } else {
+            event.api.fromJSON(saved);
+            layoutRestored = true;
+          }
+        } else {
+          event.api.fromJSON(saved);
+          layoutRestored = true;
+        }
+      } catch {
+        console.warn('[CUT DockviewLayout] Failed to restore layout, using default');
+      }
+    }
+
+    if (!layoutRestored) {
+      // MARKER_C5: Build preset-specific default layout
+      const builder = PRESET_BUILDERS[activePreset] || buildEditingLayout;
+      builder(event.api, scriptText);
+
+      requestAnimationFrame(() => {
+        try { saveLayout(activePreset, event.api.toJSON()); } catch { /* ok */ }
+      });
+    }
+
+    // MARKER_GAMMA-29: Set initial focusedPanel from active panel after layout load.
+    // Without this, focusedPanel stays null and hotkeys silently fail.
+    requestAnimationFrame(() => {
+      const active = event.api.activePanel;
+      if (active) {
+        const tlId = active.params?.timelineId as string | undefined;
+        if (tlId || active.id === 'timeline' || active.id.startsWith('timeline-')) {
+          useCutEditorStore.getState().setFocusedPanel('timeline');
+        } else {
+          const focus = PANEL_FOCUS_MAP[active.id];
+          if (focus) {
+            useCutEditorStore.getState().setFocusedPanel(focus);
+          }
+        }
+      } else {
+        // Fallback: default to timeline if no active panel detected
+        useCutEditorStore.getState().setFocusedPanel('timeline');
       }
     });
   }, [scriptText, activePreset, loadLayout, saveLayout, setApiRef]);
