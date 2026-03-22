@@ -563,6 +563,26 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     };
   }, [shuttleSpeed]);
 
+  // MARKER_P0.PROGRAM: Derive programMediaPath from topmost clip under playhead
+  // Without this, Program Monitor stays empty — setProgramMedia() was never called.
+  const currentTime = useCutEditorStore((s) => s.currentTime);
+  const lanes = useCutEditorStore((s) => s.lanes);
+  const setProgramMedia = useCutEditorStore((s) => s.setProgramMedia);
+
+  useEffect(() => {
+    // Scan lanes top-to-bottom (V1 first) for the first clip overlapping currentTime
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+          setProgramMedia(clip.source_path);
+          return;
+        }
+      }
+    }
+    // No clip under playhead — clear program monitor
+    setProgramMedia(null);
+  }, [currentTime, lanes, setProgramMedia]);
+
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
   return (

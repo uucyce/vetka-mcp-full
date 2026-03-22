@@ -28,12 +28,41 @@ async function saveProjectToBackend(): Promise<void> {
   state.setSaveError(null);
 
   try {
+    // MARKER_A15: Serialize timeline state in cut_timeline_state_v1 schema
+    // so backend persists actual editing data. Without this, Cmd+S saved nothing useful.
+    const { lanes, markers, currentTime, zoom, scrollLeft, timelineId,
+            selectedClipId, projectFramerate,
+            sourceMarkIn, sourceMarkOut, sequenceMarkIn, sequenceMarkOut } = state;
+    const timeline_state = {
+      schema_version: 'cut_timeline_state_v1',
+      project_id: projectId || '',
+      timeline_id: timelineId || 'main',
+      revision: 0,
+      fps: projectFramerate,
+      lanes,
+      selection: {
+        selected_clip_ids: selectedClipId ? [selectedClipId] : [],
+        source_mark_in: sourceMarkIn,
+        source_mark_out: sourceMarkOut,
+        sequence_mark_in: sequenceMarkIn,
+        sequence_mark_out: sequenceMarkOut,
+      },
+      view: {
+        zoom,
+        scroll_left: scrollLeft,
+        current_time: currentTime,
+      },
+      markers: markers || [],
+      updated_at: new Date().toISOString(),
+    };
+
     const res = await fetch(`${API_BASE}/cut/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         sandbox_root: sandboxRoot,
         project_id: projectId || '',
+        timeline_state,
       }),
     });
 
