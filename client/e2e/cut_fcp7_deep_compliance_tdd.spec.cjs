@@ -295,13 +295,21 @@ test.describe.serial('FCP7 Deep Compliance: Timeline (TDD)', () => {
       return 0;
     });
 
-    // Click timecode field and type a timecode (e.g., "500" = 5 seconds at 24fps)
-    const tcField = page.locator('input[data-testid="cut-timeline-timecode"], input[aria-label*="timecode"]').first();
-    const exists = await tcField.isVisible().catch(() => false);
+    // Click timecode display span to enter edit mode, then type timecode
+    const tcDisplay = page.locator('[data-testid="cut-timeline-timecode-display"]').first();
+    const displayExists = await tcDisplay.isVisible().catch(() => false);
 
-    if (exists) {
-      await tcField.click();
-      await tcField.fill('00:00:05:00');
+    if (displayExists) {
+      // Click to enter edit mode (span → input)
+      await tcDisplay.click();
+      await page.waitForTimeout(200);
+
+      // Now find the input that appeared
+      const tcInput = page.locator('input[aria-label*="timecode"], input[data-testid="cut-timeline-timecode-display-input"]').first();
+      const inputVisible = await tcInput.isVisible().catch(() => false);
+      expect(inputVisible).toBe(true);
+
+      await tcInput.fill('00:00:05:00');
       await page.keyboard.press('Enter');
       await page.waitForTimeout(300);
 
@@ -326,21 +334,22 @@ test.describe.serial('FCP7 Deep Compliance: Timeline (TDD)', () => {
   test('TL4: timeline has display controls area (overlays, waveform toggle)', async ({ page }) => {
     await navigateToCut(page);
 
-    // Look for timeline display controls area
+    // Look for timeline display controls area — search within timeline panel hierarchy
     const hasDisplayControls = await page.evaluate(() => {
       const timeline = document.querySelector('[data-testid="cut-timeline-track-view"]');
       if (!timeline) return false;
 
-      // Look for known display control elements
-      const parent = timeline.closest('[style], .timeline-panel, [data-testid="cut-panel-timeline"]') || timeline.parentElement;
-      if (!parent) return false;
-
-      const text = parent.textContent || '';
-      // Should have at least one of: waveform toggle, overlay toggle, track height selector
-      return text.includes('Waveform') ||
-             text.includes('Overlay') ||
-             text.includes('Track Height') ||
-             parent.querySelector('[data-testid*="display-control"], [aria-label*="waveform"], [aria-label*="overlay"]') !== null;
+      // Walk up the DOM to find the timeline panel container (may be several levels up due to dockview)
+      let parent = timeline.parentElement;
+      for (let i = 0; i < 5 && parent; i++) {
+        const text = parent.textContent || '';
+        if (text.includes('Waveform') || text.includes('Overlay') || text.includes('Track Height') ||
+            parent.querySelector('[data-testid*="display-control"], [aria-label*="waveform"], [aria-label*="overlay"]') !== null) {
+          return true;
+        }
+        parent = parent.parentElement;
+      }
+      return false;
     });
 
     expect(hasDisplayControls).toBe(true);

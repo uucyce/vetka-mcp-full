@@ -1612,7 +1612,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             fps={projectFramerate}
             dropFrame={projectDropFrame}
             onSeek={seek}
-            testId="timeline-tc-field"
+            testId="cut-timeline-timecode-display"
           />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
