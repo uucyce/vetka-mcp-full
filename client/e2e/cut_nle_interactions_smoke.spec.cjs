@@ -287,13 +287,23 @@ test.describe.serial('phase170 cut nle interactions smoke', () => {
     await expect.poll(() => markerCreateCount).toBe(1);
     await expect(page.locator('[title^="comment: smoke marker"]')).toHaveCount(2);
 
-    await page.getByTestId('cut-timeline-clip-clip_a').click();
-    // MARKER_QA.W6: addMarker handler needs currentTime within a clip (clip_a starts at 1s).
-    // Clicking clip doesn't move playhead, so set it explicitly.
+    // MARKER_QA.W6: addMarker handler needs sandboxRoot, projectId, currentTime, and lanes
+    // in the store. Ensure all are set before pressing 'm' hotkey.
     await page.evaluate(() => {
       const store = window.__CUT_STORE__;
-      if (store) store.setState({ currentTime: 2 });
+      if (store) {
+        const s = store.getState();
+        store.setState({
+          currentTime: 2,
+          sandboxRoot: s.sandboxRoot || '/tmp/cut-smoke',
+          projectId: s.projectId || 'cut-interactions-smoke',
+          timelineId: s.timelineId || 'main',
+        });
+      }
     });
+    // Click timeline clip to set focus on timeline panel, then press 'm'
+    await page.getByTestId('cut-timeline-clip-clip_a').click();
+    await page.waitForTimeout(100);
     await page.keyboard.press('m');
 
     await expect.poll(() => markerCreateCount).toBe(2);
