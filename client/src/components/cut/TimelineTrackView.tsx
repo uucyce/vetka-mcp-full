@@ -776,33 +776,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     return displayLanesRef.current[laneIndex]?.lane_id || displayLanesRef.current[0]?.lane_id || 'video_main';
   }, []);
 
+  // MARKER_UNDO-FIX-23: Delegates to store applyTimelineOps for consistent error handling + toast
   const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
-    const session = sessionRef.current;
-    if (!session.sandboxRoot || !session.projectId) {
-      return;
-    }
-
-    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sandbox_root: session.sandboxRoot,
-        project_id: session.projectId,
-        timeline_id: session.timelineId || 'main',
-        author: 'cut_nle_ui',
-        ops,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`timeline apply failed: HTTP ${response.status}`);
-    }
-    const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
-    if (!payload.success) {
-      throw new Error(payload.error?.message || 'timeline apply failed');
-    }
-    if (!opts?.skipRefresh) {
-      await session.refreshProjectState?.();
-    }
+    await useCutEditorStore.getState().applyTimelineOps(ops, opts);
   }, []);
 
   const resolveMarkerMediaPath = useCallback(

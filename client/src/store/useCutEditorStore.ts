@@ -1187,28 +1187,44 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
     if (!sandboxRoot || !projectId) {
       console.warn('[CUT] applyTimelineOps: no project session — op dropped', ops);
+      // MARKER_UNDO-FIX-23: Dispatch toast event so user sees feedback
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: 'No project loaded — open or create a project first' },
+        }));
+      }
       return;
     }
-    const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        sandbox_root: sandboxRoot,
-        project_id: projectId,
-        timeline_id: timelineId || 'main',
-        author: 'cut_nle_ui',
-        ops,
-      }),
-    });
-    if (!response.ok) {
-      throw new Error(`timeline apply failed: HTTP ${response.status}`);
-    }
-    const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
-    if (!payload.success) {
-      throw new Error(payload.error?.message || 'timeline apply failed');
-    }
-    if (!opts?.skipRefresh) {
-      await refreshProjectState?.();
+    try {
+      const response = await fetch(`${API_BASE}/cut/timeline/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          author: 'cut_nle_ui',
+          ops,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`Timeline op failed: HTTP ${response.status}`);
+      }
+      const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
+      if (!payload.success) {
+        throw new Error(payload.error?.message || 'Timeline op failed');
+      }
+      if (!opts?.skipRefresh) {
+        await refreshProjectState?.();
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Timeline op failed';
+      console.error('[CUT] applyTimelineOps error:', msg, ops);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: msg },
+        }));
+      }
     }
   },
 
