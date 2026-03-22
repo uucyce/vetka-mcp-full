@@ -10,7 +10,7 @@
  * Backend: POST /cut/render/master → cut_render_engine.render_timeline() → async job.
  * Editorial: POST /cut/export/* endpoints (unchanged).
  */
-import { useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
 
@@ -57,6 +57,17 @@ const EDITORIAL_FORMATS: { id: EditorialFormat; label: string; description: stri
   { id: 'edl', label: 'EDL', description: 'Edit Decision List (CMX 3600)' },
   { id: 'otio', label: 'OpenTimelineIO', description: 'Universal timeline interchange' },
 ];
+
+// MARKER_B4.3: Export preset type (fetched from backend GET /cut/render/presets)
+type ExportPreset = {
+  key: string;
+  label: string;
+  codec: string;
+  resolution: string;
+  fps: number;
+  quality: number;
+  aspect?: string;
+};
 
 const PUBLISH_PRESETS = [
   { id: 'youtube', label: 'YouTube', resolution: '1080p', codec: 'h264', bitrate: '12M' },
@@ -230,6 +241,33 @@ export default function ExportDialog() {
   const [exportResult, setExportResult] = useState<string | null>(null);
   // MARKER_B4.1: Track active job for cancel
   const activeJobIdRef = useRef<string | null>(null);
+  // MARKER_B4.3: Export presets from backend
+  const [presets, setPresets] = useState<ExportPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+
+  // MARKER_B4.3: Fetch presets on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/cut/render/presets`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.presets) setPresets(data.presets); })
+      .catch(() => {});
+  }, []);
+
+  // MARKER_B4.3: Apply preset → auto-fill codec/resolution/quality
+  const applyPreset = useCallback((presetKey: string) => {
+    setSelectedPreset(presetKey);
+    if (presetKey === 'custom') return;
+    const p = presets.find((pr) => pr.key === presetKey);
+    if (!p) return;
+    // Map preset codec to our VideoCodec type
+    const codecMap: Record<string, VideoCodec> = {
+      h264: 'h264', h265: 'h265', prores_422hq: 'prores_422', prores_4444: 'prores_4444',
+      dnxhr_hq: 'dnxhd', av1: 'h264', vp9: 'h264', // fallback for UI
+    };
+    setCodec(codecMap[p.codec] || 'h264');
+    setResolution((p.resolution || '1080p') as Resolution);
+    setQuality(p.quality || 80);
+  }, [presets]);
 
   const hasSelection = sequenceMarkIn !== null && sequenceMarkOut !== null;
   const audioLanes = lanes.filter((l) => l.lane_type.startsWith('audio'));
@@ -482,13 +520,32 @@ export default function ExportDialog() {
         <div style={BODY}>
           {tab === 'master' && (
             <>
+              {/* MARKER_B4.3: Preset dropdown */}
+              {presets.length > 0 && (
+                <div style={FIELD}>
+                  <label style={LABEL}>Preset</label>
+                  <select
+                    style={SELECT}
+                    value={selectedPreset}
+                    onChange={(e) => applyPreset(e.target.value)}
+                    disabled={isRendering}
+                    data-testid="export-preset-select"
+                  >
+                    <option value="custom">Custom settings</option>
+                    {presets.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Codec */}
               <div style={FIELD}>
                 <label style={LABEL}>Codec</label>
                 <select
                   style={SELECT}
                   value={codec}
-                  onChange={(e) => setCodec(e.target.value as VideoCodec)}
+                  onChange={(e) => { setCodec(e.target.value as VideoCodec); setSelectedPreset('custom'); }}
                   disabled={isRendering}
                 >
                   {CODECS.map((c) => (
@@ -506,7 +563,7 @@ export default function ExportDialog() {
                 <select
                   style={SELECT}
                   value={resolution}
-                  onChange={(e) => setResolution(e.target.value as Resolution)}
+                  onChange={(e) => { setResolution(e.target.value as Resolution); setSelectedPreset('custom'); }}
                   disabled={isRendering}
                 >
                   {RESOLUTIONS.map((r) => (
@@ -526,7 +583,7 @@ export default function ExportDialog() {
                     min={10}
                     max={100}
                     value={quality}
-                    onChange={(e) => setQuality(Number(e.target.value))}
+                    onChange={(e) => { setQuality(Number(e.target.value)); setSelectedPreset('custom'); }}
                     disabled={isRendering}
                     style={{ flex: 1 }}
                   />
