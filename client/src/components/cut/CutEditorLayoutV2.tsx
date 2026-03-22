@@ -105,24 +105,41 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     requestAnimationFrame(step);
   }, []);
 
+  // MARKER_JKL-KJ-KL: Track K key held state for K+J/K+L frame stepping
+  const kHeldRef = useRef(false);
+  useEffect(() => {
+    const onDown = (e: KeyboardEvent) => { if (e.key === 'k' && !e.metaKey && !e.ctrlKey) kHeldRef.current = true; };
+    const onUp = (e: KeyboardEvent) => { if (e.key === 'k') kHeldRef.current = false; };
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+  }, []);
+
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
     // Playback
     playPause: () => useCutEditorStore.getState().togglePlay(),
     stop: () => { useCutEditorStore.getState().pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
-    // MARKER_W6.JKL: Progressive shuttle (FCP7 Ch.50 / App A)
+    // MARKER_W6.JKL: Progressive shuttle (FCP7 Ch.8 / App A)
     // J: reverse ramp 1x→2x→4x→8x. If playing forward, first press stops.
     // L: forward ramp 1x→2x→4x→8x. If playing reverse, first press stops.
     // K: stop (pause + reset shuttle)
+    // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
+      // MARKER_JKL-KJ-KL: K+J = single frame backward
+      if (kHeldRef.current) {
+        const s = useCutEditorStore.getState();
+        s.pause();
+        s.setShuttleSpeed(0);
+        s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate));
+        return;
+      }
       const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur > 0) {
-        // Was going forward → stop
         s.setShuttleSpeed(0);
         s.pause();
       } else {
-        // Step through reverse speeds: 0→-1→-2→-4→-8
         const REVERSE_STEPS = [0, -1, -2, -4, -8];
         const idx = REVERSE_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < REVERSE_STEPS.length - 1 ? REVERSE_STEPS[idx + 1] : -8;
@@ -131,14 +148,20 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
     },
     shuttleForward: () => {
+      // MARKER_JKL-KJ-KL: K+L = single frame forward
+      if (kHeldRef.current) {
+        const s = useCutEditorStore.getState();
+        s.pause();
+        s.setShuttleSpeed(0);
+        s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate));
+        return;
+      }
       const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur < 0) {
-        // Was going reverse → stop
         s.setShuttleSpeed(0);
         s.pause();
       } else {
-        // Step through forward speeds: 0→1→2→4→8
         const FORWARD_STEPS = [0, 1, 2, 4, 8];
         const idx = FORWARD_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < FORWARD_STEPS.length - 1 ? FORWARD_STEPS[idx + 1] : 8;
