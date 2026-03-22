@@ -43,6 +43,7 @@ import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
 import SpeedControl from './SpeedControl';
+import TransitionsPanel from './TransitionsPanel';
 import WorkspacePresets from './WorkspacePresets';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -53,6 +54,7 @@ const VideoScopesPanelDock = () => <VideoScopes />;
 const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
 const LutBrowserPanelDock = () => <LutBrowserPanel />;
 const SpeedControlPanelDock = () => <div data-testid="speed-control-panel"><SpeedControl /></div>;
+const TransitionsPanelDock = () => <TransitionsPanel />;
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -69,6 +71,7 @@ const PANEL_COMPONENTS = {
   colorcorrector: ColorCorrectorPanelDock,
   lutbrowser: LutBrowserPanelDock,
   speed: SpeedControlPanelDock,
+  transitions: TransitionsPanelDock,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -112,6 +115,7 @@ function buildEditingLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'inspector', direction: 'within' } });
   // Timeline (full-width bottom)
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   // Sizes
@@ -134,6 +138,7 @@ function buildColorLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'project', direction: 'within' } });
   api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'project', direction: 'within' } });
   api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'project', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'project', direction: 'within' } });
   // Center: Program Monitor (large — grading preview)
   api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
   // Right: Color tools stack (Color Corrector top, Scopes bottom)
@@ -170,6 +175,7 @@ function buildAudioLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'inspector', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'inspector', direction: 'within' } });
   // Timeline (full-width bottom — taller for waveform visibility)
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   // Sizes: project narrow, mixer ~280px, timeline tall

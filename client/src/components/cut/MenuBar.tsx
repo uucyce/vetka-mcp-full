@@ -670,6 +670,7 @@ export default function MenuBar() {
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
         { label: 'Speed Control', action: () => togglePanel('speed', 'speed', 'Speed') },
+        { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },

@@ -183,7 +183,7 @@ export default function TransitionsPanel() {
   const currentTransition = (selectedClip as any)?.transition;
 
   return (
-    <div style={PANEL}>
+    <div style={PANEL} data-testid="transitions-panel">
       {/* Header */}
       <div style={{ ...SECTION, background: '#0d0d0d' }}>
         <div style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>Transitions</div>
@@ -201,6 +201,7 @@ export default function TransitionsPanel() {
             style={SELECT}
             value={duration}
             onChange={(e) => setDuration(Number(e.target.value))}
+            data-testid="transition-duration"
           >
             {DURATIONS.map((d) => (
               <option key={d} value={d}>{d}s</option>
@@ -216,6 +217,7 @@ export default function TransitionsPanel() {
           {TRANSITIONS.map((t) => (
             <div
               key={t.id}
+              data-testid={`transition-type-${t.id}`}
               style={selectedTransition === t.id ? TRANSITION_ITEM_SELECTED : TRANSITION_ITEM}
               onClick={() => setSelectedTransition(t.id)}
               title={t.description}
