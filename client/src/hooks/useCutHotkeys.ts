@@ -100,6 +100,8 @@ export type CutHotkeyAction =
   | 'focusTimeline'
   | 'focusProject'
   | 'focusEffects'
+  // Linked selection
+  | 'toggleLinkedSelection'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -201,6 +203,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   focusTimeline:       'global',
   focusProject:        'global',
   focusEffects:        'global',
+  toggleLinkedSelection: 'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -301,6 +304,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  // Linked selection
+  toggleLinkedSelection: 'Shift+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -385,6 +390,8 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  // Linked selection
+  toggleLinkedSelection: 'Shift+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',

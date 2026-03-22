@@ -462,6 +462,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       });
       await s.refreshProjectState?.();
     },
+    toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');

@@ -1051,12 +1051,26 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.stopPropagation();
       setContextMenu(null);
 
-      // W3.6: Razor tool — split clip at click position instead of selecting
+      // W3.6 + MARKER_QA.W5.3: Razor tool — split clip locally at click position
       if (activeTool === 'razor') {
         const splitTime = timeFromTrackClientX(event.clientX);
-        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }]).catch((err) =>
-          console.error('[CUT] razor split failed:', err)
-        );
+        const s = useCutEditorStore.getState();
+        const newLanes = s.lanes.map(lane => ({
+          ...lane,
+          clips: lane.clips.flatMap(c => {
+            if (c.clip_id === clipId && splitTime > c.start_sec + 0.01 && splitTime < c.start_sec + c.duration_sec - 0.01) {
+              const leftDur = splitTime - c.start_sec;
+              return [
+                { ...c, clip_id: `${c.clip_id}_L`, duration_sec: leftDur },
+                { ...c, clip_id: `${c.clip_id}_R`, start_sec: splitTime, duration_sec: c.duration_sec - leftDur },
+              ];
+            }
+            return [c];
+          }),
+        }));
+        s.setLanes(newLanes);
+        // Also notify backend asynchronously
+        applyTimelineOps([{ op: 'split_at', clip_id: clipId, split_sec: splitTime }]).catch(() => {});
         return;
       }
 

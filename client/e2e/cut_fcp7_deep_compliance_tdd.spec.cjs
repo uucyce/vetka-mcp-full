@@ -146,10 +146,16 @@ async function setupApiMocks(page) {
   });
 }
 
-async function navigateToCut(page) {
+async function navigateToCut(page, { preset = 'fcp7' } = {}) {
   await setupApiMocks(page);
-  await page.goto(CUT_URL, { waitUntil: 'networkidle' });
+  // MARKER_QA.W5.3: Set hotkey preset + include URL params for project state
+  await page.addInitScript((p) => {
+    window.localStorage.setItem('cut_hotkey_preset', p);
+  }, preset);
+  await page.goto(`${CUT_URL}?sandbox_root=${encodeURIComponent('/tmp/cut-fcp7')}&project_id=${encodeURIComponent('cut-fcp7-compliance')}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
+  // Wait for clips to hydrate from project state
+  await page.waitForSelector('[data-testid^="cut-timeline-clip-"]', { timeout: 10000 }).catch(() => {});
 }
 
 // ===========================================================================
@@ -608,7 +614,7 @@ test.describe('FCP7 Deep Compliance: Keyboard Mapping (TDD)', () => {
   // FCP7 p.587: Add Edit = Control-V (FCP7) / ⌘K (Premiere/CUT)
   // Both should work
   test('KEYS: Add Edit works via ⌘K (Premiere) — split at playhead', async ({ page }) => {
-    await navigateToCut(page);
+    await navigateToCut(page, { preset: 'premiere' });
 
     const clipsBefore = await page.evaluate(() => {
       return document.querySelectorAll('[data-testid^="cut-timeline-clip-"]').length;
