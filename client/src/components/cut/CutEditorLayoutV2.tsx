@@ -434,6 +434,37 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (prev) s.seek(prev.start_sec);
     },
 
+    // MARKER_KF67: Keyframe navigation + add (FCP7 Ch.67)
+    nextKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      const times = s.getKeyframeTimes();
+      const next = times.find((t) => t > s.currentTime + 0.001);
+      if (next !== undefined) s.seek(next);
+    },
+    prevKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      const times = s.getKeyframeTimes().reverse();
+      const prev = times.find((t) => t < s.currentTime - 0.001);
+      if (prev !== undefined) s.seek(prev);
+    },
+    addKeyframe: () => {
+      const s = useCutEditorStore.getState();
+      if (!s.selectedClipId) return;
+      // Find selected clip to calculate relative time
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        if (clip) {
+          const relTime = s.currentTime - clip.start_sec;
+          if (relTime >= 0 && relTime <= clip.duration_sec) {
+            // Add opacity keyframe at current value (default 1.0)
+            const currentOpacity = clip.effects?.opacity ?? 1.0;
+            s.addKeyframe(clip.clip_id, 'opacity', relTime, currentOpacity);
+          }
+          return;
+        }
+      }
+    },
+
     // Navigation — edit points
     prevEditPoint: () => {
       const s = useCutEditorStore.getState();
