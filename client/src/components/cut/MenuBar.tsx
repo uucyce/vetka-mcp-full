@@ -688,6 +688,9 @@ export default function MenuBar() {
     const ds = dockStore.getState();
     const api = ds.apiRef;
     if (!api) return;
+    // MARKER_GAMMA-12: Save current focus before switching
+    const currentFocus = store.getState().focusedPanel;
+    ds.saveFocusForPreset(ds.activePreset, currentFocus);
     // Save current layout before switching
     try { ds.saveLayout(ds.activePreset, api.toJSON()); } catch {}
     // Load target preset
@@ -695,9 +698,13 @@ export default function MenuBar() {
     if (saved) {
       try { api.fromJSON(saved); } catch {}
       ds.setActivePreset(name);
+      // MARKER_GAMMA-12: Restore focus for target preset
+      const targetFocus = ds.getFocusForPreset(name);
+      if (targetFocus) {
+        store.getState().setFocusedPanel(targetFocus as any);
+      }
     } else {
       // MARKER_C5: No saved layout for this preset — set preset and reload.
-      // onReady will fire with the new activePreset and build the correct default layout.
       ds.setActivePreset(name);
       window.location.reload();
     }

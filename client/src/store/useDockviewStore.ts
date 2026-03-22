@@ -29,10 +29,15 @@ interface DockviewStoreState {
   togglePanel: (id: string, component: string, title: string) => void;
   /** MARKER_GAMMA-3: Toggle maximize active panel group (backtick key, FCP7/Premiere style) */
   toggleMaximize: () => void;
+  /** MARKER_GAMMA-12: Save/restore focused panel per workspace preset */
+  focusPerPreset: Record<WorkspacePresetName, string | null>;
+  saveFocusForPreset: (preset: WorkspacePresetName, panelId: string | null) => void;
+  getFocusForPreset: (preset: WorkspacePresetName) => string | null;
 }
 
 const LS_PREFIX = 'cut_dockview_';
 const LS_ACTIVE = 'cut_dockview_active';
+const LS_FOCUS = 'cut_focus_per_preset';
 
 export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   activePreset: (() => {
@@ -139,4 +144,20 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
         : { direction: 'below' },
     });
   },
+
+  // MARKER_GAMMA-12 + GAMMA-13: Focus persistence per workspace preset (localStorage-backed)
+  focusPerPreset: (() => {
+    const defaults = { editing: 'timeline', color: 'program', audio: 'timeline', custom: null };
+    try {
+      const raw = localStorage.getItem(LS_FOCUS);
+      if (raw) return { ...defaults, ...JSON.parse(raw) };
+    } catch { /* corrupt */ }
+    return defaults;
+  })() as Record<WorkspacePresetName, string | null>,
+  saveFocusForPreset: (preset, panelId) => {
+    const updated = { ...get().focusPerPreset, [preset]: panelId };
+    set({ focusPerPreset: updated });
+    try { localStorage.setItem(LS_FOCUS, JSON.stringify(updated)); } catch { /* noop */ }
+  },
+  getFocusForPreset: (preset) => get().focusPerPreset[preset],
 }));
