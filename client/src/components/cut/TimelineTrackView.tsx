@@ -24,9 +24,9 @@ import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock,
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
-  audio_sync: { label: 'A1', color: '#22c55e', icon: <IconSpeaker size={12} color="#888" /> },
-  take_alt_y: { label: 'V2', color: '#a855f7', icon: <IconCamera size={12} color="#888" /> },
-  take_alt_z: { label: 'V3', color: '#f59e0b', icon: <IconCamera size={12} color="#888" /> },
+  audio_sync: { label: 'A1', color: '#888', icon: <IconSpeaker size={12} color="#888" /> },
+  take_alt_y: { label: 'V2', color: '#888', icon: <IconCamera size={12} color="#888" /> },
+  take_alt_z: { label: 'V3', color: '#777', icon: <IconCamera size={12} color="#888" /> },
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
@@ -1766,7 +1766,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             height: 0,
             borderLeft: '5px solid transparent',
             borderRight: '5px solid transparent',
-            borderTop: '8px solid #22c55e',
+            borderTop: '8px solid #ccc',
             zIndex: 21,
             pointerEvents: 'none',
           }}
@@ -1782,7 +1782,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             height: 0,
             borderLeft: '5px solid transparent',
             borderRight: '5px solid transparent',
-            borderTop: '8px solid #ef4444',
+            borderTop: '8px solid #888',
             zIndex: 21,
             pointerEvents: 'none',
           }}
@@ -1829,8 +1829,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             top: RULER_HEIGHT,
             bottom: 0,
             width: 1,
-            borderLeft: '1px dashed rgba(250, 204, 21, 0.95)',
-            boxShadow: '0 0 10px rgba(250, 204, 21, 0.35)',
+            borderLeft: '1px dashed rgba(200, 200, 200, 0.8)',
+            boxShadow: '0 0 10px rgba(200, 200, 200, 0.2)',
             zIndex: 130,
             pointerEvents: 'none',
           }}
@@ -1905,8 +1905,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: soloLanes.has(lane.lane_id) ? '#facc15' : '#111',
-                      borderColor: soloLanes.has(lane.lane_id) ? '#facc15' : '#333',
+                      background: soloLanes.has(lane.lane_id) ? '#aaa' : '#111',
+                      borderColor: soloLanes.has(lane.lane_id) ? '#aaa' : '#333',
                     }}
                     title="Solo"
                     onClick={(event) => { event.stopPropagation(); toggleSolo(lane.lane_id); }}
@@ -1916,8 +1916,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#111',
-                      borderColor: mutedLanes.has(lane.lane_id) ? '#ef4444' : '#333',
+                      background: mutedLanes.has(lane.lane_id) ? '#888' : '#111',
+                      borderColor: mutedLanes.has(lane.lane_id) ? '#888' : '#333',
                     }}
                     title="Mute"
                     onClick={(event) => { event.stopPropagation(); toggleMute(lane.lane_id); }}
@@ -2232,7 +2232,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           }}
                         >
                           {durationSec.toFixed(1)}s
-                          {syncInfo?.method ? <span style={{ color: '#22c55e', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
+                          {syncInfo?.method ? <span style={{ color: '#888', marginLeft: 4 }}>⟲ {syncInfo.method}</span> : null}
                         </span>
                       ) : null}
 
@@ -2377,7 +2377,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         height: 0,
                         borderLeft: '4px solid transparent',
                         borderRight: '4px solid transparent',
-                        borderTop: '6px solid #ef4444',
+                        borderTop: '6px solid #888',
                         zIndex: 10,
                         pointerEvents: 'none',
                       }}
@@ -2433,7 +2433,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       top: 0,
                       width: 2,
                       height: '100%',
-                      background: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      background: dropZone.mode === 'insert' ? '#aaa' : '#888',
                       pointerEvents: 'none',
                       zIndex: 51,
                     }} />
@@ -2445,7 +2445,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       fontSize: 9,
                       fontWeight: 700,
                       fontFamily: 'monospace',
-                      color: dropZone.mode === 'insert' ? '#4ade80' : '#60a5fa',
+                      color: dropZone.mode === 'insert' ? '#aaa' : '#888',
                       textShadow: '0 1px 3px rgba(0,0,0,0.9)',
                       pointerEvents: 'none',
                       zIndex: 52,
@@ -2534,7 +2534,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             </button>
             <button
               data-testid="cut-marker-draft-create"
-              style={{ background: '#1d4ed8', color: '#fff', border: '1px solid #2563eb', borderRadius: 4, padding: '5px 10px', cursor: 'pointer' }}
+              style={{ background: '#555', color: '#fff', border: '1px solid #666', borderRadius: 4, padding: '5px 10px', cursor: 'pointer' }}
               onClick={() => {
                 if (!markerDraft) return;
                 const draft = markerDraft;
@@ -2751,7 +2751,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               <span style={{
                 position: 'absolute', top: 2, right: 4, zIndex: 2,
                 fontSize: 9, fontWeight: 700, fontFamily: 'monospace',
-                color: deltaFrames === 0 ? '#888' : (deltaFrames > 0 ? '#4ade80' : '#f87171'),
+                color: deltaFrames === 0 ? '#888' : (deltaFrames > 0 ? '#bbb' : '#666'),
                 textShadow: '0 1px 2px rgba(0,0,0,0.9)',
               }}>
                 {label} {sign}{deltaFrames}f
