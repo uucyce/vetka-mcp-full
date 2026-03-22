@@ -7,7 +7,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 178 contracts changed")
 
-
 CLAUDE_MD_PATH = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     ".claude", "worktrees", "confident-ritchie", "CLAUDE.md"

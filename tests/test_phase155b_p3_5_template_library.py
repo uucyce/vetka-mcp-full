@@ -10,7 +10,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155b contracts changed")
 
-
 def test_template_library_includes_new_core_templates():
     templates = WorkflowTemplateLibrary.load_all()
     assert "ralph_loop" in templates

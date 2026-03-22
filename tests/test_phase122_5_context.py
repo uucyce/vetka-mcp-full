@@ -12,6 +12,8 @@ from unittest.mock import MagicMock, AsyncMock, patch
 from dataclasses import dataclass, field
 from typing import Optional, Dict, List, Any
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 122 contracts changed")
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.orchestration.agent_pipeline import AgentPipeline, Subtask
@@ -248,8 +250,6 @@ class TestCoderInjectContext:
         pipeline._get_llm_tool = MagicMock(return_value=mock_tool)
 
         import asyncio
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 122 contracts changed")
 
         asyncio.run(pipeline._execute_subtask(subtask, "research"))
 

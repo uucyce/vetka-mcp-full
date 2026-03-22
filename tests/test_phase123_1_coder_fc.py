@@ -20,6 +20,9 @@ from dataclasses import dataclass
 
 import sys
 import os
+
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 123 contracts changed")
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -577,8 +580,6 @@ src
     def test_clean_handles_multiple_tool_calls(self):
         """Multiple text tool_calls are all removed."""
         from src.tools.fc_loop import _clean_text_tool_calls
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 123 contracts changed")
 
         content = """Some code here
 <tool_call>

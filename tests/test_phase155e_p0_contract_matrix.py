@@ -10,7 +10,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155e contracts changed")
 
-
 def test_workflow_store_accepts_gate_and_roadmap_nodes():
     assert "gate" in VALID_NODE_TYPES
     assert "roadmap_task" in VALID_NODE_TYPES

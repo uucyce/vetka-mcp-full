@@ -10,7 +10,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155b contracts changed")
 
-
 def _client() -> TestClient:
     app = FastAPI()
     app.include_router(router)

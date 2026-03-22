@@ -7,7 +7,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155e contracts changed")
 
-
 def test_workflow_to_tasks_maps_runtime_dependency_edge_kinds(tmp_path):
     store = WorkflowStore(project_root=tmp_path)
     wf = {

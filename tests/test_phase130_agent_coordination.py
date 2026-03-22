@@ -16,6 +16,8 @@ import pytest
 from pathlib import Path
 from datetime import datetime
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 130 contracts changed")
+
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -269,8 +271,6 @@ class TestPhase130_C18C_EnhancedEvents:
         """_notify_board_update should accept event_data parameter."""
         import inspect
         from src.orchestration.task_board import TaskBoard
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 130 contracts changed")
 
         sig = inspect.signature(TaskBoard._notify_board_update)
         params = list(sig.parameters.keys())

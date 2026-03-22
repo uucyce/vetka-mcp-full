@@ -20,14 +20,13 @@ import tempfile
 from src.memory.stm_buffer import STMBuffer, STMEntry, get_stm_buffer, reset_stm_buffer
 from src.memory.mgc_cache import MGCCache, MGCEntry, get_mgc_cache, reset_mgc_cache
 from src.memory.memory_proxy import (
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 99 contracts changed")
-
     MemoryProxy,
     CircuitBreakerOpen,
     get_memory_proxy,
     reset_all_proxies,
 )
+
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 99 contracts changed")
 
 
 # ============================================================

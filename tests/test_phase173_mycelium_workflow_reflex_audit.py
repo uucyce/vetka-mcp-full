@@ -5,7 +5,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 173 contracts changed")
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_TOOL = ROOT / "src/mcp/tools/workflow_tools.py"
 MYCELIUM_SERVER = ROOT / "src/mcp/mycelium_mcp_server.py"

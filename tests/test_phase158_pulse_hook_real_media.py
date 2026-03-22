@@ -9,7 +9,6 @@ from src.scanners.extractor_registry import ExtractionResult, MediaExtractorRegi
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 158 contracts changed")
 
-
 REAL_AUDIO = Path("/Users/danilagulin/work/teletape_temp/albom/250623_vanpticdanyana_berlin_Punch.m4a")
 REAL_VIDEO_DIR = Path("/Users/danilagulin/work/teletape_temp/berlin/video_gen")
 

@@ -3,7 +3,6 @@ import pytest
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 164 contracts changed")
 
-
 def _read(path: str) -> str:
     return Path(path).read_text(encoding="utf-8")
 

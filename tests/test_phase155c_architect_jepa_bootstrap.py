@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import asyncio
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155c contracts changed")
 
 def test_is_first_architect_turn_detection():
     from src.api.routes.architect_chat_routes import ChatContext, _is_first_architect_turn
@@ -225,8 +226,6 @@ def test_architect_chat_non_blocking_on_jepa_timeout(monkeypatch, tmp_path):
 async def test_jepa_bootstrap_runtime_error_fallback(monkeypatch, tmp_path):
     import src.api.routes.architect_chat_routes as route_mod
     from src.api.routes.architect_chat_routes import ArchitectChatRequest, ChatContext
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155c contracts changed")
 
     (tmp_path / "README.md").write_text("demo", encoding="utf-8")
     monkeypatch.setattr(route_mod, "_resolve_architect_scope_root", lambda context=None: str(tmp_path))

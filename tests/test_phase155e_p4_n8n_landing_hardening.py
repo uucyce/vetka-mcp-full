@@ -15,7 +15,6 @@ from src.services.converters.n8n_converter import n8n_to_vetka, vetka_to_n8n
 
 pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155e contracts changed")
 
-
 @pytest.fixture
 def api_client(tmp_path: Path):
     store = WorkflowStore(project_root=tmp_path)

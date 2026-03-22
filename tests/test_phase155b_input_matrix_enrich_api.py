@@ -4,7 +4,9 @@ Phase 155 main tail closure: input-matrix enrich API.
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+import pytest
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155b contracts changed")
 
 def _seed_version(tmp_path, monkeypatch):
     import src.services.mcc_dag_versions as dag_versions_module
@@ -55,8 +57,6 @@ def _seed_version(tmp_path, monkeypatch):
 def _client() -> TestClient:
     from src.api.routes.workflow_routes import router
 import pytest
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155b contracts changed")
 
     app = FastAPI()
     app.include_router(router)

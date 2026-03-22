@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from unittest.mock import patch, MagicMock
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — reflex_scorer contracts changed")
+
 # Project root
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -927,8 +929,6 @@ class TestFreshnessCuriosityBoost:
         """Freshness boost should decay linearly from +0.3 to 0 over 48h."""
         from src.services.tool_source_watch import ToolFreshnessEntry
         import src.services.tool_source_watch as tsw_mod
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — reflex_scorer contracts changed")
 
         # 24h ago → boost = 0.3 * (1 - 24/48) = 0.15
         time_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()

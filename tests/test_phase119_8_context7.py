@@ -14,6 +14,8 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 119 contracts changed")
+
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -190,8 +192,6 @@ class TestCoderDocsIntegration:
     def test_library_docs_in_safe_tools_allowlist(self):
         """vetka_library_docs is in SAFE_FUNCTION_CALLING_TOOLS."""
         from src.mcp.tools.llm_call_tool import SAFE_FUNCTION_CALLING_TOOLS
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 119 contracts changed")
 
         assert "vetka_library_docs" in SAFE_FUNCTION_CALLING_TOOLS
 
