@@ -587,6 +587,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const clipCursor = CLIP_CURSOR[activeTool] || 'grab';
+  // MARKER_TRIM.CURSOR: Edge cursor reflects active tool (FCP7 Ch.56-60)
+  const EDGE_CURSOR: Record<string, string> = {
+    selection: 'ew-resize', razor: 'crosshair', hand: 'ew-resize', zoom: 'ew-resize',
+    slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
+  };
+  const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
   // MARKER_W1.3: Timeline clip click → Source Monitor
   const setActiveMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
@@ -927,19 +933,29 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const durationSec = roundTimeline(Math.max(MIN_CLIP_DURATION_SEC, clip.duration_sec));
 
       // MARKER_W5.TRIM: Determine effective drag mode from activeTool
+      // MARKER_TRIM.EDGE: Tool override applies to edges too (FCP7 Ch.56-60)
+      // Clicking an edge with ripple tool → ripple trim, not basic trim.
       let effectiveMode = mode;
       if (mode === 'move') {
         switch (activeTool) {
           case 'slip': effectiveMode = 'slip'; break;
           case 'slide': effectiveMode = 'slide'; break;
           case 'ripple': {
-            // Ripple: left or right edge based on cursor position relative to clip center
             const clipCenter = startSec + durationSec / 2;
             effectiveMode = pointerTime < clipCenter ? 'ripple_left' : 'ripple_right';
             break;
           }
           case 'roll': effectiveMode = 'roll'; break;
           default: break;
+        }
+      } else if (mode === 'trim_left' || mode === 'trim_right') {
+        // Edge interactions: tool overrides basic trim
+        switch (activeTool) {
+          case 'ripple':
+            effectiveMode = mode === 'trim_left' ? 'ripple_left' : 'ripple_right';
+            break;
+          case 'roll': effectiveMode = 'roll'; break;
+          default: break; // selection/razor/hand/zoom → keep basic trim
         }
       }
 
@@ -1864,7 +1880,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           top: 0,
                           bottom: 0,
                           width: TRIM_HANDLE_WIDTH,
-                          cursor: 'ew-resize',
+                          cursor: edgeCursor,
                           zIndex: 3,
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_left', event)}
@@ -1877,7 +1893,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           top: 0,
                           bottom: 0,
                           width: TRIM_HANDLE_WIDTH,
-                          cursor: 'ew-resize',
+                          cursor: edgeCursor,
                           zIndex: 3,
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
