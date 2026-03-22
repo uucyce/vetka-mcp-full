@@ -23,14 +23,37 @@ vetka_task_board action=active_agents
 
 ## Worktrees и роли
 
+**Базовый путь:** `~/Documents/VETKA_Project/vetka_live_03` (далее `$VETKA`)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 | Команда терминала | Роль | Домен | Что делает |
 |---|---|---|---|
-| `cd .claude/worktrees/cut-engine && claude` | **Alpha** | Engine | Store, timeline, hotkeys, playback, Tauri |
-| `cd .claude/worktrees/cut-media && claude` | **Beta** | Media | Codecs, color, scopes, render, effects |
-| `cd .claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
-| `cd .claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
-| `cd .claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude` | **Alpha** | Engine | Store, timeline, hotkeys, playback, Tauri |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude` | **Beta** | Media | Codecs, color, scopes, render, effects |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
 | `cd ~/Documents/VETKA_Project/vetka_live_03 && claude` | **Sigma/Zeta/...** | Cross-cutting | Инфра, REFLEX, pipeline |
+
+Или одной строкой (копируй целиком):
+```bash
+# Alpha
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude
+
+# Beta
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
+
+# Gamma
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude
+
+# Delta
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude
+
+# Commander
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
+
+# Cross-cutting (Sigma/Zeta)
+cd ~/Documents/VETKA_Project/vetka_live_03 && claude
+```
 
 Агент **автоматически** получает роль из `.claude/worktrees/<name>/CLAUDE.md`.
 Ничего передавать не нужно — он уже знает свои файлы, ограничения и predecessor advice.

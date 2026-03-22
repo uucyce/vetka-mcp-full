@@ -163,6 +163,10 @@ class Transition:
     type: Literal["crossfade", "dip_to_black", "wipe", "dissolve"] = "crossfade"
     duration_sec: float = 1.0       # overlap duration
     between: tuple[int, int] = (0, 1)  # indices into clip list
+    # MARKER_B14: Audio crossfade curve type (FCP7 Ch.47)
+    audio_curve: Literal["equal_power", "linear"] = "equal_power"
+    # equal_power = +3dB at midpoint (default, sounds smooth)
+    # linear = 0dB at midpoint (straight fade, sounds dip)
 
 
 @dataclass
@@ -284,12 +288,15 @@ def build_render_plan(
                 type=tr_meta.get("type", "crossfade"),
                 duration_sec=float(tr_meta.get("duration_sec", 1.0)),
                 between=(i, i + 1),
+                # MARKER_B14: Audio crossfade curve from metadata
+                audio_curve=tr_meta.get("audio_curve", "equal_power"),
             ))
         elif overlap > 0.01:  # >10ms overlap = auto crossfade
             transitions.append(Transition(
                 type="crossfade",
                 duration_sec=min(overlap, 5.0),
                 between=(i, i + 1),
+                audio_curve="equal_power",  # MARKER_B14: default +3dB
             ))
 
     return RenderPlan(
@@ -506,10 +513,17 @@ class FilterGraphBuilder:
                 running_offset = offset + clips[i].duration_sec
 
             elif t and is_audio:
-                # Audio crossfade
+                # MARKER_B14: Audio crossfade with curve selection
+                # equal_power (+3dB) = qsin (quarter sine), sounds smooth
+                # linear (0dB) = tri (triangle), sounds dip at midpoint
+                curve = getattr(t, "audio_curve", "equal_power")
+                if curve == "linear":
+                    c1, c2 = "tri", "tri"
+                else:
+                    c1, c2 = "qsin", "qsin"  # equal_power (default, FCP7 +3dB)
                 filters.append(
                     f"{current}{next_label}acrossfade=d={t.duration_sec:.3f}"
-                    f":c1=tri:c2=tri{out_label}"
+                    f":c1={c1}:c2={c2}{out_label}"
                 )
                 running_offset = running_offset - t.duration_sec + clips[i].duration_sec
 

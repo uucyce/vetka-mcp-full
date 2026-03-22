@@ -346,6 +346,16 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         },
         ffmpeg_video=False, ffmpeg_audio=True,
     ),
+    # === MARKER_B14: Audio transitions (FCP7 Ch.47) ===
+    "audio_crossfade": EffectDef(
+        type="audio_crossfade", label="Audio Cross Fade", category="audio",
+        params_schema={
+            "duration": {"type": "float", "min": 0.01, "max": 10.0, "default": 0.5, "step": 0.05},
+            "curve": {"type": "str", "default": "equal_power",
+                      "options": ["equal_power", "linear"]},
+        },
+        ffmpeg_video=False, ffmpeg_audio=True,
+    ),
 }
 
 

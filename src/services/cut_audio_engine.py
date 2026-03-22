@@ -236,3 +236,160 @@ def compile_mixer_audio_filters(effects: list[Any]) -> list[str]:
                 filters.append(f)
 
     return filters
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B17: LUFS Loudness Analysis (EBU R128)
+# ---------------------------------------------------------------------------
+
+# Broadcast loudness standards
+LOUDNESS_STANDARDS: dict[str, dict[str, float]] = {
+    "ebu_r128": {"target_lufs": -23.0, "tolerance": 1.0, "max_true_peak": -1.0, "label": "EBU R128 (Europe)"},
+    "atsc_a85": {"target_lufs": -24.0, "tolerance": 2.0, "max_true_peak": -2.0, "label": "ATSC A/85 (US)"},
+    "arib_tr_b32": {"target_lufs": -24.0, "tolerance": 2.0, "max_true_peak": -1.0, "label": "ARIB TR-B32 (Japan)"},
+    "youtube": {"target_lufs": -14.0, "tolerance": 1.0, "max_true_peak": -1.0, "label": "YouTube"},
+    "spotify": {"target_lufs": -14.0, "tolerance": 1.0, "max_true_peak": -1.0, "label": "Spotify"},
+    "apple_music": {"target_lufs": -16.0, "tolerance": 1.0, "max_true_peak": -1.0, "label": "Apple Music"},
+    "podcast": {"target_lufs": -16.0, "tolerance": 2.0, "max_true_peak": -1.0, "label": "Podcast (general)"},
+}
+
+
+@dataclass
+class LoudnessResult:
+    """Result of LUFS loudness analysis."""
+    source_path: str = ""
+    success: bool = False
+    error: str = ""
+    # EBU R128 measurements
+    integrated_lufs: float = -70.0   # integrated loudness (whole file)
+    true_peak_dbtp: float = -70.0    # true peak in dBTP
+    lra: float = 0.0                 # loudness range (LU)
+    threshold: float = -70.0        # measurement gate threshold
+    # Compliance
+    standard: str = ""
+    compliant: bool = False
+    deviation_lu: float = 0.0       # how far from target
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_path": self.source_path,
+            "success": self.success,
+            "error": self.error,
+            "integrated_lufs": self.integrated_lufs,
+            "true_peak_dbtp": self.true_peak_dbtp,
+            "lra": self.lra,
+            "threshold": self.threshold,
+            "standard": self.standard,
+            "compliant": self.compliant,
+            "deviation_lu": self.deviation_lu,
+        }
+
+
+def analyze_loudness(
+    source_path: str,
+    *,
+    standard: str = "ebu_r128",
+    timeout: float = 120.0,
+) -> LoudnessResult:
+    """
+    Analyze audio loudness using FFmpeg ebur128 filter.
+
+    FFmpeg command: ffmpeg -i file -af ebur128=peak=true -f null -
+    Parses stderr for integrated loudness, true peak, LRA.
+
+    Args:
+        source_path: Path to media file.
+        standard: Loudness standard key (ebu_r128, atsc_a85, youtube, etc.)
+        timeout: FFmpeg subprocess timeout.
+
+    Returns:
+        LoudnessResult with measurements and compliance check.
+    """
+    import os
+    import re
+    import shutil
+    import subprocess
+
+    result = LoudnessResult(source_path=source_path, standard=standard)
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        result.error = "ffmpeg_not_found"
+        return result
+
+    if not os.path.isfile(source_path):
+        result.error = "file_not_found"
+        return result
+
+    # Run FFmpeg with ebur128 filter (measurement only, no output file)
+    cmd = [
+        ffmpeg,
+        "-i", source_path,
+        "-af", "ebur128=peak=true",
+        "-f", "null", "-",
+    ]
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        result.error = "ffmpeg_timeout"
+        return result
+    except OSError as exc:
+        result.error = f"ffmpeg_error: {exc}"
+        return result
+
+    # ebur128 output is on stderr (FFmpeg convention)
+    stderr = proc.stderr or ""
+
+    # Parse summary block (appears at end of stderr):
+    #   Summary:
+    #     Integrated loudness:
+    #       I:         -23.0 LUFS
+    #       Threshold:  -33.0 LUFS
+    #     Loudness range:
+    #       LRA:         7.0 LU
+    #     True peak:
+    #       Peak:        -1.5 dBFS
+
+    # Integrated loudness
+    m = re.search(r"I:\s+(-?\d+\.?\d*)\s+LUFS", stderr)
+    if m:
+        result.integrated_lufs = float(m.group(1))
+        result.success = True
+
+    # Threshold
+    m = re.search(r"Threshold:\s+(-?\d+\.?\d*)\s+LUFS", stderr)
+    if m:
+        result.threshold = float(m.group(1))
+
+    # LRA
+    m = re.search(r"LRA:\s+(-?\d+\.?\d*)\s+LU", stderr)
+    if m:
+        result.lra = float(m.group(1))
+
+    # True peak
+    m = re.search(r"Peak:\s+(-?\d+\.?\d*)\s+dBFS", stderr)
+    if m:
+        result.true_peak_dbtp = float(m.group(1))
+
+    if not result.success:
+        result.error = "parse_failed"
+        return result
+
+    # Compliance check
+    std = LOUDNESS_STANDARDS.get(standard)
+    if std:
+        target = std["target_lufs"]
+        tolerance = std["tolerance"]
+        max_peak = std["max_true_peak"]
+        result.deviation_lu = round(result.integrated_lufs - target, 1)
+        lufs_ok = abs(result.deviation_lu) <= tolerance
+        peak_ok = result.true_peak_dbtp <= max_peak
+        result.compliant = lufs_ok and peak_ok
+
+    return result

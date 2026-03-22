@@ -8729,6 +8729,33 @@ async def cut_render_master(req: CutRenderMasterRequest) -> dict[str, Any]:
     }
 
 
+# ─── MARKER_B17: LUFS Loudness Analysis ───────────────────────────────
+
+@router.get("/audio/loudness")
+async def cut_audio_loudness(
+    source_path: str,
+    standard: str = "ebu_r128",
+) -> dict[str, Any]:
+    """
+    MARKER_B17 — Analyze audio loudness (EBU R128 / ATSC A/85 / YouTube / etc).
+    Returns integrated LUFS, true peak, LRA, and compliance status.
+    Uses FFmpeg ebur128 filter — no external deps.
+    """
+    from src.services.cut_audio_engine import analyze_loudness, LOUDNESS_STANDARDS
+    result = analyze_loudness(source_path, standard=standard)
+    return {
+        **result.to_dict(),
+        "standards_available": list(LOUDNESS_STANDARDS.keys()),
+    }
+
+
+@router.get("/audio/loudness-standards")
+async def cut_loudness_standards() -> dict[str, Any]:
+    """MARKER_B17 — List available loudness standards with targets."""
+    from src.services.cut_audio_engine import LOUDNESS_STANDARDS
+    return {"success": True, "standards": LOUDNESS_STANDARDS}
+
+
 # ─── MARKER_B2.3: Export Presets listing ───────────────────────────────
 
 @router.get("/render/presets")
