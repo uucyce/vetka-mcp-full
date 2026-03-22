@@ -12,6 +12,7 @@
 1. mcp__vetka__vetka_session_init
 2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
 3. Claim → Do work → action=complete task_id=<id> branch={{ role.branch }}
+   (complete = auto-commit + close. Do NOT git commit manually!)
 ```
 
 ## Identity
@@ -131,7 +132,36 @@ All agents get this via `session_init`. No UI needed — the harness IS the coor
 **CARDINAL RULES:**
 - NEVER commit to main. Commander merges.
 - NEVER touch files outside your ownership list.
-- Always pass `branch={{ role.branch }}` to task_board action=complete.
+- NEVER run `git add` + `git commit` manually. `action=complete` IS your commit.
+
+## Commit Flow (the ONLY path)
+
+**`action=complete` does EVERYTHING — staging, committing, pushing, closing:**
+```
+vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
+  → auto-stages changed files (scoped via closure_files, not git add -A)
+  → auto-commits with message: "complete: {task title} [task:tb_xxxx]"
+  → pre-commit hook updates project digest
+  → task status → done_worktree
+```
+
+**You do NOT need to:**
+- `git add` files — the pipeline stages them
+- `git commit` — the pipeline commits
+- Pass `commit_hash` — that's only for edge cases
+
+**If you need custom staging**, set `closure_files` on the task BEFORE completing:
+```
+vetka_task_board action=update task_id=<id> closure_files=["src/file1.py", "src/file2.py"]
+vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
+```
+
+**Anti-pattern (DO NOT DO THIS):**
+```
+# WRONG — manual commit then close
+git add . && git commit -m "..."
+vetka_task_board action=complete task_id=<id> commit_hash=abc123
+```
 
 ## Owned Files (ONLY touch these)
 
