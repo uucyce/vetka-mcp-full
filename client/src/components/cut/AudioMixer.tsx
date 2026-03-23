@@ -275,8 +275,8 @@ function ChannelStrip({
       </div>
       <PanKnob value={pan} onChange={onPanChange} />
       <div style={{ display: 'flex', gap: 2 }}>
-        <button style={SMALL_BTN(muted, '#e44')} onClick={onToggleMute}>M</button>
-        <button style={SMALL_BTN(soloed, '#eab308')} onClick={onToggleSolo}>S</button>
+        <button style={SMALL_BTN(muted, '#999')} onClick={onToggleMute}>M</button>
+        <button style={SMALL_BTN(soloed, '#ccc')} onClick={onToggleSolo}>S</button>
       </div>
     </div>
   );
@@ -355,8 +355,8 @@ export default function AudioMixer() {
         </div>
         <PanKnob value={masterPan} onChange={setMasterPan} />
         <div style={{ display: 'flex', gap: 2 }}>
-          <button style={SMALL_BTN(false, '#e44')} disabled>M</button>
-          <button style={SMALL_BTN(false, '#eab308')} disabled>S</button>
+          <button style={SMALL_BTN(false, '#999')} disabled>M</button>
+          <button style={SMALL_BTN(false, '#ccc')} disabled>S</button>
         </div>
       </div>
     </div>

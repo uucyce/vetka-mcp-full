@@ -367,7 +367,7 @@ export default function VideoScopes() {
       </div>
       <div style={CANVAS_WRAP}>
         {!mediaPath ? <span style={{ color: '#555', fontSize: 10 }}>No media selected</span>
-          : error ? <span style={{ color: '#ef4444', fontSize: 10 }}>{error}</span>
+          : error ? <span style={{ color: '#999', fontSize: 10 }}>{error}</span>
           : <canvas ref={canvasRef} data-testid="scope-canvas" />}
       </div>
       <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
@@ -378,14 +378,14 @@ export default function VideoScopes() {
         {/* MARKER_B26: Broadcast safe indicator */}
         {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct > 0 && (
           <span
-            style={{ fontSize: 8, color: scopeData.broadcast_safe.total_illegal_pct > 5 ? '#ef4444' : '#f59e0b' }}
+            style={{ fontSize: 8, color: scopeData.broadcast_safe.total_illegal_pct > 5 ? '#ccc' : '#888' }}
             title={`Over white: ${scopeData.broadcast_safe.over_white_pct}% | Under black: ${scopeData.broadcast_safe.under_black_pct}% | Chroma: ${scopeData.broadcast_safe.chroma_illegal_pct}%`}
           >
             {scopeData.broadcast_safe.total_illegal_pct > 5 ? 'ILLEGAL' : 'WARN'} {scopeData.broadcast_safe.total_illegal_pct}%
           </span>
         )}
         {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct === 0 && (
-          <span style={{ fontSize: 8, color: '#22c55e' }}>SAFE</span>
+          <span style={{ fontSize: 8, color: '#888' }}>SAFE</span>
         )}
         {/* MARKER_B25: Pre-grade / Post-grade toggle */}
         <button

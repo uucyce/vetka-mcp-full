@@ -289,7 +289,7 @@ export default function LutBrowserPanel() {
         <button style={BTN} onClick={handleImport} data-testid="lut-import-btn">Import</button>
       </div>
 
-      {error && <div style={{ padding: '2px 10px', fontSize: 9, color: '#ef4444' }}>{error}</div>}
+      {error && <div style={{ padding: '2px 10px', fontSize: 9, color: '#999' }}>{error}</div>}
     </div>
   );
 }
