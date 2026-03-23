@@ -7,6 +7,7 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import VideoPreview from '../VideoPreview';
 import MonitorTransport from '../MonitorTransport';
+import SourceMonitorButtons from '../SourceMonitorButtons';
 
 const PANEL_STYLE: React.CSSProperties = {
   display: 'flex',
@@ -26,6 +27,7 @@ export default function SourceMonitorPanel(_props: IDockviewPanelProps) {
         <VideoPreview feed="source" />
       </div>
       <MonitorTransport feed="source" />
+      <SourceMonitorButtons />
     </div>
   );
 }
