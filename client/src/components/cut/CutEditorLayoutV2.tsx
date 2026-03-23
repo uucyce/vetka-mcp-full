@@ -803,6 +803,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       await s.refreshProjectState?.();
     },
     toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
+    // MARKER_SNAP_N: Snap toggle (N key, FCP7 standard)
+    toggleSnap: () => useCutEditorStore.getState().toggleSnap(),
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');

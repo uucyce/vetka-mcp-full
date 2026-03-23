@@ -109,8 +109,9 @@ export type CutHotkeyAction =
   | 'focusTimeline'
   | 'focusProject'
   | 'focusEffects'
-  // Linked selection
+  // Linked selection + Snap
   | 'toggleLinkedSelection'
+  | 'toggleSnap'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -220,6 +221,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   focusProject:        'global',
   focusEffects:        'global',
   toggleLinkedSelection: 'global',
+  toggleSnap:          'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -327,8 +329,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection
+  // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
+  toggleSnap:        'n',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -420,8 +423,9 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection (FCP7 standard: Shift+L)
+  // Linked selection (FCP7 standard: Shift+L) + Snap (N)
   toggleLinkedSelection: 'Shift+l',
+  toggleSnap:        'n',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -646,6 +650,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusTimeline', label: 'Focus Timeline', group: 'Window' },
   { action: 'focusProject', label: 'Focus Project Panel', group: 'Window' },
   { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
+  { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
+  { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
