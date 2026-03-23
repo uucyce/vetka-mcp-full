@@ -768,6 +768,79 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
         ),
     }
 
+    # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
+    # Collects: session role, tasks completed, files touched, CORTEX tool stats.
+    # Even if agent never answers debrief Qs, we get a baseline report.
+    try:
+        _passive_report_created = _create_passive_experience_report(
+            arguments, result,
+        )
+        if _passive_report_created:
+            result["passive_report"] = True
+    except Exception:
+        pass  # Passive metrics never block completion
+
+
+def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
+    """MARKER_196.6.3: Auto-create ExperienceReport from passive session data.
+
+    Collects metrics without requiring agent input:
+    - Role/domain from session tracker
+    - Task ID from completion
+    - Files touched from session tracker
+    - CORTEX tool success rates from REFLEX
+
+    Returns True if report was created.
+    """
+    import time as _t
+    from datetime import datetime, timezone
+
+    _tracker_sid = arguments.get("session_id") or "mcp_default"
+    task_id = arguments.get("task_id") or result.get("task_id", "")
+
+    # Get session state
+    from src.services.session_tracker import get_session_tracker
+    tracker = get_session_tracker()
+    session = tracker.get_session(_tracker_sid)
+
+    # Determine callsign/domain/branch from session role or task metadata
+    callsign = session.role_callsign or arguments.get("assigned_to") or "unknown"
+    domain = session.role_domain or ""
+    branch = session.role_branch or arguments.get("branch") or ""
+
+    # Build passive report
+    from src.services.experience_report import ExperienceReport, get_experience_store
+
+    report = ExperienceReport(
+        session_id=_tracker_sid,
+        agent_callsign=callsign,
+        domain=domain,
+        branch=branch,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        tasks_completed=[task_id] if task_id else [],
+        files_touched=list(session.files_edited)[:20],  # cap
+        commits=session.tasks_completed,
+    )
+
+    # Enrich with CORTEX tool stats
+    try:
+        from src.services.reflex_feedback import ReflexFeedback
+        fb = ReflexFeedback()
+        summary = fb.get_feedback_summary()
+        if summary and summary.get("total_entries", 0) > 0:
+            report.reflex_summary = {
+                "total_entries": summary["total_entries"],
+                "success_rate": summary.get("success_rate", 0),
+                "useful_rate": summary.get("useful_rate", 0),
+                "top_tools": list(summary.get("per_tool", {}).keys())[:5],
+            }
+    except Exception:
+        pass
+
+    store = get_experience_store()
+    store.submit(report)
+    return True
+
 
 def _detect_git_branch(cwd: str = None) -> str:
     """MARKER_186.4: Detect current git branch. Works in worktrees.
