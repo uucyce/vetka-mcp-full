@@ -545,3 +545,78 @@ async def cut_loudness_standards() -> dict[str, Any]:
     """MARKER_B17 — List available loudness standards with targets."""
     from src.services.cut_audio_engine import LOUDNESS_STANDARDS
     return {"success": True, "standards": LOUDNESS_STANDARDS}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B46: Audio normalization — LUFS-targeted loudnorm filter for export
+# ---------------------------------------------------------------------------
+
+
+class CutAudioNormalizeRequest(BaseModel):
+    source_path: str
+    standard: str = "youtube"  # youtube, ebu_r128, atsc_a85, netflix, podcast
+    target_lufs: float | None = None  # override standard target
+
+
+@media_router.post("/audio/normalize")
+async def cut_audio_normalize(body: CutAudioNormalizeRequest) -> dict[str, Any]:
+    """
+    MARKER_B46 — Compute loudnorm filter parameters for LUFS-targeted normalization.
+
+    Analyzes source audio, returns FFmpeg loudnorm filter string ready for
+    insertion into render pipeline. Two-pass approach: measure first, then
+    return linear normalization params.
+    """
+    from src.services.cut_audio_engine import analyze_loudness, LOUDNESS_STANDARDS
+
+    p = Path(body.source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    # Resolve target LUFS
+    std_config = LOUDNESS_STANDARDS.get(body.standard)
+    if body.target_lufs is not None:
+        target = body.target_lufs
+    elif std_config:
+        target = std_config["target_lufs"]
+    else:
+        return {"success": False, "error": f"unknown_standard: {body.standard}",
+                "available": list(LOUDNESS_STANDARDS.keys())}
+
+    max_tp = std_config["max_true_peak"] if std_config else -1.0
+
+    # Measure current loudness
+    measurement = analyze_loudness(str(p), standard=body.standard)
+    if not measurement.success:
+        return {"success": False, "error": "analysis_failed",
+                "detail": measurement.error}
+
+    # Build loudnorm filter string (FFmpeg two-pass)
+    # measured_I, measured_TP, measured_LRA, measured_thresh from first pass
+    loudnorm_filter = (
+        f"loudnorm=I={target:.1f}"
+        f":TP={max_tp:.1f}"
+        f":LRA=11"
+        f":measured_I={measurement.integrated_lufs:.1f}"
+        f":measured_TP={measurement.true_peak_dbfs:.1f}"
+        f":measured_LRA={measurement.lra:.1f}"
+        f":measured_thresh={measurement.integrated_lufs - 10:.1f}"
+        f":linear=true"
+    )
+
+    # Compute gain adjustment
+    gain_db = target - measurement.integrated_lufs
+
+    return {
+        "success": True,
+        "source_path": str(p),
+        "standard": body.standard,
+        "target_lufs": target,
+        "max_true_peak": max_tp,
+        "current_lufs": measurement.integrated_lufs,
+        "current_true_peak": measurement.true_peak_dbfs,
+        "current_lra": measurement.lra,
+        "gain_db": round(gain_db, 1),
+        "loudnorm_filter": loudnorm_filter,
+        "compliant": measurement.compliant,
+    }

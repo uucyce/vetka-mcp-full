@@ -420,6 +420,16 @@ class FilterGraphBuilder:
         filter_str = ";\n".join(f for f in filters if f)
         return input_args, filter_str
 
+    @staticmethod
+    def _has_animated_keyframes_static(clip: RenderClip) -> bool:
+        """Check if clip has keyframes with 2+ points on sendcmd-animatable params."""
+        ANIMATABLE = {"brightness.value", "contrast.value", "saturation.value",
+                      "gamma.value", "blur.sigma", "hue.degrees"}
+        for key, kfs in clip.keyframes.items():
+            if key in ANIMATABLE and len(kfs) >= 2:
+                return True
+        return False
+
     def _clip_video_filter(self, idx: int, clip: RenderClip) -> str:
         """Per-clip video: trim + effects + speed + reverse + frame_blend + label."""
         parts: list[str] = []
@@ -444,14 +454,42 @@ class FilterGraphBuilder:
             escaped = clip.lut_path.replace("'", "'\\''")
             parts.append(f"lut3d='{escaped}'")
 
-        # MARKER_B9 + B44: Insert video effects (with keyframe resolution)
+        # MARKER_B9 + B44 + B45: Insert video effects (with keyframe resolution)
         if clip.video_effects:
             from src.services.cut_effects_engine import (
                 compile_video_filters,
                 resolve_effect_params_at_time,
+                compile_keyframed_sendcmd,
             )
-            if clip.keyframes:
-                # MARKER_B44: Resolve keyframed params at clip midpoint for static render
+            has_animated_kfs = self._has_animated_keyframes_static(clip)
+            if clip.keyframes and has_animated_kfs:
+                # MARKER_B45: V2 — animated keyframes via sendcmd temp file
+                sendcmd_text = compile_keyframed_sendcmd(
+                    clip.video_effects, clip.keyframes, clip.duration_sec,
+                )
+                if sendcmd_text:
+                    import tempfile
+                    sendcmd_fd, sendcmd_path = tempfile.mkstemp(
+                        prefix=f"cut_sendcmd_{idx}_", suffix=".txt",
+                    )
+                    os.write(sendcmd_fd, sendcmd_text.encode("utf-8"))
+                    os.close(sendcmd_fd)
+                    # Track for cleanup
+                    if not hasattr(self.plan, "_sendcmd_paths"):
+                        self.plan._sendcmd_paths = []  # type: ignore[attr-defined]
+                    self.plan._sendcmd_paths.append(sendcmd_path)  # type: ignore[attr-defined]
+                    # Add sendcmd before effect filters, then static-resolved effects
+                    escaped = sendcmd_path.replace("'", "'\\''")
+                    parts.append(f"sendcmd=f='{escaped}'")
+                # Still add static filters (sendcmd modifies them dynamically)
+                mid_time = clip.duration_sec / 2.0
+                resolved_effects = [
+                    resolve_effect_params_at_time(e, clip.keyframes, mid_time)
+                    for e in clip.video_effects
+                ]
+                effect_filters = compile_video_filters(resolved_effects)
+            elif clip.keyframes:
+                # B44 V1 fallback: resolve at midpoint (non-animatable keyframes)
                 mid_time = clip.duration_sec / 2.0
                 resolved_effects = [
                     resolve_effect_params_at_time(e, clip.keyframes, mid_time)
@@ -1029,8 +1067,9 @@ def render_timeline(
     except OSError as exc:
         raise RuntimeError(f"FFmpeg launch failed: {exc}")
 
-    # MARKER_B43: Parse -progress pipe output for real % and speed
+    # MARKER_B43 + B45: Parse -progress pipe output for real % and speed
     cancelled = False
+    _last_speed_x = 0.0  # MARKER_B45: track encoding speed for ETA
     try:
         import selectors
         sel = selectors.DefaultSelector()
@@ -1062,11 +1101,27 @@ def render_timeline(
                         try:
                             out_us = int(line.split("=", 1)[1])
                             frac = min(out_us / total_duration_us, 1.0)
-                            _progress(0.3 + frac * 0.55, "Encoding...")
+                            # MARKER_B45: Include speed and ETA in progress message
+                            remaining_sec = 0.0
+                            if _last_speed_x > 0 and frac < 1.0:
+                                rendered_sec = out_us / 1_000_000
+                                remaining_media_sec = total_duration_sec - rendered_sec
+                                remaining_sec = remaining_media_sec / _last_speed_x
+                            msg = "Encoding..."
+                            if _last_speed_x > 0:
+                                msg = f"Encoding at {_last_speed_x:.1f}x"
+                                if remaining_sec > 0:
+                                    msg += f", ETA: {int(remaining_sec)}s"
+                            _progress(0.3 + frac * 0.55, msg)
                         except (ValueError, ZeroDivisionError):
                             pass
                     elif line.startswith("speed="):
-                        pass  # Available for ETA if needed
+                        # MARKER_B45: Parse encoding speed (e.g. "speed=2.34x")
+                        try:
+                            speed_str = line.split("=", 1)[1].strip().rstrip("x")
+                            _last_speed_x = float(speed_str) if speed_str != "N/A" else 0.0
+                        except (ValueError, IndexError):
+                            pass
             else:
                 # No data ready — just loop (selector handles timing)
                 pass
@@ -1089,6 +1144,14 @@ def render_timeline(
     if concat_path:
         try:
             os.remove(concat_path)
+        except OSError:
+            pass
+
+    # MARKER_B45: Cleanup sendcmd temp files
+    sendcmd_paths = getattr(plan, "_sendcmd_paths", [])
+    for sp in sendcmd_paths:
+        try:
+            os.remove(sp)
         except OSError:
             pass
 
