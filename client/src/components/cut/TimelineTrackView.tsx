@@ -22,6 +22,7 @@ import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
+import { EFFECT_APPLY_MAP } from './EffectsPanel';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -1094,7 +1095,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     setDropZone(null);
   }, []);
 
-  // MARKER_DND_STORE: Drop handler — reads text/cut-media-paths (JSON array) or single path
+  // MARKER_DND_STORE + B50: Drop handler — media paths OR effects
   const handleLaneDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
       event.preventDefault();
@@ -1103,6 +1104,28 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const laneH = rect.height;
       const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
       const dropTime = timeFromTrackClientX(event.clientX);
+
+      // MARKER_B50: Check for effect drop (application/x-cut-effect from EffectsPanel)
+      const effectData = event.dataTransfer.getData('application/x-cut-effect');
+      if (effectData) {
+        try {
+          const { id: effectId } = JSON.parse(effectData) as { id: string; name: string };
+          const params = EFFECT_APPLY_MAP[effectId];
+          if (params) {
+            // Find clip under drop cursor
+            const store = useCutEditorStore.getState();
+            const lane = store.lanes.find((l) => l.lane_id === laneId);
+            const clip = lane?.clips.find(
+              (c) => dropTime >= c.start_sec && dropTime <= c.start_sec + c.duration_sec,
+            );
+            if (clip) {
+              store.setClipEffects(clip.clip_id, params);
+            }
+          }
+        } catch { /* malformed effect data */ }
+        setDropZone(null);
+        return;
+      }
 
       // Read dragged media paths — prefer JSON array, fallback to single path
       let paths: string[] = [];
