@@ -158,6 +158,44 @@ class TestCompileKeyframedSendcmd:
 # ─── Integration: keyframed effects → FFmpeg filters ───
 
 
+# ─── sendcmd V2: animated keyframes detection ───
+
+
+class TestAnimatedKeyframeDetection:
+    def test_no_keyframes(self):
+        """No keyframes → not animated."""
+        from src.services.cut_render_engine import RenderClip, FilterGraphBuilder, RenderPlan
+        clip = RenderClip(source_path="/fake.mp4", keyframes={})
+        assert FilterGraphBuilder._has_animated_keyframes_static(clip) is False
+
+    def test_single_keyframe(self):
+        """Single keyframe → not animated (no interpolation needed)."""
+        from src.services.cut_render_engine import RenderClip, FilterGraphBuilder
+        clip = RenderClip(source_path="/fake.mp4", keyframes={
+            "brightness.value": [{"time_sec": 0, "value": 0.5}],
+        })
+        assert FilterGraphBuilder._has_animated_keyframes_static(clip) is False
+
+    def test_two_keyframes_animatable(self):
+        """Two keyframes on animatable param → animated."""
+        from src.services.cut_render_engine import RenderClip, FilterGraphBuilder
+        clip = RenderClip(source_path="/fake.mp4", keyframes={
+            "brightness.value": [
+                {"time_sec": 0, "value": 0.0},
+                {"time_sec": 2.0, "value": 0.5},
+            ],
+        })
+        assert FilterGraphBuilder._has_animated_keyframes_static(clip) is True
+
+    def test_non_animatable_param(self):
+        """Keyframes on non-animatable param → not animated."""
+        from src.services.cut_render_engine import RenderClip, FilterGraphBuilder
+        clip = RenderClip(source_path="/fake.mp4", keyframes={
+            "crop.x": [{"time_sec": 0, "value": 0}, {"time_sec": 2, "value": 100}],
+        })
+        assert FilterGraphBuilder._has_animated_keyframes_static(clip) is False
+
+
 class TestKeyframedCompileVideoFilters:
     def test_resolved_effect_compiles(self):
         """Keyframe-resolved brightness compiles to eq filter."""
