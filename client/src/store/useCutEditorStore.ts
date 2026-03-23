@@ -790,18 +790,16 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
     get().seek(currentTime + (maxEnd - minStart));
   },
+  // MARKER_UNDO_PASTE_ATTR: Route through applyTimelineOps
   pasteAttributes: () => {
-    const { clipboard, selectedClipIds, lanes } = get();
+    const { clipboard, selectedClipIds } = get();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const sourceEffects = clipboard[0].effects;
     if (!sourceEffects) return;
-    const newLanes = lanes.map((lane) => ({
-      ...lane,
-      clips: lane.clips.map((c) =>
-        selectedClipIds.has(c.clip_id) ? { ...c, effects: { ...sourceEffects } } : c,
-      ),
+    const ops = [...selectedClipIds].map((id) => ({
+      op: 'set_effects', clip_id: id, effects: sourceEffects,
     }));
-    set({ lanes: newLanes });
+    void get().applyTimelineOps(ops);
   },
 
   // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps
@@ -956,52 +954,37 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // L-cut: video ends at playhead, audio continues past. Creates dialogue overlap.
   // J-cut: audio starts at playhead position, video starts later. Audio leads video.
   // Both find clip under playhead, then trim only video lanes (L-cut) or only audio lanes (J-cut).
+  // MARKER_UNDO_SPLIT_EDIT: L-cut/J-cut via applyTimelineOps
   splitEditLCut: () => {
     const { lanes, currentTime, lockedLanes } = get();
-    // Find clips under playhead
-    const newLanes = lanes.map((lane) => {
-      if (lockedLanes.has(lane.lane_id)) return lane;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
       const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
-      if (!isVideo) return lane; // L-cut: only trim video, leave audio untouched
-      return {
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          // Clip spans playhead → split: keep left part only (video ends at playhead)
-          if (c.start_sec < currentTime && cEnd > currentTime) {
-            return [{ ...c, duration_sec: currentTime - c.start_sec }];
-          }
-          return [c];
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+      if (!isVideo) continue;
+      for (const c of lane.clips) {
+        if (c.start_sec < currentTime && c.start_sec + c.duration_sec > currentTime) {
+          ops.push({ op: 'trim_clip', clip_id: c.clip_id, duration_sec: currentTime - c.start_sec });
+        }
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
   splitEditJCut: () => {
     const { lanes, currentTime, lockedLanes } = get();
-    // J-cut: trim video to start at playhead, audio keeps its earlier start
-    const newLanes = lanes.map((lane) => {
-      if (lockedLanes.has(lane.lane_id)) return lane;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
       const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
-      if (!isVideo) return lane; // J-cut: only trim video start, leave audio untouched
-      return {
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          // Clip spans playhead → trim start: video starts at playhead
-          if (c.start_sec < currentTime && cEnd > currentTime) {
-            return [{
-              ...c,
-              start_sec: currentTime,
-              duration_sec: cEnd - currentTime,
-              source_in: (c.source_in ?? 0) + (currentTime - c.start_sec),
-            }];
-          }
-          return [c];
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+      if (!isVideo) continue;
+      for (const c of lane.clips) {
+        const cEnd = c.start_sec + c.duration_sec;
+        if (c.start_sec < currentTime && cEnd > currentTime) {
+          ops.push({ op: 'trim_clip', clip_id: c.clip_id, start_sec: currentTime, duration_sec: cEnd - currentTime });
+        }
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
@@ -1110,59 +1093,25 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
   // MARKER_W10.6: Per-clip effects
-  setClipEffects: (clipId, effects) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) =>
-          c.clip_id === clipId
-            ? { ...c, effects: { ...(c.effects ?? DEFAULT_CLIP_EFFECTS), ...effects } }
-            : c,
-        ),
-      })),
-    })),
-  resetClipEffects: (clipId) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) =>
-          c.clip_id === clipId ? { ...c, effects: undefined } : c,
-        ),
-      })),
-    })),
+  // MARKER_UNDO_EFFECTS: Effects + keyframes via applyTimelineOps
+  setClipEffects: (clipId, effects) => {
+    void get().applyTimelineOps([{ op: 'set_effects', clip_id: clipId, effects }]);
+  },
+  resetClipEffects: (clipId) => {
+    void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
+  },
 
-  // MARKER_KF67: Keyframe actions
-  addKeyframe: (clipId, property, timeSec, value) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) => {
-          if (c.clip_id !== clipId) return c;
-          const kfs = { ...(c.keyframes || {}) };
-          const arr = [...(kfs[property] || [])];
-          // Replace existing keyframe at same time or add new
-          const idx = arr.findIndex((k) => Math.abs(k.time_sec - timeSec) < 0.001);
-          const kf: Keyframe = { time_sec: timeSec, value, easing: 'linear' };
-          if (idx >= 0) arr[idx] = kf;
-          else arr.push(kf);
-          arr.sort((a, b) => a.time_sec - b.time_sec);
-          kfs[property] = arr;
-          return { ...c, keyframes: kfs };
-        }),
-      })),
-    })),
-  removeKeyframe: (clipId, property, timeSec) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) => {
-          if (c.clip_id !== clipId || !c.keyframes?.[property]) return c;
-          const arr = c.keyframes[property].filter((k) => Math.abs(k.time_sec - timeSec) > 0.001);
-          const kfs = { ...c.keyframes, [property]: arr };
-          return { ...c, keyframes: kfs };
-        }),
-      })),
-    })),
+  // MARKER_UNDO_KF: Keyframe actions via applyTimelineOps
+  addKeyframe: (clipId, property, timeSec, value) => {
+    void get().applyTimelineOps([{
+      op: 'add_keyframe', clip_id: clipId, property, time_sec: timeSec, value,
+    }]);
+  },
+  removeKeyframe: (clipId, property, timeSec) => {
+    void get().applyTimelineOps([{
+      op: 'remove_keyframe', clip_id: clipId, property, time_sec: timeSec,
+    }]);
+  },
   getKeyframeTimes: () => {
     const { lanes, lockedLanes } = get();
     const times = new Set<number>();
