@@ -710,7 +710,7 @@ export default function MenuBar() {
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
-        { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
+        // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },

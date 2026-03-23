@@ -18,7 +18,7 @@ export type PresetBuilder = (api: DockviewApi, scriptText: string) => void;
  * Navigation group: Project / Script / Graph
  * Analysis group: Inspector / Clip / History / StorySpace
  * Monitors: Source + Program
- * Effects group: Effects / Transitions (NO scopes/color/LUTs — Color workspace)
+ * Effects group: Effects panel (Transitions = category inside Effects, not separate tab)
  * Timeline: full-width bottom
  *
  * NOT in editing default: Montage (AI), Markers (Window menu), Mixer (Audio ws),
@@ -37,9 +37,8 @@ export function buildEditingLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
-  // Effects group (right of Analysis) — Effects + Transitions only in Editing
+  // Effects (right of Analysis) — Transitions is a category inside EffectsPanel (GAMMA-LAYOUT1)
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
   // Timeline (full-width bottom)
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   // Sizes
@@ -68,9 +67,8 @@ export function buildColorLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'colorcorrector', direction: 'within' } });
   // Below Color: Scopes
   api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'colorcorrector', direction: 'below' } });
-  // Effects below left
+  // Effects below left — Transitions is a category inside EffectsPanel (GAMMA-LAYOUT1)
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'project', direction: 'below' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
   // Timeline
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   try { api.getPanel('source')?.api.setSize({ width: 260 }); } catch { /* ok */ }
@@ -95,9 +93,8 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'inspector', component: 'inspector', title: 'Inspector', position: { referencePanel: 'project', direction: 'below' } });
   api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
-  // Effects right of analysis
+  // Effects right of analysis — Transitions is a category inside EffectsPanel (GAMMA-LAYOUT1)
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
   // Timeline — tall for waveform visibility
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
