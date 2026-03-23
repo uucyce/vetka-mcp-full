@@ -344,6 +344,93 @@
   border-color: var(--border-dim);
 }
 
+/* ═══ MARKER_GAMMA-B3: Professional NLE details ═════════════════════════ */
+
+/* ── Tool cursors (applied by Alpha on timeline container via data-tool) ── */
+[data-active-tool="selection"] { cursor: default; }
+[data-active-tool="razor"] { cursor: crosshair; }
+[data-active-tool="hand"] { cursor: grab; }
+[data-active-tool="hand"]:active { cursor: grabbing; }
+[data-active-tool="zoom"] { cursor: zoom-in; }
+[data-active-tool="zoom"].zoom-out { cursor: zoom-out; }
+[data-active-tool="ripple"] { cursor: col-resize; }
+[data-active-tool="roll"] { cursor: col-resize; }
+[data-active-tool="slip"] { cursor: ew-resize; }
+[data-active-tool="slide"] { cursor: ew-resize; }
+
+/* ── Toolbar tooltip with hotkey hint ── */
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ── Loading skeleton animation (for media import) ── */
+@keyframes cut-skeleton-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+[data-testid="cut-loading-skeleton"] {
+  background: #1a1a1a;
+  border-radius: 3px;
+  animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
+}
+[data-testid="cut-loading-skeleton-row"] {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+}
+[data-testid="cut-loading-skeleton-block"] {
+  background: #222;
+  border-radius: 2px;
+  animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Empty state panels (monochrome, professional) ── */
+[data-testid="cut-empty-state"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #555;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  text-align: center;
+  user-select: none;
+  gap: 8px;
+}
+[data-testid="cut-empty-state"] svg {
+  opacity: 0.3;
+  width: 48px;
+  height: 48px;
+}
+[data-testid="cut-empty-state"] span {
+  color: #444;
+  font-size: 11px;
+}
+
 /* ═══ MARKER_GAMMA-B2: Panel sizing + responsive ════════════════════════ */
 
 /* Monitor panels: maintain 16:9 aspect ratio */
