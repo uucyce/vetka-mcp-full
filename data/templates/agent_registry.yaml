@@ -145,8 +145,8 @@ roles:
   - callsign: "Zeta"
     domain: "harness"
     role_title: "Harness Engineer / Infrastructure"
-    worktree: ""
-    branch: "main"
+    worktree: "harness"
+    branch: "claude/harness"
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"

@@ -33,7 +33,7 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
-| `cd ~/Documents/VETKA_Project/vetka_live_03 && claude` | **Sigma/Zeta/...** | Cross-cutting | Инфра, REFLEX, pipeline |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | TaskBoard, MCP tools, CLAUDE.md gen, debrief pipeline, infra |
 
 Или одной строкой (копируй целиком):
 ```bash
@@ -55,8 +55,8 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 # Commander
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
 
-# Cross-cutting (Sigma/Zeta)
-cd ~/Documents/VETKA_Project/vetka_live_03 && claude
+# Zeta (Harness/Infrastructure)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
 ```
 
 Агент **автоматически** получает роль из `.claude/worktrees/<name>/CLAUDE.md`.
@@ -184,7 +184,8 @@ Commander запускает sous-chefs как background agents в изолир
 | Panels, menus, layout, dockview, workspace | Gamma | ux |
 | Тесты, E2E, Playwright, compliance | Delta | qa |
 | Docs, merge, координация, архитектура | Commander | architect |
-| REFLEX, pipeline, memory, инфра | (пусто) | (пусто) |
+| TaskBoard, MCP, debrief, CLAUDE.md gen, инфра | Zeta | harness |
+| REFLEX, pipeline, memory (cross-cutting) | (пусто) | (пусто) |
 
 ---
 
