@@ -286,6 +286,23 @@
   outline-offset: -1px;
 }
 
+/* MARKER_GAMMA-TAB1: Active tab differentiation — focused group gets brighter tab accent */
+.dockview-theme-dark .dv-groupview[data-focused] .dv-tab.dv-active-tab {
+  border-bottom: 2px solid #888 !important;
+  color: #eee;
+  background-color: #1e1e1e !important;
+}
+/* Inactive group active tab — subtler */
+.dockview-theme-dark .dv-groupview:not([data-focused]) .dv-tab.dv-active-tab {
+  border-bottom: 1px solid #444 !important;
+  color: #999;
+  background-color: #141414 !important;
+}
+/* Focused group tab container — slightly brighter bottom border */
+.dockview-theme-dark .dv-groupview[data-focused] > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid #333 !important;
+}
+
 /* ═══ MARKER_GAMMA-35: NUCLEAR — kill ALL remaining colored borders ══════ */
 /* Exhaustive override of every dockview element that could show color.     */
 

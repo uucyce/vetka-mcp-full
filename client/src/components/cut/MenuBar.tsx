@@ -23,6 +23,7 @@ import {
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 const SpeedControl = lazy(() => import('./SpeedControl'));
+import WorkspacePresets from './WorkspacePresets';
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -792,6 +793,9 @@ export default function MenuBar() {
             )}
           </div>
         ))}
+        {/* MARKER_GAMMA-WS1: Visual workspace picker — right-aligned */}
+        <div style={{ flex: 1 }} />
+        <WorkspacePresets />
       </div>
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
