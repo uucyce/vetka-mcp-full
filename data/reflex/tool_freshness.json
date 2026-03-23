@@ -539,15 +539,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454281+00:00",
+    "updated_at": "2026-03-23T04:36:20.016178+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454282+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016178+00:00"
       }
     ]
   },
@@ -555,15 +560,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454283+00:00",
+    "updated_at": "2026-03-23T04:36:20.016331+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454284+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016331+00:00"
       }
     ]
   },
@@ -571,15 +581,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454285+00:00",
+    "updated_at": "2026-03-23T04:36:20.016349+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454286+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016349+00:00"
       }
     ]
   },
@@ -587,15 +602,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454292+00:00",
+    "updated_at": "2026-03-23T04:36:20.016359+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454293+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016359+00:00"
       }
     ]
   },
@@ -603,15 +623,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454294+00:00",
+    "updated_at": "2026-03-23T04:36:20.016366+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454295+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016366+00:00"
       }
     ]
   },
@@ -619,15 +644,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454296+00:00",
+    "updated_at": "2026-03-23T04:36:20.016374+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454297+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016374+00:00"
       }
     ]
   },
@@ -635,15 +665,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454299+00:00",
+    "updated_at": "2026-03-23T04:36:20.016383+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454300+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016383+00:00"
       }
     ]
   },
@@ -651,15 +686,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454301+00:00",
+    "updated_at": "2026-03-23T04:36:20.016390+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454302+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016390+00:00"
       }
     ]
   },
@@ -667,15 +707,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454303+00:00",
+    "updated_at": "2026-03-23T04:36:20.016396+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454304+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016396+00:00"
       }
     ]
   },
@@ -683,15 +728,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454306+00:00",
+    "updated_at": "2026-03-23T04:36:20.016406+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454306+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016406+00:00"
       }
     ]
   },
@@ -699,15 +749,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454307+00:00",
+    "updated_at": "2026-03-23T04:36:20.016412+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454310+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016412+00:00"
       }
     ]
   },
@@ -715,15 +770,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454312+00:00",
+    "updated_at": "2026-03-23T04:36:20.016418+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454312+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016418+00:00"
       }
     ]
   },
@@ -731,15 +791,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454317+00:00",
+    "updated_at": "2026-03-23T04:36:20.016425+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454318+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016425+00:00"
       }
     ]
   },
@@ -747,15 +812,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454319+00:00",
+    "updated_at": "2026-03-23T04:36:20.016431+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454320+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016431+00:00"
       }
     ]
   },
@@ -763,15 +833,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454321+00:00",
+    "updated_at": "2026-03-23T04:36:20.016437+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454322+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016437+00:00"
       }
     ]
   },
@@ -779,15 +854,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454323+00:00",
+    "updated_at": "2026-03-23T04:36:20.016443+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454323+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016443+00:00"
       }
     ]
   },
@@ -795,15 +875,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454324+00:00",
+    "updated_at": "2026-03-23T04:36:20.016449+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454325+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016449+00:00"
       }
     ]
   },
@@ -811,15 +896,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454326+00:00",
+    "updated_at": "2026-03-23T04:36:20.016455+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454327+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016455+00:00"
       }
     ]
   },
@@ -827,15 +917,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454328+00:00",
+    "updated_at": "2026-03-23T04:36:20.016460+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454328+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016460+00:00"
       }
     ]
   },
@@ -843,15 +938,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454329+00:00",
+    "updated_at": "2026-03-23T04:36:20.016466+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454330+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016466+00:00"
       }
     ]
   },
@@ -859,15 +959,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454331+00:00",
+    "updated_at": "2026-03-23T04:36:20.016472+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454332+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016472+00:00"
       }
     ]
   },
@@ -875,15 +980,20 @@
     "source_files": [
       "src/mcp/vetka_mcp_bridge.py"
     ],
-    "current_epoch": 0,
-    "last_commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
+    "current_epoch": 1,
+    "last_commit": "7936a96d0449f704dec786802426e45683c2f3f2",
     "last_mtime": 0.0,
-    "updated_at": "2026-03-19T07:50:23.454333+00:00",
+    "updated_at": "2026-03-23T04:36:20.016478+00:00",
     "history": [
       {
         "epoch": 0,
         "commit": "53c2dff060ca45ad2efdd2bcccd200e1e0096613",
         "ts": "2026-03-19T07:50:23.454334+00:00"
+      },
+      {
+        "epoch": 1,
+        "commit": "7936a96d0449f704dec786802426e45683c2f3f2",
+        "ts": "2026-03-23T04:36:20.016478+00:00"
       }
     ]
   }

@@ -1376,14 +1376,14 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 0.0066928509242848554,
-    "trust": 0.20206792248151617,
+    "curiosity": 0.0003353501304664781,
+    "trust": 0.01523973854445445,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 15,
+    "usage_count": 21,
     "success_count": 6,
-    "failure_count": 9,
-    "last_updated": 1774161617.24673
+    "failure_count": 15,
+    "last_updated": 1774239933.043275
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -2374,5 +2374,38 @@
     "success_count": 3,
     "failure_count": 3,
     "last_updated": 1774158802.651608
+  },
+  "task_board": {
+    "tool_id": "task_board",
+    "curiosity": 0.0015011822567369917,
+    "trust": 0.16673238324117653,
+    "caution": 0.1,
+    "mood_label": "neutral",
+    "usage_count": 18,
+    "success_count": 3,
+    "failure_count": 15,
+    "last_updated": 1774239933.0611122
+  },
+  "__general_debrief__": {
+    "tool_id": "__general_debrief__",
+    "curiosity": 0.11920292202211755,
+    "trust": 0.8841915268583984,
+    "caution": 0.1,
+    "mood_label": "confident",
+    "usage_count": 9,
+    "success_count": 9,
+    "failure_count": 0,
+    "last_updated": 1774239933.054757
+  },
+  "Read": {
+    "tool_id": "Read",
+    "curiosity": 0.7310585786300049,
+    "trust": 0.1373125,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 3,
+    "success_count": 0,
+    "failure_count": 3,
+    "last_updated": 1774239933.044312
   }
 }
