@@ -351,14 +351,30 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setSelectedClip(null);
       s.clearSelection();
     },
-    splitClip: async () => {
+    // MARKER_SPLIT_LOCAL_FIRST: Local-first split for instant visual feedback
+    splitClip: () => {
       const s = useCutEditorStore.getState();
       const t = s.currentTime;
-      // Find clip under playhead to get its clip_id
       for (const lane of s.lanes) {
         for (const c of lane.clips) {
-          if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-            await s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }]);
+          if (t > c.start_sec + 0.01 && t < c.start_sec + c.duration_sec - 0.01) {
+            // Local-first: split into two halves instantly
+            const leftDur = t - c.start_sec;
+            const rightDur = c.duration_sec - leftDur;
+            const newLanes = s.lanes.map((l) => ({
+              ...l,
+              clips: l.clips.flatMap((cl) => {
+                if (cl.clip_id !== c.clip_id) return [cl];
+                return [
+                  { ...cl, clip_id: `${cl.clip_id}_L`, duration_sec: leftDur },
+                  { ...cl, clip_id: `${cl.clip_id}_R`, start_sec: t, duration_sec: rightDur,
+                    source_in: (cl.source_in ?? 0) + leftDur },
+                ];
+              }),
+            }));
+            s.setLanes(newLanes);
+            // Async backend with skipRefresh (local state is truth)
+            s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }], { skipRefresh: true }).catch(() => {});
             return;
           }
         }
