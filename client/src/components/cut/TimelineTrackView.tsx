@@ -2222,6 +2222,62 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               }]);
                             }}
                           >
+                            {/* MARKER_TR1: Drag handle on left edge to resize transition duration */}
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 5,
+                                cursor: 'ew-resize',
+                                zIndex: 5,
+                              }}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                event.preventDefault();
+                                const startX = event.clientX;
+                                const startDur = tx.duration_sec;
+                                const clipId = clip.clip_id;
+                                const txType = tx.type;
+                                const txAlign = tx.alignment;
+                                const zoomVal = zoom;
+
+                                const onMove = (e: MouseEvent) => {
+                                  const deltaPx = startX - e.clientX; // drag left = increase duration
+                                  const deltaSec = deltaPx / zoomVal;
+                                  const newDur = Math.max(0.04, startDur + deltaSec);
+                                  // Local-first visual update
+                                  const s = useCutEditorStore.getState();
+                                  const updated = s.lanes.map((l) => ({
+                                    ...l,
+                                    clips: l.clips.map((c) =>
+                                      c.clip_id === clipId && c.transition_out
+                                        ? { ...c, transition_out: { ...c.transition_out, duration_sec: newDur } }
+                                        : c
+                                    ),
+                                  }));
+                                  s.setLanes(updated);
+                                };
+
+                                const onUp = (e: MouseEvent) => {
+                                  window.removeEventListener('mousemove', onMove);
+                                  window.removeEventListener('mouseup', onUp);
+                                  const deltaPx = startX - e.clientX;
+                                  const deltaSec = deltaPx / zoomVal;
+                                  const newDur = Math.max(0.04, startDur + deltaSec);
+                                  if (Math.abs(newDur - startDur) > 0.01) {
+                                    void useCutEditorStore.getState().applyTimelineOps([{
+                                      op: 'set_transition', clip_id: clipId,
+                                      transition: { type: txType, duration_sec: newDur, alignment: txAlign },
+                                    }]);
+                                  }
+                                };
+
+                                window.addEventListener('mousemove', onMove);
+                                window.addEventListener('mouseup', onUp, { once: true });
+                              }}
+                            />
                             {/* Diamond icon + type label */}
                             {txWidth > 16 ? (
                               <span style={{
