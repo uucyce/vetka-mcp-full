@@ -2196,6 +2196,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         const txLabel = tx.type === 'cross_dissolve' ? 'XD'
                           : tx.type === 'dip_to_black' ? 'DB'
                           : 'W';
+                        // MARKER_TR2: Alignment label (S=start, C=center, E=end)
+                        const alignLabel = tx.alignment === 'start' ? 'S' : tx.alignment === 'end' ? 'E' : 'C';
+                        // MARKER_TR2: Position based on alignment
+                        // end-on-edit: right=0 (ends at cut). center: right=-half. start: right=-full.
+                        const alignRight = tx.alignment === 'center' ? -txWidth / 2
+                          : tx.alignment === 'start' ? -txWidth
+                          : 0;
                         const txGrad = tx.type === 'dip_to_black'
                           ? 'linear-gradient(to right, transparent 20%, rgba(0,0,0,0.6))'
                           : tx.type === 'wipe'
@@ -2206,7 +2213,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             data-testid={`transition-${clip.clip_id}`}
                             style={{
                               position: 'absolute',
-                              right: 0,
+                              right: alignRight,
                               top: 0,
                               bottom: 0,
                               width: txWidth,
@@ -2218,10 +2225,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
-                            title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
+                            title={`${tx.type.replace(/_/g, ' ')} [${alignLabel}] (${tx.duration_sec.toFixed(1)}s) — click=remove, right-click=type, shift+right-click=alignment`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              // MARKER_UNDO-FIX: Remove transition via backend op for undo support
                               void useCutEditorStore.getState().applyTimelineOps([{
                                 op: 'set_transition', clip_id: clip.clip_id, transition: null,
                               }]);
@@ -2229,14 +2235,25 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             onContextMenu={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              // Cycle transition type via backend op for undo support
-                              const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
-                              const curIdx = types.indexOf(tx.type);
-                              const nextType = types[(curIdx + 1) % types.length];
-                              void useCutEditorStore.getState().applyTimelineOps([{
-                                op: 'set_transition', clip_id: clip.clip_id,
-                                transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
-                              }]);
+                              if (event.shiftKey) {
+                                // MARKER_TR2: Shift+right-click = cycle alignment (start→center→end)
+                                const aligns: Array<'start' | 'center' | 'end'> = ['start', 'center', 'end'];
+                                const curIdx = aligns.indexOf(tx.alignment);
+                                const nextAlign = aligns[(curIdx + 1) % aligns.length];
+                                void useCutEditorStore.getState().applyTimelineOps([{
+                                  op: 'set_transition', clip_id: clip.clip_id,
+                                  transition: { type: tx.type, duration_sec: tx.duration_sec, alignment: nextAlign },
+                                }]);
+                              } else {
+                                // Right-click = cycle type (cross_dissolve→dip_to_black→wipe)
+                                const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
+                                const curIdx = types.indexOf(tx.type);
+                                const nextType = types[(curIdx + 1) % types.length];
+                                void useCutEditorStore.getState().applyTimelineOps([{
+                                  op: 'set_transition', clip_id: clip.clip_id,
+                                  transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
+                                }]);
+                              }
                             }}
                           >
                             {/* MARKER_TR1: Drag handle on left edge to resize transition duration */}
@@ -2296,6 +2313,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               }}
                             />
                             {/* Diamond icon + type label */}
+                            {/* MARKER_TR6: Duplicate frame indicator (FCP7 white dots) */}
+                            {(() => {
+                              const srcDur = (clip as any).source_duration as number | undefined;
+                              const srcIn = clip.source_in ?? 0;
+                              if (srcDur && srcDur > 0) {
+                                const availableHandle = srcDur - srcIn - clip.duration_sec;
+                                if (availableHandle < tx.duration_sec) {
+                                  return (
+                                    <div style={{
+                                      position: 'absolute', bottom: 2, left: 0, right: 0,
+                                      display: 'flex', justifyContent: 'center', gap: 2, pointerEvents: 'none',
+                                    }}>
+                                      {[0,1,2].map((i) => (
+                                        <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.8)' }} />
+                                      ))}
+                                    </div>
+                                  );
+                                }
+                              }
+                              return null;
+                            })()}
                             {txWidth > 16 ? (
                               <span style={{
                                 fontSize: 8,
@@ -2306,7 +2344,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 letterSpacing: 0.5,
                                 pointerEvents: 'none',
                               }}>
-                                {'◆ '}{txLabel}
+                                {'◆ '}{txLabel}{txWidth > 30 ? ` ${alignLabel}` : ''}
                               </span>
                             ) : null}
                           </div>
