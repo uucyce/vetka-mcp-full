@@ -376,7 +376,8 @@ export const FCP7_PRESET: HotkeyMap = {
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
   deleteClip:        'Delete',
-  splitClip:         'Ctrl+v',
+  // MARKER_CTRLV_FIX: FCP7 uses ⌘K for Add Edit, NOT Ctrl+V (collides with paste)
+  splitClip:         'Cmd+k',
   rippleDelete:      'Shift+Delete',
   selectAll:         'Cmd+a',
   copy:              'Cmd+c',

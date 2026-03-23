@@ -123,9 +123,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => { if (e.key === 'k' && !e.metaKey && !e.ctrlKey) kHeldRef.current = true; };
     const onUp = (e: KeyboardEvent) => { if (e.key === 'k') kHeldRef.current = false; };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+    // MARKER_K_CAPTURE: Use capture phase — dockview/timeline stopPropagation blocks bubble
+    window.addEventListener('keydown', onDown, { capture: true });
+    window.addEventListener('keyup', onUp, { capture: true });
+    return () => { window.removeEventListener('keydown', onDown, { capture: true }); window.removeEventListener('keyup', onUp, { capture: true }); };
   }, []);
 
   // ─── MARKER_196.1: Hotkey handlers ───
