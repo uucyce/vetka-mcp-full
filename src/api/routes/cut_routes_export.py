@@ -189,7 +189,7 @@ def _social_presets_manifest() -> dict[str, Any]:
 
 def _build_export_filename(sequence_name: str, fmt: str) -> str:
     safe_name = re.sub(r"[^a-zA-Z0-9._-]+", "_", sequence_name).strip("._-") or "vetka_cut_export"
-    ext_map = {"premiere_xml": ".xml", "fcpxml": ".fcpxml", "otio": ".otio.json", "edl": ".edl"}
+    ext_map = {"premiere_xml": ".xml", "fcpxml": ".fcpxml", "otio": ".otio.json", "edl": ".edl", "aaf": ".aaf.json"}
     return f"{safe_name}{ext_map.get(fmt, '.txt')}"
 
 
@@ -395,4 +395,164 @@ async def cut_export_markers_srt(body: CutMarkerSrtExportRequest) -> dict[str, A
         "project_id": body.project_id, "timeline_id": body.timeline_id,
         "marker_count": len(markers), "srt_content": srt_content,
         "export_path": str(out_path), "generated_at": _utc_now_iso(),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B49: AAF Export — Advanced Authoring Format for Pro Tools roundtrip
+# ---------------------------------------------------------------------------
+
+
+def _build_aaf_export(
+    project_name: str,
+    sequence_name: str,
+    clips: list[dict[str, Any]],
+    fps: int,
+    duration_sec: float,
+) -> dict[str, Any]:
+    """Build AAF-compatible JSON structure.
+
+    AAF (Advanced Authoring Format) is used for Premiere↔Pro Tools roundtrip.
+    This generates a structured representation that can be serialized to actual
+    AAF binary via pyaaf2 (if installed) or used as interchange JSON.
+
+    Structure: CompositionMob → TimelineMobSlot → Sequence → SourceClip[]
+    Each SourceClip references a MasterMob → SourceMob with file descriptor.
+    """
+    from uuid import uuid4
+
+    source_mobs = []
+    master_mobs = []
+    source_clips = []
+
+    for i, clip in enumerate(clips):
+        clip_name = str(clip.get("name") or f"clip_{i+1}")
+        source_path = str(clip.get("source_path") or "")
+        start = float(clip.get("start_sec") or 0.0)
+        dur = float(clip.get("duration_sec") or 0.0)
+        lane_id = str(clip.get("lane_id") or "V1")
+
+        mob_id = str(uuid4())
+        master_id = str(uuid4())
+
+        # SourceMob: points to physical file
+        source_mobs.append({
+            "mob_id": mob_id,
+            "name": clip_name,
+            "file_path": source_path,
+            "descriptor": {
+                "type": "FileDescriptor",
+                "media_kind": "video" if lane_id.startswith("V") or lane_id.startswith("v") else "sound",
+                "sample_rate": fps,
+                "length": int(dur * fps),
+            },
+        })
+
+        # MasterMob: editorial reference
+        master_mobs.append({
+            "mob_id": master_id,
+            "name": clip_name,
+            "source_mob_id": mob_id,
+            "slot": {
+                "slot_id": 1,
+                "edit_rate": fps,
+                "origin": 0,
+            },
+        })
+
+        # SourceClip in composition
+        source_clips.append({
+            "master_mob_id": master_id,
+            "slot_id": 1,
+            "start_time": int(start * fps),
+            "length": int(dur * fps),
+            "name": clip_name,
+            "track": lane_id,
+        })
+
+    return {
+        "aaf_schema": "vetka_aaf_interchange_v1",
+        "header": {
+            "project_name": project_name,
+            "edit_rate": fps,
+            "duration_frames": int(duration_sec * fps),
+        },
+        "composition_mob": {
+            "name": sequence_name,
+            "mob_id": str(uuid4()),
+            "slots": [
+                {
+                    "slot_id": 1,
+                    "track_name": "V1",
+                    "media_kind": "video",
+                    "edit_rate": fps,
+                    "sequence": {
+                        "components": [
+                            sc for sc in source_clips
+                            if sc["track"].startswith("V") or sc["track"].startswith("v")
+                        ],
+                    },
+                },
+                {
+                    "slot_id": 2,
+                    "track_name": "A1",
+                    "media_kind": "sound",
+                    "edit_rate": fps,
+                    "sequence": {
+                        "components": [
+                            sc for sc in source_clips
+                            if sc["track"].startswith("A") or sc["track"].startswith("a")
+                        ],
+                    },
+                },
+            ],
+        },
+        "master_mobs": master_mobs,
+        "source_mobs": source_mobs,
+    }
+
+
+@export_router.post("/export/aaf")
+async def cut_export_aaf(body: CutExportRequest) -> dict[str, Any]:
+    """
+    MARKER_B49 — Export timeline as AAF interchange format.
+    Returns JSON representation of AAF structure (CompositionMob + SourceMobs).
+    Can be consumed by pyaaf2 for binary AAF generation, or used directly
+    for Pro Tools / Premiere roundtrip via VETKA import.
+    """
+    if not body.sandbox_root or not body.project_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="sandbox_root and project_id required")
+
+    material = _collect_export_material(
+        store=CutProjectStore(body.sandbox_root),
+        project_id=body.project_id,
+        timeline_id=body.timeline_id,
+        include_archived_markers=body.include_archived_markers,
+    )
+
+    project = material["project"]
+    project_name = str(project.get("display_name") or project.get("project_name") or "VETKA_Project")
+    sequence_name = str(body.sequence_name or "VETKA_Sequence")
+
+    aaf_data = _build_aaf_export(
+        project_name, sequence_name, material["clips"],
+        int(body.fps), material["duration_sec"],
+    )
+
+    # Write to file
+    content = json.dumps(aaf_data, ensure_ascii=False, indent=2)
+    export_path = _write_export_artifact(
+        CutProjectStore(body.sandbox_root), "aaf", sequence_name, content,
+    )
+
+    return {
+        "success": True,
+        "schema_version": "cut_export_result_v1",
+        "format": "aaf",
+        "project_id": body.project_id,
+        "clip_count": len(material["clips"]),
+        "aaf_content": aaf_data,
+        "export_path": export_path,
+        "generated_at": _utc_now_iso(),
     }
