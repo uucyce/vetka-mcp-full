@@ -55,7 +55,7 @@ import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
-import SpeedControl from './SpeedControl';
+// SpeedControl removed — modal only (MenuBar handles it)
 import TransitionsPanel from './TransitionsPanel';
 import ToolsPalette from './ToolsPalette';
 // MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
@@ -82,7 +82,8 @@ const EffectsPanelDock = withErrorBoundary('Effects', EffectsPanel);
 const VideoScopesPanelDock = withErrorBoundary('Scopes', VideoScopes);
 const ColorCorrectorPanelDock = withErrorBoundary('Color', ColorCorrectionPanel);
 const LutBrowserPanelDock = withErrorBoundary('LUTs', LutBrowserPanel);
-const SpeedControlPanelDock = withErrorBoundary('Speed', SpeedControl);
+// MARKER_GAMMA-AUDIT: SpeedControl removed from dockview — it's a modal dialog (Cmd+J/⌘R)
+// SpeedControl mounted as Suspense modal in MenuBar.tsx (line 800+)
 const TransitionsPanelDock = withErrorBoundary('Transitions', TransitionsPanel);
 const ToolsPaletteDock = withErrorBoundary('Tools', ToolsPalette);
 
@@ -100,7 +101,7 @@ const PANEL_COMPONENTS = {
   scopes: VideoScopesPanelDock,
   colorcorrector: ColorCorrectorPanelDock,
   lutbrowser: LutBrowserPanelDock,
-  speed: SpeedControlPanelDock,
+  // speed: removed — SpeedControl is a modal dialog, not a dockview panel
   transitions: TransitionsPanelDock,
   tools: ToolsPaletteDock,
   markers: MarkerListPanel,

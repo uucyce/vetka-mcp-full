@@ -335,21 +335,43 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         phase_type = payload.get("phase_type", "")
         doc_exempt_types = ("research", "test")
 
-        if not arch_docs and not recon_docs and not force_no_docs and phase_type not in doc_exempt_types:
+        if not arch_docs and not recon_docs and phase_type not in doc_exempt_types:
             # Build search query from title + tags for better relevance
             tags = payload.get("tags") or []
             search_query = title + " " + " ".join(str(t) for t in tags)
             suggested = _suggest_docs_for_title(search_query)
-            return {
-                "success": False,
-                "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
-                         "Attach a doc or pass force_no_docs=true to bypass.",
-                "doc_gate": True,
-                "suggested_docs": suggested,
-                "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
-                        "Use force_no_docs=true ONLY if no relevant docs exist. "
-                        "Note: phase_type=research and phase_type=test are auto-exempt.",
-            }
+
+            if not force_no_docs:
+                return {
+                    "success": False,
+                    "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
+                             "Attach a doc or pass force_no_docs=true to bypass.",
+                    "doc_gate": True,
+                    "suggested_docs": suggested,
+                    "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
+                            "Use force_no_docs=true ONLY if no relevant docs exist. "
+                            "Note: phase_type=research and phase_type=test are auto-exempt.",
+                }
+            # MARKER_196.DOCGATE: Strict mode — block force_no_docs for fix/build
+            # when suggested_docs clearly shows relevant docs exist.
+            # Agent must attach docs, not bypass.
+            if suggested and len(suggested) >= 2 and phase_type in ("fix", "build"):
+                return {
+                    "success": False,
+                    "error": f"DOC_GATE STRICT: force_no_docs rejected — {len(suggested)} relevant docs found. "
+                             "For fix/build tasks, attach at least one doc from the list below.",
+                    "doc_gate": True,
+                    "strict_mode": True,
+                    "suggested_docs": suggested,
+                    "hint": "Re-call with architecture_docs=[...] or recon_docs=[...]. "
+                            "force_no_docs is only allowed when suggested_docs is empty or has <2 matches.",
+                }
+            # Allow bypass for tasks with 0-1 weak matches
+            if suggested:
+                logger.warning(
+                    "[DOC_GATE] force_no_docs accepted (weak match) for '%s': %s",
+                    title, suggested[:3],
+                )
 
         try:
             payload = apply_task_profile_defaults(payload)
@@ -386,7 +408,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             )
         except ValueError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
+        result = {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
+        # MARKER_196.DOCGATE: Surface warnings if force_no_docs was used
+        _dg_warnings = payload.get("_doc_gate_warnings")
+        if _dg_warnings:
+            result["doc_gate_warning"] = _dg_warnings[0]
+        return result
 
     elif action == "list":
         filter_status = arguments.get("filter_status")

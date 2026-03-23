@@ -534,92 +534,116 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
     global_scene_counter = 0
     scene_ids_used: list[str] = []
 
+    # MARKER_B56-FIX: Recursive walk (was os.scandir — flat, missed subdirs)
+    _all_media: list[str] = []
     if os.path.isdir(source_root):
-        for path in sorted(os.scandir(source_root), key=lambda e: e.name.lower()):
-            if not path.is_file():
-                continue
-            ext = os.path.splitext(path.name)[1].lower()
-            if ext not in video_ext and ext not in audio_ext:
-                continue
+        for dirpath, _dirs, files in os.walk(source_root):
+            for fname in sorted(files, key=str.lower):
+                ext_check = os.path.splitext(fname)[1].lower()
+                if ext_check in video_ext or ext_check in audio_ext:
+                    _all_media.append(os.path.join(dirpath, fname))
+    elif os.path.isfile(source_root):
+        # Single file passed as source_path
+        ext_check = os.path.splitext(source_root)[1].lower()
+        if ext_check in video_ext or ext_check in audio_ext:
+            _all_media.append(source_root)
 
-            # MARKER_189.2: Resolve real duration from media_index → ffprobe fallback → 5.0
-            mi_entry = media_index_files.get(path.path) or {}
-            full_duration = float(mi_entry.get("duration_sec") or 0)
-            if full_duration <= 0:
-                full_duration = probe_duration(path.path)
-            if full_duration <= 0:
-                full_duration = 5.0  # ultimate fallback
+    for file_path in _all_media:
+        path = SimpleNamespace(path=file_path, name=os.path.basename(file_path))
+        ext = os.path.splitext(path.name)[1].lower()
 
-            # MARKER_189.4: Use scanner segments to create per-segment clips
-            sm_item = scan_matrix_items.get(path.path) or {}
-            video_scan = sm_item.get("video_scan") or {}
-            audio_scan = sm_item.get("audio_scan") or {}
-            segments = video_scan.get("segments") or []
-            thumbnail_paths = video_scan.get("thumbnail_paths") or []
-            waveform_bins = audio_scan.get("waveform_bins") or []
+        # MARKER_189.2: Resolve real duration from media_index → ffprobe fallback → 5.0
+        mi_entry = media_index_files.get(path.path) or {}
+        full_duration = float(mi_entry.get("duration_sec") or 0)
+        if full_duration <= 0:
+            full_duration = probe_duration(path.path)
+        if full_duration <= 0:
+            full_duration = 5.0  # ultimate fallback
 
-            if ext in video_ext and len(segments) > 1:
-                # Multi-segment video: create one clip per detected scene segment
-                for seg_idx, seg in enumerate(segments):
-                    clip_counter += 1
-                    global_scene_counter += 1
-                    seg_start = float(seg.get("start_sec", 0))
-                    seg_end = float(seg.get("end_sec", 0))
-                    seg_dur = float(seg.get("duration_sec", 0)) or (seg_end - seg_start)
-                    if seg_dur <= 0:
-                        continue
-                    scene_id = str(seg.get("segment_id", "")) or f"scene_{global_scene_counter:02d}"
-                    if scene_id not in scene_ids_used:
-                        scene_ids_used.append(scene_id)
-                    thumb = ""
-                    if seg_idx < len(thumbnail_paths):
-                        thumb = thumbnail_paths[seg_idx]
-                    clip = {
-                        "clip_id": f"clip_{clip_counter:04d}",
-                        "record_id": f"record_{clip_counter:04d}",
-                        "scene_id": scene_id,
-                        "take_id": f"take_{clip_counter:04d}",
-                        "start_sec": round(timeline_cursor, 3),
-                        "duration_sec": round(seg_dur, 3),
-                        "source_path": path.path,
-                        "source_in": round(seg_start, 3),
-                        "source_out": round(seg_end, 3),
-                        "sync": None,
-                        "thumbnail_path": thumb,
-                    }
-                    timeline_cursor += seg_dur
-                    video_lane["clips"].append(clip)
-            else:
-                # Single-segment or audio-only: one clip per file
+        # MARKER_189.4: Use scanner segments to create per-segment clips
+        sm_item = scan_matrix_items.get(path.path) or {}
+        video_scan = sm_item.get("video_scan") or {}
+        audio_scan = sm_item.get("audio_scan") or {}
+        segments = video_scan.get("segments") or []
+        thumbnail_paths = video_scan.get("thumbnail_paths") or []
+        waveform_bins = audio_scan.get("waveform_bins") or []
+
+        if ext in video_ext and len(segments) > 1:
+            # Multi-segment video: create one clip per detected scene segment
+            for seg_idx, seg in enumerate(segments):
                 clip_counter += 1
                 global_scene_counter += 1
-                scene_id = f"scene_{global_scene_counter:02d}"
+                seg_start = float(seg.get("start_sec", 0))
+                seg_end = float(seg.get("end_sec", 0))
+                seg_dur = float(seg.get("duration_sec", 0)) or (seg_end - seg_start)
+                if seg_dur <= 0:
+                    continue
+                scene_id = str(seg.get("segment_id", "")) or f"scene_{global_scene_counter:02d}"
                 if scene_id not in scene_ids_used:
                     scene_ids_used.append(scene_id)
-                thumb = thumbnail_paths[0] if thumbnail_paths else ""
+                thumb = ""
+                if seg_idx < len(thumbnail_paths):
+                    thumb = thumbnail_paths[seg_idx]
                 clip = {
                     "clip_id": f"clip_{clip_counter:04d}",
                     "record_id": f"record_{clip_counter:04d}",
                     "scene_id": scene_id,
                     "take_id": f"take_{clip_counter:04d}",
                     "start_sec": round(timeline_cursor, 3),
-                    "duration_sec": round(full_duration, 3),
+                    "duration_sec": round(seg_dur, 3),
                     "source_path": path.path,
+                    "source_in": round(seg_start, 3),
+                    "source_out": round(seg_end, 3),
                     "sync": None,
                     "thumbnail_path": thumb,
                 }
-                if waveform_bins:
-                    clip["waveform_bins"] = waveform_bins
-                timeline_cursor += full_duration
-                if ext in video_ext:
-                    video_lane["clips"].append(clip)
-                else:
-                    audio_lane["clips"].append(clip)
+                timeline_cursor += seg_dur
+                video_lane["clips"].append(clip)
+        else:
+            # Single-segment or audio-only: one clip per file
+            clip_counter += 1
+            global_scene_counter += 1
+            scene_id = f"scene_{global_scene_counter:02d}"
+            if scene_id not in scene_ids_used:
+                scene_ids_used.append(scene_id)
+            thumb = thumbnail_paths[0] if thumbnail_paths else ""
+            clip = {
+                "clip_id": f"clip_{clip_counter:04d}",
+                "record_id": f"record_{clip_counter:04d}",
+                "scene_id": scene_id,
+                "take_id": f"take_{clip_counter:04d}",
+                "start_sec": round(timeline_cursor, 3),
+                "duration_sec": round(full_duration, 3),
+                "source_path": path.path,
+                "sync": None,
+                "thumbnail_path": thumb,
+            }
+            if waveform_bins:
+                clip["waveform_bins"] = waveform_bins
+            timeline_cursor += full_duration
+            if ext in video_ext:
+                video_lane["clips"].append(clip)
+            else:
+                audio_lane["clips"].append(clip)
 
     if video_lane["clips"]:
         lanes.append(video_lane)
     if audio_lane["clips"]:
         lanes.append(audio_lane)
+
+    # MARKER_B55: Auto-detect FPS from first video clip (like Premiere Pro)
+    detected_fps = 25.0  # default fallback
+    if video_lane["clips"]:
+        first_clip_path = video_lane["clips"][0].get("source_path", "")
+        if first_clip_path:
+            try:
+                probe_result = probe_file(first_clip_path)
+                if probe_result.ok and probe_result.video_streams:
+                    raw_fps = probe_result.video_streams[0].fps
+                    if raw_fps > 0:
+                        detected_fps = round(raw_fps, 3)
+            except Exception:
+                pass  # fallback to 25
 
     first_scene = scene_ids_used[0] if scene_ids_used else ""
     return {
@@ -627,7 +651,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
         "project_id": str(project.get("project_id") or ""),
         "timeline_id": str(timeline_id or "main"),
         "revision": 1,
-        "fps": 25,
+        "fps": detected_fps,
         "lanes": lanes,
         "selection": {
             "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],

@@ -130,13 +130,40 @@ const RECENT_ITEM: CSSProperties = {
   marginBottom: 2,
 };
 
-// ─── Presets ───
+// ─── FPS + Resolution presets (FCP7 / Premiere industry standard) ───
 
-const PROJECT_PRESETS = [
-  { id: 'film', label: 'Film (24fps, ProRes)' },
-  { id: 'web', label: 'Web (30fps, H.264)' },
-  { id: 'social', label: 'Social (30fps, 1080p vertical)' },
+const STANDARD_FRAMERATES = [
+  { fps: 23.976, label: '23.976', desc: 'Film (NTSC pulldown)' },
+  { fps: 24,     label: '24',     desc: 'Cinema standard' },
+  { fps: 25,     label: '25',     desc: 'PAL / European broadcast' },
+  { fps: 29.97,  label: '29.97',  desc: 'NTSC broadcast' },
+  { fps: 30,     label: '30',     desc: 'Web / progressive' },
+  { fps: 48,     label: '48',     desc: 'HFR cinema (The Hobbit)' },
+  { fps: 50,     label: '50',     desc: 'PAL high frame rate' },
+  { fps: 59.94,  label: '59.94',  desc: 'NTSC high frame rate' },
+  { fps: 60,     label: '60',     desc: 'Web / gaming / sports' },
 ];
+
+const RESOLUTION_PRESETS = [
+  { id: '4k',      w: 3840, h: 2160, label: '4K UHD',     ratio: '16:9' },
+  { id: '4k_dci',  w: 4096, h: 2160, label: '4K DCI',     ratio: '1.9:1' },
+  { id: '1080p',   w: 1920, h: 1080, label: '1080p HD',   ratio: '16:9' },
+  { id: '720p',    w: 1280, h: 720,  label: '720p HD',    ratio: '16:9' },
+  { id: '1080v',   w: 1080, h: 1920, label: '1080 Vert.', ratio: '9:16' },
+  { id: '1080sq',  w: 1080, h: 1080, label: '1080 Sq.',   ratio: '1:1' },
+];
+
+const SELECT_STYLE: CSSProperties = {
+  width: '100%',
+  padding: '6px 8px',
+  background: '#0a0a0a',
+  border: '1px solid #333',
+  borderRadius: 4,
+  color: '#ccc',
+  fontSize: 11,
+  outline: 'none',
+  marginBottom: 8,
+};
 
 // ─── Component ───
 
@@ -147,13 +174,17 @@ interface WelcomeScreenProps {
 
 export default function WelcomeScreen({ onCreateProject, onOpenProject }: WelcomeScreenProps) {
   const [projectName, setProjectName] = useState('');
-  const [preset, setPreset] = useState('film');
+  const [fps, setFps] = useState(24);
+  const [resolution, setResolution] = useState('1080p');
+  const [customFps, setCustomFps] = useState('');
   const [recentProjects] = useState(loadRecent);
 
   const handleCreate = useCallback(() => {
     const name = projectName.trim() || 'Untitled';
+    const res = RESOLUTION_PRESETS.find((r) => r.id === resolution) || RESOLUTION_PRESETS[2];
+    const preset = `${res.w}x${res.h}@${fps}`;
     onCreateProject(name, preset);
-  }, [projectName, preset, onCreateProject]);
+  }, [projectName, fps, resolution, onCreateProject]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') handleCreate();
@@ -176,26 +207,59 @@ export default function WelcomeScreen({ onCreateProject, onOpenProject }: Welcom
           style={INPUT}
           autoFocus
         />
-        <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
-          {PROJECT_PRESETS.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPreset(p.id)}
-              style={{
-                flex: 1,
-                padding: '4px',
-                background: preset === p.id ? '#222' : '#111',
-                border: `1px solid ${preset === p.id ? '#555' : '#333'}`,
-                borderRadius: 3,
-                color: preset === p.id ? '#ccc' : '#666',
-                fontSize: 9,
-                cursor: 'pointer',
-              }}
+        {/* Resolution */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 8, color: '#555', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Resolution</div>
+            <select
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              style={SELECT_STYLE}
             >
-              {p.label}
-            </button>
-          ))}
+              {RESOLUTION_PRESETS.map((r) => (
+                <option key={r.id} value={r.id}>{r.label} ({r.w}x{r.h})</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 8, color: '#555', marginBottom: 3, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Frame Rate</div>
+            <select
+              value={fps}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (v === -1) return; // custom — handled below
+                setFps(v);
+                setCustomFps('');
+              }}
+              style={SELECT_STYLE}
+            >
+              {STANDARD_FRAMERATES.map((f) => (
+                <option key={f.fps} value={f.fps}>{f.label} fps — {f.desc}</option>
+              ))}
+              <option value={-1}>Custom...</option>
+            </select>
+          </div>
         </div>
+        {/* Custom FPS input */}
+        {fps === -1 || (customFps !== '' && !STANDARD_FRAMERATES.some((f) => f.fps === fps)) ? (
+          <div style={{ marginBottom: 8 }}>
+            <input
+              type="number"
+              min={1}
+              max={120}
+              step={0.001}
+              placeholder="Custom fps (1-120)..."
+              value={customFps}
+              onChange={(e) => {
+                setCustomFps(e.target.value);
+                const v = parseFloat(e.target.value);
+                if (!isNaN(v) && v >= 1 && v <= 120) setFps(v);
+              }}
+              style={{ ...INPUT, marginBottom: 0 }}
+            />
+            <div style={{ fontSize: 8, color: '#444', marginTop: 2 }}>Backend accepts 1-120 fps</div>
+          </div>
+        ) : null}
         <button style={BTN_PRIMARY} onClick={handleCreate}>
           Create Project
         </button>
