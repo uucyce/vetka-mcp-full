@@ -65,6 +65,8 @@ export type CutHotkeyAction =
   | 'slideTool'
   | 'rippleTool'
   | 'rollTool'
+  | 'handTool'
+  | 'zoomTool'
   // Markers
   | 'addMarker'
   | 'addComment'
@@ -174,6 +176,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   slideTool:           'global',
   rippleTool:          'global',
   rollTool:            'global',
+  handTool:            'global',
+  zoomTool:            'global',
 
   // Navigation — timeline/program
   prevEditPoint:       'global',
@@ -307,6 +311,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   slideTool:         'u',
   rippleTool:        'b',
   rollTool:          'n',
+  handTool:          'h',
+  zoomTool:          'z',
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
@@ -405,6 +411,8 @@ export const FCP7_PRESET: HotkeyMap = {
   slideTool:         'u',
   rippleTool:        'r',
   rollTool:          'Shift+r',
+  handTool:          'h',
+  zoomTool:          'z',
   // Markers
   addMarker:         'm',
   addComment:        'Shift+m',
@@ -623,6 +631,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },
   { action: 'rippleTool', label: 'Ripple Edit Tool', group: 'Tools' },
   { action: 'rollTool', label: 'Roll Edit Tool', group: 'Tools' },
+  { action: 'handTool', label: 'Hand Tool (H)', group: 'Tools' },
+  { action: 'zoomTool', label: 'Zoom Tool (Z)', group: 'Tools' },
   // Markers
   { action: 'addMarker', label: 'Add Marker', group: 'Markers' },
   { action: 'addComment', label: 'Add Comment Marker', group: 'Markers' },

@@ -771,6 +771,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setActiveTool(s.activeTool === 'ripple' ? 'roll' : 'ripple');
     },
     rollTool: () => useCutEditorStore.getState().setActiveTool('roll'),
+    // MARKER_FCP7_CH19: Hand + Zoom tools
+    handTool: () => useCutEditorStore.getState().setActiveTool('hand'),
+    zoomTool: () => useCutEditorStore.getState().setActiveTool('zoom'),
 
     // View
     zoomIn: () => { const s = useCutEditorStore.getState(); s.setZoom(Math.min(s.zoom * 1.25, 500)); },
