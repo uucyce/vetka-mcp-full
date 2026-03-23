@@ -24,6 +24,7 @@ import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 import DockviewLayout from './DockviewLayout';
+import { useDockviewStore } from '../../store/useDockviewStore';
 import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
@@ -85,6 +86,18 @@ interface CutEditorLayoutV2Props {
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   // ─── MARKER_W4.3: Autosave + manual save ───
   const { saveProject } = useCutAutosave();
+
+  // ─── MARKER_INSPECTOR_SYNC: Auto-activate Clip tab when a clip is selected ───
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  useEffect(() => {
+    if (!selectedClipId) return;
+    const api = useDockviewStore.getState().apiRef;
+    if (!api) return;
+    try {
+      const clipPanel = api.getPanel('clip');
+      if (clipPanel) clipPanel.api.setActive();
+    } catch { /* panel not found */ }
+  }, [selectedClipId]);
 
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
   const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
