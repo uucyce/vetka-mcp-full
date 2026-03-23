@@ -508,6 +508,21 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not current_branch:
             current_branch = _detect_git_branch(cwd=worktree_path)
 
+        # MARKER_195.22: Auto-infer branch from task role/assigned_to via AgentRegistry
+        # Prevents merge_request failures due to missing branch_name
+        if not current_branch or current_branch == "main":
+            try:
+                from src.services.agent_registry import get_agent_registry
+                registry = get_agent_registry()
+                _role = task.get("role") or task.get("assigned_to") or ""
+                if _role:
+                    agent_role = registry.get_by_callsign(_role.capitalize())
+                    if agent_role and agent_role.branch and agent_role.branch != "main":
+                        current_branch = agent_role.branch
+                        logger.info(f"[TaskBoard] Auto-inferred branch={current_branch} from role={_role}")
+            except Exception as e:
+                logger.debug(f"[TaskBoard] Branch inference from registry failed: {e}")
+
         # MARKER_192.2: execution_mode override for manual agents
         exec_mode = arguments.get("execution_mode")
 
