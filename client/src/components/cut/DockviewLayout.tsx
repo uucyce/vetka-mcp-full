@@ -297,6 +297,65 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     return () => document.removeEventListener('keydown', handler);
   }, [toggleMaximize]);
 
+  // MARKER_GAMMA-NAV1: Panel focus shortcuts + cycle + Tab toggle
+  useEffect(() => {
+    const PANEL_SHORTCUTS: Record<string, string> = {
+      '1': 'source', '2': 'program', '3': 'timeline', '4': 'project', '5': 'effects',
+      '6': 'inspector', '7': 'mixer', '8': 'scopes', '9': 'markers',
+    };
+    const CYCLE_PANELS = ['source', 'program', 'timeline', 'project', 'effects', 'inspector'];
+
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement)?.isContentEditable) return;
+      const api = apiRef.current;
+      if (!api) return;
+
+      // Cmd+1-9: focus specific panel
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && PANEL_SHORTCUTS[e.key]) {
+        e.preventDefault();
+        const panelId = PANEL_SHORTCUTS[e.key];
+        try {
+          const panel = api.getPanel(panelId);
+          if (panel) panel.api.setActive();
+        } catch { /* panel not found */ }
+        return;
+      }
+
+      // Cmd+[ / Cmd+]: cycle panels
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === '[' || e.key === ']')) {
+        e.preventDefault();
+        const activePanel = api.activePanel;
+        if (!activePanel) return;
+        const currentIdx = CYCLE_PANELS.indexOf(activePanel.id);
+        if (currentIdx === -1) return;
+        const dir = e.key === ']' ? 1 : -1;
+        const nextIdx = (currentIdx + dir + CYCLE_PANELS.length) % CYCLE_PANELS.length;
+        try {
+          const nextPanel = api.getPanel(CYCLE_PANELS[nextIdx]);
+          if (nextPanel) nextPanel.api.setActive();
+        } catch { /* ok */ }
+        return;
+      }
+
+      // Tab: toggle Source ↔ Program (FCP7 classic Q key also does this via hotkeys)
+      if (e.key === 'Tab' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        const focused = useCutEditorStore.getState().focusedPanel;
+        if (focused === 'source' || focused === 'program') {
+          e.preventDefault();
+          const target = focused === 'source' ? 'program' : 'source';
+          try {
+            const panel = api.getPanel(target);
+            if (panel) panel.api.setActive();
+          } catch { /* ok */ }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
+
   // MARKER_GAMMA-R5.1: Hotkey visual feedback — show action name toast on shortcut activation
   useEffect(() => {
     // Build a lookup: action name → human label
@@ -352,6 +411,29 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
   // MARKER_GAMMA-15: Panel tab context menu
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; panelId: string } | null>(null);
+
+  // MARKER_GAMMA-NAV2: Double-click tab → toggle float
+  useEffect(() => {
+    const onDblClick = (e: MouseEvent) => {
+      const tab = (e.target as HTMLElement).closest?.('.dv-tab') as HTMLElement | null;
+      if (!tab) return;
+      const api = apiRef.current;
+      if (!api) return;
+      const tabText = tab.textContent?.trim().toUpperCase() || '';
+      for (const p of api.panels) {
+        if (p.title?.toUpperCase() === tabText || p.id.toUpperCase() === tabText) {
+          try {
+            (api as any).addFloatingGroup?.(p, {
+              x: 100, y: 100, width: 500, height: 400,
+            });
+          } catch { /* floating API may not be available */ }
+          return;
+        }
+      }
+    };
+    document.addEventListener('dblclick', onDblClick);
+    return () => document.removeEventListener('dblclick', onDblClick);
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
