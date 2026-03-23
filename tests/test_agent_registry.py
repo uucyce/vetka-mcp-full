@@ -36,8 +36,8 @@ def registry():
 
 
 class TestRegistryLoading:
-    def test_loads_all_five_roles(self, registry):
-        assert len(registry.roles) == 5
+    def test_loads_all_six_roles(self, registry):
+        assert len(registry.roles) == 6
 
     def test_version_and_project(self, registry):
         assert registry.version == "1.0"
@@ -45,7 +45,7 @@ class TestRegistryLoading:
 
     def test_all_callsigns_present(self, registry):
         callsigns = {r.callsign for r in registry.roles}
-        assert callsigns == {"Alpha", "Beta", "Gamma", "Delta", "Commander"}
+        assert callsigns == {"Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Commander"}
 
     def test_all_domains_present(self, registry):
         domains = {r.domain for r in registry.roles}

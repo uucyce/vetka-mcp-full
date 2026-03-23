@@ -203,9 +203,9 @@ class TestPendingTasks:
 
 class TestFileWrites:
     def test_dry_run_generates_all(self, registry):
-        """generate_all with dry_run=True returns content for all 5 roles."""
+        """generate_all with dry_run=True returns content for all 6 roles."""
         results = generate_all(dry_run=True)
-        assert len(results) == 5
+        assert len(results) == 6
         assert "Alpha" in results
         assert "Beta" in results
         assert "Commander" in results
@@ -221,9 +221,9 @@ class TestFileWrites:
 
     def test_generate_all_writes_files(self, tmp_path):
         results = generate_all(dry_run=False, output_base=tmp_path)
-        assert len(results) == 5
+        assert len(results) == 6
         # Verify files on disk
-        for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "pedantic-bell"]:
+        for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "cut-qa-2", "pedantic-bell"]:
             path = tmp_path / role_name / "CLAUDE.md"
             assert path.exists(), f"Missing: {path}"
             content = path.read_text()
