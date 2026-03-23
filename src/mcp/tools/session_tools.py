@@ -677,6 +677,17 @@ class SessionInitTool(BaseMCPTool):
                     _role_ctx["shared_zones"] = _shared
 
                 context["role_context"] = _role_ctx
+
+                # MARKER_195.22: Auto-regenerate CLAUDE.md for this role on every session_init.
+                # Prevents stale files from merge overwrites — the #1 recurring bug (5 days running).
+                # Writes to both worktree and ~/.claude/projects/ (dual-write).
+                try:
+                    from src.tools.generate_claude_md import write_claude_md
+                    write_claude_md(_role.callsign, registry=_reg)
+                    logger.debug(f"[SessionInit] Auto-regenerated CLAUDE.md for {_role.callsign}")
+                except Exception as _gen_err:
+                    logger.debug(f"[SessionInit] CLAUDE.md regen failed (non-fatal): {_gen_err}")
+
         except Exception:
             pass  # Role context never blocks session init
 
