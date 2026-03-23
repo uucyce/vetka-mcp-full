@@ -470,6 +470,77 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
     },
 
+    // MARKER_TL1: Fit to Fill — speed-adjust source to fill sequence range (Shift+F11)
+    // FCP7 Ch.11 p.165: source duration ÷ sequence duration = speed ratio
+    fitToFill: async () => {
+      const s = useCutEditorStore.getState();
+      const srcIn = s.sourceMarkIn ?? 0;
+      const srcOut = s.sourceMarkOut;
+      const seqIn = s.sequenceMarkIn ?? s.currentTime;
+      const seqOut = s.sequenceMarkOut;
+      if (srcOut == null || seqOut == null) return; // need both source and sequence OUT
+      const srcDur = srcOut - srcIn;
+      const seqDur = seqOut - seqIn;
+      if (srcDur <= 0 || seqDur <= 0) return;
+      const speed = srcDur / seqDur; // source 3s into 6s range = 0.5x speed
+      let srcPath = s.sourceMediaPath;
+      if (!srcPath) {
+        for (const lane of s.lanes) {
+          const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+          if (c) { srcPath = c.source_path; break; }
+        }
+      }
+      if (!srcPath) return;
+      const { videoLaneId } = s.getInsertTargets();
+      if (!videoLaneId) return;
+      const newClipId = `clip_ftf_${Date.now()}`;
+      // Local-first: insert clip with speed
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== videoLaneId) return lane;
+        const clips = [...lane.clips, {
+          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+          duration_sec: seqDur, source_in: srcIn, speed,
+        } as any];
+        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+        return { ...lane, clips };
+      });
+      s.setLanes(newLanes);
+      s.seek(seqIn + seqDur);
+      // Also try backend
+      void s.applyTimelineOps([{
+        op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn,
+        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId,
+      }]);
+    },
+
+    // MARKER_TL2: Superimpose — add clip on V2 above current clip (F12)
+    // FCP7 Ch.11 p.167: places source clip on next higher video track at playhead
+    superimpose: () => {
+      const s = useCutEditorStore.getState();
+      const srcIn = s.sourceMarkIn ?? 0;
+      const srcOut = s.sourceMarkOut ?? srcIn + 2;
+      const dur = srcOut - srcIn;
+      if (dur <= 0) return;
+      let srcPath = s.sourceMediaPath;
+      if (!srcPath) return;
+      // Find V2 (or next video lane above V1)
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
+      const targetLane = videoLanes.length > 1 ? videoLanes[1] : videoLanes[0];
+      if (!targetLane) return;
+      const seqIn = s.currentTime;
+      const newClipId = `clip_super_${Date.now()}`;
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== targetLane.lane_id) return lane;
+        const clips = [...lane.clips, {
+          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+          duration_sec: dur, source_in: srcIn,
+        } as any];
+        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+        return { ...lane, clips };
+      });
+      s.setLanes(newLanes);
+    },
+
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {
       const s = useCutEditorStore.getState();
