@@ -422,6 +422,77 @@ async def cut_audio_clip_segment(
     )
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B42: Batch audio segment extraction for timeline playback
+# ---------------------------------------------------------------------------
+
+
+class CutAudioBatchSegment(BaseModel):
+    clip_id: str = ""
+    source_path: str
+    start_sec: float = 0.0
+    duration_sec: float = 10.0
+
+
+class CutAudioBatchRequest(BaseModel):
+    segments: list[CutAudioBatchSegment]
+    sample_rate: int = 44100
+    channels: int = 2
+
+
+@media_router.post("/audio/clip-segments-batch")
+async def cut_audio_clip_segments_batch(body: CutAudioBatchRequest) -> dict[str, Any]:
+    """
+    MARKER_B42 — Batch audio segment extraction for timeline playback.
+    Accepts up to 8 segments, extracts in parallel via ThreadPoolExecutor.
+    Returns per-clip WAV as base64 JSON (avoids N sequential HTTP requests).
+    """
+    import asyncio
+    from src.services.cut_ffmpeg_waveform import extract_audio_wav_segments_batch
+
+    if not body.segments:
+        return {"success": True, "segments": [], "count": 0}
+
+    if len(body.segments) > 8:
+        return {"success": False, "error": "max_8_segments_per_batch"}
+
+    seg_dicts = [
+        {"clip_id": s.clip_id, "source_path": s.source_path,
+         "start_sec": s.start_sec, "duration_sec": s.duration_sec}
+        for s in body.segments
+    ]
+
+    # Run in thread pool to not block event loop (FFmpeg subprocess calls)
+    loop = asyncio.get_running_loop()
+    results = await loop.run_in_executor(
+        None,
+        lambda: extract_audio_wav_segments_batch(
+            seg_dicts,
+            sample_rate=max(8000, min(48000, body.sample_rate)),
+            channels=max(1, min(2, body.channels)),
+        ),
+    )
+
+    # Encode WAV bytes to base64 for JSON transport
+    response_segments = []
+    for r in results:
+        entry: dict[str, Any] = {"clip_id": r["clip_id"], "success": r["success"]}
+        if r["success"] and r.get("wav_bytes"):
+            entry["wav_base64"] = base64.b64encode(r["wav_bytes"]).decode("ascii")
+            entry["size_bytes"] = len(r["wav_bytes"])
+        else:
+            entry["wav_base64"] = None
+            entry["error"] = r.get("error", "unknown")
+        response_segments.append(entry)
+
+    return {
+        "success": True,
+        "segments": response_segments,
+        "count": len(response_segments),
+        "success_count": sum(1 for s in response_segments if s["success"]),
+    }
+
+
 @media_router.get("/thumbnail")
 async def cut_thumbnail(
     source_path: str, time_sec: float = 1.0, width: int = 320, height: int = 180,

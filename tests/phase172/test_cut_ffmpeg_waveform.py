@@ -17,6 +17,7 @@ from src.services.cut_ffmpeg_waveform import (
     build_waveform_with_fallback,
     build_stereo_waveform,
     compute_audio_levels,
+    extract_audio_wav_segments_batch,
     extract_pcm_mono_16bit,
     extract_pcm_stereo_16bit,
     extract_audio_wav_segment,
@@ -437,6 +438,86 @@ def test_audio_levels_left_only(tmp_path: Path):
     assert result["success"] is True
     assert result["rms_left"] > 0.5
     assert result["rms_right"] < 0.01
+
+
+# ─── MARKER_B42: Batch audio segment extraction tests ───
+
+
+def test_batch_empty_list():
+    """Empty batch → empty results."""
+    results = extract_audio_wav_segments_batch([])
+    assert results == []
+
+
+def test_batch_nonexistent_files():
+    """All nonexistent files → all failed."""
+    segments = [
+        {"clip_id": "c1", "source_path": "/nonexistent/a.mp4", "start_sec": 0, "duration_sec": 1},
+        {"clip_id": "c2", "source_path": "/nonexistent/b.mp4", "start_sec": 0, "duration_sec": 1},
+    ]
+    results = extract_audio_wav_segments_batch(segments)
+    assert len(results) == 2
+    assert all(not r["success"] for r in results)
+    assert results[0]["clip_id"] == "c1"
+    assert results[1]["clip_id"] == "c2"
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_batch_two_wav_files(tmp_path: Path):
+    """Extract two valid WAV segments in batch."""
+    wav1 = tmp_path / "tone1.wav"
+    wav2 = tmp_path / "tone2.wav"
+    _write_sine_wav(wav1, freq=440, duration_sec=1.0, sample_rate=16000)
+    _write_sine_wav(wav2, freq=880, duration_sec=1.0, sample_rate=16000)
+
+    segments = [
+        {"clip_id": "clip_a", "source_path": str(wav1), "start_sec": 0, "duration_sec": 0.5},
+        {"clip_id": "clip_b", "source_path": str(wav2), "start_sec": 0.2, "duration_sec": 0.3},
+    ]
+    results = extract_audio_wav_segments_batch(segments, sample_rate=16000, channels=1)
+    assert len(results) == 2
+    assert results[0]["success"] is True
+    assert results[0]["clip_id"] == "clip_a"
+    assert results[0]["wav_bytes"] is not None
+    assert results[0]["wav_bytes"][:4] == b"RIFF"
+    assert results[1]["success"] is True
+    assert results[1]["clip_id"] == "clip_b"
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_batch_mixed_valid_invalid(tmp_path: Path):
+    """Mix of valid and nonexistent → partial success."""
+    wav = tmp_path / "tone.wav"
+    _write_sine_wav(wav, freq=440, duration_sec=1.0, sample_rate=16000)
+
+    segments = [
+        {"clip_id": "good", "source_path": str(wav), "start_sec": 0, "duration_sec": 0.5},
+        {"clip_id": "bad", "source_path": "/nonexistent/file.mp4", "start_sec": 0, "duration_sec": 1},
+    ]
+    results = extract_audio_wav_segments_batch(segments, sample_rate=16000, channels=1)
+    assert results[0]["success"] is True
+    assert results[0]["clip_id"] == "good"
+    assert results[1]["success"] is False
+    assert results[1]["clip_id"] == "bad"
+
+
+def test_batch_caps_at_8():
+    """Batch with >8 segments only processes first 8."""
+    segments = [{"clip_id": f"c{i}", "source_path": "/fake.mp4", "start_sec": 0, "duration_sec": 1} for i in range(12)]
+    results = extract_audio_wav_segments_batch(segments)
+    assert len(results) == 8  # capped
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_batch_stereo_output(tmp_path: Path):
+    """Batch with stereo output."""
+    wav = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav, freq_l=440, freq_r=880, duration_sec=1.0, sample_rate=16000)
+
+    segments = [{"clip_id": "s1", "source_path": str(wav), "start_sec": 0, "duration_sec": 0.5}]
+    results = extract_audio_wav_segments_batch(segments, sample_rate=16000, channels=2)
+    assert results[0]["success"] is True
+    assert results[0]["wav_bytes"][:4] == b"RIFF"
 
 
 # ─── Helpers ───
