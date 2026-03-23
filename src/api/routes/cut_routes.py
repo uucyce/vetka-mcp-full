@@ -3040,7 +3040,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
     project["bootstrap_profile"] = str(body.bootstrap_profile or project.get("bootstrap_profile") or "default")
     store.save_project(project)
 
-    # MARKER_B54-FIX + B58: Create/rebuild timeline with clips from scanned media
+    # MARKER_B54-FIX + B58 + B60: Create/rebuild timeline with clips from scanned media
     # Rebuild if: no timeline exists, OR timeline has 0 clips (stale from pre-B56 bootstrap)
     existing_timeline = store.load_timeline_state()
     existing_clip_count = 0
@@ -3049,7 +3049,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             existing_clip_count += len(_lane.get("clips", []))
 
     if existing_timeline is None or existing_clip_count == 0:
-        timeline_id = str(body.timeline_id or "main")
+        timeline_id = str(getattr(body, "timeline_id", "") or "main")
         initial_timeline = _build_initial_timeline_state(project, timeline_id, store=store)
         store.save_timeline_state(initial_timeline)
         logger.info("MARKER_B58: Timeline created/rebuilt with %d media files",
