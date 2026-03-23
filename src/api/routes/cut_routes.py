@@ -4984,6 +4984,18 @@ async def cut_project_state(sandbox_root: str, project_id: str = "") -> dict[str
         return _cut_state_error("project_not_found", "Requested CUT project does not match sandbox state.")
     bootstrap_state = store.load_bootstrap_state()
     timeline_state = store.load_timeline_state()
+
+    # MARKER_B59: Auto-create timeline if missing or empty (safety net for pre-B54 projects)
+    if timeline_state is None or sum(len(l.get("clips", [])) for l in timeline_state.get("lanes", [])) == 0:
+        try:
+            auto_timeline = _build_initial_timeline_state(project, "main", store=store)
+            auto_clip_count = sum(len(l.get("clips", [])) for l in auto_timeline.get("lanes", []))
+            if auto_clip_count > 0:
+                store.save_timeline_state(auto_timeline)
+                timeline_state = auto_timeline
+                logger.info("MARKER_B59: Auto-created timeline with %d clips", auto_clip_count)
+        except Exception as exc:
+            logger.warning("MARKER_B59: Auto-create timeline failed: %s", exc)
     scene_graph = store.load_scene_graph()
     waveform_bundle = store.load_waveform_bundle()
     transcript_bundle = store.load_transcript_bundle()
