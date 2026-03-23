@@ -233,7 +233,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           dropFrame={dropFrame}
           onSeek={seek}
           style={{ position: 'absolute', left: 8 }}
-          testId={`monitor-tc-${feed}`}
+          testId={`monitor-timecode-${feed}`}
         />
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
