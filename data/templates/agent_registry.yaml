@@ -5,13 +5,14 @@
 # Commander updates this file; agents read it via AgentRegistry loader.
 # ═══════════════════════════════════════════════════════════════
 
-version: "1.0"
+version: "1.1"
 project_id: "CUT"
 
 roles:
   # ── Alpha: Engine Domain ──────────────────────────────────
   - callsign: "Alpha"
     domain: "engine"
+    pipeline_stage: "coder"
     role_title: "Engine Architect"
     worktree: "cut-engine"
     branch: "claude/cut-engine"
@@ -40,6 +41,7 @@ roles:
   # ── Beta: Media/Color Domain ──────────────────────────────
   - callsign: "Beta"
     domain: "media"
+    pipeline_stage: "coder"
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
@@ -74,6 +76,7 @@ roles:
   # ── Gamma: UX/Panel Domain ────────────────────────────────
   - callsign: "Gamma"
     domain: "ux"
+    pipeline_stage: "coder"
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
@@ -98,6 +101,7 @@ roles:
   # ── Delta: QA Domain ──────────────────────────────────────
   - callsign: "Delta"
     domain: "qa"
+    pipeline_stage: "verifier"
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
@@ -121,6 +125,7 @@ roles:
   # ── Epsilon: QA2 Domain ─────────────────────────────────
   - callsign: "Epsilon"
     domain: "qa"
+    pipeline_stage: "verifier"
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
@@ -144,9 +149,10 @@ roles:
   # ── Zeta: Harness/Infrastructure Domain ─────────────────
   - callsign: "Zeta"
     domain: "harness"
+    pipeline_stage: null
     role_title: "Harness Engineer / Infrastructure"
-    worktree: ""
-    branch: "main"
+    worktree: "harness"
+    branch: "claude/harness"
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -175,6 +181,7 @@ roles:
   # ── Commander: Architect Domain ───────────────────────────
   - callsign: "Commander"
     domain: "architect"
+    pipeline_stage: "architect"
     role_title: "Architect-Commander"
     worktree: "pedantic-bell"
     branch: "claude/pedantic-bell"
