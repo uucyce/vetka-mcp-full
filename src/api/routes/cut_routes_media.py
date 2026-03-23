@@ -820,3 +820,118 @@ async def cut_conform_relink(body: CutConformRelinkRequest) -> dict[str, Any]:
         "success": True,
         **result,
     }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B48: Multicam Sync Engine (FCP7 Ch.46-47)
+# ---------------------------------------------------------------------------
+
+# In-memory store for multicam clips (persisted per-session)
+_multicam_clips: dict[str, dict[str, Any]] = {}
+
+
+class CutMulticamCreateRequest(BaseModel):
+    source_paths: list[str]
+    sync_method: str = "waveform"  # waveform | timecode | marker
+    reference_index: int = 0
+    marker_times: list[float] = []  # for sync_method=marker
+    fps: float = 25.0              # for timecode sync
+    max_lag_sec: float = 30.0      # for waveform sync
+
+
+@media_router.post("/multicam/create")
+async def cut_multicam_create(body: CutMulticamCreateRequest) -> dict[str, Any]:
+    """
+    MARKER_B48 — Create multicam clip from multiple camera angles.
+    Syncs by waveform (cross-correlation), timecode, or markers.
+    Returns multicam_clip_id with aligned offsets per angle.
+    """
+    import asyncio
+    from src.services.cut_multicam_sync import (
+        sync_by_waveform,
+        sync_by_timecode,
+        sync_by_markers,
+    )
+    from datetime import datetime, timezone
+
+    if len(body.source_paths) < 2:
+        return {"success": False, "error": "need_at_least_2_sources"}
+
+    # Validate files exist
+    missing = [p for p in body.source_paths if not os.path.isfile(p)]
+    if missing:
+        return {"success": False, "error": "files_not_found", "missing": missing}
+
+    loop = asyncio.get_running_loop()
+
+    if body.sync_method == "waveform":
+        multicam = await loop.run_in_executor(None, lambda: sync_by_waveform(
+            body.source_paths,
+            reference_index=body.reference_index,
+            max_lag_sec=body.max_lag_sec,
+        ))
+    elif body.sync_method == "timecode":
+        multicam = await loop.run_in_executor(None, lambda: sync_by_timecode(
+            body.source_paths, fps=body.fps,
+        ))
+    elif body.sync_method == "marker":
+        if len(body.marker_times) != len(body.source_paths):
+            return {"success": False, "error": "marker_times_count_mismatch"}
+        multicam = sync_by_markers(body.source_paths, body.marker_times)
+    else:
+        return {"success": False, "error": f"unknown_sync_method: {body.sync_method}"}
+
+    multicam.created_at = datetime.now(timezone.utc).isoformat()
+
+    # Store in memory
+    mc_dict = multicam.to_dict()
+    _multicam_clips[multicam.multicam_id] = mc_dict
+
+    return {"success": True, **mc_dict}
+
+
+@media_router.get("/multicam/{multicam_id}")
+async def cut_multicam_get(multicam_id: str) -> dict[str, Any]:
+    """MARKER_B48 — Get multicam clip state."""
+    mc = _multicam_clips.get(multicam_id)
+    if not mc:
+        return {"success": False, "error": "multicam_not_found"}
+    return {"success": True, **mc}
+
+
+class CutMulticamSwitchRequest(BaseModel):
+    multicam_id: str
+    angle_index: int
+    switch_time_sec: float
+    duration_sec: float = 5.0
+
+
+@media_router.post("/multicam/switch")
+async def cut_multicam_switch(body: CutMulticamSwitchRequest) -> dict[str, Any]:
+    """
+    MARKER_B48 — Generate a timeline clip for switching to a specific angle.
+    Returns clip dict ready for timeline insertion (FCP7 Ch.47).
+    """
+    from src.services.cut_multicam_sync import MulticamClip, MulticamAngle, build_multicam_switch_clip
+
+    mc_dict = _multicam_clips.get(body.multicam_id)
+    if not mc_dict:
+        return {"success": False, "error": "multicam_not_found"}
+
+    # Reconstruct MulticamClip from dict
+    multicam = MulticamClip(
+        multicam_id=mc_dict["multicam_id"],
+        angles=[MulticamAngle(**a) for a in mc_dict["angles"]],
+        sync_method=mc_dict["sync_method"],
+        reference_index=mc_dict["reference_index"],
+        total_duration_sec=mc_dict["total_duration_sec"],
+    )
+
+    try:
+        clip = build_multicam_switch_clip(
+            multicam, body.angle_index, body.switch_time_sec, body.duration_sec,
+        )
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+    return {"success": True, "clip": clip}
