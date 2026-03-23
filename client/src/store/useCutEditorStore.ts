@@ -646,8 +646,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W1.4: Separate marks
   setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
   setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
-  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
-  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
+  // MARKER_MRK-FIX: Sync legacy markIn/markOut when setting sequence marks
+  // Tests and some components read markIn/markOut — keep them in sync
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t, markIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t, markOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),

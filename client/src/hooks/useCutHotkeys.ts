@@ -126,36 +126,36 @@ type ActionScope = 'global' | FocusPanelId[];
 
 export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   // Playback — works in source, program, and timeline
-  playPause:           ['source', 'program', 'timeline'],
-  stop:                ['source', 'program', 'timeline'],
-  shuttleBack:         ['source', 'program', 'timeline'],
-  shuttleForward:      ['source', 'program', 'timeline'],
-  frameStepBack:       ['source', 'program', 'timeline'],
-  frameStepForward:    ['source', 'program', 'timeline'],
-  goToStart:           ['source', 'program', 'timeline'],
-  goToEnd:             ['source', 'program', 'timeline'],
-  cyclePlaybackRate:   ['source', 'program', 'timeline'],
-  fiveFrameStepBack:   ['source', 'program', 'timeline'],
-  fiveFrameStepForward:['source', 'program', 'timeline'],
+  playPause:           'global',
+  stop:                'global',
+  shuttleBack:         'global',
+  shuttleForward:      'global',
+  frameStepBack:       'global',
+  frameStepForward:    'global',
+  goToStart:           'global',
+  goToEnd:             'global',
+  cyclePlaybackRate:   'global',
+  fiveFrameStepBack:   'global',
+  fiveFrameStepForward:'global',
 
   // Marking — source: source marks, program/timeline: sequence marks
-  markIn:              ['source', 'program', 'timeline'],
-  markOut:             ['source', 'program', 'timeline'],
-  clearIn:             ['source', 'program', 'timeline'],
-  clearOut:            ['source', 'program', 'timeline'],
-  clearInOut:          ['source', 'program', 'timeline'],
-  goToIn:              ['source', 'program', 'timeline'],
-  goToOut:             ['source', 'program', 'timeline'],
+  markIn:              'global',
+  markOut:             'global',
+  clearIn:             'global',
+  clearOut:            'global',
+  clearInOut:          'global',
+  goToIn:              'global',
+  goToOut:             'global',
 
   // Editing — timeline only
-  deleteClip:          ['timeline'],
-  splitClip:           ['timeline'],
-  rippleDelete:        ['timeline'],
-  nudgeLeft:           ['timeline'],
-  nudgeRight:          ['timeline'],
-  insertEdit:          ['timeline', 'source'],
-  overwriteEdit:       ['timeline', 'source'],
-  replaceEdit:         ['timeline', 'source'],
+  deleteClip:          'global',
+  splitClip:           'global',
+  rippleDelete:        'global',
+  nudgeLeft:           'global',
+  nudgeRight:          'global',
+  insertEdit:          'global',
+  overwriteEdit:       'global',
+  replaceEdit:         'global',
 
   // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
   razorTool:           'global',
@@ -167,33 +167,33 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   rollTool:            'global',
 
   // Navigation — timeline/program
-  prevEditPoint:       ['timeline'],
-  nextEditPoint:       ['timeline'],
+  prevEditPoint:       'global',
+  nextEditPoint:       'global',
   // MARKER_W5.MF: Match Frame + Q toggle
-  matchFrame:          ['program', 'timeline'],
+  matchFrame:          'global',
   toggleSourceProgram: 'global',
 
   // Markers — source, program, timeline
-  addMarker:           ['source', 'program', 'timeline'],
-  addComment:          ['source', 'program', 'timeline'],
-  nextMarker:          ['source', 'program', 'timeline'],
-  prevMarker:          ['source', 'program', 'timeline'],
-  nextKeyframe:        ['timeline'],
-  prevKeyframe:        ['timeline'],
-  addKeyframe:         ['timeline'],
+  addMarker:           'global',
+  addComment:          'global',
+  nextMarker:          'global',
+  prevMarker:          'global',
+  nextKeyframe:        'global',
+  prevKeyframe:        'global',
+  addKeyframe:         'global',
   openSpeedControl:    'global',
 
   // Mark operations
   markClip:            'global',
-  playInToOut:         ['source', 'program', 'timeline'],
+  playInToOut:         'global',
 
   // Sequence operations — timeline only
   liftClip:            'global',
   extractClip:         'global',
   closeGap:            'global',
   extendEdit:          'global',
-  splitEditLCut:       ['timeline'],
-  splitEditJCut:       ['timeline'],
+  splitEditLCut:       'global',
+  splitEditJCut:       'global',
   addDefaultTransition:'global',
 
   // Global — always fire
