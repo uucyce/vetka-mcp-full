@@ -376,6 +376,8 @@ interface CutEditorState {
   extendEdit: () => void;                        // Extend nearest edit to playhead
   // MARKER_TD4: Numeric trim — trim selected clip's nearest edge by N frames
   numericTrimSelected: (frames: number) => void;
+  // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
+  asymmetricTrim: (leftClipId: string, leftDeltaFrames: number, rightClipId: string, rightDeltaFrames: number) => void;
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
@@ -953,6 +955,34 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         void get().applyTimelineOps([{ op: 'trim_clip', clip_id: selectedClipId, duration_sec: newDur }]);
         return;
       }
+    }
+  },
+
+  // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
+  // FCP7 Ch.21: different L/R trim values. Left clip out-point changes by leftDeltaFrames,
+  // right clip in-point changes by rightDeltaFrames. Does NOT preserve total duration.
+  asymmetricTrim: (leftClipId, leftDeltaFrames, rightClipId, rightDeltaFrames) => {
+    const { projectFramerate, lanes } = get();
+    const fps = projectFramerate || 25;
+    const ops: Array<Record<string, unknown>> = [];
+
+    for (const lane of lanes) {
+      const leftClip = lane.clips.find((c) => c.clip_id === leftClipId);
+      if (leftClip && leftDeltaFrames !== 0) {
+        const newDur = Math.max(0.01, leftClip.duration_sec + leftDeltaFrames / fps);
+        ops.push({ op: 'trim_clip', clip_id: leftClipId, duration_sec: newDur });
+      }
+      const rightClip = lane.clips.find((c) => c.clip_id === rightClipId);
+      if (rightClip && rightDeltaFrames !== 0) {
+        const delta = rightDeltaFrames / fps;
+        const newStart = Math.max(0, rightClip.start_sec + delta);
+        const newDur = Math.max(0.01, rightClip.duration_sec - delta);
+        ops.push({ op: 'trim_clip', clip_id: rightClipId, start_sec: newStart, duration_sec: newDur });
+      }
+    }
+
+    if (ops.length) {
+      void get().applyTimelineOps(ops);
     }
   },
 
