@@ -280,10 +280,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": "action is required"}
 
     # MARKER_195.6: Record task_board action for protocol tracking
+    # MARKER_195.21: Use consistent session_id (was hardcoded "mcp_default", debrief read "default")
+    _tracker_sid = arguments.get("session_id") or "mcp_default"
     try:
         from src.services.session_tracker import get_session_tracker
         get_session_tracker().record_action(
-            "mcp_default", "vetka_task_board",
+            _tracker_sid, "vetka_task_board",
             {"action": action, "task_id": arguments.get("task_id", "")},
         )
     except Exception:
@@ -513,6 +515,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+            _inject_debrief(result, arguments)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -536,6 +539,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     # Verifier merge succeeded — close task
                     result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
                     result["verifier_merge"] = merge_result
+                    _inject_debrief(result, arguments)
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
                 if merge_result.get("success"):
@@ -629,6 +633,38 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
+
+
+def _inject_debrief(result: dict, arguments: dict) -> None:
+    """MARKER_195.21: Inject debrief questions into successful complete response.
+
+    Called on EVERY success path in action=complete — no more bypass.
+    Mutates result dict in-place.
+    """
+    if not result.get("success"):
+        return
+    try:
+        from src.services.session_tracker import get_session_tracker
+        _sid = arguments.get("session_id") or "mcp_default"
+        session = get_session_tracker().get_session(_sid)
+        if session.tasks_completed > 0 and not session.experience_report_submitted:
+            result["debrief_requested"] = True
+            result["debrief_questions"] = {
+                "q1_bugs": (
+                    "What's broken? Bugs you noticed — including outside your zone. "
+                    "Stale code, broken tools, bad process that everyone walks past?"
+                ),
+                "q2_worked": (
+                    "What unexpectedly worked? A workaround or pattern "
+                    "worth making standard?"
+                ),
+                "q3_idea": (
+                    "What idea came to mind that nobody asked about? "
+                    "What would you do with 2 more hours?"
+                ),
+            }
+    except Exception:
+        pass  # Debrief injection never blocks completion
 
 
 def _detect_git_branch(cwd: str = None) -> str:
