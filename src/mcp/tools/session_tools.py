@@ -391,13 +391,23 @@ class SessionInitTool(BaseMCPTool):
             in_progress = board.get_queue(status="in_progress")
             # MARKER_186.4: Count tasks awaiting merge (done_worktree)
             done_worktree = board.get_queue(status="done_worktree")
+            # MARKER_196.QA: QA pipeline status counts
+            need_qa = board.get_queue(status="need_qa")
+            verified = board.get_queue(status="verified")
+            needs_fix = board.get_queue(status="needs_fix")
+            claimed = board.get_queue(status="claimed")
             context["task_board_summary"] = {
                 "pending_count": len(pending),
                 "in_progress_count": len(in_progress),
+                "claimed_count": len(claimed),
                 "done_worktree_count": len(done_worktree),
+                "need_qa_count": len(need_qa),
+                "verified_count": len(verified),
+                "needs_fix_count": len(needs_fix),
                 "top_pending": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
                 "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]],
-                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]]
+                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]],
+                "qa_queue": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in need_qa[:5]],
             }
         except Exception as e:
             import logging
@@ -827,6 +837,10 @@ class SessionInitTool(BaseMCPTool):
             # MARKER_186.4: Warn about tasks awaiting merge
             if tb.get("done_worktree_count", 0) > 0:
                 next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=merge_request")
+            if tb.get("need_qa_count", 0) > 0:
+                next_steps.append(f"🔍 {tb['need_qa_count']} tasks awaiting QA → vetka_task_board action=verify")
+            if tb.get("needs_fix_count", 0) > 0:
+                next_steps.append(f"⚠️ {tb['needs_fix_count']} tasks failed QA, need fix")
 
             # From REFLEX
             recs = context.get("reflex_recommendations", [])
