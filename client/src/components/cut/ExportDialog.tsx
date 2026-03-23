@@ -245,6 +245,10 @@ export default function ExportDialog() {
   const [codec, setCodec] = useState<VideoCodec>('h264');
   const [resolution, setResolution] = useState<Resolution>('1080p');
   const [quality, setQuality] = useState(80);
+  // MARKER_B6.3: Bitrate mode
+  const [bitrateMode, setBitrateMode] = useState<'crf' | 'cbr' | 'vbr'>('crf');
+  const [targetBitrate, setTargetBitrate] = useState('12M');
+  const [maxBitrate, setMaxBitrate] = useState('15M');
   const [audioCodec, setAudioCodec] = useState<AudioCodec>('aac');
   const [selectionOnly, setSelectionOnly] = useState(false);
   const [audioStems, setAudioStems] = useState(false);
@@ -372,6 +376,9 @@ export default function ExportDialog() {
           range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
           audio_stems: audioStems,
           audio_codec: audioCodec,
+          bitrate_mode: bitrateMode,
+          target_bitrate: bitrateMode !== 'crf' ? targetBitrate : '',
+          max_bitrate: bitrateMode === 'vbr' ? maxBitrate : '',
         }),
       });
 
@@ -649,22 +656,74 @@ export default function ExportDialog() {
                 </select>
               </div>
 
-              {/* Quality */}
+              {/* MARKER_B6.3: Quality / Bitrate mode */}
               <div style={FIELD}>
-                <label style={LABEL}>Quality</label>
-                <div style={SLIDER_ROW}>
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    value={quality}
-                    onChange={(e) => { setQuality(Number(e.target.value)); setSelectedPreset('custom'); }}
-                    disabled={isRendering}
-                    style={{ flex: 1 }}
-                  />
-                  <span style={{ fontSize: 11, color: '#888', width: 30, textAlign: 'right' }}>
-                    {quality}%
-                  </span>
+                <label style={LABEL}>Rate Control</label>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                  {(['crf', 'cbr', 'vbr'] as const).map((m) => (
+                    <button
+                      key={m}
+                      style={{
+                        ...BTN,
+                        background: bitrateMode === m ? '#333' : '#1a1a1a',
+                        color: bitrateMode === m ? '#ccc' : '#555',
+                        fontSize: 9,
+                        padding: '3px 10px',
+                        border: bitrateMode === m ? '1px solid #555' : '1px solid #222',
+                      }}
+                      onClick={() => { setBitrateMode(m); setSelectedPreset('custom'); }}
+                      disabled={isRendering}
+                    >
+                      {m.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                {bitrateMode === 'crf' && (
+                  <div style={SLIDER_ROW}>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      value={quality}
+                      onChange={(e) => { setQuality(Number(e.target.value)); setSelectedPreset('custom'); }}
+                      disabled={isRendering}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ fontSize: 11, color: '#888', width: 30, textAlign: 'right' }}>
+                      {quality}%
+                    </span>
+                  </div>
+                )}
+                {(bitrateMode === 'cbr' || bitrateMode === 'vbr') && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: '#555', marginBottom: 2 }}>Target Bitrate</div>
+                      <input
+                        type="text"
+                        value={targetBitrate}
+                        onChange={(e) => { setTargetBitrate(e.target.value); setSelectedPreset('custom'); }}
+                        disabled={isRendering}
+                        style={{ ...SELECT, width: '100%' }}
+                        placeholder="12M"
+                      />
+                    </div>
+                    {bitrateMode === 'vbr' && (
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: '#555', marginBottom: 2 }}>Max Bitrate</div>
+                        <input
+                          type="text"
+                          value={maxBitrate}
+                          onChange={(e) => { setMaxBitrate(e.target.value); setSelectedPreset('custom'); }}
+                          disabled={isRendering}
+                          style={{ ...SELECT, width: '100%' }}
+                          placeholder="15M"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ fontSize: 9, color: '#444', marginTop: 3 }}>
+                  {bitrateMode === 'crf' ? 'Quality-based (variable file size)' : bitrateMode === 'cbr' ? 'Constant bitrate (predictable file size, streaming)' : 'Variable bitrate (target + max cap)'}
                 </div>
               </div>
 

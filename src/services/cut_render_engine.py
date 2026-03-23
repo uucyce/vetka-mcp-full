@@ -185,6 +185,12 @@ class RenderPlan:
     audio_stems: bool = False
     output_path: str = ""
     preset: str = ""                # social preset name
+    # MARKER_B6.2: Audio codec selection
+    audio_codec: str = "aac"        # aac, pcm_s24le, libmp3lame, flac
+    # MARKER_B6.3: Bitrate mode
+    bitrate_mode: str = "crf"       # crf, cbr, vbr
+    target_bitrate: str = ""        # e.g. "12M", "8M", "50M" (for cbr/vbr)
+    max_bitrate: str = ""           # e.g. "15M" (for vbr only)
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +211,10 @@ def build_render_plan(
     project_id: str = "project",
     timeline_id: str = "main",
     preset: str = "",
+    audio_codec: str = "aac",
+    bitrate_mode: str = "crf",
+    target_bitrate: str = "",
+    max_bitrate: str = "",
 ) -> RenderPlan:
     """Build a RenderPlan from timeline state dict."""
     # Apply social preset overrides
@@ -313,6 +323,10 @@ def build_render_plan(
         audio_stems=audio_stems,
         output_path=output_path,
         preset=preset,
+        audio_codec=audio_codec,
+        bitrate_mode=bitrate_mode,
+        target_bitrate=target_bitrate,
+        max_bitrate=max_bitrate,
     )
 
 
@@ -674,13 +688,28 @@ def _build_filter_complex_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
         cmd += ["-profile:v", codec_cfg["profile"]]
     cmd += ["-pix_fmt", codec_cfg["pix_fmt"]]
 
-    # Quality
+    # Quality / Bitrate (MARKER_B6.3: CBR/VBR/CRF modes)
     if plan.codec in ("h264", "h265"):
-        crf = max(0, min(51, int(51 - (plan.quality / 100) * 51)))
-        cmd += ["-crf", str(crf)]
+        mode = plan.bitrate_mode or "crf"
+        if mode == "cbr" and plan.target_bitrate:
+            cmd += ["-b:v", plan.target_bitrate, "-maxrate", plan.target_bitrate, "-bufsize", plan.target_bitrate]
+        elif mode == "vbr" and plan.target_bitrate:
+            cmd += ["-b:v", plan.target_bitrate]
+            if plan.max_bitrate:
+                cmd += ["-maxrate", plan.max_bitrate, "-bufsize", plan.max_bitrate]
+        else:
+            # CRF (default)
+            crf = max(0, min(51, int(51 - (plan.quality / 100) * 51)))
+            cmd += ["-crf", str(crf)]
 
-    # Audio
-    cmd += ["-c:a", "aac", "-b:a", "320k"]
+    # Audio (MARKER_B6.2: configurable audio codec)
+    a_codec = plan.audio_codec or "aac"
+    cmd += ["-c:a", a_codec]
+    if a_codec == "aac":
+        cmd += ["-b:a", "320k"]
+    elif a_codec == "libmp3lame":
+        cmd += ["-b:a", "320k"]
+    # PCM and FLAC don't need bitrate
 
     # Range (applied as output trim)
     if plan.range_in is not None and plan.range_out is not None and plan.range_out > plan.range_in:
@@ -715,17 +744,29 @@ def _build_concat_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
     if res:
         cmd += ["-vf", f"scale={res[0]}:{res[1]}:force_original_aspect_ratio=decrease,pad={res[0]}:{res[1]}:-1:-1:color=black"]
 
-    # Quality
+    # Quality / Bitrate (MARKER_B6.3)
     if plan.codec in ("h264", "h265"):
-        crf = max(0, min(51, int(51 - (plan.quality / 100) * 51)))
-        cmd += ["-crf", str(crf)]
+        mode = plan.bitrate_mode or "crf"
+        if mode == "cbr" and plan.target_bitrate:
+            cmd += ["-b:v", plan.target_bitrate, "-maxrate", plan.target_bitrate, "-bufsize", plan.target_bitrate]
+        elif mode == "vbr" and plan.target_bitrate:
+            cmd += ["-b:v", plan.target_bitrate]
+            if plan.max_bitrate:
+                cmd += ["-maxrate", plan.max_bitrate, "-bufsize", plan.max_bitrate]
+        else:
+            crf = max(0, min(51, int(51 - (plan.quality / 100) * 51)))
+            cmd += ["-crf", str(crf)]
 
     # Range
     if plan.range_in is not None and plan.range_out is not None and plan.range_out > plan.range_in:
         cmd += ["-ss", str(plan.range_in), "-t", str(plan.range_out - plan.range_in)]
 
     cmd += ["-r", str(plan.fps)]
-    cmd += ["-c:a", "aac", "-b:a", "320k"]
+    # MARKER_B6.2: configurable audio codec
+    a_codec = plan.audio_codec or "aac"
+    cmd += ["-c:a", a_codec]
+    if a_codec in ("aac", "libmp3lame"):
+        cmd += ["-b:a", "320k"]
     cmd += [plan.output_path]
 
     # Store concat path for cleanup
@@ -873,6 +914,10 @@ def render_timeline(
     on_progress: Any = None,
     mixer: dict[str, Any] | None = None,  # MARKER_B13: mixer state
     cancel_check: Any = None,  # MARKER_B2.1: callable() → bool, True = cancel requested
+    audio_codec: str = "aac",  # MARKER_B6.2: aac, pcm_s24le, libmp3lame, flac
+    bitrate_mode: str = "crf",  # MARKER_B6.3: crf, cbr, vbr
+    target_bitrate: str = "",   # e.g. "12M"
+    max_bitrate: str = "",      # e.g. "15M" (vbr only)
 ) -> dict[str, Any]:
     """
     Render a timeline to a video file.
@@ -914,6 +959,10 @@ def render_timeline(
         project_id=project_id,
         timeline_id=timeline_id,
         preset=preset,
+        audio_codec=audio_codec,
+        bitrate_mode=bitrate_mode,
+        target_bitrate=target_bitrate,
+        max_bitrate=max_bitrate,
     )
 
     # MARKER_B13: Apply mixer state (volume/mute/solo/pan) to render plan
