@@ -45,6 +45,7 @@ class AgentRole:
 
     callsign: str
     domain: str
+    pipeline_stage: Optional[str]  # coder | verifier | architect | None (meta roles)
     role_title: str
     worktree: str
     branch: str
@@ -94,6 +95,7 @@ class AgentRegistry:
             role = AgentRole(
                 callsign=entry["callsign"],
                 domain=entry["domain"],
+                pipeline_stage=entry.get("pipeline_stage"),  # None for meta roles
                 role_title=entry.get("role_title", ""),
                 worktree=entry["worktree"],
                 branch=entry["branch"],
@@ -139,6 +141,10 @@ class AgentRegistry:
     @property
     def shared_zones(self) -> list[SharedZone]:
         return list(self._shared_zones)
+
+    def list_callsigns(self) -> list[str]:
+        """Return list of all registered callsigns."""
+        return [r.callsign for r in self._roles]
 
     # ── Lookups ─────────────────────────────────────────────
 
