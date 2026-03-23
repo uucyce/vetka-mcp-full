@@ -1244,13 +1244,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   applyTimelineOps: async (ops, opts) => {
     const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
     if (!sandboxRoot || !projectId) {
+      // MARKER_UNDO-FIX-23: Quiet drop — no toast for no-session.
+      // Before project bootstrap, many auto-triggers call applyTimelineOps.
+      // Showing an error toast for each is noisy and confusing.
+      // Only log to console for debugging.
       console.warn('[CUT] applyTimelineOps: no project session — op dropped', ops);
-      // MARKER_UNDO-FIX-23: Dispatch toast event so user sees feedback
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('pipeline-activity', {
-          detail: { status: 'error', message: 'No project loaded — open or create a project first' },
-        }));
-      }
       return;
     }
     try {

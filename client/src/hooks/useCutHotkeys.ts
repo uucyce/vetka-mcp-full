@@ -187,7 +187,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   openSpeedControl:    'global',
 
   // Mark operations
-  markClip:            ['timeline'],
+  markClip:            'global',
   playInToOut:         ['source', 'program', 'timeline'],
 
   // Sequence operations — timeline only
