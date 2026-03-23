@@ -724,6 +724,8 @@ def _build_filter_complex_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
     if plan.range_in is not None and plan.range_out is not None and plan.range_out > plan.range_in:
         cmd += ["-ss", str(plan.range_in), "-t", str(plan.range_out - plan.range_in)]
 
+    # MARKER_B43: Real-time progress via -progress pipe
+    cmd += ["-progress", "pipe:1"]
     cmd += [plan.output_path]
     return cmd
 
@@ -776,6 +778,8 @@ def _build_concat_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
     cmd += ["-c:a", a_codec]
     if a_codec in ("aac", "libmp3lame"):
         cmd += ["-b:a", "320k"]
+    # MARKER_B43: Real-time progress via -progress pipe
+    cmd += ["-progress", "pipe:1"]
     cmd += [plan.output_path]
 
     # Store concat path for cleanup
@@ -989,7 +993,15 @@ def render_timeline(
 
     _progress(0.3, "Running FFmpeg")
 
-    # MARKER_B2.1: Use Popen for cancel support + ETA tracking
+    # MARKER_B43: Compute total duration for real progress %
+    total_duration_sec = 0.0
+    for c in plan.clips:
+        total_duration_sec += c.duration_sec / c.speed if c.speed > 0 else c.duration_sec
+    if plan.range_in is not None and plan.range_out is not None:
+        total_duration_sec = min(total_duration_sec, plan.range_out - plan.range_in)
+    total_duration_us = max(1, total_duration_sec * 1_000_000)
+
+    # MARKER_B2.1 + B43: Use Popen with -progress pipe:1 for real progress
     t_start = time.monotonic()
     try:
         proc = subprocess.Popen(
@@ -1001,9 +1013,13 @@ def render_timeline(
     except OSError as exc:
         raise RuntimeError(f"FFmpeg launch failed: {exc}")
 
-    # Poll loop: check cancel + timeout
+    # MARKER_B43: Parse -progress pipe output for real % and speed
     cancelled = False
     try:
+        import selectors
+        sel = selectors.DefaultSelector()
+        sel.register(proc.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
+
         while proc.poll() is None:
             elapsed = time.monotonic() - t_start
 
@@ -1020,13 +1036,31 @@ def render_timeline(
                 proc.wait(timeout=5)
                 raise RuntimeError(f"FFmpeg timed out after {timeout}s")
 
-            # Progress estimate: linear interpolation between 0.3 and 0.85
-            # (real FFmpeg progress parsing requires -progress pipe, future enhancement)
-            if elapsed > 0 and timeout > 0:
-                frac = min(elapsed / timeout, 1.0)
-                _progress(0.3 + frac * 0.55, "Encoding...")
+            # Read available lines from -progress pipe (non-blocking via selector)
+            ready = sel.select(timeout=0.3)
+            if ready:
+                line = proc.stdout.readline()  # type: ignore[union-attr]
+                if line:
+                    line = line.strip()
+                    if line.startswith("out_time_us="):
+                        try:
+                            out_us = int(line.split("=", 1)[1])
+                            frac = min(out_us / total_duration_us, 1.0)
+                            _progress(0.3 + frac * 0.55, "Encoding...")
+                        except (ValueError, ZeroDivisionError):
+                            pass
+                    elif line.startswith("speed="):
+                        pass  # Available for ETA if needed
+            else:
+                # No data ready — just loop (selector handles timing)
+                pass
 
-            time.sleep(0.5)
+        sel.close()
+
+        # Drain remaining stdout
+        if proc.stdout:
+            proc.stdout.read()
+
     except Exception:
         # Ensure process is killed on any error
         if proc.poll() is None:
