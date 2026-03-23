@@ -58,6 +58,8 @@ export type CutHotkeyAction =
   | 'insertEdit'
   | 'overwriteEdit'
   | 'replaceEdit'
+  | 'fitToFill'
+  | 'superimpose'
   // MARKER_W5.TRIM: Trim tools (FCP7 Ch.44)
   | 'slipTool'
   | 'slideTool'
@@ -156,6 +158,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   insertEdit:          'global',
   overwriteEdit:       'global',
   replaceEdit:         'global',
+  fitToFill:           'global',
+  superimpose:         'global',
 
   // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
   razorTool:           'global',
@@ -287,6 +291,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
+  fitToFill:         'Shift+F11',
+  superimpose:       'F12',
   // MARKER_W5.TRIM: Premiere trim tools
   slipTool:          'y',
   slideTool:         'u',
@@ -378,6 +384,8 @@ export const FCP7_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
+  fitToFill:         'Shift+F11',
+  superimpose:       'F12',
   // MARKER_W5.TRIM: FCP7 trim tools — Y=slip, U=slide (S conflicts with snap toggle)
   slipTool:          'y',
   slideTool:         'u',
@@ -591,6 +599,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'insertEdit', label: 'Insert Edit', group: 'Tools' },
   { action: 'overwriteEdit', label: 'Overwrite Edit', group: 'Tools' },
   { action: 'replaceEdit', label: 'Replace Edit (F11)', group: 'Tools' },
+  { action: 'fitToFill', label: 'Fit to Fill (Shift+F11)', group: 'Tools' },
+  { action: 'superimpose', label: 'Superimpose (F12)', group: 'Tools' },
   // MARKER_W5.TRIM: Trim tools
   { action: 'slipTool', label: 'Slip Tool', group: 'Tools' },
   { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },
