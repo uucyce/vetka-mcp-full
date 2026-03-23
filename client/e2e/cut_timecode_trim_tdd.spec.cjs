@@ -31,7 +31,8 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const CLIENT_DIR = path.join(ROOT, 'client');
 const DEV_PORT = Number(process.env.VETKA_CUT_TCTRIM_PORT || 3009);
 const DEV_ORIGIN = `http://127.0.0.1:${DEV_PORT}`;
-const CUT_URL = `${DEV_ORIGIN}/cut`;
+// MARKER_QA.W6: Must include sandbox_root + project_id for CutStandalone to fetch project state
+const CUT_URL = `${DEV_ORIGIN}/cut?sandbox_root=${encodeURIComponent('/tmp/cut-trim')}&project_id=${encodeURIComponent('cut-timecode-trim-tdd')}`;
 
 let serverProcess = null;
 let serverStartedBySpec = false;
@@ -164,19 +165,14 @@ async function setupApiMocks(page) {
 
 async function navigateToCut(page) {
   await setupApiMocks(page);
-  // Must pass sandbox_root + project_id so CutStandalone triggers refreshProjectState
-  // and the API mock returns our fixture data → lanes populate → clips render
-  const url = `${CUT_URL}?sandbox_root=${encodeURIComponent('/tmp/cut-trim')}&project_id=${encodeURIComponent('cut-trim-tdd')}`;
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.goto(CUT_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
-  // Wait for clips to render (store hydration from mocked project-state)
-  await page.waitForSelector('[data-testid^="cut-timeline-clip-"]', { timeout: 10000 }).catch(() => {});
 }
 
 // ===========================================================================
 // TIMECODE FIELD TESTS
 // ===========================================================================
-test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
+test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
 
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
@@ -192,32 +188,15 @@ test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
   test('TC1: typing absolute timecode "01:00:15:00" seeks playhead to 3615s', async ({ page }) => {
     await navigateToCut(page);
 
-    // Find TimecodeField — actual testIds:
-    //   monitor-tc-source (source monitor), monitor-tc-program (program monitor),
-    //   cut-timeline-timecode-display (timeline ruler)
-    // Use timeline TC for navigation tests (most natural for timecode entry)
-    const tcField = page.locator(
-      '[data-testid="cut-timeline-timecode-display"], ' +
-      '[data-testid="monitor-tc-source"], ' +
-      '[data-testid="monitor-tc-program"]'
-    ).first();
-
-    const tcVisible = await tcField.isVisible().catch(() => false);
-    if (!tcVisible) {
-      expect(tcVisible).toBe(true);
-      return;
-    }
-
-    // Click to enter edit mode (span → input)
+    // MARKER_QA.W6: TimecodeField renders as <span title="Click to type timecode">
+    // with data-testid="timecode-field". Click it to enter edit mode.
+    const tcField = page.locator('[title="Click to type timecode"]').first();
+    await expect(tcField).toBeVisible({ timeout: 5000 });
     await tcField.click();
     await page.waitForTimeout(200);
 
-    // After click, TimecodeField switches to input with testId + "-input"
-    const activeInput = page.locator(
-      '[data-testid="cut-timeline-timecode-display-input"], ' +
-      '[data-testid="monitor-tc-source-input"], ' +
-      'input[aria-label="timecode"]'
-    ).first();
+    // Now there should be an active input — type the timecode
+    const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
     const inputExists = await activeInput.isVisible().catch(() => false);
 
     if (inputExists) {
@@ -262,46 +241,31 @@ test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
       return 5.0;
     });
 
-    // Find and click timecode field (actual testIds from components)
-    const tcField = page.locator(
-      '[data-testid="cut-timeline-timecode-display"], ' +
-      '[data-testid="monitor-tc-source"], ' +
-      '[data-testid="monitor-tc-program"]'
-    ).first();
-
-    const tcVisible = await tcField.isVisible().catch(() => false);
-    if (!tcVisible) { expect(tcVisible).toBe(true); return; }
-
+    // MARKER_QA.W6: TimecodeField renders as <span title="Click to type timecode">
+    const tcField = page.locator('[title="Click to type timecode"]').first();
+    await expect(tcField).toBeVisible({ timeout: 5000 });
     await tcField.click();
     await page.waitForTimeout(200);
 
-    const activeInput = page.locator(
-      '[data-testid="cut-timeline-timecode-display-input"], ' +
-      '[data-testid="monitor-tc-source-input"], ' +
-      'input[aria-label="timecode"]'
-    ).first();
-    const inputExists = await activeInput.isVisible().catch(() => false);
+    const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
+    await expect(activeInput).toBeVisible({ timeout: 2000 });
 
-    if (inputExists) {
-      // Type relative offset: +100 frames
-      await activeInput.fill('+100');
-      await activeInput.press('Enter');
-      await page.waitForTimeout(300);
+    // Type relative offset: +100 frames
+    await activeInput.fill('+100');
+    await activeInput.press('Enter');
+    await page.waitForTimeout(300);
 
-      const posAfter = await page.evaluate(() => {
-        if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
-        return null;
-      });
+    const posAfter = await page.evaluate(() => {
+      if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
+      return null;
+    });
 
-      // 100 frames at 25fps = 4.0 seconds
-      const expectedDelta = 100 / 25; // 4.0
-      const actualDelta = posAfter - posBefore;
+    // 100 frames at 25fps = 4.0 seconds
+    const expectedDelta = 100 / 25; // 4.0
+    const actualDelta = posAfter - posBefore;
 
-      // Allow ±2 frames tolerance
-      expect(actualDelta).toBeCloseTo(expectedDelta, 1);
-    } else {
-      expect(inputExists).toBe(true);
-    }
+    // Allow ±2 frames tolerance
+    expect(actualDelta).toBeCloseTo(expectedDelta, 1);
   });
 
   /**
@@ -315,45 +279,27 @@ test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
   test('TC3: partial entry "1419" navigates to 00:00:14:19', async ({ page }) => {
     await navigateToCut(page);
 
-    // Find and activate timecode field (actual testIds from components)
-    const tcDisplay = page.locator(
-      '[data-testid="cut-timeline-timecode-display"], ' +
-      '[data-testid="monitor-tc-source"], ' +
-      '[data-testid="monitor-tc-program"]'
-    ).first();
-
-    const visible = await tcDisplay.isVisible().catch(() => false);
-    if (!visible) {
-      expect(visible).toBe(true);
-      return;
-    }
-
-    await tcDisplay.click();
+    // MARKER_QA.W6: TimecodeField renders as <span title="Click to type timecode">
+    const tcField = page.locator('[title="Click to type timecode"]').first();
+    await expect(tcField).toBeVisible({ timeout: 5000 });
+    await tcField.click();
     await page.waitForTimeout(200);
 
-    const activeInput = page.locator(
-      '[data-testid="cut-timeline-timecode-display-input"], ' +
-      '[data-testid="monitor-tc-source-input"], ' +
-      'input[aria-label="timecode"]'
-    ).first();
-    const inputExists = await activeInput.isVisible().catch(() => false);
+    const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
+    await expect(activeInput).toBeVisible({ timeout: 2000 });
 
-    if (inputExists) {
-      await activeInput.fill('1419');
-      await activeInput.press('Enter');
-      await page.waitForTimeout(300);
+    await activeInput.fill('1419');
+    await activeInput.press('Enter');
+    await page.waitForTimeout(300);
 
-      const currentTime = await page.evaluate(() => {
-        if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
-        return null;
-      });
+    const currentTime = await page.evaluate(() => {
+      if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
+      return null;
+    });
 
-      // 14 seconds + 19 frames at 25fps = 14 + 19/25 = 14.76s
-      const expected = 14 + 19 / 25;
-      expect(currentTime).toBeCloseTo(expected, 1);
-    } else {
-      expect(inputExists).toBe(true);
-    }
+    // 14 seconds + 19 frames at 25fps = 14 + 19/25 = 14.76s
+    const expected = 14 + 19 / 25;
+    expect(currentTime).toBeCloseTo(expected, 1);
   });
 
   /**
@@ -400,7 +346,7 @@ test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
 // ===========================================================================
 // TRIM OPERATION TESTS
 // ===========================================================================
-test.describe('Trim Operations: Ripple + Roll (TDD)', () => {
+test.describe.serial('Trim Operations: Ripple + Roll (TDD)', () => {
 
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
