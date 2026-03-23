@@ -141,6 +141,37 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
+  # ── Zeta: Harness/Infrastructure Domain ─────────────────
+  - callsign: "Zeta"
+    domain: "harness"
+    role_title: "Harness Engineer / Infrastructure"
+    worktree: ""
+    branch: "main"
+    owned_paths:
+      - "src/mcp/tools/task_board_tools.py"
+      - "src/mcp/tools/session_tools.py"
+      - "src/mcp/tools/git_tool.py"
+      - "src/mcp/vetka_mcp_bridge.py"
+      - "src/orchestration/task_board.py"
+      - "src/services/smart_debrief.py"
+      - "src/services/session_tracker.py"
+      - "src/services/agent_registry.py"
+      - "src/tools/generate_claude_md.py"
+      - "data/templates/claude_md_template.j2"
+      - "data/templates/agent_registry.yaml"
+      - "tests/test_phase195_promote_guard.py"
+      - "tests/test_smart_debrief.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ZETA_*.md"
+    key_docs:
+      - "docs/192_task_SQLite/HANDOFF_ZETA_F4_MEMORY_WIRING.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_GIFTED_LAMPORT_2026-03-23.md"
+    roadmap: ""
+
   # ── Commander: Architect Domain ───────────────────────────
   - callsign: "Commander"
     domain: "architect"
