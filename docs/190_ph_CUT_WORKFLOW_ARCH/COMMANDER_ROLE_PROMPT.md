@@ -137,19 +137,21 @@ When agent completes a task:
    - This marks task as `done_worktree` (NOT `done`)
    - Commit stays on worktree branch
 2. Agent: reports completion (user sends screenshot to Commander)
-3. Commander: reviews changes, verifies build, merges to main
+3. **QA Gate: QA agent verifies task — `vetka_task_board action=verify task_id=<id> verdict=PASS|FAIL`. No merge without QA PASS.**
+4. Commander: reviews changes, verifies build, merges to main
 
 ```
 COMMANDER MERGE RITUAL (battle-tested checklist):
   0. PRE-CHECK: git checkout main && git status
      — If uncommitted changes on main → git stash (NEVER merge on dirty main)
      — If you're NOT on main → STOP, switch first (merging on wrong branch = disaster)
-  1. Review: git log --oneline claude/<worktree>...main (what's incoming?)
-  2. Merge: git merge claude/<worktree> --no-edit
-  3. If conflicts → grep "<<<<<<" — resolve by COMBINING both sides (not picking one)
-  4. Verify: cd client && npx vite build (MUST pass before push)
-  5. Promote: vetka_task_board action=promote_to_main task_id=<id>
-  6. POST-CHECK: git stash pop if you stashed in step 0
+  1. QA GATE: Confirm task has QA PASS verdict. No PASS → no merge, send back to agent.
+  2. Review: git log --oneline claude/<worktree>...main (what's incoming?)
+  3. Merge: git merge claude/<worktree> --no-edit
+  4. If conflicts → grep "<<<<<<" — resolve by COMBINING both sides (not picking one)
+  5. Verify: cd client && npx vite build (MUST pass before push)
+  6. Promote: vetka_task_board action=promote_to_main task_id=<id>
+  7. POST-CHECK: git stash pop if you stashed in step 0
      — If stash pop conflicts → resolve carefully, these are someone's uncommitted work
 ```
 
