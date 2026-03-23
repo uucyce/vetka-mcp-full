@@ -26,3 +26,6 @@ export { default as AutoMontagePanelDock } from './AutoMontagePanelDock';
 
 // MARKER_B13: Audio Mixer panel
 export { default as AudioMixerPanelDock } from './AudioMixerPanelDock';
+
+// MARKER_GAMMA-MKL1: Marker List panel
+export { default as MarkerListPanel } from './MarkerListPanel';

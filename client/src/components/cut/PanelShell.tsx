@@ -38,6 +38,23 @@ const IconClose = ({ size = 12 }: { size?: number }) => (
   </svg>
 );
 
+// MARKER_GAMMA-PH1: Lock icon for panel header
+const IconLock = ({ size = 12, locked }: { size?: number; locked: boolean }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+    {locked ? (
+      <>
+        <rect x="3" y="7" width="10" height="7" rx="1" />
+        <path d="M5 7V5a3 3 0 0 1 6 0v2" />
+      </>
+    ) : (
+      <>
+        <rect x="3" y="7" width="10" height="7" rx="1" />
+        <path d="M5 7V5a3 3 0 0 1 6 0" />
+      </>
+    )}
+  </svg>
+);
+
 const SHELL_DOCKED: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -47,11 +64,12 @@ const SHELL_DOCKED: CSSProperties = {
   overflow: 'hidden',
 };
 
+// MARKER_GAMMA-PH1: Unified 18px panel header
 const TITLE_BAR: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
-  height: 20,
+  height: 18,
   padding: '0 4px',
   background: '#101010',
   borderBottom: '0.5px solid #2c2c2c',
@@ -193,6 +211,8 @@ export default function PanelShell({ panelId, children, title, hideTitleBar }: P
 
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // MARKER_GAMMA-PH1: Lock prevents close/detach/minimize
+  const [isLocked, setIsLocked] = useState(false);
   const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null);
   const resizeRef = useRef<{
     dir: ResizeDir;
@@ -377,18 +397,35 @@ export default function PanelShell({ panelId, children, title, hideTitleBar }: P
         <div style={TITLE_BAR}>
           <span style={TITLE_TEXT}>{label}</span>
           <div style={TITLE_ACTIONS}>
-            <button style={ACTION_BTN} onClick={() => detach(panelId)} title="Detach">
-              <IconDetach size={11} />
+            {/* MARKER_GAMMA-PH1: Lock toggle */}
+            <button
+              style={{ ...ACTION_BTN, color: isLocked ? '#888' : '#464646' }}
+              onClick={() => setIsLocked((l) => !l)}
+              title={isLocked ? 'Unlock panel' : 'Lock panel'}
+            >
+              <IconLock size={10} locked={isLocked} />
             </button>
-            <button style={ACTION_BTN} onClick={handleToggleFullscreen} title="Fullscreen">
-              <IconFullscreen size={11} />
-            </button>
-            <button style={ACTION_BTN} onClick={handleMinimize} title="Minimize">
-              <IconMinimize size={11} />
-            </button>
-            <button style={ACTION_BTN} onClick={() => togglePanel(panelId)} title="Close">
-              <IconClose size={11} />
-            </button>
+            {!isLocked && (
+              <>
+                <button style={ACTION_BTN} onClick={() => detach(panelId)} title="Detach">
+                  <IconDetach size={11} />
+                </button>
+                <button style={ACTION_BTN} onClick={handleToggleFullscreen} title="Fullscreen">
+                  <IconFullscreen size={11} />
+                </button>
+                <button style={ACTION_BTN} onClick={handleMinimize} title="Minimize">
+                  <IconMinimize size={11} />
+                </button>
+                <button style={ACTION_BTN} onClick={() => togglePanel(panelId)} title="Close">
+                  <IconClose size={11} />
+                </button>
+              </>
+            )}
+            {isLocked && (
+              <button style={ACTION_BTN} onClick={handleToggleFullscreen} title="Fullscreen">
+                <IconFullscreen size={11} />
+              </button>
+            )}
           </div>
         </div>
       )}

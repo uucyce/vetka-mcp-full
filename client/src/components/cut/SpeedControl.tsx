@@ -217,7 +217,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
         </div>
       </div>
 
-      {/* Custom speed slider */}
+      {/* Custom speed — slider + direct % input */}
       <div style={SECTION}>
         <div style={SECTION_TITLE}>Custom Speed</div>
         <div style={SLIDER_ROW}>
@@ -230,7 +230,23 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
             onChange={(e) => setSpeed(Number(e.target.value))}
             style={{ flex: 1 }}
           />
-          <span style={{ ...VALUE, width: 44, textAlign: 'right' }}>{speed.toFixed(2)}x</span>
+          <input
+            type="number"
+            min={10}
+            max={400}
+            step={5}
+            value={Math.round(speed * 100)}
+            onChange={(e) => {
+              const pct = parseInt(e.target.value);
+              if (!isNaN(pct) && pct >= 10 && pct <= 400) setSpeed(pct / 100);
+            }}
+            style={{
+              width: 48, textAlign: 'right', background: '#0a0a0a', border: '1px solid #333',
+              borderRadius: 3, color: '#ccc', fontSize: 11, padding: '2px 4px',
+              fontFamily: '"JetBrains Mono", monospace', outline: 'none',
+            }}
+          />
+          <span style={{ color: '#555', fontSize: 10 }}>%</span>
         </div>
       </div>
 
@@ -267,7 +283,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
           />
           <span style={{ color: '#ccc', fontSize: 11 }}>Reverse playback</span>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
           <input
             type="checkbox"
             checked={maintainPitch}
@@ -275,6 +291,23 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
           />
           <span style={{ color: '#ccc', fontSize: 11 }}>Maintain audio pitch</span>
         </label>
+        {/* MARKER_GAMMA-SPD1: Fit to Fill — adjust speed so clip fills mark in/out region */}
+        <button
+          style={{ ...BTN_SECONDARY, width: '100%', marginTop: 4 }}
+          title="Set speed so clip duration matches the In-Out marked region"
+          onClick={() => {
+            const s = useCutEditorStore.getState();
+            const markIn = s.sequenceMarkIn;
+            const markOut = s.sequenceMarkOut;
+            if (markIn != null && markOut != null && markOut > markIn && originalDuration > 0) {
+              const targetDuration = markOut - markIn;
+              const fitSpeed = originalDuration / targetDuration;
+              setSpeed(Math.max(0.25, Math.min(4, fitSpeed)));
+            }
+          }}
+        >
+          Fit to Fill (In→Out)
+        </button>
       </div>
 
       {/* Footer */}

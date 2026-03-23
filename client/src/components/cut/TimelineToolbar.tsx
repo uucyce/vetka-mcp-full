@@ -103,25 +103,56 @@ const TOOL_INDICATOR: CSSProperties = {
   lineHeight: '16px',
 };
 
+// MARKER_GAMMA-TT2: Primary tool buttons (clickable)
+type ToolId = 'selection' | 'razor' | 'slip' | 'slide' | 'ripple' | 'roll' | 'hand' | 'zoom';
+const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string; icon: string }[] = [
+  { id: 'selection', label: 'Selection', shortcut: 'V', icon: '\u2191' },
+  { id: 'razor',     label: 'Razor',     shortcut: 'C', icon: '\u2702' },
+  { id: 'ripple',    label: 'Ripple',    shortcut: 'B', icon: 'R' },
+  { id: 'roll',      label: 'Roll',      shortcut: 'N', icon: 'Rl' },
+  { id: 'slip',      label: 'Slip',      shortcut: 'Y', icon: 'Sl' },
+  { id: 'slide',     label: 'Slide',     shortcut: 'U', icon: 'Sd' },
+  { id: 'hand',      label: 'Hand',      shortcut: 'H', icon: '\u270B' },
+  { id: 'zoom',      label: 'Zoom',      shortcut: 'Z', icon: '\u2315' },
+];
+
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
   const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
   const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
   const activeTool = useCutEditorStore((s) => s.activeTool);
+  const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
 
-  const toolInfo = TOOL_DISPLAY[activeTool] || TOOL_DISPLAY.selection;
-
   return (
     <div style={ROOT}>
-      {/* MARKER_W6.TOOL-SM: Active tool indicator */}
-      <div style={{ ...TOOL_INDICATOR, color: toolInfo.color }} title={`Active tool: ${toolInfo.label} (${toolInfo.shortcut})`}>
-        <span style={{ fontSize: 7, opacity: 0.5 }}>{toolInfo.shortcut}</span>
-        {toolInfo.label}
-      </div>
+      {/* MARKER_GAMMA-TT2: Clickable tool buttons */}
+      {PRIMARY_TOOLS.map((tool) => {
+        const isActive = activeTool === tool.id;
+        return (
+          <button
+            key={tool.id}
+            onClick={() => setActiveTool(tool.id)}
+            title={`${tool.label} (${tool.shortcut})`}
+            style={{
+              ...TOGGLE_BTN,
+              background: isActive ? '#222' : 'none',
+              border: isActive ? '1px solid #555' : '1px solid transparent',
+              color: isActive ? '#ccc' : '#555',
+              fontSize: 10,
+              fontFamily: '"JetBrains Mono", monospace',
+              minWidth: 20,
+              height: 18,
+              justifyContent: 'center',
+            }}
+          >
+            {tool.icon}
+          </button>
+        );
+      })}
 
       <div style={{ width: 1, height: 14, background: '#222' }} />
 

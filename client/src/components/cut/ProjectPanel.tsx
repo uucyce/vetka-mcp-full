@@ -248,6 +248,8 @@ export default function ProjectPanel() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   // MARKER_GAMMA-P1.4: Search/filter clips
   const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-MB1: Thumbnail size slider for grid view (48-160px)
+  const [thumbSize, setThumbSize] = useState(80);
   // MARKER_GAMMA-P1.1: User-created bins
   type UserBin = { id: string; name: string };
   const [userBins, setUserBins] = useState<UserBin[]>(() => {
@@ -689,6 +691,23 @@ export default function ProjectPanel() {
         />
       </div>
 
+      {/* MARKER_GAMMA-MB1: Thumbnail size slider (grid mode only) */}
+      {viewMode === 'grid' && (
+        <div style={{ padding: '2px 10px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 8, color: '#555' }}>Size</span>
+          <input
+            type="range"
+            min={48}
+            max={160}
+            step={8}
+            value={thumbSize}
+            onChange={(e) => setThumbSize(parseInt(e.target.value))}
+            style={{ flex: 1, height: 3, appearance: 'none', background: '#333', borderRadius: 2, outline: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 8, color: '#555', fontVariantNumeric: 'tabular-nums', width: 24, textAlign: 'right' }}>{thumbSize}</span>
+        </div>
+      )}
+
       {/* Import area */}
       <div style={IMPORT_AREA}>
         {/* Dropzone — double-click opens file picker */}
@@ -822,7 +841,7 @@ export default function ProjectPanel() {
       ) : viewMode === 'grid' ? (
         /* Grid view — thumbnail grid */
         <div style={{ ...BIN_LIST }}>
-          <div style={GRID_CONTAINER}>
+          <div style={{ ...GRID_CONTAINER, gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
             {projectItems.map((item) => {
               const isActive = item.source_path === activeMediaPath;
               return (
