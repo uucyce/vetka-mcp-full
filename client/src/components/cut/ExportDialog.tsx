@@ -11,8 +11,9 @@
  * Editorial: POST /cut/export/* endpoints (unchanged).
  */
 import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
+import { io, type Socket } from 'socket.io-client';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
+import { API_BASE, getSocketUrl } from '../../config/api.config';
 
 // ─── Types ───
 
@@ -244,6 +245,64 @@ export default function ExportDialog() {
   // MARKER_B4.3: Export presets from backend
   const [presets, setPresets] = useState<ExportPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  // MARKER_B4.2: ETA + SocketIO progress
+  const [etaSec, setEtaSec] = useState<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState<number | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const useSocketProgress = useRef(false);
+
+  // MARKER_B4.2: SocketIO render_progress listener
+  useEffect(() => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) {
+      // No active job — disconnect socket if connected
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      useSocketProgress.current = false;
+      setEtaSec(null);
+      setElapsedSec(null);
+      return;
+    }
+
+    // Connect socket for progress events
+    const socket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      useSocketProgress.current = true;
+    });
+
+    socket.on('render_progress', (data: any) => {
+      if (data.job_id !== activeJobIdRef.current) return;
+      const progress = data.progress ?? 0;
+      setRenderProgress(progress);
+      if (data.eta_sec != null) setEtaSec(Math.round(data.eta_sec));
+      if (data.elapsed_sec != null) setElapsedSec(Math.round(data.elapsed_sec));
+      if (data.message === 'done') {
+        setRenderStatus('Complete');
+      } else if (data.message === 'cancelled') {
+        setRenderStatus('Cancelled');
+        setRenderProgress(null);
+      } else if (data.message?.startsWith('error:')) {
+        setRenderError(data.message);
+        setRenderProgress(null);
+      } else {
+        setRenderStatus(`Encoding... ${Math.round(progress * 100)}%`);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+      useSocketProgress.current = false;
+    };
+  }, [renderProgress !== null ? activeJobIdRef.current : null]);
 
   // MARKER_B4.3: Fetch presets on mount
   useEffect(() => {
@@ -313,17 +372,21 @@ export default function ExportDialog() {
       if (data.job_id) {
         // MARKER_B4.1: Store job_id for cancel
         activeJobIdRef.current = data.job_id;
-        // Poll for progress
+        // Poll for progress (MARKER_B4.2: slower when SocketIO active, faster as fallback)
         setRenderStatus('Encoding...');
         for (let i = 0; i < 600; i++) {
-          await new Promise((r) => setTimeout(r, 500));
+          const pollInterval = useSocketProgress.current ? 2000 : 500;
+          await new Promise((r) => setTimeout(r, pollInterval));
           const jobRes = await fetch(`${API_BASE}/cut/job/${encodeURIComponent(data.job_id)}`);
           if (!jobRes.ok) continue;
           const job = await jobRes.json();
           const state = job.job?.state;
           const progress = job.job?.progress ?? 0;
-          setRenderProgress(progress);
-          setRenderStatus(state === 'done' ? 'Complete' : `Encoding... ${Math.round(progress * 100)}%`);
+          // Only update UI from HTTP if socket isn't providing real-time updates
+          if (!useSocketProgress.current) {
+            setRenderProgress(progress);
+            setRenderStatus(state === 'done' ? 'Complete' : `Encoding... ${Math.round(progress * 100)}%`);
+          }
           if (state === 'done') {
             const result = job.job?.result;
             const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
@@ -725,6 +788,8 @@ export default function ExportDialog() {
                 </button>
                 <span style={{ fontSize: 9, color: '#444' }}>
                   {Math.round((renderProgress ?? 0) * 100)}%
+                  {etaSec != null && etaSec > 0 && ` — ${etaSec < 60 ? `${etaSec}s` : `${Math.floor(etaSec / 60)}m ${etaSec % 60}s`} remaining`}
+                  {elapsedSec != null && elapsedSec > 0 && ` (${elapsedSec < 60 ? `${elapsedSec}s` : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`} elapsed)`}
                 </span>
               </div>
             </div>
