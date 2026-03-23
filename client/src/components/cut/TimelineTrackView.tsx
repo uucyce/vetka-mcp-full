@@ -561,6 +561,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
   const markIn = useCutEditorStore((state) => state.markIn);
@@ -2005,7 +2006,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
                 <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
                 <div data-drop-zone="overwrite" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '67%', pointerEvents: 'none' }} />
-                {lane.clips.map((clip) => {
+                {lane.clips.map((clip, clipIdx) => {
                   if (dragState?.clipId === clip.clip_id) {
                     return null;
                   }
@@ -2014,6 +2015,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const width = durationSec * zoom;
                   if (x + width < 0 || x > containerWidth) {
                     return null;
+                  }
+
+                  // MARKER_TL5: Through edit detection — continuous source media across adjacent clips
+                  let isThroughEdit = false;
+                  if (showThroughEdits && clipIdx > 0) {
+                    const prev = lane.clips[clipIdx - 1];
+                    if (prev.source_path === clip.source_path) {
+                      const prevEnd = (prev.source_in ?? 0) + prev.duration_sec;
+                      const curStart = clip.source_in ?? 0;
+                      isThroughEdit = Math.abs(prevEnd - curStart) < 0.05; // within ~1 frame tolerance
+                    }
                   }
 
                   const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
@@ -2069,6 +2081,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
                       />
+
+                      {/* MARKER_TL5: Through edit indicator — triangle at left edge (FCP7 Ch.10 p.152) */}
+                      {isThroughEdit && (
+                        <div style={{
+                          position: 'absolute', left: -1, top: '50%', transform: 'translateY(-50%)',
+                          width: 0, height: 0, zIndex: 5, pointerEvents: 'none',
+                          borderTop: '4px solid transparent',
+                          borderBottom: '4px solid transparent',
+                          borderLeft: '5px solid rgba(255,255,255,0.6)',
+                        }} title="Through edit — continuous media" />
+                      )}
 
                       {width > 20 && showWaveforms ? (
                         <div
