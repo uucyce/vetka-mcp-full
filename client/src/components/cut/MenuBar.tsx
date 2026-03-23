@@ -709,7 +709,7 @@ export default function MenuBar() {
         { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
-        { label: 'Speed Control', action: () => togglePanel('speed', 'speed', 'Speed') },
+        // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
         { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
