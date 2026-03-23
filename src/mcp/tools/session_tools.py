@@ -184,6 +184,10 @@ class SessionInitTool(BaseMCPTool):
                     "type": "integer",
                     "description": "Maximum tokens for context (default: 4000)",
                     "default": 4000
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Agent callsign (e.g. Alpha, Beta, Zeta). If provided, session is bound to this role and task board is unlocked. If omitted, falls back to branch detection."
                 }
             },
             "required": []
@@ -221,6 +225,7 @@ class SessionInitTool(BaseMCPTool):
         include_pinned = arguments.get("include_pinned", True)
         compress = arguments.get("compress", True)
         max_context_tokens = arguments.get("max_context_tokens", 4000)
+        role_name = arguments.get("role")  # MARKER_196.1.3: explicit role declaration
 
         # MARKER_108_1: Unified MCP-Chat ID
         # If chat_id provided, use it as session_id
@@ -671,56 +676,72 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Protocol status never blocks session init
 
-        # MARKER_ZETA.INT: Role context from Agent Registry
+        # MARKER_ZETA.INT + MARKER_196.1.3: Role context from Agent Registry
+        # Priority: explicit role= param > branch detection fallback
         try:
             from src.services.agent_registry import get_agent_registry
             import subprocess as _sp
 
             _reg = get_agent_registry()
+            _role = None
+            _role_source = None  # "explicit" or "branch_detection"
 
-            # MARKER_195.22: Detect branch from WORKTREE, not main repo.
-            # MCP subprocess is launched from worktree cwd by Claude Code.
-            # Try multiple detection strategies:
-            # 1. git branch from initial cwd (worktree) via VETKA_MCP_CWD env
-            # 2. git branch from current os.getcwd()
-            # 3. Fallback: git branch from main repo (returns "main")
-            import os
-            _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
-            _branch_result = _sp.run(
-                ["git", "branch", "--show-current"],
-                capture_output=True, text=True, timeout=5,
-                cwd=_detect_cwd,
-            )
-            _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
+            # MARKER_196.1.3: Explicit role= parameter (preferred path)
+            if role_name:
+                _role = _reg.get_by_callsign(role_name)
+                if _role:
+                    _role_source = "explicit"
+                else:
+                    # Invalid role name — return error with available roles
+                    context["role_error"] = {
+                        "message": f"Unknown role: '{role_name}'",
+                        "available_roles": _reg.list_callsigns(),
+                    }
 
-            # If cwd detection returned main, try worktree detection via git-dir
-            if _current_branch == "main" or not _current_branch:
-                # Check if cwd is inside a worktree
-                _toplevel = _sp.run(
-                    ["git", "rev-parse", "--show-toplevel"],
+            # Fallback: branch detection (backward-compatible, no role= provided)
+            if not _role and not role_name:
+                import os
+                _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
+                _branch_result = _sp.run(
+                    ["git", "branch", "--show-current"],
                     capture_output=True, text=True, timeout=5,
                     cwd=_detect_cwd,
                 )
-                _toplevel_path = _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
-                if _toplevel_path and "worktrees" in _toplevel_path:
-                    # Extract worktree name → look up branch in registry
-                    _wt_name = Path(_toplevel_path).name
-                    for _r in _reg.roles:
-                        if _r.worktree == _wt_name:
-                            _current_branch = _r.branch
-                            break
+                _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
 
-            _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+                if _current_branch == "main" or not _current_branch:
+                    _toplevel = _sp.run(
+                        ["git", "rev-parse", "--show-toplevel"],
+                        capture_output=True, text=True, timeout=5,
+                        cwd=_detect_cwd,
+                    )
+                    _toplevel_path = _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
+                    if _toplevel_path and "worktrees" in _toplevel_path:
+                        _wt_name = Path(_toplevel_path).name
+                        for _r in _reg.roles:
+                            if _r.worktree == _wt_name:
+                                _current_branch = _r.branch
+                                break
+
+                _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+                if _role:
+                    _role_source = "branch_detection"
+
+            # Always expose available roles for discoverability
+            if not _role:
+                context["available_roles"] = _reg.list_callsigns()
 
             if _role:
                 _role_ctx = {
                     "callsign": _role.callsign,
                     "domain": _role.domain,
+                    "pipeline_stage": _role.pipeline_stage,  # MARKER_196.1.3
                     "role_title": _role.role_title,
                     "branch": _role.branch,
                     "worktree": _role.worktree,
                     "owned_paths": list(_role.owned_paths),
                     "blocked_paths": list(_role.blocked_paths),
+                    "role_source": _role_source,  # "explicit" or "branch_detection"
                 }
 
                 # Workflow hints based on domain
