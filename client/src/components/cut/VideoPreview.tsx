@@ -343,13 +343,30 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   }, [activeMediaPath]);
 
   // No active media — show empty state
+  // MARKER_GAMMA-FCP7: FCP7-style empty states per monitor type
   if (!activeMediaPath) {
     return (
       <div style={CONTAINER_STYLE}>
         <div style={EMPTY_STYLE}>
-          {feed === 'source' ? 'Select a clip to preview' : feed === 'program' ? 'No timeline playback' : 'Select a clip to preview'}
-          <br />
-          <span style={{ fontSize: 11, color: '#333' }}>{feed === 'source' ? 'SOURCE' : feed === 'program' ? 'PROGRAM' : 'Monitor'}</span>
+          {feed === 'source' ? (
+            <>
+              <span style={{ fontSize: 11, color: '#666', letterSpacing: 1, textTransform: 'uppercase' }}>SOURCE</span>
+              <br />
+              <span style={{ marginTop: 8, display: 'inline-block' }}>Double-click clip in Browser</span>
+              <br />
+              <span style={{ fontSize: 11, color: '#444' }}>or drag to Source monitor</span>
+            </>
+          ) : feed === 'program' ? (
+            <>
+              <span style={{ fontSize: 11, color: '#666', letterSpacing: 1, textTransform: 'uppercase' }}>PROGRAM</span>
+              <br />
+              <span style={{ marginTop: 8, display: 'inline-block' }}>No active sequence</span>
+              <br />
+              <span style={{ fontSize: 11, color: '#444' }}>Edit clips in timeline to see playback</span>
+            </>
+          ) : (
+            <>Select a clip to preview</>
+          )}
         </div>
       </div>
     );

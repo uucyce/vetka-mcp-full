@@ -23,6 +23,8 @@ import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 import { EFFECT_APPLY_MAP } from './EffectsPanel';
+import ThumbnailStrip from './ThumbnailStrip';
+import TrackResizeHandle from './TrackResizeHandle';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -275,6 +277,23 @@ type WaveformHoverState = {
   ratio: number;
   timeSec: number;
 };
+
+// MARKER_SHUTTLE_INDICATOR: Visual shuttle speed readout (FCP7 Ch.8)
+function ShuttleIndicator() {
+  const speed = useCutEditorStore((s) => s.shuttleSpeed);
+  if (speed === 0) return null;
+  const label = speed > 0 ? `${speed}x` : `${speed}x`;
+  const arrow = speed > 0 ? '\u25B6' : '\u25C0';
+  return (
+    <span style={{
+      fontSize: 8, fontWeight: 700, fontFamily: 'monospace',
+      color: Math.abs(speed) > 2 ? '#ccc' : '#888',
+      marginLeft: 4, whiteSpace: 'nowrap',
+    }} data-testid="shuttle-speed-indicator">
+      {arrow}{label}
+    </span>
+  );
+}
 
 function basename(path: string): string {
   return path.split('/').pop()?.split('\\').pop() || path;
@@ -562,6 +581,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const showThumbnails = useCutEditorStore((state) => state.showThumbnails);
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
@@ -1813,6 +1833,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             onSeek={seek}
             testId="cut-timeline-timecode"
           />
+          {/* MARKER_SHUTTLE_INDICATOR: Show shuttle speed when JKL active */}
+          <ShuttleIndicator />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
           <TimeRuler
@@ -2116,6 +2138,29 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           borderBottom: '4px solid transparent',
                           borderLeft: '5px solid rgba(255,255,255,0.6)',
                         }} title="Through edit — continuous media" />
+                      )}
+
+                      {/* MARKER_B57: Video filmstrip thumbnails */}
+                      {width > 40 && showThumbnails && (lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt')) && (
+                        <div
+                          data-clip="1"
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 0,
+                            overflow: 'hidden',
+                            opacity: 0.6,
+                          }}
+                        >
+                          <ThumbnailStrip
+                            sourcePath={clip.source_path}
+                            duration_sec={clip.duration_sec}
+                            width={Math.max(4, width) - 2}
+                            height={trackHeight - 2}
+                            frameCount={Math.max(1, Math.floor((Math.max(4, width) - 2) / (trackHeight * 16 / 9)))}
+                            posterTime={clip.source_in ?? 1.0}
+                          />
+                        </div>
                       )}
 
                       {width > 20 && showWaveforms ? (
@@ -2676,34 +2721,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   </>
                 ) : null}
               </div>
-              {/* MARKER_TIMELINE-1: Drag-to-resize handle on bottom edge */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 4,
-                  cursor: 'row-resize',
-                  zIndex: 10,
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const startY = e.clientY;
-                  const startH = laneH;
-                  const laneId = lane.lane_id;
-                  const onMove = (ev: MouseEvent) => {
-                    const delta = ev.clientY - startY;
-                    setTrackHeightForLane(laneId, startH + delta);
-                  };
-                  const onUp = () => {
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                  };
-                  document.addEventListener('mousemove', onMove);
-                  document.addEventListener('mouseup', onUp);
-                }}
+              {/* MARKER_TIMELINE-1: Drag-to-resize handle (Gamma's TrackResizeHandle) */}
+              <TrackResizeHandle
+                laneId={lane.lane_id}
+                currentHeight={laneH}
+                onResize={setTrackHeightForLane}
               />
             </div>
           );

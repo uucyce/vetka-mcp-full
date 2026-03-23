@@ -9,7 +9,7 @@
  *
  * Categories: Video Filters, Audio Filters, Transitions, Generators.
  */
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
 import MotionControls from './MotionControls';
 
@@ -537,9 +537,23 @@ function EffectsBrowser() {
     }
   }, [selectedClipId, setClipEffects]);
 
+  // MARKER_GAMMA-FCP7: Drag ghost badge showing effect name (FCP7 Ch.13 polish)
+  const dragGhostRef = useRef<HTMLDivElement | null>(null);
+
   const handleDragStart = useCallback((e: React.DragEvent, effect: BrowserEffect) => {
     e.dataTransfer.setData('application/x-cut-effect', JSON.stringify({ id: effect.id, name: effect.name }));
     e.dataTransfer.effectAllowed = 'copy';
+
+    // Create off-screen badge as drag image
+    let ghost = dragGhostRef.current;
+    if (!ghost) {
+      ghost = document.createElement('div');
+      ghost.style.cssText = 'position:fixed;top:-100px;left:-100px;padding:4px 10px;background:#333;color:#ccc;font-size:11px;font-family:system-ui;border-radius:3px;border:1px solid #555;white-space:nowrap;pointer-events:none;z-index:9999';
+      document.body.appendChild(ghost);
+      dragGhostRef.current = ghost;
+    }
+    ghost.textContent = `FX: ${effect.name}`;
+    e.dataTransfer.setDragImage(ghost, 0, 0);
   }, []);
 
   return (

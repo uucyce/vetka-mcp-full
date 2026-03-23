@@ -197,6 +197,7 @@ interface CutEditorState {
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
   laneVolumes: Record<string, number>;
+  lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
   // === Selection ===
@@ -313,6 +314,7 @@ interface CutEditorState {
   showClipNames: boolean;
   showClipBorders: boolean;
   showWaveforms: boolean;
+  showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
   showRubberBand: boolean;
@@ -365,6 +367,7 @@ interface CutEditorState {
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
+  setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
   // MARKER_W3.7: Multi-select
@@ -475,6 +478,9 @@ interface CutEditorState {
   setThumbnails: (items: ThumbnailItem[]) => void;
   setSyncSurface: (items: SyncSurfaceItem[]) => void;
   setMarkers: (items: TimeMarker[]) => void;
+  // MARKER_FCP7_CH38: Marker CRUD
+  deleteMarker: (markerId: string) => void;
+  updateMarker: (markerId: string, updates: Partial<TimeMarker>) => void;
 
   // MARKER_MULTICAM: Multicam actions
   setMulticam: (id: string, angles: Array<{ source_path: string; label: string; offset_sec: number }>) => void;
@@ -547,6 +553,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
   laneVolumes: {},
+  lanePans: {},
   snapEnabled: true,
 
   // Selection
@@ -641,6 +648,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipNames: true,
   showClipBorders: true,
   showWaveforms: true,
+  showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
   showRubberBand: false,
@@ -742,6 +750,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       laneVolumes: {
         ...state.laneVolumes,
         [laneId]: Math.max(0, Math.min(1.5, volume)),
+      },
+    })),
+  // MARKER_RECON_21: Persist pan to store (was local useState in AudioMixer)
+  setLanePan: (laneId, pan) =>
+    set((state) => ({
+      lanePans: {
+        ...state.lanePans,
+        [laneId]: Math.max(-1, Math.min(1, pan)),
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
@@ -1105,6 +1121,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
   toggleShowClipBorders: () => set((s) => ({ showClipBorders: !s.showClipBorders })),
   toggleShowWaveforms: () => set((s) => ({ showWaveforms: !s.showWaveforms })),
+  toggleShowThumbnails: () => set((s) => ({ showThumbnails: !s.showThumbnails })),
   toggleShowThroughEdits: () => set((s) => ({ showThroughEdits: !s.showThroughEdits })),
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
   toggleShowRubberBand: () => set((s) => ({ showRubberBand: !s.showRubberBand })),
@@ -1209,6 +1226,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),
   setMarkers: (items) => set({ markers: items }),
+  // MARKER_FCP7_CH38: Delete + update marker
+  deleteMarker: (markerId) => set((s) => ({ markers: s.markers.filter((m) => m.marker_id !== markerId) })),
+  updateMarker: (markerId, updates) => set((s) => ({
+    markers: s.markers.map((m) => m.marker_id === markerId ? { ...m, ...updates } : m),
+  })),
 
   // MARKER_MULTICAM: Multicam action implementations
   setMulticam: (id, angles) => set({ multicamId: id, multicamAngles: angles, multicamActiveAngle: 0, multicamMode: true }),
