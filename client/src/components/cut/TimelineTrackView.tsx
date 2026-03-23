@@ -22,9 +22,15 @@ import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
-import { EFFECT_APPLY_MAP } from './EffectsPanel';
+// MARKER_EFFECT_DROP: Minimal effect→params map for drag-drop (avoids import from EffectsPanel)
+const EFFECT_APPLY_MAP: Record<string, Record<string, number>> = {
+  brightness: { brightness: 0.15 }, contrast: { contrast: 0.2 }, saturation: { saturation: 0.3 },
+  blur: { blur: 5 }, sharpen: { sharpen: 2 }, vignette: { vignette: 0.4 },
+  gamma: { gamma: 1.2 }, denoise: { denoise: 3 }, opacity: { opacity: 0.8 },
+};
 import ThumbnailStrip from './ThumbnailStrip';
 import TrackResizeHandle from './TrackResizeHandle';
+import TimelineRuler from './TimelineRuler';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -421,92 +427,7 @@ function findSnapTarget(args: {
   };
 }
 
-function TimeRuler({
-  zoom,
-  scrollLeft,
-  totalWidth,
-  rulerRef,
-  onSeek,
-  onScrubStart,
-  onDoubleClick,
-}: {
-  zoom: number;
-  scrollLeft: number;
-  totalWidth: number;
-  rulerRef: RefObject<HTMLDivElement | null>;
-  onSeek: (time: number) => void;
-  onScrubStart: (event: MouseEvent<HTMLDivElement>) => void;
-  onDoubleClick: (event: MouseEvent<HTMLDivElement>) => void;
-}) {
-  const handleClick = (event: MouseEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left + scrollLeft;
-    onSeek(x / zoom);
-  };
-
-  const tickInterval = rulerTickIntervalForZoom(zoom);
-
-  const ticks: { x: number; label: string; major: boolean }[] = [];
-  const startTime = Math.floor(scrollLeft / zoom / tickInterval) * tickInterval;
-  const endTime = (scrollLeft + totalWidth) / zoom + tickInterval;
-
-  for (let time = startTime; time <= endTime; time += tickInterval) {
-    if (time < 0) continue;
-    const x = time * zoom - scrollLeft;
-    if (x < -20 || x > totalWidth + 20) continue;
-    const major = tickInterval >= 1 ? time % (tickInterval * 5) === 0 : time % 5 === 0;
-    const minutes = Math.floor(time / 60);
-    const seconds = Math.floor(time % 60);
-    const label =
-      major || tickInterval >= 2 ? `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}` : '';
-    ticks.push({ x, label, major });
-  }
-
-  return (
-    <div
-      ref={rulerRef}
-      data-testid="cut-timeline-ruler"
-      style={RULER_STYLE}
-      onClick={handleClick}
-      onMouseDown={onScrubStart}
-      onDoubleClick={onDoubleClick}
-    >
-      {ticks.map((tick, index) => (
-        <div
-          key={index}
-          style={{
-            position: 'absolute',
-            left: tick.x,
-            bottom: 0,
-            width: 1,
-            height: tick.major ? 14 : 8,
-            background: tick.major ? '#666' : '#444',
-          }}
-        >
-          {tick.label ? (
-            <span
-              data-ruler-label="1"
-              style={{
-                position: 'absolute',
-                bottom: tick.major ? 15 : 9,
-                left: 2,
-                fontSize: 10,
-                fontFamily: '"JetBrains Mono", "SF Mono", monospace',
-                color: tick.major ? '#bbb' : '#777',
-                whiteSpace: 'nowrap',
-                userSelect: 'none',
-                pointerEvents: 'none',
-                zIndex: 1,
-              }}
-            >
-              {tick.label}
-            </span>
-          ) : null}
-        </div>
-      ))}
-    </div>
-  );
-}
+// MARKER_RULER_REPLACE: Internal TimeRuler replaced by Gamma's TimelineRuler.tsx
 
 // MARKER_C11: Props interface for multi-instance support (Phase 198)
 interface TimelineTrackViewProps {
@@ -1837,10 +1758,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           <ShuttleIndicator />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
-          <TimeRuler
+          <TimelineRuler
             zoom={zoom}
             scrollLeft={scrollLeft}
             totalWidth={containerWidth - LANE_HEADER_WIDTH}
+            fps={projectFramerate}
             rulerRef={rulerRef}
             onSeek={seek}
             onScrubStart={handleRulerScrubStart}
