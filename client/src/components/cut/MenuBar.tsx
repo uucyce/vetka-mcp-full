@@ -23,7 +23,7 @@ import {
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 const SpeedControl = lazy(() => import('./SpeedControl'));
-import WorkspacePresets from './WorkspacePresets';
+// MARKER_GAMMA-25: WorkspacePresets removed from menubar — switching via Window menu only
 
 // ─── Types ─────────────────────────────────────────────────────────
 
@@ -794,9 +794,8 @@ export default function MenuBar() {
             )}
           </div>
         ))}
-        {/* MARKER_GAMMA-WS1: Visual workspace picker — right-aligned */}
+        {/* MARKER_GAMMA-25: Workspace switching via Window menu only (FCP7 style) */}
         <div style={{ flex: 1 }} />
-        <WorkspacePresets />
       </div>
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
