@@ -621,13 +621,27 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
     if audio_lane["clips"]:
         lanes.append(audio_lane)
 
+    # MARKER_B55: Auto-detect FPS from first video clip (like Premiere Pro)
+    detected_fps = 25.0  # default fallback
+    if video_lane["clips"]:
+        first_clip_path = video_lane["clips"][0].get("source_path", "")
+        if first_clip_path:
+            try:
+                probe_result = probe_file(first_clip_path)
+                if probe_result.ok and probe_result.video_streams:
+                    raw_fps = probe_result.video_streams[0].fps
+                    if raw_fps > 0:
+                        detected_fps = round(raw_fps, 3)
+            except Exception:
+                pass  # fallback to 25
+
     first_scene = scene_ids_used[0] if scene_ids_used else ""
     return {
         "schema_version": "cut_timeline_state_v1",
         "project_id": str(project.get("project_id") or ""),
         "timeline_id": str(timeline_id or "main"),
         "revision": 1,
-        "fps": 25,
+        "fps": detected_fps,
         "lanes": lanes,
         "selection": {
             "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],
