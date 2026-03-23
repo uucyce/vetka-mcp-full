@@ -10,6 +10,7 @@
  */
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { PRESET_BUILDERS } from './presetBuilders';
 
 const PRESETS: { name: WorkspacePresetName; label: string }[] = [
   { name: 'editing', label: 'Edit' },
@@ -70,9 +71,16 @@ export default function WorkspacePresets() {
         useCutEditorStore.getState().setFocusedPanel(targetFocus as any);
       }
     } else {
-      // MARKER_C5: No saved layout — reload to build preset-specific default
+      // MARKER_GAMMA-R2: No saved layout — build via API instead of reload
       setActivePreset(name);
-      window.location.reload();
+      try {
+        apiRef.clear();
+        const builder = PRESET_BUILDERS[name] || PRESET_BUILDERS.editing;
+        builder(apiRef, '');
+        requestAnimationFrame(() => {
+          try { saveLayout(name, apiRef.toJSON()); } catch { /* ok */ }
+        });
+      } catch { /* builder failed */ }
     }
   };
 
