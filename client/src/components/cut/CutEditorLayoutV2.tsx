@@ -310,11 +310,15 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
 
     // MARKER_UNDO-FIX: All editing ops route through applyTimelineOps for undo support
+    // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
     deleteClip: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
-      await s.applyTimelineOps([{ op: 'remove_clip', clip_id: s.selectedClipId }]);
+      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      if (ids.length === 0) return;
+      const ops = ids.map((id) => ({ op: 'remove_clip', clip_id: id }));
+      await s.applyTimelineOps(ops);
       s.setSelectedClip(null);
+      s.clearSelection();
     },
     splitClip: async () => {
       const s = useCutEditorStore.getState();
@@ -331,11 +335,15 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_W6.WIRE: Ripple Delete — remove clip and close gap
+    // MARKER_TL4: Ripple delete all selected clips (linked selection)
     rippleDelete: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
-      await s.applyTimelineOps([{ op: 'ripple_delete', clip_id: s.selectedClipId }]);
+      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      if (ids.length === 0) return;
+      const ops = ids.map((id) => ({ op: 'ripple_delete', clip_id: id }));
+      await s.applyTimelineOps(ops);
       s.setSelectedClip(null);
+      s.clearSelection();
     },
 
     // MARKER_W6.WIRE: Nudge clip ±1 frame
