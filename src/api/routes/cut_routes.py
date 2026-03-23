@@ -3013,6 +3013,15 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
     project["state"] = "degraded" if degraded_mode else "ready"
     project["bootstrap_profile"] = str(body.bootstrap_profile or project.get("bootstrap_profile") or "default")
     store.save_project(project)
+
+    # MARKER_B54-FIX: Create initial timeline immediately so runtime_ready=true
+    # Previously timeline was only created by separate /scene-assembly-async call
+    existing_timeline = store.load_timeline_state()
+    if existing_timeline is None:
+        timeline_id = str(body.timeline_id or "main")
+        initial_timeline = _build_initial_timeline_state(project, timeline_id, store=store)
+        store.save_timeline_state(initial_timeline)
+
     store.save_bootstrap_state(
         {
             "schema_version": "cut_bootstrap_state_v1",
@@ -3049,7 +3058,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
         "phases": [
             {"id": "discover", "label": "Scope discovery", "status": "done", "progress": 0.33},
             {"id": "project", "label": "Project bootstrap", "status": "done", "progress": 0.66},
-            {"id": "align", "label": "Timeline bootstrap", "status": "ready", "progress": 1.0},
+            {"id": "align", "label": "Timeline bootstrap", "status": "done", "progress": 1.0},
         ],
         "next_actions": [
             "open_cut_project",
