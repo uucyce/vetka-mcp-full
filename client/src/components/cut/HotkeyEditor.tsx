@@ -466,7 +466,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
           </div>
         )}
 
-        {/* Footer: current preset */}
+        {/* MARKER_GAMMA-P3.6: Footer with export/import + preset info */}
         <div style={{
           padding: '4px 12px',
           borderTop: '1px solid #222',
@@ -476,9 +476,66 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
           fontFamily: 'monospace',
           display: 'flex',
           justifyContent: 'space-between',
+          alignItems: 'center',
         }}>
-          <span>Preset: {presetName}</span>
-          <span>{ALL_ACTIONS.length} actions</span>
+          <span>Preset: {presetName} | {ALL_ACTIONS.length} actions</span>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => {
+                const json = JSON.stringify({ preset: presetName, overrides: customOverrides }, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `cut-hotkeys-${presetName}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              style={{
+                background: 'none', border: '1px solid #333', borderRadius: 2,
+                color: '#888', fontSize: 8, padding: '1px 6px', cursor: 'pointer',
+              }}
+              title="Export hotkey configuration as JSON"
+            >
+              Export
+            </button>
+            <button
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = () => {
+                  const file = input.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    try {
+                      const data = JSON.parse(reader.result as string) as { preset?: string; overrides?: HotkeyMap };
+                      if (data.preset && (data.preset === 'premiere' || data.preset === 'fcp7' || data.preset === 'custom')) {
+                        setPresetName(data.preset as HotkeyPresetName);
+                        savePresetName(data.preset as HotkeyPresetName);
+                      }
+                      if (data.overrides && typeof data.overrides === 'object') {
+                        setCustomOverrides(data.overrides);
+                        saveCustomOverrides(data.overrides);
+                      }
+                      window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_custom', newValue: JSON.stringify(data.overrides ?? {}) }));
+                      window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: data.preset ?? 'premiere' }));
+                    } catch { /* invalid JSON */ }
+                  };
+                  reader.readAsText(file);
+                };
+                input.click();
+              }}
+              style={{
+                background: 'none', border: '1px solid #333', borderRadius: 2,
+                color: '#888', fontSize: 8, padding: '1px 6px', cursor: 'pointer',
+              }}
+              title="Import hotkey configuration from JSON file"
+            >
+              Import
+            </button>
+          </div>
         </div>
       </div>
     </div>
