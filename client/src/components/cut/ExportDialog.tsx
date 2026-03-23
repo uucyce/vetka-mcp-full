@@ -260,6 +260,9 @@ export default function ExportDialog() {
   const [audioCodec, setAudioCodec] = useState<AudioCodec>('aac');
   const [selectionOnly, setSelectionOnly] = useState(false);
   const [audioStems, setAudioStems] = useState(false);
+  // MARKER_B51: Loudness normalization
+  const [loudnessNorm, setLoudnessNorm] = useState(false);
+  const [loudnessStandard, setLoudnessStandard] = useState('youtube');
   const [editorialFormat, setEditorialFormat] = useState<EditorialFormat>('premiere_xml');
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
@@ -315,6 +318,9 @@ export default function ExportDialog() {
       } else if (data.message?.startsWith('error:')) {
         setRenderError(data.message);
         setRenderProgress(null);
+      } else if (data.message && data.message.startsWith('Encoding at')) {
+        // MARKER_B51: Show speed + ETA from FFmpeg -progress pipe
+        setRenderStatus(`${data.message} (${Math.round(progress * 100)}%)`);
       } else {
         setRenderStatus(`Encoding... ${Math.round(progress * 100)}%`);
       }
@@ -755,6 +761,36 @@ export default function ExportDialog() {
                 <div style={{ fontSize: 9, color: '#555', marginTop: 3 }}>
                   {AUDIO_CODECS.find((ac) => ac.id === audioCodec)?.description}
                 </div>
+              </div>
+
+              {/* MARKER_B51: Loudness normalization toggle */}
+              <div style={FIELD}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: '#aaa', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={loudnessNorm}
+                    onChange={(e) => setLoudnessNorm(e.target.checked)}
+                    disabled={isRendering}
+                  />
+                  Loudness normalization
+                </label>
+                {loudnessNorm && (
+                  <select
+                    value={loudnessStandard}
+                    onChange={(e) => setLoudnessStandard(e.target.value)}
+                    disabled={isRendering}
+                    style={{ marginTop: 4, marginLeft: 24, background: '#1a1a1a', color: '#aaa', border: '1px solid #333', borderRadius: 2, fontSize: 10, padding: '2px 4px' }}
+                  >
+                    <option value="youtube">YouTube (-14 LUFS)</option>
+                    <option value="ebu_r128">EBU R128 (-23 LUFS)</option>
+                    <option value="atsc_a85">ATSC A/85 (-24 LUFS)</option>
+                    <option value="netflix">Netflix (-27 LUFS)</option>
+                    <option value="podcast">Podcast (-16 LUFS)</option>
+                  </select>
+                )}
               </div>
 
               {/* MARKER_W6.2: Selection range */}

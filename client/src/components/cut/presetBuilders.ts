@@ -25,6 +25,8 @@ export function buildEditingLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
+  // MARKER_GAMMA-MKL1: Marker List in editorial group
+  api.addPanel({ id: 'markers', component: 'markers', title: 'Markers', position: { referencePanel: 'inspector', direction: 'within' } });
   // MARKER_GAMMA-33: Split media into 2 groups for better panel visibility
   // Group 2a (Effects) — right of Editorial group
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });

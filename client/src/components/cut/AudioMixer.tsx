@@ -16,8 +16,9 @@
  *
  * @phase 198
  */
-import { useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore, type TimelineLane } from '../../store/useCutEditorStore';
+import { getAudioScopeSocket } from './WaveformMinimap';
 
 // ─── Styles ────────────────────────────────────────────────────────
 
@@ -249,6 +250,7 @@ function ChannelStrip({
   pan,
   muted,
   soloed,
+  audioLevel,
   onVolumeChange,
   onPanChange,
   onToggleMute,
@@ -260,6 +262,7 @@ function ChannelStrip({
   pan: number;
   muted: boolean;
   soloed: boolean;
+  audioLevel: number;
   onVolumeChange: (v: number) => void;
   onPanChange: (v: number) => void;
   onToggleMute: () => void;
@@ -268,7 +271,8 @@ function ChannelStrip({
   return (
     <div style={STRIP}>
       <div style={LABEL}>{label}</div>
-      <VuIndicator level={volume} muted={muted} />
+      {/* MARKER_B52: Use real audio level × volume for VU */}
+      <VuIndicator level={audioLevel * volume} muted={muted} />
       <VolumeFader value={volume} onChange={onVolumeChange} />
       <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666' }}>
         {Math.round(volume * 100)}%
@@ -305,6 +309,16 @@ export default function AudioMixer() {
   const [masterVolume, setMasterVolume] = useState(1.0);
   // MARKER_GAMMA-17: Pan per lane (local state — move to store when Alpha adds lanePans)
   const [lanePans, setLanePans] = useState<Record<string, number>>({});
+  // MARKER_B52: Real audio levels from WebSocket (replaces simulated VU)
+  const [audioLevels, setAudioLevels] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
+  useEffect(() => {
+    const socket = getAudioScopeSocket();
+    const onData = (d: any) => {
+      if (d.success) setAudioLevels({ left: d.rms_left || 0, right: d.rms_right || 0 });
+    };
+    socket.on('audio_scope_data', onData);
+    return () => { socket.off('audio_scope_data', onData); };
+  }, []);
   const [masterPan, setMasterPan] = useState(0);
   const setPan = useCallback((laneId: string, v: number) => {
     setLanePans((prev) => ({ ...prev, [laneId]: v }));
@@ -335,6 +349,7 @@ export default function AudioMixer() {
           pan={lanePans[lane.lane_id] ?? 0}
           muted={mutedLanes.has(lane.lane_id)}
           soloed={soloLanes.has(lane.lane_id)}
+          audioLevel={(audioLevels.left + audioLevels.right) / 2}
           onVolumeChange={(v) => setLaneVolume(lane.lane_id, v)}
           onPanChange={(v) => setPan(lane.lane_id, v)}
           onToggleMute={() => toggleMute(lane.lane_id)}
@@ -348,7 +363,7 @@ export default function AudioMixer() {
       {/* Master strip */}
       <div style={{ ...STRIP, background: '#151515' }}>
         <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
-        <VuIndicator level={masterVolume} muted={false} />
+        <VuIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={false} />
         <VolumeFader value={masterVolume} onChange={setMasterVolume} />
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
           {Math.round(masterVolume * 100)}%

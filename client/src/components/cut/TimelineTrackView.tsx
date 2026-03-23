@@ -22,6 +22,7 @@ import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
+import { EFFECT_APPLY_MAP } from './EffectsPanel';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -586,6 +587,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
+  // MARKER_MULTICAM_TL: Multicam angle lookup for timeline badges
+  const multicamAngles = useCutEditorStore((state) => state.multicamAngles);
+  const multicamMode = useCutEditorStore((state) => state.multicamMode);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_W6.TOOL-SM: Cursor maps per context
@@ -1091,7 +1095,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     setDropZone(null);
   }, []);
 
-  // MARKER_DND_STORE: Drop handler — reads text/cut-media-paths (JSON array) or single path
+  // MARKER_DND_STORE + B50: Drop handler — media paths OR effects
   const handleLaneDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
       event.preventDefault();
@@ -1100,6 +1104,28 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const laneH = rect.height;
       const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
       const dropTime = timeFromTrackClientX(event.clientX);
+
+      // MARKER_B50: Check for effect drop (application/x-cut-effect from EffectsPanel)
+      const effectData = event.dataTransfer.getData('application/x-cut-effect');
+      if (effectData) {
+        try {
+          const { id: effectId } = JSON.parse(effectData) as { id: string; name: string };
+          const params = EFFECT_APPLY_MAP[effectId];
+          if (params) {
+            // Find clip under drop cursor
+            const store = useCutEditorStore.getState();
+            const lane = store.lanes.find((l) => l.lane_id === laneId);
+            const clip = lane?.clips.find(
+              (c) => dropTime >= c.start_sec && dropTime <= c.start_sec + c.duration_sec,
+            );
+            if (clip) {
+              store.setClipEffects(clip.clip_id, params);
+            }
+          }
+        } catch { /* malformed effect data */ }
+        setDropZone(null);
+        return;
+      }
 
       // Read dragged media paths — prefer JSON array, fallback to single path
       let paths: string[] = [];
@@ -2209,6 +2235,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           {basename(clip.source_path)}
                         </span>
                       ) : null}
+
+                      {/* MARKER_MULTICAM_BADGE: Show angle number on multicam clips */}
+                      {multicamMode && width > 20 && (() => {
+                        const angleIdx = multicamAngles.findIndex((a) => a.source_path === clip.source_path);
+                        if (angleIdx < 0) return null;
+                        return (
+                          <span style={{
+                            position: 'absolute', top: 1, right: 2, zIndex: 4,
+                            fontSize: 8, fontWeight: 700, fontFamily: 'monospace',
+                            color: '#000', background: '#999', borderRadius: 2,
+                            padding: '0 3px', lineHeight: '12px',
+                          }}>
+                            {angleIdx + 1}
+                          </span>
+                        );
+                      })()}
 
                       {/* MARKER_TRANSITION: Transition overlay at clip's right edge (FCP7 Ch.47) */}
                       {clip.transition_out && width > 10 ? (() => {

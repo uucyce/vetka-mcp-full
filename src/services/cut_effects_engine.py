@@ -360,6 +360,37 @@ EFFECT_DEFS: dict[str, EffectDef] = {
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B50: Effect defaults + listing for API
+# ---------------------------------------------------------------------------
+
+
+def get_effect_defaults(effect_type: str) -> dict[str, Any]:
+    """Get default parameter values for an effect type from EFFECT_DEFS schema."""
+    edef = EFFECT_DEFS.get(effect_type)
+    if not edef:
+        return {}
+    return {name: schema.get("default") for name, schema in edef.params_schema.items()}
+
+
+def list_effect_types() -> list[dict[str, Any]]:
+    """List all available effect types with metadata for API/UI."""
+    return [
+        {
+            "type": edef.type,
+            "label": edef.label,
+            "category": edef.category,
+            "params": {
+                name: {k: v for k, v in schema.items()}
+                for name, schema in edef.params_schema.items()
+            },
+            "video": edef.ffmpeg_video,
+            "audio": edef.ffmpeg_audio,
+        }
+        for edef in EFFECT_DEFS.values()
+    ]
+
+
+# ---------------------------------------------------------------------------
 # FFmpeg filter compilation
 # ---------------------------------------------------------------------------
 
