@@ -2542,6 +2542,11 @@ async def graceful_shutdown():
 # MARKER_106a_4: Enhanced main with HTTP/WS/stdio modes
 async def main():
     """Run the MCP server with multi-transport support"""
+    # MARKER_195.22: Capture initial cwd before anything changes it.
+    # Claude Code launches MCP subprocess from worktree directory.
+    # session_init uses VETKA_MCP_CWD to detect branch correctly.
+    os.environ.setdefault("VETKA_MCP_CWD", os.getcwd())
+
     args = parse_args()
 
     # Register signal handlers
