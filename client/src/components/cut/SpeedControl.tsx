@@ -249,7 +249,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
         </div>
         <div style={ROW}>
           <span style={LABEL}>Speed Change</span>
-          <span style={{ ...VALUE, color: speed > 1 ? '#4ade80' : speed < 1 ? '#facc15' : '#ccc' }}>
+          <span style={{ ...VALUE, color: speed !== 1 ? '#fff' : '#ccc' }}>
             {speed > 1 ? `${((speed - 1) * 100).toFixed(0)}% faster` :
              speed < 1 ? `${((1 - speed) * 100).toFixed(0)}% slower` : 'Normal'}
           </span>

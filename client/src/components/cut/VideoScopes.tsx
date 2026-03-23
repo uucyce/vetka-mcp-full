@@ -147,7 +147,7 @@ function drawVectorscope(ctx: CanvasRenderingContext2D, data: number[][], w: num
   ctx.moveTo(cx - radius, cy); ctx.lineTo(cx + radius, cy); ctx.stroke();
 
   // Skin tone line
-  ctx.strokeStyle = '#553300'; ctx.lineWidth = 1;
+  ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
   const skinAngle = (123 * Math.PI) / 180;
   ctx.beginPath(); ctx.moveTo(cx, cy);
   ctx.lineTo(cx + Math.cos(skinAngle) * radius, cy - Math.sin(skinAngle) * radius); ctx.stroke();
@@ -373,7 +373,7 @@ export default function VideoScopes() {
       <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
         <span>
           {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
-          {' '}<span style={{ color: socketConnected ? '#555' : '#664400', fontSize: 8 }}>{socketConnected ? 'WS' : 'HTTP'}</span>
+          {' '}<span style={{ color: socketConnected ? '#555' : '#777', fontSize: 8 }}>{socketConnected ? 'WS' : 'HTTP'}</span>
         </span>
         {/* MARKER_B26: Broadcast safe indicator */}
         {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct > 0 && (

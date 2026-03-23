@@ -27,10 +27,10 @@ const MODES: { mode: MontageMode; label: string; desc: string }[] = [
 
 const btnStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   flex: 1,
-  background: active ? '#1a2a1a' : '#1a1a1a',
-  border: `1px solid ${active ? '#4a9' : '#333'}`,
+  background: active ? '#222' : '#1a1a1a',
+  border: `1px solid ${active ? '#888' : '#333'}`,
   borderRadius: 3,
-  color: disabled ? '#444' : active ? '#7ecf7e' : '#ccc',
+  color: disabled ? '#444' : active ? '#fff' : '#ccc',
   fontSize: 10,
   fontFamily: 'system-ui, sans-serif',
   padding: '6px 4px',
@@ -177,10 +177,10 @@ export default function AutoMontagePanel() {
       {error && (
         <div style={{
           fontSize: 9,
-          color: '#e88',
+          color: '#999',
           fontFamily: 'monospace',
           padding: '4px 6px',
-          background: '#1a1111',
+          background: '#1a1a1a',
           borderRadius: 3,
           border: '1px solid #333',
         }}>
@@ -192,12 +192,12 @@ export default function AutoMontagePanel() {
       {lastResult && !running && (
         <div style={{
           fontSize: 9,
-          color: '#7ecf7e',
+          color: '#ccc',
           fontFamily: 'monospace',
           padding: '4px 6px',
-          background: '#111a11',
+          background: '#1a1a1a',
           borderRadius: 3,
-          border: '1px solid #2a3a2a',
+          border: '1px solid #333',
         }}>
           {lastResult}
         </div>
