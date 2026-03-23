@@ -776,6 +776,14 @@ class SessionInitTool(BaseMCPTool):
 
                 context["role_context"] = _role_ctx
 
+                # MARKER_196.2.1: Bind role to session for auto-attribution
+                try:
+                    from src.services.session_tracker import get_session_tracker
+                    _role_tracker = get_session_tracker()
+                    _role_tracker.set_role(context.get("session_id", "default"), _role)
+                except Exception:
+                    pass  # Role binding never blocks session init
+
                 # MARKER_ZETA.F4.PREDECESSOR: Auto-inject predecessor advice into session_init
                 # Solves: agents see file path in CLAUDE.md but may not read it.
                 # Now the content arrives directly in session_init response.
