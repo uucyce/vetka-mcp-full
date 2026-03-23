@@ -59,6 +59,7 @@ import TransitionsPanel from './TransitionsPanel';
 import ToolsPalette from './ToolsPalette';
 // MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
 import StatusBar from './StatusBar';
+import DropZoneOverlay from './DropZoneOverlay';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -427,6 +428,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           components={components}
           onReady={onReady}
         />
+        {/* MARKER_GAMMA-R4.3: Drop zone overlay for media drag */}
+        <DropZoneOverlay />
         {/* MARKER_GAMMA-15: Tab context menu */}
         {tabMenu && (
           <div
