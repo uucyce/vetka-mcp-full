@@ -293,6 +293,26 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     board = get_task_board()
 
+    # MARKER_196.2.2: Auto-attribution from session role
+    # If session_init(role=X) was called, auto-fill role/domain/branch fields.
+    # Uses setdefault — explicit arguments always take precedence.
+    _session_role = None
+    try:
+        from src.services.session_tracker import get_session_tracker
+        _session_role = get_session_tracker().get_role(_tracker_sid)
+    except Exception:
+        pass
+
+    if _session_role and action in ("claim", "complete", "add"):
+        if action == "claim":
+            arguments.setdefault("assigned_to", _session_role["callsign"])
+            arguments.setdefault("role", _session_role["callsign"])
+        if action == "complete":
+            arguments.setdefault("branch", _session_role["branch"])
+        if action == "add":
+            arguments.setdefault("role", _session_role["callsign"])
+            arguments.setdefault("domain", _session_role["domain"])
+
     if action == "add":
         title = arguments.get("title")
         if not title:
