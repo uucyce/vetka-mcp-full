@@ -73,17 +73,18 @@ function formatTC(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
 }
 
+// MARKER_MONOCHROME: Grey palette only — no color except color correction & markers on timeline
 const SYNC_COLORS: Record<string, string> = {
-  timecode: '#22c55e',
-  waveform: '#3b82f6',
-  meta_sync: '#a855f7',
+  timecode: '#aaa',
+  waveform: '#888',
+  meta_sync: '#777',
 };
 
 const MARKER_COLORS: Record<string, string> = {
-  favorite: '#f59e0b',
-  comment: '#3b82f6',
-  cam: '#a855f7',
-  insight: '#22c55e',
+  favorite: '#ccc',
+  comment: '#999',
+  cam: '#777',
+  insight: '#bbb',
 };
 
 export default function ClipInspector() {
