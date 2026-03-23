@@ -1096,6 +1096,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     setDropZone(null);
   }, []);
 
+  // MARKER_DND_STORE: Drop handler — reads text/cut-media-paths (JSON array) or single path
   const handleLaneDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
       event.preventDefault();
@@ -1105,25 +1106,21 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
       const dropTime = timeFromTrackClientX(event.clientX);
 
-      // Read dragged media path from dataTransfer
-      const mediaPath = event.dataTransfer.getData('text/cut-media-path')
-        || event.dataTransfer.getData('text/plain')
-        || '';
+      // Read dragged media paths — prefer JSON array, fallback to single path
+      let paths: string[] = [];
+      const jsonPaths = event.dataTransfer.getData('text/cut-media-paths');
+      if (jsonPaths) {
+        try { paths = JSON.parse(jsonPaths); } catch { /* malformed JSON */ }
+      }
+      if (!paths.length) {
+        const singlePath = event.dataTransfer.getData('text/cut-media-path')
+          || event.dataTransfer.getData('text/plain')
+          || '';
+        if (singlePath) paths = [singlePath];
+      }
 
-      if (mediaPath) {
-        const s = useCutEditorStore.getState();
-        // Set source media so insert/overwrite handlers can use it
-        s.setSourceMedia(mediaPath);
-        // Seek to drop position
-        s.seek(dropTime);
-
-        // Use existing insert/overwrite logic from hotkey handlers
-        // Dispatch synthetic key event to trigger the handler
-        if (mode === 'insert') {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
-        } else {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
-        }
+      if (paths.length) {
+        useCutEditorStore.getState().dropMediaOnTimeline(paths, laneId, dropTime, mode);
       }
 
       setDropZone(null);
