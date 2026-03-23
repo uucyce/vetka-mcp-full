@@ -477,6 +477,9 @@ interface CutEditorState {
   setThumbnails: (items: ThumbnailItem[]) => void;
   setSyncSurface: (items: SyncSurfaceItem[]) => void;
   setMarkers: (items: TimeMarker[]) => void;
+  // MARKER_FCP7_CH38: Marker CRUD
+  deleteMarker: (markerId: string) => void;
+  updateMarker: (markerId: string, updates: Partial<TimeMarker>) => void;
 
   // MARKER_MULTICAM: Multicam actions
   setMulticam: (id: string, angles: Array<{ source_path: string; label: string; offset_sec: number }>) => void;
@@ -1220,6 +1223,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),
   setMarkers: (items) => set({ markers: items }),
+  // MARKER_FCP7_CH38: Delete + update marker
+  deleteMarker: (markerId) => set((s) => ({ markers: s.markers.filter((m) => m.marker_id !== markerId) })),
+  updateMarker: (markerId, updates) => set((s) => ({
+    markers: s.markers.map((m) => m.marker_id === markerId ? { ...m, ...updates } : m),
+  })),
 
   // MARKER_MULTICAM: Multicam action implementations
   setMulticam: (id, angles) => set({ multicamId: id, multicamAngles: angles, multicamActiveAngle: 0, multicamMode: true }),
