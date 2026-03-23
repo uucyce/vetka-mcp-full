@@ -164,6 +164,7 @@ function MenuItemRow({
   return (
     <div
       style={item.disabled ? ITEM_DISABLED : ITEM}
+      title={item.shortcut ? `${item.label}  (${item.shortcut})` : item.label}
       onMouseEnter={(e) => {
         if (!item.disabled) (e.currentTarget as HTMLDivElement).style.background = '#333';
       }}

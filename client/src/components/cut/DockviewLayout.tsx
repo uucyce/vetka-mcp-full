@@ -24,6 +24,15 @@ import './dockview-cut-theme.css';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
+import { showHotkeyToast } from './utils/hotkeyToast';
+import {
+  resolveMap,
+  loadPresetName,
+  loadCustomOverrides,
+  ALL_ACTIONS,
+  ACTION_SCOPE,
+  type FocusPanelId,
+} from '../../hooks/useCutHotkeys';
 
 // MARKER_C4: Panel wrappers extracted to panels/ directory
 import {
@@ -281,6 +290,51 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [toggleMaximize]);
+
+  // MARKER_GAMMA-R5.1: Hotkey visual feedback — show action name toast on shortcut activation
+  useEffect(() => {
+    // Build a lookup: action name → human label
+    const actionLabels = new Map(ALL_ACTIONS.map((a) => [a.action, a.label]));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      const resolved = resolveMap(loadPresetName(), loadCustomOverrides());
+      const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
+
+      for (const [action, parsed] of resolved) {
+        const wantCmd = parsed.cmd;
+        const wantCtrl = parsed.ctrl;
+        const hasMetaOrCtrl = e.metaKey || e.ctrlKey;
+        if (wantCmd && !hasMetaOrCtrl) continue;
+        if (!wantCmd && !wantCtrl && hasMetaOrCtrl) continue;
+        if (wantCtrl && !e.ctrlKey) continue;
+        if (parsed.shift !== e.shiftKey) continue;
+        if (parsed.alt !== e.altKey) continue;
+
+        // Normalize key
+        let eventKey = e.key.toLowerCase();
+        if (e.code === 'Space') eventKey = 'space';
+        else if (e.key.startsWith('Arrow')) eventKey = e.key.toLowerCase();
+
+        if (eventKey !== parsed.key) continue;
+
+        // Check scope
+        const scope = ACTION_SCOPE[action];
+        if (scope !== 'global' && !scope.includes(focusedPanel as FocusPanelId)) continue;
+
+        const label = actionLabels.get(action);
+        if (label) showHotkeyToast(label);
+        return;
+      }
+    };
+
+    // Use capture phase so toast fires even if handler stops propagation
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 
   // MARKER_GAMMA-34: MutationObserver (GAMMA-26) removed — dead code.
   // Dockview-core JS never sets inline border-color/outline-color (verified in source).
