@@ -114,6 +114,8 @@ export type CutHotkeyAction =
   // Linked selection + Snap
   | 'toggleLinkedSelection'
   | 'toggleSnap'
+  // Subclip
+  | 'makeSubclip'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -225,6 +227,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   focusEffects:        'global',
   toggleLinkedSelection: 'global',
   toggleSnap:          'global',
+  makeSubclip:         'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -337,6 +340,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
   toggleSnap:        'n',
+  makeSubclip:       'Cmd+u',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -434,6 +438,7 @@ export const FCP7_PRESET: HotkeyMap = {
   // Linked selection (FCP7 standard: Shift+L) + Snap (N)
   toggleLinkedSelection: 'Shift+l',
   toggleSnap:        'n',
+  makeSubclip:       'Cmd+u',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -661,6 +666,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
   { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
   { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
+  { action: 'makeSubclip', label: 'Make Subclip (Cmd+U)', group: 'Editing' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
