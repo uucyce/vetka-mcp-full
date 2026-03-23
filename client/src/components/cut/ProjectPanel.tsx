@@ -260,6 +260,8 @@ export default function ProjectPanel() {
   const [renameValue, setRenameValue] = useState('');
   // MARKER_GAMMA-R4.2: Multi-select state
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  // MARKER_GAMMA-R4.5: Shift+click range select anchor
+  const lastClickedPathRef = useRef<string | null>(null);
 
   const saveUserBins = useCallback((bins: UserBin[]) => {
     setUserBins(bins);
@@ -575,9 +577,28 @@ export default function ProjectPanel() {
     .filter((b) => b.items.length > 0);
 
   // ─── Click on clip ───
-  // MARKER_GAMMA-R4.2: Multi-select with Cmd/Ctrl+click
+  // MARKER_GAMMA-R4.2 + R4.5: Multi-select with Cmd/Ctrl+click, Shift+click range
   const handleClipClick = useCallback((clipSourcePath: string, e?: React.MouseEvent) => {
-    if (e && (e.metaKey || e.ctrlKey)) {
+    if (e && e.shiftKey && lastClickedPathRef.current) {
+      // MARKER_GAMMA-R4.5: Shift+click range select
+      // Build flat ordered list of all visible items for range calculation
+      const allPaths = sortedItems.map((it) => it.source_path);
+      const anchorIdx = allPaths.indexOf(lastClickedPathRef.current);
+      const targetIdx = allPaths.indexOf(clipSourcePath);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const lo = Math.min(anchorIdx, targetIdx);
+        const hi = Math.max(anchorIdx, targetIdx);
+        const rangePaths = allPaths.slice(lo, hi + 1);
+        setSelectedPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of rangePaths) next.add(p);
+          return next;
+        });
+      } else {
+        setSelectedPaths(new Set([clipSourcePath]));
+      }
+      // Don't update lastClickedPathRef — anchor stays for extending range
+    } else if (e && (e.metaKey || e.ctrlKey)) {
       // Toggle in multi-selection
       setSelectedPaths((prev) => {
         const next = new Set(prev);
@@ -585,9 +606,11 @@ export default function ProjectPanel() {
         else next.add(clipSourcePath);
         return next;
       });
+      lastClickedPathRef.current = clipSourcePath;
     } else {
       // Single select — clear multi-selection
       setSelectedPaths(new Set([clipSourcePath]));
+      lastClickedPathRef.current = clipSourcePath;
     }
     setActiveMedia(clipSourcePath);
     for (const lane of lanes) {
@@ -598,7 +621,7 @@ export default function ProjectPanel() {
       }
     }
     setSelectedClip(null);
-  }, [lanes, setActiveMedia, setSelectedClip]);
+  }, [lanes, setActiveMedia, setSelectedClip, sortedItems]);
 
   const toggleBin = useCallback((key: string) => {
     setCollapsedBins((prev) => {
