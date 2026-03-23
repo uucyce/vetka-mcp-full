@@ -303,3 +303,65 @@ async def cut_save_project(req: CutSaveRequest) -> dict[str, Any]:
         store.save_scene_graph(req.scene_graph)
 
     return {"success": True, "saved_at": saved_at, "project_id": str(project.get("project_id", ""))}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B46: Render queue management
+# ---------------------------------------------------------------------------
+
+
+@render_router.get("/render/queue")
+async def cut_render_queue(
+    state_filter: str = "",
+) -> dict[str, Any]:
+    """
+    MARKER_B46 — List all render jobs with status.
+    Optional filter: running, queued, done, error, cancelled.
+    """
+    store = get_cut_mcp_job_store()
+    all_jobs = store.list_jobs()
+
+    # Filter to render jobs only
+    render_jobs = [
+        j for j in all_jobs
+        if str(j.get("job_type", "")).startswith("render")
+    ]
+
+    if state_filter:
+        render_jobs = [j for j in render_jobs if j.get("state") == state_filter]
+
+    # Sort: running first, then queued, then by creation time (newest first)
+    state_order = {"running": 0, "queued": 1, "partial": 2, "done": 3, "error": 4, "cancelled": 5}
+    render_jobs.sort(key=lambda j: (
+        state_order.get(j.get("state", ""), 9),
+        -(j.get("created_at") or 0),
+    ))
+
+    return {
+        "success": True,
+        "jobs": render_jobs,
+        "count": len(render_jobs),
+        "active": sum(1 for j in render_jobs if j.get("state") in ("running", "queued")),
+    }
+
+
+@render_router.delete("/render/queue/{job_id}")
+async def cut_render_queue_remove(job_id: str) -> dict[str, Any]:
+    """
+    MARKER_B46 — Cancel and remove a render job from queue.
+    If running, sends cancel signal. If queued, removes immediately.
+    """
+    store = get_cut_mcp_job_store()
+    job = store.get_job(job_id)
+    if not job:
+        return {"success": False, "error": "job_not_found"}
+
+    state = job.get("state", "")
+    if state in ("running", "queued"):
+        # Signal cancel — render loop checks cancel_requested
+        store.update_job(job_id, cancel_requested=True)
+        return {"success": True, "action": "cancel_requested", "job_id": job_id, "previous_state": state}
+    elif state in ("done", "error", "cancelled"):
+        return {"success": True, "action": "already_finished", "job_id": job_id, "state": state}
+    else:
+        return {"success": False, "error": f"unexpected_state: {state}"}
