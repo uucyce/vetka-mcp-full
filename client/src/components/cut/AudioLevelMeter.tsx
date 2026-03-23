@@ -1,9 +1,19 @@
 /**
- * MARKER_170.NLE.AUDIO_METER: Real-time audio level meter using Web Audio API.
- * Analyzes the audio from the <video> element via AnalyserNode.
- * Shows VU-style vertical bars with peak hold.
+ * MARKER_170.NLE.AUDIO_METER: Real-time audio level meter.
+ * MARKER_B40: WebSocket backend as primary source, Web Audio API as fallback.
+ *
+ * Priority chain:
+ *   1. WebSocket audio_scope_data from backend (server-side FFmpeg analysis)
+ *   2. Web Audio API AnalyserNode from <video> element (client-side fallback)
+ *
+ * Shows VU-style vertical bars with peak hold. Monochrome FCP7 style.
+ *
+ * @phase B40
+ * @task tb_1774241112_1
  */
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
+import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { getAudioScopeSocket } from './WaveformMinimap';
 import { IconAudioBars } from './icons/CutIcons';
 
 const METER_BG: CSSProperties = {
@@ -15,12 +25,13 @@ const METER_BG: CSSProperties = {
   borderRadius: 2,
   padding: 2,
   height: '100%',
+  position: 'relative',
 };
 
 type AudioLevelMeterProps = {
-  /** CSS selector or ref for the video/audio element to analyze */
+  /** Video/audio element for Web Audio API fallback */
   mediaElement?: HTMLMediaElement | null;
-  /** Number of VU channels to display (1=mono, 2=stereo) */
+  /** Number of VU channels (1=mono, 2=stereo) */
   channels?: number;
   /** Width of each channel bar in px */
   barWidth?: number;
@@ -44,51 +55,102 @@ export default function AudioLevelMeter({
   style,
 }: AudioLevelMeterProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
-  const contextRef = useRef<AudioContext | null>(null);
   const animRef = useRef(0);
   const peakRef = useRef<number[]>([0, 0]);
   const peakDecayRef = useRef<number[]>([0, 0]);
-  const [connected, setConnected] = useState(false);
+  const mountedRef = useRef(true);
 
-  // Connect Web Audio analyser to media element
-  const connect = useCallback(() => {
-    if (!mediaElement || connected) return;
+  // WebSocket state
+  const wsLevelsRef = useRef<{ left: number; right: number } | null>(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const lastEmitRef = useRef(0);
+
+  // Web Audio API fallback state
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+  const contextRef = useRef<AudioContext | null>(null);
+  const [webAudioConnected, setWebAudioConnected] = useState(false);
+
+  // Store state for WebSocket requests
+  const currentTime = useCutEditorStore((s) => s.currentTime);
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
+  const programMediaPath = useCutEditorStore((s) => s.programMediaPath);
+  const mediaPath = programMediaPath || sourceMediaPath;
+
+  // ─── WebSocket lifecycle (primary source) ───
+  useEffect(() => {
+    mountedRef.current = true;
+    const socket = getAudioScopeSocket();
+
+    const onConnect = () => { if (mountedRef.current) setWsConnected(true); };
+    const onDisconnect = () => { if (mountedRef.current) setWsConnected(false); };
+    const onData = (d: any) => {
+      if (!mountedRef.current || !d.success) return;
+      wsLevelsRef.current = { left: d.rms_left || 0, right: d.rms_right || 0 };
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+    socket.on('audio_scope_data', onData);
+    if (socket.connected) setWsConnected(true);
+
+    return () => {
+      mountedRef.current = false;
+      socket.off('connect', onConnect);
+      socket.off('disconnect', onDisconnect);
+      socket.off('audio_scope_data', onData);
+    };
+  }, []);
+
+  // Emit audio_scope_request on playhead change (throttled)
+  useEffect(() => {
+    if (!wsConnected || !mediaPath) return;
+    const now = Date.now();
+    const throttleMs = isPlaying ? 100 : 0;
+    if (now - lastEmitRef.current < throttleMs) return;
+    lastEmitRef.current = now;
+
+    const socket = getAudioScopeSocket();
+    socket.emit('audio_scope_request', {
+      source_path: mediaPath,
+      time: currentTime,
+      mode: 'fast',
+    });
+  }, [wsConnected, mediaPath, currentTime, isPlaying]);
+
+  // ─── Web Audio API fallback ───
+  const connectWebAudio = useCallback(() => {
+    if (!mediaElement || webAudioConnected) return;
     try {
       const ctx = new AudioContext();
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.8;
-
       const source = ctx.createMediaElementSource(mediaElement);
       source.connect(analyser);
-      analyser.connect(ctx.destination); // pass-through to speakers
-
+      analyser.connect(ctx.destination);
       contextRef.current = ctx;
       analyserRef.current = analyser;
       sourceRef.current = source;
-      setConnected(true);
+      setWebAudioConnected(true);
     } catch {
       // Already connected or not supported
     }
-  }, [mediaElement, connected]);
+  }, [mediaElement, webAudioConnected]);
 
-  // Auto-connect when media starts playing
   useEffect(() => {
     if (!mediaElement) return;
-    const handlePlay = () => connect();
+    const handlePlay = () => connectWebAudio();
     mediaElement.addEventListener('play', handlePlay);
-    // If already playing
-    if (!mediaElement.paused) connect();
+    if (!mediaElement.paused) connectWebAudio();
     return () => mediaElement.removeEventListener('play', handlePlay);
-  }, [mediaElement, connect]);
+  }, [mediaElement, connectWebAudio]);
 
-  // Animation loop: read levels and draw
+  // ─── Animation loop: draw VU bars from best available source ───
   useEffect(() => {
     const canvas = canvasRef.current;
-    const analyser = analyserRef.current;
-    if (!canvas || !analyser) return;
+    if (!canvas) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
@@ -100,24 +162,35 @@ export default function AudioLevelMeter({
     canvas.height = height * dpr;
     ctx.scale(dpr, dpr);
 
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const analyser = analyserRef.current;
+    const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
 
     const draw = () => {
-      analyser.getByteFrequencyData(dataArray);
-
-      // Calculate RMS level per channel (approximate stereo split)
-      const halfLen = Math.floor(dataArray.length / 2);
       const levels: number[] = [];
-      for (let ch = 0; ch < channels; ch++) {
-        const start = ch === 0 ? 0 : halfLen;
-        const end = ch === 0 ? halfLen : dataArray.length;
-        let sum = 0;
-        for (let i = start; i < end; i++) {
-          const v = dataArray[i] / 255;
-          sum += v * v;
+
+      // Priority 1: WebSocket backend levels
+      const wsData = wsLevelsRef.current;
+      if (wsData && wsConnected) {
+        levels.push(Math.min(1, wsData.left * 2.5));
+        levels.push(Math.min(1, wsData.right * 2.5));
+      } else if (analyser && dataArray) {
+        // Priority 2: Web Audio API fallback
+        analyser.getByteFrequencyData(dataArray);
+        const halfLen = Math.floor(dataArray.length / 2);
+        for (let ch = 0; ch < channels; ch++) {
+          const start = ch === 0 ? 0 : halfLen;
+          const end = ch === 0 ? halfLen : dataArray.length;
+          let sum = 0;
+          for (let i = start; i < end; i++) {
+            const v = dataArray[i] / 255;
+            sum += v * v;
+          }
+          const rms = Math.sqrt(sum / (end - start));
+          levels.push(Math.min(1, rms * 2.5));
         }
-        const rms = Math.sqrt(sum / (end - start));
-        levels.push(Math.min(1, rms * 2.5)); // boost for visibility
+      } else {
+        // No source — zero levels
+        for (let ch = 0; ch < channels; ch++) levels.push(0);
       }
 
       // Update peak hold
@@ -154,7 +227,6 @@ export default function AudioLevelMeter({
             ctx.fillStyle = levelColor(segLevel);
             ctx.fillRect(x, y, barWidth, segHeight - 1);
           } else if (s === peakSegment && peak > 0.02) {
-            // Peak hold indicator
             ctx.fillStyle = levelColor(segLevel);
             ctx.globalAlpha = 0.8;
             ctx.fillRect(x, y, barWidth, 1.5);
@@ -168,39 +240,28 @@ export default function AudioLevelMeter({
 
     animRef.current = requestAnimationFrame(draw);
     return () => cancelAnimationFrame(animRef.current);
-  }, [connected, channels, barWidth]);
+  }, [wsConnected, webAudioConnected, channels, barWidth]);
 
   // Cleanup
   useEffect(() => {
-    return () => {
-      cancelAnimationFrame(animRef.current);
-    };
+    return () => { cancelAnimationFrame(animRef.current); };
   }, []);
 
   const totalWidth = channels * barWidth + (channels - 1) * 2 + 4;
+  const hasSource = wsConnected || webAudioConnected;
 
   return (
     <div style={{ ...METER_BG, ...style }}>
       <canvas
         ref={canvasRef}
-        style={{
-          width: totalWidth,
-          height: '100%',
-          display: 'block',
-        }}
+        style={{ width: totalWidth, height: '100%', display: 'block' }}
       />
-      {!connected && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 8,
-            color: '#333',
-          }}
-        >
+      {!hasSource && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 8, color: '#333',
+        }}>
           <IconAudioBars size={10} color="#333" />
         </div>
       )}

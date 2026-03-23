@@ -343,6 +343,111 @@ def extract_audio_wav_segment(
         return None
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B40: Real-time audio level computation for WebSocket scopes
+# ---------------------------------------------------------------------------
+
+
+def compute_audio_levels(
+    media_path: str,
+    time_sec: float,
+    *,
+    window_ms: float = 100.0,
+    sample_rate: int = 16000,
+    waveform_bins: int = 0,
+    timeout_sec: float = 5.0,
+) -> dict:
+    """Compute audio RMS levels and optional waveform at a specific time position.
+
+    Extracts a short PCM window around time_sec, computes per-channel RMS and peak.
+    Designed for real-time WebSocket audio scopes (~2-5ms per call).
+
+    Args:
+        media_path: Path to media file.
+        time_sec: Playhead position in seconds.
+        window_ms: Analysis window in milliseconds (default 100ms).
+        sample_rate: Sample rate for extraction (lower = faster, 16kHz sufficient for meters).
+        waveform_bins: If > 0, also compute waveform bins for minimap display.
+        timeout_sec: FFmpeg timeout (short for real-time use).
+
+    Returns:
+        dict with: success, rms_left, rms_right, peak_left, peak_right,
+                   waveform_left?, waveform_right?, time_sec, source_path
+    """
+    result: dict = {
+        "success": False,
+        "source_path": media_path,
+        "time_sec": time_sec,
+        "rms_left": 0.0,
+        "rms_right": 0.0,
+        "peak_left": 0.0,
+        "peak_right": 0.0,
+    }
+
+    if not HAS_FFMPEG or not os.path.isfile(media_path):
+        return result
+
+    duration_sec = window_ms / 1000.0
+    start = max(0.0, time_sec - duration_sec / 2)
+
+    cmd = [
+        FFMPEG,  # type: ignore[list-item]
+        "-ss", f"{start:.3f}",
+        "-i", media_path,
+        "-t", f"{duration_sec:.3f}",
+        "-vn",
+        "-ac", "2",  # stereo for L/R analysis
+        "-ar", str(sample_rate),
+        "-f", "s16le",
+        "-acodec", "pcm_s16le",
+        "pipe:1",
+    ]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, timeout=timeout_sec)
+        if proc.returncode != 0 or not proc.stdout:
+            return result
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return result
+
+    pcm = proc.stdout
+    num_frames = len(pcm) // 4  # stereo 16-bit = 4 bytes per frame
+    if num_frames == 0:
+        return result
+
+    # Unpack all stereo samples
+    all_samples = struct.unpack(f"<{num_frames * 2}h", pcm[:num_frames * 4])
+    left_samples = all_samples[0::2]
+    right_samples = all_samples[1::2]
+
+    # RMS per channel
+    n = len(left_samples)
+    l_sum_sq = sum(s * s for s in left_samples)
+    r_sum_sq = sum(s * s for s in right_samples)
+    rms_l = math.sqrt(l_sum_sq / n) / 32768.0
+    rms_r = math.sqrt(r_sum_sq / n) / 32768.0
+
+    # Peak per channel (absolute max / 32768)
+    peak_l = max(abs(s) for s in left_samples) / 32768.0 if left_samples else 0.0
+    peak_r = max(abs(s) for s in right_samples) / 32768.0 if right_samples else 0.0
+
+    result.update({
+        "success": True,
+        "rms_left": round(min(1.0, rms_l), 4),
+        "rms_right": round(min(1.0, rms_r), 4),
+        "peak_left": round(min(1.0, peak_l), 4),
+        "peak_right": round(min(1.0, peak_r), 4),
+    })
+
+    # Optional waveform bins for minimap
+    if waveform_bins > 0:
+        left_bins, right_bins = pcm_stereo_to_rms_bins(pcm, bins=waveform_bins)
+        result["waveform_left"] = left_bins
+        result["waveform_right"] = right_bins
+
+    return result
+
+
 def _byte_scan_fallback(path: str, bins: int) -> tuple[list[float], bool, str]:
     """Original byte-scanning stub — used when FFmpeg unavailable."""
     try:
