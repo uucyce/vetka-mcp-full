@@ -563,6 +563,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
     },
 
+    // MARKER_B3.2: Record Mode toggle
+    toggleRecordMode: () => {
+      const s = useCutEditorStore.getState();
+      s.toggleRecordMode();
+    },
+
     // Navigation — edit points
     prevEditPoint: () => {
       const s = useCutEditorStore.getState();
