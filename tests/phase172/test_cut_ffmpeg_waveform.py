@@ -16,8 +16,10 @@ from src.services.cut_ffmpeg_waveform import (
     build_waveform_ffmpeg,
     build_waveform_with_fallback,
     build_stereo_waveform,
+    compute_audio_levels,
     extract_pcm_mono_16bit,
     extract_pcm_stereo_16bit,
+    extract_audio_wav_segment,
     pcm_to_rms_bins,
     pcm_stereo_to_rms_bins,
     _byte_scan_fallback,
@@ -270,6 +272,171 @@ def test_build_stereo_nonexistent():
     assert degraded is True
     assert len(left) == 8
     assert len(right) == 8
+
+
+# ─── MARKER_B5.1: Audio segment extraction tests ───
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_wav_segment_from_stereo(tmp_path: Path):
+    """Extract WAV segment from stereo file."""
+    wav_path = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav_path, freq_l=440, freq_r=880, duration_sec=2.0, sample_rate=44100)
+    result = extract_audio_wav_segment(str(wav_path), start_sec=0, duration_sec=1.0, sample_rate=44100)
+    assert result is not None
+    assert len(result) > 44  # WAV header
+    assert result[:4] == b"RIFF"  # WAV magic
+    assert result[8:12] == b"WAVE"
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_wav_segment_with_offset(tmp_path: Path):
+    """Extract segment starting at offset."""
+    wav_path = tmp_path / "tone.wav"
+    _write_sine_wav(wav_path, freq=440, duration_sec=3.0, sample_rate=16000)
+    full = extract_audio_wav_segment(str(wav_path), start_sec=0, duration_sec=3.0, sample_rate=16000, channels=1)
+    part = extract_audio_wav_segment(str(wav_path), start_sec=1.0, duration_sec=1.0, sample_rate=16000, channels=1)
+    assert full is not None and part is not None
+    assert len(part) < len(full)
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_wav_segment_clamps_duration(tmp_path: Path):
+    """Duration clamped to 30s max."""
+    wav_path = tmp_path / "tone.wav"
+    _write_sine_wav(wav_path, freq=440, duration_sec=1.0, sample_rate=16000)
+    result = extract_audio_wav_segment(str(wav_path), duration_sec=999.0, sample_rate=16000, channels=1)
+    assert result is not None  # Should succeed (file is only 1s, 30s clamp is fine)
+
+
+def test_wav_segment_nonexistent():
+    """Nonexistent file → None."""
+    result = extract_audio_wav_segment("/nonexistent/file.mp4")
+    assert result is None
+
+
+def test_wav_segment_no_ffmpeg(tmp_path: Path):
+    """No FFmpeg → None."""
+    wav_path = tmp_path / "test.wav"
+    wav_path.write_bytes(b"RIFF" + b"\x00" * 40)
+    with patch("src.services.cut_ffmpeg_waveform.HAS_FFMPEG", False):
+        result = extract_audio_wav_segment(str(wav_path))
+    assert result is None
+
+
+# ─── MARKER_B40: compute_audio_levels tests ───
+
+
+def test_audio_levels_nonexistent_file():
+    """Nonexistent file → success=False, zero levels."""
+    result = compute_audio_levels("/nonexistent/file.mp4", time_sec=0.0)
+    assert result["success"] is False
+    assert result["rms_left"] == 0.0
+    assert result["rms_right"] == 0.0
+    assert result["peak_left"] == 0.0
+    assert result["peak_right"] == 0.0
+
+
+def test_audio_levels_no_ffmpeg():
+    """No FFmpeg → success=False."""
+    with patch("src.services.cut_ffmpeg_waveform.HAS_FFMPEG", False):
+        result = compute_audio_levels("/some/file.mp4", time_sec=1.0)
+    assert result["success"] is False
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_audio_levels_from_stereo_wav(tmp_path: Path):
+    """Extract audio levels from a stereo WAV at t=0.25s."""
+    wav_path = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav_path, freq_l=440, freq_r=880, duration_sec=1.0, sample_rate=16000)
+
+    result = compute_audio_levels(str(wav_path), time_sec=0.25)
+    assert result["success"] is True
+    assert result["rms_left"] > 0.5   # sine wave ~0.707 RMS
+    assert result["rms_right"] > 0.5
+    assert result["peak_left"] > 0.9
+    assert result["peak_right"] > 0.9
+    assert result["time_sec"] == 0.25
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_audio_levels_with_waveform_bins(tmp_path: Path):
+    """Request waveform bins → result includes waveform_left/right."""
+    wav_path = tmp_path / "stereo.wav"
+    _write_stereo_sine_wav(wav_path, freq_l=440, freq_r=880, duration_sec=1.0, sample_rate=16000)
+
+    result = compute_audio_levels(str(wav_path), time_sec=0.5, waveform_bins=8)
+    assert result["success"] is True
+    assert "waveform_left" in result
+    assert "waveform_right" in result
+    assert len(result["waveform_left"]) == 8
+    assert len(result["waveform_right"]) == 8
+    assert all(b > 0.0 for b in result["waveform_left"])
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_audio_levels_no_waveform_by_default(tmp_path: Path):
+    """Default mode: no waveform bins in result."""
+    wav_path = tmp_path / "tone.wav"
+    _write_sine_wav(wav_path, freq=440, duration_sec=0.5, sample_rate=16000)
+
+    result = compute_audio_levels(str(wav_path), time_sec=0.1)
+    assert result["success"] is True
+    assert "waveform_left" not in result
+    assert "waveform_right" not in result
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_audio_levels_silent_file(tmp_path: Path):
+    """Silent audio → near-zero RMS."""
+    wav_path = tmp_path / "silent.wav"
+    # Write a WAV with all-zero samples
+    num_samples = 16000  # 1 second
+    pcm_data = b"\x00\x00\x00\x00" * num_samples  # stereo silence
+    data_size = len(pcm_data)
+    file_size = 36 + data_size
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", file_size, b"WAVE",
+        b"fmt ", 16, 1, 2, 16000, 64000, 4, 16,
+        b"data", data_size,
+    )
+    wav_path.write_bytes(header + pcm_data)
+
+    result = compute_audio_levels(str(wav_path), time_sec=0.5)
+    assert result["success"] is True
+    assert result["rms_left"] == 0.0
+    assert result["rms_right"] == 0.0
+    assert result["peak_left"] == 0.0
+    assert result["peak_right"] == 0.0
+
+
+@pytest.mark.skipif(not HAS_FFMPEG, reason="FFmpeg not installed")
+def test_audio_levels_left_only(tmp_path: Path):
+    """Left channel loud, right silent → asymmetric levels."""
+    wav_path = tmp_path / "left_only.wav"
+    num_samples = 16000
+    frames = []
+    for i in range(num_samples):
+        t = i / 16000
+        left = int(32000 * math.sin(2 * math.pi * 440 * t))
+        frames.append(max(-32768, min(32767, left)))
+        frames.append(0)  # right silent
+    pcm_data = struct.pack(f"<{num_samples * 2}h", *frames)
+    data_size = len(pcm_data)
+    file_size = 36 + data_size
+    header = struct.pack(
+        "<4sI4s4sIHHIIHH4sI",
+        b"RIFF", file_size, b"WAVE",
+        b"fmt ", 16, 1, 2, 16000, 64000, 4, 16,
+        b"data", data_size,
+    )
+    wav_path.write_bytes(header + pcm_data)
+
+    result = compute_audio_levels(str(wav_path), time_sec=0.5)
+    assert result["success"] is True
+    assert result["rms_left"] > 0.5
+    assert result["rms_right"] < 0.01
 
 
 # ─── Helpers ───
