@@ -643,3 +643,52 @@
 [data-testid="track-resize-handle"][data-dragging="true"] {
   background: #555;
 }
+
+/* ═══ MARKER_GAMMA-POLISH1: Context menu consistent styling ════════════════ */
+
+[data-testid="cut-clip-context-menu"],
+[data-testid="cut-context-menu"] {
+  background: #0b0b0b !important;
+  border: 1px solid #2a2a2a !important;
+  border-radius: 6px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.45) !important;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  color: #ccc;
+}
+
+[data-testid="cut-clip-context-menu"] button:hover,
+[data-testid="cut-context-menu"] button:hover {
+  background: #1a1a1a !important;
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Playhead red accent (visible through all tracks) ════ */
+
+/* Override playhead from white to red for better visibility — NLE standard */
+.dockview-theme-dark [data-testid="cut-playhead"] {
+  background: #cc3333 !important;
+  z-index: 100;
+}
+.dockview-theme-dark [data-testid="cut-playhead-head"] {
+  border-top-color: #cc3333 !important;
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Selected clip highlight ═══════════════════════ */
+
+.dockview-theme-dark [data-testid^="cut-timeline-clip-"][data-selected="true"] {
+  border: 1px solid #888 !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Empty panel state ═════════════════════════════ */
+
+.dockview-theme-dark .dv-content-container:empty::after {
+  content: 'No content';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #333;
+  font-size: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+}
