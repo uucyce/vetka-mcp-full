@@ -640,35 +640,29 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:
-    """MARKER_195.21: Inject debrief questions into successful complete response.
+    """MARKER_195.22: Always inject debrief questions on successful complete.
 
-    Called on EVERY success path in action=complete — no more bypass.
-    Mutates result dict in-place.
+    Previous version (195.21) depended on session_tracker state which breaks
+    on worktrees (MCP subprocess starts before code update, singleton resets
+    on reload, etc.). Simplified: always inject. Agent decides whether to answer.
     """
     if not result.get("success"):
         return
-    try:
-        from src.services.session_tracker import get_session_tracker
-        _sid = arguments.get("session_id") or "mcp_default"
-        session = get_session_tracker().get_session(_sid)
-        if session.tasks_completed > 0 and not session.experience_report_submitted:
-            result["debrief_requested"] = True
-            result["debrief_questions"] = {
-                "q1_bugs": (
-                    "What's broken? Bugs you noticed — including outside your zone. "
-                    "Stale code, broken tools, bad process that everyone walks past?"
-                ),
-                "q2_worked": (
-                    "What unexpectedly worked? A workaround or pattern "
-                    "worth making standard?"
-                ),
-                "q3_idea": (
-                    "What idea came to mind that nobody asked about? "
-                    "What would you do with 2 more hours?"
-                ),
-            }
-    except Exception:
-        pass  # Debrief injection never blocks completion
+    result["debrief_requested"] = True
+    result["debrief_questions"] = {
+        "q1_bugs": (
+            "What's broken? Bugs you noticed — including outside your zone. "
+            "Stale code, broken tools, bad process that everyone walks past?"
+        ),
+        "q2_worked": (
+            "What unexpectedly worked? A workaround or pattern "
+            "worth making standard?"
+        ),
+        "q3_idea": (
+            "What idea came to mind that nobody asked about? "
+            "What would you do with 2 more hours?"
+        ),
+    }
 
 
 def _detect_git_branch(cwd: str = None) -> str:
