@@ -395,7 +395,22 @@ function saveFavorites(favs: Set<string>) {
   try { localStorage.setItem(LS_FAVORITES, JSON.stringify([...favs])); } catch { /* ok */ }
 }
 
+// MARKER_GAMMA-P2.1a: Map browser effect IDs to ClipEffects store fields
+const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
+  brightness:    { brightness: 0.15 },
+  color_balance: { brightness: 0.05, saturation: 1.2 },
+  saturation:    { saturation: 1.5 },
+  gamma:         { brightness: 0.1 },
+  blur:          { blur: 3 },
+  sharpen:       { blur: -1 },  // negative = sharpen conceptually
+  denoise:       { blur: 0.5 },
+  vignette:      { opacity: 0.9 },
+  lut_apply:     { contrast: 0.2, saturation: 1.3 },
+};
+
 function EffectsBrowser() {
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
@@ -429,6 +444,19 @@ function EffectsBrowser() {
   const categories = favCategory
     ? [favCategory, ...BROWSER_CATEGORIES]
     : BROWSER_CATEGORIES;
+
+  // MARKER_GAMMA-P2.1a: Apply effect to selected clip
+  const [lastApplied, setLastApplied] = useState<string | null>(null);
+
+  const applyEffect = useCallback((effect: BrowserEffect) => {
+    if (!selectedClipId) return;
+    const params = EFFECT_APPLY_MAP[effect.id];
+    if (params) {
+      setClipEffects(selectedClipId, params);
+      setLastApplied(effect.id);
+      setTimeout(() => setLastApplied(null), 1000);
+    }
+  }, [selectedClipId, setClipEffects]);
 
   const handleDragStart = useCallback((e: React.DragEvent, effect: BrowserEffect) => {
     e.dataTransfer.setData('application/x-cut-effect', JSON.stringify({ id: effect.id, name: effect.name }));
@@ -490,22 +518,27 @@ function EffectsBrowser() {
               </span>
               <span style={{ fontSize: 8, color: '#444', marginLeft: 'auto' }}>{filtered.length}</span>
             </div>
-            {isOpen && filtered.map((effect) => (
+            {isOpen && filtered.map((effect) => {
+              const hasStoreMapping = !!EFFECT_APPLY_MAP[effect.id];
+              const justApplied = lastApplied === effect.id;
+              return (
               <div
                 key={`${cat.name}-${effect.id}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, effect)}
+                onDoubleClick={() => applyEffect(effect)}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 6,
                   padding: '3px 4px 3px 16px',
-                  cursor: 'grab',
+                  cursor: hasStoreMapping && selectedClipId ? 'pointer' : 'grab',
                   borderBottom: '1px solid #111',
+                  background: justApplied ? '#222' : undefined,
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                title={effect.description}
+                onMouseEnter={(e) => { if (!justApplied) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = justApplied ? '#222' : 'transparent'; }}
+                title={hasStoreMapping && selectedClipId ? `Double-click to apply — ${effect.description}` : effect.description}
               >
                 {/* MARKER_GAMMA-P2.3: Star toggle */}
                 <span
@@ -519,11 +552,19 @@ function EffectsBrowser() {
                   <span style={{ fontSize: 9, color: '#ccc', display: 'block' }}>{effect.name}</span>
                   <span style={{ fontSize: 8, color: '#555', marginTop: 1, display: 'block' }}>{effect.description}</span>
                 </div>
+                {justApplied && <span style={{ fontSize: 8, color: '#888', flexShrink: 0 }}>Applied</span>}
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })}
+      {/* MARKER_GAMMA-P2.1a: Apply hint */}
+      {!selectedClipId && (
+        <div style={{ padding: '6px 0', fontSize: 8, color: '#444', textAlign: 'center' }}>
+          Select a clip to apply effects via double-click
+        </div>
+      )}
     </div>
   );
 }
