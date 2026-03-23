@@ -657,14 +657,31 @@ export default function MenuBar() {
             }
           }},
           { label: 'Reset Workspace', shortcut: '⌥⇧0', action: () => {
+            // MARKER_GAMMA-R2: API-based reset instead of page reload
             try {
               localStorage.removeItem('cut_dockview_editing');
               localStorage.removeItem('cut_dockview_color');
               localStorage.removeItem('cut_dockview_audio');
               localStorage.removeItem('cut_dockview_custom');
               localStorage.removeItem('cut_dockview_active');
+              localStorage.removeItem('cut_focus_per_preset');
             } catch {}
-            window.location.reload();
+            const api = dockStore.getState().apiRef;
+            if (api) {
+              try {
+                api.clear();
+                const builder = PRESET_BUILDERS.editing;
+                builder(api, '');
+                dockStore.getState().setActivePreset('editing');
+                requestAnimationFrame(() => {
+                  try { dockStore.getState().saveLayout('editing', api.toJSON()); } catch {}
+                });
+              } catch { /* fallback: reload if API reset fails */
+                window.location.reload();
+              }
+            } else {
+              window.location.reload();
+            }
           }},
         ]},
         { separator: true },

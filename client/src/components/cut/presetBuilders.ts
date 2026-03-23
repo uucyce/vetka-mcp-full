@@ -40,10 +40,13 @@ export function buildEditingLayout(api: DockviewApi, scriptText: string) {
   // Sizes
   try { api.getPanel('project')?.api.setSize({ width: 320 }); } catch { /* ok */ }
   try { api.getPanel('timeline')?.api.setSize({ height: 300 }); } catch { /* ok */ }
-  // Ensure key panels are foreground in their groups
+  // MARKER_GAMMA-R2.FIX: Ensure key panels are foreground in their groups
+  // Group 1 (Editorial): inspector foreground
   try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
+  // Group 2a (Effects): effects foreground (CC tests switch to scopes via tab)
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
-  try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
+  // Group 2b (Tools): mixer foreground (AUD1/AUD6 tests need mixer visible)
+  try { api.getPanel('mixer')?.api.setActive(); } catch { /* ok */ }
 }
 
 export function buildColorLayout(api: DockviewApi, scriptText: string) {
@@ -70,7 +73,9 @@ export function buildColorLayout(api: DockviewApi, scriptText: string) {
   try { api.getPanel('source')?.api.setSize({ width: 260 }); } catch { /* ok */ }
   try { api.getPanel('colorcorrector')?.api.setSize({ width: 300 }); } catch { /* ok */ }
   try { api.getPanel('timeline')?.api.setSize({ height: 240 }); } catch { /* ok */ }
+  // MARKER_GAMMA-R2.FIX: Ensure key panels foreground per color preset purpose
   try { api.getPanel('colorcorrector')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('scopes')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }
@@ -98,7 +103,9 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
   try { api.getPanel('mixer')?.api.setSize({ width: 280 }); } catch { /* ok */ }
   try { api.getPanel('timeline')?.api.setSize({ height: 380 }); } catch { /* ok */ }
+  // MARKER_GAMMA-R2.FIX: Ensure key panels foreground per audio preset purpose
   try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('mixer')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }

@@ -418,6 +418,53 @@ function saveRecent(ids: string[]) {
   try { localStorage.setItem(LS_RECENT, JSON.stringify(ids.slice(0, MAX_RECENT))); } catch { /* ok */ }
 }
 
+// MARKER_GAMMA-P2.4: Hover tooltip showing effect parameters
+function EffectTooltip({ effect, rect }: { effect: BrowserEffect; rect: DOMRect }) {
+  const params = EFFECT_APPLY_MAP[effect.id];
+  if (!params) return null;
+
+  const entries = Object.entries(params) as [string, number][];
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        left: rect.right + 6,
+        top: rect.top,
+        background: '#1a1a1a',
+        border: '1px solid #333',
+        borderRadius: 3,
+        padding: '6px 8px',
+        fontSize: 8,
+        color: '#aaa',
+        zIndex: 9999,
+        pointerEvents: 'none',
+        minWidth: 120,
+        maxWidth: 200,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.6)',
+      }}
+    >
+      <div style={{ fontSize: 9, color: '#ccc', fontWeight: 600, marginBottom: 4 }}>
+        {effect.name}
+      </div>
+      <div style={{ color: '#555', marginBottom: 4 }}>{effect.description}</div>
+      <div style={{ borderTop: '1px solid #222', paddingTop: 4 }}>
+        <div style={{ color: '#666', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>
+          Parameters
+        </div>
+        {entries.map(([key, val]) => (
+          <div key={key} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '1px 0' }}>
+            <span style={{ color: '#888' }}>{key}</span>
+            <span style={{ color: '#ccc', fontVariantNumeric: 'tabular-nums' }}>
+              {typeof val === 'number' && val <= 1 && val >= -1 ? `${(val * 100).toFixed(0)}%` : val}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function EffectsBrowser() {
   const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
@@ -425,6 +472,8 @@ function EffectsBrowser() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
   const [recentIds, setRecentIds] = useState<string[]>(loadRecent);
+  // MARKER_GAMMA-P2.4: Tooltip state
+  const [hoveredEffect, setHoveredEffect] = useState<{ effect: BrowserEffect; rect: DOMRect } | null>(null);
 
   const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => {
@@ -561,8 +610,16 @@ function EffectsBrowser() {
                   borderBottom: '1px solid #111',
                   background: justApplied ? '#222' : undefined,
                 }}
-                onMouseEnter={(e) => { if (!justApplied) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = justApplied ? '#222' : 'transparent'; }}
+                onMouseEnter={(e) => {
+                  if (!justApplied) (e.currentTarget as HTMLElement).style.background = '#1a1a1a';
+                  if (EFFECT_APPLY_MAP[effect.id]) {
+                    setHoveredEffect({ effect, rect: e.currentTarget.getBoundingClientRect() });
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLElement).style.background = justApplied ? '#222' : 'transparent';
+                  setHoveredEffect(null);
+                }}
                 title={hasStoreMapping && selectedClipId ? `Double-click to apply — ${effect.description}` : effect.description}
               >
                 {/* MARKER_GAMMA-P2.3: Star toggle */}
@@ -590,6 +647,8 @@ function EffectsBrowser() {
           Select a clip to apply effects via double-click
         </div>
       )}
+      {/* MARKER_GAMMA-P2.4: Parameter tooltip */}
+      {hoveredEffect && <EffectTooltip effect={hoveredEffect.effect} rect={hoveredEffect.rect} />}
     </div>
   );
 }
