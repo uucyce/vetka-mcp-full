@@ -174,6 +174,10 @@ TASK_BOARD_SCHEMA = {
         "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree."},
         # MARKER_192.2: execution_mode — controls closure proof requirements
         "execution_mode": {"type": "string", "enum": ["pipeline", "manual"], "description": "Closure proof mode. 'pipeline' = full proof (pipeline_success + verifier + tests). 'manual' = relaxed (commit_hash only). Auto-inferred from agent_type if omitted."},
+        # MARKER_196.6.1: Debrief answers captured in action=complete
+        "q1_bugs": {"type": "string", "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)"},
+        "q2_worked": {"type": "string", "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)"},
+        "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
     },
     "required": ["action"]
 }
@@ -767,6 +771,98 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
             "What would you do with 2 more hours?"
         ),
     }
+
+    # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
+    # Collects: session role, tasks completed, files touched, CORTEX tool stats.
+    # Even if agent never answers debrief Qs, we get a baseline report.
+    try:
+        _passive_report_created = _create_passive_experience_report(
+            arguments, result,
+        )
+        if _passive_report_created:
+            result["passive_report"] = True
+    except Exception:
+        pass  # Passive metrics never block completion
+
+
+def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
+    """MARKER_196.6.3: Auto-create ExperienceReport from passive session data.
+
+    Collects metrics without requiring agent input:
+    - Role/domain from session tracker
+    - Task ID from completion
+    - Files touched from session tracker
+    - CORTEX tool success rates from REFLEX
+
+    Returns True if report was created.
+    """
+    import time as _t
+    from datetime import datetime, timezone
+
+    _tracker_sid = arguments.get("session_id") or "mcp_default"
+    task_id = arguments.get("task_id") or result.get("task_id", "")
+
+    # Get session state
+    from src.services.session_tracker import get_session_tracker
+    tracker = get_session_tracker()
+    session = tracker.get_session(_tracker_sid)
+
+    # Determine callsign/domain/branch from session role or task metadata
+    callsign = session.role_callsign or arguments.get("assigned_to") or "unknown"
+    domain = session.role_domain or ""
+    branch = session.role_branch or arguments.get("branch") or ""
+
+    # Build passive report
+    from src.services.experience_report import ExperienceReport, get_experience_store
+
+    # MARKER_196.6.1: Collect debrief answers from arguments (if agent provided them)
+    q1 = arguments.get("q1_bugs") or arguments.get("q1") or ""
+    q2 = arguments.get("q2_worked") or arguments.get("q2") or ""
+    q3 = arguments.get("q3_idea") or arguments.get("q3") or ""
+
+    lessons = []
+    recommendations = []
+    bugs = []
+    if q1:
+        bugs.append({"description": q1, "source": "debrief_q1"})
+        lessons.append(f"[BUG] {q1}")
+    if q2:
+        lessons.append(f"[WORKED] {q2}")
+    if q3:
+        recommendations.append(q3)
+
+    report = ExperienceReport(
+        session_id=_tracker_sid,
+        agent_callsign=callsign,
+        domain=domain,
+        branch=branch,
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        tasks_completed=[task_id] if task_id else [],
+        files_touched=list(session.files_edited)[:20],  # cap
+        commits=session.tasks_completed,
+        lessons_learned=lessons,
+        recommendations=recommendations,
+        bugs_found=bugs,
+    )
+
+    # Enrich with CORTEX tool stats
+    try:
+        from src.services.reflex_feedback import ReflexFeedback
+        fb = ReflexFeedback()
+        summary = fb.get_feedback_summary()
+        if summary and summary.get("total_entries", 0) > 0:
+            report.reflex_summary = {
+                "total_entries": summary["total_entries"],
+                "success_rate": summary.get("success_rate", 0),
+                "useful_rate": summary.get("useful_rate", 0),
+                "top_tools": list(summary.get("per_tool", {}).keys())[:5],
+            }
+    except Exception:
+        pass
+
+    store = get_experience_store()
+    store.submit(report)
+    return True
 
 
 def _detect_git_branch(cwd: str = None) -> str:

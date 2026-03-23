@@ -1747,6 +1747,17 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Order matters: reload dependency (task_board) BEFORE dependent (task_board_tools).
             try:
                 import importlib
+                # MARKER_196.FIX: Reset singletons before reload to prevent leaks
+                try:
+                    from src.mcp.mcp_actor import MCPSessionDispatcher
+                    MCPSessionDispatcher.reset()
+                except Exception:
+                    pass
+                try:
+                    from src.orchestration.task_board import reset_task_board
+                    reset_task_board()
+                except Exception:
+                    pass
                 import src.orchestration.task_board as _board_mod
                 importlib.reload(_board_mod)
                 import src.mcp.tools.task_board_tools as _tb_mod

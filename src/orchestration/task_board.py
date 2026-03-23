@@ -3151,3 +3151,17 @@ def get_task_board() -> TaskBoard:
     if _board_instance is None:
         _board_instance = TaskBoard()
     return _board_instance
+
+
+def reset_task_board() -> None:
+    """MARKER_196.FIX: Close SQLite connection and reset singleton.
+
+    Call before importlib.reload() to prevent connection leak.
+    """
+    global _board_instance
+    if _board_instance is not None:
+        try:
+            _board_instance.db.close()
+        except Exception:
+            pass
+        _board_instance = None
