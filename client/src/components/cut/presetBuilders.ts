@@ -33,10 +33,10 @@ export function buildEditingLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  // Group 2b (Tools) — right of Effects group
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
-  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'transitions', direction: 'within' } });
+  // MARKER_GAMMA-AUDIT: Transitions moved INTO Effects group (FCP7 convention)
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
+  // Group 2b (Audio) — right of Effects group (Speed removed — it's a modal dialog)
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'right' } });
   // Timeline (full-width bottom)
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   // Sizes
@@ -65,8 +65,8 @@ export function buildColorLayout(api: DockviewApi, scriptText: string) {
   // MARKER_GAMMA-33: Split tools from effects group
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'project', direction: 'below' } });
   api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
+  // MARKER_GAMMA-AUDIT: Transitions in Effects group, Speed removed (modal)
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'program', direction: 'right' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'colorcorrector', direction: 'within' } });
@@ -99,8 +99,8 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
+  // MARKER_GAMMA-AUDIT: Transitions in Effects group, Speed removed (modal)
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
   try { api.getPanel('mixer')?.api.setSize({ width: 280 }); } catch { /* ok */ }
@@ -109,7 +109,6 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('mixer')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
-  try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }
 
 export const PRESET_BUILDERS: Record<string, PresetBuilder> = {
