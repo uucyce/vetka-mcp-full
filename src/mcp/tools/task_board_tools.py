@@ -122,7 +122,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "verify"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -154,7 +154,7 @@ TASK_BOARD_SCHEMA = {
         # For "get", "update", "remove", "claim", "complete":
         "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
+        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
         # For "verify":
         "verdict": {"type": "string", "enum": ["pass", "fail"], "description": "QA verdict for action=verify: pass → verified, fail → needs_fix"},
         "verified_by": {"type": "string", "description": "Agent performing verification (default: Delta)"},
@@ -758,6 +758,25 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         merge_commit_hash = arguments.get("commit_hash")
         role = arguments.get("role", "")
         return board.promote_to_main(task_id, merge_commit_hash, role=role)
+
+    # MARKER_196.QA: request_qa — move done_worktree → need_qa
+    elif action == "request_qa":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for request_qa"}
+        task = board.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        if task["status"] != "done_worktree":
+            return {"success": False, "error": f"Task {task_id} is '{task['status']}', expected done_worktree"}
+        board.update_task(
+            task_id, status="need_qa",
+            _history_event="qa_requested",
+            _history_source="task_board",
+            _history_reason="QA review requested",
+            _history_agent_name=arguments.get("assigned_to", ""),
+        )
+        return {"success": True, "task_id": task_id, "status": "need_qa", "message": "Task moved to QA queue"}
 
     # MARKER_195.20: QA Gate — verify a done_worktree task before merge
     elif action == "verify":

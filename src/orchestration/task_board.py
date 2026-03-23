@@ -75,7 +75,8 @@ PRIORITY_SOMEDAY = 5
 #   done_main = merged to main (or committed directly on main)
 #   verified = QA gate passed (MARKER_195.20), ready for merge
 #   needs_fix = QA gate failed, needs re-work
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
+# MARKER_196.QA: Added "need_qa" — explicit QA gate request between done_worktree and verified
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -1653,10 +1654,11 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] != "done_worktree":
+        # MARKER_196.QA: Accept both done_worktree and need_qa for verification
+        if task["status"] not in ("done_worktree", "need_qa"):
             return {
                 "success": False,
-                "error": f"Task {task_id} is '{task['status']}', expected done_worktree",
+                "error": f"Task {task_id} is '{task['status']}', expected done_worktree or need_qa",
             }
 
         if verdict == "pass":
