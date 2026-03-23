@@ -25,22 +25,25 @@ export function buildEditingLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'history', component: 'history', title: 'History', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
-  // Group 2 (Media) — right of Editorial group
+  // MARKER_GAMMA-33: Split media into 2 groups for better panel visibility
+  // Group 2a (Effects) — right of Editorial group
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  // Group 2b (Tools) — right of Effects group
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'transitions', direction: 'within' } });
   // Timeline (full-width bottom)
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   // Sizes
   try { api.getPanel('project')?.api.setSize({ width: 320 }); } catch { /* ok */ }
   try { api.getPanel('timeline')?.api.setSize({ height: 300 }); } catch { /* ok */ }
-  // MARKER_GAMMA-22: Ensure key panels are foreground in their groups
+  // Ensure key panels are foreground in their groups
   try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }
 
 export function buildColorLayout(api: DockviewApi, scriptText: string) {
@@ -54,10 +57,11 @@ export function buildColorLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'project', direction: 'within' } });
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'project', direction: 'within' } });
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'project', direction: 'within' } });
+  // MARKER_GAMMA-33: Split tools from effects group
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'project', direction: 'below' } });
   api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
   api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'program', direction: 'right' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'colorcorrector', direction: 'within' } });
@@ -68,6 +72,7 @@ export function buildColorLayout(api: DockviewApi, scriptText: string) {
   try { api.getPanel('timeline')?.api.setSize({ height: 240 }); } catch { /* ok */ }
   try { api.getPanel('colorcorrector')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }
 
 export function buildAudioLayout(api: DockviewApi, scriptText: string) {
@@ -82,18 +87,20 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   api.addPanel({ id: 'graph', component: 'graph', title: 'Graph', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'storyspace', component: 'storyspace', title: 'StorySpace', position: { referencePanel: 'inspector', direction: 'within' } });
   api.addPanel({ id: 'montage', component: 'montage', title: 'Montage', position: { referencePanel: 'inspector', direction: 'within' } });
+  // MARKER_GAMMA-33: Split tools from effects group
   api.addPanel({ id: 'effects', component: 'effects', title: 'Effects', position: { referencePanel: 'inspector', direction: 'right' } });
   api.addPanel({ id: 'colorcorrector', component: 'colorcorrector', title: 'Color', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'scopes', component: 'scopes', title: 'Scopes', position: { referencePanel: 'effects', direction: 'within' } });
   api.addPanel({ id: 'lutbrowser', component: 'lutbrowser', title: 'LUTs', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'within' } });
-  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'effects', direction: 'within' } });
+  api.addPanel({ id: 'transitions', component: 'transitions', title: 'Transitions', position: { referencePanel: 'effects', direction: 'right' } });
+  api.addPanel({ id: 'speed', component: 'speed', title: 'Speed', position: { referencePanel: 'transitions', direction: 'within' } });
   api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
   try { api.getPanel('project')?.api.setSize({ width: 260 }); } catch { /* ok */ }
   try { api.getPanel('mixer')?.api.setSize({ width: 280 }); } catch { /* ok */ }
   try { api.getPanel('timeline')?.api.setSize({ height: 380 }); } catch { /* ok */ }
   try { api.getPanel('inspector')?.api.setActive(); } catch { /* ok */ }
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
+  try { api.getPanel('transitions')?.api.setActive(); } catch { /* ok */ }
 }
 
 export const PRESET_BUILDERS: Record<string, PresetBuilder> = {
