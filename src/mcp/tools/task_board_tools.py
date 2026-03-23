@@ -335,21 +335,34 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         phase_type = payload.get("phase_type", "")
         doc_exempt_types = ("research", "test")
 
-        if not arch_docs and not recon_docs and not force_no_docs and phase_type not in doc_exempt_types:
+        if not arch_docs and not recon_docs and phase_type not in doc_exempt_types:
             # Build search query from title + tags for better relevance
             tags = payload.get("tags") or []
             search_query = title + " " + " ".join(str(t) for t in tags)
             suggested = _suggest_docs_for_title(search_query)
-            return {
-                "success": False,
-                "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
-                         "Attach a doc or pass force_no_docs=true to bypass.",
-                "doc_gate": True,
-                "suggested_docs": suggested,
-                "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
-                        "Use force_no_docs=true ONLY if no relevant docs exist. "
-                        "Note: phase_type=research and phase_type=test are auto-exempt.",
-            }
+
+            if not force_no_docs:
+                return {
+                    "success": False,
+                    "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
+                             "Attach a doc or pass force_no_docs=true to bypass.",
+                    "doc_gate": True,
+                    "suggested_docs": suggested,
+                    "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
+                            "Use force_no_docs=true ONLY if no relevant docs exist. "
+                            "Note: phase_type=research and phase_type=test are auto-exempt.",
+                }
+            # MARKER_196.DOCGATE: force_no_docs=true but relevant docs found — warn + audit
+            if suggested:
+                payload.setdefault("_doc_gate_warnings", [])
+                payload["_doc_gate_warnings"].append(
+                    f"force_no_docs bypassed DOC_GATE but {len(suggested)} relevant docs exist: "
+                    + ", ".join(suggested[:3])
+                )
+                logger.warning(
+                    "[DOC_GATE] force_no_docs=true with %d suggested docs for '%s': %s",
+                    len(suggested), title, suggested[:3],
+                )
 
         try:
             payload = apply_task_profile_defaults(payload)
@@ -386,7 +399,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             )
         except ValueError as exc:
             return {"success": False, "error": str(exc)}
-        return {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
+        result = {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
+        # MARKER_196.DOCGATE: Surface warnings if force_no_docs was used
+        _dg_warnings = payload.get("_doc_gate_warnings")
+        if _dg_warnings:
+            result["doc_gate_warning"] = _dg_warnings[0]
+        return result
 
     elif action == "list":
         filter_status = arguments.get("filter_status")
