@@ -452,6 +452,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
         </div>
 
         {/* Conflict warning */}
+        {/* MARKER_GAMMA-P3.5: Conflict detection + resolution */}
         {conflict && (
           <div style={{
             padding: '4px 12px',
@@ -460,9 +461,28 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
             fontSize: 9,
             color: '#999',
             fontFamily: 'monospace',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
           }}>
-            Conflict: "{conflict.binding}" already assigned to{' '}
-            {ALL_ACTIONS.find((a) => a.action === conflict.action)?.label || conflict.action}
+            <span>
+              Conflict: "{conflict.binding}" also assigned to{' '}
+              {ALL_ACTIONS.find((a) => a.action === conflict.action)?.label || conflict.action}
+            </span>
+            <button
+              onClick={() => {
+                resetBinding(conflict.action);
+                setConflict(null);
+              }}
+              style={{
+                background: 'none', border: '1px solid #555', borderRadius: 2,
+                color: '#ccc', fontSize: 8, padding: '1px 8px', cursor: 'pointer',
+                marginLeft: 8, flexShrink: 0,
+              }}
+              title={`Unbind "${conflict.binding}" from ${ALL_ACTIONS.find((a) => a.action === conflict.action)?.label}`}
+            >
+              Unbind Other
+            </button>
           </div>
         )}
 
