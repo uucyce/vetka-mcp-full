@@ -553,8 +553,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_188.2: Pass worktree_path for correct cwd in git operations
         auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path)
 
-        # If commit attempted but FAILED → do NOT close task
-        if auto.get("attempted") and not auto.get("success"):
+        # If commit failed or scoping rejected files → do NOT close task
+        # MARKER_195.22: Also catch attempted=False + success=False (allowed_paths mismatch)
+        if not auto.get("success") and auto.get("error"):
             return {
                 "success": False,
                 "error": f"Auto-commit failed: {auto.get('error', 'unknown')}. Task NOT closed.",
@@ -744,19 +745,44 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
                 "note": "nothing to commit"}
 
     # 2. Determine scoped files (NOT git add -A)
+    # MARKER_195.22: Scoped staging — closure_files > allowed_paths > all dirty (with warning)
     closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+    allowed_paths = [str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()]
 
-    if not closure_files:
-        # Fallback: parse git status --porcelain for actually changed files
-        # Format: "XY filename" where XY = 2 status chars + 1 space = 3 char prefix
-        # Do NOT strip before slicing — leading space is part of status format
-        changed = []
-        for line in status.stdout.splitlines():
-            if len(line) > 3:
-                filepath = line[3:].split(" -> ")[-1].strip()
-                if filepath:
-                    changed.append(filepath)
-        closure_files = changed
+    # Parse ALL dirty files from porcelain
+    all_changed = []
+    for line in status.stdout.splitlines():
+        if len(line) > 3:
+            filepath = line[3:].split(" -> ")[-1].strip()
+            if filepath:
+                all_changed.append(filepath)
+
+    if closure_files:
+        # Explicit closure_files — use as-is (may include files not in porcelain)
+        pass
+    elif allowed_paths:
+        # MARKER_195.22: Filter dirty files by allowed_paths prefixes
+        # allowed_paths can be files ("src/foo.py") or dirs ("src/mcp/tools/")
+        def _matches_allowed(fpath):
+            for ap in allowed_paths:
+                if fpath == ap or fpath.startswith(ap.rstrip("/") + "/"):
+                    return True
+            return False
+        closure_files = [f for f in all_changed if _matches_allowed(f)]
+        if not closure_files:
+            # allowed_paths set but no dirty files match — warn, don't grab everything
+            return {"attempted": False, "success": False,
+                    "error": f"No dirty files match allowed_paths {allowed_paths}. "
+                             f"Dirty files: {all_changed[:10]}. "
+                             "Set closure_files explicitly or update allowed_paths."}
+    else:
+        # No scope at all — fallback to all dirty, but log warning
+        closure_files = all_changed
+        if len(all_changed) > 5:
+            logger.warning(
+                f"[TaskBoard] _try_auto_commit: no closure_files/allowed_paths for task {task_id}, "
+                f"staging ALL {len(all_changed)} dirty files. Consider setting allowed_paths on task."
+            )
 
     if not closure_files:
         return {"attempted": False, "success": True, "hash": None,
