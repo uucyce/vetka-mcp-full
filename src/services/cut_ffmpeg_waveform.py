@@ -448,6 +448,78 @@ def compute_audio_levels(
     return result
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B42: Batch audio segment extraction for timeline playback
+# ---------------------------------------------------------------------------
+
+
+def extract_audio_wav_segments_batch(
+    segments: list[dict],
+    *,
+    sample_rate: int = 44100,
+    channels: int = 2,
+    max_workers: int = 4,
+    timeout_sec: float = 60.0,
+) -> list[dict]:
+    """Extract multiple audio WAV segments in parallel via ThreadPoolExecutor.
+
+    Each segment dict: { clip_id, source_path, start_sec, duration_sec }.
+    Returns list of { clip_id, success, wav_bytes|None, error? } in same order.
+
+    Args:
+        segments: List of segment requests (max 8).
+        sample_rate: Output sample rate.
+        channels: 1=mono, 2=stereo.
+        max_workers: Thread pool size (capped at 4 to avoid FFmpeg overload).
+        timeout_sec: Per-segment FFmpeg timeout.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    # Cap batch size
+    segments = segments[:8]
+    if not segments:
+        return []
+    max_workers = min(max_workers, 4, len(segments))
+
+    def _extract_one(seg: dict) -> dict:
+        clip_id = seg.get("clip_id", "")
+        source_path = seg.get("source_path", "")
+        start_sec = float(seg.get("start_sec", 0))
+        duration_sec = float(seg.get("duration_sec", 10))
+
+        wav = extract_audio_wav_segment(
+            source_path,
+            start_sec=max(0, start_sec),
+            duration_sec=min(30.0, max(0.01, duration_sec)),
+            sample_rate=max(8000, min(48000, sample_rate)),
+            channels=max(1, min(2, channels)),
+            timeout_sec=timeout_sec,
+        )
+        if wav is None:
+            return {"clip_id": clip_id, "success": False, "wav_bytes": None, "error": "extraction_failed"}
+        return {"clip_id": clip_id, "success": True, "wav_bytes": wav}
+
+    results: list[dict] = [{"clip_id": s.get("clip_id", ""), "success": False, "wav_bytes": None, "error": "not_processed"} for s in segments]
+    index_map = {id(seg): i for i, seg in enumerate(segments)}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        future_to_seg = {pool.submit(_extract_one, seg): seg for seg in segments}
+        for future in as_completed(future_to_seg):
+            seg = future_to_seg[future]
+            idx = index_map[id(seg)]
+            try:
+                results[idx] = future.result()
+            except Exception as exc:
+                results[idx] = {
+                    "clip_id": seg.get("clip_id", ""),
+                    "success": False,
+                    "wav_bytes": None,
+                    "error": str(exc),
+                }
+
+    return results
+
+
 def _byte_scan_fallback(path: str, bins: int) -> tuple[list[float], bool, str]:
     """Original byte-scanning stub — used when FFmpeg unavailable."""
     try:
