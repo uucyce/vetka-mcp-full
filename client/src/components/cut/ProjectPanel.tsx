@@ -25,7 +25,7 @@ type ProjectViewMode = 'list' | 'columns' | 'grid' | 'dag';
 
 // ─── Bin (bucket) types ───
 
-type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other';
+type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other' | string;
 
 interface BinDef {
   key: BinKey;
@@ -274,6 +274,49 @@ export default function ProjectPanel() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   // MARKER_GAMMA-P1.4: Search/filter clips
   const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-P1.1: User-created bins
+  type UserBin = { id: string; name: string };
+  const [userBins, setUserBins] = useState<UserBin[]>(() => {
+    try { const raw = localStorage.getItem('cut_user_bins'); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  });
+  const [clipBinMap, setClipBinMap] = useState<Record<string, string>>(() => {
+    try { const raw = localStorage.getItem('cut_clip_bins'); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  });
+  const [renamingBin, setRenamingBin] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const saveUserBins = useCallback((bins: UserBin[]) => {
+    setUserBins(bins);
+    try { localStorage.setItem('cut_user_bins', JSON.stringify(bins)); } catch { /* ok */ }
+  }, []);
+  const saveClipBinMap = useCallback((map: Record<string, string>) => {
+    setClipBinMap(map);
+    try { localStorage.setItem('cut_clip_bins', JSON.stringify(map)); } catch { /* ok */ }
+  }, []);
+
+  const createBin = useCallback(() => {
+    const id = `bin_${Date.now()}`;
+    const name = `Bin ${userBins.length + 1}`;
+    saveUserBins([...userBins, { id, name }]);
+    setRenamingBin(id);
+    setRenameValue(name);
+  }, [userBins, saveUserBins]);
+
+  const renameBin = useCallback((id: string, name: string) => {
+    saveUserBins(userBins.map((b) => b.id === id ? { ...b, name } : b));
+    setRenamingBin(null);
+  }, [userBins, saveUserBins]);
+
+  const deleteBin = useCallback((id: string) => {
+    saveUserBins(userBins.filter((b) => b.id !== id));
+    const next = { ...clipBinMap };
+    for (const key of Object.keys(next)) { if (next[key] === id) delete next[key]; }
+    saveClipBinMap(next);
+  }, [userBins, clipBinMap, saveUserBins, saveClipBinMap]);
+
+  const assignClipToBin = useCallback((clipPath: string, binId: string) => {
+    saveClipBinMap({ ...clipBinMap, [clipPath]: binId });
+  }, [clipBinMap, saveClipBinMap]);
   // MARKER_GAMMA-P1.2: Column sort
   type SortKey = 'name' | 'duration' | 'modality';
   type SortDir = 'asc' | 'desc';
@@ -582,9 +625,16 @@ export default function ProjectPanel() {
 
   return (
     <div style={PANEL} data-testid="cut-source-browser">
-      {/* Header with view mode switcher — MARKER_W5.4 */}
+      {/* Header with view mode switcher — MARKER_W5.4 + GAMMA-P1.1 New Bin */}
       <div style={HEADER}>
-        <span>Project</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Project</span>
+          <button
+            onClick={createBin}
+            style={{ ...MODE_SWITCH_BTN, color: '#555', fontSize: 10 }}
+            title="New Bin (⌘B)"
+          >+</button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {(['list', 'columns', 'grid', 'dag'] as const).map((mode) => (
             <button
@@ -817,8 +867,82 @@ export default function ProjectPanel() {
           )}
         </div>
       ) : (
-        /* List view (default) — bins with clip rows */
+        /* List view (default) — user bins + auto bins with clip rows */
         <div style={BIN_LIST}>
+          {/* MARKER_GAMMA-P1.1: User-created bins */}
+          {userBins.map((ubin) => {
+            const isCollapsed = collapsedBins.has(ubin.id);
+            const ubinItems = projectItems.filter((it) => clipBinMap[it.source_path] === ubin.id);
+            return (
+              <div key={ubin.id} data-testid={`cut-user-bin-${ubin.id}`}>
+                <div
+                  style={BIN_HEADER}
+                  onClick={() => toggleBin(ubin.id)}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const path = e.dataTransfer.getData('text/cut-media-path');
+                    if (path) assignClipToBin(path, ubin.id);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (confirm(`Delete bin "${ubin.name}"?`)) deleteBin(ubin.id);
+                  }}
+                >
+                  <span>
+                    {isCollapsed ? '▸' : '▾'}{' '}
+                    {renamingBin === ubin.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => renameBin(ubin.id, renameValue)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') renameBin(ubin.id, renameValue); if (e.key === 'Escape') setRenamingBin(null); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#111', border: '1px solid #555', borderRadius: 2, color: '#ccc', fontSize: 10, width: 100, padding: '0 3px', outline: 'none' }}
+                      />
+                    ) : (
+                      <span onDoubleClick={(e) => { e.stopPropagation(); setRenamingBin(ubin.id); setRenameValue(ubin.name); }}>
+                        {ubin.name}
+                      </span>
+                    )}
+                  </span>
+                  <span>{ubinItems.length}</span>
+                </div>
+                {!isCollapsed && ubinItems.map((item) => {
+                  const isActive = item.source_path === activeMediaPath;
+                  return (
+                    <div
+                      key={item.item_id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                      }}
+                      style={{
+                        ...CLIP_ITEM,
+                        background: isActive ? '#1a1a1a' : 'transparent',
+                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
+                        cursor: 'grab',
+                      }}
+                      onClick={() => handleClipClick(item.source_path)}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: isActive ? '#fff' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {basename(item.source_path)}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#555' }}>
+                          {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {/* Auto-classified bins */}
           {bins.map((bin) => {
             const isCollapsed = collapsedBins.has(bin.key);
             return (
