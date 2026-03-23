@@ -197,7 +197,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   extendEdit:          ['timeline'],
   splitEditLCut:       ['timeline'],
   splitEditJCut:       ['timeline'],
-  addDefaultTransition:['timeline'],
+  addDefaultTransition:'global',
 
   // Global — always fire
   undo:                'global',
