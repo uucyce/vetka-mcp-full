@@ -72,6 +72,8 @@ export type CutHotkeyAction =
   | 'nextKeyframe'
   | 'prevKeyframe'
   | 'addKeyframe'
+  // MARKER_B3.2: Record Mode
+  | 'toggleRecordMode'
   // MARKER_FCP7.SPEED: Speed dialog
   | 'openSpeedControl'
   // Mark operations
@@ -157,14 +159,14 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   overwriteEdit:       ['timeline', 'source'],
   replaceEdit:         ['timeline', 'source'],
 
-  // Tools — timeline only
-  razorTool:           ['timeline'],
-  selectTool:          ['timeline'],
-  // MARKER_W5.TRIM: Trim tools — timeline only
-  slipTool:            ['timeline'],
-  slideTool:           ['timeline'],
-  rippleTool:          ['timeline'],
-  rollTool:            ['timeline'],
+  // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
+  razorTool:           'global',
+  selectTool:          'global',
+  // MARKER_W5.TRIM: Trim tools — global
+  slipTool:            'global',
+  slideTool:           'global',
+  rippleTool:          'global',
+  rollTool:            'global',
 
   // Navigation — timeline/program
   prevEditPoint:       ['timeline'],
@@ -181,6 +183,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nextKeyframe:        ['timeline'],
   prevKeyframe:        ['timeline'],
   addKeyframe:         ['timeline'],
+  toggleRecordMode:    ['timeline'],  // MARKER_B3.2
   openSpeedControl:    'global',
 
   // Mark operations
@@ -194,7 +197,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   extendEdit:          ['timeline'],
   splitEditLCut:       ['timeline'],
   splitEditJCut:       ['timeline'],
-  addDefaultTransition:['timeline'],
+  addDefaultTransition:'global',
 
   // Global — always fire
   undo:                'global',
@@ -300,6 +303,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  toggleRecordMode:  'Cmd+Shift+k',  // MARKER_B3.2
   openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
@@ -378,9 +382,9 @@ export const FCP7_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
-  // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
-  slipTool:          's',
-  slideTool:         'd',
+  // MARKER_W5.TRIM: FCP7 trim tools — Y=slip, U=slide (S conflicts with snap toggle)
+  slipTool:          'y',
+  slideTool:         'u',
   rippleTool:        'r',
   rollTool:          'Shift+r',
   // Markers
@@ -391,6 +395,7 @@ export const FCP7_PRESET: HotkeyMap = {
   nextKeyframe:      'Shift+k',
   prevKeyframe:      'Alt+k',
   addKeyframe:       'Ctrl+k',
+  toggleRecordMode:  'Cmd+Shift+k',  // MARKER_B3.2
   openSpeedControl:  'Cmd+j',
   // Navigation
   prevEditPoint:     'ArrowUp',
@@ -412,8 +417,8 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection
-  toggleLinkedSelection: 'Cmd+l',
+  // Linked selection (FCP7 standard: Shift+L)
+  toggleLinkedSelection: 'Shift+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -604,6 +609,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'nextKeyframe', label: 'Next Keyframe', group: 'Keyframes' },
   { action: 'prevKeyframe', label: 'Previous Keyframe', group: 'Keyframes' },
   { action: 'addKeyframe', label: 'Add Keyframe', group: 'Keyframes' },
+  { action: 'toggleRecordMode', label: 'Toggle Record Mode', group: 'Keyframes' },
   { action: 'openSpeedControl', label: 'Change Speed (⌘J)', group: 'Tools' },
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },

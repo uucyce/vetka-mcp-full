@@ -164,8 +164,9 @@ TASK_BOARD_SCHEMA = {
         "limit": {"type": "number", "description": "Max tasks to return in list (default: 40, max: 100)"},
         # MARKER_190.DOC_GATE: Force-create task without docs (bypass doc gate)
         "force_no_docs": {"type": "boolean", "description": "Bypass doc requirement gate. Use only when truly no relevant docs exist."},
-        # For "complete":
-        "commit_hash": {"type": "string", "description": "Git commit hash (for complete)"},
+        # For "update" / "complete":
+        "branch_name": {"type": "string", "description": "Git branch name (e.g. claude/cut-engine). Saved on complete, needed by merge_request."},
+        "commit_hash": {"type": "string", "description": "Git commit hash (for complete/promote_to_main)"},
         "commit_message": {"type": "string", "description": "Commit message (for complete)"},
         # MARKER_186.4: Branch name for worktree-aware completion
         "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
@@ -427,9 +428,13 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                        "project_lane", "architecture_docs", "recon_docs",
                        "closure_tests", "closure_files",
                        "allowed_paths", "completion_contract", "implementation_hints",
-                       "role", "domain"]:
+                       "role", "domain", "branch_name"]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
+
+        # MARKER_195.20e: Map branch → branch_name (MCP param name vs DB field name)
+        if "branch_name" not in updates and arguments.get("branch"):
+            updates["branch_name"] = arguments["branch"]
 
         if not updates:
             return {"success": False, "error": "No fields to update"}
@@ -626,13 +631,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}
 
-    # MARKER_186.4: promote_to_main — transition done_worktree → done_main after merge
+    # MARKER_195.20c: promote_to_main — delegates to merge_request for real merge
     elif action == "promote_to_main":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for promote_to_main"}
         merge_commit_hash = arguments.get("commit_hash")
-        return board.promote_to_main(task_id, merge_commit_hash)
+        role = arguments.get("role", "")
+        return board.promote_to_main(task_id, merge_commit_hash, role=role)
 
     # MARKER_195.20: QA Gate — verify a done_worktree task before merge
     elif action == "verify":

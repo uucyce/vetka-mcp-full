@@ -118,6 +118,29 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
+  # ── Epsilon: QA2 Domain ─────────────────────────────────
+  - callsign: "Epsilon"
+    domain: "qa"
+    role_title: "QA Engineer 2 / Additional Capacity"
+    worktree: "cut-qa-2"
+    branch: "claude/cut-qa-2"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "client/e2e/"
+      - "tests/test_*.py"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_FCP7_DELTA2_CH41_115_2026-03-20.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
+    roadmap: ""
+
   # ── Commander: Architect Domain ───────────────────────────
   - callsign: "Commander"
     domain: "architect"

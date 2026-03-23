@@ -19,6 +19,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
+import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 
@@ -694,6 +695,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     for (const item of effectiveWaveforms) {
       if (item.waveform_bins?.length) {
         map.set(item.source_path, item.waveform_bins);
+      }
+    }
+    return map;
+  }, [effectiveWaveforms]);
+
+  // MARKER_B31: Stereo waveform lookup (L/R channel data)
+  const stereoWaveformMap = useMemo(() => {
+    const map = new Map<string, { left: number[]; right: number[] }>();
+    for (const item of effectiveWaveforms) {
+      if (item.waveform_bins_left?.length && item.waveform_bins_right?.length) {
+        map.set(item.source_path, { left: item.waveform_bins_left, right: item.waveform_bins_right });
       }
     }
     return map;
@@ -1503,25 +1515,73 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       }
 
       // MARKER_TDD-TRIM: Local-first optimistic update — commit drag result to lanes
-      // before clearing dragState, so the visual change persists even if backend is unavailable
+      // before clearing dragState, so the visual change persists even if backend is unavailable.
+      // Handles all drag modes: move, trim, ripple, roll, slip, slide.
       const store = useCutEditorStore.getState();
-      if (activeDrag.mode !== 'move' || activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
-        const updatedLanes = store.lanes.map((lane) => ({
-          ...lane,
-          clips: lane.clips.map((c) => {
-            if (c.clip_id === activeDrag.clipId) {
-              return { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
-            }
-            // Ripple: shift subsequent clips
-            if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
-              const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
-              if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
-                return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+      const hasMoved = Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001
+        || Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001;
+
+      if (hasMoved || activeDrag.mode === 'slip') {
+        const updatedLanes = store.lanes.map((lane) => {
+          if (lane.lane_id !== activeDrag.originalLaneId && activeDrag.mode !== 'move') return lane;
+          return {
+            ...lane,
+            clips: lane.clips.map((c) => {
+              // Primary clip — always update position/duration
+              if (c.clip_id === activeDrag.clipId) {
+                const updated = { ...c, start_sec: activeDrag.startSec, duration_sec: activeDrag.durationSec };
+                // Slip: update source_in (content scrolled within clip)
+                if (activeDrag.mode === 'slip' && activeDrag.sourceIn !== undefined) {
+                  updated.source_in = activeDrag.sourceIn;
+                }
+                return updated;
               }
-            }
-            return c;
-          }),
-        }));
+
+              // Ripple: shift subsequent clips by delta
+              if ((activeDrag.mode === 'ripple_left' || activeDrag.mode === 'ripple_right') && lane.lane_id === activeDrag.originalLaneId) {
+                const delta = (activeDrag.startSec + activeDrag.durationSec) - (activeDrag.originalStartSec + activeDrag.originalDurationSec);
+                if (Math.abs(delta) > 0.001 && c.start_sec >= activeDrag.originalStartSec + activeDrag.originalDurationSec) {
+                  return { ...c, start_sec: Math.max(0, c.start_sec + delta) };
+                }
+              }
+
+              // Roll: adjust neighbor clip at the edit point
+              if (activeDrag.mode === 'roll') {
+                if (activeDrag.neighborLeft && c.clip_id === activeDrag.neighborLeft.clipId) {
+                  const newLeftDur = activeDrag.startSec - activeDrag.neighborLeft.startSec;
+                  if (newLeftDur > 0) return { ...c, duration_sec: newLeftDur };
+                }
+                if (activeDrag.neighborRight && c.clip_id === activeDrag.neighborRight.clipId) {
+                  const newEnd = activeDrag.startSec + activeDrag.durationSec;
+                  const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
+                  const newRightDur = rightOrigEnd - newEnd;
+                  if (newRightDur > 0) return { ...c, start_sec: newEnd, duration_sec: newRightDur };
+                }
+              }
+
+              // Slide: adjust neighbor durations to accommodate moved clip
+              if (activeDrag.mode === 'slide') {
+                if (activeDrag.neighborLeft && c.clip_id === activeDrag.neighborLeft.clipId) {
+                  const newLeftDur = activeDrag.startSec - activeDrag.neighborLeft.startSec;
+                  if (newLeftDur > 0) return { ...c, duration_sec: newLeftDur };
+                }
+                if (activeDrag.neighborRight && c.clip_id === activeDrag.neighborRight.clipId) {
+                  const clipEnd = activeDrag.startSec + activeDrag.durationSec;
+                  const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
+                  const newRightDur = rightOrigEnd - clipEnd;
+                  if (newRightDur > 0) return { ...c, start_sec: clipEnd, duration_sec: newRightDur };
+                }
+              }
+
+              // Move to different lane
+              if (activeDrag.mode === 'move' && activeDrag.laneId !== activeDrag.originalLaneId) {
+                // handled by backend op
+              }
+
+              return c;
+            }),
+          };
+        });
         store.setLanes(updatedLanes);
       }
       setDragState(null);
@@ -1942,6 +2002,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
                   const isHovered = hoveredClipId === clip.clip_id;
                   const waveformBins = waveformMap.get(clip.source_path);
+                  const stereoData = stereoWaveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
 
                   return (
@@ -2013,7 +2074,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           onClick={(event) => handleWaveformSeek(clip, event)}
                           title={waveformBins ? 'Click waveform to seek inside clip' : 'No waveform bins yet'}
                         >
-                          {waveformBins ? (
+                          {stereoData ? (
+                            <StereoWaveformCanvas
+                              binsLeft={stereoData.left}
+                              binsRight={stereoData.right}
+                              width={Math.max(4, width) - 2}
+                              height={trackHeight - 8}
+                              colorLeft={config.color}
+                              colorRight={config.color}
+                              cursorRatio={waveformHover?.clipId === clip.clip_id ? waveformHover.ratio : null}
+                            />
+                          ) : waveformBins ? (
                             <WaveformCanvas
                               bins={waveformBins}
                               width={Math.max(4, width) - 2}
@@ -2133,35 +2204,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              // Remove transition on click
-                              const s = useCutEditorStore.getState();
-                              const newLanes = s.lanes.map((l) => ({
-                                ...l,
-                                clips: l.clips.map((c) =>
-                                  c.clip_id === clip.clip_id
-                                    ? { ...c, transition_out: undefined }
-                                    : c
-                                ),
-                              }));
-                              s.setLanes(newLanes);
+                              // MARKER_UNDO-FIX: Remove transition via backend op for undo support
+                              void useCutEditorStore.getState().applyTimelineOps([{
+                                op: 'set_transition', clip_id: clip.clip_id, transition: null,
+                              }]);
                             }}
                             onContextMenu={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              // Cycle transition type on right-click
+                              // Cycle transition type via backend op for undo support
                               const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
                               const curIdx = types.indexOf(tx.type);
                               const nextType = types[(curIdx + 1) % types.length];
-                              const s = useCutEditorStore.getState();
-                              const newLanes = s.lanes.map((l) => ({
-                                ...l,
-                                clips: l.clips.map((c) =>
-                                  c.clip_id === clip.clip_id
-                                    ? { ...c, transition_out: { ...tx, type: nextType } }
-                                    : c
-                                ),
-                              }));
-                              s.setLanes(newLanes);
+                              void useCutEditorStore.getState().applyTimelineOps([{
+                                op: 'set_transition', clip_id: clip.clip_id,
+                                transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
+                              }]);
                             }}
                           >
                             {/* Diamond icon + type label */}

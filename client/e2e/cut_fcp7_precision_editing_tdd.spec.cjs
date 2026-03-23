@@ -181,6 +181,9 @@ async function navigateToCut(page) {
   });
   await page.goto(CUT_URL, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
+  // MARKER_QA.W6: Click timeline to set focusedPanel — tool hotkeys require timeline scope
+  await page.getByTestId('cut-timeline-track-view').click();
+  await page.waitForTimeout(100);
 }
 
 // Helper: get store state safely

@@ -77,7 +77,7 @@ def test_promote_rejects_wrong_status(tmp_path):
 
     result = board.promote_to_main(tid)
     assert result["success"] is False
-    assert "expected done_worktree" in result["error"]
+    assert "expected" in result["error"]
 
 
 # ── Test 4: _detect_current_branch returns None on failure ───────
@@ -148,21 +148,21 @@ def test_complete_with_none_branch_is_safe(tmp_path):
     )
 
 
-# ── Test 8: promote without commit hash uses task's stored hash ──
+# ── Test 8: promote without commit_hash → BLOCKED ────────────
 
-def test_promote_uses_task_commit_hash(tmp_path):
-    """promote_to_main should check task's stored commit_hash when no merge_commit_hash provided."""
+def test_promote_without_hash_blocked(tmp_path):
+    """MARKER_195.20c: promote without commit_hash is blocked — no paper promotions."""
     board = _make_board(tmp_path)
-    tid = board.add_task("Task with stored hash", priority=3)
+    tid = board.add_task("Task without proof", priority=3)
     board.update_task(tid, status="done_worktree", commit_hash="stored_hash_123")
 
-    with patch.object(type(board), '_is_commit_on_main', return_value=False) as mock_check:
-        result = board.promote_to_main(tid)  # No merge_commit_hash
+    result = board.promote_to_main(tid)  # No merge_commit_hash
 
-    # Should have checked the stored hash
-    mock_check.assert_called_once_with("stored_hash_123")
     assert result["success"] is False
-    assert "NOT on main" in result["error"]
+    assert "commit_hash required" in result["error"]
+    # Status must NOT have changed
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
 
 
 # ── Test 9: _detect_current_branch passes cwd to subprocess ───
@@ -285,14 +285,14 @@ def test_reclaim_needs_fix(tmp_path):
 
 # ── Test 16: promote verified → done_main ────────────────────
 
-def test_promote_verified(tmp_path):
-    """MARKER_195.20: verified tasks can be promoted to done_main."""
+def test_promote_verified_with_external_merge(tmp_path):
+    """MARKER_195.20c: verified tasks promoted via external merge (commit_hash provided)."""
     board = _make_board(tmp_path)
     tid = board.add_task("Verified task", priority=3)
     board.update_task(tid, status="verified", commit_hash="abc123")
 
     with patch.object(type(board), '_is_commit_on_main', return_value=True):
-        result = board.promote_to_main(tid)
+        result = board.promote_to_main(tid, merge_commit_hash="merge789")
 
     assert result["success"] is True
     assert result["status"] == "done_main"

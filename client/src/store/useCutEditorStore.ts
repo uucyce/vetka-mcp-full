@@ -103,6 +103,9 @@ export type WaveformItem = {
   item_id: string;
   source_path: string;
   waveform_bins?: number[];
+  // MARKER_B31: Stereo waveform data (L/R channel peaks)
+  waveform_bins_left?: number[];
+  waveform_bins_right?: number[];
   degraded_mode?: boolean;
 };
 
@@ -165,6 +168,8 @@ interface CutEditorState {
   playbackRate: number;
   shuttleSpeed: number;  // MARKER_W3.4: JKL progressive shuttle (-8,-4,-2,-1,0,1,2,4,8)
   duration: number;
+  // MARKER_B3.2: Keyframe Record Mode (FCP7 automation)
+  isRecordMode: boolean;  // true = fader/pan changes auto-write keyframes
   markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
   markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
 
@@ -450,6 +455,9 @@ interface CutEditorState {
   addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
   removeKeyframe: (clipId: string, property: string, timeSec: number) => void;
   getKeyframeTimes: () => number[];  // all keyframe times on timeline (for navigation)
+  // MARKER_B3.2: Record mode actions
+  toggleRecordMode: () => void;      // Cmd+Shift+K — toggle record mode
+  recordPropertyChange: (clipId: string, property: string, value: number) => void;  // auto-keyframe if recording
 
   // Data setters (called by CutStandalone when projectState updates)
   setLanes: (lanes: TimelineLane[]) => void;
@@ -495,6 +503,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   playbackRate: 1,
   shuttleSpeed: 0,
   duration: 0,
+  isRecordMode: false,  // MARKER_B3.2
   markIn: null,
   markOut: null,
 
@@ -625,8 +634,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // Actions
   play: () => set({ isPlaying: true }),
-  pause: () => set({ isPlaying: false }),
-  togglePlay: () => set((s) => ({ isPlaying: !s.isPlaying })),
+  pause: () => set({ isPlaying: false, isRecordMode: false }),  // MARKER_B3.2: exit record on pause
+  togglePlay: () => set((s) => {
+    const next = !s.isPlaying;
+    // MARKER_B3.2: exit record mode when stopping playback
+    return next ? { isPlaying: true } : { isPlaying: false, isRecordMode: false };
+  }),
   seek: (time) => set({ currentTime: Math.max(0, time) }),
   setDuration: (d) => set({ duration: d }),
   // MARKER_DUAL-VIDEO: Source monitor independent playback actions
@@ -984,8 +997,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
   // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
+  // FCP7 Ch.24: default transition = 30 frames (1s at 30fps, 1.2s at 25fps)
   addDefaultTransition: () => {
-    const { lanes, currentTime, lockedLanes } = get();
+    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
+    const defaultFrames = 30;
+    const defaultDuration = defaultFrames / (projectFramerate || 25);
     let bestDist = Infinity;
     let bestClipId = '';
 
@@ -1007,7 +1023,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     void get().applyTimelineOps([{
       op: 'set_transition',
       clip_id: bestClipId,
-      transition: { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+      transition: { type: 'cross_dissolve', duration_sec: defaultDuration, alignment: 'center' },
     }]);
   },
 
@@ -1153,6 +1169,24 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       }
     }
     return [...times].sort((a, b) => a - b);
+  },
+
+  // MARKER_B3.2: Record Mode — state machine
+  toggleRecordMode: () => set((s) => ({ isRecordMode: !s.isRecordMode })),
+  recordPropertyChange: (clipId, property, value) => {
+    const { isRecordMode, isPlaying, currentTime, lanes } = get();
+    if (!isRecordMode || !isPlaying) return;
+    // Find clip and compute relative time within clip
+    for (const lane of lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === clipId);
+      if (clip) {
+        const relTime = currentTime - clip.start_sec;
+        if (relTime >= 0 && relTime <= clip.duration_sec) {
+          get().addKeyframe(clipId, property, relTime, value);
+        }
+        break;
+      }
+    }
   },
 
   // MARKER_W2.2: Resolve insert/overwrite destination lanes

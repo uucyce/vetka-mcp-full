@@ -138,6 +138,9 @@ async function navigateToCut(page, { preset = 'fcp7' } = {}) {
   await page.goto(`${CUT_URL}?sandbox_root=${encodeURIComponent('/tmp/cut-tdd2')}&project_id=${encodeURIComponent('cut-tdd2-suite')}`, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
   await page.waitForSelector('[data-testid^="cut-timeline-clip-"]', { timeout: 10000 }).catch(() => {});
+  // MARKER_QA.W6: Click timeline to set focusedPanel — tool hotkeys require timeline scope
+  await page.getByTestId('cut-timeline-track-view').click();
+  await page.waitForTimeout(100);
 }
 
 // ===========================================================================

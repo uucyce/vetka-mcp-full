@@ -17,10 +17,11 @@
  * ZERO blue (#4a9eff / rgb(0,12,24)) anywhere.
  * All colors from tokens.css only.
  *
- * MARKER_GAMMA-9: Specificity strategy
- * - CSS vars (line 22-41): single class .dockview-theme-dark (dockview reads these)
- * - Visual overrides: double class .dockview-theme-dark.dockview-theme-dark (beats dockview CSS)
- * - !important ONLY for: pointer-events (Tauri), inline style [style*=], focus/outline kills
+ * MARKER_GAMMA-32: @layer cascade strategy
+ * - Dockview CSS is in @layer dockview (via dockview-layers.css)
+ * - This file is UN-LAYERED → automatically wins over any layered CSS
+ * - Single-class selectors are sufficient (no double-class needed)
+ * - !important ONLY for: pointer-events (Tauri)
  */
 
 /* ═══ CSS Custom Properties (vars) — synced with tokens.css ═════════ */
@@ -47,107 +48,132 @@
   --dv-paneview-active-outline-color: #505050;
 }
 
-/* ═══ Structural overrides (double-class specificity) ═══════════════ */
-/* Dockview ignores its own vars for these elements. Double-class beats
-   dockview's single-class selectors without needing !important. */
+/* ═══ Structural overrides ══════════════════════════════════════════ */
+/* Single-class selectors now sufficient — @layer gives us priority. */
 
-/* Grid container — kills the rgb(0,12,24) blue default */
-.dockview-theme-dark.dockview-theme-dark .dv-grid-view,
-.dockview-theme-dark.dockview-theme-dark .dv-dockview {
+/* Grid container */
+.dockview-theme-dark .dv-grid-view,
+.dockview-theme-dark .dv-dockview {
   background-color: var(--bg-primary);
 }
 
 /* Group views — active and inactive */
-.dockview-theme-dark.dockview-theme-dark .dv-groupview {
+.dockview-theme-dark .dv-groupview {
   background-color: var(--bg-primary);
 }
-.dockview-theme-dark.dockview-theme-dark .dv-active-group {
+.dockview-theme-dark .dv-active-group {
   background-color: var(--bg-primary);
 }
-.dockview-theme-dark.dockview-theme-dark .dv-inactive-group {
+.dockview-theme-dark .dv-inactive-group {
   background-color: var(--bg-primary);
 }
 
 /* Content area */
-.dockview-theme-dark.dockview-theme-dark .dv-content-container {
+.dockview-theme-dark .dv-content-container {
   background-color: var(--bg-primary);
 }
 
 /* Void / empty space */
-.dockview-theme-dark.dockview-theme-dark .dv-void-container {
+.dockview-theme-dark .dv-void-container {
   background-color: var(--bg-primary);
 }
 
 /* Watermark */
-.dockview-theme-dark.dockview-theme-dark .dv-watermark {
+.dockview-theme-dark .dv-watermark {
   background-color: var(--bg-primary);
   color: var(--text-disabled);
 }
 
 /* ═══ Tab bar — 18px thin ═══════════════════════════════════════════ */
+/* MARKER_GAMMA-P1: Hardcoded hex + !important to guarantee grey tabs.
+   var() fallbacks fail when dockview CSS loads after tokens.css. */
 
-.dockview-theme-dark.dockview-theme-dark .dv-tabs-and-actions-container {
+.dockview-theme-dark .dv-tabs-and-actions-container {
   height: 18px;
   min-height: 18px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-dim);
+  background-color: #0a0a0a !important;
+  border-bottom: 1px solid #222 !important;
 }
 
-.dockview-theme-dark.dockview-theme-dark .dv-tab {
+.dockview-theme-dark .dv-tab {
   height: 16px;
   font-size: 9px;
   font-family: system-ui, -apple-system, sans-serif;
   padding: 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  background-color: #111 !important;
 }
 
-/* Active tab — !important needed: dockview injects inline border-color on active group */
-.dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom: 1px solid var(--border-bright) !important;
-  background-color: var(--bg-hover);
-  color: var(--text-secondary);
+/* Active tab — MARKER_GAMMA-FIX: Kill ALL colored underlines/accents */
+.dockview-theme-dark .dv-tab.dv-active-tab {
+  border-bottom: 1px solid #555 !important;
+  border-top: none !important;
+  background-color: #1a1a1a !important;
+  color: #ccc;
+}
+/* Kill pseudo-element underlines (dracula/vs theme ::after indicators) */
+.dockview-theme-dark .dv-tab.dv-active-tab::after,
+.dockview-theme-dark .dv-tab.dv-active-tab::before,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::after,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::before {
+  display: none;
+}
+/* Active group tab container — no colored bottom border */
+.dockview-theme-dark .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+.dockview-theme-dark .dv-groupview.dv-inactive-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+/* Active group tabs — no colored top border (kills vs-theme 2px indicator) */
+.dockview-theme-dark .dv-groupview .dv-tab.dv-active-tab {
+  border-top: none;
+}
+.dockview-theme-dark .dv-groupview .dv-tab.dv-inactive-tab {
+  border-top: none;
 }
 
 /* Inactive tab */
-.dockview-theme-dark.dockview-theme-dark .dv-tab.dv-inactive-tab {
-  border-bottom: 1px solid transparent;
-  background-color: var(--bg-secondary);
-  color: var(--text-dim);
+.dockview-theme-dark .dv-tab.dv-inactive-tab {
+  border-bottom: 1px solid transparent !important;
+  border-top: none !important;
+  background-color: #0a0a0a !important;
+  color: #555;
 }
 
 /* ═══ Tab close button — hidden until hover ═════════════════════════ */
 
-.dockview-theme-dark.dockview-theme-dark .dv-default-tab-action {
+.dockview-theme-dark .dv-default-tab-action {
   opacity: 0;
   width: 12px;
   height: 12px;
   transition: opacity 0.1s;
 }
-.dockview-theme-dark.dockview-theme-dark .dv-tab:hover .dv-default-tab-action {
+.dockview-theme-dark .dv-tab:hover .dv-default-tab-action {
   opacity: 0.4;
 }
-.dockview-theme-dark.dockview-theme-dark .dv-default-tab-action:hover {
+.dockview-theme-dark .dv-default-tab-action:hover {
   opacity: 0.8;
 }
 
 /* ═══ Tab overflow dropdown ═════════════════════════════════════════ */
 
-.dockview-theme-dark.dockview-theme-dark .dv-tabs-overflow-dropdown-root {
+.dockview-theme-dark .dv-tabs-overflow-dropdown-root {
   height: 18px;
   font-size: 9px;
 }
 
 /* ═══ Group header actions ══════════════════════════════════════════ */
 
-.dockview-theme-dark.dockview-theme-dark .dv-right-actions-container {
+.dockview-theme-dark .dv-right-actions-container {
   font-size: 9px;
 }
 
 /* ═══ Drop targets — subtle white, NO blue ══════════════════════════ */
 
-.dockview-theme-dark.dockview-theme-dark .dv-drop-target-dropzone,
-.dockview-theme-dark.dockview-theme-dark [class*="drop-target"] {
+.dockview-theme-dark .dv-drop-target-dropzone,
+.dockview-theme-dark [class*="drop-target"] {
   background-color: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -155,114 +181,148 @@
 /* ═══ Resize sash — MARKER_DOCK-FIX-3 ══════════════════════════════ */
 /* !important REQUIRED: pointer-events + z-index critical for Tauri drag */
 
-.dockview-theme-dark.dockview-theme-dark .dv-sash {
+.dockview-theme-dark .dv-sash {
   background-color: transparent;
   pointer-events: auto !important;
   min-width: 4px;
   min-height: 4px;
   z-index: 10 !important;
 }
-.dockview-theme-dark.dockview-theme-dark .dv-sash:hover,
-.dockview-theme-dark.dockview-theme-dark .dv-sash.dv-active {
+.dockview-theme-dark .dv-sash:hover,
+.dockview-theme-dark .dv-sash.dv-active {
   background-color: var(--border-default);
   transition: background-color 0.15s;
+  border-color: transparent;
 }
 
 /* ═══ Single-tab group — minimal header ═════════════════════════════ */
 
-.dockview-theme-dark.dockview-theme-dark .dv-single-tab .dv-tabs-and-actions-container {
+.dockview-theme-dark .dv-single-tab .dv-tabs-and-actions-container {
   height: 14px;
   min-height: 14px;
 }
-.dockview-theme-dark.dockview-theme-dark .dv-single-tab .dv-tab {
+.dockview-theme-dark .dv-single-tab .dv-tab {
   font-size: 8px;
   height: 12px;
   padding: 0 4px;
 }
 
 /* ═══ Kill remaining blue — targeted overrides ══════════════════════ */
-/* MARKER_DOCK-FIX-3: No wildcard (*). Targets structural elements only. */
 
-/* Dockview group header border — !important: dockview injects blue inline */
-.dockview-theme-dark.dockview-theme-dark .dv-tabs-container {
-  border-bottom-color: var(--border-dim) !important;
+/* Dockview group header border */
+.dockview-theme-dark .dv-tabs-container {
+  border-bottom-color: var(--border-dim);
 }
 
 /* MARKER_GAMMA-25: Kill ALL active group blue indicators */
-.dockview-theme-dark .dv-tabs-and-actions-container[style],
 .dockview-theme-dark .dv-active-group .dv-tabs-and-actions-container {
-  border-color: var(--border-dim) !important;
-  border-bottom-color: var(--border-dim) !important;
+  border-color: var(--border-dim);
+  border-bottom-color: var(--border-dim);
 }
 .dockview-theme-dark .dv-active-group .dv-tabs-container {
-  border-bottom-color: var(--border-dim) !important;
+  border-bottom-color: var(--border-dim);
 }
-/* MARKER_GAMMA-26: [style*=] selectors removed — MutationObserver in DockviewLayout handles inline blues */
 
 /* Panel highlight when dragging — !important for pointer-events (Tauri) */
-.dockview-theme-dark.dockview-theme-dark .dv-drop-target-content,
-.dockview-theme-dark.dockview-theme-dark .dv-overlay-render-container,
-.dockview-theme-dark.dockview-theme-dark .dv-render-overlay {
+.dockview-theme-dark .dv-drop-target-content,
+.dockview-theme-dark .dv-overlay-render-container,
+.dockview-theme-dark .dv-render-overlay {
   border-color: rgba(255, 255, 255, 0.1);
-  outline: none !important;
+  outline: none;
   pointer-events: auto !important;
 }
 
-/* Active group outline — !important to kill dockview's inline focus styles */
-.dockview-theme-dark.dockview-theme-dark .dv-groupview:focus,
-.dockview-theme-dark.dockview-theme-dark .dv-groupview:focus-within,
-.dockview-theme-dark.dockview-theme-dark .dv-content-container:focus,
-.dockview-theme-dark.dockview-theme-dark .dv-content-container:focus-within {
-  outline: none !important;
+/* Active group outline — kill focus outlines */
+.dockview-theme-dark .dv-groupview:focus,
+.dockview-theme-dark .dv-groupview:focus-within,
+.dockview-theme-dark .dv-content-container:focus,
+.dockview-theme-dark .dv-content-container:focus-within {
+  outline: none;
   border-color: var(--border-dim);
 }
 
 /* Pane header borders */
-.dockview-theme-dark.dockview-theme-dark .dv-pane-header {
+.dockview-theme-dark .dv-pane-header {
   border-color: var(--border-dim);
   background-color: var(--bg-secondary);
 }
 
 /* Split view internal borders */
-.dockview-theme-dark.dockview-theme-dark .dv-split-view-container,
-.dockview-theme-dark.dockview-theme-dark .dv-grid-branch-node {
+.dockview-theme-dark .dv-split-view-container,
+.dockview-theme-dark .dv-grid-branch-node {
   border-color: var(--border-dim);
 }
 
 /* Floating panels — no blue ring */
-.dockview-theme-dark.dockview-theme-dark .dv-floating-container,
-.dockview-theme-dark.dockview-theme-dark .dv-popout-window {
+.dockview-theme-dark .dv-floating-container,
+.dockview-theme-dark .dv-popout-window {
   border-color: var(--border-default);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
-/* Tab drag ghost */
-.dockview-theme-dark.dockview-theme-dark .dv-tab-drag-ghost,
-.dockview-theme-dark.dockview-theme-dark .dv-tab-ghost {
+/* Tab drag ghost — !important for pointer-events only */
+.dockview-theme-dark .dv-tab-drag-ghost,
+.dockview-theme-dark .dv-tab-ghost {
   border-color: var(--border-bright);
   background-color: var(--bg-hover);
   pointer-events: none !important;
 }
 
-/* Restore specific borders — !important to fight dockview inline styles */
-.dockview-theme-dark.dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom-color: var(--border-bright) !important;
-}
-.dockview-theme-dark.dockview-theme-dark .dv-tabs-and-actions-container {
-  border-bottom-color: var(--border-dim) !important;
-}
-.dockview-theme-dark.dockview-theme-dark .dv-sash:hover,
-.dockview-theme-dark.dockview-theme-dark .dv-sash.dv-active {
-  border-color: transparent;
+/* Active tab border */
+.dockview-theme-dark .dv-tab.dv-active-tab {
+  border-bottom-color: var(--border-bright);
 }
 
-/* MARKER_GAMMA-26: Inline style [style*=] overrides removed — JS MutationObserver handles this now */
+/* Tabs container border */
+.dockview-theme-dark .dv-tabs-and-actions-container {
+  border-bottom-color: var(--border-dim);
+}
 
 /* MARKER_FOCUS: Subtle focus indicator on active panel group */
-/* !important needed: competes with outline:none above for non-focused groups */
 .dockview-theme-dark .dv-groupview[data-focused] {
-  outline: 1px solid var(--border-bright) !important;
+  outline: 1px solid var(--border-bright);
   outline-offset: -1px;
+}
+
+/* ═══ MARKER_GAMMA-35: NUCLEAR — kill ALL remaining colored borders ══════ */
+/* Exhaustive override of every dockview element that could show color.     */
+
+/* Separator lines between split views (::before pseudo-element) */
+.dockview-theme-dark .dv-split-view-container .dv-view::before {
+  background-color: var(--border-dim) !important;
+}
+
+/* Pane active outline — override dodgerblue var at usage point */
+.dockview-theme-dark .dv-pane-container .dv-pane.dv-pane-active,
+.dockview-theme-dark .dv-pane-container .dv-pane:focus-within {
+  outline-color: #505050;
+}
+
+/* Tab focus ring */
+.dockview-theme-dark .dv-tab:focus {
+  outline: none;
+}
+.dockview-theme-dark .dv-tab:focus-visible {
+  outline: 1px solid var(--border-bright);
+  outline-offset: -1px;
+}
+
+/* Floating/resize container */
+.dockview-theme-dark .dv-resize-container {
+  border-color: var(--border-dim);
+}
+
+/* Global wildcard: any outline on any dockview element */
+.dockview-theme-dark .dv-groupview,
+.dockview-theme-dark .dv-groupview * {
+  outline-color: #505050;
+}
+
+/* Force all borders inside dockview to gray palette */
+.dockview-theme-dark .dv-tabs-and-actions-container,
+.dockview-theme-dark .dv-tabs-container,
+.dockview-theme-dark .dv-tab {
+  border-color: var(--border-dim);
 }
 
 /* ═══ MARKER_GAMMA-23: Monochrome range inputs (kill blue slider thumb) ═══ */

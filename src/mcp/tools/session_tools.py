@@ -694,7 +694,7 @@ class SessionInitTool(BaseMCPTool):
                 next_steps.append(f"In progress: {items}")
             # MARKER_186.4: Warn about tasks awaiting merge
             if tb.get("done_worktree_count", 0) > 0:
-                next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=promote_to_main")
+                next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=merge_request")
 
             # From REFLEX
             recs = context.get("reflex_recommendations", [])

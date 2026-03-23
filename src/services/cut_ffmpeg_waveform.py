@@ -278,6 +278,71 @@ def build_stereo_waveform(
     return (left, right, False, "")
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B5.1: Audio segment extraction for Web Audio playback
+# ---------------------------------------------------------------------------
+
+def extract_audio_wav_segment(
+    media_path: str,
+    *,
+    start_sec: float = 0.0,
+    duration_sec: float = 30.0,
+    sample_rate: int = 44100,
+    channels: int = 2,
+    timeout_sec: float = 60.0,
+) -> bytes | None:
+    """Extract audio segment as WAV bytes for Web Audio API playback.
+
+    Returns complete WAV file bytes (header + PCM data) or None on failure.
+    Max duration clamped to 30 seconds to prevent memory issues.
+
+    Args:
+        media_path: Path to media file.
+        start_sec: Start offset in source media (for trimmed clips).
+        duration_sec: Duration to extract (max 30s).
+        sample_rate: Output sample rate (44100 for Web Audio).
+        channels: 1=mono, 2=stereo.
+        timeout_sec: FFmpeg timeout.
+
+    Returns:
+        WAV file bytes or None.
+    """
+    if not HAS_FFMPEG:
+        return None
+    if not os.path.isfile(media_path):
+        return None
+
+    # Clamp duration to 30s
+    duration_sec = min(30.0, max(0.01, duration_sec))
+
+    cmd = [
+        FFMPEG,  # type: ignore[list-item]
+        "-ss", str(start_sec),       # seek before input (fast)
+        "-i", media_path,
+        "-t", str(duration_sec),     # duration
+        "-vn",                        # skip video
+        "-ac", str(channels),
+        "-ar", str(sample_rate),
+        "-f", "wav",                  # output WAV format (includes header)
+        "-acodec", "pcm_s16le",
+        "pipe:1",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=timeout_sec,
+        )
+        if result.returncode != 0:
+            return None
+        if not result.stdout or len(result.stdout) < 44:  # WAV header is 44 bytes
+            return None
+        return result.stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+
+
 def _byte_scan_fallback(path: str, bins: int) -> tuple[list[float], bool, str]:
     """Original byte-scanning stub — used when FFmpeg unavailable."""
     try:

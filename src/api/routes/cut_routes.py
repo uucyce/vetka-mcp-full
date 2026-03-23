@@ -4838,6 +4838,47 @@ async def cut_waveform_peaks(source_path: str, bins: int = 128, stereo: bool = F
     }
 
 
+# ─── MARKER_B5.1: Audio clip segment for Web Audio playback ────────────
+
+@router.get("/audio/clip-segment")
+async def cut_audio_clip_segment(
+    source_path: str,
+    start_sec: float = 0.0,
+    duration_sec: float = 10.0,
+    sample_rate: int = 44100,
+    channels: int = 2,
+) -> Any:
+    """
+    MARKER_B5.1 — Extract audio segment as WAV for Web Audio API playback.
+    Returns audio/wav binary response. Max 30s per request.
+    """
+    from fastapi.responses import Response
+    from src.services.cut_ffmpeg_waveform import extract_audio_wav_segment
+
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    wav_bytes = extract_audio_wav_segment(
+        str(p),
+        start_sec=max(0, start_sec),
+        duration_sec=min(30.0, max(0.01, duration_sec)),
+        sample_rate=max(8000, min(48000, sample_rate)),
+        channels=max(1, min(2, channels)),
+    )
+    if wav_bytes is None:
+        return {"success": False, "error": "extraction_failed"}
+
+    return Response(
+        content=wav_bytes,
+        media_type="audio/wav",
+        headers={
+            "Content-Disposition": f'inline; filename="clip_audio.wav"',
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
 @router.post("/worker/waveform-build-async")
 async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, Any]:
     """
@@ -8669,11 +8710,25 @@ class CutRenderMasterRequest(BaseModel):
 
 
 def _emit_render_progress(job_id: str, progress: float, message: str = "") -> None:
-    """MARKER_B2.6 — Emit render progress via SocketIO (best-effort, fire-and-forget)."""
+    """MARKER_B2.6 + B4.2 — Emit render progress via SocketIO with ETA."""
     try:
         import asyncio
+        import time as _time
         from src.api.main import sio
-        data = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        data: dict[str, Any] = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        # MARKER_B4.2: Add ETA from job store
+        try:
+            store = get_cut_mcp_job_store()
+            job = store.get_job(job_id)
+            if job:
+                started = job.get("started_at") or job.get("created_at")
+                if started and progress > 0.01:
+                    elapsed = _time.time() - started
+                    eta = (elapsed / progress) * (1.0 - progress) if progress < 1.0 else 0
+                    data["elapsed_sec"] = round(elapsed, 1)
+                    data["eta_sec"] = round(max(0, eta), 1)
+        except Exception:
+            pass  # ETA is best-effort
         # Try to get running loop (if called from async context)
         try:
             loop = asyncio.get_running_loop()

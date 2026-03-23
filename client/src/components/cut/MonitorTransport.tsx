@@ -40,7 +40,7 @@ const SCRUBBER_ROW: CSSProperties = {
 
 const SCRUBBER_FILL: CSSProperties = {
   height: '100%',
-  background: '#3b82f6',
+  background: '#888',
   borderRadius: 1,
   transition: 'width 0.05s linear',
 };
@@ -103,9 +103,12 @@ interface MonitorTransportProps {
 }
 
 export default function MonitorTransport({ feed }: MonitorTransportProps) {
-  const currentTime = useCutEditorStore((s) => s.currentTime);
-  const duration = useCutEditorStore((s) => s.duration);
-  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  // MARKER_DUAL-VIDEO: Source transport uses sourceCurrentTime/seekSource/playSource,
+  // Program transport uses timeline currentTime/seek/play
+  const isSource = feed === 'source';
+  const currentTime = useCutEditorStore((s) => isSource ? s.sourceCurrentTime : s.currentTime);
+  const duration = useCutEditorStore((s) => isSource ? s.sourceDuration : s.duration);
+  const isPlaying = useCutEditorStore((s) => isSource ? s.sourceIsPlaying : s.isPlaying);
   // MARKER_W1.4: Read correct marks based on feed
   const sourceMarkIn = useCutEditorStore((s) => s.sourceMarkIn);
   const sourceMarkOut = useCutEditorStore((s) => s.sourceMarkOut);
@@ -116,16 +119,16 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const setSequenceMarkIn = useCutEditorStore((s) => s.setSequenceMarkIn);
   const setSequenceMarkOut = useCutEditorStore((s) => s.setSequenceMarkOut);
 
-  const markIn = feed === 'source' ? sourceMarkIn : sequenceMarkIn;
-  const markOut = feed === 'source' ? sourceMarkOut : sequenceMarkOut;
-  const setMarkIn = feed === 'source' ? setSourceMarkIn : setSequenceMarkIn;
-  const setMarkOut = feed === 'source' ? setSourceMarkOut : setSequenceMarkOut;
+  const markIn = isSource ? sourceMarkIn : sequenceMarkIn;
+  const markOut = isSource ? sourceMarkOut : sequenceMarkOut;
+  const setMarkIn = isSource ? setSourceMarkIn : setSequenceMarkIn;
+  const setMarkOut = isSource ? setSourceMarkOut : setSequenceMarkOut;
 
   const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
   const dropFrame = useCutEditorStore((s) => s.dropFrame);
 
-  const togglePlay = useCutEditorStore((s) => s.togglePlay);
-  const seek = useCutEditorStore((s) => s.seek);
+  const togglePlay = useCutEditorStore((s) => isSource ? s.togglePlaySource : s.togglePlay);
+  const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
@@ -243,7 +246,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame (Left)">
           <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
         </button>
-        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
+        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#ccc' : '#999' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame (Right)">
@@ -259,21 +262,21 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         {/* Right: Duration + Marking (absolute positioned) */}
         <div style={{ position: 'absolute', right: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={DUR_STYLE}>{formatTimecodeDisplay(duration, projectFramerate, dropFrame)}</span>
-          {/* IN / OUT + Match Frame — Source and Program both get marks */}
+          {/* IN / OUT + Mark Clip + Match Frame — FCP7-style bracket icons, monochrome */}
           <div style={{ width: 1, height: 14, background: '#333' }} />
           <button
-            style={{ ...IO_BTN, color: markIn != null ? '#3b82f6' : '#666' }}
+            style={{ ...IO_BTN, color: markIn != null ? '#ccc' : '#666' }}
             onClick={() => setMarkIn(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} IN (I)`}
           >
-            I
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M7 1H4V9H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
           <button
-            style={{ ...IO_BTN, color: markOut != null ? '#3b82f6' : '#666' }}
+            style={{ ...IO_BTN, color: markOut != null ? '#ccc' : '#666' }}
             onClick={() => setMarkOut(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} OUT (O)`}
           >
-            O
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1H6V9H3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </button>
           <button
             style={IO_BTN}
@@ -282,9 +285,11 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
             data-testid="mark-clip"
             aria-label="mark clip"
           >
-            X
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M7 1H4V9H7M3 1H6V9H3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.5"/><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
           </button>
-          <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)" data-testid="match-frame" aria-label="match frame">F</button>
+          <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)" data-testid="match-frame" aria-label="match frame">
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="2" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="2" x2="4" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="7" y1="2" x2="7" y2="8" stroke="currentColor" strokeWidth="0.8"/></svg>
+          </button>
         </div>
       </div>
     </div>
