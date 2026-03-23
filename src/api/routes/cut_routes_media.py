@@ -834,6 +834,171 @@ async def cut_conform_relink(body: CutConformRelinkRequest) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B50: Effect defaults + listing API
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/effects/list")
+async def cut_effects_list() -> dict[str, Any]:
+    """MARKER_B50 — List all available effect types with params schema."""
+    from src.services.cut_effects_engine import list_effect_types
+    return {"success": True, "effects": list_effect_types()}
+
+
+@media_router.get("/effects/defaults/{effect_type}")
+async def cut_effects_defaults(effect_type: str) -> dict[str, Any]:
+    """MARKER_B50 — Get default params for an effect type."""
+    from src.services.cut_effects_engine import get_effect_defaults, EFFECT_DEFS
+    if effect_type not in EFFECT_DEFS:
+        return {"success": False, "error": f"unknown_effect: {effect_type}"}
+    return {"success": True, "effect_type": effect_type, "defaults": get_effect_defaults(effect_type)}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B51: Effect CRUD — apply/remove/reorder/clear per clip
+# ---------------------------------------------------------------------------
+
+
+class CutEffectApplyRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_type: str
+    params: dict[str, Any] = {}
+    effect_id: str = ""  # auto-generated if empty
+
+
+class CutEffectRemoveRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_id: str
+
+
+class CutEffectReorderRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+    effect_ids: list[str]  # ordered list of effect IDs
+
+
+class CutEffectClearRequest(BaseModel):
+    sandbox_root: str
+    clip_id: str
+
+
+def _find_clip_in_timeline(timeline: dict[str, Any], clip_id: str) -> tuple[dict | None, dict | None]:
+    """Find clip dict + its lane in timeline. Returns (clip, lane) or (None, None)."""
+    for lane in timeline.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if clip.get("clip_id") == clip_id:
+                return clip, lane
+    return None, None
+
+
+@media_router.post("/effects/apply")
+async def cut_effects_apply(body: CutEffectApplyRequest) -> dict[str, Any]:
+    """MARKER_B51 — Add effect to clip. Persists to project store."""
+    from src.services.cut_effects_engine import EFFECT_DEFS, get_effect_defaults
+    from uuid import uuid4
+
+    if body.effect_type not in EFFECT_DEFS:
+        return {"success": False, "error": f"unknown_effect: {body.effect_type}"}
+
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, lane = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    # Build effect entry
+    defaults = get_effect_defaults(body.effect_type)
+    merged_params = {**defaults, **body.params}
+    effect_id = body.effect_id or f"fx_{uuid4().hex[:8]}"
+
+    effect_entry = {
+        "effect_id": effect_id,
+        "type": body.effect_type,
+        "enabled": True,
+        "params": merged_params,
+    }
+
+    # Ensure effects structure
+    effects = clip.setdefault("effects", {})
+    video_effects = effects.setdefault("video_effects", [])
+    video_effects.append(effect_entry)
+
+    store.save_timeline_state(timeline)
+    return {"success": True, "effect_id": effect_id, "clip_id": body.clip_id, "effect": effect_entry}
+
+
+@media_router.post("/effects/remove")
+async def cut_effects_remove(body: CutEffectRemoveRequest) -> dict[str, Any]:
+    """MARKER_B51 — Remove specific effect from clip by effect_id."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    effects = clip.get("effects", {})
+    video_effects = effects.get("video_effects", [])
+    before_count = len(video_effects)
+    effects["video_effects"] = [e for e in video_effects if e.get("effect_id") != body.effect_id]
+    removed = before_count - len(effects["video_effects"])
+
+    if removed > 0:
+        store.save_timeline_state(timeline)
+    return {"success": True, "removed": removed, "clip_id": body.clip_id}
+
+
+@media_router.post("/effects/reorder")
+async def cut_effects_reorder(body: CutEffectReorderRequest) -> dict[str, Any]:
+    """MARKER_B51 — Reorder effects on clip. Effect order matters for render."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    effects = clip.get("effects", {})
+    video_effects = effects.get("video_effects", [])
+
+    # Build index by effect_id
+    by_id = {e["effect_id"]: e for e in video_effects if "effect_id" in e}
+    reordered = [by_id[eid] for eid in body.effect_ids if eid in by_id]
+    # Append any effects not in the order list at the end
+    remaining = [e for e in video_effects if e.get("effect_id") not in set(body.effect_ids)]
+    effects["video_effects"] = reordered + remaining
+
+    store.save_timeline_state(timeline)
+    return {"success": True, "clip_id": body.clip_id, "order": [e["effect_id"] for e in effects["video_effects"]]}
+
+
+@media_router.post("/effects/clear")
+async def cut_effects_clear(body: CutEffectClearRequest) -> dict[str, Any]:
+    """MARKER_B51 — Clear all effects from clip."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    clip, _ = _find_clip_in_timeline(timeline, body.clip_id)
+    if not clip:
+        return {"success": False, "error": "clip_not_found"}
+
+    clip["effects"] = {"video_effects": [], "audio_effects": []}
+    store.save_timeline_state(timeline)
+    return {"success": True, "clip_id": body.clip_id}
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B48: Multicam Sync Engine (FCP7 Ch.46-47)
 # ---------------------------------------------------------------------------
 
