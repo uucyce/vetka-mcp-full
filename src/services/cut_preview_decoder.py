@@ -466,6 +466,73 @@ def apply_numpy_effects(
             # MARKER_B26: Clamp to broadcast-safe range (16-235 → 0.0627-0.9216)
             frame_float32 = np.clip(frame_float32, 16.0 / 255.0, 235.0 / 255.0)
 
+        # === MARKER_B9.5: Blur / Sharpen / Denoise / Vignette ===
+
+        elif t == "blur":
+            sigma = float(p.get("sigma", 0))
+            if sigma > 0:
+                # Approximated gaussian blur via repeated box blur (3 passes)
+                k = max(1, int(sigma * 1.5))
+                for _pass in range(3):
+                    # Horizontal
+                    padded = np.pad(frame_float32, ((0, 0), (k, k), (0, 0)), mode='edge')
+                    cs = np.cumsum(padded, axis=1)
+                    frame_float32 = (cs[:, 2*k:, :] - cs[:, :padded.shape[1]-2*k, :]) / (2*k+1)
+                    # Vertical
+                    padded = np.pad(frame_float32, ((k, k), (0, 0), (0, 0)), mode='edge')
+                    cs = np.cumsum(padded, axis=0)
+                    frame_float32 = (cs[2*k:, :, :] - cs[:padded.shape[0]-2*k, :, :]) / (2*k+1)
+
+        elif t == "sharpen":
+            amount = float(p.get("amount", 0))
+            if amount > 0:
+                k = max(1, int(p.get("size", 5)) // 2)
+                h, w = frame_float32.shape[:2]
+                # Unsharp mask: sharp = original + amount * (original - blurred)
+                blurred = frame_float32.copy()
+                # Horizontal box blur
+                padded = np.pad(blurred, ((0, 0), (k, k), (0, 0)), mode='edge')
+                cs = np.cumsum(padded, axis=1)
+                blurred = (cs[:, 2*k:, :] - cs[:, :padded.shape[1]-2*k, :]) / (2*k+1)
+                # Vertical box blur
+                padded = np.pad(blurred, ((k, k), (0, 0), (0, 0)), mode='edge')
+                cs = np.cumsum(padded, axis=0)
+                blurred = (cs[2*k:, :, :] - cs[:padded.shape[0]-2*k, :, :]) / (2*k+1)
+                # Trim to original size (cumsum can be off by 1)
+                blurred = blurred[:h, :w, :]
+                frame_float32 = frame_float32 + amount * (frame_float32 - blurred)
+
+        elif t == "denoise":
+            strength = float(p.get("strength", 0))
+            if strength > 0:
+                h, w = frame_float32.shape[:2]
+                # Simple averaging blur as denoise approximation
+                k = max(1, int(strength / 3))
+                # Horizontal
+                padded = np.pad(frame_float32, ((0, 0), (k, k), (0, 0)), mode='edge')
+                cs = np.cumsum(padded, axis=1)
+                smoothed = (cs[:, 2*k:, :] - cs[:, :padded.shape[1]-2*k, :]) / (2*k+1)
+                # Vertical
+                padded = np.pad(smoothed, ((k, k), (0, 0), (0, 0)), mode='edge')
+                cs = np.cumsum(padded, axis=0)
+                smoothed = (cs[2*k:, :, :] - cs[:padded.shape[0]-2*k, :, :]) / (2*k+1)
+                smoothed = smoothed[:h, :w, :]  # trim to original size
+                # Blend: mix smoothed with original (preserve edges somewhat)
+                blend = min(1.0, strength / 10.0)
+                frame_float32 = frame_float32 * (1 - blend) + smoothed * blend
+
+        elif t == "vignette":
+            angle = float(p.get("angle", 0.4))
+            if angle > 0:
+                h, w = frame_float32.shape[:2]
+                cy, cx = h / 2.0, w / 2.0
+                y_coords, x_coords = np.mgrid[0:h, 0:w].astype(np.float32)
+                # Normalized distance from center (0 at center, 1 at corners)
+                dist = np.sqrt(((x_coords - cx) / cx) ** 2 + ((y_coords - cy) / cy) ** 2)
+                # Vignette falloff: stronger angle = more darkening
+                vignette_mask = np.clip(1.0 - dist * angle, 0, 1)[:, :, np.newaxis]
+                frame_float32 = frame_float32 * vignette_mask
+
         # === MARKER_B9: Color grading effects (FCP7 Ch.79-83) ===
 
         elif t == "lift":

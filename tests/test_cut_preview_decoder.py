@@ -302,6 +302,84 @@ class TestColorBalanceEffect:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B9.5: Blur / Sharpen / Denoise / Vignette tests
+# ---------------------------------------------------------------------------
+
+class TestBlurEffect:
+    def test_blur_smooths(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "blur", "params": {"sigma": 5.0}, "enabled": True}
+        ])
+        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        blur_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
+        assert blur_diff < orig_diff
+
+    def test_blur_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "blur", "params": {"sigma": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_blur_preserves_shape(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "blur", "params": {"sigma": 10}, "enabled": True}
+        ])
+        assert result.shape == gradient_frame.shape
+        assert result.min() >= 0.0 and result.max() <= 1.0
+
+
+class TestSharpenEffect:
+    def test_sharpen_increases_edges(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "sharpen", "params": {"amount": 2.0, "size": 5}, "enabled": True}
+        ])
+        # Sharpening increases local contrast (diff between adjacent pixels)
+        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        sharp_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
+        assert sharp_diff > orig_diff
+
+    def test_sharpen_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "sharpen", "params": {"amount": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestDenoiseEffect:
+    def test_denoise_smooths(self):
+        # Noisy frame
+        rng = np.random.RandomState(42)
+        noisy = (rng.rand(50, 50, 3) * 0.3 + 0.35).astype(np.float32)
+        result = apply_numpy_effects(noisy, [
+            {"type": "denoise", "params": {"strength": 10.0}, "enabled": True}
+        ])
+        # Denoised frame should have less variance
+        assert result.std() < noisy.std()
+
+    def test_denoise_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "denoise", "params": {"strength": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestVignetteEffect:
+    def test_vignette_darkens_corners(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame.copy(), [
+            {"type": "vignette", "params": {"angle": 0.8}, "enabled": True}
+        ])
+        center_val = result[50, 50, 0]
+        corner_val = result[0, 0, 0]
+        assert center_val > corner_val  # center brighter than corner
+
+    def test_vignette_preserves_range(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame.copy(), [
+            {"type": "vignette", "params": {"angle": 1.2}, "enabled": True}
+        ])
+        assert result.min() >= 0.0 and result.max() <= 1.0
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B28: Motion effects preview tests
 # ---------------------------------------------------------------------------
 
