@@ -4838,6 +4838,124 @@ async def cut_waveform_peaks(source_path: str, bins: int = 128, stereo: bool = F
     }
 
 
+# ─── MARKER_B38: Runtime codec availability detection ──────────────────
+
+@router.get("/codecs/available")
+async def cut_codecs_available() -> dict[str, Any]:
+    """
+    MARKER_B38 — Detect which codecs are available in the system FFmpeg build.
+    Returns encode/decode capability for each codec we support.
+    """
+    import shutil
+    import subprocess
+
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return {"success": False, "error": "ffmpeg_not_found"}
+
+    try:
+        result = subprocess.run([ffmpeg, "-codecs"], capture_output=True, text=True, timeout=10)
+        codec_output = result.stdout or ""
+    except Exception:
+        return {"success": False, "error": "ffmpeg_codecs_failed"}
+
+    # Parse codec lines: " DEVILX codec_name  Description"
+    # D=decode, E=encode, V=video, A=audio, I=intra, L=lossy, S=lossless
+    codecs: dict[str, dict[str, Any]] = {}
+    our_codecs = {
+        "h264": "H.264 / AVC", "hevc": "H.265 / HEVC",
+        "prores": "Apple ProRes", "dnxhd": "DNxHD/DNxHR",
+        "dvvideo": "DV Video", "av1": "AV1",
+        "vp9": "VP9", "aac": "AAC",
+        "mp3": "MP3", "flac": "FLAC",
+        "pcm_s16le": "PCM 16-bit", "pcm_s24le": "PCM 24-bit",
+    }
+
+    for name, label in our_codecs.items():
+        # Check decode + encode separately
+        can_decode = f" D" in codec_output.split(name)[0].split("\n")[-1] if name in codec_output else False
+        can_encode = False
+        for line in codec_output.split("\n"):
+            parts = line.strip().split()
+            if len(parts) >= 2 and parts[1] == name:
+                flags = parts[0]
+                can_decode = "D" in flags
+                can_encode = "E" in flags
+                break
+
+        codecs[name] = {
+            "label": label,
+            "decode": can_decode,
+            "encode": can_encode,
+        }
+
+    # FFmpeg version
+    version = ""
+    try:
+        ver_result = subprocess.run([ffmpeg, "-version"], capture_output=True, text=True, timeout=5)
+        first_line = (ver_result.stdout or "").split("\n")[0]
+        version = first_line.strip()
+    except Exception:
+        pass
+
+    return {
+        "success": True,
+        "ffmpeg_version": version,
+        "codecs": codecs,
+        "summary": {
+            "total": len(codecs),
+            "can_encode": sum(1 for c in codecs.values() if c["encode"]),
+            "can_decode": sum(1 for c in codecs.values() if c["decode"]),
+        },
+    }
+
+
+# ─── MARKER_B6.5: Full stream probe for multi-track media ──────────────
+
+@router.get("/probe/streams")
+async def cut_probe_streams(source_path: str) -> dict[str, Any]:
+    """
+    MARKER_B6.5 — Probe all streams in a media file (video, audio, subtitle).
+    Returns full stream list with per-stream metadata.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    result = probe_file(str(p))
+    if not result.ok:
+        return {"success": False, "error": result.error or "probe_failed"}
+
+    video_streams = [
+        {
+            "index": vs.index, "type": "video", "codec": vs.codec, "profile": vs.profile,
+            "width": vs.width, "height": vs.height, "fps": round(vs.fps, 3),
+            "pix_fmt": vs.pix_fmt, "bit_depth": vs.bit_depth,
+            "color_primaries": vs.color_primaries, "color_transfer": vs.color_transfer,
+        }
+        for vs in result.video_streams
+    ]
+    audio_streams = [
+        {
+            "index": a_s.index, "type": "audio", "codec": a_s.codec,
+            "channels": a_s.channels, "sample_rate": a_s.sample_rate,
+            "bit_depth": a_s.bit_depth,
+        }
+        for a_s in result.audio_streams
+    ]
+
+    return {
+        "success": True,
+        "source_path": str(p),
+        "container": result.container,
+        "duration_sec": result.duration_sec,
+        "file_size_bytes": result.file_size_bytes,
+        "streams": video_streams + audio_streams,
+        "video_count": len(video_streams),
+        "audio_count": len(audio_streams),
+    }
+
+
 # ─── MARKER_B5.1: Audio clip segment for Web Audio playback ────────────
 
 @router.get("/audio/clip-segment")
