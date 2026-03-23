@@ -160,7 +160,7 @@ const MARKER_COLORS: Record<string, string> = {
   // Editorial markers
   favorite: '#f59e0b',     // amber — positive / keep
   negative: '#ef4444',     // red — anti-favorite / reject
-  comment: '#3b82f6',      // blue — annotation
+  comment: '#8899aa',      // desaturated grey — annotation (monochrome)
   cam: '#a855f7',          // purple — camera note
   insight: '#22c55e',      // green — AI insight
   chat: '#94a3b8',         // slate — chat reference

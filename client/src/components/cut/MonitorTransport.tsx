@@ -40,7 +40,7 @@ const SCRUBBER_ROW: CSSProperties = {
 
 const SCRUBBER_FILL: CSSProperties = {
   height: '100%',
-  background: '#3b82f6',
+  background: '#ccc',
   borderRadius: 1,
   transition: 'width 0.05s linear',
 };
@@ -246,7 +246,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame (Left)">
           <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
         </button>
-        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
+        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#ccc' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame (Right)">
@@ -265,14 +265,14 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           {/* IN / OUT + Match Frame — Source and Program both get marks */}
           <div style={{ width: 1, height: 14, background: '#333' }} />
           <button
-            style={{ ...IO_BTN, color: markIn != null ? '#3b82f6' : '#666' }}
+            style={{ ...IO_BTN, color: markIn != null ? '#ccc' : '#666' }}
             onClick={() => setMarkIn(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} IN (I)`}
           >
             I
           </button>
           <button
-            style={{ ...IO_BTN, color: markOut != null ? '#3b82f6' : '#666' }}
+            style={{ ...IO_BTN, color: markOut != null ? '#ccc' : '#666' }}
             onClick={() => setMarkOut(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} OUT (O)`}
           >
