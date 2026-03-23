@@ -949,16 +949,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown
-      // MARKER_UNDO-FIX: Routes through backend applyTimelineOps for undo support
+      // MARKER_EDIT1_FIX: Razor split moved to handleClipClick (local-first approach).
+      // Previously here: beginClipInteraction fired applyTimelineOps + refreshProjectState
+      // on mousedown, causing race with handleClipClick's local split on click.
       if (activeTool === 'razor' && mode === 'move') {
-        const splitTime = timeFromTrackClientX(event.clientX);
-        if (splitTime > clip.start_sec + 0.01 && splitTime < clip.start_sec + clip.duration_sec - 0.01) {
-          void useCutEditorStore.getState().applyTimelineOps([
-            { op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime },
-          ]);
-        }
-        return;
+        return; // Let click handler (handleClipClick) do the local-first split
       }
 
       setSelectedClip(clip.clip_id);
