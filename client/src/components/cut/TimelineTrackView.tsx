@@ -1743,7 +1743,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (!isPlaying || dragState || scrubActive) {
       return;
     }
-    const viewportWidth = Math.max((containerRef.current?.clientWidth || 0) - LANE_HEADER_WIDTH, 0);
+    const viewportWidth = Math.max(containerWidth - LANE_HEADER_WIDTH, 0);
     if (!viewportWidth) {
       return;
     }
