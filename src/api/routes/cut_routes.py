@@ -8615,11 +8615,25 @@ class CutRenderMasterRequest(BaseModel):
 
 
 def _emit_render_progress(job_id: str, progress: float, message: str = "") -> None:
-    """MARKER_B2.6 — Emit render progress via SocketIO (best-effort, fire-and-forget)."""
+    """MARKER_B2.6 + B4.2 — Emit render progress via SocketIO with ETA."""
     try:
         import asyncio
+        import time as _time
         from src.api.main import sio
-        data = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        data: dict[str, Any] = {"job_id": job_id, "progress": round(progress, 3), "message": message}
+        # MARKER_B4.2: Add ETA from job store
+        try:
+            store = get_cut_mcp_job_store()
+            job = store.get_job(job_id)
+            if job:
+                started = job.get("started_at") or job.get("created_at")
+                if started and progress > 0.01:
+                    elapsed = _time.time() - started
+                    eta = (elapsed / progress) * (1.0 - progress) if progress < 1.0 else 0
+                    data["elapsed_sec"] = round(elapsed, 1)
+                    data["eta_sec"] = round(max(0, eta), 1)
+        except Exception:
+            pass  # ETA is best-effort
         # Try to get running loop (if called from async context)
         try:
             loop = asyncio.get_running_loop()
