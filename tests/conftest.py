@@ -66,6 +66,29 @@ def ensure_sync_test_event_loop(request):
             policy.set_event_loop(None)
 
 
+@pytest.fixture(autouse=True)
+def isolate_task_board(tmp_path, monkeypatch):
+    """MARKER_196.FIX: Redirect TaskBoard to tmpdir so tests never touch production DB.
+
+    Patches TASK_BOARD_FILE, TASK_BOARD_DB, and resets singleton after each test.
+    """
+    import src.orchestration.task_board as tb_mod
+    test_db = tmp_path / "test_task_board.db"
+    test_json = tmp_path / "test_task_board.json"
+    monkeypatch.setattr(tb_mod, "TASK_BOARD_FILE", test_json)
+    monkeypatch.setattr(tb_mod, "TASK_BOARD_DB", test_db)
+    # Reset singleton so next get_task_board() creates fresh instance with test paths
+    tb_mod._board_instance = None
+    yield
+    # Cleanup: close any open connections
+    if tb_mod._board_instance is not None:
+        try:
+            tb_mod._board_instance.db.close()
+        except Exception:
+            pass
+        tb_mod._board_instance = None
+
+
 def pytest_runtest_setup(item):
     """
     Safety net for unittest-style tests where autouse fixtures may not run.
