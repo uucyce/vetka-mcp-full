@@ -251,6 +251,11 @@ Always creates new cut-NN. Never overwrites.
 | CUT_DATA_MODEL.md | Store structure, data flow |
 | CUT_COGNITIVE_MODEL.md | Two-circuit architecture, JEPA integration |
 
+### Strategic Reference (Commander must know)
+| Doc | Purpose |
+|-----|---------|
+| `docs/besedii_google_drive_docs/VETKA_MEMORY_DAG_ABBREVIATIONS_2026-02-22.md` | Canonical glossary: all VETKA/CUT/MYCELIUM/ELISYA acronyms, cognitive stack (AURA→STM→CAM→ENGRAM→REFLEX→CORTEX), DAG/MCC/HNSW definitions. Commander's big picture map. |
+
 ### Handoffs (read LATEST on connect)
 Find latest: `ls docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md | sort | tail -1`
 
