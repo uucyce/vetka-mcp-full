@@ -313,6 +313,7 @@ interface CutEditorState {
   showClipNames: boolean;
   showClipBorders: boolean;
   showWaveforms: boolean;
+  showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
   showRubberBand: boolean;
@@ -641,6 +642,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipNames: true,
   showClipBorders: true,
   showWaveforms: true,
+  showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
   showRubberBand: false,
@@ -1105,6 +1107,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
   toggleShowClipBorders: () => set((s) => ({ showClipBorders: !s.showClipBorders })),
   toggleShowWaveforms: () => set((s) => ({ showWaveforms: !s.showWaveforms })),
+  toggleShowThumbnails: () => set((s) => ({ showThumbnails: !s.showThumbnails })),
   toggleShowThroughEdits: () => set((s) => ({ showThroughEdits: !s.showThroughEdits })),
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
   toggleShowRubberBand: () => set((s) => ({ showRubberBand: !s.showRubberBand })),
