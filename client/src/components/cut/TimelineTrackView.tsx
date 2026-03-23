@@ -2313,6 +2313,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               }}
                             />
                             {/* Diamond icon + type label */}
+                            {/* MARKER_TR6: Duplicate frame indicator (FCP7 white dots) */}
+                            {(() => {
+                              const srcDur = (clip as any).source_duration as number | undefined;
+                              const srcIn = clip.source_in ?? 0;
+                              if (srcDur && srcDur > 0) {
+                                const availableHandle = srcDur - srcIn - clip.duration_sec;
+                                if (availableHandle < tx.duration_sec) {
+                                  return (
+                                    <div style={{
+                                      position: 'absolute', bottom: 2, left: 0, right: 0,
+                                      display: 'flex', justifyContent: 'center', gap: 2, pointerEvents: 'none',
+                                    }}>
+                                      {[0,1,2].map((i) => (
+                                        <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.8)' }} />
+                                      ))}
+                                    </div>
+                                  );
+                                }
+                              }
+                              return null;
+                            })()}
                             {txWidth > 16 ? (
                               <span style={{
                                 fontSize: 8,
