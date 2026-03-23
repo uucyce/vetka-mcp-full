@@ -442,7 +442,15 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "No fields to update"}
 
         ok = board.update_task(task_id, **updates)
-        return {"success": ok, "updated_fields": list(updates.keys())}
+        # MARKER_195.22: Include error context when update fails
+        result = {"success": ok, "updated_fields": list(updates.keys())}
+        if not ok:
+            task_exists = board.get_task(task_id)
+            if not task_exists:
+                result["error"] = f"Task {task_id} not found"
+            else:
+                result["error"] = f"update_task returned False (possible invalid status or phase_type)"
+        return result
 
     elif action == "remove":
         task_id = arguments.get("task_id")
