@@ -352,16 +352,25 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                             "Use force_no_docs=true ONLY if no relevant docs exist. "
                             "Note: phase_type=research and phase_type=test are auto-exempt.",
                 }
-            # MARKER_196.DOCGATE: force_no_docs=true but relevant docs found — warn + audit
+            # MARKER_196.DOCGATE: Strict mode — block force_no_docs for fix/build
+            # when suggested_docs clearly shows relevant docs exist.
+            # Agent must attach docs, not bypass.
+            if suggested and len(suggested) >= 2 and phase_type in ("fix", "build"):
+                return {
+                    "success": False,
+                    "error": f"DOC_GATE STRICT: force_no_docs rejected — {len(suggested)} relevant docs found. "
+                             "For fix/build tasks, attach at least one doc from the list below.",
+                    "doc_gate": True,
+                    "strict_mode": True,
+                    "suggested_docs": suggested,
+                    "hint": "Re-call with architecture_docs=[...] or recon_docs=[...]. "
+                            "force_no_docs is only allowed when suggested_docs is empty or has <2 matches.",
+                }
+            # Allow bypass for tasks with 0-1 weak matches
             if suggested:
-                payload.setdefault("_doc_gate_warnings", [])
-                payload["_doc_gate_warnings"].append(
-                    f"force_no_docs bypassed DOC_GATE but {len(suggested)} relevant docs exist: "
-                    + ", ".join(suggested[:3])
-                )
                 logger.warning(
-                    "[DOC_GATE] force_no_docs=true with %d suggested docs for '%s': %s",
-                    len(suggested), title, suggested[:3],
+                    "[DOC_GATE] force_no_docs accepted (weak match) for '%s': %s",
+                    title, suggested[:3],
                 )
 
         try:
