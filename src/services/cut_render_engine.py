@@ -164,6 +164,8 @@ class RenderClip:
     # MARKER_B16: Color pipeline for render
     log_profile: str = ""           # camera log profile: "V-Log", "S-Log3", "LogC3", etc.
     lut_path: str = ""              # path to .cube LUT file
+    # MARKER_B44: Per-clip keyframes for animated parameters
+    keyframes: dict[str, list[dict]] = field(default_factory=dict)  # property → [{time_sec, value, easing}]
 
 
 @dataclass
@@ -276,6 +278,8 @@ def build_render_plan(
                 # MARKER_B16: Color pipeline
                 log_profile=str(clip.get("log_profile") or ""),
                 lut_path=str(clip.get("lut_path") or ""),
+                # MARKER_B44: Keyframes for animated parameters
+                keyframes=dict(clip.get("keyframes") or {}),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -440,10 +444,22 @@ class FilterGraphBuilder:
             escaped = clip.lut_path.replace("'", "'\\''")
             parts.append(f"lut3d='{escaped}'")
 
-        # MARKER_B9: Insert video effects between color pipeline and speed
+        # MARKER_B9 + B44: Insert video effects (with keyframe resolution)
         if clip.video_effects:
-            from src.services.cut_effects_engine import compile_video_filters
-            effect_filters = compile_video_filters(clip.video_effects)
+            from src.services.cut_effects_engine import (
+                compile_video_filters,
+                resolve_effect_params_at_time,
+            )
+            if clip.keyframes:
+                # MARKER_B44: Resolve keyframed params at clip midpoint for static render
+                mid_time = clip.duration_sec / 2.0
+                resolved_effects = [
+                    resolve_effect_params_at_time(e, clip.keyframes, mid_time)
+                    for e in clip.video_effects
+                ]
+                effect_filters = compile_video_filters(resolved_effects)
+            else:
+                effect_filters = compile_video_filters(clip.video_effects)
             parts.extend(effect_filters)
 
         # Speed

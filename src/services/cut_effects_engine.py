@@ -363,6 +363,148 @@ EFFECT_DEFS: dict[str, EffectDef] = {
 # FFmpeg filter compilation
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# MARKER_B44: Keyframe interpolation + FFmpeg mapping
+# ---------------------------------------------------------------------------
+
+
+def interpolate_keyframes(keyframes: list[dict], time_sec: float) -> float:
+    """Interpolate keyframe value at given time with easing support.
+
+    Easing modes: linear, ease_in (quadratic), ease_out (quadratic), bezier (smoothstep).
+    Hold before first keyframe, hold after last.
+    """
+    if not keyframes:
+        return 0.0
+    if len(keyframes) == 1:
+        return keyframes[0]["value"]
+    if time_sec <= keyframes[0]["time_sec"]:
+        return keyframes[0]["value"]
+    if time_sec >= keyframes[-1]["time_sec"]:
+        return keyframes[-1]["value"]
+
+    i = 0
+    while i < len(keyframes) - 1 and keyframes[i + 1]["time_sec"] <= time_sec:
+        i += 1
+    kf_a = keyframes[i]
+    kf_b = keyframes[i + 1]
+    dt = kf_b["time_sec"] - kf_a["time_sec"]
+    if dt <= 0:
+        return kf_a["value"]
+    t = (time_sec - kf_a["time_sec"]) / dt
+
+    easing = kf_a.get("easing", "linear")
+    if easing == "ease_in":
+        eased = t * t
+    elif easing == "ease_out":
+        eased = 1 - (1 - t) * (1 - t)
+    elif easing == "bezier":
+        eased = t * t * (3 - 2 * t)
+    else:
+        eased = t
+
+    return kf_a["value"] + (kf_b["value"] - kf_a["value"]) * eased
+
+
+def resolve_effect_params_at_time(
+    effect: "EffectParam",
+    keyframes: dict[str, list[dict]],
+    time_sec: float,
+) -> "EffectParam":
+    """Resolve an effect's keyframed parameters to static values at a given time.
+
+    Args:
+        effect: The effect with default params.
+        keyframes: Dict of property_name → keyframe list.
+                   Property names follow pattern "effect_type.param_name" or just "param_name".
+        time_sec: Time relative to clip start.
+
+    Returns:
+        New EffectParam with interpolated static params.
+    """
+    if not keyframes:
+        return effect
+
+    resolved_params = dict(effect.params)
+    for param_name in list(resolved_params.keys()):
+        # Try "effect_type.param_name" first, then just "param_name"
+        kf_key = f"{effect.type}.{param_name}"
+        kfs = keyframes.get(kf_key) or keyframes.get(param_name)
+        if kfs:
+            resolved_params[param_name] = interpolate_keyframes(kfs, time_sec)
+
+    return EffectParam(
+        effect_id=effect.effect_id,
+        type=effect.type,
+        enabled=effect.enabled,
+        params=resolved_params,
+    )
+
+
+def compile_keyframed_sendcmd(
+    effects: list["EffectParam"],
+    keyframes: dict[str, list[dict]],
+    clip_duration: float,
+    *,
+    sample_interval: float = 0.1,
+) -> str:
+    """Generate FFmpeg sendcmd filter text for keyframed parameters.
+
+    Samples keyframes at regular intervals and generates sendcmd commands
+    to update filter parameters dynamically during encoding.
+
+    Args:
+        effects: List of effects on the clip.
+        keyframes: All keyframes for this clip (property → keyframe list).
+        clip_duration: Clip duration in seconds.
+        sample_interval: Time between samples (0.1 = 10 updates/sec).
+
+    Returns:
+        sendcmd filter text string, or empty string if no keyframes apply.
+    """
+    if not keyframes or clip_duration <= 0:
+        return ""
+
+    # Map effect types to FFmpeg filter names for sendcmd targeting
+    SENDCMD_TARGETS = {
+        "brightness": ("eq", "brightness"),
+        "contrast": ("eq", "contrast"),
+        "saturation": ("eq", "saturation"),
+        "gamma": ("eq", "gamma"),
+        "blur": ("gblur", "sigma"),
+        "hue": ("hue", "h"),
+    }
+
+    commands: list[str] = []
+    t = 0.0
+    while t <= clip_duration:
+        for effect in effects:
+            if not effect.enabled:
+                continue
+            target = SENDCMD_TARGETS.get(effect.type)
+            if not target:
+                continue
+
+            filter_name, param_name = target
+            kf_key = f"{effect.type}.{list(effect.params.keys())[0]}" if effect.params else None
+            if not kf_key:
+                continue
+
+            kfs = keyframes.get(kf_key) or keyframes.get(list(effect.params.keys())[0])
+            if not kfs or len(kfs) < 2:
+                continue
+
+            val = interpolate_keyframes(kfs, t)
+            commands.append(f"{t:.2f} [{filter_name}] {param_name} {val:.4f}")
+
+        t += sample_interval
+
+    if not commands:
+        return ""
+
+    return ";\n".join(commands)
+
+
 def compile_video_filters(effects: list[EffectParam]) -> list[str]:
     """
     Compile a list of video EffectParams into FFmpeg filter strings.
