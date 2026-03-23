@@ -1096,6 +1096,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     setDropZone(null);
   }, []);
 
+  // MARKER_DND_STORE: Drop handler — reads text/cut-media-paths (JSON array) or single path
   const handleLaneDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
       event.preventDefault();
@@ -1105,25 +1106,21 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
       const dropTime = timeFromTrackClientX(event.clientX);
 
-      // Read dragged media path from dataTransfer
-      const mediaPath = event.dataTransfer.getData('text/cut-media-path')
-        || event.dataTransfer.getData('text/plain')
-        || '';
+      // Read dragged media paths — prefer JSON array, fallback to single path
+      let paths: string[] = [];
+      const jsonPaths = event.dataTransfer.getData('text/cut-media-paths');
+      if (jsonPaths) {
+        try { paths = JSON.parse(jsonPaths); } catch { /* malformed JSON */ }
+      }
+      if (!paths.length) {
+        const singlePath = event.dataTransfer.getData('text/cut-media-path')
+          || event.dataTransfer.getData('text/plain')
+          || '';
+        if (singlePath) paths = [singlePath];
+      }
 
-      if (mediaPath) {
-        const s = useCutEditorStore.getState();
-        // Set source media so insert/overwrite handlers can use it
-        s.setSourceMedia(mediaPath);
-        // Seek to drop position
-        s.seek(dropTime);
-
-        // Use existing insert/overwrite logic from hotkey handlers
-        // Dispatch synthetic key event to trigger the handler
-        if (mode === 'insert') {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
-        } else {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
-        }
+      if (paths.length) {
+        useCutEditorStore.getState().dropMediaOnTimeline(paths, laneId, dropTime, mode);
       }
 
       setDropZone(null);
@@ -2599,10 +2596,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       top: 0,
                       height: dropZone.mode === 'insert' ? `${Math.round(laneH / 3)}px` : '100%',
                       background: dropZone.mode === 'insert'
-                        ? 'rgba(74, 222, 128, 0.12)'
-                        : 'rgba(96, 165, 250, 0.12)',
-                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(74, 222, 128, 0.6)' : undefined,
-                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(96, 165, 250, 0.6)' : undefined,
+                        ? 'rgba(200, 200, 200, 0.10)'
+                        : 'rgba(140, 140, 140, 0.10)',
+                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(200, 200, 200, 0.5)' : undefined,
+                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(140, 140, 140, 0.5)' : undefined,
                       pointerEvents: 'none',
                       zIndex: 50,
                     }} />

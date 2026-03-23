@@ -477,6 +477,9 @@ interface CutEditorState {
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
 
+  // MARKER_DND_STORE: Drop media from ProjectPanel onto timeline
+  dropMediaOnTimeline: (paths: string[], laneId: string, dropTimeSec: number, mode: 'insert' | 'overwrite') => void;
+
   // MARKER_UNDO-FIX: Shared applyTimelineOps — routes edits through backend undo stack
   applyTimelineOps: (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => Promise<void>;
 
@@ -1295,6 +1298,29 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,
     })),
+
+  // MARKER_DND_STORE: Drop media from ProjectPanel onto timeline
+  // Consumes text/cut-media-paths JSON array, creates clips sequentially at drop position
+  dropMediaOnTimeline: (paths, laneId, dropTimeSec, mode) => {
+    if (!paths.length) return;
+    const DEFAULT_CLIP_DURATION = 5; // seconds — placeholder until probe gives real duration
+    const op = mode === 'insert' ? 'insert_at' : 'overwrite_at';
+    const ops: Array<Record<string, unknown>> = [];
+    let cursor = dropTimeSec;
+    for (const sourcePath of paths) {
+      ops.push({
+        op,
+        lane_id: laneId,
+        start_sec: cursor,
+        duration_sec: DEFAULT_CLIP_DURATION,
+        source_path: sourcePath,
+      });
+      cursor += DEFAULT_CLIP_DURATION;
+    }
+    void get().applyTimelineOps(ops);
+    // Select first dropped clip conceptually — seek to drop position
+    get().seek(dropTimeSec);
+  },
 
   // MARKER_UNDO-FIX: Shared applyTimelineOps — all editing ops route through backend undo stack
   applyTimelineOps: async (ops, opts) => {
