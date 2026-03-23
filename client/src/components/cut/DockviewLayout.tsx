@@ -139,6 +139,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         const tlId = panel.params?.timelineId as string | undefined;
         if (tlId || panel.id === 'timeline' || panel.id.startsWith('timeline-')) {
           useCutEditorStore.getState().setFocusedPanel('timeline');
+          // MARKER_GAMMA-8-FIX: Persist focus on every panel change (not just workspace switch)
+          useDockviewStore.getState().saveFocusForPreset(
+            useDockviewStore.getState().activePreset, 'timeline'
+          );
           if (tlId) {
             const editorStore = useCutEditorStore.getState();
             if (editorStore.timelineId && editorStore.timelineId !== tlId) {
@@ -151,6 +155,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           const focus = PANEL_FOCUS_MAP[panel.id];
           if (focus) {
             useCutEditorStore.getState().setFocusedPanel(focus);
+            // MARKER_GAMMA-8-FIX: Persist focus on every panel change
+            useDockviewStore.getState().saveFocusForPreset(
+              useDockviewStore.getState().activePreset, panel.id
+            );
           }
         }
 
@@ -223,9 +231,24 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       });
     }
 
-    // MARKER_GAMMA-29: Set initial focusedPanel from active panel after layout load.
-    // Without this, focusedPanel stays null and hotkeys silently fail.
+    // MARKER_GAMMA-29 + GAMMA-8-FIX: Restore persisted focus from localStorage on load.
+    // Falls back to active panel detection, then timeline default.
     requestAnimationFrame(() => {
+      const savedFocus = useDockviewStore.getState().getFocusForPreset(activePreset);
+      if (savedFocus) {
+        // Try to activate the saved panel in dockview
+        try {
+          const savedPanel = event.api.getPanel(savedFocus);
+          if (savedPanel) {
+            savedPanel.api.setActive();
+            const focus = PANEL_FOCUS_MAP[savedFocus];
+            if (focus) useCutEditorStore.getState().setFocusedPanel(focus);
+            return;
+          }
+        } catch { /* panel not found — fall through */ }
+      }
+
+      // Fallback: detect from dockview active panel
       const active = event.api.activePanel;
       if (active) {
         const tlId = active.params?.timelineId as string | undefined;
