@@ -23,6 +23,7 @@ import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 import { EFFECT_APPLY_MAP } from './EffectsPanel';
+import ThumbnailStrip from './ThumbnailStrip';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -579,6 +580,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const showThumbnails = useCutEditorStore((state) => state.showThumbnails);
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
@@ -2135,6 +2137,29 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           borderBottom: '4px solid transparent',
                           borderLeft: '5px solid rgba(255,255,255,0.6)',
                         }} title="Through edit — continuous media" />
+                      )}
+
+                      {/* MARKER_B57: Video filmstrip thumbnails */}
+                      {width > 40 && showThumbnails && (lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt')) && (
+                        <div
+                          data-clip="1"
+                          style={{
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: 0,
+                            overflow: 'hidden',
+                            opacity: 0.6,
+                          }}
+                        >
+                          <ThumbnailStrip
+                            sourcePath={clip.source_path}
+                            duration_sec={clip.duration_sec}
+                            width={Math.max(4, width) - 2}
+                            height={trackHeight - 2}
+                            frameCount={Math.max(1, Math.floor((Math.max(4, width) - 2) / (trackHeight * 16 / 9)))}
+                            posterTime={clip.source_in ?? 1.0}
+                          />
+                        </div>
                       )}
 
                       {width > 20 && showWaveforms ? (
