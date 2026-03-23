@@ -184,6 +184,10 @@ class SessionInitTool(BaseMCPTool):
                     "type": "integer",
                     "description": "Maximum tokens for context (default: 4000)",
                     "default": 4000
+                },
+                "role": {
+                    "type": "string",
+                    "description": "Agent callsign (e.g. Alpha, Beta, Zeta). If provided, session is bound to this role and task board is unlocked. If omitted, falls back to branch detection."
                 }
             },
             "required": []
@@ -221,6 +225,7 @@ class SessionInitTool(BaseMCPTool):
         include_pinned = arguments.get("include_pinned", True)
         compress = arguments.get("compress", True)
         max_context_tokens = arguments.get("max_context_tokens", 4000)
+        role_name = arguments.get("role")  # MARKER_196.1.3: explicit role declaration
 
         # MARKER_108_1: Unified MCP-Chat ID
         # If chat_id provided, use it as session_id
@@ -414,6 +419,56 @@ class SessionInitTool(BaseMCPTool):
                     context["semantic_lessons"] = lessons
         except Exception:
             pass  # Qdrant unavailable — graceful fallback, no block
+
+        # MARKER_ZETA.F4.ENGRAM: Inject ENGRAM learnings into session_init
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            _engram = get_engram_cache()
+            _engram_ctx = {}
+            # Danger entries — permanent, critical anti-patterns
+            _dangers = _engram.get_danger_entries()
+            if _dangers:
+                _engram_ctx["dangers"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _dangers[:5]
+                ]
+            # Architecture principles — permanent learnings
+            _arch = _engram.get_all_by_category("architecture")
+            if _arch:
+                _engram_ctx["architecture"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _arch[:5]
+                ]
+            # Top patterns by hit_count — most validated learnings
+            _patterns = _engram.get_all_by_category("pattern")
+            if _patterns:
+                _patterns_sorted = sorted(_patterns, key=lambda x: x.hit_count, reverse=True)
+                _engram_ctx["patterns"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _patterns_sorted[:5]
+                ]
+            if _engram_ctx:
+                _engram_ctx["stats"] = _engram.stats()
+                context["engram_learnings"] = _engram_ctx
+        except Exception:
+            pass  # ENGRAM errors never block session init
+
+        # MARKER_ZETA.F4.MGC: Inject MGC cache status into session_init
+        try:
+            from src.memory.mgc_cache import get_mgc_cache
+            _mgc = get_mgc_cache()
+            _mgc_stats = _mgc.get_stats()
+            if _mgc_stats:
+                context["mgc_status"] = {
+                    "gen0_size": _mgc_stats.get("gen0_size", 0),
+                    "hit_rate": _mgc_stats.get("hit_rate", 0),
+                    "gen0_hit_rate": _mgc_stats.get("gen0_hit_rate", 0),
+                    "total_hits": sum(_mgc_stats.get(k, 0) for k in ("gen0", "gen1", "gen2")),
+                    "misses": _mgc_stats.get("misses", 0),
+                    "evictions": _mgc_stats.get("evictions", 0),
+                }
+        except Exception:
+            pass  # MGC errors never block session init
 
         # MARKER_178.1.2: Recent commits
         try:
@@ -621,29 +676,72 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Protocol status never blocks session init
 
-        # MARKER_ZETA.INT: Role context from Agent Registry
+        # MARKER_ZETA.INT + MARKER_196.1.3: Role context from Agent Registry
+        # Priority: explicit role= param > branch detection fallback
         try:
             from src.services.agent_registry import get_agent_registry
             import subprocess as _sp
 
             _reg = get_agent_registry()
-            _branch_result = _sp.run(
-                ["git", "branch", "--show-current"],
-                capture_output=True, text=True, timeout=5,
-                cwd=str(Path(__file__).resolve().parent.parent.parent),
-            )
-            _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
-            _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+            _role = None
+            _role_source = None  # "explicit" or "branch_detection"
+
+            # MARKER_196.1.3: Explicit role= parameter (preferred path)
+            if role_name:
+                _role = _reg.get_by_callsign(role_name)
+                if _role:
+                    _role_source = "explicit"
+                else:
+                    # Invalid role name — return error with available roles
+                    context["role_error"] = {
+                        "message": f"Unknown role: '{role_name}'",
+                        "available_roles": _reg.list_callsigns(),
+                    }
+
+            # Fallback: branch detection (backward-compatible, no role= provided)
+            if not _role and not role_name:
+                import os
+                _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
+                _branch_result = _sp.run(
+                    ["git", "branch", "--show-current"],
+                    capture_output=True, text=True, timeout=5,
+                    cwd=_detect_cwd,
+                )
+                _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
+
+                if _current_branch == "main" or not _current_branch:
+                    _toplevel = _sp.run(
+                        ["git", "rev-parse", "--show-toplevel"],
+                        capture_output=True, text=True, timeout=5,
+                        cwd=_detect_cwd,
+                    )
+                    _toplevel_path = _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
+                    if _toplevel_path and "worktrees" in _toplevel_path:
+                        _wt_name = Path(_toplevel_path).name
+                        for _r in _reg.roles:
+                            if _r.worktree == _wt_name:
+                                _current_branch = _r.branch
+                                break
+
+                _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+                if _role:
+                    _role_source = "branch_detection"
+
+            # Always expose available roles for discoverability
+            if not _role:
+                context["available_roles"] = _reg.list_callsigns()
 
             if _role:
                 _role_ctx = {
                     "callsign": _role.callsign,
                     "domain": _role.domain,
+                    "pipeline_stage": _role.pipeline_stage,  # MARKER_196.1.3
                     "role_title": _role.role_title,
                     "branch": _role.branch,
                     "worktree": _role.worktree,
                     "owned_paths": list(_role.owned_paths),
                     "blocked_paths": list(_role.blocked_paths),
+                    "role_source": _role_source,  # "explicit" or "branch_detection"
                 }
 
                 # Workflow hints based on domain
@@ -677,6 +775,40 @@ class SessionInitTool(BaseMCPTool):
                     _role_ctx["shared_zones"] = _shared
 
                 context["role_context"] = _role_ctx
+
+                # MARKER_196.2.1: Bind role to session for auto-attribution
+                try:
+                    from src.services.session_tracker import get_session_tracker
+                    _role_tracker = get_session_tracker()
+                    _role_tracker.set_role(context.get("session_id", "default"), _role)
+                except Exception:
+                    pass  # Role binding never blocks session init
+
+                # MARKER_ZETA.F4.PREDECESSOR: Auto-inject predecessor advice into session_init
+                # Solves: agents see file path in CLAUDE.md but may not read it.
+                # Now the content arrives directly in session_init response.
+                try:
+                    from src.tools.generate_claude_md import _get_predecessor_advice
+                    _pred_advice = _get_predecessor_advice(_role.callsign)
+                    if _pred_advice:
+                        context["predecessor_advice"] = {
+                            "callsign": _role.callsign,
+                            "lessons": _pred_advice[:10],  # cap at 10 items
+                            "source": "experience_reports + feedback_docs",
+                        }
+                except Exception:
+                    pass  # Predecessor advice never blocks session init
+
+                # MARKER_195.22 + MARKER_196.2.3: Auto-regenerate CLAUDE.md by role callsign.
+                # Triggered by role (explicit or branch-detected), not by git branch.
+                # Writes to both worktree and ~/.claude/projects/ (dual-write).
+                try:
+                    from src.tools.generate_claude_md import write_claude_md
+                    write_claude_md(_role.callsign, registry=_reg)
+                    logger.debug(f"[SessionInit] Auto-regenerated CLAUDE.md for {_role.callsign}")
+                except Exception as _gen_err:
+                    logger.debug(f"[SessionInit] CLAUDE.md regen failed (non-fatal): {_gen_err}")
+
         except Exception:
             pass  # Role context never blocks session init
 

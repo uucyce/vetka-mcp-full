@@ -357,7 +357,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
     <div style={CONTAINER_STYLE}>
       <video
         ref={videoRef}
-        src={resolvedSrc}
+        src={resolvedSrc || undefined}
         poster={activeThumbnail?.poster_url || undefined}
         style={{ ...VIDEO_STYLE, filter: videoCssFilter }}
         onLoadedMetadata={handleLoadedMetadata}

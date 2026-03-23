@@ -149,24 +149,26 @@ def _route_to_memory(text: str, report) -> dict:
         except Exception as e:
             logger.debug("[SmartDebrief] REFLEX write failed (non-fatal): %s", e)
 
-    # AURA: user/UX mentions → store insight
+    # AURA/ENGRAM: user/UX mentions → store insight via ENGRAM (not AURA)
+    # MARKER_195.22: AURA set_preference requires fixed model attributes (zoom_levels,
+    # formality, etc.) — "debrief_ux_insight" doesn't exist as an attribute.
+    # Route UX insights to ENGRAM instead (flexible key-value, no schema constraint).
     if _USER_PATTERN.search(text):
         triggered["aura_ux"] = True
         try:
-            from src.memory.aura_store import get_aura_store
-            store = get_aura_store()
-            cat = "viewport_patterns" if re.search(r"UI|UX|viewport|panel|layout", text, re.IGNORECASE) else "communication_style"
-            store.set_preference(
-                agent_type="default",
-                user_id="default",
-                category=cat,
-                key="debrief_ux_insight",
+            from src.memory.engram_cache import get_engram_cache
+            cache = get_engram_cache()
+            ux_cat = "ux_viewport" if re.search(r"UI|UX|viewport|panel|layout", text, re.IGNORECASE) else "ux_communication"
+            cache.put(
+                key=f"{report.agent_callsign or 'unknown'}::debrief::ux_insight::{report.domain or 'research'}",
                 value=text[:500],
-                confidence=0.3,
+                category=ux_cat,
+                source_learning_id=f"debrief:{report.session_id}",
+                match_count=0,
             )
-            logger.debug("[SmartDebrief] AURA stored UX insight (cat=%s)", cat)
+            logger.debug("[SmartDebrief] ENGRAM stored UX insight (cat=%s)", ux_cat)
         except Exception as e:
-            logger.debug("[SmartDebrief] AURA write failed (non-fatal): %s", e)
+            logger.debug("[SmartDebrief] UX insight write failed (non-fatal): %s", e)
 
     # MGC: file path mentions → hot file marker
     file_matches = _FILE_PATTERN.findall(text)

@@ -203,11 +203,31 @@ vetka_task_board action=complete task_id=<id> commit_hash=abc123
 - Predecessor report: `{{ predecessor_doc }}`
 {% endif %}
 
-## Shared Memory (auto-loaded, always current)
-- Project memory index: `~/.claude/projects/-Users-danilagulin-Documents-VETKA-Project-vetka-live-03/memory/MEMORY.md`
-- Contains: feedback rules, project context, user preferences, references
-- These memories apply to ALL agents across ALL worktrees
+## Memory & Context (WHERE to look, not WHAT to know)
+
+This CLAUDE.md is an **init address book** — pointers to live data, not static knowledge.
+
+### L1 — Hot Context (read on every connect)
+| What | Where | Why |
+|------|-------|-----|
+| Session state | `vetka_session_init` | Phase, digest, agent focus, pending tasks |
+| Your tasks | `vetka_task_board action=list project_id=cut role={{ role.callsign }}` | What's claimed/pending for you |
+| Predecessor advice | `{{ role.predecessor_docs }}` (latest by date) | Bugs, patterns, anti-patterns from last {{ role.callsign }} |
+| Latest feedback | `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/FEEDBACK_WAVE*.md` (latest) | Cross-agent insights |
+| Latest handoff | `docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md` (latest) | Commander's strategic vector |
+
+### L2 — Warm Context (read when relevant)
+| What | Where | Why |
+|------|-------|-----|
+| Experience reports | `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_{{ role.callsign }}*_*.md` | Your predecessors' full debriefs |
+| Shared memory | `~/.claude/projects/-Users-danilagulin-Documents-VETKA-Project-vetka-live-03/memory/MEMORY.md` | Feedback rules, project context, references |
+| Architecture | `data/templates/agent_registry.yaml` | File ownership, shared zones, blocked paths |
+| FCP7 coverage | `docs/190_ph_CUT_WORKFLOW_ARCH/CUT_FCP7_COVERAGE_MATRIX.md` | What's implemented vs missing |
+
+### Dynamic Injection
+`session_init` returns REFLEX tool recommendations, ENGRAM learnings, and protocol guards.
+You don't need to search for context — the harness brings it to you.
 
 ## Before Session End
 The debrief pipeline triggers automatically on `action=complete`.
-Answer Q1-Q3 when prompted, then call `submit_experience_report`.
+Answer Q1-Q3 when prompted — your answers route to REFLEX/ENGRAM/MGC for the next agent.

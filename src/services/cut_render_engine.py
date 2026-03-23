@@ -164,6 +164,8 @@ class RenderClip:
     # MARKER_B16: Color pipeline for render
     log_profile: str = ""           # camera log profile: "V-Log", "S-Log3", "LogC3", etc.
     lut_path: str = ""              # path to .cube LUT file
+    # MARKER_B44: Per-clip keyframes for animated parameters
+    keyframes: dict[str, list[dict]] = field(default_factory=dict)  # property → [{time_sec, value, easing}]
 
 
 @dataclass
@@ -276,6 +278,8 @@ def build_render_plan(
                 # MARKER_B16: Color pipeline
                 log_profile=str(clip.get("log_profile") or ""),
                 lut_path=str(clip.get("lut_path") or ""),
+                # MARKER_B44: Keyframes for animated parameters
+                keyframes=dict(clip.get("keyframes") or {}),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -416,6 +420,16 @@ class FilterGraphBuilder:
         filter_str = ";\n".join(f for f in filters if f)
         return input_args, filter_str
 
+    @staticmethod
+    def _has_animated_keyframes_static(clip: RenderClip) -> bool:
+        """Check if clip has keyframes with 2+ points on sendcmd-animatable params."""
+        ANIMATABLE = {"brightness.value", "contrast.value", "saturation.value",
+                      "gamma.value", "blur.sigma", "hue.degrees"}
+        for key, kfs in clip.keyframes.items():
+            if key in ANIMATABLE and len(kfs) >= 2:
+                return True
+        return False
+
     def _clip_video_filter(self, idx: int, clip: RenderClip) -> str:
         """Per-clip video: trim + effects + speed + reverse + frame_blend + label."""
         parts: list[str] = []
@@ -440,10 +454,50 @@ class FilterGraphBuilder:
             escaped = clip.lut_path.replace("'", "'\\''")
             parts.append(f"lut3d='{escaped}'")
 
-        # MARKER_B9: Insert video effects between color pipeline and speed
+        # MARKER_B9 + B44 + B45: Insert video effects (with keyframe resolution)
         if clip.video_effects:
-            from src.services.cut_effects_engine import compile_video_filters
-            effect_filters = compile_video_filters(clip.video_effects)
+            from src.services.cut_effects_engine import (
+                compile_video_filters,
+                resolve_effect_params_at_time,
+                compile_keyframed_sendcmd,
+            )
+            has_animated_kfs = self._has_animated_keyframes_static(clip)
+            if clip.keyframes and has_animated_kfs:
+                # MARKER_B45: V2 — animated keyframes via sendcmd temp file
+                sendcmd_text = compile_keyframed_sendcmd(
+                    clip.video_effects, clip.keyframes, clip.duration_sec,
+                )
+                if sendcmd_text:
+                    import tempfile
+                    sendcmd_fd, sendcmd_path = tempfile.mkstemp(
+                        prefix=f"cut_sendcmd_{idx}_", suffix=".txt",
+                    )
+                    os.write(sendcmd_fd, sendcmd_text.encode("utf-8"))
+                    os.close(sendcmd_fd)
+                    # Track for cleanup
+                    if not hasattr(self.plan, "_sendcmd_paths"):
+                        self.plan._sendcmd_paths = []  # type: ignore[attr-defined]
+                    self.plan._sendcmd_paths.append(sendcmd_path)  # type: ignore[attr-defined]
+                    # Add sendcmd before effect filters, then static-resolved effects
+                    escaped = sendcmd_path.replace("'", "'\\''")
+                    parts.append(f"sendcmd=f='{escaped}'")
+                # Still add static filters (sendcmd modifies them dynamically)
+                mid_time = clip.duration_sec / 2.0
+                resolved_effects = [
+                    resolve_effect_params_at_time(e, clip.keyframes, mid_time)
+                    for e in clip.video_effects
+                ]
+                effect_filters = compile_video_filters(resolved_effects)
+            elif clip.keyframes:
+                # B44 V1 fallback: resolve at midpoint (non-animatable keyframes)
+                mid_time = clip.duration_sec / 2.0
+                resolved_effects = [
+                    resolve_effect_params_at_time(e, clip.keyframes, mid_time)
+                    for e in clip.video_effects
+                ]
+                effect_filters = compile_video_filters(resolved_effects)
+            else:
+                effect_filters = compile_video_filters(clip.video_effects)
             parts.extend(effect_filters)
 
         # Speed
@@ -724,6 +778,8 @@ def _build_filter_complex_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
     if plan.range_in is not None and plan.range_out is not None and plan.range_out > plan.range_in:
         cmd += ["-ss", str(plan.range_in), "-t", str(plan.range_out - plan.range_in)]
 
+    # MARKER_B43: Real-time progress via -progress pipe
+    cmd += ["-progress", "pipe:1"]
     cmd += [plan.output_path]
     return cmd
 
@@ -776,6 +832,8 @@ def _build_concat_cmd(plan: RenderPlan, ffmpeg_path: str) -> list[str]:
     cmd += ["-c:a", a_codec]
     if a_codec in ("aac", "libmp3lame"):
         cmd += ["-b:a", "320k"]
+    # MARKER_B43: Real-time progress via -progress pipe
+    cmd += ["-progress", "pipe:1"]
     cmd += [plan.output_path]
 
     # Store concat path for cleanup
@@ -989,7 +1047,15 @@ def render_timeline(
 
     _progress(0.3, "Running FFmpeg")
 
-    # MARKER_B2.1: Use Popen for cancel support + ETA tracking
+    # MARKER_B43: Compute total duration for real progress %
+    total_duration_sec = 0.0
+    for c in plan.clips:
+        total_duration_sec += c.duration_sec / c.speed if c.speed > 0 else c.duration_sec
+    if plan.range_in is not None and plan.range_out is not None:
+        total_duration_sec = min(total_duration_sec, plan.range_out - plan.range_in)
+    total_duration_us = max(1, total_duration_sec * 1_000_000)
+
+    # MARKER_B2.1 + B43: Use Popen with -progress pipe:1 for real progress
     t_start = time.monotonic()
     try:
         proc = subprocess.Popen(
@@ -1001,9 +1067,14 @@ def render_timeline(
     except OSError as exc:
         raise RuntimeError(f"FFmpeg launch failed: {exc}")
 
-    # Poll loop: check cancel + timeout
+    # MARKER_B43 + B45: Parse -progress pipe output for real % and speed
     cancelled = False
+    _last_speed_x = 0.0  # MARKER_B45: track encoding speed for ETA
     try:
+        import selectors
+        sel = selectors.DefaultSelector()
+        sel.register(proc.stdout, selectors.EVENT_READ)  # type: ignore[arg-type]
+
         while proc.poll() is None:
             elapsed = time.monotonic() - t_start
 
@@ -1020,13 +1091,47 @@ def render_timeline(
                 proc.wait(timeout=5)
                 raise RuntimeError(f"FFmpeg timed out after {timeout}s")
 
-            # Progress estimate: linear interpolation between 0.3 and 0.85
-            # (real FFmpeg progress parsing requires -progress pipe, future enhancement)
-            if elapsed > 0 and timeout > 0:
-                frac = min(elapsed / timeout, 1.0)
-                _progress(0.3 + frac * 0.55, "Encoding...")
+            # Read available lines from -progress pipe (non-blocking via selector)
+            ready = sel.select(timeout=0.3)
+            if ready:
+                line = proc.stdout.readline()  # type: ignore[union-attr]
+                if line:
+                    line = line.strip()
+                    if line.startswith("out_time_us="):
+                        try:
+                            out_us = int(line.split("=", 1)[1])
+                            frac = min(out_us / total_duration_us, 1.0)
+                            # MARKER_B45: Include speed and ETA in progress message
+                            remaining_sec = 0.0
+                            if _last_speed_x > 0 and frac < 1.0:
+                                rendered_sec = out_us / 1_000_000
+                                remaining_media_sec = total_duration_sec - rendered_sec
+                                remaining_sec = remaining_media_sec / _last_speed_x
+                            msg = "Encoding..."
+                            if _last_speed_x > 0:
+                                msg = f"Encoding at {_last_speed_x:.1f}x"
+                                if remaining_sec > 0:
+                                    msg += f", ETA: {int(remaining_sec)}s"
+                            _progress(0.3 + frac * 0.55, msg)
+                        except (ValueError, ZeroDivisionError):
+                            pass
+                    elif line.startswith("speed="):
+                        # MARKER_B45: Parse encoding speed (e.g. "speed=2.34x")
+                        try:
+                            speed_str = line.split("=", 1)[1].strip().rstrip("x")
+                            _last_speed_x = float(speed_str) if speed_str != "N/A" else 0.0
+                        except (ValueError, IndexError):
+                            pass
+            else:
+                # No data ready — just loop (selector handles timing)
+                pass
 
-            time.sleep(0.5)
+        sel.close()
+
+        # Drain remaining stdout
+        if proc.stdout:
+            proc.stdout.read()
+
     except Exception:
         # Ensure process is killed on any error
         if proc.poll() is None:
@@ -1039,6 +1144,14 @@ def render_timeline(
     if concat_path:
         try:
             os.remove(concat_path)
+        except OSError:
+            pass
+
+    # MARKER_B45: Cleanup sendcmd temp files
+    sendcmd_paths = getattr(plan, "_sendcmd_paths", [])
+    for sp in sendcmd_paths:
+        try:
+            os.remove(sp)
         except OSError:
             pass
 

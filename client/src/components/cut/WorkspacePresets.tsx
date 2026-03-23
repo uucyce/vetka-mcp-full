@@ -1,34 +1,57 @@
 /**
- * MARKER_C5: Workspace preset switcher — Editing / Color / Audio / Custom.
+ * MARKER_C5 + GAMMA-WS1: Visual workspace preset picker.
  *
- * Compact button bar. Clicking a preset:
- *   1. Saves current layout to current preset name
- *   2. Loads target preset layout via dockview API
- *   3. Updates activePreset in store
+ * Compact icon strip with layout pictograms. Each button shows:
+ *   - SVG icon representing the layout structure
+ *   - Label below
+ *   - Active state: brighter border + filled background
+ *   - Shortcut hint on hover
  *
- * Requires: dockview API ref exposed via useDockviewStore.apiRef.
+ * Clicking a preset: save current → load target → update store.
+ * Double-click Custom: save current as Custom.
  */
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { PRESET_BUILDERS } from './presetBuilders';
 
-const PRESETS: { name: WorkspacePresetName; label: string }[] = [
-  { name: 'editing', label: 'Edit' },
-  { name: 'color', label: 'Color' },
-  { name: 'audio', label: 'Audio' },
-  { name: 'custom', label: 'Custom' },
+interface PresetDef {
+  name: WorkspacePresetName;
+  label: string;
+  shortcut: string;
+  // SVG path for layout pictogram (12x10 viewBox)
+  icon: string;
+}
+
+const PRESETS: PresetDef[] = [
+  {
+    name: 'editing',
+    label: 'Edit',
+    shortcut: '⌥⇧1',
+    // Two columns top + timeline bottom
+    icon: 'M0 0h5v6H0zM6 0h6v6H6zM0 7h12v3H0z',
+  },
+  {
+    name: 'color',
+    label: 'Color',
+    shortcut: '⌥⇧2',
+    // Three columns: scopes left, viewer center, controls right
+    icon: 'M0 0h3v10H0zM4 0h5v6H4zM4 7h5v3H4zM10 0h2v10h-2z',
+  },
+  {
+    name: 'audio',
+    label: 'Audio',
+    shortcut: '⌥⇧3',
+    // Mixer columns + timeline
+    icon: 'M0 0h2v7H0zM3 0h2v7H3zM6 0h2v7H6zM9 0h3v7H9zM0 8h12v2H0z',
+  },
+  {
+    name: 'custom',
+    label: 'Custom',
+    shortcut: '⌥⇧4',
+    // Grid pattern
+    icon: 'M0 0h5v4H0zM6 0h6v4H6zM0 5h4v5H0zM5 5h3v5H5zM9 5h3v5H9z',
+  },
 ];
-
-const btnBase: React.CSSProperties = {
-  background: 'none',
-  border: '1px solid #333',
-  borderRadius: 3,
-  fontSize: 9,
-  fontFamily: 'monospace',
-  padding: '1px 6px',
-  cursor: 'pointer',
-  height: 18,
-  transition: 'background 0.1s, color 0.1s',
-};
 
 export default function WorkspacePresets() {
   const activePreset = useDockviewStore((s) => s.activePreset);
@@ -70,9 +93,16 @@ export default function WorkspacePresets() {
         useCutEditorStore.getState().setFocusedPanel(targetFocus as any);
       }
     } else {
-      // MARKER_C5: No saved layout — reload to build preset-specific default
+      // MARKER_GAMMA-R2: No saved layout — build via API instead of reload
       setActivePreset(name);
-      window.location.reload();
+      try {
+        apiRef.clear();
+        const builder = PRESET_BUILDERS[name] || PRESET_BUILDERS.editing;
+        builder(apiRef, '');
+        requestAnimationFrame(() => {
+          try { saveLayout(name, apiRef.toJSON()); } catch { /* ok */ }
+        });
+      } catch { /* builder failed */ }
     }
   };
 
@@ -86,24 +116,56 @@ export default function WorkspacePresets() {
   };
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-      <span style={{ color: '#555', fontSize: 8, fontFamily: 'monospace', marginRight: 2 }}>WS:</span>
-      {PRESETS.map(({ name, label }) => (
-        <button
-          key={name}
-          onClick={() => handleSwitch(name)}
-          onDoubleClick={name === 'custom' ? handleSaveCustom : undefined}
-          style={{
-            ...btnBase,
-            background: activePreset === name ? '#1a1a1a' : 'none',
-            color: activePreset === name ? '#ccc' : '#555',
-            borderColor: activePreset === name ? '#555' : '#333',
-          }}
-          title={name === 'custom' ? 'Double-click to save current layout as Custom' : `Switch to ${label} workspace`}
-        >
-          {label}
-        </button>
-      ))}
+    <div style={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      {PRESETS.map(({ name, label, shortcut, icon }) => {
+        const isActive = activePreset === name;
+        return (
+          <button
+            key={name}
+            onClick={() => handleSwitch(name)}
+            onDoubleClick={name === 'custom' ? handleSaveCustom : undefined}
+            title={`${label} (${shortcut})${name === 'custom' ? ' — double-click to save' : ''}`}
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 1,
+              padding: '2px 5px',
+              background: isActive ? '#1a1a1a' : 'transparent',
+              border: '1px solid',
+              borderColor: isActive ? '#555' : 'transparent',
+              borderRadius: 3,
+              cursor: 'pointer',
+              transition: 'background 0.1s, border-color 0.1s',
+              minWidth: 32,
+            }}
+          >
+            <svg
+              width={18}
+              height={14}
+              viewBox="0 0 12 10"
+              style={{ display: 'block' }}
+            >
+              <path
+                d={icon}
+                fill={isActive ? '#888' : '#444'}
+                fillRule="evenodd"
+              />
+            </svg>
+            <span
+              style={{
+                fontSize: 7,
+                fontFamily: 'system-ui, -apple-system, sans-serif',
+                color: isActive ? '#ccc' : '#555',
+                lineHeight: 1,
+                letterSpacing: '0.3px',
+              }}
+            >
+              {label}
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

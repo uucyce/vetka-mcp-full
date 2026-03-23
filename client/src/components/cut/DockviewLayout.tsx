@@ -24,6 +24,15 @@ import './dockview-cut-theme.css';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
+import { showHotkeyToast } from './utils/hotkeyToast';
+import {
+  resolveMap,
+  loadPresetName,
+  loadCustomOverrides,
+  ALL_ACTIONS,
+  ACTION_SCOPE,
+  type FocusPanelId,
+} from '../../hooks/useCutHotkeys';
 
 // MARKER_C4: Panel wrappers extracted to panels/ directory
 import {
@@ -39,6 +48,7 @@ import {
   HistoryPanelDock,
   AutoMontagePanelDock,
   AudioMixerPanelDock,
+  MarkerListPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -49,6 +59,8 @@ import TransitionsPanel from './TransitionsPanel';
 import ToolsPalette from './ToolsPalette';
 // MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
 import StatusBar from './StatusBar';
+import DropZoneOverlay from './DropZoneOverlay';
+import TimelineMiniMap from './panels/TimelineMiniMap';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -79,6 +91,7 @@ const PANEL_COMPONENTS = {
   speed: SpeedControlPanelDock,
   transitions: TransitionsPanelDock,
   tools: ToolsPaletteDock,
+  markers: MarkerListPanel,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -139,6 +152,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         const tlId = panel.params?.timelineId as string | undefined;
         if (tlId || panel.id === 'timeline' || panel.id.startsWith('timeline-')) {
           useCutEditorStore.getState().setFocusedPanel('timeline');
+          // MARKER_GAMMA-8-FIX: Persist focus on every panel change (not just workspace switch)
+          useDockviewStore.getState().saveFocusForPreset(
+            useDockviewStore.getState().activePreset, 'timeline'
+          );
           if (tlId) {
             const editorStore = useCutEditorStore.getState();
             if (editorStore.timelineId && editorStore.timelineId !== tlId) {
@@ -151,6 +168,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           const focus = PANEL_FOCUS_MAP[panel.id];
           if (focus) {
             useCutEditorStore.getState().setFocusedPanel(focus);
+            // MARKER_GAMMA-8-FIX: Persist focus on every panel change
+            useDockviewStore.getState().saveFocusForPreset(
+              useDockviewStore.getState().activePreset, panel.id
+            );
           }
         }
 
@@ -223,9 +244,24 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       });
     }
 
-    // MARKER_GAMMA-29: Set initial focusedPanel from active panel after layout load.
-    // Without this, focusedPanel stays null and hotkeys silently fail.
+    // MARKER_GAMMA-29 + GAMMA-8-FIX: Restore persisted focus from localStorage on load.
+    // Falls back to active panel detection, then timeline default.
     requestAnimationFrame(() => {
+      const savedFocus = useDockviewStore.getState().getFocusForPreset(activePreset);
+      if (savedFocus) {
+        // Try to activate the saved panel in dockview
+        try {
+          const savedPanel = event.api.getPanel(savedFocus);
+          if (savedPanel) {
+            savedPanel.api.setActive();
+            const focus = PANEL_FOCUS_MAP[savedFocus];
+            if (focus) useCutEditorStore.getState().setFocusedPanel(focus);
+            return;
+          }
+        } catch { /* panel not found — fall through */ }
+      }
+
+      // Fallback: detect from dockview active panel
       const active = event.api.activePanel;
       if (active) {
         const tlId = active.params?.timelineId as string | undefined;
@@ -258,6 +294,51 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [toggleMaximize]);
+
+  // MARKER_GAMMA-R5.1: Hotkey visual feedback — show action name toast on shortcut activation
+  useEffect(() => {
+    // Build a lookup: action name → human label
+    const actionLabels = new Map(ALL_ACTIONS.map((a) => [a.action, a.label]));
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if ((e.target as HTMLElement)?.isContentEditable) return;
+
+      const resolved = resolveMap(loadPresetName(), loadCustomOverrides());
+      const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
+
+      for (const [action, parsed] of resolved) {
+        const wantCmd = parsed.cmd;
+        const wantCtrl = parsed.ctrl;
+        const hasMetaOrCtrl = e.metaKey || e.ctrlKey;
+        if (wantCmd && !hasMetaOrCtrl) continue;
+        if (!wantCmd && !wantCtrl && hasMetaOrCtrl) continue;
+        if (wantCtrl && !e.ctrlKey) continue;
+        if (parsed.shift !== e.shiftKey) continue;
+        if (parsed.alt !== e.altKey) continue;
+
+        // Normalize key
+        let eventKey = e.key.toLowerCase();
+        if (e.code === 'Space') eventKey = 'space';
+        else if (e.key.startsWith('Arrow')) eventKey = e.key.toLowerCase();
+
+        if (eventKey !== parsed.key) continue;
+
+        // Check scope
+        const scope = ACTION_SCOPE[action];
+        if (scope !== 'global' && !scope.includes(focusedPanel as FocusPanelId)) continue;
+
+        const label = actionLabels.get(action);
+        if (label) showHotkeyToast(label);
+        return;
+      }
+    };
+
+    // Use capture phase so toast fires even if handler stops propagation
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, []);
 
   // MARKER_GAMMA-34: MutationObserver (GAMMA-26) removed — dead code.
   // Dockview-core JS never sets inline border-color/outline-color (verified in source).
@@ -317,6 +398,22 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         }
         break;
       }
+      case 'close-all': {
+        const group = panel.group;
+        if (group) {
+          const all = api.panels.filter((p) => p.group === group);
+          all.forEach((p) => { try { api.removePanel(p); } catch { /* ok */ } });
+        }
+        break;
+      }
+      case 'float':
+        // MARKER_GAMMA-R9: Float panel into a floating group
+        try {
+          (api as any).addFloatingGroup?.(panel, {
+            x: tabMenu.x, y: tabMenu.y, width: 400, height: 300,
+          });
+        } catch { /* floating API may not be available */ }
+        break;
       case 'maximize':
         toggleMaximize();
         break;
@@ -333,6 +430,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           components={components}
           onReady={onReady}
         />
+        {/* MARKER_GAMMA-R4.3: Drop zone overlay for media drag */}
+        <DropZoneOverlay />
         {/* MARKER_GAMMA-15: Tab context menu */}
         {tabMenu && (
           <div
@@ -355,7 +454,9 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
             {[
               { label: 'Close Panel', action: 'close' },
               { label: 'Close Others in Group', action: 'close-others' },
+              { label: 'Close All in Group', action: 'close-all' },
               { separator: true },
+              { label: 'Float Panel', action: 'float' },
               { label: 'Maximize / Restore', action: 'maximize' },
             ].map((item, i) =>
               'separator' in item ? (
@@ -379,6 +480,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           </div>
         )}
       </div>
+      {/* MARKER_GAMMA-MN1: Mini timeline navigator — overview bar */}
+      <TimelineMiniMap />
       {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
       <StatusBar />
     </div>

@@ -197,6 +197,8 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   const [search, setSearch] = useState('');
   const [capturing, setCapturing] = useState<CutHotkeyAction | null>(null);
   const [conflict, setConflict] = useState<{ action: CutHotkeyAction; binding: string } | null>(null);
+  // MARKER_GAMMA-HK2: Collapsible groups
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const captureRef = useRef<HTMLDivElement>(null);
 
   // Get effective binding for an action
@@ -290,6 +292,16 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
       newValue: '{}',
     }));
   }, []);
+
+  // MARKER_GAMMA-HK2: Reset all custom overrides in a specific group
+  const resetGroup = useCallback((groupName: string) => {
+    const groupActions = ALL_ACTIONS.filter((a) => a.group === groupName).map((a) => a.action);
+    const next = { ...customOverrides };
+    for (const action of groupActions) delete next[action];
+    setCustomOverrides(next);
+    saveCustomOverrides(next);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_custom', newValue: JSON.stringify(next) }));
+  }, [customOverrides]);
 
   // Filter actions by search
   const searchLower = search.toLowerCase();
@@ -391,10 +403,35 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
 
         {/* Action list */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {grouped.map(({ group, actions }) => (
+          {grouped.map(({ group, actions }) => {
+            const isCollapsed = collapsedGroups.has(group);
+            const hasCustomInGroup = actions.some((a) => !!customOverrides[a.action]);
+            return (
             <div key={group}>
-              <div style={GROUP_HEADER}>{group}</div>
-              {actions.map((def) => {
+              {/* MARKER_GAMMA-HK2: Collapsible group header + per-group reset */}
+              <div
+                style={{ ...GROUP_HEADER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
+                onClick={() => setCollapsedGroups((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(group)) next.delete(group); else next.add(group);
+                  return next;
+                })}
+              >
+                <span>
+                  <span style={{ fontSize: 7, marginRight: 4 }}>{isCollapsed ? '\u25B8' : '\u25BE'}</span>
+                  {group} ({actions.length})
+                </span>
+                {hasCustomInGroup && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); resetGroup(group); }}
+                    style={{ background: 'none', border: '1px solid #333', borderRadius: 2, color: '#666', fontSize: 7, padding: '0 4px', cursor: 'pointer' }}
+                    title={`Reset all ${group} bindings to preset defaults`}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+              {!isCollapsed && actions.map((def) => {
                 const binding = getBinding(def.action);
                 const isCustom = !!customOverrides[def.action];
                 const isCapturing = capturing === def.action;
@@ -448,7 +485,8 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                 );
               })}
             </div>
-          ))}
+          );
+          })}
         </div>
 
         {/* Conflict warning */}

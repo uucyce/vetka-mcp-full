@@ -24,6 +24,7 @@ import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 import DockviewLayout from './DockviewLayout';
+import { useDockviewStore } from '../../store/useDockviewStore';
 import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
@@ -85,6 +86,18 @@ interface CutEditorLayoutV2Props {
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   // ─── MARKER_W4.3: Autosave + manual save ───
   const { saveProject } = useCutAutosave();
+
+  // ─── MARKER_INSPECTOR_SYNC: Auto-activate Clip tab when a clip is selected ───
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  useEffect(() => {
+    if (!selectedClipId) return;
+    const api = useDockviewStore.getState().apiRef;
+    if (!api) return;
+    try {
+      const clipPanel = api.getPanel('clip');
+      if (clipPanel) clipPanel.api.setActive();
+    } catch { /* panel not found */ }
+  }, [selectedClipId]);
 
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
   const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
@@ -382,10 +395,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
     // Comma (,) = Insert (ripple). Period (.) = Overwrite (replace).
     // Tries backend via useThreePointEdit; falls back to local-first insert.
+    // MARKER_3PT_LOCAL_FIRST: Always do local-first insert, then async backend with skipRefresh.
+    // Prevents mock-backend race where refreshProjectState reloads stale data.
     insertEdit: async () => {
-      const ok = await threePointInsert();
-      if (!ok) {
-        // MARKER_TDD-3PT1: Local-first fallback when backend unavailable
+      {
         const s = useCutEditorStore.getState();
         const srcIn = s.sourceMarkIn ?? 0;
         const srcOut = s.sourceMarkOut ?? srcIn + 2;
@@ -393,12 +406,18 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         if (dur <= 0) return;
         const { videoLaneId } = s.getInsertTargets();
         if (!videoLaneId) return;
-        // Find source media — use sourceMediaPath or clip under playhead
+        // MARKER_3PT_SRC_FIX: Find source media — sourceMediaPath → clip under playhead → any clip in timeline
         let srcPath = s.sourceMediaPath;
         if (!srcPath) {
           for (const lane of s.lanes) {
             const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
             if (c) { srcPath = c.source_path; break; }
+          }
+        }
+        // Fallback: use first clip's source path from any lane (for tests/no-media scenarios)
+        if (!srcPath) {
+          for (const lane of s.lanes) {
+            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
           }
         }
         if (!srcPath) return;
@@ -416,12 +435,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         });
         s.setLanes(newLanes);
         s.seek(seqIn + dur);
+        // Async backend (skipRefresh: local state already updated)
+        s.applyTimelineOps([{ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
       }
     },
+    // MARKER_3PT_LOCAL_FIRST: Always local-first overwrite
     overwriteEdit: async () => {
-      const ok = await threePointOverwrite();
-      if (!ok) {
-        // MARKER_TDD-3PT2: Local-first fallback for overwrite
+      {
+        // MARKER_TDD-3PT2: Local-first overwrite
         const s = useCutEditorStore.getState();
         const srcIn = s.sourceMarkIn ?? 0;
         const srcOut = s.sourceMarkOut ?? srcIn + 2;
@@ -429,11 +450,17 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         if (dur <= 0) return;
         const { videoLaneId } = s.getInsertTargets();
         if (!videoLaneId) return;
+        // MARKER_3PT_SRC_FIX: Same source resolution as insertEdit
         let srcPath = s.sourceMediaPath;
         if (!srcPath) {
           for (const lane of s.lanes) {
             const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
             if (c) { srcPath = c.source_path; break; }
+          }
+        }
+        if (!srcPath) {
+          for (const lane of s.lanes) {
+            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
           }
         }
         if (!srcPath) return;
@@ -447,6 +474,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         });
         s.setLanes(newLanes);
         s.seek(seqIn + dur);
+        // Async backend (skipRefresh: local state already updated)
+        s.applyTimelineOps([{ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
       }
     },
     // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
@@ -468,6 +497,77 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
           }
         }
       }
+    },
+
+    // MARKER_TL1: Fit to Fill — speed-adjust source to fill sequence range (Shift+F11)
+    // FCP7 Ch.11 p.165: source duration ÷ sequence duration = speed ratio
+    fitToFill: async () => {
+      const s = useCutEditorStore.getState();
+      const srcIn = s.sourceMarkIn ?? 0;
+      const srcOut = s.sourceMarkOut;
+      const seqIn = s.sequenceMarkIn ?? s.currentTime;
+      const seqOut = s.sequenceMarkOut;
+      if (srcOut == null || seqOut == null) return; // need both source and sequence OUT
+      const srcDur = srcOut - srcIn;
+      const seqDur = seqOut - seqIn;
+      if (srcDur <= 0 || seqDur <= 0) return;
+      const speed = srcDur / seqDur; // source 3s into 6s range = 0.5x speed
+      let srcPath = s.sourceMediaPath;
+      if (!srcPath) {
+        for (const lane of s.lanes) {
+          const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+          if (c) { srcPath = c.source_path; break; }
+        }
+      }
+      if (!srcPath) return;
+      const { videoLaneId } = s.getInsertTargets();
+      if (!videoLaneId) return;
+      const newClipId = `clip_ftf_${Date.now()}`;
+      // Local-first: insert clip with speed
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== videoLaneId) return lane;
+        const clips = [...lane.clips, {
+          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+          duration_sec: seqDur, source_in: srcIn, speed,
+        } as any];
+        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+        return { ...lane, clips };
+      });
+      s.setLanes(newLanes);
+      s.seek(seqIn + seqDur);
+      // Also try backend
+      void s.applyTimelineOps([{
+        op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn,
+        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId,
+      }]);
+    },
+
+    // MARKER_TL2: Superimpose — add clip on V2 above current clip (F12)
+    // FCP7 Ch.11 p.167: places source clip on next higher video track at playhead
+    superimpose: () => {
+      const s = useCutEditorStore.getState();
+      const srcIn = s.sourceMarkIn ?? 0;
+      const srcOut = s.sourceMarkOut ?? srcIn + 2;
+      const dur = srcOut - srcIn;
+      if (dur <= 0) return;
+      let srcPath = s.sourceMediaPath;
+      if (!srcPath) return;
+      // Find V2 (or next video lane above V1)
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
+      const targetLane = videoLanes.length > 1 ? videoLanes[1] : videoLanes[0];
+      if (!targetLane) return;
+      const seqIn = s.currentTime;
+      const newClipId = `clip_super_${Date.now()}`;
+      const newLanes = s.lanes.map((lane) => {
+        if (lane.lane_id !== targetLane.lane_id) return lane;
+        const clips = [...lane.clips, {
+          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+          duration_sec: dur, source_in: srcIn,
+        } as any];
+        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+        return { ...lane, clips };
+      });
+      s.setLanes(newLanes);
     },
 
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
@@ -709,6 +809,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       await s.refreshProjectState?.();
     },
     toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
+    // MARKER_SNAP_N: Snap toggle (N key, FCP7 standard)
+    toggleSnap: () => useCutEditorStore.getState().toggleSnap(),
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');
@@ -803,10 +905,18 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const s = useCutEditorStore.getState();
       const isSourceFocused = s.focusedPanel === 'source';
       const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
-      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
+      let maxDur = isSourceFocused ? s.sourceDuration : s.duration;
+      // MARKER_JKL_DUR_FIX: If duration is 0 (not set), compute from lanes
+      if (maxDur <= 0 && !isSourceFocused) {
+        for (const lane of s.lanes) {
+          for (const clip of lane.clips) {
+            maxDur = Math.max(maxDur, clip.start_sec + clip.duration_sec);
+          }
+        }
+      }
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const newTime = curTime + dt * shuttleSpeed;
-      doSeek(Math.max(0, Math.min(newTime, maxDur)));
+      doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };

@@ -5,13 +5,14 @@
 # Commander updates this file; agents read it via AgentRegistry loader.
 # ═══════════════════════════════════════════════════════════════
 
-version: "1.0"
+version: "1.1"
 project_id: "CUT"
 
 roles:
   # ── Alpha: Engine Domain ──────────────────────────────────
   - callsign: "Alpha"
     domain: "engine"
+    pipeline_stage: "coder"
     role_title: "Engine Architect"
     worktree: "cut-engine"
     branch: "claude/cut-engine"
@@ -40,6 +41,7 @@ roles:
   # ── Beta: Media/Color Domain ──────────────────────────────
   - callsign: "Beta"
     domain: "media"
+    pipeline_stage: "coder"
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
@@ -74,6 +76,7 @@ roles:
   # ── Gamma: UX/Panel Domain ────────────────────────────────
   - callsign: "Gamma"
     domain: "ux"
+    pipeline_stage: "coder"
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
@@ -98,6 +101,7 @@ roles:
   # ── Delta: QA Domain ──────────────────────────────────────
   - callsign: "Delta"
     domain: "qa"
+    pipeline_stage: "verifier"
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
@@ -121,6 +125,7 @@ roles:
   # ── Epsilon: QA2 Domain ─────────────────────────────────
   - callsign: "Epsilon"
     domain: "qa"
+    pipeline_stage: "verifier"
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
@@ -141,9 +146,42 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
+  # ── Zeta: Harness/Infrastructure Domain ─────────────────
+  - callsign: "Zeta"
+    domain: "harness"
+    pipeline_stage: null
+    role_title: "Harness Engineer / Infrastructure"
+    worktree: "harness"
+    branch: "claude/harness"
+    owned_paths:
+      - "src/mcp/tools/task_board_tools.py"
+      - "src/mcp/tools/session_tools.py"
+      - "src/mcp/tools/git_tool.py"
+      - "src/mcp/vetka_mcp_bridge.py"
+      - "src/orchestration/task_board.py"
+      - "src/services/smart_debrief.py"
+      - "src/services/session_tracker.py"
+      - "src/services/agent_registry.py"
+      - "src/tools/generate_claude_md.py"
+      - "data/templates/claude_md_template.j2"
+      - "data/templates/agent_registry.yaml"
+      - "tests/test_phase195_promote_guard.py"
+      - "tests/test_smart_debrief.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ZETA_*.md"
+    key_docs:
+      - "docs/192_task_SQLite/HANDOFF_ZETA_F4_MEMORY_WIRING.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_GIFTED_LAMPORT_2026-03-23.md"
+    roadmap: ""
+
   # ── Commander: Architect Domain ───────────────────────────
   - callsign: "Commander"
     domain: "architect"
+    pipeline_stage: "architect"
     role_title: "Architect-Commander"
     worktree: "pedantic-bell"
     branch: "claude/pedantic-bell"

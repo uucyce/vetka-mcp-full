@@ -58,6 +58,8 @@ export type CutHotkeyAction =
   | 'insertEdit'
   | 'overwriteEdit'
   | 'replaceEdit'
+  | 'fitToFill'
+  | 'superimpose'
   // MARKER_W5.TRIM: Trim tools (FCP7 Ch.44)
   | 'slipTool'
   | 'slideTool'
@@ -109,8 +111,9 @@ export type CutHotkeyAction =
   | 'focusTimeline'
   | 'focusProject'
   | 'focusEffects'
-  // Linked selection
+  // Linked selection + Snap
   | 'toggleLinkedSelection'
+  | 'toggleSnap'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -128,36 +131,38 @@ type ActionScope = 'global' | FocusPanelId[];
 
 export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   // Playback — works in source, program, and timeline
-  playPause:           ['source', 'program', 'timeline'],
-  stop:                ['source', 'program', 'timeline'],
-  shuttleBack:         ['source', 'program', 'timeline'],
-  shuttleForward:      ['source', 'program', 'timeline'],
-  frameStepBack:       ['source', 'program', 'timeline'],
-  frameStepForward:    ['source', 'program', 'timeline'],
-  goToStart:           ['source', 'program', 'timeline'],
-  goToEnd:             ['source', 'program', 'timeline'],
-  cyclePlaybackRate:   ['source', 'program', 'timeline'],
-  fiveFrameStepBack:   ['source', 'program', 'timeline'],
-  fiveFrameStepForward:['source', 'program', 'timeline'],
+  playPause:           'global',
+  stop:                'global',
+  shuttleBack:         'global',
+  shuttleForward:      'global',
+  frameStepBack:       'global',
+  frameStepForward:    'global',
+  goToStart:           'global',
+  goToEnd:             'global',
+  cyclePlaybackRate:   'global',
+  fiveFrameStepBack:   'global',
+  fiveFrameStepForward:'global',
 
   // Marking — source: source marks, program/timeline: sequence marks
-  markIn:              ['source', 'program', 'timeline'],
-  markOut:             ['source', 'program', 'timeline'],
-  clearIn:             ['source', 'program', 'timeline'],
-  clearOut:            ['source', 'program', 'timeline'],
-  clearInOut:          ['source', 'program', 'timeline'],
-  goToIn:              ['source', 'program', 'timeline'],
-  goToOut:             ['source', 'program', 'timeline'],
+  markIn:              'global',
+  markOut:             'global',
+  clearIn:             'global',
+  clearOut:            'global',
+  clearInOut:          'global',
+  goToIn:              'global',
+  goToOut:             'global',
 
   // Editing — timeline only
-  deleteClip:          ['timeline'],
-  splitClip:           ['timeline'],
-  rippleDelete:        ['timeline'],
-  nudgeLeft:           ['timeline'],
-  nudgeRight:          ['timeline'],
-  insertEdit:          ['timeline', 'source'],
-  overwriteEdit:       ['timeline', 'source'],
-  replaceEdit:         ['timeline', 'source'],
+  deleteClip:          'global',
+  splitClip:           'global',
+  rippleDelete:        'global',
+  nudgeLeft:           'global',
+  nudgeRight:          'global',
+  insertEdit:          'global',
+  overwriteEdit:       'global',
+  replaceEdit:         'global',
+  fitToFill:           'global',
+  superimpose:         'global',
 
   // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
   razorTool:           'global',
@@ -169,34 +174,34 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   rollTool:            'global',
 
   // Navigation — timeline/program
-  prevEditPoint:       ['timeline'],
-  nextEditPoint:       ['timeline'],
+  prevEditPoint:       'global',
+  nextEditPoint:       'global',
   // MARKER_W5.MF: Match Frame + Q toggle
-  matchFrame:          ['program', 'timeline'],
+  matchFrame:          'global',
   toggleSourceProgram: 'global',
 
   // Markers — source, program, timeline
-  addMarker:           ['source', 'program', 'timeline'],
-  addComment:          ['source', 'program', 'timeline'],
-  nextMarker:          ['source', 'program', 'timeline'],
-  prevMarker:          ['source', 'program', 'timeline'],
-  nextKeyframe:        ['timeline'],
-  prevKeyframe:        ['timeline'],
-  addKeyframe:         ['timeline'],
-  toggleRecordMode:    ['timeline'],  // MARKER_B3.2
+  addMarker:           'global',
+  addComment:          'global',
+  nextMarker:          'global',
+  prevMarker:          'global',
+  nextKeyframe:        'global',
+  prevKeyframe:        'global',
+  addKeyframe:         'global',
+  toggleRecordMode:    'global',  // MARKER_B3.2
   openSpeedControl:    'global',
 
   // Mark operations
   markClip:            'global',
-  playInToOut:         ['source', 'program', 'timeline'],
+  playInToOut:         'global',
 
   // Sequence operations — timeline only
   liftClip:            'global',
   extractClip:         'global',
   closeGap:            'global',
   extendEdit:          'global',
-  splitEditLCut:       ['timeline'],
-  splitEditJCut:       ['timeline'],
+  splitEditLCut:       'global',
+  splitEditJCut:       'global',
   addDefaultTransition:'global',
 
   // Global — always fire
@@ -219,6 +224,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   focusProject:        'global',
   focusEffects:        'global',
   toggleLinkedSelection: 'global',
+  toggleSnap:          'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -290,6 +296,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
+  fitToFill:         'Shift+F11',
+  superimpose:       'F12',
   // MARKER_W5.TRIM: Premiere trim tools
   slipTool:          'y',
   slideTool:         'u',
@@ -325,8 +333,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection
+  // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
+  toggleSnap:        'n',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -382,6 +391,8 @@ export const FCP7_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
+  fitToFill:         'Shift+F11',
+  superimpose:       'F12',
   // MARKER_W5.TRIM: FCP7 trim tools — Y=slip, U=slide (S conflicts with snap toggle)
   slipTool:          'y',
   slideTool:         'u',
@@ -417,8 +428,9 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection (FCP7 standard: Shift+L)
+  // Linked selection (FCP7 standard: Shift+L) + Snap (N)
   toggleLinkedSelection: 'Shift+l',
+  toggleSnap:        'n',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -596,6 +608,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'insertEdit', label: 'Insert Edit', group: 'Tools' },
   { action: 'overwriteEdit', label: 'Overwrite Edit', group: 'Tools' },
   { action: 'replaceEdit', label: 'Replace Edit (F11)', group: 'Tools' },
+  { action: 'fitToFill', label: 'Fit to Fill (Shift+F11)', group: 'Tools' },
+  { action: 'superimpose', label: 'Superimpose (F12)', group: 'Tools' },
   // MARKER_W5.TRIM: Trim tools
   { action: 'slipTool', label: 'Slip Tool', group: 'Tools' },
   { action: 'slideTool', label: 'Slide Tool', group: 'Tools' },
@@ -642,6 +656,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusTimeline', label: 'Focus Timeline', group: 'Window' },
   { action: 'focusProject', label: 'Focus Project Panel', group: 'Window' },
   { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
+  { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
+  { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
@@ -751,8 +767,9 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
       }
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    // MARKER_HOTKEY_CAPTURE: Use capture phase to intercept before dockview stopPropagation
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [disabled]);
 
   // Preset switcher

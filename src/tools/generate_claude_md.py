@@ -284,8 +284,7 @@ def write_claude_md(
         return None
 
     if output_dir is None:
-        # MARKER_195.20b: Write to ~/.claude/projects/ instead of worktree root.
-        # This avoids git conflicts — the file is never tracked.
+        # MARKER_195.22: Dual-write for single-role generation too.
         worktree_dir = _WORKTREES_DIR / role.worktree
         output_dir = _get_claude_projects_dir(worktree_dir)
 
@@ -293,6 +292,13 @@ def write_claude_md(
     output_path = output_dir / "CLAUDE.md"
     output_path.write_text(content, encoding="utf-8")
     logger.info("[generate_claude_md] Wrote %s (%d bytes)", output_path, len(content))
+
+    # MARKER_195.22: Also write to local worktree (prevents stale identity bug)
+    local_dir = _WORKTREES_DIR / role.worktree
+    if local_dir.exists() and local_dir != output_dir:
+        local_path = local_dir / "CLAUDE.md"
+        local_path.write_text(content, encoding="utf-8")
+        logger.info("[generate_claude_md] Wrote local %s (%d bytes)", local_path, len(content))
 
     return output_path
 
@@ -318,12 +324,21 @@ def generate_all(dry_run: bool = False, output_base: Optional[Path] = None) -> d
         results[role.callsign] = content
 
         if not dry_run:
-            # MARKER_195.20b: Write to ~/.claude/projects/ — never conflicts with git
+            # MARKER_195.22: Dual-write — both locations so Claude Code always finds the role.
+            # Priority 1: ~/.claude/projects/ (Claude Code discovery, never conflicts with git)
             worktree_dir = (output_base or _WORKTREES_DIR) / role.worktree
             out_dir = _get_claude_projects_dir(worktree_dir) if not output_base else worktree_dir
             out_dir.mkdir(parents=True, exist_ok=True)
             (out_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
             logger.info("[generate_claude_md] Wrote %s/CLAUDE.md", out_dir)
+
+            # Priority 2: .claude/worktrees/<name>/CLAUDE.md (local override, takes priority)
+            # Without this, stale generic files cause identity confusion (Gamma→Commander bug).
+            if not output_base:
+                local_dir = _WORKTREES_DIR / role.worktree
+                if local_dir.exists():
+                    (local_dir / "CLAUDE.md").write_text(content, encoding="utf-8")
+                    logger.info("[generate_claude_md] Wrote local %s/CLAUDE.md", local_dir)
 
     return results
 

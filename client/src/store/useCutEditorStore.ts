@@ -378,6 +378,8 @@ interface CutEditorState {
   extendEdit: () => void;                        // Extend nearest edit to playhead
   // MARKER_TD4: Numeric trim — trim selected clip's nearest edge by N frames
   numericTrimSelected: (frames: number) => void;
+  // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
+  asymmetricTrim: (leftClipId: string, leftDeltaFrames: number, rightClipId: string, rightDeltaFrames: number) => void;
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
@@ -474,6 +476,9 @@ interface CutEditorState {
     timelineId?: string;
     refreshProjectState?: (() => Promise<void>) | null;
   }) => void;
+
+  // MARKER_DND_STORE: Drop media from ProjectPanel onto timeline
+  dropMediaOnTimeline: (paths: string[], laneId: string, dropTimeSec: number, mode: 'insert' | 'overwrite') => void;
 
   // MARKER_UNDO-FIX: Shared applyTimelineOps — routes edits through backend undo stack
   applyTimelineOps: (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => Promise<void>;
@@ -642,7 +647,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     // MARKER_B3.2: exit record mode when stopping playback
     return next ? { isPlaying: true } : { isPlaying: false, isRecordMode: false };
   }),
-  seek: (time) => set({ currentTime: Math.max(0, time) }),
+  seek: (time) => set((state) => ({ currentTime: Math.min(state.duration || Infinity, Math.max(0, time)) })),
   setDuration: (d) => set({ duration: d }),
   // MARKER_DUAL-VIDEO: Source monitor independent playback actions
   playSource: () => set({ sourceIsPlaying: true }),
@@ -655,8 +660,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W1.4: Separate marks
   setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
   setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
-  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
-  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
+  // MARKER_MRK-FIX: Sync legacy markIn/markOut when setting sequence marks
+  // Tests and some components read markIn/markOut — keep them in sync
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t, markIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t, markOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
@@ -748,61 +755,40 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
     set({ clipboard: clips });
   },
+  // MARKER_UNDO_CUT: Cut clips — copy to clipboard + remove via applyTimelineOps for undo support
   cutClips: () => {
-    const state = get();
-    const { lanes, selectedClipIds } = state;
+    const { lanes, selectedClipIds } = get();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
-    const newLanes = lanes.map((lane) => ({
-      ...lane,
-      clips: lane.clips.filter((c) => {
-        if (selectedClipIds.has(c.clip_id)) { clips.push({ ...c }); return false; }
-        return true;
-      }),
-    }));
-    set({ clipboard: clips, lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (selectedClipIds.has(clip.clip_id)) clips.push({ ...clip });
+      }
+    }
+    set({ clipboard: clips, selectedClipId: null, selectedClipIds: new Set() });
+    // Route removal through backend undo stack
+    const ops = clips.map((c) => ({ op: 'remove_clip', clip_id: c.clip_id }));
+    void get().applyTimelineOps(ops);
   },
+  // MARKER_UNDO_PASTE: Paste clips via applyTimelineOps for undo support
   pasteClips: (mode) => {
-    const { clipboard, currentTime, lanes, getInsertTargets } = get();
+    const { clipboard, currentTime, getInsertTargets } = get();
     if (clipboard.length === 0) return;
     const targets = getInsertTargets();
     const targetLaneId = targets.videoLaneId;
     if (!targetLaneId) return;
-    // Calculate total duration of clipboard
     const minStart = Math.min(...clipboard.map((c) => c.start_sec));
+    const opType = mode === 'insert' ? 'insert_at' : 'overwrite_at';
+    const ops = clipboard.map((c) => ({
+      op: opType,
+      lane_id: targetLaneId,
+      start_sec: currentTime + (c.start_sec - minStart),
+      duration_sec: c.duration_sec,
+      source_path: c.source_path,
+    }));
+    void get().applyTimelineOps(ops);
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
-    const totalDur = maxEnd - minStart;
-
-    const newLanes = lanes.map((lane) => {
-      if (lane.lane_id !== targetLaneId) return lane;
-      const pastedClips = clipboard.map((c) => ({
-        ...c,
-        clip_id: `clip_paste_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        start_sec: currentTime + (c.start_sec - minStart),
-      }));
-      if (mode === 'insert') {
-        // Push existing clips right
-        const pushed = lane.clips.map((c) =>
-          c.start_sec >= currentTime ? { ...c, start_sec: c.start_sec + totalDur } : c,
-        );
-        return { ...lane, clips: [...pushed, ...pastedClips] };
-      } else {
-        // Overwrite: remove overlapping, then add
-        const overEnd = currentTime + totalDur;
-        const trimmed = lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          if (c.start_sec >= currentTime && cEnd <= overEnd) return [];
-          if (cEnd <= currentTime || c.start_sec >= overEnd) return [c];
-          const result = [];
-          if (c.start_sec < currentTime) result.push({ ...c, duration_sec: currentTime - c.start_sec });
-          if (cEnd > overEnd) result.push({ ...c, clip_id: c.clip_id + '_pw', start_sec: overEnd, duration_sec: cEnd - overEnd });
-          return result;
-        });
-        return { ...lane, clips: [...trimmed, ...pastedClips] };
-      }
-    });
-    set({ lanes: newLanes });
-    get().seek(currentTime + totalDur);
+    get().seek(currentTime + (maxEnd - minStart));
   },
   pasteAttributes: () => {
     const { clipboard, selectedClipIds, lanes } = get();
@@ -818,97 +804,68 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     set({ lanes: newLanes });
   },
 
-  // MARKER_SEQ-MENU: Sequence editing operations
+  // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps
   liftClip: () => {
     // Lift: remove selected clips, leave gap (like Delete but respects In/Out range)
-    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut, currentTime } = get();
-    if (selectedClipIds.size > 0) {
-      // Remove selected clips, leave gap
-      const newLanes = lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.filter((c) => !selectedClipIds.has(c.clip_id)),
-      }));
-      set({ lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
-    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
-      // No selection: lift range between In/Out marks
-      const inPt = sequenceMarkIn;
-      const outPt = sequenceMarkOut;
-      const newLanes = lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          if (c.start_sec >= inPt && cEnd <= outPt) return []; // fully inside → remove
-          if (cEnd <= inPt || c.start_sec >= outPt) return [c]; // fully outside → keep
-          // Partial overlap → trim
-          const result: typeof lane.clips = [];
-          if (c.start_sec < inPt) result.push({ ...c, duration_sec: inPt - c.start_sec });
-          if (cEnd > outPt) result.push({ ...c, clip_id: c.clip_id + '_lift', start_sec: outPt, duration_sec: cEnd - outPt });
-          return result;
-        }),
-      }));
-      set({ lanes: newLanes });
-    }
-  },
-  extractClip: () => {
-    // Extract: remove selected clips, close gap (ripple downstream)
     const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
-    let gapDuration = 0;
-    let gapStart = Infinity;
-
+    const ops: Array<Record<string, unknown>> = [];
     if (selectedClipIds.size > 0) {
-      // Calculate gap from selected clips
+      for (const id of selectedClipIds) ops.push({ op: 'remove_clip', clip_id: id });
+      set({ selectedClipId: null, selectedClipIds: new Set() });
+    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
+      // Lift range: remove clips in range, trim partials
       for (const lane of lanes) {
-        for (const clip of lane.clips) {
-          if (selectedClipIds.has(clip.clip_id)) {
-            gapStart = Math.min(gapStart, clip.start_sec);
-            gapDuration = Math.max(gapDuration, clip.start_sec + clip.duration_sec - gapStart);
+        for (const c of lane.clips) {
+          const cEnd = c.start_sec + c.duration_sec;
+          if (c.start_sec >= sequenceMarkIn && cEnd <= sequenceMarkOut) {
+            ops.push({ op: 'remove_clip', clip_id: c.clip_id });
+          } else if (!(cEnd <= sequenceMarkIn || c.start_sec >= sequenceMarkOut)) {
+            // Partial overlap — trim to fit
+            if (c.start_sec < sequenceMarkIn) {
+              ops.push({ op: 'trim_clip', clip_id: c.clip_id, duration_sec: sequenceMarkIn - c.start_sec });
+            }
           }
         }
       }
-      const newLanes = lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips
-          .filter((c) => !selectedClipIds.has(c.clip_id))
-          .map((c) => c.start_sec >= gapStart + gapDuration ? { ...c, start_sec: c.start_sec - gapDuration } : c),
-      }));
-      set({ lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
-    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
-      // Extract range: remove and ripple
-      gapDuration = sequenceMarkOut - sequenceMarkIn;
-      gapStart = sequenceMarkIn;
-      const newLanes = lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          if (c.start_sec >= gapStart && cEnd <= sequenceMarkOut) return [];
-          if (cEnd <= gapStart) return [c];
-          if (c.start_sec >= sequenceMarkOut) return [{ ...c, start_sec: c.start_sec - gapDuration }];
-          // Partial: trim then ripple remainder
-          const result: typeof lane.clips = [];
-          if (c.start_sec < gapStart) result.push({ ...c, duration_sec: gapStart - c.start_sec });
-          if (cEnd > sequenceMarkOut) result.push({ ...c, clip_id: c.clip_id + '_ext', start_sec: gapStart, duration_sec: cEnd - sequenceMarkOut });
-          return result;
-        }),
-      }));
-      set({ lanes: newLanes });
     }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
+  // MARKER_UNDO_EXTRACT: Extract clips — remove + ripple via applyTimelineOps
+  extractClip: () => {
+    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    const ops: Array<Record<string, unknown>> = [];
+    if (selectedClipIds.size > 0) {
+      for (const id of selectedClipIds) ops.push({ op: 'ripple_delete', clip_id: id });
+      set({ selectedClipId: null, selectedClipIds: new Set() });
+    } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
+      for (const lane of lanes) {
+        for (const c of lane.clips) {
+          const cEnd = c.start_sec + c.duration_sec;
+          if (c.start_sec >= sequenceMarkIn && cEnd <= sequenceMarkOut) {
+            ops.push({ op: 'ripple_delete', clip_id: c.clip_id });
+          }
+        }
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
+  },
+  // MARKER_UNDO_CLOSEGAP: Close gap via applyTimelineOps for undo support
   closeGap: () => {
-    // Close gap: for each targeted lane, remove empty space between clips
     const { lanes, targetedLanes } = get();
-    const newLanes = lanes.map((lane) => {
-      if (targetedLanes.size > 0 && !targetedLanes.has(lane.lane_id)) return lane;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (targetedLanes.size > 0 && !targetedLanes.has(lane.lane_id)) continue;
       const sorted = [...lane.clips].sort((a, b) => a.start_sec - b.start_sec);
       let cursor = 0;
-      const packed = sorted.map((clip) => {
+      for (const clip of sorted) {
         const newStart = Math.max(cursor, 0);
-        const shifted = newStart < clip.start_sec ? { ...clip, start_sec: newStart } : clip;
-        cursor = shifted.start_sec + shifted.duration_sec;
-        return shifted;
-      });
-      return { ...lane, clips: packed };
-    });
-    set({ lanes: newLanes });
+        if (newStart < clip.start_sec) {
+          ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: newStart });
+        }
+        cursor = (newStart < clip.start_sec ? newStart : clip.start_sec) + clip.duration_sec;
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
   // MARKER_TD3: Extend Edit (E key) — extend nearest clip edge to playhead
   // FCP7 Ch.19 p.285: finds closest edit point, extends it to playhead
@@ -964,6 +921,34 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         void get().applyTimelineOps([{ op: 'trim_clip', clip_id: selectedClipId, duration_sec: newDur }]);
         return;
       }
+    }
+  },
+
+  // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
+  // FCP7 Ch.21: different L/R trim values. Left clip out-point changes by leftDeltaFrames,
+  // right clip in-point changes by rightDeltaFrames. Does NOT preserve total duration.
+  asymmetricTrim: (leftClipId, leftDeltaFrames, rightClipId, rightDeltaFrames) => {
+    const { projectFramerate, lanes } = get();
+    const fps = projectFramerate || 25;
+    const ops: Array<Record<string, unknown>> = [];
+
+    for (const lane of lanes) {
+      const leftClip = lane.clips.find((c) => c.clip_id === leftClipId);
+      if (leftClip && leftDeltaFrames !== 0) {
+        const newDur = Math.max(0.01, leftClip.duration_sec + leftDeltaFrames / fps);
+        ops.push({ op: 'trim_clip', clip_id: leftClipId, duration_sec: newDur });
+      }
+      const rightClip = lane.clips.find((c) => c.clip_id === rightClipId);
+      if (rightClip && rightDeltaFrames !== 0) {
+        const delta = rightDeltaFrames / fps;
+        const newStart = Math.max(0, rightClip.start_sec + delta);
+        const newDur = Math.max(0.01, rightClip.duration_sec - delta);
+        ops.push({ op: 'trim_clip', clip_id: rightClipId, start_sec: newStart, duration_sec: newDur });
+      }
+    }
+
+    if (ops.length) {
+      void get().applyTimelineOps(ops);
     }
   },
 
@@ -1263,6 +1248,29 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       refreshProjectState:
         session.refreshProjectState === undefined ? state.refreshProjectState : session.refreshProjectState,
     })),
+
+  // MARKER_DND_STORE: Drop media from ProjectPanel onto timeline
+  // Consumes text/cut-media-paths JSON array, creates clips sequentially at drop position
+  dropMediaOnTimeline: (paths, laneId, dropTimeSec, mode) => {
+    if (!paths.length) return;
+    const DEFAULT_CLIP_DURATION = 5; // seconds — placeholder until probe gives real duration
+    const op = mode === 'insert' ? 'insert_at' : 'overwrite_at';
+    const ops: Array<Record<string, unknown>> = [];
+    let cursor = dropTimeSec;
+    for (const sourcePath of paths) {
+      ops.push({
+        op,
+        lane_id: laneId,
+        start_sec: cursor,
+        duration_sec: DEFAULT_CLIP_DURATION,
+        source_path: sourcePath,
+      });
+      cursor += DEFAULT_CLIP_DURATION;
+    }
+    void get().applyTimelineOps(ops);
+    // Select first dropped clip conceptually — seek to drop position
+    get().seek(dropTimeSec);
+  },
 
   // MARKER_UNDO-FIX: Shared applyTimelineOps — all editing ops route through backend undo stack
   applyTimelineOps: async (ops, opts) => {

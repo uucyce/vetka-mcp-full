@@ -232,7 +232,7 @@ export default function AutoMontageMenu() {
   // ─── Error state ───
   if (montageError) {
     return (
-      <div style={{ ...PROGRESS_BAR_OUTER, color: '#e55' }}>
+      <div style={{ ...PROGRESS_BAR_OUTER, color: '#999' }}>
         <span>Montage error: {montageError}</span>
       </div>
     );

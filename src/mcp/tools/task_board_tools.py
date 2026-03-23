@@ -293,6 +293,26 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     board = get_task_board()
 
+    # MARKER_196.2.2: Auto-attribution from session role
+    # If session_init(role=X) was called, auto-fill role/domain/branch fields.
+    # Uses setdefault — explicit arguments always take precedence.
+    _session_role = None
+    try:
+        from src.services.session_tracker import get_session_tracker
+        _session_role = get_session_tracker().get_role(_tracker_sid)
+    except Exception:
+        pass
+
+    if _session_role and action in ("claim", "complete", "add"):
+        if action == "claim":
+            arguments.setdefault("assigned_to", _session_role["callsign"])
+            arguments.setdefault("role", _session_role["callsign"])
+        if action == "complete":
+            arguments.setdefault("branch", _session_role["branch"])
+        if action == "add":
+            arguments.setdefault("role", _session_role["callsign"])
+            arguments.setdefault("domain", _session_role["domain"])
+
     if action == "add":
         title = arguments.get("title")
         if not title:
@@ -442,7 +462,15 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "No fields to update"}
 
         ok = board.update_task(task_id, **updates)
-        return {"success": ok, "updated_fields": list(updates.keys())}
+        # MARKER_195.22: Include error context when update fails
+        result = {"success": ok, "updated_fields": list(updates.keys())}
+        if not ok:
+            task_exists = board.get_task(task_id)
+            if not task_exists:
+                result["error"] = f"Task {task_id} not found"
+            else:
+                result["error"] = f"update_task returned False (possible invalid status or phase_type)"
+        return result
 
     elif action == "remove":
         task_id = arguments.get("task_id")
@@ -508,13 +536,85 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not current_branch:
             current_branch = _detect_git_branch(cwd=worktree_path)
 
+        # MARKER_195.22: Auto-infer branch from task metadata via AgentRegistry
+        # Prevents merge_request failures due to missing branch_name.
+        # Tries: role field → assigned_to → callsign prefix in title (ALPHA-P1: ...)
+        if not current_branch or current_branch == "main":
+            try:
+                from src.services.agent_registry import get_agent_registry
+                registry = get_agent_registry()
+                _candidates = [
+                    task.get("role", ""),
+                    task.get("assigned_to", ""),
+                ]
+                # Extract callsign from title prefix: "ALPHA-P1: ..." → "Alpha"
+                _title = task.get("title", "")
+                _title_prefix = _title.split("-")[0].split(":")[0].split(" ")[0].strip()
+                if _title_prefix and len(_title_prefix) <= 10:
+                    _candidates.append(_title_prefix)
+
+                for _cand in _candidates:
+                    if not _cand or _cand.lower() in ("unknown", ""):
+                        continue
+                    agent_role = registry.get_by_callsign(_cand)
+                    if agent_role and agent_role.branch and agent_role.branch != "main":
+                        current_branch = agent_role.branch
+                        logger.info(f"[TaskBoard] Auto-inferred branch={current_branch} from '{_cand}'")
+                        break
+            except Exception as e:
+                logger.debug(f"[TaskBoard] Branch inference from registry failed: {e}")
+
         # MARKER_192.2: execution_mode override for manual agents
         exec_mode = arguments.get("execution_mode")
+
+        # MARKER_196.3.1: Ownership validation (soft mode)
+        # Compare changed files against role.owned_paths from session.
+        # Soft mode: warn in result, don't block.
+        _ownership_warnings = []
+        if _session_role:
+            try:
+                from src.services.agent_registry import get_agent_registry
+                _ow_reg = get_agent_registry()
+                _ow_role = _ow_reg.get_by_callsign(_session_role["callsign"])
+                if _ow_role:
+                    import subprocess as _ow_sp
+                    _ow_cwd = worktree_path or str(Path(__file__).resolve().parents[3])
+                    _ow_diff = _ow_sp.run(
+                        ["git", "diff", "--name-only", "--cached"],
+                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                    )
+                    # Also check unstaged
+                    _ow_diff2 = _ow_sp.run(
+                        ["git", "diff", "--name-only"],
+                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                    )
+                    _changed = set()
+                    if _ow_diff.returncode == 0:
+                        _changed.update(f.strip() for f in _ow_diff.stdout.splitlines() if f.strip())
+                    if _ow_diff2.returncode == 0:
+                        _changed.update(f.strip() for f in _ow_diff2.stdout.splitlines() if f.strip())
+
+                    for _cf in _changed:
+                        _result = _ow_reg.validate_file_ownership(_ow_role.callsign, _cf)
+                        if _result.is_blocked:
+                            _ownership_warnings.append(f"BLOCKED: {_cf} (pattern: {_result.matched_blocked_pattern})")
+                        elif not _result.is_owned and not _result.shared_zone:
+                            _ownership_warnings.append(f"NOT_OWNED: {_cf}")
+
+                    if _ownership_warnings:
+                        logger.warning(
+                            "[TaskBoard] Ownership warnings for %s: %s",
+                            _ow_role.callsign, _ownership_warnings,
+                        )
+            except Exception:
+                pass  # Ownership check never blocks completion
 
         # Case A: agent already committed — just close
         # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+            if _ownership_warnings:
+                result["ownership_warnings"] = _ownership_warnings
             _inject_debrief(result, arguments)
             return result
 
@@ -551,7 +651,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         # Case B/C: no commit yet — try auto-commit (legacy path)
         # MARKER_188.2: Pass worktree_path for correct cwd in git operations
-        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path)
+        # MARKER_195.22: Pass closure_files from MCP arguments (overrides task.closure_files)
+        mcp_closure_files = arguments.get("closure_files")
+        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path,
+                                override_closure_files=mcp_closure_files)
 
         # If commit failed or scoping rejected files → do NOT close task
         # MARKER_195.22: Also catch attempted=False + success=False (allowed_paths mismatch)
@@ -580,6 +683,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Close task (commit succeeded or nothing to commit)
         result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
         result["auto_commit"] = auto
+
+        # MARKER_196.3.1: Attach ownership warnings to result
+        if _ownership_warnings:
+            result["ownership_warnings"] = _ownership_warnings
 
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
@@ -637,35 +744,29 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:
-    """MARKER_195.21: Inject debrief questions into successful complete response.
+    """MARKER_195.22: Always inject debrief questions on successful complete.
 
-    Called on EVERY success path in action=complete — no more bypass.
-    Mutates result dict in-place.
+    Previous version (195.21) depended on session_tracker state which breaks
+    on worktrees (MCP subprocess starts before code update, singleton resets
+    on reload, etc.). Simplified: always inject. Agent decides whether to answer.
     """
     if not result.get("success"):
         return
-    try:
-        from src.services.session_tracker import get_session_tracker
-        _sid = arguments.get("session_id") or "mcp_default"
-        session = get_session_tracker().get_session(_sid)
-        if session.tasks_completed > 0 and not session.experience_report_submitted:
-            result["debrief_requested"] = True
-            result["debrief_questions"] = {
-                "q1_bugs": (
-                    "What's broken? Bugs you noticed — including outside your zone. "
-                    "Stale code, broken tools, bad process that everyone walks past?"
-                ),
-                "q2_worked": (
-                    "What unexpectedly worked? A workaround or pattern "
-                    "worth making standard?"
-                ),
-                "q3_idea": (
-                    "What idea came to mind that nobody asked about? "
-                    "What would you do with 2 more hours?"
-                ),
-            }
-    except Exception:
-        pass  # Debrief injection never blocks completion
+    result["debrief_requested"] = True
+    result["debrief_questions"] = {
+        "q1_bugs": (
+            "What's broken? Bugs you noticed — including outside your zone. "
+            "Stale code, broken tools, bad process that everyone walks past?"
+        ),
+        "q2_worked": (
+            "What unexpectedly worked? A workaround or pattern "
+            "worth making standard?"
+        ),
+        "q3_idea": (
+            "What idea came to mind that nobody asked about? "
+            "What would you do with 2 more hours?"
+        ),
+    }
 
 
 def _detect_git_branch(cwd: str = None) -> str:
@@ -688,15 +789,17 @@ def _detect_git_branch(cwd: str = None) -> str:
     return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
 
 
-def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None) -> dict:
+def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,
+                     override_closure_files: list = None) -> dict:
     """MARKER_181.4: Auto-commit via GitCommitTool.execute().
     MARKER_188.2: Accept cwd override for worktree auto-commit.
+    MARKER_195.22: Accept override_closure_files from MCP arguments.
 
     Same pattern as run_closure_protocol (task_board.py:1103).
     GitCommitTool.execute() IS the full pipeline: stage → commit → digest → auto-close.
 
-    Scoped staging: uses task.closure_files if declared, otherwise parses
-    git status --porcelain for actual changed files. Never git add -A.
+    Scoped staging priority: override_closure_files > task.closure_files > allowed_paths > all dirty.
+    Never git add -A.
 
     Returns: {attempted, success, hash, message, error, note}
     """
@@ -745,8 +848,8 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
                 "note": "nothing to commit"}
 
     # 2. Determine scoped files (NOT git add -A)
-    # MARKER_195.22: Scoped staging — closure_files > allowed_paths > all dirty (with warning)
-    closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+    # MARKER_195.22: Scoped staging — override > task.closure_files > allowed_paths > all dirty
+    closure_files = [str(p) for p in (override_closure_files or task.get("closure_files") or []) if str(p).strip()]
     allowed_paths = [str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()]
 
     # Parse ALL dirty files from porcelain

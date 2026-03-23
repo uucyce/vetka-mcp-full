@@ -19,6 +19,7 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
 import DAGProjectPanel from './DAGProjectPanel';
+import { setDragPreview } from './utils/dragPreview';
 
 // MARKER_W5.4 + GAMMA-P1.2: View mode type
 type ProjectViewMode = 'list' | 'columns' | 'grid' | 'dag';
@@ -179,34 +180,7 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
-// MARKER_GAMMA-14: Custom drag preview — thumbnail + filename badge
-function setDragPreview(
-  e: React.DragEvent,
-  name: string,
-  modality: string | undefined,
-  posterUrl: string | undefined,
-) {
-  const el = document.createElement('div');
-  el.style.cssText = 'position:fixed;top:-200px;left:-200px;width:80px;padding:4px;background:#1a1a1a;border:1px solid #555;border-radius:4px;font-size:8px;font-family:system-ui,sans-serif;color:#ccc;text-align:center;pointer-events:none;z-index:99999';
-  if (posterUrl) {
-    const img = document.createElement('img');
-    img.src = posterUrl;
-    img.style.cssText = 'width:72px;height:48px;object-fit:cover;border-radius:2px;display:block;margin:0 auto 3px';
-    el.appendChild(img);
-  } else {
-    const icon = document.createElement('div');
-    icon.style.cssText = 'width:72px;height:48px;display:flex;align-items:center;justify-content:center;font-size:20px;color:#444;margin:0 auto 3px';
-    icon.textContent = modality === 'audio' ? '\u266A' : modality === 'image' ? '\u25FB' : '\u25B6';
-    el.appendChild(icon);
-  }
-  const label = document.createElement('div');
-  label.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:72px;margin:0 auto';
-  label.textContent = name;
-  el.appendChild(label);
-  document.body.appendChild(el);
-  e.dataTransfer.setDragImage(el, 40, 30);
-  requestAnimationFrame(() => document.body.removeChild(el));
-}
+// MARKER_GAMMA-14: setDragPreview extracted to ./utils/dragPreview.ts (Gamma-8 refactor)
 
 // MARKER_W6.IMPORT-FIX: Infer folder path from file list (Tauri native or browser webkitdirectory)
 function inferFolderPath(files: FileList | null): string {
@@ -274,6 +248,8 @@ export default function ProjectPanel() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   // MARKER_GAMMA-P1.4: Search/filter clips
   const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-MB1: Thumbnail size slider for grid view (48-160px)
+  const [thumbSize, setThumbSize] = useState(80);
   // MARKER_GAMMA-P1.1: User-created bins
   type UserBin = { id: string; name: string };
   const [userBins, setUserBins] = useState<UserBin[]>(() => {
@@ -284,6 +260,10 @@ export default function ProjectPanel() {
   });
   const [renamingBin, setRenamingBin] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // MARKER_GAMMA-R4.2: Multi-select state
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  // MARKER_GAMMA-R4.5: Shift+click range select anchor
+  const lastClickedPathRef = useRef<string | null>(null);
 
   const saveUserBins = useCallback((bins: UserBin[]) => {
     setUserBins(bins);
@@ -599,7 +579,41 @@ export default function ProjectPanel() {
     .filter((b) => b.items.length > 0);
 
   // ─── Click on clip ───
-  const handleClipClick = useCallback((clipSourcePath: string) => {
+  // MARKER_GAMMA-R4.2 + R4.5: Multi-select with Cmd/Ctrl+click, Shift+click range
+  const handleClipClick = useCallback((clipSourcePath: string, e?: React.MouseEvent) => {
+    if (e && e.shiftKey && lastClickedPathRef.current) {
+      // MARKER_GAMMA-R4.5: Shift+click range select
+      // Build flat ordered list of all visible items for range calculation
+      const allPaths = sortedItems.map((it) => it.source_path);
+      const anchorIdx = allPaths.indexOf(lastClickedPathRef.current);
+      const targetIdx = allPaths.indexOf(clipSourcePath);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const lo = Math.min(anchorIdx, targetIdx);
+        const hi = Math.max(anchorIdx, targetIdx);
+        const rangePaths = allPaths.slice(lo, hi + 1);
+        setSelectedPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of rangePaths) next.add(p);
+          return next;
+        });
+      } else {
+        setSelectedPaths(new Set([clipSourcePath]));
+      }
+      // Don't update lastClickedPathRef — anchor stays for extending range
+    } else if (e && (e.metaKey || e.ctrlKey)) {
+      // Toggle in multi-selection
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(clipSourcePath)) next.delete(clipSourcePath);
+        else next.add(clipSourcePath);
+        return next;
+      });
+      lastClickedPathRef.current = clipSourcePath;
+    } else {
+      // Single select — clear multi-selection
+      setSelectedPaths(new Set([clipSourcePath]));
+      lastClickedPathRef.current = clipSourcePath;
+    }
     setActiveMedia(clipSourcePath);
     for (const lane of lanes) {
       const clip = lane.clips.find((c) => c.source_path === clipSourcePath);
@@ -609,7 +623,7 @@ export default function ProjectPanel() {
       }
     }
     setSelectedClip(null);
-  }, [lanes, setActiveMedia, setSelectedClip]);
+  }, [lanes, setActiveMedia, setSelectedClip, sortedItems]);
 
   const toggleBin = useCallback((key: string) => {
     setCollapsedBins((prev) => {
@@ -676,6 +690,23 @@ export default function ProjectPanel() {
           }}
         />
       </div>
+
+      {/* MARKER_GAMMA-MB1: Thumbnail size slider (grid mode only) */}
+      {viewMode === 'grid' && (
+        <div style={{ padding: '2px 10px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 8, color: '#555' }}>Size</span>
+          <input
+            type="range"
+            min={48}
+            max={160}
+            step={8}
+            value={thumbSize}
+            onChange={(e) => setThumbSize(parseInt(e.target.value))}
+            style={{ flex: 1, height: 3, appearance: 'none', background: '#333', borderRadius: 2, outline: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 8, color: '#555', fontVariantNumeric: 'tabular-nums', width: 24, textAlign: 'right' }}>{thumbSize}</span>
+        </div>
+      )}
 
       {/* Import area */}
       <div style={IMPORT_AREA}>
@@ -765,20 +796,23 @@ export default function ProjectPanel() {
                 key={item.item_id}
                 draggable
                 onDragStart={(e) => {
-                  e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                  const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                  const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                  e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                  e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
                   e.dataTransfer.effectAllowed = 'copy';
-                  setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                  setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
                 }}
                 onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
-                onClick={() => handleClipClick(item.source_path)}
+                onClick={(e) => handleClipClick(item.source_path, e)}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '1fr 60px 50px',
                   padding: '3px 10px',
                   borderBottom: '1px solid #111',
-                  background: isActive ? '#1a1a1a' : 'transparent',
+                  background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
                   cursor: 'grab',
-                  color: isActive ? '#ccc' : '#888',
+                  color: (isActive || selectedPaths.has(item.source_path)) ? '#ccc' : '#888',
                 }}
                 onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#111'; }}
                 onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
@@ -807,7 +841,7 @@ export default function ProjectPanel() {
       ) : viewMode === 'grid' ? (
         /* Grid view — thumbnail grid */
         <div style={{ ...BIN_LIST }}>
-          <div style={GRID_CONTAINER}>
+          <div style={{ ...GRID_CONTAINER, gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
             {projectItems.map((item) => {
               const isActive = item.source_path === activeMediaPath;
               return (
@@ -815,20 +849,23 @@ export default function ProjectPanel() {
                   key={item.item_id}
                   draggable
                   onDragStart={(e) => {
-                    e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                    const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                    const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                    e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                    e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
                     e.dataTransfer.effectAllowed = 'copy';
-                    setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                    setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
                     (e.currentTarget as HTMLElement).style.opacity = '0.5';
                   }}
                   onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                   onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                   style={{
                     ...GRID_ITEM,
-                    background: isActive ? '#1a1a1a' : 'transparent',
-                    border: isActive ? '1px solid #999' : '1px solid transparent',
+                    background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                    border: (isActive || selectedPaths.has(item.source_path)) ? '1px solid #999' : '1px solid transparent',
                     cursor: 'grab',
                   }}
-                  onClick={() => handleClipClick(item.source_path)}
+                  onClick={(e) => handleClipClick(item.source_path, e)}
                 >
                   {item.poster_url ? (
                     <img src={item.poster_url} style={GRID_THUMB} alt="" />
@@ -916,17 +953,20 @@ export default function ProjectPanel() {
                       key={item.item_id}
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                        const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                        e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                        e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
                         e.dataTransfer.effectAllowed = 'copyMove';
-                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
                       }}
                       style={{
                         ...CLIP_ITEM,
-                        background: isActive ? '#1a1a1a' : 'transparent',
-                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
+                        background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                        borderLeft: (isActive || selectedPaths.has(item.source_path)) ? '2px solid #999' : '2px solid transparent',
                         cursor: 'grab',
                       }}
-                      onClick={() => handleClipClick(item.source_path)}
+                      onClick={(e) => handleClipClick(item.source_path, e)}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 11, color: isActive ? '#fff' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -961,20 +1001,23 @@ export default function ProjectPanel() {
                       data-testid={`cut-source-item-${item.item_id}`}
                       draggable
                       onDragStart={(e) => {
-                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                        const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                        e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                        e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
                         e.dataTransfer.effectAllowed = 'copy';
-                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
                         (e.currentTarget as HTMLElement).style.opacity = '0.5';
                       }}
                       onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
                       onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                       style={{
                         ...CLIP_ITEM,
-                        background: isActive ? '#1a1a1a' : 'transparent',
-                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
+                        background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                        borderLeft: (isActive || selectedPaths.has(item.source_path)) ? '2px solid #999' : '2px solid transparent',
                         cursor: 'grab',
                       }}
-                      onClick={() => handleClipClick(item.source_path)}
+                      onClick={(e) => handleClipClick(item.source_path, e)}
                     >
                       {item.poster_url ? (
                         <img src={item.poster_url} style={THUMB} alt="" />

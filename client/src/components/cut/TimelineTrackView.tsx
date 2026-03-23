@@ -949,16 +949,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       event.preventDefault();
       event.stopPropagation();
 
-      // MARKER_W3.6: Razor tool — split on mousedown
-      // MARKER_UNDO-FIX: Routes through backend applyTimelineOps for undo support
+      // MARKER_EDIT1_FIX: Razor split moved to handleClipClick (local-first approach).
+      // Previously here: beginClipInteraction fired applyTimelineOps + refreshProjectState
+      // on mousedown, causing race with handleClipClick's local split on click.
       if (activeTool === 'razor' && mode === 'move') {
-        const splitTime = timeFromTrackClientX(event.clientX);
-        if (splitTime > clip.start_sec + 0.01 && splitTime < clip.start_sec + clip.duration_sec - 0.01) {
-          void useCutEditorStore.getState().applyTimelineOps([
-            { op: 'split_at', clip_id: clip.clip_id, split_sec: splitTime },
-          ]);
-        }
-        return;
+        return; // Let click handler (handleClipClick) do the local-first split
       }
 
       setSelectedClip(clip.clip_id);
@@ -1096,6 +1091,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     setDropZone(null);
   }, []);
 
+  // MARKER_DND_STORE: Drop handler — reads text/cut-media-paths (JSON array) or single path
   const handleLaneDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>, laneId: string, laneEl: HTMLDivElement) => {
       event.preventDefault();
@@ -1105,25 +1101,21 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const mode: 'insert' | 'overwrite' = relY < laneH / 3 ? 'insert' : 'overwrite';
       const dropTime = timeFromTrackClientX(event.clientX);
 
-      // Read dragged media path from dataTransfer
-      const mediaPath = event.dataTransfer.getData('text/cut-media-path')
-        || event.dataTransfer.getData('text/plain')
-        || '';
+      // Read dragged media paths — prefer JSON array, fallback to single path
+      let paths: string[] = [];
+      const jsonPaths = event.dataTransfer.getData('text/cut-media-paths');
+      if (jsonPaths) {
+        try { paths = JSON.parse(jsonPaths); } catch { /* malformed JSON */ }
+      }
+      if (!paths.length) {
+        const singlePath = event.dataTransfer.getData('text/cut-media-path')
+          || event.dataTransfer.getData('text/plain')
+          || '';
+        if (singlePath) paths = [singlePath];
+      }
 
-      if (mediaPath) {
-        const s = useCutEditorStore.getState();
-        // Set source media so insert/overwrite handlers can use it
-        s.setSourceMedia(mediaPath);
-        // Seek to drop position
-        s.seek(dropTime);
-
-        // Use existing insert/overwrite logic from hotkey handlers
-        // Dispatch synthetic key event to trigger the handler
-        if (mode === 'insert') {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: ',' }));
-        } else {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
-        }
+      if (paths.length) {
+        useCutEditorStore.getState().dropMediaOnTimeline(paths, laneId, dropTime, mode);
       }
 
       setDropZone(null);
@@ -1761,7 +1753,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (!isPlaying || dragState || scrubActive) {
       return;
     }
-    const viewportWidth = Math.max((containerRef.current?.clientWidth || 0) - LANE_HEADER_WIDTH, 0);
+    const viewportWidth = Math.max(containerWidth - LANE_HEADER_WIDTH, 0);
     if (!viewportWidth) {
       return;
     }
@@ -2050,6 +2042,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
+                      onDoubleClick={() => {
+                        // MARKER_DBLCLICK_SOURCE: FCP7 — double-click clip opens in Source Monitor
+                        const s = useCutEditorStore.getState();
+                        s.setSourceMedia(clip.source_path);
+                        s.seekSource(clip.source_in ?? 0);
+                        s.setFocusedPanel('source');
+                      }}
                       onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'move', event)}
                       onMouseEnter={() => setHoveredClip(clip.clip_id)}
                       onMouseLeave={() => setHoveredClip(null)}
@@ -2599,10 +2598,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       top: 0,
                       height: dropZone.mode === 'insert' ? `${Math.round(laneH / 3)}px` : '100%',
                       background: dropZone.mode === 'insert'
-                        ? 'rgba(74, 222, 128, 0.12)'
-                        : 'rgba(96, 165, 250, 0.12)',
-                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(74, 222, 128, 0.6)' : undefined,
-                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(96, 165, 250, 0.6)' : undefined,
+                        ? 'rgba(200, 200, 200, 0.10)'
+                        : 'rgba(140, 140, 140, 0.10)',
+                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(200, 200, 200, 0.5)' : undefined,
+                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(140, 140, 140, 0.5)' : undefined,
                       pointerEvents: 'none',
                       zIndex: 50,
                     }} />

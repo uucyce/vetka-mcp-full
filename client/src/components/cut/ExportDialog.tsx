@@ -898,14 +898,14 @@ export default function ExportDialog() {
 
           {/* Error */}
           {renderError && (
-            <div style={{ fontSize: 10, color: '#e55', marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: '#999', marginTop: 8 }}>
               {renderError}
             </div>
           )}
 
           {/* Result */}
           {exportResult && (
-            <div style={{ fontSize: 10, color: '#4ade80', marginTop: 8, wordBreak: 'break-all' }}>
+            <div style={{ fontSize: 10, color: '#ccc', marginTop: 8, wordBreak: 'break-all' }}>
               {exportResult}
             </div>
           )}
