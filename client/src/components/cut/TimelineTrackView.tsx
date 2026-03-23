@@ -24,6 +24,7 @@ import TimecodeField from './TimecodeField';
 import { IconFilmStrip, IconSpeaker, IconCamera, IconLink, IconLock, IconUnlock, IconMute, IconSolo, IconTarget, IconEye, IconEyeOff } from './icons/CutIcons';
 import { EFFECT_APPLY_MAP } from './EffectsPanel';
 import ThumbnailStrip from './ThumbnailStrip';
+import TrackResizeHandle from './TrackResizeHandle';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -2720,34 +2721,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   </>
                 ) : null}
               </div>
-              {/* MARKER_TIMELINE-1: Drag-to-resize handle on bottom edge */}
-              <div
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  height: 4,
-                  cursor: 'row-resize',
-                  zIndex: 10,
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  const startY = e.clientY;
-                  const startH = laneH;
-                  const laneId = lane.lane_id;
-                  const onMove = (ev: MouseEvent) => {
-                    const delta = ev.clientY - startY;
-                    setTrackHeightForLane(laneId, startH + delta);
-                  };
-                  const onUp = () => {
-                    document.removeEventListener('mousemove', onMove);
-                    document.removeEventListener('mouseup', onUp);
-                  };
-                  document.addEventListener('mousemove', onMove);
-                  document.addEventListener('mouseup', onUp);
-                }}
+              {/* MARKER_TIMELINE-1: Drag-to-resize handle (Gamma's TrackResizeHandle) */}
+              <TrackResizeHandle
+                laneId={lane.lane_id}
+                currentHeight={laneH}
+                onResize={setTrackHeightForLane}
               />
             </div>
           );
