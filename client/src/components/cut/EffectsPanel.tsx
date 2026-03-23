@@ -408,12 +408,23 @@ const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorS
   lut_apply:     { contrast: 0.2, saturation: 1.3 },
 };
 
+// MARKER_GAMMA-P2.5: Recently Used persistence
+const LS_RECENT = 'cut_effect_recent';
+const MAX_RECENT = 5;
+function loadRecent(): string[] {
+  try { const raw = localStorage.getItem(LS_RECENT); return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+function saveRecent(ids: string[]) {
+  try { localStorage.setItem(LS_RECENT, JSON.stringify(ids.slice(0, MAX_RECENT))); } catch { /* ok */ }
+}
+
 function EffectsBrowser() {
   const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecent);
 
   const toggleFavorite = useCallback((id: string) => {
     setFavorites((prev) => {
@@ -441,9 +452,17 @@ function EffectsBrowser() {
     ? { name: 'Favorites', effects: favEffects }
     : null;
 
-  const categories = favCategory
-    ? [favCategory, ...BROWSER_CATEGORIES]
-    : BROWSER_CATEGORIES;
+  // MARKER_GAMMA-P2.5: Recently Used category
+  const recentEffects = recentIds.map((id) => allEffects.find((e) => e.id === id)).filter(Boolean) as BrowserEffect[];
+  const recentCategory: BrowserCategory | null = recentEffects.length > 0
+    ? { name: 'Recently Used', effects: recentEffects }
+    : null;
+
+  const categories = [
+    ...(favCategory ? [favCategory] : []),
+    ...(recentCategory ? [recentCategory] : []),
+    ...BROWSER_CATEGORIES,
+  ];
 
   // MARKER_GAMMA-P2.1a: Apply effect to selected clip
   const [lastApplied, setLastApplied] = useState<string | null>(null);
@@ -455,6 +474,12 @@ function EffectsBrowser() {
       setClipEffects(selectedClipId, params);
       setLastApplied(effect.id);
       setTimeout(() => setLastApplied(null), 1000);
+      // MARKER_GAMMA-P2.5: Track recently used
+      setRecentIds((prev) => {
+        const next = [effect.id, ...prev.filter((id) => id !== effect.id)].slice(0, MAX_RECENT);
+        saveRecent(next);
+        return next;
+      });
     }
   }, [selectedClipId, setClipEffects]);
 
