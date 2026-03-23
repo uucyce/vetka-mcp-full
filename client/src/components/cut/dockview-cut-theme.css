@@ -364,3 +364,55 @@
   height: 3px;
   border-radius: 2px;
 }
+
+/* ═══ MARKER_GAMMA-TIMELINE: ThumbnailStrip + Timeline visual polish ═══ */
+
+/* ThumbnailStrip inside timeline clips — filmstrip look */
+[data-testid="thumbnail-strip"] {
+  border-radius: 2px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+[data-testid="thumbnail-strip"]:hover {
+  opacity: 1;
+}
+/* Filmstrip frame borders — subtle separator between frames */
+[data-testid="thumbnail-strip"] img {
+  border-right: 1px solid rgba(0, 0, 0, 0.5);
+  image-rendering: auto;
+}
+[data-testid="thumbnail-strip"] img:last-child {
+  border-right: none;
+}
+
+/* Timeline ruler — FCP7 monochrome */
+[data-testid="cut-timeline-ruler"] {
+  background: #111;
+  border-bottom: 1px solid #333;
+  user-select: none;
+}
+[data-testid="cut-timeline-ruler"] [data-ruler-label] {
+  font-family: "JetBrains Mono", "SF Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Track header area — consistent with NLE dark theme */
+[data-testid^="cut-track-header"] {
+  background: #0d0d0d;
+  border-bottom: 1px solid #1a1a1a;
+  border-right: 1px solid #222;
+  user-select: none;
+}
+
+/* Track resize handle (when Alpha integrates TrackResizeHandle.tsx) */
+[data-testid="track-resize-handle"] {
+  background: transparent;
+  cursor: row-resize;
+  transition: background-color 0.1s;
+}
+[data-testid="track-resize-handle"]:hover {
+  background: #333;
+}
+[data-testid="track-resize-handle"][data-dragging="true"] {
+  background: #555;
+}
