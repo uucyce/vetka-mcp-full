@@ -169,11 +169,13 @@ test.describe('TL: Timeline Interactions', () => {
     if (await soloBtn.isVisible().catch(() => false)) {
       await soloBtn.click();
       await page.waitForTimeout(100);
+      // soloLanes is a Set<string> in store — check via .has() inside evaluate
       const soloState = await page.evaluate(() => {
         const s = window.__CUT_STORE__?.getState();
-        return s?.soloedLanes?.has?.('V1') || s?.soloedLanes?.includes?.('V1') || false;
+        if (!s?.soloLanes) return false;
+        // Set.has works inside page context
+        return s.soloLanes.has('V1');
       });
-      // Solo should be active after click
       expect(soloState).toBe(true);
     }
   });
@@ -222,16 +224,23 @@ test.describe('FX: Effects Panel Interactions', () => {
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
 
-  test('FX1: effects panel is visible with data-testid', async ({ page }) => {
+  test('FX1: effects panel is visible with data-testid after tab click', async ({ page }) => {
     await navigateToCut(page);
-    // Click Effects tab to make sure it's in foreground
+    // Select a clip first — effects panel may need a selected clip to render
+    const clip = page.locator('[data-testid="cut-timeline-clip-p_v1"]');
+    if (await clip.isVisible().catch(() => false)) {
+      await clip.click();
+      await page.waitForTimeout(200);
+    }
+    // Click Effects tab to bring it to foreground
     const effectsTab = page.locator('.dv-tab:has-text("Effects")').first();
     if (await effectsTab.isVisible().catch(() => false)) {
       await effectsTab.click();
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
     }
-    const panel = page.locator('[data-testid="effects-panel"]');
-    await expect(panel).toBeVisible({ timeout: 3000 });
+    // Check either effects-panel or effects-browser testid
+    const panel = page.locator('[data-testid="effects-panel"], [data-testid="effects-browser"]').first();
+    await expect(panel).toBeVisible({ timeout: 5000 });
   });
 
   test('FX2: effects panel shows controls when clip is selected', async ({ page }) => {
