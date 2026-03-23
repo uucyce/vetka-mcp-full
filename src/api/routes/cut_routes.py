@@ -8647,6 +8647,8 @@ class CutRenderMasterRequest(BaseModel):
     range_in: float | None = None   # seconds — export only this range
     range_out: float | None = None
     audio_stems: bool = False        # export per-track WAV files
+    # MARKER_B6.2: Audio codec
+    audio_codec: str = "aac"  # aac, pcm_s24le, libmp3lame, flac
     # MARKER_B13: Mixer state for render
     mixer: dict[str, Any] | None = None  # {lanes: {lane_id: {volume, pan, mute, solo}}, master_volume}
 
@@ -8749,6 +8751,7 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             on_progress=on_progress,
             mixer=req.mixer,  # MARKER_B13
             cancel_check=cancel_check,  # MARKER_B2.1
+            audio_codec=req.audio_codec,  # MARKER_B6.2
         )
 
         store.update_job(

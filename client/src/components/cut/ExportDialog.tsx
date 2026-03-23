@@ -22,6 +22,8 @@ type ExportTab = 'master' | 'editorial' | 'publish';
 type VideoCodec = 'prores_422' | 'prores_4444' | 'h264' | 'h265' | 'dnxhd';
 type Resolution = '4k' | '1080p' | '720p' | 'source';
 type EditorialFormat = 'premiere_xml' | 'fcpxml' | 'edl' | 'otio';
+// MARKER_B6.2: Audio codec type
+type AudioCodec = 'aac' | 'pcm_s24le' | 'libmp3lame' | 'flac';
 
 interface CodecOption {
   id: VideoCodec;
@@ -43,6 +45,14 @@ const CODECS: CodecOption[] = [
   { id: 'h264', label: 'H.264', ext: '.mp4', description: 'Universal delivery codec. Good quality/size ratio.' },
   { id: 'h265', label: 'H.265 (HEVC)', ext: '.mp4', description: 'Better compression than H.264. Modern devices.' },
   { id: 'dnxhd', label: 'DNxHD', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
+];
+
+// MARKER_B6.2: Audio codec options
+const AUDIO_CODECS: { id: AudioCodec; label: string; description: string }[] = [
+  { id: 'aac', label: 'AAC', description: 'Default for MP4/MOV. Universal compatibility.' },
+  { id: 'pcm_s24le', label: 'PCM 24-bit', description: 'Uncompressed. Best for ProRes/DNxHR masters.' },
+  { id: 'libmp3lame', label: 'MP3', description: 'Legacy delivery. Smaller files.' },
+  { id: 'flac', label: 'FLAC', description: 'Lossless compression. Archive quality.' },
 ];
 
 const RESOLUTIONS: ResolutionOption[] = [
@@ -235,6 +245,7 @@ export default function ExportDialog() {
   const [codec, setCodec] = useState<VideoCodec>('h264');
   const [resolution, setResolution] = useState<Resolution>('1080p');
   const [quality, setQuality] = useState(80);
+  const [audioCodec, setAudioCodec] = useState<AudioCodec>('aac');
   const [selectionOnly, setSelectionOnly] = useState(false);
   const [audioStems, setAudioStems] = useState(false);
   const [editorialFormat, setEditorialFormat] = useState<EditorialFormat>('premiere_xml');
@@ -360,6 +371,7 @@ export default function ExportDialog() {
           range_in: selectionOnly && hasSelection ? sequenceMarkIn : null,
           range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
           audio_stems: audioStems,
+          audio_codec: audioCodec,
         }),
       });
 
@@ -653,6 +665,25 @@ export default function ExportDialog() {
                   <span style={{ fontSize: 11, color: '#888', width: 30, textAlign: 'right' }}>
                     {quality}%
                   </span>
+                </div>
+              </div>
+
+              {/* MARKER_B6.2: Audio codec */}
+              <div style={FIELD}>
+                <label style={LABEL}>Audio Codec</label>
+                <select
+                  style={SELECT}
+                  value={audioCodec}
+                  onChange={(e) => { setAudioCodec(e.target.value as AudioCodec); setSelectedPreset('custom'); }}
+                  disabled={isRendering}
+                  data-testid="export-audio-codec"
+                >
+                  {AUDIO_CODECS.map((ac) => (
+                    <option key={ac.id} value={ac.id}>{ac.label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 9, color: '#555', marginTop: 3 }}>
+                  {AUDIO_CODECS.find((ac) => ac.id === audioCodec)?.description}
                 </div>
               </div>
 
