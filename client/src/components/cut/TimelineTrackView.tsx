@@ -2042,6 +2042,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
+                      onDoubleClick={() => {
+                        // MARKER_DBLCLICK_SOURCE: FCP7 — double-click clip opens in Source Monitor
+                        const s = useCutEditorStore.getState();
+                        s.setSourceMedia(clip.source_path);
+                        s.seekSource(clip.source_in ?? 0);
+                        s.setFocusedPanel('source');
+                      }}
                       onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'move', event)}
                       onMouseEnter={() => setHoveredClip(clip.clip_id)}
                       onMouseLeave={() => setHoveredClip(null)}
