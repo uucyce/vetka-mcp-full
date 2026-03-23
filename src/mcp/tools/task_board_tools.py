@@ -551,7 +551,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         # Case B/C: no commit yet — try auto-commit (legacy path)
         # MARKER_188.2: Pass worktree_path for correct cwd in git operations
-        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path)
+        # MARKER_195.22: Pass closure_files from MCP arguments (overrides task.closure_files)
+        mcp_closure_files = arguments.get("closure_files")
+        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path,
+                                override_closure_files=mcp_closure_files)
 
         # If commit failed or scoping rejected files → do NOT close task
         # MARKER_195.22: Also catch attempted=False + success=False (allowed_paths mismatch)
@@ -688,15 +691,17 @@ def _detect_git_branch(cwd: str = None) -> str:
     return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
 
 
-def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None) -> dict:
+def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,
+                     override_closure_files: list = None) -> dict:
     """MARKER_181.4: Auto-commit via GitCommitTool.execute().
     MARKER_188.2: Accept cwd override for worktree auto-commit.
+    MARKER_195.22: Accept override_closure_files from MCP arguments.
 
     Same pattern as run_closure_protocol (task_board.py:1103).
     GitCommitTool.execute() IS the full pipeline: stage → commit → digest → auto-close.
 
-    Scoped staging: uses task.closure_files if declared, otherwise parses
-    git status --porcelain for actual changed files. Never git add -A.
+    Scoped staging priority: override_closure_files > task.closure_files > allowed_paths > all dirty.
+    Never git add -A.
 
     Returns: {attempted, success, hash, message, error, note}
     """
@@ -745,8 +750,8 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
                 "note": "nothing to commit"}
 
     # 2. Determine scoped files (NOT git add -A)
-    # MARKER_195.22: Scoped staging — closure_files > allowed_paths > all dirty (with warning)
-    closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+    # MARKER_195.22: Scoped staging — override > task.closure_files > allowed_paths > all dirty
+    closure_files = [str(p) for p in (override_closure_files or task.get("closure_files") or []) if str(p).strip()]
     allowed_paths = [str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()]
 
     # Parse ALL dirty files from porcelain

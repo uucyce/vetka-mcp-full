@@ -307,17 +307,19 @@ class TestMemoryRoutingWired:
         _route_to_memory("vetka_read_file and Bash both useful", f4_report)
         assert mock_reflex.record.call_count == 2
 
-    def test_aura_viewport(self, f4_report, mock_aura):
+    def test_aura_viewport(self, f4_report, mock_engram):
+        """MARKER_195.22: UX insights routed to ENGRAM (not AURA) with ux_viewport category."""
         _route_to_memory("пользователь не видит warnings в UI", f4_report)
-        kw = mock_aura.set_preference.call_args.kwargs
-        assert kw["category"] == "viewport_patterns"
-        assert kw["confidence"] == 0.3
+        kw = mock_engram.put.call_args.kwargs
+        assert kw["category"] == "ux_viewport"
         assert len(kw["value"]) <= 500
+        assert "ux_insight" in kw["key"]
 
-    def test_aura_communication(self, f4_report, mock_aura):
+    def test_aura_communication(self, f4_report, mock_engram):
+        """MARKER_195.22: User mentions without UI/UX → ux_communication category in ENGRAM."""
         _route_to_memory("user prefers русский в ответах", f4_report)
-        kw = mock_aura.set_preference.call_args.kwargs
-        assert kw["category"] == "communication_style"
+        kw = mock_engram.put.call_args.kwargs
+        assert kw["category"] == "ux_communication"
 
     def test_mgc_hot_file(self, f4_report, mock_mgc):
         _route_to_memory("task_board.py:847 has a bug", f4_report)
@@ -358,7 +360,8 @@ class TestMemoryRoutingWired:
         assert len(mock_reflex.record.call_args.kwargs["extra"]["text"]) <= 200
         assert len(mock_engram.put.call_args.kwargs["value"]) <= 300
 
-    def test_multiple_subsystems(self, f4_report, mock_reflex, mock_aura, mock_mgc, mock_engram):
+    def test_multiple_subsystems(self, f4_report, mock_reflex, mock_mgc, mock_engram):
+        """MARKER_195.22: All subsystems fire on text with multiple triggers."""
         text = "vetka_read_file in task_board.py — пользователь should always use this pattern"
         result = _route_to_memory(text, f4_report)
         assert "reflex_tools" in result
@@ -366,6 +369,6 @@ class TestMemoryRoutingWired:
         assert "mgc_files" in result
         assert "engram_learning" in result
         mock_reflex.record.assert_called()
-        mock_aura.set_preference.assert_called()
+        # AURA now routes through ENGRAM (MARKER_195.22)
         mock_mgc.set_sync.assert_called()
         mock_engram.put.assert_called()
