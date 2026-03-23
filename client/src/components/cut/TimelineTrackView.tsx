@@ -2596,10 +2596,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       top: 0,
                       height: dropZone.mode === 'insert' ? `${Math.round(laneH / 3)}px` : '100%',
                       background: dropZone.mode === 'insert'
-                        ? 'rgba(74, 222, 128, 0.12)'
-                        : 'rgba(96, 165, 250, 0.12)',
-                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(74, 222, 128, 0.6)' : undefined,
-                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(96, 165, 250, 0.6)' : undefined,
+                        ? 'rgba(200, 200, 200, 0.10)'
+                        : 'rgba(140, 140, 140, 0.10)',
+                      borderTop: dropZone.mode === 'insert' ? '2px solid rgba(200, 200, 200, 0.5)' : undefined,
+                      borderBottom: dropZone.mode === 'overwrite' ? '2px solid rgba(140, 140, 140, 0.5)' : undefined,
                       pointerEvents: 'none',
                       zIndex: 50,
                     }} />
