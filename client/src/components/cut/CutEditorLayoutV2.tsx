@@ -117,80 +117,108 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
-    // Playback
-    playPause: () => useCutEditorStore.getState().togglePlay(),
-    stop: () => { useCutEditorStore.getState().pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
+    // Playback — MARKER_DUAL-VIDEO: source-aware play/pause/stop
+    playPause: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.togglePlaySource(); else s.togglePlay();
+    },
+    stop: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.pauseSource(); else s.pause();
+      s.setShuttleSpeed(0);
+    },
     // MARKER_W6.JKL: Progressive shuttle (FCP7 Ch.8 / App A)
     // J: reverse ramp 1x→2x→4x→8x. If playing forward, first press stops.
     // L: forward ramp 1x→2x→4x→8x. If playing reverse, first press stops.
     // K: stop (pause + reset shuttle)
     // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
+      const s = useCutEditorStore.getState();
+      const isSourceFocused = s.focusedPanel === 'source';
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const doPause = isSourceFocused ? s.pauseSource : s.pause;
+      const doPlay = isSourceFocused ? s.playSource : s.play;
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
       // MARKER_JKL-KJ-KL: K+J = single frame backward
       if (kHeldRef.current) {
-        const s = useCutEditorStore.getState();
-        s.pause();
+        doPause();
         s.setShuttleSpeed(0);
-        s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate));
+        doSeek(Math.max(0, curTime - 1 / s.projectFramerate));
         return;
       }
-      const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur > 0) {
         s.setShuttleSpeed(0);
-        s.pause();
+        doPause();
       } else {
         const REVERSE_STEPS = [0, -1, -2, -4, -8];
         const idx = REVERSE_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < REVERSE_STEPS.length - 1 ? REVERSE_STEPS[idx + 1] : -8;
         s.setShuttleSpeed(next);
-        s.play();
+        doPlay();
       }
     },
     shuttleForward: () => {
+      const s = useCutEditorStore.getState();
+      const isSourceFocused = s.focusedPanel === 'source';
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const doPause = isSourceFocused ? s.pauseSource : s.pause;
+      const doPlay = isSourceFocused ? s.playSource : s.play;
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
       // MARKER_JKL-KJ-KL: K+L = single frame forward
       if (kHeldRef.current) {
-        const s = useCutEditorStore.getState();
-        s.pause();
+        doPause();
         s.setShuttleSpeed(0);
-        s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate));
+        doSeek(Math.min(maxDur, curTime + 1 / s.projectFramerate));
         return;
       }
-      const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur < 0) {
         s.setShuttleSpeed(0);
-        s.pause();
+        doPause();
       } else {
         const FORWARD_STEPS = [0, 1, 2, 4, 8];
         const idx = FORWARD_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < FORWARD_STEPS.length - 1 ? FORWARD_STEPS[idx + 1] : 8;
         s.setShuttleSpeed(next);
-        s.play();
+        doPlay();
       }
     },
+    // MARKER_DUAL-VIDEO: Frame stepping is source-aware
     frameStepBack: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - 1 / s.projectFramerate)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate)); }
     },
     frameStepForward: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      if (src) { s.pauseSource(); s.seekSource(Math.min(s.sourceDuration, s.sourceCurrentTime + 1 / s.projectFramerate)); }
+      else { s.pause(); s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate)); }
     },
     fiveFrameStepBack: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.max(0, s.currentTime - 5 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - 5 / s.projectFramerate)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - 5 / s.projectFramerate)); }
     },
     fiveFrameStepForward: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.min(s.duration, s.currentTime + 5 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      if (src) { s.pauseSource(); s.seekSource(Math.min(s.sourceDuration, s.sourceCurrentTime + 5 / s.projectFramerate)); }
+      else { s.pause(); s.seek(Math.min(s.duration, s.currentTime + 5 / s.projectFramerate)); }
     },
-    goToStart: () => useCutEditorStore.getState().seek(0),
-    goToEnd: () => { const s = useCutEditorStore.getState(); s.seek(s.duration); },
+    goToStart: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.seekSource(0); else s.seek(0);
+    },
+    goToEnd: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.seekSource(s.sourceDuration); else s.seek(s.duration);
+    },
     // MARKER_W6.WIRE: Cycle playback rate (1x → 2x → 0.5x → 1x)
     cyclePlaybackRate: () => {
       const s = useCutEditorStore.getState();
@@ -741,9 +769,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const dt = (now - shuttlePrevTimeRef.current) / 1000; // seconds elapsed
       shuttlePrevTimeRef.current = now;
 
+      // MARKER_DUAL-VIDEO: Drive source or timeline based on focused panel
       const s = useCutEditorStore.getState();
-      const newTime = s.currentTime + dt * shuttleSpeed;
-      s.seek(Math.max(0, Math.min(newTime, s.duration)));
+      const isSourceFocused = s.focusedPanel === 'source';
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const newTime = curTime + dt * shuttleSpeed;
+      doSeek(Math.max(0, Math.min(newTime, maxDur)));
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };
