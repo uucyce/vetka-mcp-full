@@ -9,28 +9,30 @@
  * Each tool = one row: icon centered, shortcut letter overlay.
  * Monochrome only.
  */
-import { type CSSProperties } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import {
+  SelectionIcon, RazorIcon, RippleIcon, RollIcon,
+  SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
+} from './icons/ToolIcons';
 
+// MARKER_GAMMA-ICON1: SVG tool icons — monochrome, no Unicode/emoji
 type ToolDef = {
   id: string;
-  icon: string;
+  svg: (color: string) => ReactNode;
   shortcut: string;
   title: string;
 };
 
-// Premiere Pro order: Selection, Track Select, Ripple Edit, Rolling Edit,
-// Rate Stretch, Razor, Slip, Slide, Pen, Hand, Zoom, Type
-// We map to our available tools:
 const ALL_TOOLS: ToolDef[] = [
-  { id: 'selection', icon: '\u2B06', shortcut: 'A', title: 'Arrow Tool' },
-  { id: 'razor',     icon: '\u2702', shortcut: 'B', title: 'Blade Tool' },
-  { id: 'ripple',    icon: '\u21C4', shortcut: 'R', title: 'Ripple Edit' },
-  { id: 'roll',      icon: '\u21CB', shortcut: 'N', title: 'Rolling Edit' },
-  { id: 'slip',      icon: '\u2194', shortcut: 'S', title: 'Slip Tool' },
-  { id: 'slide',     icon: '\u21D4', shortcut: 'U', title: 'Slide Tool' },
-  { id: 'hand',      icon: '\u270B', shortcut: 'H', title: 'Hand Tool' },
-  { id: 'zoom',      icon: '\u2315', shortcut: 'Z', title: 'Zoom Tool' },
+  { id: 'selection', svg: (c) => <SelectionIcon color={c} size={18} />, shortcut: 'A', title: 'Arrow Tool' },
+  { id: 'razor',     svg: (c) => <RazorIcon color={c} size={18} />,     shortcut: 'B', title: 'Blade Tool' },
+  { id: 'ripple',    svg: (c) => <RippleIcon color={c} size={18} />,    shortcut: 'R', title: 'Ripple Edit' },
+  { id: 'roll',      svg: (c) => <RollIcon color={c} size={18} />,      shortcut: 'N', title: 'Rolling Edit' },
+  { id: 'slip',      svg: (c) => <SlipIcon color={c} size={18} />,      shortcut: 'S', title: 'Slip Tool' },
+  { id: 'slide',     svg: (c) => <SlideIcon color={c} size={18} />,     shortcut: 'U', title: 'Slide Tool' },
+  { id: 'hand',      svg: (c) => <HandIcon color={c} size={18} />,      shortcut: 'H', title: 'Hand Tool' },
+  { id: 'zoom',      svg: (c) => <ZoomIcon color={c} size={18} />,      shortcut: 'Z', title: 'Zoom Tool' },
 ];
 
 const PANEL: CSSProperties = {
@@ -113,7 +115,7 @@ export default function ToolsPalette() {
             onClick={() => setActiveTool(t.id as any)}
             title={`${t.title} (${t.shortcut})`}
           >
-            {t.icon}
+            {t.svg(activeTool === t.id ? '#fff' : '#888')}
             <span style={SHORTCUT_BADGE as any}>{t.shortcut}</span>
           </button>
           {/* Divider after primary tools (Arrow, Blade) and before Hand/Zoom */}
@@ -127,7 +129,7 @@ export default function ToolsPalette() {
         onClick={toggleSnap}
         title={`Snap ${snapEnabled ? 'ON' : 'OFF'} (S)`}
       >
-        {snapEnabled ? 'S' : 's'}
+        <SnapIcon color={snapEnabled ? '#ccc' : '#555'} size={14} />
       </button>
     </div>
   );
