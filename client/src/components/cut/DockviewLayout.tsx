@@ -16,9 +16,10 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
 } from 'dockview-react';
-// MARKER_GAMMA-32: dockview-layers.css declares @layer order + wraps dockview CSS.
-// dockview-cut-theme.css is un-layered → always wins over @layer(dockview).
-import './dockview-layers.css';
+// MARKER_GAMMA-37: dockview CSS via JS import (Vite resolves node_modules).
+// Our theme CSS loads second → wins by source order. Single-class selectors
+// sufficient with GAMMA-35 nuclear overrides.
+import 'dockview-react/dist/styles/dockview.css';
 import './dockview-cut-theme.css';
 
 import { useCutEditorStore } from '../../store/useCutEditorStore';
