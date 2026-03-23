@@ -318,6 +318,22 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         }
         break;
       }
+      case 'close-all': {
+        const group = panel.group;
+        if (group) {
+          const all = api.panels.filter((p) => p.group === group);
+          all.forEach((p) => { try { api.removePanel(p); } catch { /* ok */ } });
+        }
+        break;
+      }
+      case 'float':
+        // MARKER_GAMMA-R9: Float panel into a floating group
+        try {
+          (api as any).addFloatingGroup?.(panel, {
+            x: tabMenu.x, y: tabMenu.y, width: 400, height: 300,
+          });
+        } catch { /* floating API may not be available */ }
+        break;
       case 'maximize':
         toggleMaximize();
         break;
@@ -356,7 +372,9 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
             {[
               { label: 'Close Panel', action: 'close' },
               { label: 'Close Others in Group', action: 'close-others' },
+              { label: 'Close All in Group', action: 'close-all' },
               { separator: true },
+              { label: 'Float Panel', action: 'float' },
               { label: 'Maximize / Restore', action: 'maximize' },
             ].map((item, i) =>
               'separator' in item ? (
