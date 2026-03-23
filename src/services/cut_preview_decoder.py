@@ -466,6 +466,99 @@ def apply_numpy_effects(
             # MARKER_B26: Clamp to broadcast-safe range (16-235 → 0.0627-0.9216)
             frame_float32 = np.clip(frame_float32, 16.0 / 255.0, 235.0 / 255.0)
 
+        # === MARKER_B9: Color grading effects (FCP7 Ch.79-83) ===
+
+        elif t == "lift":
+            # 3-way: Shadows (lift) — add RGB offset to dark regions
+            r_off = float(p.get("r", 0))
+            g_off = float(p.get("g", 0))
+            b_off = float(p.get("b", 0))
+            if r_off != 0 or g_off != 0 or b_off != 0:
+                # Lift affects shadows: weight by (1 - luma)
+                luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])[:, :, np.newaxis]
+                shadow_weight = np.clip(1.0 - luma * 2.0, 0, 1)  # strongest in darks
+                offsets = np.array([r_off, g_off, b_off], dtype=np.float32)
+                frame_float32 = frame_float32 + offsets * shadow_weight
+
+        elif t == "midtone":
+            # 3-way: Midtones (gamma) — shift RGB in midtone range
+            r_off = float(p.get("r", 0))
+            g_off = float(p.get("g", 0))
+            b_off = float(p.get("b", 0))
+            if r_off != 0 or g_off != 0 or b_off != 0:
+                luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])[:, :, np.newaxis]
+                # Bell curve peaking at 0.5 luma
+                mid_weight = np.clip(1.0 - np.abs(luma - 0.5) * 4.0, 0, 1)
+                offsets = np.array([r_off, g_off, b_off], dtype=np.float32)
+                frame_float32 = frame_float32 + offsets * mid_weight
+
+        elif t == "gain":
+            # 3-way: Highlights (gain) — shift RGB in bright regions
+            r_off = float(p.get("r", 0))
+            g_off = float(p.get("g", 0))
+            b_off = float(p.get("b", 0))
+            if r_off != 0 or g_off != 0 or b_off != 0:
+                luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])[:, :, np.newaxis]
+                highlight_weight = np.clip(luma * 2.0 - 1.0, 0, 1)  # strongest in brights
+                offsets = np.array([r_off, g_off, b_off], dtype=np.float32)
+                frame_float32 = frame_float32 + offsets * highlight_weight
+
+        elif t == "white_balance":
+            # Temperature shift: warm (high K) = more red/yellow, cool (low K) = more blue
+            temp = float(p.get("temperature", 6500))
+            if abs(temp - 6500) > 50:
+                # Simplified Kelvin to RGB shift
+                # Below 6500K: add blue, subtract red. Above 6500K: add red, subtract blue
+                shift = (temp - 6500) / 6500.0  # -1 to +1 range approx
+                frame_float32[:, :, 0] += shift * 0.15   # Red channel
+                frame_float32[:, :, 2] -= shift * 0.15   # Blue channel (inverse)
+
+        elif t == "curves":
+            # Curve presets applied as LUT transforms
+            preset = str(p.get("preset", "none"))
+            if preset != "none" and preset:
+                # Predefined curve adjustments (matches FFmpeg curves filter presets)
+                if preset == "lighter":
+                    frame_float32 = np.power(np.clip(frame_float32, 0, 1), 0.8)
+                elif preset == "darker":
+                    frame_float32 = np.power(np.clip(frame_float32, 0, 1), 1.3)
+                elif preset == "increase_contrast":
+                    frame_float32 = (frame_float32 - 0.5) * 1.3 + 0.5
+                elif preset == "decrease_contrast":
+                    frame_float32 = (frame_float32 - 0.5) * 0.7 + 0.5
+                elif preset == "strong_contrast":
+                    frame_float32 = (frame_float32 - 0.5) * 1.6 + 0.5
+                elif preset == "negative":
+                    frame_float32 = 1.0 - frame_float32
+                elif preset == "vintage":
+                    # Desaturate slightly + warm shift + lifted blacks
+                    luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])[:, :, np.newaxis]
+                    frame_float32 = luma + (frame_float32 - luma) * 0.7  # desaturate
+                    frame_float32[:, :, 0] += 0.03  # warm
+                    frame_float32[:, :, 2] -= 0.02
+                    frame_float32 = np.maximum(frame_float32, 0.05)  # lift blacks
+                elif preset == "cross_process":
+                    # Push green shadows, magenta highlights
+                    frame_float32[:, :, 1] += (1.0 - frame_float32[:, :, 1]) * 0.08
+                    frame_float32[:, :, 0] += frame_float32[:, :, 0] * 0.05
+                    frame_float32[:, :, 2] += frame_float32[:, :, 2] * 0.03
+
+        elif t == "color_balance":
+            # Unified 9-parameter color balance: shadows (rs/gs/bs), mids (rm/gm/bm), highlights (rh/gh/bh)
+            rs = float(p.get("rs", 0)); gs = float(p.get("gs", 0)); bs = float(p.get("bs", 0))
+            rm = float(p.get("rm", 0)); gm = float(p.get("gm", 0)); bm = float(p.get("bm", 0))
+            rh = float(p.get("rh", 0)); gh = float(p.get("gh", 0)); bh = float(p.get("bh", 0))
+            has_any = any(v != 0 for v in [rs, gs, bs, rm, gm, bm, rh, gh, bh])
+            if has_any:
+                luma = np.dot(frame_float32, [0.2126, 0.7152, 0.0722])[:, :, np.newaxis]
+                shadow_w = np.clip(1.0 - luma * 2.0, 0, 1)
+                mid_w = np.clip(1.0 - np.abs(luma - 0.5) * 4.0, 0, 1)
+                high_w = np.clip(luma * 2.0 - 1.0, 0, 1)
+                s_off = np.array([rs, gs, bs], dtype=np.float32)
+                m_off = np.array([rm, gm, bm], dtype=np.float32)
+                h_off = np.array([rh, gh, bh], dtype=np.float32)
+                frame_float32 = frame_float32 + s_off * shadow_w + m_off * mid_w + h_off * high_w
+
         # === MARKER_B28: Motion effects (FCP7 Ch.66) ===
 
         elif t == "drop_shadow":
