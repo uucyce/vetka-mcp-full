@@ -527,8 +527,10 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
 
     video_lane = {"lane_id": "video_main", "lane_type": "video_main", "clips": []}
     audio_lane = {"lane_id": "audio_sync", "lane_type": "audio_sync", "clips": []}
-    video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}
-    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}
+    # MARKER_B58: Sync with CUT_VIDEO_EXT / CUT_AUDIO_EXT from cut_project_store
+    video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mxf", ".r3d", ".braw",
+                 ".mts", ".m2ts", ".dnxhd", ".dnxhr", ".hevc", ".h264", ".h265"}
+    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".aiff", ".aif"}
     clip_counter = 0
     timeline_cursor = 0.0  # running position on timeline
     global_scene_counter = 0
@@ -3038,13 +3040,20 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
     project["bootstrap_profile"] = str(body.bootstrap_profile or project.get("bootstrap_profile") or "default")
     store.save_project(project)
 
-    # MARKER_B54-FIX: Create initial timeline immediately so runtime_ready=true
-    # Previously timeline was only created by separate /scene-assembly-async call
+    # MARKER_B54-FIX + B58: Create/rebuild timeline with clips from scanned media
+    # Rebuild if: no timeline exists, OR timeline has 0 clips (stale from pre-B56 bootstrap)
     existing_timeline = store.load_timeline_state()
-    if existing_timeline is None:
+    existing_clip_count = 0
+    if existing_timeline:
+        for _lane in existing_timeline.get("lanes", []):
+            existing_clip_count += len(_lane.get("clips", []))
+
+    if existing_timeline is None or existing_clip_count == 0:
         timeline_id = str(body.timeline_id or "main")
         initial_timeline = _build_initial_timeline_state(project, timeline_id, store=store)
         store.save_timeline_state(initial_timeline)
+        logger.info("MARKER_B58: Timeline created/rebuilt with %d media files",
+                     sum(len(l.get("clips", [])) for l in initial_timeline.get("lanes", [])))
 
     store.save_bootstrap_state(
         {
@@ -3073,6 +3082,11 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             "profile": profile_payload,
         },
         "stats": stats,
+        # MARKER_B58: Include clip count for verification
+        "timeline_clip_count": sum(
+            len(l.get("clips", []))
+            for l in (store.load_timeline_state() or {}).get("lanes", [])
+        ),
         "missing_inputs": {
             "script_or_treatment": not bool(signals.get("has_script_or_treatment")),
             "montage_sheet": not bool(signals.get("has_montage_sheet")),
