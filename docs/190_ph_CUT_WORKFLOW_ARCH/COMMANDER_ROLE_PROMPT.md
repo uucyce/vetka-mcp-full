@@ -252,10 +252,14 @@ Always creates new cut-NN. Never overwrites.
 | CUT_COGNITIVE_MODEL.md | Two-circuit architecture, JEPA integration |
 
 ### Handoffs (read LATEST on connect)
+Find latest: `ls docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md | sort | tail -1`
+
+Previous handoffs (for history):
 | Doc | Content |
 |-----|---------|
-| HANDOFF_CUT_COMMANDER_AGITATED_TORVALDS_2026-03-22.md | **LATEST.** 30+ merges, 5 rotations, all agents refreshed, CLAUDE.md fix by Zeta |
-| HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md | Previous Commander handoff |
+| HANDOFF_CUT_COMMANDER_GIFTED_LAMPORT_2026-03-23.md | 24+ merges, 6-agent fleet, QA gate established, digest enhancement spec |
+| HANDOFF_CUT_COMMANDER_AGITATED_TORVALDS_2026-03-22.md | 30+ merges, 5 rotations, CLAUDE.md fix by Zeta |
+| HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md | First Opus commander session |
 | HANDOFF_CUT_4OPUS_COMMANDER_SESSION_2026-03-20.md | First 4-Opus session strategy |
 
 ### Feedback (CRITICAL — give to agents)
@@ -371,9 +375,9 @@ STEP 1 — CONTEXT (who you are, what CUT is):
   → CUT_TARGET_ARCHITECTURE.md (constitution, 3-level model)
 
 STEP 2 — CURRENT STATE (what happened, what's broken):
-  → HANDOFF_CUT_COMMANDER_AGITATED_TORVALDS_2026-03-22.md (latest handoff)
-  → feedback/FEEDBACK_COMMANDER_AGITATED_TORVALDS_DEBRIEF_2026-03-22.md (Commander debrief)
-  → feedback/FEEDBACK_WAVE5_6_ALL_AGENTS_2026-03-22.md (latest consensus)
+  → ls docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md | sort | tail -1  (latest handoff)
+  → ls docs/190_ph_CUT_WORKFLOW_ARCH/feedback/FEEDBACK_COMMANDER_*.md | sort | tail -1  (Commander debrief)
+  → ls docs/190_ph_CUT_WORKFLOW_ARCH/feedback/FEEDBACK_WAVE*.md | sort | tail -1  (latest consensus)
 
 STEP 3 — TASK BOARD (what to do next):
   → vetka_task_board action=list project_id=cut filter_status=pending

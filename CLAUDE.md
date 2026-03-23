@@ -16,6 +16,8 @@
    ```
    - **`main`** → you can create docs, commit freely, auto-push is ON.
    - **`claude/*` or other** → you are in a **worktree**. Code only, no shared docs. See [Worktree Rules](#worktree-rules).
+3. Read latest handoff: `docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md` (most recent by date).
+4. Read latest feedback: `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/FEEDBACK_WAVE*.md` (most recent).
 
 **MCP namespace:** All tools use full prefix: `mcp__vetka__<tool>` or `mcp__mycelium__<tool>`.
 If using ToolSearch: `select:mcp__vetka__vetka_session_init`.
@@ -82,8 +84,9 @@ If commit fails, task stays open — fix and retry.
 
 - **Stack:** Tauri (Rust) + React (TypeScript) + Python FastAPI backend
 - **Backend:** FastAPI + SocketIO on port 5001
-- **Frontend:** React + Three.js 3D visualization
+- **Frontend:** React + Three.js 3D visualization + Dockview panels
 - **Config:** `data/templates/model_presets.json` (team presets), `.mcp.json` (MCP servers)
+- **Reference:** FCP7 User Manual = "Old Testament" (NLE spec), `CUT_Interface_Architecture_v1.docx` = "New Testament"
 
 ### Dual MCP Servers
 
@@ -101,15 +104,45 @@ Auto-tier selection based on complexity. Three Dragon tiers (Bronze/Silver/Gold)
 
 Chat commands: `@dragon <task>`, `@doctor <question>`, `@pipeline <task>`.
 
-## Multi-Agent Sync
+## Multi-Agent Fleet
 
-Three agents, ONE codebase, ONE TaskBoard:
+Up to 6 agents, ONE codebase, ONE TaskBoard. Fleet composition is dynamic — see latest handoff for active agents and branches.
 
-| Agent | Role | Typical Tasks |
-|-------|------|---------------|
-| **Opus** (Claude Code) | Architect-Commander | Architecture, pipeline, infra |
-| **Cursor** | Frontend Engineer | UI, DAG viz, components |
-| **Codex** (worktree) | Specialist | Tests, cleanup, isolated modules |
+### Roles (current as of session init)
+
+| Role | Branch Pattern | Domain |
+|------|---------------|--------|
+| **Commander** (Opus on main) | `main` | Architecture, dispatch, merge, QA gate |
+| **Engine** agent | `claude/cut-engine` | Store, timeline, editing ops, hotkeys |
+| **Media** agent | `claude/cut-media` | Audio, video, codecs, export, color |
+| **UX** agent | `claude/cut-ux` | Panels, menus, CSS, visual polish |
+| **QA** agents (1-2) | `claude/cut-qa`, `claude/cut-qa-2` | Tests, compliance, regression |
+| **Harness** agent | worktree | Task board fixes, MCP tools, infra |
+
+For current agent assignments, check: `vetka_task_board action=list` → `assigned_to` field.
+
+### Commander Protocol
+
+**Commander (Opus on main) NEVER writes code.** Not even one-line fixes. Always delegate to an agent.
+
+Commander responsibilities:
+1. **Dispatch** — give strategic missions with horizon, not incremental tasks
+2. **QA Gate** — every merge must pass QA verification first
+3. **Merge** — `vetka_task_board action=merge_request` (never raw `git merge`)
+4. **Debrief** — 6 provocative questions at session end (see feedback docs)
+
+Commander role prompt: `docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md`
+
+### QA Gate (MANDATORY before merge)
+
+```
+Agent completes work → done_worktree
+  → QA agent reviews: vetka_task_board action=verify task_id=<id> verdict=PASS|FAIL
+  → Commander merges: vetka_task_board action=merge_request task_id=<id>
+  → done_main
+```
+
+**No merge without QA PASS.** No exceptions, no "quick merge."
 
 ### Task Lifecycle
 
@@ -117,8 +150,11 @@ Three agents, ONE codebase, ONE TaskBoard:
 1. LIST:     vetka_task_board action=list filter_status=pending
 2. CLAIM:    vetka_task_board action=claim task_id=<id> assigned_to=<agent>
 3. DO WORK:  Edit files, run tests
-4. COMPLETE: vetka_task_board action=complete task_id=<id>
-             → auto: git commit + digest + push (on main) + task closed
+4. COMPLETE: vetka_task_board action=complete task_id=<id> [branch=claude/<name>]
+             → auto: git commit + digest + task status updated
+5. QA:       vetka_task_board action=verify task_id=<id> verdict=PASS
+6. MERGE:    vetka_task_board action=merge_request task_id=<id>
+             → auto: git merge to main + push + done_main
 ```
 
 ### File Ownership
@@ -132,14 +168,14 @@ Three agents, ONE codebase, ONE TaskBoard:
 
 | Content | Where | Why |
 |---------|-------|-----|
-| Code (*.ts, *.py) + tests | Worktree ✅ | Isolated dev |
-| Docs, CLAUDE.md, handoffs | **Main only** ❌ | Must be visible to all agents |
+| Code (*.ts, *.py) + tests | Worktree branch | Isolated dev |
+| Docs, roadmaps, handoffs | **Main only** | Must be visible to all agents |
 | Task board | **MCP only** | Single source of truth |
 
 Worktree docs are invisible to other agents and the user.
 Need a shared doc from worktree? Ask the user to cherry-pick it to main.
 
-**⚠️ Task completion from worktree — MANDATORY:**
+**Task completion from worktree — MANDATORY:**
 MCP server runs on main repo, so `_detect_git_branch()` always returns `main`.
 **You MUST pass `branch` explicitly:**
 ```
@@ -148,6 +184,28 @@ vetka_task_board action=complete task_id=<id> branch=claude/<worktree-name>
 This sets status to `done_worktree` instead of `done`. Without `branch=`, the task wrongly closes as `done` on main.
 
 **Ports:** Main = 3001/5001. Worktrees = 3003+/shared 5001.
+
+## UI Design Rules
+
+- **Monochrome ONLY.** ZERO color except color correction panels and markers.
+- **Grey palette:** `#0a0a0a` / `#111` / `#1a1a1a` / `#2a2a2a` / `#888` / `#ccc`
+- **FCP7 principle:** Professional NLE = no candy colors. White monochrome SVG/PNG icons only.
+- **No emoji/colored icons** in UI components. Ever.
+- **Pre-merge check:** Grep for non-monochrome hex values before any merge.
+
+## Key Dynamic References
+
+| What | Where |
+|------|-------|
+| Current phase + state | `vetka_session_init` (always call first) |
+| Active tasks | `vetka_task_board action=list` |
+| Task details + recon docs | `vetka_task_board action=get task_id=<id>` → field `recon_docs` |
+| Agent roadmaps | `docs/190_ph_CUT_WORKFLOW_ARCH/ROADMAP_*.md` |
+| Agent feedback/debrief | `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/` |
+| Session handoffs | `docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_*.md` |
+| Commander role | `docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md` |
+| FCP7 manual (Old Testament) | `docs/besedii_google_drive_docs/` or Google Drive |
+| CUT architecture (New Testament) | `CUT_Interface_Architecture_v1.docx` |
 
 ## Methodology (Opus = Commander)
 
@@ -167,7 +225,12 @@ Always write the FULL plan before executing. The user wants to see WHO does WHAT
 ## Rules
 
 1. **`session_init` FIRST** — every new conversation
-2. **No code without a task** — follow the decision tree above
-3. **No raw `git commit`** — always `vetka_task_board action=complete`
-4. **MARKER_XXX.Y** convention for code comments
-5. **Tests:** `python -m pytest tests/ -v`
+2. **Read latest handoff + feedback** — before any work
+3. **No code without a task** — follow the decision tree above
+4. **No raw `git commit`** — always `vetka_task_board action=complete`
+5. **No merge without QA** — always verify before merge_request
+6. **Commander never codes** — delegate everything, even one-liners
+7. **MARKER_XXX.Y** convention for code comments
+8. **Tests:** `python -m pytest tests/ -v`
+9. **Monochrome UI** — zero color except correction/markers
+10. **Don't ask obvious questions** — if it's in loaded docs, just execute
