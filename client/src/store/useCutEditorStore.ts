@@ -197,6 +197,7 @@ interface CutEditorState {
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
   laneVolumes: Record<string, number>;
+  lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
   // === Selection ===
@@ -365,6 +366,7 @@ interface CutEditorState {
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
+  setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
   // MARKER_W3.7: Multi-select
@@ -547,6 +549,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
   laneVolumes: {},
+  lanePans: {},
   snapEnabled: true,
 
   // Selection
@@ -742,6 +745,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       laneVolumes: {
         ...state.laneVolumes,
         [laneId]: Math.max(0, Math.min(1.5, volume)),
+      },
+    })),
+  // MARKER_RECON_21: Persist pan to store (was local useState in AudioMixer)
+  setLanePan: (laneId, pan) =>
+    set((state) => ({
+      lanePans: {
+        ...state.lanePans,
+        [laneId]: Math.max(-1, Math.min(1, pan)),
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
