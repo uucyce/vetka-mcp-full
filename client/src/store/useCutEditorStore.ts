@@ -897,39 +897,44 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     });
     set({ lanes: newLanes });
   },
+  // MARKER_TD3: Extend Edit (E key) — extend nearest clip edge to playhead
+  // FCP7 Ch.19 p.285: finds closest edit point, extends it to playhead
+  // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
   extendEdit: () => {
-    // Extend edit: extend nearest clip edge to playhead
     const { lanes, currentTime, lockedLanes } = get();
     let bestDist = Infinity;
-    let bestLaneIdx = -1;
-    let bestClipIdx = -1;
+    let bestClipId = '';
     let bestEdge: 'start' | 'end' = 'end';
+    let bestClipStart = 0;
+    let bestClipDur = 0;
 
-    lanes.forEach((lane, li) => {
+    lanes.forEach((lane) => {
       if (lockedLanes.has(lane.lane_id)) return;
-      lane.clips.forEach((clip, ci) => {
+      lane.clips.forEach((clip) => {
         const endSec = clip.start_sec + clip.duration_sec;
-        const dStart = Math.abs(clip.start_sec - currentTime);
         const dEnd = Math.abs(endSec - currentTime);
-        if (dEnd < bestDist) { bestDist = dEnd; bestLaneIdx = li; bestClipIdx = ci; bestEdge = 'end'; }
-        if (dStart < bestDist) { bestDist = dStart; bestLaneIdx = li; bestClipIdx = ci; bestEdge = 'start'; }
+        const dStart = Math.abs(clip.start_sec - currentTime);
+        if (dEnd < bestDist) {
+          bestDist = dEnd; bestClipId = clip.clip_id; bestEdge = 'end';
+          bestClipStart = clip.start_sec; bestClipDur = clip.duration_sec;
+        }
+        if (dStart < bestDist) {
+          bestDist = dStart; bestClipId = clip.clip_id; bestEdge = 'start';
+          bestClipStart = clip.start_sec; bestClipDur = clip.duration_sec;
+        }
       });
     });
 
-    if (bestLaneIdx < 0) return;
-    const newLanes = lanes.map((lane, li) => {
-      if (li !== bestLaneIdx) return lane;
-      return { ...lane, clips: lane.clips.map((c, ci) => {
-        if (ci !== bestClipIdx) return c;
-        if (bestEdge === 'end') {
-          return { ...c, duration_sec: Math.max(0.01, currentTime - c.start_sec) };
-        } else {
-          const oldEnd = c.start_sec + c.duration_sec;
-          return { ...c, start_sec: currentTime, duration_sec: Math.max(0.01, oldEnd - currentTime) };
-        }
-      })};
-    });
-    set({ lanes: newLanes });
+    if (!bestClipId) return;
+
+    if (bestEdge === 'end') {
+      const newDur = Math.max(0.01, currentTime - bestClipStart);
+      void get().applyTimelineOps([{ op: 'trim_clip', clip_id: bestClipId, duration_sec: newDur }]);
+    } else {
+      const oldEnd = bestClipStart + bestClipDur;
+      const newDur = Math.max(0.01, oldEnd - currentTime);
+      void get().applyTimelineOps([{ op: 'trim_clip', clip_id: bestClipId, start_sec: currentTime, duration_sec: newDur }]);
+    }
   },
 
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
