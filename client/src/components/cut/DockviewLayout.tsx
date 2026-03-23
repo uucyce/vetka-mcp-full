@@ -59,6 +59,7 @@ import ToolsPalette from './ToolsPalette';
 // MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
 import StatusBar from './StatusBar';
 import DropZoneOverlay from './DropZoneOverlay';
+import TimelineMiniMap from './panels/TimelineMiniMap';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -477,6 +478,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
           </div>
         )}
       </div>
+      {/* MARKER_GAMMA-MN1: Mini timeline navigator — overview bar */}
+      <TimelineMiniMap />
       {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
       <StatusBar />
     </div>
