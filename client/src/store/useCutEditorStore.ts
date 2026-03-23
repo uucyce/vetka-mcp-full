@@ -482,6 +482,7 @@ interface CutEditorState {
   setMulticamActiveAngle: (index: number) => void;
   toggleMulticamMode: () => void;
   multicamSwitchAngle: (angleIndex: number) => void;
+  createMulticamClip: (sourcePaths: string[], syncMethod?: 'waveform' | 'timecode' | 'marker') => Promise<void>;
 
   setEditorSession: (session: {
     sandboxRoot?: string | null;
@@ -1218,7 +1219,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const { multicamId, multicamAngles, currentTime } = get();
     if (!multicamId || angleIndex >= multicamAngles.length) return;
     set({ multicamActiveAngle: angleIndex });
-    // Insert angle switch as a clip on timeline via applyTimelineOps
     const angle = multicamAngles[angleIndex];
     void get().applyTimelineOps([{
       op: 'overwrite_at',
@@ -1228,6 +1228,37 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       source_path: angle.source_path,
       source_in: currentTime + angle.offset_sec,
     }]);
+  },
+
+  // MARKER_MULTICAM_CREATE: Create multicam clip via backend POST /cut/multicam/create
+  createMulticamClip: async (sourcePaths, syncMethod = 'waveform') => {
+    try {
+      const response = await fetch(`${API_BASE}/cut/multicam/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_paths: sourcePaths,
+          sync_method: syncMethod,
+          reference_index: 0,
+          fps: get().projectFramerate || 25,
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data.success || !data.multicam_id) throw new Error(data.error || 'create failed');
+      // Load multicam into store
+      const angles = (data.angles || []).map((a: any, i: number) => ({
+        source_path: a.source_path || sourcePaths[i] || '',
+        label: a.label || `Angle ${i + 1}`,
+        offset_sec: a.offset_sec || 0,
+      }));
+      get().setMulticam(data.multicam_id, angles);
+    } catch (err) {
+      console.error('[MULTICAM] Create failed:', err);
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Multicam create failed: ${err}` },
+      }));
+    }
   },
 
   setEditorSession: (session) =>
