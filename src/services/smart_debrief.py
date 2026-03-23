@@ -118,37 +118,109 @@ def _create_auto_tasks(report, task_board) -> list[str]:
 
 
 def _route_to_memory(text: str, report) -> dict:
-    """
-    Route text to memory subsystems via regex triggers.
+    """MARKER_195.21/F4: Route text to memory subsystems via regex triggers.
+
+    Each subsystem call is isolated in try/except — never crashes the debrief.
     Returns dict of triggered subsystems for logging/testing.
     """
     triggered = {}
 
-    # REFLEX/CORTEX: tool name mentions
+    # REFLEX/CORTEX: tool name mentions → record feedback
     tool_matches = _TOOL_PATTERN.findall(text)
     if tool_matches:
-        triggered["reflex_tools"] = list(set(tool_matches))
-        logger.debug("[SmartDebrief] REFLEX trigger: %s", tool_matches)
+        tools_deduped = list(set(tool_matches))
+        triggered["reflex_tools"] = tools_deduped
+        is_negative = bool(_BUG_PATTERNS.search(text))
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            fb = get_reflex_feedback()
+            for tool_name in tools_deduped:
+                fb.record(
+                    tool_id=tool_name,
+                    success=not is_negative,
+                    useful=not is_negative,
+                    phase_type=report.domain or "research",
+                    agent_role="debrief",
+                    execution_time_ms=0.0,
+                    subtask_id="",
+                    extra={"source": "smart_debrief", "text": text[:200]},
+                )
+            logger.debug("[SmartDebrief] REFLEX recorded %d tools (neg=%s)", len(tools_deduped), is_negative)
+        except Exception as e:
+            logger.debug("[SmartDebrief] REFLEX write failed (non-fatal): %s", e)
 
-    # AURA: user/UX mentions
+    # AURA: user/UX mentions → store insight
     if _USER_PATTERN.search(text):
         triggered["aura_ux"] = True
-        logger.debug("[SmartDebrief] AURA trigger: user/UX mention")
+        try:
+            from src.memory.aura_store import get_aura_store
+            store = get_aura_store()
+            cat = "viewport_patterns" if re.search(r"UI|UX|viewport|panel|layout", text, re.IGNORECASE) else "communication_style"
+            store.set_preference(
+                agent_type="default",
+                user_id="default",
+                category=cat,
+                key="debrief_ux_insight",
+                value=text[:500],
+                confidence=0.3,
+            )
+            logger.debug("[SmartDebrief] AURA stored UX insight (cat=%s)", cat)
+        except Exception as e:
+            logger.debug("[SmartDebrief] AURA write failed (non-fatal): %s", e)
 
-    # MGC: file path mentions
+    # MGC: file path mentions → hot file marker
     file_matches = _FILE_PATTERN.findall(text)
     if file_matches:
-        triggered["mgc_files"] = list(set(file_matches))
-        logger.debug("[SmartDebrief] MGC trigger: %s", file_matches)
+        files_deduped = list(set(file_matches))
+        triggered["mgc_files"] = files_deduped
+        try:
+            from src.memory.mgc_cache import get_mgc_cache
+            mgc = get_mgc_cache()
+            for fpath in files_deduped:
+                mgc.set_sync(
+                    key=f"debrief_hot:{fpath}",
+                    value={"source": "smart_debrief", "text": text[:200], "agent": report.agent_callsign},
+                    size_bytes=0,
+                )
+            logger.debug("[SmartDebrief] MGC marked %d hot files", len(files_deduped))
+        except Exception as e:
+            logger.debug("[SmartDebrief] MGC write failed (non-fatal): %s", e)
 
-    # ENGRAM: pattern/principle mentions
+    # ENGRAM: pattern/principle mentions → L1 learning entry
     if _LEARNING_PATTERN.search(text):
         triggered["engram_learning"] = True
-        logger.debug("[SmartDebrief] ENGRAM trigger: pattern/principle")
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            cache = get_engram_cache()
+            cat = "architecture" if re.search(r"always|never|принцип|principle|rule|правил", text, re.IGNORECASE) else "pattern"
+            cache.put(
+                key=f"{report.agent_callsign or 'unknown'}::debrief::learning::{report.domain or 'research'}",
+                value=text[:300],
+                category=cat,
+                source_learning_id=f"debrief:{report.session_id}",
+                match_count=0,
+            )
+            logger.debug("[SmartDebrief] ENGRAM stored learning (cat=%s)", cat)
+        except Exception as e:
+            logger.debug("[SmartDebrief] ENGRAM write failed (non-fatal): %s", e)
 
     # CORTEX: fallback — everything goes to general feedback
     if not triggered:
         triggered["cortex_general"] = True
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            fb = get_reflex_feedback()
+            fb.record(
+                tool_id="__general_debrief__",
+                success=True,
+                useful=True,
+                phase_type=report.domain or "research",
+                agent_role="debrief",
+                extra={"source": "smart_debrief", "text": text[:200]},
+            )
+            logger.debug("[SmartDebrief] CORTEX general fallback recorded")
+        except Exception as e:
+            logger.debug("[SmartDebrief] CORTEX fallback write failed (non-fatal): %s", e)
 
     return triggered
 
