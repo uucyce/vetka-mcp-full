@@ -85,12 +85,14 @@
 }
 
 /* ═══ Tab bar — 18px thin ═══════════════════════════════════════════ */
+/* MARKER_GAMMA-P1: Hardcoded hex + !important to guarantee grey tabs.
+   var() fallbacks fail when dockview CSS loads after tokens.css. */
 
 .dockview-theme-dark .dv-tabs-and-actions-container {
   height: 18px;
   min-height: 18px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-dim);
+  background-color: #0a0a0a !important;
+  border-bottom: 1px solid #222 !important;
 }
 
 .dockview-theme-dark .dv-tab {
@@ -100,14 +102,15 @@
   padding: 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  background-color: #111 !important;
 }
 
 /* Active tab — MARKER_GAMMA-FIX: Kill ALL colored underlines/accents */
 .dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom: 1px solid var(--border-bright);
-  border-top: none;
-  background-color: var(--bg-hover);
-  color: var(--text-secondary);
+  border-bottom: 1px solid #555 !important;
+  border-top: none !important;
+  background-color: #1a1a1a !important;
+  color: #ccc;
 }
 /* Kill pseudo-element underlines (dracula/vs theme ::after indicators) */
 .dockview-theme-dark .dv-tab.dv-active-tab::after,
@@ -133,10 +136,10 @@
 
 /* Inactive tab */
 .dockview-theme-dark .dv-tab.dv-inactive-tab {
-  border-bottom: 1px solid transparent;
-  border-top: none;
-  background-color: var(--bg-secondary);
-  color: var(--text-dim);
+  border-bottom: 1px solid transparent !important;
+  border-top: none !important;
+  background-color: #0a0a0a !important;
+  color: #555;
 }
 
 /* ═══ Tab close button — hidden until hover ═════════════════════════ */

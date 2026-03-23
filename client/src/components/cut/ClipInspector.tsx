@@ -76,13 +76,13 @@ function formatTC(sec: number): string {
 
 const SYNC_COLORS: Record<string, string> = {
   timecode: '#22c55e',
-  waveform: '#3b82f6',
+  waveform: '#888',
   meta_sync: '#a855f7',
 };
 
 const MARKER_COLORS: Record<string, string> = {
   favorite: '#f59e0b',
-  comment: '#3b82f6',
+  comment: '#999',
   cam: '#a855f7',
   insight: '#22c55e',
 };

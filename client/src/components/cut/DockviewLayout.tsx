@@ -16,7 +16,8 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
 } from 'dockview-react';
-// MARKER_GAMMA-37: Standard dockview CSS import + our theme override (source order wins)
+// MARKER_GAMMA-37: dockview CSS via JS import (Vite resolves node_modules).
+// Our theme CSS loads second → wins by source order. GAMMA-35 nuclear overrides.
 import 'dockview-react/dist/styles/dockview.css';
 import './dockview-cut-theme.css';
 
