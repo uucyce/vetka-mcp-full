@@ -218,9 +218,12 @@ export default function VideoScopes() {
   const mountedRef = useRef(true);
 
   const currentTime = useCutEditorStore((s) => s.currentTime);
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
   const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   const programMediaPath = useCutEditorStore((s) => s.programMediaPath);
   const mediaPath = programMediaPath || sourceMediaPath;
+  // MARKER_B37: Client-side throttle timestamp
+  const lastEmitRef = useRef<number>(0);
 
   // MARKER_B25: Read color_correction from selected clip for post-grade scopes
   const selectedClipCC = useCutEditorStore((s) => {
@@ -273,8 +276,16 @@ export default function VideoScopes() {
     };
   }, []);
 
-  // MARKER_B27: Build scope request payload
-  const buildScopePayload = useCallback((path: string, time: number) => {
+  // MARKER_B27 + B37: Build scope request payload (fast mode during playback)
+  const buildScopePayload = useCallback((path: string, time: number, playing: boolean) => {
+    // MARKER_B37: During playback use fast mode (histogram only, 128px, ~2ms)
+    if (playing) {
+      return {
+        source_path: path,
+        time: time,
+        mode: 'fast',
+      };
+    }
     const scopeParam = mode === 'parade' ? 'parade' : mode;
     const payload: Record<string, any> = {
       source_path: path,
@@ -315,24 +326,32 @@ export default function VideoScopes() {
     }
   }, [mode, postGrade, selectedClipCC]);
 
-  // MARKER_B27: Emit scope_request via SocketIO, fall back to HTTP
+  // MARKER_B27 + B37: Emit scope_request via SocketIO with playback throttle
   useEffect(() => {
     if (!mediaPath) { setScopeData(null); return; }
 
+    // MARKER_B37: Throttle during playback (max 10 updates/sec = 100ms interval)
+    if (isPlaying) {
+      const now = Date.now();
+      if (now - lastEmitRef.current < 100) return; // skip if <100ms since last emit
+      lastEmitRef.current = now;
+    }
+
     if (socketConnected && scopeSocket) {
-      // SocketIO path — server handles debounce, emit immediately
+      // SocketIO path — server handles debounce
       setLoading(true);
-      scopeSocket.emit('scope_request', buildScopePayload(mediaPath, currentTime));
+      scopeSocket.emit('scope_request', buildScopePayload(mediaPath, currentTime, isPlaying));
     } else {
-      // HTTP fallback with 500ms client debounce
+      // HTTP fallback with debounce (500ms paused, 200ms playing)
       if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current);
+      const delay = isPlaying ? 200 : 500;
       fetchTimerRef.current = window.setTimeout(() => {
         fetchScopesHttp(mediaPath, currentTime);
-      }, 500);
+      }, delay);
     }
 
     return () => { if (fetchTimerRef.current) clearTimeout(fetchTimerRef.current); };
-  }, [mediaPath, currentTime, mode, postGrade, selectedClipCC, socketConnected, buildScopePayload, fetchScopesHttp]);
+  }, [mediaPath, currentTime, mode, postGrade, selectedClipCC, socketConnected, isPlaying, buildScopePayload, fetchScopesHttp]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
