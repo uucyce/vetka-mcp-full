@@ -644,7 +644,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     // MARKER_B3.2: exit record mode when stopping playback
     return next ? { isPlaying: true } : { isPlaying: false, isRecordMode: false };
   }),
-  seek: (time) => set({ currentTime: Math.max(0, time) }),
+  seek: (time) => set((state) => ({ currentTime: Math.min(state.duration || Infinity, Math.max(0, time)) })),
   setDuration: (d) => set({ duration: d }),
   // MARKER_DUAL-VIDEO: Source monitor independent playback actions
   playSource: () => set({ sourceIsPlaying: true }),
