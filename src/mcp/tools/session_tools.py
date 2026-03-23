@@ -415,6 +415,56 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Qdrant unavailable — graceful fallback, no block
 
+        # MARKER_ZETA.F4.ENGRAM: Inject ENGRAM learnings into session_init
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            _engram = get_engram_cache()
+            _engram_ctx = {}
+            # Danger entries — permanent, critical anti-patterns
+            _dangers = _engram.get_danger_entries()
+            if _dangers:
+                _engram_ctx["dangers"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _dangers[:5]
+                ]
+            # Architecture principles — permanent learnings
+            _arch = _engram.get_all_by_category("architecture")
+            if _arch:
+                _engram_ctx["architecture"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _arch[:5]
+                ]
+            # Top patterns by hit_count — most validated learnings
+            _patterns = _engram.get_all_by_category("pattern")
+            if _patterns:
+                _patterns_sorted = sorted(_patterns, key=lambda x: x.hit_count, reverse=True)
+                _engram_ctx["patterns"] = [
+                    {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
+                    for e in _patterns_sorted[:5]
+                ]
+            if _engram_ctx:
+                _engram_ctx["stats"] = _engram.stats()
+                context["engram_learnings"] = _engram_ctx
+        except Exception:
+            pass  # ENGRAM errors never block session init
+
+        # MARKER_ZETA.F4.MGC: Inject MGC cache status into session_init
+        try:
+            from src.memory.mgc_cache import get_mgc_cache
+            _mgc = get_mgc_cache()
+            _mgc_stats = _mgc.get_stats()
+            if _mgc_stats:
+                context["mgc_status"] = {
+                    "gen0_size": _mgc_stats.get("gen0_size", 0),
+                    "hit_rate": _mgc_stats.get("hit_rate", 0),
+                    "gen0_hit_rate": _mgc_stats.get("gen0_hit_rate", 0),
+                    "total_hits": sum(_mgc_stats.get(k, 0) for k in ("gen0", "gen1", "gen2")),
+                    "misses": _mgc_stats.get("misses", 0),
+                    "evictions": _mgc_stats.get("evictions", 0),
+                }
+        except Exception:
+            pass  # MGC errors never block session init
+
         # MARKER_178.1.2: Recent commits
         try:
             import subprocess
