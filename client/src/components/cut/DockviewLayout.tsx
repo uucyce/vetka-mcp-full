@@ -66,14 +66,24 @@ import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
+import PanelErrorBoundary from './utils/PanelErrorBoundary';
 
-const EffectsPanelDock = () => <EffectsPanel />;
-const VideoScopesPanelDock = () => <VideoScopes />;
-const ColorCorrectorPanelDock = () => <ColorCorrectionPanel />;
-const LutBrowserPanelDock = () => <LutBrowserPanel />;
-const SpeedControlPanelDock = () => <div data-testid="speed-control-panel"><SpeedControl /></div>;
-const TransitionsPanelDock = () => <TransitionsPanel />;
-const ToolsPaletteDock = () => <ToolsPalette />;
+// MARKER_GAMMA-APP1: Wrap each panel in ErrorBoundary for crash isolation
+function withErrorBoundary(name: string, Comp: React.ComponentType<any>) {
+  const Wrapped = (props: any) => (
+    <PanelErrorBoundary panelName={name}><Comp {...props} /></PanelErrorBoundary>
+  );
+  Wrapped.displayName = `EB(${name})`;
+  return Wrapped;
+}
+
+const EffectsPanelDock = withErrorBoundary('Effects', EffectsPanel);
+const VideoScopesPanelDock = withErrorBoundary('Scopes', VideoScopes);
+const ColorCorrectorPanelDock = withErrorBoundary('Color', ColorCorrectionPanel);
+const LutBrowserPanelDock = withErrorBoundary('LUTs', LutBrowserPanel);
+const SpeedControlPanelDock = withErrorBoundary('Speed', SpeedControl);
+const TransitionsPanelDock = withErrorBoundary('Transitions', TransitionsPanel);
+const ToolsPaletteDock = withErrorBoundary('Tools', ToolsPalette);
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
