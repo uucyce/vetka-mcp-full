@@ -855,6 +855,54 @@ async def cut_effects_defaults(effect_type: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B52: Mixer state persistence
+# ---------------------------------------------------------------------------
+
+
+class CutMixerStateRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    lane_volumes: dict[str, float] = {}
+    lane_pans: dict[str, float] = {}
+    muted_lanes: list[str] = []
+    soloed_lanes: list[str] = []
+    master_volume: float = 1.0
+    master_pan: float = 0.0
+
+
+@media_router.post("/mixer/state")
+async def cut_mixer_state_save(body: CutMixerStateRequest) -> dict[str, Any]:
+    """MARKER_B52 — Persist audio mixer state to project store."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    timeline["mixer_state"] = {
+        "lane_volumes": body.lane_volumes,
+        "lane_pans": body.lane_pans,
+        "muted_lanes": body.muted_lanes,
+        "soloed_lanes": body.soloed_lanes,
+        "master_volume": body.master_volume,
+        "master_pan": body.master_pan,
+    }
+    store.save_timeline_state(timeline)
+    return {"success": True, "mixer_state": timeline["mixer_state"]}
+
+
+@media_router.get("/mixer/state")
+async def cut_mixer_state_load(sandbox_root: str) -> dict[str, Any]:
+    """MARKER_B52 — Load persisted mixer state."""
+    store = CutProjectStore(sandbox_root)
+    timeline = store.load_timeline_state()
+    if not timeline:
+        return {"success": False, "error": "timeline_not_found"}
+
+    mixer = timeline.get("mixer_state", {})
+    return {"success": True, "mixer_state": mixer}
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B51: Effect CRUD — apply/remove/reorder/clear per clip
 # ---------------------------------------------------------------------------
 

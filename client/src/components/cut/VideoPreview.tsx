@@ -234,8 +234,10 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         return;
       }
       const sourceUrl = `${API_BASE}/files/raw?path=${encodeURIComponent(activeMediaPath)}`;
-      const wantsProxy = HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension);
-      if (!sandboxRoot || !wantsProxy) {
+      // MARKER_B52: Respect proxyMode from store
+      const proxyMode = useCutEditorStore.getState().proxyMode || 'auto';
+      const wantsProxy = proxyMode === 'proxy' || (proxyMode === 'auto' && (HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension)));
+      if (!sandboxRoot || !wantsProxy || proxyMode === 'full') {
         setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
         setSourceHint(wantsProxy ? 'proxy unavailable, trying source' : '');
         return;

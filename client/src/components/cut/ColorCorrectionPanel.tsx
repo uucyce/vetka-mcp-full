@@ -189,6 +189,16 @@ export default function ColorCorrectionPanel() {
         if (color.contrast !== 1) effects.push({ type: 'contrast', params: { value: color.contrast }, enabled: true });
         if (color.saturation !== 1) effects.push({ type: 'saturation', params: { value: color.saturation }, enabled: true });
         if (color.hue !== 0) effects.push({ type: 'hue', params: { degrees: color.hue }, enabled: true });
+        // MARKER_B52: 3-way color wheels → lift/midtone/gain effects for preview
+        if (color.liftR !== 0 || color.liftG !== 0 || color.liftB !== 0) {
+          effects.push({ type: 'lift', params: { r: color.liftR, g: color.liftG, b: color.liftB }, enabled: true });
+        }
+        if (color.midR !== 0 || color.midG !== 0 || color.midB !== 0) {
+          effects.push({ type: 'midtone', params: { r: color.midR, g: color.midG, b: color.midB }, enabled: true });
+        }
+        if (color.gainR !== 0 || color.gainG !== 0 || color.gainB !== 0) {
+          effects.push({ type: 'gain', params: { r: color.gainR, g: color.gainG, b: color.gainB }, enabled: true });
+        }
 
         const resp = await fetch(`${API_BASE}/cut/preview/frame`, {
           method: 'POST',
