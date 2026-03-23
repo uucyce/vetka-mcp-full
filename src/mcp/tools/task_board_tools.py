@@ -432,6 +432,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 
+        # MARKER_195.20e: Map branch → branch_name (MCP param name vs DB field name)
+        if "branch_name" not in updates and arguments.get("branch"):
+            updates["branch_name"] = arguments["branch"]
+
         if not updates:
             return {"success": False, "error": "No fields to update"}
 
