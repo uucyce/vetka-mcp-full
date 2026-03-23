@@ -707,6 +707,7 @@ export default function MenuBar() {
         { label: 'Speed Control', action: () => togglePanel('speed', 'speed', 'Speed') },
         { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
+        { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
         { separator: true },

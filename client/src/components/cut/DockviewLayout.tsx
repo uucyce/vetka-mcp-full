@@ -49,6 +49,7 @@ import {
   HistoryPanelDock,
   AutoMontagePanelDock,
   AudioMixerPanelDock,
+  MarkerListPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -91,6 +92,7 @@ const PANEL_COMPONENTS = {
   speed: SpeedControlPanelDock,
   transitions: TransitionsPanelDock,
   tools: ToolsPaletteDock,
+  markers: MarkerListPanel,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
