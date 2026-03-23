@@ -755,61 +755,40 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
     set({ clipboard: clips });
   },
+  // MARKER_UNDO_CUT: Cut clips — copy to clipboard + remove via applyTimelineOps for undo support
   cutClips: () => {
-    const state = get();
-    const { lanes, selectedClipIds } = state;
+    const { lanes, selectedClipIds } = get();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
-    const newLanes = lanes.map((lane) => ({
-      ...lane,
-      clips: lane.clips.filter((c) => {
-        if (selectedClipIds.has(c.clip_id)) { clips.push({ ...c }); return false; }
-        return true;
-      }),
-    }));
-    set({ clipboard: clips, lanes: newLanes, selectedClipId: null, selectedClipIds: new Set() });
+    for (const lane of lanes) {
+      for (const clip of lane.clips) {
+        if (selectedClipIds.has(clip.clip_id)) clips.push({ ...clip });
+      }
+    }
+    set({ clipboard: clips, selectedClipId: null, selectedClipIds: new Set() });
+    // Route removal through backend undo stack
+    const ops = clips.map((c) => ({ op: 'remove_clip', clip_id: c.clip_id }));
+    void get().applyTimelineOps(ops);
   },
+  // MARKER_UNDO_PASTE: Paste clips via applyTimelineOps for undo support
   pasteClips: (mode) => {
-    const { clipboard, currentTime, lanes, getInsertTargets } = get();
+    const { clipboard, currentTime, getInsertTargets } = get();
     if (clipboard.length === 0) return;
     const targets = getInsertTargets();
     const targetLaneId = targets.videoLaneId;
     if (!targetLaneId) return;
-    // Calculate total duration of clipboard
     const minStart = Math.min(...clipboard.map((c) => c.start_sec));
+    const opType = mode === 'insert' ? 'insert_at' : 'overwrite_at';
+    const ops = clipboard.map((c) => ({
+      op: opType,
+      lane_id: targetLaneId,
+      start_sec: currentTime + (c.start_sec - minStart),
+      duration_sec: c.duration_sec,
+      source_path: c.source_path,
+    }));
+    void get().applyTimelineOps(ops);
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
-    const totalDur = maxEnd - minStart;
-
-    const newLanes = lanes.map((lane) => {
-      if (lane.lane_id !== targetLaneId) return lane;
-      const pastedClips = clipboard.map((c) => ({
-        ...c,
-        clip_id: `clip_paste_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        start_sec: currentTime + (c.start_sec - minStart),
-      }));
-      if (mode === 'insert') {
-        // Push existing clips right
-        const pushed = lane.clips.map((c) =>
-          c.start_sec >= currentTime ? { ...c, start_sec: c.start_sec + totalDur } : c,
-        );
-        return { ...lane, clips: [...pushed, ...pastedClips] };
-      } else {
-        // Overwrite: remove overlapping, then add
-        const overEnd = currentTime + totalDur;
-        const trimmed = lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          if (c.start_sec >= currentTime && cEnd <= overEnd) return [];
-          if (cEnd <= currentTime || c.start_sec >= overEnd) return [c];
-          const result = [];
-          if (c.start_sec < currentTime) result.push({ ...c, duration_sec: currentTime - c.start_sec });
-          if (cEnd > overEnd) result.push({ ...c, clip_id: c.clip_id + '_pw', start_sec: overEnd, duration_sec: cEnd - overEnd });
-          return result;
-        });
-        return { ...lane, clips: [...trimmed, ...pastedClips] };
-      }
-    });
-    set({ lanes: newLanes });
-    get().seek(currentTime + totalDur);
+    get().seek(currentTime + (maxEnd - minStart));
   },
   pasteAttributes: () => {
     const { clipboard, selectedClipIds, lanes } = get();
