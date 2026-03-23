@@ -1,9 +1,8 @@
 """
-MARKER_ZETA.F2: Tests for Smart Debrief — auto-task creation + memory routing.
+MARKER_ZETA.F2+F4: Tests for Smart Debrief — auto-task creation + wired memory routing.
 """
 
 import pytest
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — smart debrief pipeline imports changed")
 from unittest.mock import patch, MagicMock
 
 from src.services.smart_debrief import (
@@ -239,3 +238,134 @@ class TestProcessSmartDebrief:
         for route in results["memory_routes"]:
             assert "triggered" in route
             assert len(route["triggered"]) > 0
+
+
+# ── F4: Wired Memory Routing Tests ────────────────────────────
+
+
+@pytest.fixture
+def f4_report():
+    return ExperienceReport(
+        session_id="test-f4",
+        agent_callsign="Zeta",
+        domain="engine",
+        branch="claude/cut-engine",
+        timestamp="2026-03-23T00:00:00Z",
+    )
+
+
+@pytest.fixture
+def mock_reflex():
+    with patch("src.services.reflex_feedback.get_reflex_feedback") as m:
+        fb = MagicMock()
+        m.return_value = fb
+        yield fb
+
+
+@pytest.fixture
+def mock_aura():
+    with patch("src.memory.aura_store.get_aura_store") as m:
+        store = MagicMock()
+        m.return_value = store
+        yield store
+
+
+@pytest.fixture
+def mock_mgc():
+    with patch("src.memory.mgc_cache.get_mgc_cache") as m:
+        mgc = MagicMock()
+        m.return_value = mgc
+        yield mgc
+
+
+@pytest.fixture
+def mock_engram():
+    with patch("src.memory.engram_cache.get_engram_cache") as m:
+        cache = MagicMock()
+        m.return_value = cache
+        yield cache
+
+
+class TestMemoryRoutingWired:
+    """MARKER_195.21/F4: _route_to_memory with real subsystem writes."""
+
+    def test_reflex_negative(self, f4_report, mock_reflex):
+        _route_to_memory("vetka_read_file сломан — HTTP 422", f4_report)
+        mock_reflex.record.assert_called_once()
+        kw = mock_reflex.record.call_args.kwargs
+        assert kw["tool_id"] == "vetka_read_file"
+        assert kw["success"] is False
+        assert kw["agent_role"] == "debrief"
+
+    def test_reflex_positive(self, f4_report, mock_reflex):
+        _route_to_memory("Read tool works great for large files", f4_report)
+        kw = mock_reflex.record.call_args.kwargs
+        assert kw["tool_id"] == "Read"
+        assert kw["success"] is True
+
+    def test_reflex_multiple_tools(self, f4_report, mock_reflex):
+        _route_to_memory("vetka_read_file and Bash both useful", f4_report)
+        assert mock_reflex.record.call_count == 2
+
+    def test_aura_viewport(self, f4_report, mock_aura):
+        _route_to_memory("пользователь не видит warnings в UI", f4_report)
+        kw = mock_aura.set_preference.call_args.kwargs
+        assert kw["category"] == "viewport_patterns"
+        assert kw["confidence"] == 0.3
+        assert len(kw["value"]) <= 500
+
+    def test_aura_communication(self, f4_report, mock_aura):
+        _route_to_memory("user prefers русский в ответах", f4_report)
+        kw = mock_aura.set_preference.call_args.kwargs
+        assert kw["category"] == "communication_style"
+
+    def test_mgc_hot_file(self, f4_report, mock_mgc):
+        _route_to_memory("task_board.py:847 has a bug", f4_report)
+        kw = mock_mgc.set_sync.call_args.kwargs
+        assert kw["key"].startswith("debrief_hot:")
+        assert "task_board.py" in kw["key"]
+        assert kw["size_bytes"] == 0
+
+    def test_mgc_multiple_files(self, f4_report, mock_mgc):
+        _route_to_memory("task_board.py and session_tools.py need fix", f4_report)
+        assert mock_mgc.set_sync.call_count == 2
+
+    def test_engram_architecture(self, f4_report, mock_engram):
+        _route_to_memory("Принцип: always pass branch= from worktree", f4_report)
+        kw = mock_engram.put.call_args.kwargs
+        assert kw["category"] == "architecture"
+        assert len(kw["value"]) <= 300
+        assert kw["match_count"] == 0
+
+    def test_engram_pattern(self, f4_report, mock_engram):
+        _route_to_memory("Этот паттерн координации через markdown эффективнее", f4_report)
+        kw = mock_engram.put.call_args.kwargs
+        assert kw["category"] == "pattern"
+
+    def test_cortex_fallback(self, f4_report, mock_reflex):
+        _route_to_memory("Simple observation about the project", f4_report)
+        kw = mock_reflex.record.call_args.kwargs
+        assert kw["tool_id"] == "__general_debrief__"
+
+    def test_crash_does_not_propagate(self, f4_report):
+        with patch("src.services.reflex_feedback.get_reflex_feedback", side_effect=RuntimeError("down")):
+            result = _route_to_memory("vetka_read_file broken", f4_report)
+        assert "reflex_tools" in result
+
+    def test_text_truncation(self, f4_report, mock_reflex, mock_engram):
+        long_text = "vetka_read_file " + "x" * 1000 + " always apply this pattern"
+        _route_to_memory(long_text, f4_report)
+        assert len(mock_reflex.record.call_args.kwargs["extra"]["text"]) <= 200
+        assert len(mock_engram.put.call_args.kwargs["value"]) <= 300
+
+    def test_multiple_subsystems(self, f4_report, mock_reflex, mock_aura, mock_mgc, mock_engram):
+        text = "vetka_read_file in task_board.py — пользователь should always use this pattern"
+        result = _route_to_memory(text, f4_report)
+        assert "reflex_tools" in result
+        assert "aura_ux" in result
+        assert "mgc_files" in result
+        assert "engram_learning" in result
+        mock_reflex.record.assert_called()
+        mock_aura.set_preference.assert_called()
+        mock_mgc.set_sync.assert_called()
+        mock_engram.put.assert_called()

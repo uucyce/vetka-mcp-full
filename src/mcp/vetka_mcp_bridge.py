@@ -1741,7 +1741,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_task_board":
             # MARKER_178.6.1: Live fallback — uses local task_board handler
+            # MARKER_195.22: Reload BOTH orchestration + tools layers to pick up hot-patched code.
+            # Previous fix (195.21) only reloaded task_board_tools but not task_board.py,
+            # so complete_task/merge_request/promote_to_main changes stayed cached.
+            # Order matters: reload dependency (task_board) BEFORE dependent (task_board_tools).
             try:
+                import importlib
+                import src.orchestration.task_board as _board_mod
+                importlib.reload(_board_mod)
+                import src.mcp.tools.task_board_tools as _tb_mod
+                importlib.reload(_tb_mod)
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"

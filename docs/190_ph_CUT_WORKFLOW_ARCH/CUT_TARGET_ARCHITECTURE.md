@@ -9,6 +9,8 @@
 
 ## 0. Конституция (из v1.0 без изменений)
 
+> **CUT = Cognitive Universal Timeline**
+>
 > **CUT is not a timeline editor. CUT is a narrative graph navigator.**
 > **The editor navigates narrative intent through the DAG of possibilities.**
 

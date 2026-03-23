@@ -160,7 +160,7 @@ const MARKER_COLORS: Record<string, string> = {
   // Editorial markers
   favorite: '#f59e0b',     // amber — positive / keep
   negative: '#ef4444',     // red — anti-favorite / reject
-  comment: '#3b82f6',      // blue — annotation
+  comment: '#8899aa',      // desaturated grey — annotation (monochrome)
   cam: '#a855f7',          // purple — camera note
   insight: '#22c55e',      // green — AI insight
   chat: '#94a3b8',         // slate — chat reference
@@ -561,6 +561,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
   const markIn = useCutEditorStore((state) => state.markIn);
@@ -1198,13 +1199,30 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       setSelectedClip(clipId);
       setActiveMedia(sourcePath);
 
-      // W3.7: Linked selection — also select synced audio/video on adjacent lane
+      // MARKER_TL4: Linked selection — also select synced audio/video on adjacent lane
+      // Checks: linked_to field, sync.linked_clip_id, or matching scene_id
       const state = useCutEditorStore.getState();
       if (state.linkedSelection) {
-        const clickedLane = state.lanes.find((l) => l.clips.some((c) => c.clip_id === clipId));
-        const clickedClip = clickedLane?.clips.find((c) => c.clip_id === clipId);
-        if (clickedClip && clickedClip.sync?.linked_clip_id) {
-          const ids = new Set([clipId, clickedClip.sync.linked_clip_id]);
+        const ids = new Set([clipId]);
+        let clickedClip: TimelineClip | undefined;
+        for (const lane of state.lanes) {
+          const found = lane.clips.find((c) => c.clip_id === clipId);
+          if (found) { clickedClip = found; break; }
+        }
+        if (clickedClip) {
+          for (const lane of state.lanes) {
+            for (const c of lane.clips) {
+              if (c.clip_id === clipId) continue;
+              // Match by linked_to field (explicit link)
+              if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
+              // Match by sync.linked_clip_id (legacy)
+              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              // Match by scene_id (same scene = linked)
+              if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
+            }
+          }
+        }
+        if (ids.size > 1) {
           useCutEditorStore.setState({ selectedClipIds: ids });
         }
       }
@@ -1775,7 +1793,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             fps={projectFramerate}
             dropFrame={projectDropFrame}
             onSeek={seek}
-            testId="cut-timeline-timecode-display"
+            testId="cut-timeline-timecode"
           />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
@@ -1988,7 +2006,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
                 <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
                 <div data-drop-zone="overwrite" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '67%', pointerEvents: 'none' }} />
-                {lane.clips.map((clip) => {
+                {lane.clips.map((clip, clipIdx) => {
                   if (dragState?.clipId === clip.clip_id) {
                     return null;
                   }
@@ -1997,6 +2015,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const width = durationSec * zoom;
                   if (x + width < 0 || x > containerWidth) {
                     return null;
+                  }
+
+                  // MARKER_TL5: Through edit detection — continuous source media across adjacent clips
+                  let isThroughEdit = false;
+                  if (showThroughEdits && clipIdx > 0) {
+                    const prev = lane.clips[clipIdx - 1];
+                    if (prev.source_path === clip.source_path) {
+                      const prevEnd = (prev.source_in ?? 0) + prev.duration_sec;
+                      const curStart = clip.source_in ?? 0;
+                      isThroughEdit = Math.abs(prevEnd - curStart) < 0.05; // within ~1 frame tolerance
+                    }
                   }
 
                   const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
@@ -2052,6 +2081,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
                       />
+
+                      {/* MARKER_TL5: Through edit indicator — triangle at left edge (FCP7 Ch.10 p.152) */}
+                      {isThroughEdit && (
+                        <div style={{
+                          position: 'absolute', left: -1, top: '50%', transform: 'translateY(-50%)',
+                          width: 0, height: 0, zIndex: 5, pointerEvents: 'none',
+                          borderTop: '4px solid transparent',
+                          borderBottom: '4px solid transparent',
+                          borderLeft: '5px solid rgba(255,255,255,0.6)',
+                        }} title="Through edit — continuous media" />
+                      )}
 
                       {width > 20 && showWaveforms ? (
                         <div
@@ -2179,6 +2219,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         const txLabel = tx.type === 'cross_dissolve' ? 'XD'
                           : tx.type === 'dip_to_black' ? 'DB'
                           : 'W';
+                        // MARKER_TR2: Alignment label (S=start, C=center, E=end)
+                        const alignLabel = tx.alignment === 'start' ? 'S' : tx.alignment === 'end' ? 'E' : 'C';
+                        // MARKER_TR2: Position based on alignment
+                        // end-on-edit: right=0 (ends at cut). center: right=-half. start: right=-full.
+                        const alignRight = tx.alignment === 'center' ? -txWidth / 2
+                          : tx.alignment === 'start' ? -txWidth
+                          : 0;
                         const txGrad = tx.type === 'dip_to_black'
                           ? 'linear-gradient(to right, transparent 20%, rgba(0,0,0,0.6))'
                           : tx.type === 'wipe'
@@ -2189,7 +2236,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             data-testid={`transition-${clip.clip_id}`}
                             style={{
                               position: 'absolute',
-                              right: 0,
+                              right: alignRight,
                               top: 0,
                               bottom: 0,
                               width: txWidth,
@@ -2201,10 +2248,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                               alignItems: 'center',
                               justifyContent: 'center',
                             }}
-                            title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
+                            title={`${tx.type.replace(/_/g, ' ')} [${alignLabel}] (${tx.duration_sec.toFixed(1)}s) — click=remove, right-click=type, shift+right-click=alignment`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              // MARKER_UNDO-FIX: Remove transition via backend op for undo support
                               void useCutEditorStore.getState().applyTimelineOps([{
                                 op: 'set_transition', clip_id: clip.clip_id, transition: null,
                               }]);
@@ -2212,17 +2258,105 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             onContextMenu={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              // Cycle transition type via backend op for undo support
-                              const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
-                              const curIdx = types.indexOf(tx.type);
-                              const nextType = types[(curIdx + 1) % types.length];
-                              void useCutEditorStore.getState().applyTimelineOps([{
-                                op: 'set_transition', clip_id: clip.clip_id,
-                                transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
-                              }]);
+                              if (event.shiftKey) {
+                                // MARKER_TR2: Shift+right-click = cycle alignment (start→center→end)
+                                const aligns: Array<'start' | 'center' | 'end'> = ['start', 'center', 'end'];
+                                const curIdx = aligns.indexOf(tx.alignment);
+                                const nextAlign = aligns[(curIdx + 1) % aligns.length];
+                                void useCutEditorStore.getState().applyTimelineOps([{
+                                  op: 'set_transition', clip_id: clip.clip_id,
+                                  transition: { type: tx.type, duration_sec: tx.duration_sec, alignment: nextAlign },
+                                }]);
+                              } else {
+                                // Right-click = cycle type (cross_dissolve→dip_to_black→wipe)
+                                const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
+                                const curIdx = types.indexOf(tx.type);
+                                const nextType = types[(curIdx + 1) % types.length];
+                                void useCutEditorStore.getState().applyTimelineOps([{
+                                  op: 'set_transition', clip_id: clip.clip_id,
+                                  transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
+                                }]);
+                              }
                             }}
                           >
+                            {/* MARKER_TR1: Drag handle on left edge to resize transition duration */}
+                            <div
+                              style={{
+                                position: 'absolute',
+                                left: 0,
+                                top: 0,
+                                bottom: 0,
+                                width: 5,
+                                cursor: 'ew-resize',
+                                zIndex: 5,
+                              }}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                event.preventDefault();
+                                const startX = event.clientX;
+                                const startDur = tx.duration_sec;
+                                const clipId = clip.clip_id;
+                                const txType = tx.type;
+                                const txAlign = tx.alignment;
+                                const zoomVal = zoom;
+
+                                const onMove = (e: MouseEvent) => {
+                                  const deltaPx = startX - e.clientX; // drag left = increase duration
+                                  const deltaSec = deltaPx / zoomVal;
+                                  const newDur = Math.max(0.04, startDur + deltaSec);
+                                  // Local-first visual update
+                                  const s = useCutEditorStore.getState();
+                                  const updated = s.lanes.map((l) => ({
+                                    ...l,
+                                    clips: l.clips.map((c) =>
+                                      c.clip_id === clipId && c.transition_out
+                                        ? { ...c, transition_out: { ...c.transition_out, duration_sec: newDur } }
+                                        : c
+                                    ),
+                                  }));
+                                  s.setLanes(updated);
+                                };
+
+                                const onUp = (e: MouseEvent) => {
+                                  window.removeEventListener('mousemove', onMove);
+                                  window.removeEventListener('mouseup', onUp);
+                                  const deltaPx = startX - e.clientX;
+                                  const deltaSec = deltaPx / zoomVal;
+                                  const newDur = Math.max(0.04, startDur + deltaSec);
+                                  if (Math.abs(newDur - startDur) > 0.01) {
+                                    void useCutEditorStore.getState().applyTimelineOps([{
+                                      op: 'set_transition', clip_id: clipId,
+                                      transition: { type: txType, duration_sec: newDur, alignment: txAlign },
+                                    }]);
+                                  }
+                                };
+
+                                window.addEventListener('mousemove', onMove);
+                                window.addEventListener('mouseup', onUp, { once: true });
+                              }}
+                            />
                             {/* Diamond icon + type label */}
+                            {/* MARKER_TR6: Duplicate frame indicator (FCP7 white dots) */}
+                            {(() => {
+                              const srcDur = (clip as any).source_duration as number | undefined;
+                              const srcIn = clip.source_in ?? 0;
+                              if (srcDur && srcDur > 0) {
+                                const availableHandle = srcDur - srcIn - clip.duration_sec;
+                                if (availableHandle < tx.duration_sec) {
+                                  return (
+                                    <div style={{
+                                      position: 'absolute', bottom: 2, left: 0, right: 0,
+                                      display: 'flex', justifyContent: 'center', gap: 2, pointerEvents: 'none',
+                                    }}>
+                                      {[0,1,2].map((i) => (
+                                        <div key={i} style={{ width: 3, height: 3, borderRadius: '50%', background: 'rgba(255,255,255,0.8)' }} />
+                                      ))}
+                                    </div>
+                                  );
+                                }
+                              }
+                              return null;
+                            })()}
                             {txWidth > 16 ? (
                               <span style={{
                                 fontSize: 8,
@@ -2233,7 +2367,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 letterSpacing: 0.5,
                                 pointerEvents: 'none',
                               }}>
-                                {'◆ '}{txLabel}
+                                {'◆ '}{txLabel}{txWidth > 30 ? ` ${alignLabel}` : ''}
                               </span>
                             ) : null}
                           </div>

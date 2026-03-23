@@ -382,9 +382,58 @@ const BROWSER_CATEGORIES: BrowserCategory[] = [
   },
 ];
 
+// MARKER_GAMMA-P2.3: Favorites persistence
+const LS_FAVORITES = 'cut_effect_favorites';
+function loadFavorites(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LS_FAVORITES);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch { /* corrupt */ }
+  return new Set();
+}
+function saveFavorites(favs: Set<string>) {
+  try { localStorage.setItem(LS_FAVORITES, JSON.stringify([...favs])); } catch { /* ok */ }
+}
+
+// MARKER_GAMMA-P2.1a: Map browser effect IDs to ClipEffects store fields
+const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
+  brightness:    { brightness: 0.15 },
+  color_balance: { brightness: 0.05, saturation: 1.2 },
+  saturation:    { saturation: 1.5 },
+  gamma:         { brightness: 0.1 },
+  blur:          { blur: 3 },
+  sharpen:       { blur: -1 },  // negative = sharpen conceptually
+  denoise:       { blur: 0.5 },
+  vignette:      { opacity: 0.9 },
+  lut_apply:     { contrast: 0.2, saturation: 1.3 },
+};
+
+// MARKER_GAMMA-P2.5: Recently Used persistence
+const LS_RECENT = 'cut_effect_recent';
+const MAX_RECENT = 5;
+function loadRecent(): string[] {
+  try { const raw = localStorage.getItem(LS_RECENT); return raw ? JSON.parse(raw) : []; } catch { return []; }
+}
+function saveRecent(ids: string[]) {
+  try { localStorage.setItem(LS_RECENT, JSON.stringify(ids.slice(0, MAX_RECENT))); } catch { /* ok */ }
+}
+
 function EffectsBrowser() {
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [favorites, setFavorites] = useState<Set<string>>(loadFavorites);
+  const [recentIds, setRecentIds] = useState<string[]>(loadRecent);
+
+  const toggleFavorite = useCallback((id: string) => {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveFavorites(next);
+      return next;
+    });
+  }, []);
 
   const toggleCat = useCallback((name: string) => {
     setCollapsed((prev) => {
@@ -395,6 +444,44 @@ function EffectsBrowser() {
   }, []);
 
   const searchLower = search.toLowerCase();
+
+  // Build favorites category from starred effects
+  const allEffects = BROWSER_CATEGORIES.flatMap((c) => c.effects);
+  const favEffects = allEffects.filter((e) => favorites.has(e.id));
+  const favCategory: BrowserCategory | null = favEffects.length > 0
+    ? { name: 'Favorites', effects: favEffects }
+    : null;
+
+  // MARKER_GAMMA-P2.5: Recently Used category
+  const recentEffects = recentIds.map((id) => allEffects.find((e) => e.id === id)).filter(Boolean) as BrowserEffect[];
+  const recentCategory: BrowserCategory | null = recentEffects.length > 0
+    ? { name: 'Recently Used', effects: recentEffects }
+    : null;
+
+  const categories = [
+    ...(favCategory ? [favCategory] : []),
+    ...(recentCategory ? [recentCategory] : []),
+    ...BROWSER_CATEGORIES,
+  ];
+
+  // MARKER_GAMMA-P2.1a: Apply effect to selected clip
+  const [lastApplied, setLastApplied] = useState<string | null>(null);
+
+  const applyEffect = useCallback((effect: BrowserEffect) => {
+    if (!selectedClipId) return;
+    const params = EFFECT_APPLY_MAP[effect.id];
+    if (params) {
+      setClipEffects(selectedClipId, params);
+      setLastApplied(effect.id);
+      setTimeout(() => setLastApplied(null), 1000);
+      // MARKER_GAMMA-P2.5: Track recently used
+      setRecentIds((prev) => {
+        const next = [effect.id, ...prev.filter((id) => id !== effect.id)].slice(0, MAX_RECENT);
+        saveRecent(next);
+        return next;
+      });
+    }
+  }, [selectedClipId, setClipEffects]);
 
   const handleDragStart = useCallback((e: React.DragEvent, effect: BrowserEffect) => {
     e.dataTransfer.setData('application/x-cut-effect', JSON.stringify({ id: effect.id, name: effect.name }));
@@ -427,13 +514,14 @@ function EffectsBrowser() {
         }}
       />
 
-      {/* Category list */}
-      {BROWSER_CATEGORIES.map((cat) => {
+      {/* Category list (with Favorites at top if any starred) */}
+      {categories.map((cat) => {
         const filtered = searchLower
           ? cat.effects.filter((e) => e.name.toLowerCase().includes(searchLower) || e.description.toLowerCase().includes(searchLower))
           : cat.effects;
         if (searchLower && filtered.length === 0) return null;
         const isOpen = !collapsed.has(cat.name) || !!searchLower;
+        const isFavCat = cat.name === 'Favorites';
 
         return (
           <div key={cat.name}>
@@ -445,39 +533,63 @@ function EffectsBrowser() {
                 gap: 4,
                 padding: '4px 0',
                 cursor: 'pointer',
-                borderBottom: '1px solid #1a1a1a',
+                borderBottom: isFavCat ? '1px solid #333' : '1px solid #1a1a1a',
                 marginTop: 2,
               }}
             >
               <span style={{ fontSize: 8, color: '#555' }}>{isOpen ? '\u25BE' : '\u25B8'}</span>
-              <span style={{ fontSize: 9, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span style={{ fontSize: 9, fontWeight: 600, color: isFavCat ? '#ccc' : '#999', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 {cat.name}
               </span>
               <span style={{ fontSize: 8, color: '#444', marginLeft: 'auto' }}>{filtered.length}</span>
             </div>
-            {isOpen && filtered.map((effect) => (
+            {isOpen && filtered.map((effect) => {
+              const hasStoreMapping = !!EFFECT_APPLY_MAP[effect.id];
+              const justApplied = lastApplied === effect.id;
+              return (
               <div
-                key={effect.id}
+                key={`${cat.name}-${effect.id}`}
                 draggable
                 onDragStart={(e) => handleDragStart(e, effect)}
+                onDoubleClick={() => applyEffect(effect)}
                 style={{
                   display: 'flex',
-                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 6,
                   padding: '3px 4px 3px 16px',
-                  cursor: 'grab',
+                  cursor: hasStoreMapping && selectedClipId ? 'pointer' : 'grab',
                   borderBottom: '1px solid #111',
+                  background: justApplied ? '#222' : undefined,
                 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                title={effect.description}
+                onMouseEnter={(e) => { if (!justApplied) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = justApplied ? '#222' : 'transparent'; }}
+                title={hasStoreMapping && selectedClipId ? `Double-click to apply — ${effect.description}` : effect.description}
               >
-                <span style={{ fontSize: 9, color: '#ccc' }}>{effect.name}</span>
-                <span style={{ fontSize: 8, color: '#555', marginTop: 1 }}>{effect.description}</span>
+                {/* MARKER_GAMMA-P2.3: Star toggle */}
+                <span
+                  onClick={(e) => { e.stopPropagation(); toggleFavorite(effect.id); }}
+                  style={{ cursor: 'pointer', fontSize: 10, color: favorites.has(effect.id) ? '#ccc' : '#333', flexShrink: 0 }}
+                  title={favorites.has(effect.id) ? 'Remove from Favorites' : 'Add to Favorites'}
+                >
+                  {favorites.has(effect.id) ? '\u2605' : '\u2606'}
+                </span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ fontSize: 9, color: '#ccc', display: 'block' }}>{effect.name}</span>
+                  <span style={{ fontSize: 8, color: '#555', marginTop: 1, display: 'block' }}>{effect.description}</span>
+                </div>
+                {justApplied && <span style={{ fontSize: 8, color: '#888', flexShrink: 0 }}>Applied</span>}
               </div>
-            ))}
+              );
+            })}
           </div>
         );
       })}
+      {/* MARKER_GAMMA-P2.1a: Apply hint */}
+      {!selectedClipId && (
+        <div style={{ padding: '6px 0', fontSize: 8, color: '#444', textAlign: 'center' }}>
+          Select a clip to apply effects via double-click
+        </div>
+      )}
     </div>
   );
 }

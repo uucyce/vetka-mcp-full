@@ -152,6 +152,8 @@ export default function TimelineToolbar() {
         }}
         onClick={toggleLinkedSelection}
         title={`Linked Selection ${linkedSelection ? 'ON' : 'OFF'}`}
+        data-testid="linked-selection-btn"
+        aria-label="Linked Selection"
       >
         <ChainIcon active={linkedSelection} />
       </button>

@@ -280,10 +280,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": False, "error": "action is required"}
 
     # MARKER_195.6: Record task_board action for protocol tracking
+    # MARKER_195.21: Use consistent session_id (was hardcoded "mcp_default", debrief read "default")
+    _tracker_sid = arguments.get("session_id") or "mcp_default"
     try:
         from src.services.session_tracker import get_session_tracker
         get_session_tracker().record_action(
-            "mcp_default", "vetka_task_board",
+            _tracker_sid, "vetka_task_board",
             {"action": action, "task_id": arguments.get("task_id", "")},
         )
     except Exception:
@@ -513,6 +515,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+            _inject_debrief(result, arguments)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
@@ -536,6 +539,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     # Verifier merge succeeded — close task
                     result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
                     result["verifier_merge"] = merge_result
+                    _inject_debrief(result, arguments)
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
                 if merge_result.get("success"):
@@ -549,8 +553,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_188.2: Pass worktree_path for correct cwd in git operations
         auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path)
 
-        # If commit attempted but FAILED → do NOT close task
-        if auto.get("attempted") and not auto.get("success"):
+        # If commit failed or scoping rejected files → do NOT close task
+        # MARKER_195.22: Also catch attempted=False + success=False (allowed_paths mismatch)
+        if not auto.get("success") and auto.get("error"):
             return {
                 "success": False,
                 "error": f"Auto-commit failed: {auto.get('error', 'unknown')}. Task NOT closed.",
@@ -562,46 +567,22 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # have already closed this task via [task:tb_xxxx] in commit message
         task_refreshed = board.get_task(task_id)
         if task_refreshed and task_refreshed.get("status", "").startswith("done"):
-            return {
+            _auto_result = {
                 "success": True,
                 "task_id": task_id,
                 "commit_hash": auto.get("hash"),
                 "note": "auto-closed by commit pipeline",
                 "auto_commit": auto,
             }
+            _inject_debrief(_auto_result, arguments)
+            return _auto_result
 
         # Close task (commit succeeded or nothing to commit)
         result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
         result["auto_commit"] = auto
 
-        # MARKER_ZETA.F1: Smart Debrief — inject questions on task complete
-        try:
-            from src.services.session_tracker import get_session_tracker
-            _db_tracker = get_session_tracker()
-            _db_sid = arguments.get("session_id", "default")
-            _db_session = _db_tracker.get_session(_db_sid)
-            if (
-                result.get("success")
-                and _db_session.tasks_completed > 0
-                and not _db_session.experience_report_submitted
-            ):
-                result["debrief_requested"] = True
-                result["debrief_questions"] = {
-                    "q1_bugs": (
-                        "What's broken? Bugs you noticed — including outside your zone. "
-                        "Stale code, broken tools, bad process that everyone walks past?"
-                    ),
-                    "q2_worked": (
-                        "What unexpectedly worked? A workaround or pattern "
-                        "worth making standard?"
-                    ),
-                    "q3_idea": (
-                        "What idea came to mind that nobody asked about? "
-                        "What would you do with 2 more hours?"
-                    ),
-                }
-        except Exception:
-            pass  # Debrief injection never blocks completion
+        # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
+        _inject_debrief(result, arguments)
 
         return result
 
@@ -653,6 +634,38 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
+
+
+def _inject_debrief(result: dict, arguments: dict) -> None:
+    """MARKER_195.21: Inject debrief questions into successful complete response.
+
+    Called on EVERY success path in action=complete — no more bypass.
+    Mutates result dict in-place.
+    """
+    if not result.get("success"):
+        return
+    try:
+        from src.services.session_tracker import get_session_tracker
+        _sid = arguments.get("session_id") or "mcp_default"
+        session = get_session_tracker().get_session(_sid)
+        if session.tasks_completed > 0 and not session.experience_report_submitted:
+            result["debrief_requested"] = True
+            result["debrief_questions"] = {
+                "q1_bugs": (
+                    "What's broken? Bugs you noticed — including outside your zone. "
+                    "Stale code, broken tools, bad process that everyone walks past?"
+                ),
+                "q2_worked": (
+                    "What unexpectedly worked? A workaround or pattern "
+                    "worth making standard?"
+                ),
+                "q3_idea": (
+                    "What idea came to mind that nobody asked about? "
+                    "What would you do with 2 more hours?"
+                ),
+            }
+    except Exception:
+        pass  # Debrief injection never blocks completion
 
 
 def _detect_git_branch(cwd: str = None) -> str:
@@ -732,19 +745,44 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
                 "note": "nothing to commit"}
 
     # 2. Determine scoped files (NOT git add -A)
+    # MARKER_195.22: Scoped staging — closure_files > allowed_paths > all dirty (with warning)
     closure_files = [str(p) for p in (task.get("closure_files") or []) if str(p).strip()]
+    allowed_paths = [str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()]
 
-    if not closure_files:
-        # Fallback: parse git status --porcelain for actually changed files
-        # Format: "XY filename" where XY = 2 status chars + 1 space = 3 char prefix
-        # Do NOT strip before slicing — leading space is part of status format
-        changed = []
-        for line in status.stdout.splitlines():
-            if len(line) > 3:
-                filepath = line[3:].split(" -> ")[-1].strip()
-                if filepath:
-                    changed.append(filepath)
-        closure_files = changed
+    # Parse ALL dirty files from porcelain
+    all_changed = []
+    for line in status.stdout.splitlines():
+        if len(line) > 3:
+            filepath = line[3:].split(" -> ")[-1].strip()
+            if filepath:
+                all_changed.append(filepath)
+
+    if closure_files:
+        # Explicit closure_files — use as-is (may include files not in porcelain)
+        pass
+    elif allowed_paths:
+        # MARKER_195.22: Filter dirty files by allowed_paths prefixes
+        # allowed_paths can be files ("src/foo.py") or dirs ("src/mcp/tools/")
+        def _matches_allowed(fpath):
+            for ap in allowed_paths:
+                if fpath == ap or fpath.startswith(ap.rstrip("/") + "/"):
+                    return True
+            return False
+        closure_files = [f for f in all_changed if _matches_allowed(f)]
+        if not closure_files:
+            # allowed_paths set but no dirty files match — warn, don't grab everything
+            return {"attempted": False, "success": False,
+                    "error": f"No dirty files match allowed_paths {allowed_paths}. "
+                             f"Dirty files: {all_changed[:10]}. "
+                             "Set closure_files explicitly or update allowed_paths."}
+    else:
+        # No scope at all — fallback to all dirty, but log warning
+        closure_files = all_changed
+        if len(all_changed) > 5:
+            logger.warning(
+                f"[TaskBoard] _try_auto_commit: no closure_files/allowed_paths for task {task_id}, "
+                f"staging ALL {len(all_changed)} dirty files. Consider setting allowed_paths on task."
+            )
 
     if not closure_files:
         return {"attempted": False, "success": True, "hash": None,

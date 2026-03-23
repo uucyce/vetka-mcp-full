@@ -40,7 +40,7 @@ const SCRUBBER_ROW: CSSProperties = {
 
 const SCRUBBER_FILL: CSSProperties = {
   height: '100%',
-  background: '#888',
+  background: '#ccc',
   borderRadius: 1,
   transition: 'width 0.05s linear',
 };
@@ -233,7 +233,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           dropFrame={dropFrame}
           onSeek={seek}
           style={{ position: 'absolute', left: 8 }}
-          testId={`monitor-tc-${feed}`}
+          testId={`monitor-timecode-${feed}`}
         />
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}

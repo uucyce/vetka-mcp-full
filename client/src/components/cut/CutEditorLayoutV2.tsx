@@ -117,80 +117,113 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
-    // Playback
-    playPause: () => useCutEditorStore.getState().togglePlay(),
-    stop: () => { useCutEditorStore.getState().pause(); useCutEditorStore.getState().setShuttleSpeed(0); },
+    // Playback — MARKER_DUAL-VIDEO: source-aware play/pause/stop
+    playPause: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.togglePlaySource(); else s.togglePlay();
+    },
+    stop: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.pauseSource(); else s.pause();
+      s.setShuttleSpeed(0);
+    },
     // MARKER_W6.JKL: Progressive shuttle (FCP7 Ch.8 / App A)
     // J: reverse ramp 1x→2x→4x→8x. If playing forward, first press stops.
     // L: forward ramp 1x→2x→4x→8x. If playing reverse, first press stops.
     // K: stop (pause + reset shuttle)
     // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
+      const s = useCutEditorStore.getState();
+      const isSourceFocused = s.focusedPanel === 'source';
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const doPause = isSourceFocused ? s.pauseSource : s.pause;
+      const doPlay = isSourceFocused ? s.playSource : s.play;
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
       // MARKER_JKL-KJ-KL: K+J = single frame backward
       if (kHeldRef.current) {
-        const s = useCutEditorStore.getState();
-        s.pause();
+        doPause();
         s.setShuttleSpeed(0);
-        s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate));
+        doSeek(Math.max(0, curTime - 1 / s.projectFramerate));
         return;
       }
-      const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur > 0) {
         s.setShuttleSpeed(0);
-        s.pause();
+        doPause();
       } else {
         const REVERSE_STEPS = [0, -1, -2, -4, -8];
         const idx = REVERSE_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < REVERSE_STEPS.length - 1 ? REVERSE_STEPS[idx + 1] : -8;
         s.setShuttleSpeed(next);
-        s.play();
+        doPlay();
       }
     },
     shuttleForward: () => {
+      const s = useCutEditorStore.getState();
+      const isSourceFocused = s.focusedPanel === 'source';
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const doPause = isSourceFocused ? s.pauseSource : s.pause;
+      const doPlay = isSourceFocused ? s.playSource : s.play;
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
       // MARKER_JKL-KJ-KL: K+L = single frame forward
       if (kHeldRef.current) {
-        const s = useCutEditorStore.getState();
-        s.pause();
+        doPause();
         s.setShuttleSpeed(0);
-        s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate));
+        doSeek(Math.min(maxDur, curTime + 1 / s.projectFramerate));
         return;
       }
-      const s = useCutEditorStore.getState();
       const cur = s.shuttleSpeed;
       if (cur < 0) {
         s.setShuttleSpeed(0);
-        s.pause();
+        doPause();
       } else {
         const FORWARD_STEPS = [0, 1, 2, 4, 8];
         const idx = FORWARD_STEPS.indexOf(cur);
         const next = idx >= 0 && idx < FORWARD_STEPS.length - 1 ? FORWARD_STEPS[idx + 1] : 8;
         s.setShuttleSpeed(next);
-        s.play();
+        doPlay();
       }
     },
+    // MARKER_DUAL-VIDEO: Frame stepping is source-aware
+    // MARKER_PLAY8-FIX: Don't clamp by duration when duration=0 (no media but clips exist)
     frameStepBack: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      const frameSec = 1 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - frameSec)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - frameSec)); }
     },
     frameStepForward: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      const frameSec = 1 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(s.sourceCurrentTime + frameSec); }
+      else { s.pause(); s.seek(s.currentTime + frameSec); }
     },
     fiveFrameStepBack: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.max(0, s.currentTime - 5 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      const step = 5 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - step)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - step)); }
     },
     fiveFrameStepForward: () => {
       const s = useCutEditorStore.getState();
-      s.pause();
-      s.seek(Math.min(s.duration, s.currentTime + 5 / s.projectFramerate));
+      const src = s.focusedPanel === 'source';
+      const step = 5 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(s.sourceCurrentTime + step); }
+      else { s.pause(); s.seek(s.currentTime + step); }
     },
-    goToStart: () => useCutEditorStore.getState().seek(0),
-    goToEnd: () => { const s = useCutEditorStore.getState(); s.seek(s.duration); },
+    goToStart: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.seekSource(0); else s.seek(0);
+    },
+    goToEnd: () => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel === 'source') s.seekSource(s.sourceDuration); else s.seek(s.duration);
+    },
     // MARKER_W6.WIRE: Cycle playback rate (1x → 2x → 0.5x → 1x)
     cyclePlaybackRate: () => {
       const s = useCutEditorStore.getState();
@@ -277,11 +310,15 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
 
     // MARKER_UNDO-FIX: All editing ops route through applyTimelineOps for undo support
+    // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
     deleteClip: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
-      await s.applyTimelineOps([{ op: 'remove_clip', clip_id: s.selectedClipId }]);
+      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      if (ids.length === 0) return;
+      const ops = ids.map((id) => ({ op: 'remove_clip', clip_id: id }));
+      await s.applyTimelineOps(ops);
       s.setSelectedClip(null);
+      s.clearSelection();
     },
     splitClip: async () => {
       const s = useCutEditorStore.getState();
@@ -298,11 +335,15 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_W6.WIRE: Ripple Delete — remove clip and close gap
+    // MARKER_TL4: Ripple delete all selected clips (linked selection)
     rippleDelete: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
-      await s.applyTimelineOps([{ op: 'ripple_delete', clip_id: s.selectedClipId }]);
+      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      if (ids.length === 0) return;
+      const ops = ids.map((id) => ({ op: 'ripple_delete', clip_id: id }));
+      await s.applyTimelineOps(ops);
       s.setSelectedClip(null);
+      s.clearSelection();
     },
 
     // MARKER_W6.WIRE: Nudge clip ±1 frame
@@ -465,57 +506,68 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_W6.WIRE: Add Marker (M) — create favorite marker at playhead
+    // MARKER_PLAY8-FIX: local-first when backend unavailable
     addMarker: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.sandboxRoot || !s.projectId) return;
-      // Find clip at playhead for media_path
       let mediaPath = s.sourceMediaPath || '';
       for (const lane of s.lanes) {
         for (const clip of lane.clips) {
           if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            mediaPath = clip.source_path;
-            break;
+            mediaPath = clip.source_path; break;
           }
         }
         if (mediaPath) break;
       }
-      if (!mediaPath) return;
-      await fetch(`${API_BASE}/cut/time-markers/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-          media_path: mediaPath, kind: 'favorite', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
-          score: 1.0, text: '',
-        }),
-      });
-      await s.refreshProjectState?.();
+      if (!mediaPath) mediaPath = 'timeline';
+      const newMarker = {
+        marker_id: `marker_${Date.now()}`, media_path: mediaPath,
+        kind: 'favorite' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+        score: 1.0, text: '',
+      };
+      if (s.sandboxRoot && s.projectId) {
+        await fetch(`${API_BASE}/cut/time-markers/apply`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+            ...newMarker,
+          }),
+        });
+        await s.refreshProjectState?.();
+      } else {
+        // Local-first: add to store markers directly
+        s.setMarkers([...s.markers, newMarker]);
+      }
     },
     // MARKER_W6.WIRE: Add Comment Marker (Shift+M)
     addComment: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.sandboxRoot || !s.projectId) return;
       let mediaPath = s.sourceMediaPath || '';
       for (const lane of s.lanes) {
         for (const clip of lane.clips) {
           if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            mediaPath = clip.source_path;
-            break;
+            mediaPath = clip.source_path; break;
           }
         }
         if (mediaPath) break;
       }
-      if (!mediaPath) return;
-      await fetch(`${API_BASE}/cut/time-markers/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-          media_path: mediaPath, kind: 'comment', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
-          score: 1.0, text: 'Comment',
-        }),
-      });
-      await s.refreshProjectState?.();
+      if (!mediaPath) mediaPath = 'timeline';
+      const newMarker = {
+        marker_id: `marker_${Date.now()}`, media_path: mediaPath,
+        kind: 'comment' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+        score: 1.0, text: 'Comment',
+      };
+      if (s.sandboxRoot && s.projectId) {
+        await fetch(`${API_BASE}/cut/time-markers/apply`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+            ...newMarker,
+          }),
+        });
+        await s.refreshProjectState?.();
+      } else {
+        s.setMarkers([...s.markers, newMarker]);
+      }
     },
 
     // MARKER_MARK-MENU: Next/Previous marker navigation
@@ -747,9 +799,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const dt = (now - shuttlePrevTimeRef.current) / 1000; // seconds elapsed
       shuttlePrevTimeRef.current = now;
 
+      // MARKER_DUAL-VIDEO: Drive source or timeline based on focused panel
       const s = useCutEditorStore.getState();
-      const newTime = s.currentTime + dt * shuttleSpeed;
-      s.seek(Math.max(0, Math.min(newTime, s.duration)));
+      const isSourceFocused = s.focusedPanel === 'source';
+      const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
+      const doSeek = isSourceFocused ? s.seekSource : s.seek;
+      const newTime = curTime + dt * shuttleSpeed;
+      doSeek(Math.max(0, Math.min(newTime, maxDur)));
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };

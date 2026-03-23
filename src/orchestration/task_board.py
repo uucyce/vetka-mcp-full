@@ -2268,8 +2268,22 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
 
         branch = task.get("branch_name")
+        # MARKER_195.21: Auto-infer branch from role via AgentRegistry
         if not branch:
-            return {"success": False, "error": "Task has no branch_name — set it via update_task first"}
+            try:
+                role = task.get("role", "")
+                if role:
+                    from src.services.agent_registry import get_agent_registry
+                    registry = get_agent_registry()
+                    agent_role = registry.get_by_callsign(role)
+                    if agent_role and agent_role.branch:
+                        branch = agent_role.branch
+                        self.update_task(task_id, branch_name=branch)
+                        logger.info(f"[MergeRequest] Auto-inferred branch_name={branch} from role={role}")
+            except Exception as e:
+                logger.debug(f"[MergeRequest] Branch inference failed: {e}")
+        if not branch:
+            return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
         strategy = task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])

@@ -169,6 +169,50 @@ def _find_latest_feedback_doc() -> Optional[str]:
     return None
 
 
+def _resolve_key_docs(key_docs: list[str]) -> list[str]:
+    """MARKER_195.21: Resolve key_docs — keep static files, glob-resolve patterns with dates.
+
+    If a doc path contains a date or wildcard-like suffix, find the latest matching file.
+    Static architecture docs (no date) pass through unchanged.
+    """
+    resolved = []
+    for doc in key_docs:
+        doc_path = _PROJECT_ROOT / doc
+        if doc_path.exists():
+            resolved.append(doc)
+            continue
+        # Try glob: maybe the file has a date suffix that changed
+        parent = doc_path.parent
+        stem = doc_path.stem
+        # Strip date suffix (YYYY-MM-DD) and glob for latest
+        date_stripped = re.sub(r"_\d{4}-\d{2}-\d{2}$", "_*", stem)
+        if date_stripped != stem and parent.exists():
+            matches = sorted(parent.glob(f"{date_stripped}{doc_path.suffix}"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if matches:
+                resolved.append(str(matches[0].relative_to(_PROJECT_ROOT)))
+                continue
+        # File not found — still include as reference
+        resolved.append(doc)
+    return resolved
+
+
+def _find_latest_predecessor_doc(callsign: str) -> Optional[str]:
+    """MARKER_195.21: Find the latest experience/handoff doc for this role."""
+    if not _FEEDBACK_DOCS_DIR.exists():
+        return None
+    # Try EXPERIENCE_{CALLSIGN}_*.md
+    pattern = f"EXPERIENCE_{callsign.upper()}_*.md"
+    files = sorted(_FEEDBACK_DOCS_DIR.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+    if files:
+        return str(files[0].relative_to(_PROJECT_ROOT))
+    # Try HANDOFF_*_{callsign}*.md or FEEDBACK_{callsign}_*.md
+    for alt_pattern in [f"HANDOFF_*_{callsign.upper()}_*.md", f"FEEDBACK_{callsign.upper()}_*.md"]:
+        files = sorted(_FEEDBACK_DOCS_DIR.glob(alt_pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+        if files:
+            return str(files[0].relative_to(_PROJECT_ROOT))
+    return None
+
+
 def generate_claude_md(
     callsign: str,
     registry: Optional[AgentRegistry] = None,
@@ -198,12 +242,17 @@ def generate_claude_md(
 
     advice = _get_predecessor_advice(callsign)
     feedback_doc = _find_latest_feedback_doc()
+    # MARKER_195.21: Resolve key_docs (glob dates) + find latest predecessor doc
+    resolved_docs = _resolve_key_docs(role.key_docs) if hasattr(role, "key_docs") else []
+    predecessor_doc = _find_latest_predecessor_doc(callsign)
 
     context = {
         "role": role,
         "predecessor_advice": advice,
+        "resolved_key_docs": resolved_docs,
         "pending_tasks": pending_tasks or [],
         "feedback_doc": feedback_doc,
+        "predecessor_doc": predecessor_doc,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 

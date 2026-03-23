@@ -309,3 +309,56 @@ def test_verify_invalid_verdict(tmp_path):
     result = board.verify_task(tid, "maybe")
     assert result["success"] is False
     assert "Invalid verdict" in result["error"]
+
+
+# ── Test 18: complete with branch= persists branch_name ──────
+
+def test_complete_persists_branch_name(tmp_path):
+    """MARKER_195.22: complete_task with branch= saves branch_name on task object."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Engine task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Alpha")
+
+    with patch.object(type(board), '_validate_closure_proof', return_value=None):
+        result = board.complete_task(tid, commit_hash="abc123", branch="claude/cut-engine")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
+    assert task.get("branch_name") == "claude/cut-engine", (
+        f"Expected branch_name='claude/cut-engine', got {task.get('branch_name')!r}"
+    )
+
+
+# ── Test 19: update with branch= maps to branch_name ────────
+
+def test_update_maps_branch_to_branch_name(tmp_path):
+    """MARKER_195.22: update_task with branch_name= persists correctly."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("UX task", priority=3)
+
+    board.update_task(tid, branch_name="claude/cut-ux")
+
+    task = board.get_task(tid)
+    assert task.get("branch_name") == "claude/cut-ux", (
+        f"Expected branch_name='claude/cut-ux', got {task.get('branch_name')!r}"
+    )
+
+
+# ── Test 20: complete on main does NOT set branch_name ───────
+
+def test_complete_main_no_branch_name(tmp_path):
+    """MARKER_195.22: complete_task on main branch doesn't save branch_name."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Main task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Commander")
+
+    with patch.object(type(board), '_validate_closure_proof', return_value=None):
+        result = board.complete_task(tid, commit_hash="abc123", branch="main")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_main"
+    assert not task.get("branch_name"), (
+        f"branch_name should not be set for main branch, got {task.get('branch_name')!r}"
+    )

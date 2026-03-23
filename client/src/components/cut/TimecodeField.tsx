@@ -190,7 +190,7 @@ const FIELD_DISPLAY: CSSProperties = {
 const FIELD_EDITING: CSSProperties = {
   ...FIELD_DISPLAY,
   background: '#1a1a1a',
-  border: '1px solid #555',
+  border: '1px solid #888',
   color: '#fff',
   cursor: 'text',
   outline: 'none',

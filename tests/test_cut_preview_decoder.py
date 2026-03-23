@@ -178,6 +178,208 @@ class TestNumpyEffects:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B9: Color grading effects preview tests
+# ---------------------------------------------------------------------------
+
+class TestLiftEffect:
+    def test_lift_shifts_shadows(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "lift", "params": {"r": 0.3, "g": 0, "b": 0}, "enabled": True}
+        ])
+        # Red channel in dark areas should increase
+        dark_region = result[:, :20, 0].mean()
+        original_dark = gradient_frame[:, :20, 0].mean()
+        assert dark_region > original_dark + 0.05
+
+    def test_lift_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "lift", "params": {"r": 0, "g": 0, "b": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestMidtoneEffect:
+    def test_midtone_shifts_mids(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "midtone", "params": {"r": 0, "g": 0.3, "b": 0}, "enabled": True}
+        ])
+        # Green channel at 0.5 luma should increase
+        assert result[:, :, 1].mean() > mid_grey_frame[:, :, 1].mean()
+
+    def test_midtone_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "midtone", "params": {"r": 0, "g": 0, "b": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestGainEffect:
+    def test_gain_shifts_highlights(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "gain", "params": {"r": 0, "g": 0, "b": 0.3}, "enabled": True}
+        ])
+        # Blue channel in bright areas should increase
+        bright_region = result[:, 200:, 2].mean()
+        original_bright = gradient_frame[:, 200:, 2].mean()
+        assert bright_region > original_bright + 0.05
+
+    def test_gain_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "gain", "params": {"r": 0, "g": 0, "b": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestWhiteBalanceEffect:
+    def test_warm_shifts_red(self):
+        frame = np.full((50, 50, 3), 0.5, dtype=np.float32)
+        result = apply_numpy_effects(frame.copy(), [
+            {"type": "white_balance", "params": {"temperature": 10000}, "enabled": True}
+        ])
+        assert result[:, :, 0].mean() > 0.5  # warmer = more red
+        assert result[:, :, 2].mean() < 0.5  # less blue
+
+    def test_cool_shifts_blue(self):
+        frame = np.full((50, 50, 3), 0.5, dtype=np.float32)
+        result = apply_numpy_effects(frame.copy(), [
+            {"type": "white_balance", "params": {"temperature": 3000}, "enabled": True}
+        ])
+        assert result[:, :, 2].mean() > 0.5  # cooler = more blue
+        assert result[:, :, 0].mean() < 0.5  # less red
+
+    def test_neutral_noop(self):
+        frame = np.full((50, 50, 3), 0.5, dtype=np.float32)
+        result = apply_numpy_effects(frame.copy(), [
+            {"type": "white_balance", "params": {"temperature": 6500}, "enabled": True}
+        ])
+        np.testing.assert_allclose(result, frame, atol=0.001)
+
+
+class TestCurvesEffect:
+    def test_lighter_brightens(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "curves", "params": {"preset": "lighter"}, "enabled": True}
+        ])
+        assert result.mean() > mid_grey_frame.mean()
+
+    def test_darker_darkens(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "curves", "params": {"preset": "darker"}, "enabled": True}
+        ])
+        assert result.mean() < mid_grey_frame.mean()
+
+    def test_negative_inverts(self, mid_grey_frame):
+        colored = mid_grey_frame.copy()
+        colored[:, :, 0] = 0.8
+        result = apply_numpy_effects(colored, [
+            {"type": "curves", "params": {"preset": "negative"}, "enabled": True}
+        ])
+        assert result[:, :, 0].mean() < 0.3  # inverted
+
+    def test_none_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "curves", "params": {"preset": "none"}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestColorBalanceEffect:
+    def test_shadow_red_shift(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "color_balance", "params": {"rs": 0.3, "gs": 0, "bs": 0}, "enabled": True}
+        ])
+        dark_red = result[:, :20, 0].mean()
+        orig_dark_red = gradient_frame[:, :20, 0].mean()
+        assert dark_red > orig_dark_red
+
+    def test_all_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "color_balance", "params": {
+                "rs": 0, "gs": 0, "bs": 0, "rm": 0, "gm": 0, "bm": 0, "rh": 0, "gh": 0, "bh": 0
+            }, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B9.5: Blur / Sharpen / Denoise / Vignette tests
+# ---------------------------------------------------------------------------
+
+class TestBlurEffect:
+    def test_blur_smooths(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "blur", "params": {"sigma": 5.0}, "enabled": True}
+        ])
+        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        blur_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
+        assert blur_diff < orig_diff
+
+    def test_blur_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "blur", "params": {"sigma": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+    def test_blur_preserves_shape(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "blur", "params": {"sigma": 10}, "enabled": True}
+        ])
+        assert result.shape == gradient_frame.shape
+        assert result.min() >= 0.0 and result.max() <= 1.0
+
+
+class TestSharpenEffect:
+    def test_sharpen_increases_edges(self, gradient_frame):
+        result = apply_numpy_effects(gradient_frame, [
+            {"type": "sharpen", "params": {"amount": 2.0, "size": 5}, "enabled": True}
+        ])
+        # Sharpening increases local contrast (diff between adjacent pixels)
+        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        sharp_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
+        assert sharp_diff > orig_diff
+
+    def test_sharpen_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "sharpen", "params": {"amount": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestDenoiseEffect:
+    def test_denoise_smooths(self):
+        # Noisy frame
+        rng = np.random.RandomState(42)
+        noisy = (rng.rand(50, 50, 3) * 0.3 + 0.35).astype(np.float32)
+        result = apply_numpy_effects(noisy, [
+            {"type": "denoise", "params": {"strength": 10.0}, "enabled": True}
+        ])
+        # Denoised frame should have less variance
+        assert result.std() < noisy.std()
+
+    def test_denoise_zero_noop(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame, [
+            {"type": "denoise", "params": {"strength": 0}, "enabled": True}
+        ])
+        np.testing.assert_array_equal(result, mid_grey_frame)
+
+
+class TestVignetteEffect:
+    def test_vignette_darkens_corners(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame.copy(), [
+            {"type": "vignette", "params": {"angle": 0.8}, "enabled": True}
+        ])
+        center_val = result[50, 50, 0]
+        corner_val = result[0, 0, 0]
+        assert center_val > corner_val  # center brighter than corner
+
+    def test_vignette_preserves_range(self, mid_grey_frame):
+        result = apply_numpy_effects(mid_grey_frame.copy(), [
+            {"type": "vignette", "params": {"angle": 1.2}, "enabled": True}
+        ])
+        assert result.min() >= 0.0 and result.max() <= 1.0
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B28: Motion effects preview tests
 # ---------------------------------------------------------------------------
 
