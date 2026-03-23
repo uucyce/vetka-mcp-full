@@ -224,6 +224,12 @@ interface CutEditorState {
   syncSurface: SyncSurfaceItem[];
   markers: TimeMarker[];
 
+  // === MARKER_MULTICAM: Multicam state ===
+  multicamId: string | null;            // active multicam clip ID
+  multicamAngles: Array<{ source_path: string; label: string; offset_sec: number }>;
+  multicamActiveAngle: number;          // currently displayed angle index
+  multicamMode: boolean;                // true = multicam viewer active
+
   // === MARKER_W4.5: Project Settings ===
   projectFramerate: number;             // 23.976 | 24 | 25 | 29.97 | 30 | 50 | 59.94 | 60
   timecodeFormat: 'smpte' | 'milliseconds';  // HH:MM:SS:FF or HH:MM:SS.mmm
@@ -469,6 +475,14 @@ interface CutEditorState {
   setThumbnails: (items: ThumbnailItem[]) => void;
   setSyncSurface: (items: SyncSurfaceItem[]) => void;
   setMarkers: (items: TimeMarker[]) => void;
+
+  // MARKER_MULTICAM: Multicam actions
+  setMulticam: (id: string, angles: Array<{ source_path: string; label: string; offset_sec: number }>) => void;
+  clearMulticam: () => void;
+  setMulticamActiveAngle: (index: number) => void;
+  toggleMulticamMode: () => void;
+  multicamSwitchAngle: (angleIndex: number) => void;
+
   setEditorSession: (session: {
     sandboxRoot?: string | null;
     projectId?: string | null;
@@ -571,6 +585,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   thumbnails: [],
   syncSurface: [],
   markers: [],
+
+  // MARKER_MULTICAM: Multicam defaults
+  multicamId: null,
+  multicamAngles: [],
+  multicamActiveAngle: 0,
+  multicamMode: false,
 
   // MARKER_198: Timeline snapshot cache
   timelineSnapshots: new Map(),
@@ -1188,6 +1208,28 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),
   setMarkers: (items) => set({ markers: items }),
+
+  // MARKER_MULTICAM: Multicam action implementations
+  setMulticam: (id, angles) => set({ multicamId: id, multicamAngles: angles, multicamActiveAngle: 0, multicamMode: true }),
+  clearMulticam: () => set({ multicamId: null, multicamAngles: [], multicamActiveAngle: 0, multicamMode: false }),
+  setMulticamActiveAngle: (index) => set({ multicamActiveAngle: index }),
+  toggleMulticamMode: () => set((s) => ({ multicamMode: !s.multicamMode })),
+  multicamSwitchAngle: (angleIndex) => {
+    const { multicamId, multicamAngles, currentTime } = get();
+    if (!multicamId || angleIndex >= multicamAngles.length) return;
+    set({ multicamActiveAngle: angleIndex });
+    // Insert angle switch as a clip on timeline via applyTimelineOps
+    const angle = multicamAngles[angleIndex];
+    void get().applyTimelineOps([{
+      op: 'overwrite_at',
+      lane_id: 'V1',
+      start_sec: currentTime,
+      duration_sec: 5,
+      source_path: angle.source_path,
+      source_in: currentTime + angle.offset_sec,
+    }]);
+  },
+
   setEditorSession: (session) =>
     set((state) => ({
       sandboxRoot: session.sandboxRoot ?? state.sandboxRoot,

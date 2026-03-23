@@ -129,6 +129,23 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     return () => { window.removeEventListener('keydown', onDown, { capture: true }); window.removeEventListener('keyup', onUp, { capture: true }); };
   }, []);
 
+  // ─── MARKER_MULTICAM_KEYS: Number keys 1-9 switch multicam angles ───
+  const multicamMode = useCutEditorStore((s) => s.multicamMode);
+  useEffect(() => {
+    if (!multicamMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 9) {
+        e.preventDefault();
+        e.stopPropagation();
+        useCutEditorStore.getState().multicamSwitchAngle(num - 1);
+      }
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, [multicamMode]);
+
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
     // Playback — MARKER_DUAL-VIDEO: source-aware play/pause/stop
