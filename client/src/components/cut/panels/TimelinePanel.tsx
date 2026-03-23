@@ -63,14 +63,17 @@ export default function TimelinePanel(props: IDockviewPanelProps) {
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <TimelineTrackView timelineId={panelTimelineId} />
       </div>
+      {/* MARKER_GAMMA-BPM-FIX: Wrapper prevents label overlap at bottom edge */}
       {isActive && (
-        <BPMTrack
-          timelineId={activeTimelineId}
-          scriptText={scriptText}
-          pxPerSec={zoom}
-          scrollLeft={scrollLeft}
-          durationSec={duration}
-        />
+        <div style={{ flexShrink: 0, minHeight: 40, position: 'relative' }}>
+          <BPMTrack
+            timelineId={activeTimelineId}
+            scriptText={scriptText}
+            pxPerSec={zoom}
+            scrollLeft={scrollLeft}
+            durationSec={duration}
+          />
+        </div>
       )}
       {!isActive && (
         <div style={INACTIVE_OVERLAY} onClick={handleActivate}>
