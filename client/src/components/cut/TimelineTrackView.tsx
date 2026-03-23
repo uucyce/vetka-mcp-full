@@ -1198,13 +1198,30 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       setSelectedClip(clipId);
       setActiveMedia(sourcePath);
 
-      // W3.7: Linked selection — also select synced audio/video on adjacent lane
+      // MARKER_TL4: Linked selection — also select synced audio/video on adjacent lane
+      // Checks: linked_to field, sync.linked_clip_id, or matching scene_id
       const state = useCutEditorStore.getState();
       if (state.linkedSelection) {
-        const clickedLane = state.lanes.find((l) => l.clips.some((c) => c.clip_id === clipId));
-        const clickedClip = clickedLane?.clips.find((c) => c.clip_id === clipId);
-        if (clickedClip && clickedClip.sync?.linked_clip_id) {
-          const ids = new Set([clipId, clickedClip.sync.linked_clip_id]);
+        const ids = new Set([clipId]);
+        let clickedClip: TimelineClip | undefined;
+        for (const lane of state.lanes) {
+          const found = lane.clips.find((c) => c.clip_id === clipId);
+          if (found) { clickedClip = found; break; }
+        }
+        if (clickedClip) {
+          for (const lane of state.lanes) {
+            for (const c of lane.clips) {
+              if (c.clip_id === clipId) continue;
+              // Match by linked_to field (explicit link)
+              if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
+              // Match by sync.linked_clip_id (legacy)
+              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              // Match by scene_id (same scene = linked)
+              if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
+            }
+          }
+        }
+        if (ids.size > 1) {
           useCutEditorStore.setState({ selectedClipIds: ids });
         }
       }
