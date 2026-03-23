@@ -29,3 +29,6 @@ export { default as AudioMixerPanelDock } from './AudioMixerPanelDock';
 
 // MARKER_GAMMA-MKL1: Marker List panel
 export { default as MarkerListPanel } from './MarkerListPanel';
+
+// MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
+export { default as TimelineInstancePanel } from './TimelineInstancePanel';

@@ -227,7 +227,12 @@ export default function MenuBar() {
         { label: 'New Sequence', shortcut: '⌘N', action: () => {
           const s = store.getState();
           const name = s.projectId || 'untitled';
-          s.createVersionedTimeline(name, 'manual');
+          const newId = s.createVersionedTimeline(name, 'manual');
+          // MARKER_GAMMA-C12.1: Open new timeline as dockview panel
+          if (newId) {
+            const tab = s.timelineTabs.find((t: { id: string }) => t.id === newId);
+            dockStore.getState().addTimelinePanel(newId, tab?.label || `Cut ${newId}`);
+          }
         }},
         { label: 'Open Project...', shortcut: '⌘O', disabled: true },
         { label: 'Recent Projects', submenu: [
@@ -708,8 +713,46 @@ export default function MenuBar() {
         { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
+        { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
+        { separator: true },
+        // MARKER_GAMMA-C12.1: Multi-timeline management
+        { label: 'Open Timeline Side by Side', action: () => {
+          // Open a second timeline panel beside the existing one
+          const api = dockStore.getState().apiRef;
+          if (!api) return;
+          const s = store.getState();
+          const tabs = s.timelineTabs || [];
+          if (tabs.length < 2) return; // need at least 2 timelines
+          // Find a timeline that's not currently the main panel
+          const mainTlId = s.timelineId || 'main';
+          const other = tabs.find((t: { id: string }) => t.id !== mainTlId);
+          if (!other) return;
+          const panelId = `timeline-${other.id}`;
+          try { if (api.getPanel(panelId)) { api.getPanel(panelId)!.api.setActive(); return; } } catch { /* ok */ }
+          const mainPanel = api.getPanel('timeline');
+          api.addPanel({
+            id: panelId,
+            component: 'timeline',
+            title: other.label || other.id,
+            params: { timelineId: other.id },
+            position: mainPanel
+              ? { referencePanel: mainPanel.id, direction: 'right' }
+              : { direction: 'below' },
+          });
+        }},
+        { label: 'Timelines', submenu: (() => {
+          const tabs = store.getState().timelineTabs || [];
+          return tabs.map((t: { id: string; label: string }) => ({
+            label: `${store.getState().timelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
+            action: () => {
+              const s = store.getState();
+              const idx = s.timelineTabs.findIndex((tab: { id: string }) => tab.id === t.id);
+              if (idx >= 0) s.setActiveTimelineTab(idx);
+            },
+          }));
+        })() },
         { separator: true },
         { label: 'Maximize Panel', shortcut: '`', action: () => dockStore.getState().toggleMaximize() },
       ],
