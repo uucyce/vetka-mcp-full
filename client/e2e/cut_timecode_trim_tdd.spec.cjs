@@ -164,14 +164,19 @@ async function setupApiMocks(page) {
 
 async function navigateToCut(page) {
   await setupApiMocks(page);
-  await page.goto(CUT_URL, { waitUntil: 'networkidle' });
+  // Must pass sandbox_root + project_id so CutStandalone triggers refreshProjectState
+  // and the API mock returns our fixture data → lanes populate → clips render
+  const url = `${CUT_URL}?sandbox_root=${encodeURIComponent('/tmp/cut-trim')}&project_id=${encodeURIComponent('cut-trim-tdd')}`;
+  await page.goto(url, { waitUntil: 'networkidle' });
   await page.waitForSelector('[data-testid="cut-timeline-track-view"]', { timeout: 15000 });
+  // Wait for clips to render (store hydration from mocked project-state)
+  await page.waitForSelector('[data-testid^="cut-timeline-clip-"]', { timeout: 10000 }).catch(() => {});
 }
 
 // ===========================================================================
 // TIMECODE FIELD TESTS
 // ===========================================================================
-test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
+test.describe('TimecodeField: Absolute Navigation (TDD)', () => {
 
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
@@ -187,41 +192,32 @@ test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
   test('TC1: typing absolute timecode "01:00:15:00" seeks playhead to 3615s', async ({ page }) => {
     await navigateToCut(page);
 
-    // Find TimecodeField — it should be in MonitorTransport or above timeline ruler
-    // TimecodeField renders as a span/input with data-testid or specific class
+    // Find TimecodeField — actual testIds:
+    //   monitor-tc-source (source monitor), monitor-tc-program (program monitor),
+    //   cut-timeline-timecode-display (timeline ruler)
+    // Use timeline TC for navigation tests (most natural for timecode entry)
     const tcField = page.locator(
-      '[data-testid="timecode-field"], ' +
-      '[data-testid="cut-timeline-timecode"], ' +
-      '[data-testid="monitor-timecode"], ' +
-      'input[aria-label*="timecode" i]'
+      '[data-testid="cut-timeline-timecode-display"], ' +
+      '[data-testid="monitor-tc-source"], ' +
+      '[data-testid="monitor-tc-program"]'
     ).first();
 
     const tcVisible = await tcField.isVisible().catch(() => false);
-
     if (!tcVisible) {
-      // Fallback: look for the timecode display text (click to activate edit mode)
-      const tcDisplay = page.locator(
-        '[data-testid="timecode-display"], ' +
-        'span:text-matches("^\\d{2}:\\d{2}:\\d{2}[;:]\\d{2}$")'
-      ).first();
-      const displayVisible = await tcDisplay.isVisible().catch(() => false);
-
-      if (displayVisible) {
-        // Click to enter edit mode
-        await tcDisplay.click();
-        await page.waitForTimeout(200);
-      } else {
-        // TimecodeField not mounted — test should fail (TDD RED)
-        expect(tcVisible || displayVisible).toBe(true);
-        return;
-      }
-    } else {
-      await tcField.click();
-      await page.waitForTimeout(200);
+      expect(tcVisible).toBe(true);
+      return;
     }
 
-    // Now there should be an active input — type the timecode
-    const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
+    // Click to enter edit mode (span → input)
+    await tcField.click();
+    await page.waitForTimeout(200);
+
+    // After click, TimecodeField switches to input with testId + "-input"
+    const activeInput = page.locator(
+      '[data-testid="cut-timeline-timecode-display-input"], ' +
+      '[data-testid="monitor-tc-source-input"], ' +
+      'input[aria-label="timecode"]'
+    ).first();
     const inputExists = await activeInput.isVisible().catch(() => false);
 
     if (inputExists) {
@@ -266,57 +262,45 @@ test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
       return 5.0;
     });
 
-    // Find and click timecode field
+    // Find and click timecode field (actual testIds from components)
     const tcField = page.locator(
-      '[data-testid="timecode-field"], ' +
-      '[data-testid="cut-timeline-timecode"], ' +
-      '[data-testid="monitor-timecode"]'
+      '[data-testid="cut-timeline-timecode-display"], ' +
+      '[data-testid="monitor-tc-source"], ' +
+      '[data-testid="monitor-tc-program"]'
     ).first();
 
-    let tcVisible = await tcField.isVisible().catch(() => false);
+    const tcVisible = await tcField.isVisible().catch(() => false);
+    if (!tcVisible) { expect(tcVisible).toBe(true); return; }
 
-    if (!tcVisible) {
-      // Try clicking timecode display text to enter edit mode
-      const tcDisplay = page.locator(
-        'span:text-matches("^\\d{2}:\\d{2}:\\d{2}[;:]\\d{2}$")'
-      ).first();
-      const displayVisible = await tcDisplay.isVisible().catch(() => false);
-      if (displayVisible) {
-        await tcDisplay.click();
-        await page.waitForTimeout(200);
-        tcVisible = true;
-      }
+    await tcField.click();
+    await page.waitForTimeout(200);
+
+    const activeInput = page.locator(
+      '[data-testid="cut-timeline-timecode-display-input"], ' +
+      '[data-testid="monitor-tc-source-input"], ' +
+      'input[aria-label="timecode"]'
+    ).first();
+    const inputExists = await activeInput.isVisible().catch(() => false);
+
+    if (inputExists) {
+      // Type relative offset: +100 frames
+      await activeInput.fill('+100');
+      await activeInput.press('Enter');
+      await page.waitForTimeout(300);
+
+      const posAfter = await page.evaluate(() => {
+        if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
+        return null;
+      });
+
+      // 100 frames at 25fps = 4.0 seconds
+      const expectedDelta = 100 / 25; // 4.0
+      const actualDelta = posAfter - posBefore;
+
+      // Allow ±2 frames tolerance
+      expect(actualDelta).toBeCloseTo(expectedDelta, 1);
     } else {
-      await tcField.click();
-      await page.waitForTimeout(200);
-    }
-
-    if (tcVisible) {
-      const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
-      const inputExists = await activeInput.isVisible().catch(() => false);
-
-      if (inputExists) {
-        // Type relative offset: +100 frames
-        await activeInput.fill('+100');
-        await activeInput.press('Enter');
-        await page.waitForTimeout(300);
-
-        const posAfter = await page.evaluate(() => {
-          if (window.__CUT_STORE__) return window.__CUT_STORE__.getState().currentTime;
-          return null;
-        });
-
-        // 100 frames at 25fps = 4.0 seconds
-        const expectedDelta = 100 / 25; // 4.0
-        const actualDelta = posAfter - posBefore;
-
-        // Allow ±2 frames tolerance
-        expect(actualDelta).toBeCloseTo(expectedDelta, 1);
-      } else {
-        expect(inputExists).toBe(true);
-      }
-    } else {
-      expect(tcVisible).toBe(true);
+      expect(inputExists).toBe(true);
     }
   });
 
@@ -331,11 +315,11 @@ test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
   test('TC3: partial entry "1419" navigates to 00:00:14:19', async ({ page }) => {
     await navigateToCut(page);
 
-    // Find and activate timecode field
+    // Find and activate timecode field (actual testIds from components)
     const tcDisplay = page.locator(
-      '[data-testid="timecode-field"], ' +
-      '[data-testid="cut-timeline-timecode"], ' +
-      'span:text-matches("^\\d{2}:\\d{2}:\\d{2}[;:]\\d{2}$")'
+      '[data-testid="cut-timeline-timecode-display"], ' +
+      '[data-testid="monitor-tc-source"], ' +
+      '[data-testid="monitor-tc-program"]'
     ).first();
 
     const visible = await tcDisplay.isVisible().catch(() => false);
@@ -347,7 +331,11 @@ test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
     await tcDisplay.click();
     await page.waitForTimeout(200);
 
-    const activeInput = page.locator('input:focus, input[data-testid*="timecode"]').first();
+    const activeInput = page.locator(
+      '[data-testid="cut-timeline-timecode-display-input"], ' +
+      '[data-testid="monitor-tc-source-input"], ' +
+      'input[aria-label="timecode"]'
+    ).first();
     const inputExists = await activeInput.isVisible().catch(() => false);
 
     if (inputExists) {
@@ -412,7 +400,7 @@ test.describe.serial('TimecodeField: Absolute Navigation (TDD)', () => {
 // ===========================================================================
 // TRIM OPERATION TESTS
 // ===========================================================================
-test.describe.serial('Trim Operations: Ripple + Roll (TDD)', () => {
+test.describe('Trim Operations: Ripple + Roll (TDD)', () => {
 
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
