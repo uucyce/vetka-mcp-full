@@ -276,6 +276,23 @@ type WaveformHoverState = {
   timeSec: number;
 };
 
+// MARKER_SHUTTLE_INDICATOR: Visual shuttle speed readout (FCP7 Ch.8)
+function ShuttleIndicator() {
+  const speed = useCutEditorStore((s) => s.shuttleSpeed);
+  if (speed === 0) return null;
+  const label = speed > 0 ? `${speed}x` : `${speed}x`;
+  const arrow = speed > 0 ? '\u25B6' : '\u25C0';
+  return (
+    <span style={{
+      fontSize: 8, fontWeight: 700, fontFamily: 'monospace',
+      color: Math.abs(speed) > 2 ? '#ccc' : '#888',
+      marginLeft: 4, whiteSpace: 'nowrap',
+    }} data-testid="shuttle-speed-indicator">
+      {arrow}{label}
+    </span>
+  );
+}
+
 function basename(path: string): string {
   return path.split('/').pop()?.split('\\').pop() || path;
 }
@@ -1813,6 +1830,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             onSeek={seek}
             testId="cut-timeline-timecode"
           />
+          {/* MARKER_SHUTTLE_INDICATOR: Show shuttle speed when JKL active */}
+          <ShuttleIndicator />
         </div>
         <div style={{ flex: 1, position: 'relative' }}>
           <TimeRuler

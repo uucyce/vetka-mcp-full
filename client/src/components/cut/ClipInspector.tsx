@@ -170,7 +170,33 @@ export default function ClipInspector() {
         {clip.scene_id && (
           <div style={ROW}><span style={LABEL}>Scene</span><span style={VALUE}>{clip.scene_id}</span></div>
         )}
+        {/* MARKER_RECON_2: Show source_in offset for trim handle reference */}
+        {clip.source_in !== undefined && clip.source_in > 0 && (
+          <div style={ROW}><span style={LABEL}>Source In</span><span style={VALUE}>{formatTC(clip.source_in)}</span></div>
+        )}
+        {clip.speed && clip.speed !== 1 && (
+          <div style={ROW}><span style={LABEL}>Speed</span><span style={VALUE}>{clip.speed > 0 ? `${clip.speed}x` : `${clip.speed}x (reverse)`}</span></div>
+        )}
       </div>
+
+      {/* MARKER_RECON_3: Applied effects summary */}
+      {clip.effects && Object.keys(clip.effects).some((k) => {
+        const v = (clip.effects as any)[k];
+        return v !== undefined && v !== 1 && v !== 0 && v !== false;
+      }) && (
+        <div style={SECTION}>
+          <div style={HEADER}>Effects</div>
+          {Object.entries(clip.effects).map(([key, val]) => {
+            if (val === undefined || val === 1 || val === 0 || val === false) return null;
+            return (
+              <div key={key} style={ROW}>
+                <span style={LABEL}>{key}</span>
+                <span style={VALUE}>{typeof val === 'number' ? val.toFixed(2) : String(val)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (Effect Controls) */}
 
