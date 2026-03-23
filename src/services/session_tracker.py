@@ -34,6 +34,12 @@ class SessionActions:
     claimed_task_has_recon_docs: bool = False
     roadmap_exists: bool = False
 
+    # MARKER_196.2.1: Role binding — set via session_init(role=X)
+    role_callsign: Optional[str] = None
+    role_domain: Optional[str] = None
+    role_branch: Optional[str] = None
+    role_pipeline_stage: Optional[str] = None
+
     # File tracking
     files_read: Set[str] = field(default_factory=set)
     files_edited: Set[str] = field(default_factory=set)
@@ -161,6 +167,40 @@ class SessionActionTracker:
         with self._lock:
             self._purge_expired()
             return self._get_or_create(session_id)
+
+    def set_role(self, session_id: str, role) -> None:
+        """Bind an AgentRole to this session. Called from session_init(role=X).
+
+        Args:
+            session_id: MCP session identifier
+            role: AgentRole dataclass from agent_registry
+        """
+        with self._lock:
+            session = self._get_or_create(session_id)
+            session.role_callsign = role.callsign
+            session.role_domain = role.domain
+            session.role_branch = role.branch
+            session.role_pipeline_stage = getattr(role, "pipeline_stage", None)
+            logger.info(
+                "session_tracker: bound role %s (domain=%s, branch=%s) to session %s",
+                role.callsign, role.domain, role.branch, session_id,
+            )
+
+    def get_role(self, session_id: str) -> Optional[Dict]:
+        """Return role binding for session, or None if no role set.
+
+        Returns dict with callsign, domain, branch, pipeline_stage.
+        """
+        with self._lock:
+            session = self._sessions.get(session_id)
+            if session and session.role_callsign:
+                return {
+                    "callsign": session.role_callsign,
+                    "domain": session.role_domain,
+                    "branch": session.role_branch,
+                    "pipeline_stage": session.role_pipeline_stage,
+                }
+            return None
 
     def reset_session(self, session_id: str) -> None:
         """Remove all state for *session_id*."""

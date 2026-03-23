@@ -293,6 +293,26 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     board = get_task_board()
 
+    # MARKER_196.2.2: Auto-attribution from session role
+    # If session_init(role=X) was called, auto-fill role/domain/branch fields.
+    # Uses setdefault — explicit arguments always take precedence.
+    _session_role = None
+    try:
+        from src.services.session_tracker import get_session_tracker
+        _session_role = get_session_tracker().get_role(_tracker_sid)
+    except Exception:
+        pass
+
+    if _session_role and action in ("claim", "complete", "add"):
+        if action == "claim":
+            arguments.setdefault("assigned_to", _session_role["callsign"])
+            arguments.setdefault("role", _session_role["callsign"])
+        if action == "complete":
+            arguments.setdefault("branch", _session_role["branch"])
+        if action == "add":
+            arguments.setdefault("role", _session_role["callsign"])
+            arguments.setdefault("domain", _session_role["domain"])
+
     if action == "add":
         title = arguments.get("title")
         if not title:
@@ -547,10 +567,54 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_192.2: execution_mode override for manual agents
         exec_mode = arguments.get("execution_mode")
 
+        # MARKER_196.3.1: Ownership validation (soft mode)
+        # Compare changed files against role.owned_paths from session.
+        # Soft mode: warn in result, don't block.
+        _ownership_warnings = []
+        if _session_role:
+            try:
+                from src.services.agent_registry import get_agent_registry
+                _ow_reg = get_agent_registry()
+                _ow_role = _ow_reg.get_by_callsign(_session_role["callsign"])
+                if _ow_role:
+                    import subprocess as _ow_sp
+                    _ow_cwd = worktree_path or str(Path(__file__).resolve().parents[3])
+                    _ow_diff = _ow_sp.run(
+                        ["git", "diff", "--name-only", "--cached"],
+                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                    )
+                    # Also check unstaged
+                    _ow_diff2 = _ow_sp.run(
+                        ["git", "diff", "--name-only"],
+                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                    )
+                    _changed = set()
+                    if _ow_diff.returncode == 0:
+                        _changed.update(f.strip() for f in _ow_diff.stdout.splitlines() if f.strip())
+                    if _ow_diff2.returncode == 0:
+                        _changed.update(f.strip() for f in _ow_diff2.stdout.splitlines() if f.strip())
+
+                    for _cf in _changed:
+                        _result = _ow_reg.validate_file_ownership(_ow_role.callsign, _cf)
+                        if _result.is_blocked:
+                            _ownership_warnings.append(f"BLOCKED: {_cf} (pattern: {_result.matched_blocked_pattern})")
+                        elif not _result.is_owned and not _result.shared_zone:
+                            _ownership_warnings.append(f"NOT_OWNED: {_cf}")
+
+                    if _ownership_warnings:
+                        logger.warning(
+                            "[TaskBoard] Ownership warnings for %s: %s",
+                            _ow_role.callsign, _ownership_warnings,
+                        )
+            except Exception:
+                pass  # Ownership check never blocks completion
+
         # Case A: agent already committed — just close
         # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+            if _ownership_warnings:
+                result["ownership_warnings"] = _ownership_warnings
             _inject_debrief(result, arguments)
             return result
 
@@ -619,6 +683,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Close task (commit succeeded or nothing to commit)
         result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
         result["auto_commit"] = auto
+
+        # MARKER_196.3.1: Attach ownership warnings to result
+        if _ownership_warnings:
+            result["ownership_warnings"] = _ownership_warnings
 
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)

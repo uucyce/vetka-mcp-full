@@ -223,6 +223,12 @@ class GitCommitTool(BaseMCPTool):
                 if result.returncode != 0:
                     return {"success": False, "error": f"Failed to stage files: {result.stderr}", "result": None}
 
+            # MARKER_196.FIX: Capture HEAD before commit for false-positive detection
+            _head_before = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(git_root), capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+
             # Commit
             result = subprocess.run(
                 ["git", "commit", "-m", message],
@@ -235,7 +241,23 @@ class GitCommitTool(BaseMCPTool):
             if result.returncode != 0:
                 if "nothing to commit" in result.stdout.lower() or "nothing to commit" in result.stderr.lower():
                     return {"success": False, "error": "Nothing to commit", "result": None}
-                return {"success": False, "error": result.stderr or result.stdout, "result": None}
+
+                # MARKER_196.FIX: Check if commit actually succeeded despite non-zero exit
+                # Pre-commit hook stdout/stderr can cause git to report failure even when
+                # the commit was created. Defensive: never lose a commit due to hook noise.
+                _head_after = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(git_root), capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if _head_after != _head_before:
+                    # Commit exists! Treat as success despite returncode.
+                    import logging as _lg
+                    _lg.getLogger("vetka.git").warning(
+                        "[GitTool] Commit succeeded (HEAD changed) despite returncode=%d. "
+                        "Hook output: %s", result.returncode, (result.stderr or result.stdout)[:200],
+                    )
+                else:
+                    return {"success": False, "error": result.stderr or result.stdout, "result": None}
 
             # Get commit hash
             commit_hash = subprocess.run(
