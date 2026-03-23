@@ -157,14 +157,14 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   overwriteEdit:       ['timeline', 'source'],
   replaceEdit:         ['timeline', 'source'],
 
-  // Tools — timeline only
-  razorTool:           ['timeline'],
-  selectTool:          ['timeline'],
-  // MARKER_W5.TRIM: Trim tools — timeline only
-  slipTool:            ['timeline'],
-  slideTool:           ['timeline'],
-  rippleTool:          ['timeline'],
-  rollTool:            ['timeline'],
+  // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
+  razorTool:           'global',
+  selectTool:          'global',
+  // MARKER_W5.TRIM: Trim tools — global
+  slipTool:            'global',
+  slideTool:           'global',
+  rippleTool:          'global',
+  rollTool:            'global',
 
   // Navigation — timeline/program
   prevEditPoint:       ['timeline'],
@@ -378,9 +378,9 @@ export const FCP7_PRESET: HotkeyMap = {
   insertEdit:        ',',
   overwriteEdit:     '.',
   replaceEdit:       'F11',
-  // MARKER_W5.TRIM: FCP7 trim tools (Ch.44: RR=ripple, R=roll, S=slip, SS=slide)
-  slipTool:          's',
-  slideTool:         'd',
+  // MARKER_W5.TRIM: FCP7 trim tools — Y=slip, U=slide (S conflicts with snap toggle)
+  slipTool:          'y',
+  slideTool:         'u',
   rippleTool:        'r',
   rollTool:          'Shift+r',
   // Markers
@@ -412,8 +412,8 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
-  // Linked selection
-  toggleLinkedSelection: 'Cmd+l',
+  // Linked selection (FCP7 standard: Shift+L)
+  toggleLinkedSelection: 'Shift+l',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',

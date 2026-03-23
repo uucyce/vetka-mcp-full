@@ -103,9 +103,12 @@ interface MonitorTransportProps {
 }
 
 export default function MonitorTransport({ feed }: MonitorTransportProps) {
-  const currentTime = useCutEditorStore((s) => s.currentTime);
-  const duration = useCutEditorStore((s) => s.duration);
-  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  // MARKER_DUAL-VIDEO: Source transport uses sourceCurrentTime/seekSource/playSource,
+  // Program transport uses timeline currentTime/seek/play
+  const isSource = feed === 'source';
+  const currentTime = useCutEditorStore((s) => isSource ? s.sourceCurrentTime : s.currentTime);
+  const duration = useCutEditorStore((s) => isSource ? s.sourceDuration : s.duration);
+  const isPlaying = useCutEditorStore((s) => isSource ? s.sourceIsPlaying : s.isPlaying);
   // MARKER_W1.4: Read correct marks based on feed
   const sourceMarkIn = useCutEditorStore((s) => s.sourceMarkIn);
   const sourceMarkOut = useCutEditorStore((s) => s.sourceMarkOut);
@@ -116,16 +119,16 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const setSequenceMarkIn = useCutEditorStore((s) => s.setSequenceMarkIn);
   const setSequenceMarkOut = useCutEditorStore((s) => s.setSequenceMarkOut);
 
-  const markIn = feed === 'source' ? sourceMarkIn : sequenceMarkIn;
-  const markOut = feed === 'source' ? sourceMarkOut : sequenceMarkOut;
-  const setMarkIn = feed === 'source' ? setSourceMarkIn : setSequenceMarkIn;
-  const setMarkOut = feed === 'source' ? setSourceMarkOut : setSequenceMarkOut;
+  const markIn = isSource ? sourceMarkIn : sequenceMarkIn;
+  const markOut = isSource ? sourceMarkOut : sequenceMarkOut;
+  const setMarkIn = isSource ? setSourceMarkIn : setSequenceMarkIn;
+  const setMarkOut = isSource ? setSourceMarkOut : setSequenceMarkOut;
 
   const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
   const dropFrame = useCutEditorStore((s) => s.dropFrame);
 
-  const togglePlay = useCutEditorStore((s) => s.togglePlay);
-  const seek = useCutEditorStore((s) => s.seek);
+  const togglePlay = useCutEditorStore((s) => isSource ? s.togglePlaySource : s.togglePlay);
+  const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 

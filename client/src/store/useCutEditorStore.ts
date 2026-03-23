@@ -103,6 +103,9 @@ export type WaveformItem = {
   item_id: string;
   source_path: string;
   waveform_bins?: number[];
+  // MARKER_B31: Stereo waveform data (L/R channel peaks)
+  waveform_bins_left?: number[];
+  waveform_bins_right?: number[];
   degraded_mode?: boolean;
 };
 
