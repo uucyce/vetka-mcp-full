@@ -1741,7 +1741,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_task_board":
             # MARKER_178.6.1: Live fallback — uses local task_board handler
+            # MARKER_195.21: Reload module to pick up hot-patched code (debrief, branch_name, etc.)
             try:
+                import importlib
+                import src.mcp.tools.task_board_tools as _tb_mod
+                importlib.reload(_tb_mod)
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"
