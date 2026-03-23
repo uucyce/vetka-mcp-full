@@ -20,12 +20,12 @@ import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorS
 import { API_BASE } from '../../config/api.config';
 import DAGProjectPanel from './DAGProjectPanel';
 
-// MARKER_W5.4: View mode type
-type ProjectViewMode = 'list' | 'grid' | 'dag';
+// MARKER_W5.4 + GAMMA-P1.2: View mode type
+type ProjectViewMode = 'list' | 'columns' | 'grid' | 'dag';
 
 // ─── Bin (bucket) types ───
 
-type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other';
+type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other' | string;
 
 interface BinDef {
   key: BinKey;
@@ -272,6 +272,56 @@ export default function ProjectPanel() {
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
   // MARKER_GAMMA-19: Context menu for project items
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  // MARKER_GAMMA-P1.4: Search/filter clips
+  const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-P1.1: User-created bins
+  type UserBin = { id: string; name: string };
+  const [userBins, setUserBins] = useState<UserBin[]>(() => {
+    try { const raw = localStorage.getItem('cut_user_bins'); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  });
+  const [clipBinMap, setClipBinMap] = useState<Record<string, string>>(() => {
+    try { const raw = localStorage.getItem('cut_clip_bins'); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  });
+  const [renamingBin, setRenamingBin] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  const saveUserBins = useCallback((bins: UserBin[]) => {
+    setUserBins(bins);
+    try { localStorage.setItem('cut_user_bins', JSON.stringify(bins)); } catch { /* ok */ }
+  }, []);
+  const saveClipBinMap = useCallback((map: Record<string, string>) => {
+    setClipBinMap(map);
+    try { localStorage.setItem('cut_clip_bins', JSON.stringify(map)); } catch { /* ok */ }
+  }, []);
+
+  const createBin = useCallback(() => {
+    const id = `bin_${Date.now()}`;
+    const name = `Bin ${userBins.length + 1}`;
+    saveUserBins([...userBins, { id, name }]);
+    setRenamingBin(id);
+    setRenameValue(name);
+  }, [userBins, saveUserBins]);
+
+  const renameBin = useCallback((id: string, name: string) => {
+    saveUserBins(userBins.map((b) => b.id === id ? { ...b, name } : b));
+    setRenamingBin(null);
+  }, [userBins, saveUserBins]);
+
+  const deleteBin = useCallback((id: string) => {
+    saveUserBins(userBins.filter((b) => b.id !== id));
+    const next = { ...clipBinMap };
+    for (const key of Object.keys(next)) { if (next[key] === id) delete next[key]; }
+    saveClipBinMap(next);
+  }, [userBins, clipBinMap, saveUserBins, saveClipBinMap]);
+
+  const assignClipToBin = useCallback((clipPath: string, binId: string) => {
+    saveClipBinMap({ ...clipBinMap, [clipPath]: binId });
+  }, [clipBinMap, saveClipBinMap]);
+  // MARKER_GAMMA-P1.2: Column sort
+  type SortKey = 'name' | 'duration' | 'modality';
+  type SortDir = 'asc' | 'desc';
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -519,7 +569,27 @@ export default function ProjectPanel() {
         }))
       );
 
-  const projectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+  const allProjectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+
+  // MARKER_GAMMA-P1.4: Filter by search query
+  const searchLower = searchQuery.toLowerCase();
+  const projectItems = searchLower
+    ? allProjectItems.filter((item) => basename(item.source_path).toLowerCase().includes(searchLower))
+    : allProjectItems;
+
+  // MARKER_GAMMA-P1.2: Sort for column view
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }, [sortKey]);
+
+  const sortedItems = [...projectItems].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'name') return dir * basename(a.source_path).localeCompare(basename(b.source_path));
+    if (sortKey === 'duration') return dir * ((a.duration_sec ?? 0) - (b.duration_sec ?? 0));
+    if (sortKey === 'modality') return dir * (a.modality ?? '').localeCompare(b.modality ?? '');
+    return 0;
+  });
 
   const bins = BIN_ORDER
     .map((bin) => ({
@@ -550,15 +620,23 @@ export default function ProjectPanel() {
     });
   }, []);
 
-  const totalClips = projectItems.length;
+  const totalClips = allProjectItems.length;
+  const filteredCount = projectItems.length;
 
   return (
     <div style={PANEL} data-testid="cut-source-browser">
-      {/* Header with view mode switcher — MARKER_W5.4 */}
+      {/* Header with view mode switcher — MARKER_W5.4 + GAMMA-P1.1 New Bin */}
       <div style={HEADER}>
-        <span>Project</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Project</span>
+          <button
+            onClick={createBin}
+            style={{ ...MODE_SWITCH_BTN, color: '#555', fontSize: 10 }}
+            title="New Bin (⌘B)"
+          >+</button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {(['list', 'grid', 'dag'] as const).map((mode) => (
+          {(['list', 'columns', 'grid', 'dag'] as const).map((mode) => (
             <button
               key={mode}
               style={{
@@ -567,15 +645,36 @@ export default function ProjectPanel() {
                 background: viewMode === mode ? '#1a1a1a' : 'none',
               }}
               onClick={() => setViewMode(mode)}
-              title={mode === 'list' ? 'List view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
+              title={mode === 'list' ? 'List view' : mode === 'columns' ? 'Column view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
             >
-              {mode === 'list' ? '≡' : mode === 'grid' ? '⊞' : '◇'}
+              {mode === 'list' ? '≡' : mode === 'columns' ? '▤' : mode === 'grid' ? '⊞' : '◇'}
             </button>
           ))}
           <span style={{ marginLeft: 6, fontSize: 9, color: '#555' }}>
-            {totalClips}
+            {searchLower ? `${filteredCount}/${totalClips}` : totalClips}
           </span>
         </div>
+      </div>
+
+      {/* MARKER_GAMMA-P1.4: Search/filter bar */}
+      <div style={{ padding: '4px 10px', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+        <input
+          type="text"
+          placeholder="Filter clips..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '3px 6px',
+            background: '#111',
+            border: '1px solid #333',
+            borderRadius: 3,
+            color: '#ccc',
+            fontSize: 9,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
       </div>
 
       {/* Import area */}
@@ -624,16 +723,83 @@ export default function ProjectPanel() {
           <div style={{
             ...STATUS_LINE,
             color: importStatus.toLowerCase().includes('fail') || importStatus.toLowerCase().includes('error')
-              ? '#f87171'
-              : '#93c5fd',
+              ? '#999'
+              : '#777',
           }}>
             {importStatus}
           </div>
         )}
       </div>
 
-      {/* Content area — switches by viewMode (MARKER_W5.4) */}
-      {viewMode === 'dag' ? (
+      {/* Content area — switches by viewMode (MARKER_W5.4 + GAMMA-P1.2) */}
+      {viewMode === 'columns' ? (
+        /* MARKER_GAMMA-P1.2: Column view — sortable table */
+        <div style={{ ...BIN_LIST, fontSize: 9 }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 60px 50px',
+            padding: '3px 10px',
+            borderBottom: '1px solid #333',
+            color: '#777',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            userSelect: 'none',
+          }}>
+            <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>
+              Name {sortKey === 'name' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('duration')}>
+              Duration {sortKey === 'duration' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('modality')}>
+              Type {sortKey === 'modality' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+          </div>
+          {/* Rows */}
+          {sortedItems.map((item) => {
+            const isActive = item.source_path === activeMediaPath;
+            return (
+              <div
+                key={item.item_id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                  e.dataTransfer.effectAllowed = 'copy';
+                  setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                }}
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
+                onClick={() => handleClipClick(item.source_path)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 60px 50px',
+                  padding: '3px 10px',
+                  borderBottom: '1px solid #111',
+                  background: isActive ? '#1a1a1a' : 'transparent',
+                  cursor: 'grab',
+                  color: isActive ? '#ccc' : '#888',
+                }}
+                onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#111'; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {basename(item.source_path)}
+                </span>
+                <span style={{ textAlign: 'right', color: '#555', fontVariantNumeric: 'tabular-nums' }}>
+                  {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                </span>
+                <span style={{ textAlign: 'right', color: '#444' }}>
+                  {item.modality ?? '—'}
+                </span>
+              </div>
+            );
+          })}
+          {totalClips === 0 && (
+            <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>No clips imported</div>
+          )}
+        </div>
+      ) : viewMode === 'dag' ? (
         /* DAG view — embedded DAGProjectPanel */
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <DAGProjectPanel />
@@ -701,8 +867,82 @@ export default function ProjectPanel() {
           )}
         </div>
       ) : (
-        /* List view (default) — bins with clip rows */
+        /* List view (default) — user bins + auto bins with clip rows */
         <div style={BIN_LIST}>
+          {/* MARKER_GAMMA-P1.1: User-created bins */}
+          {userBins.map((ubin) => {
+            const isCollapsed = collapsedBins.has(ubin.id);
+            const ubinItems = projectItems.filter((it) => clipBinMap[it.source_path] === ubin.id);
+            return (
+              <div key={ubin.id} data-testid={`cut-user-bin-${ubin.id}`}>
+                <div
+                  style={BIN_HEADER}
+                  onClick={() => toggleBin(ubin.id)}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const path = e.dataTransfer.getData('text/cut-media-path');
+                    if (path) assignClipToBin(path, ubin.id);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (confirm(`Delete bin "${ubin.name}"?`)) deleteBin(ubin.id);
+                  }}
+                >
+                  <span>
+                    {isCollapsed ? '▸' : '▾'}{' '}
+                    {renamingBin === ubin.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => renameBin(ubin.id, renameValue)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') renameBin(ubin.id, renameValue); if (e.key === 'Escape') setRenamingBin(null); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#111', border: '1px solid #555', borderRadius: 2, color: '#ccc', fontSize: 10, width: 100, padding: '0 3px', outline: 'none' }}
+                      />
+                    ) : (
+                      <span onDoubleClick={(e) => { e.stopPropagation(); setRenamingBin(ubin.id); setRenameValue(ubin.name); }}>
+                        {ubin.name}
+                      </span>
+                    )}
+                  </span>
+                  <span>{ubinItems.length}</span>
+                </div>
+                {!isCollapsed && ubinItems.map((item) => {
+                  const isActive = item.source_path === activeMediaPath;
+                  return (
+                    <div
+                      key={item.item_id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                      }}
+                      style={{
+                        ...CLIP_ITEM,
+                        background: isActive ? '#1a1a1a' : 'transparent',
+                        borderLeft: isActive ? '2px solid #999' : '2px solid transparent',
+                        cursor: 'grab',
+                      }}
+                      onClick={() => handleClipClick(item.source_path)}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: isActive ? '#fff' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {basename(item.source_path)}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#555' }}>
+                          {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {/* Auto-classified bins */}
           {bins.map((bin) => {
             const isCollapsed = collapsedBins.has(bin.key);
             return (

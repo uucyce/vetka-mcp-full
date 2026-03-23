@@ -345,6 +345,29 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
           </div>
         </div>
 
+        {/* MARKER_GAMMA-P3.4: Preset selector */}
+        <div style={{ padding: '4px 12px', borderBottom: '1px solid #222', display: 'flex', gap: 4, alignItems: 'center' }}>
+          <span style={{ fontSize: 8, color: '#555', marginRight: 4 }}>PRESET:</span>
+          {(['premiere', 'fcp7', 'custom'] as const).map((p) => (
+            <button
+              key={p}
+              onClick={() => { setPresetName(p); savePresetName(p); window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: p })); }}
+              style={{
+                background: presetName === p ? '#222' : 'none',
+                border: '1px solid ' + (presetName === p ? '#555' : '#333'),
+                borderRadius: 3,
+                color: presetName === p ? '#ccc' : '#666',
+                fontSize: 8,
+                padding: '2px 8px',
+                cursor: 'pointer',
+                textTransform: 'uppercase',
+              }}
+            >
+              {p === 'premiere' ? 'Premiere' : p === 'fcp7' ? 'FCP7' : 'Custom'}
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
         <div style={{ padding: '6px 12px', borderBottom: '1px solid #222' }}>
           <input
@@ -381,7 +404,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                     key={def.action}
                     style={{
                       ...ROW,
-                      background: isCapturing ? '#1a2a1a' : undefined,
+                      background: isCapturing ? '#222' : undefined,
                     }}
                     onClick={() => {
                       setCapturing(def.action);
@@ -396,7 +419,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                     ) : (
                       <span style={{
                         ...BINDING_BADGE,
-                        color: isCustom ? '#7ecf7e' : '#ccc',
+                        color: isCustom ? '#fff' : '#ccc',
                       }}>
                         {binding || '—'}
                       </span>
@@ -432,10 +455,10 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
         {conflict && (
           <div style={{
             padding: '4px 12px',
-            background: '#2a1a1a',
+            background: '#1a1a1a',
             borderTop: '1px solid #333',
             fontSize: 9,
-            color: '#e88',
+            color: '#999',
             fontFamily: 'monospace',
           }}>
             Conflict: "{conflict.binding}" already assigned to{' '}
