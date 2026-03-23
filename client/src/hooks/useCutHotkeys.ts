@@ -761,8 +761,9 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
       }
     };
 
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    // MARKER_HOTKEY_CAPTURE: Use capture phase to intercept before dockview stopPropagation
+    window.addEventListener('keydown', onKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true });
   }, [disabled]);
 
   // Preset switcher
