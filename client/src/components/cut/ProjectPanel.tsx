@@ -20,8 +20,8 @@ import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorS
 import { API_BASE } from '../../config/api.config';
 import DAGProjectPanel from './DAGProjectPanel';
 
-// MARKER_W5.4: View mode type
-type ProjectViewMode = 'list' | 'grid' | 'dag';
+// MARKER_W5.4 + GAMMA-P1.2: View mode type
+type ProjectViewMode = 'list' | 'columns' | 'grid' | 'dag';
 
 // ─── Bin (bucket) types ───
 
@@ -274,6 +274,11 @@ export default function ProjectPanel() {
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
   // MARKER_GAMMA-P1.4: Search/filter clips
   const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-P1.2: Column sort
+  type SortKey = 'name' | 'duration' | 'modality';
+  type SortDir = 'asc' | 'desc';
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -529,6 +534,20 @@ export default function ProjectPanel() {
     ? allProjectItems.filter((item) => basename(item.source_path).toLowerCase().includes(searchLower))
     : allProjectItems;
 
+  // MARKER_GAMMA-P1.2: Sort for column view
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }, [sortKey]);
+
+  const sortedItems = [...projectItems].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'name') return dir * basename(a.source_path).localeCompare(basename(b.source_path));
+    if (sortKey === 'duration') return dir * ((a.duration_sec ?? 0) - (b.duration_sec ?? 0));
+    if (sortKey === 'modality') return dir * (a.modality ?? '').localeCompare(b.modality ?? '');
+    return 0;
+  });
+
   const bins = BIN_ORDER
     .map((bin) => ({
       ...bin,
@@ -567,7 +586,7 @@ export default function ProjectPanel() {
       <div style={HEADER}>
         <span>Project</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {(['list', 'grid', 'dag'] as const).map((mode) => (
+          {(['list', 'columns', 'grid', 'dag'] as const).map((mode) => (
             <button
               key={mode}
               style={{
@@ -576,9 +595,9 @@ export default function ProjectPanel() {
                 background: viewMode === mode ? '#1a1a1a' : 'none',
               }}
               onClick={() => setViewMode(mode)}
-              title={mode === 'list' ? 'List view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
+              title={mode === 'list' ? 'List view' : mode === 'columns' ? 'Column view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
             >
-              {mode === 'list' ? '≡' : mode === 'grid' ? '⊞' : '◇'}
+              {mode === 'list' ? '≡' : mode === 'columns' ? '▤' : mode === 'grid' ? '⊞' : '◇'}
             </button>
           ))}
           <span style={{ marginLeft: 6, fontSize: 9, color: '#555' }}>
@@ -662,8 +681,75 @@ export default function ProjectPanel() {
         )}
       </div>
 
-      {/* Content area — switches by viewMode (MARKER_W5.4) */}
-      {viewMode === 'dag' ? (
+      {/* Content area — switches by viewMode (MARKER_W5.4 + GAMMA-P1.2) */}
+      {viewMode === 'columns' ? (
+        /* MARKER_GAMMA-P1.2: Column view — sortable table */
+        <div style={{ ...BIN_LIST, fontSize: 9 }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 60px 50px',
+            padding: '3px 10px',
+            borderBottom: '1px solid #333',
+            color: '#777',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            userSelect: 'none',
+          }}>
+            <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>
+              Name {sortKey === 'name' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('duration')}>
+              Duration {sortKey === 'duration' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('modality')}>
+              Type {sortKey === 'modality' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+          </div>
+          {/* Rows */}
+          {sortedItems.map((item) => {
+            const isActive = item.source_path === activeMediaPath;
+            return (
+              <div
+                key={item.item_id}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.setData('text/cut-media-path', item.source_path);
+                  e.dataTransfer.effectAllowed = 'copy';
+                  setDragPreview(e, basename(item.source_path), item.modality, item.poster_url);
+                }}
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
+                onClick={() => handleClipClick(item.source_path)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 60px 50px',
+                  padding: '3px 10px',
+                  borderBottom: '1px solid #111',
+                  background: isActive ? '#1a1a1a' : 'transparent',
+                  cursor: 'grab',
+                  color: isActive ? '#ccc' : '#888',
+                }}
+                onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#111'; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {basename(item.source_path)}
+                </span>
+                <span style={{ textAlign: 'right', color: '#555', fontVariantNumeric: 'tabular-nums' }}>
+                  {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                </span>
+                <span style={{ textAlign: 'right', color: '#444' }}>
+                  {item.modality ?? '—'}
+                </span>
+              </div>
+            );
+          })}
+          {totalClips === 0 && (
+            <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>No clips imported</div>
+          )}
+        </div>
+      ) : viewMode === 'dag' ? (
         /* DAG view — embedded DAGProjectPanel */
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <DAGProjectPanel />
