@@ -258,6 +258,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   fiveFrameStepForward: 'Shift+ArrowRight',
   goToStart:         'Home',
   goToEnd:           'End',
+  cyclePlaybackRate: 'Cmd+Shift+r',
   // Marking
   markIn:            'i',
   markOut:           'o',
@@ -354,6 +355,7 @@ export const FCP7_PRESET: HotkeyMap = {
   fiveFrameStepForward: 'Shift+ArrowRight',
   goToStart:         'Home',
   goToEnd:           'End',
+  cyclePlaybackRate: 'Cmd+Shift+r',
   // Marking
   markIn:            'i',
   markOut:           'o',
