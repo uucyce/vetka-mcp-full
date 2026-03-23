@@ -4825,6 +4825,57 @@ async def cut_audio_clip_segment(
     )
 
 
+# ─── MARKER_B7.3: Single-frame thumbnail for Project bin ───────────────
+
+@router.get("/thumbnail")
+async def cut_thumbnail(
+    source_path: str,
+    time_sec: float = 1.0,
+    width: int = 320,
+    height: int = 180,
+) -> Any:
+    """
+    MARKER_B7.3 — Extract single-frame JPEG thumbnail from video.
+    Returns image/jpeg binary. Cached on disk (subsequent requests instant).
+    """
+    import hashlib
+    import tempfile
+    from fastapi.responses import Response
+    from src.services.cut_render_engine import generate_thumbnail
+
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    # Deterministic cache path based on source + time + size
+    cache_key = hashlib.md5(f"{source_path}|{time_sec}|{width}x{height}".encode()).hexdigest()
+    cache_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"{cache_key}.jpg")
+
+    # Return cached if exists
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/jpeg",
+                          headers={"Cache-Control": "public, max-age=86400"})
+
+    # Generate
+    result_path = generate_thumbnail(
+        str(p),
+        output_path=cache_path,
+        seek_sec=max(0, time_sec),
+        width=max(64, min(1920, width)),
+        height=max(36, min(1080, height)),
+    )
+
+    if result_path and os.path.isfile(result_path):
+        with open(result_path, "rb") as f:
+            return Response(content=f.read(), media_type="image/jpeg",
+                          headers={"Cache-Control": "public, max-age=86400"})
+
+    return {"success": False, "error": "thumbnail_generation_failed"}
+
+
 @router.post("/worker/waveform-build-async")
 async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, Any]:
     """
@@ -8649,6 +8700,10 @@ class CutRenderMasterRequest(BaseModel):
     audio_stems: bool = False        # export per-track WAV files
     # MARKER_B6.2: Audio codec
     audio_codec: str = "aac"  # aac, pcm_s24le, libmp3lame, flac
+    # MARKER_B6.3: Bitrate mode
+    bitrate_mode: str = "crf"    # crf, cbr, vbr
+    target_bitrate: str = ""     # e.g. "12M", "8M"
+    max_bitrate: str = ""        # e.g. "15M" (vbr only)
     # MARKER_B13: Mixer state for render
     mixer: dict[str, Any] | None = None  # {lanes: {lane_id: {volume, pan, mute, solo}}, master_volume}
 
@@ -8752,6 +8807,9 @@ def _run_master_render_job(job_id: str, req: CutRenderMasterRequest) -> None:
             mixer=req.mixer,  # MARKER_B13
             cancel_check=cancel_check,  # MARKER_B2.1
             audio_codec=req.audio_codec,  # MARKER_B6.2
+            bitrate_mode=req.bitrate_mode,  # MARKER_B6.3
+            target_bitrate=req.target_bitrate,
+            max_bitrate=req.max_bitrate,
         )
 
         store.update_job(
