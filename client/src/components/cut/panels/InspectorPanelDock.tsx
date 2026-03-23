@@ -1,14 +1,18 @@
 /**
- * MARKER_C4.5: PulseInspector panel wrapper for dockview.
- * Analysis tab group — no focusedPanel mapping (non-scoped).
+ * MARKER_C4.5 + GAMMA-INS1: Inspector panel — shows ClipInspector when clip selected,
+ * PulseInspector otherwise. Reactive to selectedClipId from store.
  */
 import type { IDockviewPanelProps } from 'dockview-react';
+import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import PulseInspector from '../PulseInspector';
+import ClipInspector from '../ClipInspector';
 
 export default function InspectorPanelDock(_props: IDockviewPanelProps) {
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+
   return (
     <div style={{ height: '100%', overflow: 'auto', background: '#0d0d0d' }}>
-      <PulseInspector />
+      {selectedClipId ? <ClipInspector /> : <PulseInspector />}
     </div>
   );
 }

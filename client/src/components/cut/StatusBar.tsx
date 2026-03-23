@@ -1,7 +1,7 @@
 /**
- * MARKER_GAMMA-27/30 + SB1: StatusBar — bottom info strip for CUT NLE.
+ * MARKER_GAMMA-27/30 + SB1 + SB2: StatusBar — bottom info strip for CUT NLE.
  *
- * Shows: zoom % | fps | tracks | duration | selection | mark in/out (when set).
+ * Shows: sequence name | timecode | zoom % | fps | tracks | duration | selection | mark in/out.
  * Monochrome grey only. FCP7 reference.
  */
 import { useCutEditorStore } from '../../store/useCutEditorStore';
@@ -33,22 +33,26 @@ const SEP = { color: '#333' } as const;
 export default function StatusBar() {
   const zoom = useCutEditorStore((s) => s.zoom);
   const fps = useCutEditorStore((s) => s.projectFramerate);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
   const markIn = useCutEditorStore((s) => s.sequenceMarkIn);
   const markOut = useCutEditorStore((s) => s.sequenceMarkOut);
   const lanes = useCutEditorStore((s) => s.lanes);
   const duration = useCutEditorStore((s) => s.duration);
   const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
   const activePreset = useDockviewStore((s) => s.activePreset);
+  // MARKER_GAMMA-SB2: Sequence name from timelineId
+  const timelineId = useCutEditorStore((s) => s.timelineId);
+  const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
 
-  // zoom is px/sec (default 60). Display as percentage of default.
   const zoomPct = zoom ? `${Math.round((zoom / 60) * 100)}%` : '100%';
   const fpsLabel = fps ? `${fps} fps` : '';
   const fpsVal = fps || 24;
   const hasMarks = markIn != null || markOut != null;
-
-  // MARKER_GAMMA-SB1: Track count + total clip count
   const trackCount = lanes.length;
   const clipCount = lanes.reduce((sum, lane) => sum + lane.clips.length, 0);
+
+  // Sequence name
+  const seqName = timelineTabs.find((t) => t.id === timelineId)?.label || timelineId || 'Main';
 
   return (
     <div
@@ -71,14 +75,21 @@ export default function StatusBar() {
         flexShrink: 0,
       }}
     >
-      {/* Left section: zoom + fps + workspace */}
+      {/* MARKER_GAMMA-SB2: Sequence name */}
+      <span style={{ color: '#aaa', fontWeight: 600 }}>{seqName}</span>
+
+      {/* MARKER_GAMMA-SB2: Current playhead timecode */}
+      <span style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace', color: '#999', fontSize: 10 }}>
+        {fmtTC(currentTime, fpsVal)}
+      </span>
+
+      <span style={SEP}>|</span>
       <span>Zoom {zoomPct}</span>
       <span style={SEP}>|</span>
       <span>{fpsLabel}</span>
       <span style={SEP}>|</span>
       <span style={{ textTransform: 'capitalize' }}>{activePreset}</span>
 
-      {/* Center section: tracks + clips + duration */}
       {trackCount > 0 && (
         <>
           <span style={SEP}>|</span>
@@ -92,7 +103,6 @@ export default function StatusBar() {
         </>
       )}
 
-      {/* Selection indicator */}
       {selectedClipId && (
         <>
           <span style={SEP}>|</span>
@@ -100,7 +110,6 @@ export default function StatusBar() {
         </>
       )}
 
-      {/* MARKER_GAMMA-MRK4: Mark in/out display */}
       {hasMarks && (
         <>
           <span style={SEP}>|</span>
