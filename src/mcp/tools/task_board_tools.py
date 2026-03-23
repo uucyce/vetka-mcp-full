@@ -174,6 +174,10 @@ TASK_BOARD_SCHEMA = {
         "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree."},
         # MARKER_192.2: execution_mode — controls closure proof requirements
         "execution_mode": {"type": "string", "enum": ["pipeline", "manual"], "description": "Closure proof mode. 'pipeline' = full proof (pipeline_success + verifier + tests). 'manual' = relaxed (commit_hash only). Auto-inferred from agent_type if omitted."},
+        # MARKER_196.6.1: Debrief answers captured in action=complete
+        "q1_bugs": {"type": "string", "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)"},
+        "q2_worked": {"type": "string", "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)"},
+        "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
     },
     "required": ["action"]
 }
@@ -811,6 +815,22 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     # Build passive report
     from src.services.experience_report import ExperienceReport, get_experience_store
 
+    # MARKER_196.6.1: Collect debrief answers from arguments (if agent provided them)
+    q1 = arguments.get("q1_bugs") or arguments.get("q1") or ""
+    q2 = arguments.get("q2_worked") or arguments.get("q2") or ""
+    q3 = arguments.get("q3_idea") or arguments.get("q3") or ""
+
+    lessons = []
+    recommendations = []
+    bugs = []
+    if q1:
+        bugs.append({"description": q1, "source": "debrief_q1"})
+        lessons.append(f"[BUG] {q1}")
+    if q2:
+        lessons.append(f"[WORKED] {q2}")
+    if q3:
+        recommendations.append(q3)
+
     report = ExperienceReport(
         session_id=_tracker_sid,
         agent_callsign=callsign,
@@ -820,6 +840,9 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
         tasks_completed=[task_id] if task_id else [],
         files_touched=list(session.files_edited)[:20],  # cap
         commits=session.tasks_completed,
+        lessons_learned=lessons,
+        recommendations=recommendations,
+        bugs_found=bugs,
     )
 
     # Enrich with CORTEX tool stats
