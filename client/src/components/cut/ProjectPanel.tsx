@@ -272,6 +272,8 @@ export default function ProjectPanel() {
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
   // MARKER_GAMMA-19: Context menu for project items
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  // MARKER_GAMMA-P1.4: Search/filter clips
+  const [searchQuery, setSearchQuery] = useState('');
 
   // ─── Open file picker ───
   const openFilePicker = useCallback(() => {
@@ -519,7 +521,13 @@ export default function ProjectPanel() {
         }))
       );
 
-  const projectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+  const allProjectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+
+  // MARKER_GAMMA-P1.4: Filter by search query
+  const searchLower = searchQuery.toLowerCase();
+  const projectItems = searchLower
+    ? allProjectItems.filter((item) => basename(item.source_path).toLowerCase().includes(searchLower))
+    : allProjectItems;
 
   const bins = BIN_ORDER
     .map((bin) => ({
@@ -550,7 +558,8 @@ export default function ProjectPanel() {
     });
   }, []);
 
-  const totalClips = projectItems.length;
+  const totalClips = allProjectItems.length;
+  const filteredCount = projectItems.length;
 
   return (
     <div style={PANEL} data-testid="cut-source-browser">
@@ -573,9 +582,30 @@ export default function ProjectPanel() {
             </button>
           ))}
           <span style={{ marginLeft: 6, fontSize: 9, color: '#555' }}>
-            {totalClips}
+            {searchLower ? `${filteredCount}/${totalClips}` : totalClips}
           </span>
         </div>
+      </div>
+
+      {/* MARKER_GAMMA-P1.4: Search/filter bar */}
+      <div style={{ padding: '4px 10px', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+        <input
+          type="text"
+          placeholder="Filter clips..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '3px 6px',
+            background: '#111',
+            border: '1px solid #333',
+            borderRadius: 3,
+            color: '#ccc',
+            fontSize: 9,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
       </div>
 
       {/* Import area */}
@@ -624,8 +654,8 @@ export default function ProjectPanel() {
           <div style={{
             ...STATUS_LINE,
             color: importStatus.toLowerCase().includes('fail') || importStatus.toLowerCase().includes('error')
-              ? '#f87171'
-              : '#93c5fd',
+              ? '#999'
+              : '#777',
           }}>
             {importStatus}
           </div>
