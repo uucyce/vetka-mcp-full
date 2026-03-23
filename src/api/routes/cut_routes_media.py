@@ -620,3 +620,203 @@ async def cut_audio_normalize(body: CutAudioNormalizeRequest) -> dict[str, Any]:
         "loudnorm_filter": loudnorm_filter,
         "compliant": measurement.compliant,
     }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B47: Media cache management
+# ---------------------------------------------------------------------------
+
+
+@media_router.get("/cache/status")
+async def cut_cache_status(sandbox_root: str) -> dict[str, Any]:
+    """
+    MARKER_B47 — Media cache disk usage: proxies, thumbnails, render artifacts.
+    """
+    proxy_dir = os.path.join(sandbox_root, "cut_runtime", "proxies")
+    render_dir = os.path.join(sandbox_root, "cut_runtime", "renders")
+    thumb_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+
+    def _dir_stats(d: str) -> dict[str, Any]:
+        if not os.path.isdir(d):
+            return {"path": d, "exists": False, "file_count": 0, "size_bytes": 0}
+        total = 0
+        count = 0
+        for entry in os.scandir(d):
+            if entry.is_file():
+                count += 1
+                total += entry.stat().st_size
+        return {"path": d, "exists": True, "file_count": count, "size_bytes": total}
+
+    proxy_stats = _dir_stats(proxy_dir)
+    render_stats = _dir_stats(render_dir)
+    thumb_stats = _dir_stats(thumb_dir)
+    total_bytes = proxy_stats["size_bytes"] + render_stats["size_bytes"] + thumb_stats["size_bytes"]
+
+    return {
+        "success": True,
+        "proxies": proxy_stats,
+        "renders": render_stats,
+        "thumbnails": thumb_stats,
+        "total_size_bytes": total_bytes,
+        "total_size_mb": round(total_bytes / (1024 * 1024), 1),
+    }
+
+
+class CutCacheCleanupRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    clean_proxies: bool = True
+    clean_thumbnails: bool = True
+    clean_renders: bool = False  # dangerous — default off
+
+
+@media_router.post("/cache/cleanup")
+async def cut_cache_cleanup(body: CutCacheCleanupRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 — Clean stale cache: orphaned proxies, thumbnails, old renders.
+    Uses ProxyWorker.cleanup_stale() for proxy cleanup.
+    """
+    freed_bytes = 0
+    removed_files = 0
+
+    # Proxy cleanup — remove proxies for sources no longer in timeline
+    if body.clean_proxies:
+        from src.services.cut_proxy_worker import ProxyWorker
+        from src.services.cut_project_store import CutProjectStore as _CPS
+
+        store = _CPS(body.sandbox_root)
+        timeline = store.load_timeline_state() or {}
+        # Collect valid source paths from timeline
+        valid_sources: set[str] = set()
+        for lane in timeline.get("lanes", []):
+            for clip in lane.get("clips", []):
+                sp = clip.get("source_path", "")
+                if sp:
+                    valid_sources.add(sp)
+
+        worker = ProxyWorker(body.sandbox_root)
+        proxy_dir = os.path.join(body.sandbox_root, "cut_runtime", "proxies")
+        if os.path.isdir(proxy_dir):
+            before = sum(e.stat().st_size for e in os.scandir(proxy_dir) if e.is_file())
+            worker.cleanup_stale(valid_sources)
+            after = sum(e.stat().st_size for e in os.scandir(proxy_dir) if e.is_file())
+            freed_bytes += max(0, before - after)
+
+    # Thumbnail cleanup — wipe entire cache (regenerates on demand)
+    if body.clean_thumbnails:
+        thumb_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+        if os.path.isdir(thumb_dir):
+            for entry in os.scandir(thumb_dir):
+                if entry.is_file():
+                    try:
+                        freed_bytes += entry.stat().st_size
+                        os.remove(entry.path)
+                        removed_files += 1
+                    except OSError:
+                        pass
+
+    # Render cleanup — optional, removes all renders
+    if body.clean_renders:
+        render_dir = os.path.join(body.sandbox_root, "cut_runtime", "renders")
+        if os.path.isdir(render_dir):
+            for entry in os.scandir(render_dir):
+                if entry.is_file():
+                    try:
+                        freed_bytes += entry.stat().st_size
+                        os.remove(entry.path)
+                        removed_files += 1
+                    except OSError:
+                        pass
+
+    return {
+        "success": True,
+        "freed_bytes": freed_bytes,
+        "freed_mb": round(freed_bytes / (1024 * 1024), 1),
+        "removed_files": removed_files,
+        "cleaned": {
+            "proxies": body.clean_proxies,
+            "thumbnails": body.clean_thumbnails,
+            "renders": body.clean_renders,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B47: Conform / Relink (FCP7 Ch.44)
+# ---------------------------------------------------------------------------
+
+
+class CutConformCheckRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    search_roots: list[str] = []
+
+
+@media_router.post("/conform/check")
+async def cut_conform_check(body: CutConformCheckRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 — Check all source files in project for online/offline status.
+    For offline files, search search_roots for fuzzy match suggestions.
+    """
+    from src.services.cut_conform import check_project_media
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state() or {}
+
+    results = check_project_media(
+        timeline,
+        search_roots=body.search_roots or [],
+    )
+
+    online = sum(1 for r in results if r.status == "online")
+    offline = sum(1 for r in results if r.status == "offline")
+    moved = sum(1 for r in results if r.status == "moved")
+
+    return {
+        "success": True,
+        "media": [
+            {
+                "source_path": r.source_path,
+                "status": r.status,
+                "clip_ids": r.clip_ids,
+                "file_size": r.file_size,
+                "suggestions": r.suggestions,
+            }
+            for r in results
+        ],
+        "summary": {
+            "total": len(results),
+            "online": online,
+            "offline": offline,
+            "moved": moved,
+        },
+    }
+
+
+class CutConformRelinkRequest(BaseModel):
+    sandbox_root: str
+    project_id: str = ""
+    remap: dict[str, str]  # {old_path: new_path}
+
+
+@media_router.post("/conform/relink")
+async def cut_conform_relink(body: CutConformRelinkRequest) -> dict[str, Any]:
+    """
+    MARKER_B47 — Apply source path remapping across all timeline clips.
+    Persists updated timeline to project store.
+    """
+    from src.services.cut_conform import relink_media
+    store = CutProjectStore(body.sandbox_root)
+    timeline = store.load_timeline_state()
+    if timeline is None:
+        return {"success": False, "error": "timeline_not_found"}
+
+    result = relink_media(timeline, body.remap)
+
+    # Persist updated timeline
+    if result["remapped_count"] > 0:
+        store.save_timeline_state(timeline)
+
+    return {
+        "success": True,
+        **result,
+    }
