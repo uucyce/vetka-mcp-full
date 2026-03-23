@@ -187,29 +187,34 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
     },
     // MARKER_DUAL-VIDEO: Frame stepping is source-aware
+    // MARKER_PLAY8-FIX: Don't clamp by duration when duration=0 (no media but clips exist)
     frameStepBack: () => {
       const s = useCutEditorStore.getState();
       const src = s.focusedPanel === 'source';
-      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - 1 / s.projectFramerate)); }
-      else { s.pause(); s.seek(Math.max(0, s.currentTime - 1 / s.projectFramerate)); }
+      const frameSec = 1 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - frameSec)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - frameSec)); }
     },
     frameStepForward: () => {
       const s = useCutEditorStore.getState();
       const src = s.focusedPanel === 'source';
-      if (src) { s.pauseSource(); s.seekSource(Math.min(s.sourceDuration, s.sourceCurrentTime + 1 / s.projectFramerate)); }
-      else { s.pause(); s.seek(Math.min(s.duration, s.currentTime + 1 / s.projectFramerate)); }
+      const frameSec = 1 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(s.sourceCurrentTime + frameSec); }
+      else { s.pause(); s.seek(s.currentTime + frameSec); }
     },
     fiveFrameStepBack: () => {
       const s = useCutEditorStore.getState();
       const src = s.focusedPanel === 'source';
-      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - 5 / s.projectFramerate)); }
-      else { s.pause(); s.seek(Math.max(0, s.currentTime - 5 / s.projectFramerate)); }
+      const step = 5 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(Math.max(0, s.sourceCurrentTime - step)); }
+      else { s.pause(); s.seek(Math.max(0, s.currentTime - step)); }
     },
     fiveFrameStepForward: () => {
       const s = useCutEditorStore.getState();
       const src = s.focusedPanel === 'source';
-      if (src) { s.pauseSource(); s.seekSource(Math.min(s.sourceDuration, s.sourceCurrentTime + 5 / s.projectFramerate)); }
-      else { s.pause(); s.seek(Math.min(s.duration, s.currentTime + 5 / s.projectFramerate)); }
+      const step = 5 / s.projectFramerate;
+      if (src) { s.pauseSource(); s.seekSource(s.sourceCurrentTime + step); }
+      else { s.pause(); s.seek(s.currentTime + step); }
     },
     goToStart: () => {
       const s = useCutEditorStore.getState();
@@ -493,57 +498,68 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_W6.WIRE: Add Marker (M) — create favorite marker at playhead
+    // MARKER_PLAY8-FIX: local-first when backend unavailable
     addMarker: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.sandboxRoot || !s.projectId) return;
-      // Find clip at playhead for media_path
       let mediaPath = s.sourceMediaPath || '';
       for (const lane of s.lanes) {
         for (const clip of lane.clips) {
           if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            mediaPath = clip.source_path;
-            break;
+            mediaPath = clip.source_path; break;
           }
         }
         if (mediaPath) break;
       }
-      if (!mediaPath) return;
-      await fetch(`${API_BASE}/cut/time-markers/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-          media_path: mediaPath, kind: 'favorite', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
-          score: 1.0, text: '',
-        }),
-      });
-      await s.refreshProjectState?.();
+      if (!mediaPath) mediaPath = 'timeline';
+      const newMarker = {
+        marker_id: `marker_${Date.now()}`, media_path: mediaPath,
+        kind: 'favorite' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+        score: 1.0, text: '',
+      };
+      if (s.sandboxRoot && s.projectId) {
+        await fetch(`${API_BASE}/cut/time-markers/apply`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+            ...newMarker,
+          }),
+        });
+        await s.refreshProjectState?.();
+      } else {
+        // Local-first: add to store markers directly
+        s.setMarkers([...s.markers, newMarker]);
+      }
     },
     // MARKER_W6.WIRE: Add Comment Marker (Shift+M)
     addComment: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.sandboxRoot || !s.projectId) return;
       let mediaPath = s.sourceMediaPath || '';
       for (const lane of s.lanes) {
         for (const clip of lane.clips) {
           if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            mediaPath = clip.source_path;
-            break;
+            mediaPath = clip.source_path; break;
           }
         }
         if (mediaPath) break;
       }
-      if (!mediaPath) return;
-      await fetch(`${API_BASE}/cut/time-markers/apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-          media_path: mediaPath, kind: 'comment', start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
-          score: 1.0, text: 'Comment',
-        }),
-      });
-      await s.refreshProjectState?.();
+      if (!mediaPath) mediaPath = 'timeline';
+      const newMarker = {
+        marker_id: `marker_${Date.now()}`, media_path: mediaPath,
+        kind: 'comment' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+        score: 1.0, text: 'Comment',
+      };
+      if (s.sandboxRoot && s.projectId) {
+        await fetch(`${API_BASE}/cut/time-markers/apply`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+            ...newMarker,
+          }),
+        });
+        await s.refreshProjectState?.();
+      } else {
+        s.setMarkers([...s.markers, newMarker]);
+      }
     },
 
     // MARKER_MARK-MENU: Next/Previous marker navigation
