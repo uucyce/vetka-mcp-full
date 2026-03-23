@@ -188,10 +188,10 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   playInToOut:         ['source', 'program', 'timeline'],
 
   // Sequence operations — timeline only
-  liftClip:            ['timeline'],
-  extractClip:         ['timeline'],
-  closeGap:            ['timeline'],
-  extendEdit:          ['timeline'],
+  liftClip:            'global',
+  extractClip:         'global',
+  closeGap:            'global',
+  extendEdit:          'global',
   splitEditLCut:       ['timeline'],
   splitEditJCut:       ['timeline'],
   addDefaultTransition:'global',
