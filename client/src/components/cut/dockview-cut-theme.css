@@ -59,8 +59,10 @@
 .dockview-theme-dark.dockview-theme-dark .dv-groupview {
   background-color: var(--bg-primary);
 }
+/* MARKER_FOCUS4: Monochrome focus indicator — FCP7-style thin border on active group */
 .dockview-theme-dark.dockview-theme-dark .dv-active-group {
   background-color: var(--bg-primary);
+  box-shadow: inset 0 0 0 1px var(--border-bright);
 }
 .dockview-theme-dark.dockview-theme-dark .dv-inactive-group {
   background-color: var(--bg-primary);
