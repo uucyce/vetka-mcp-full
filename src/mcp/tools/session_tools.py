@@ -755,6 +755,21 @@ class SessionInitTool(BaseMCPTool):
 
                 context["role_context"] = _role_ctx
 
+                # MARKER_ZETA.F4.PREDECESSOR: Auto-inject predecessor advice into session_init
+                # Solves: agents see file path in CLAUDE.md but may not read it.
+                # Now the content arrives directly in session_init response.
+                try:
+                    from src.tools.generate_claude_md import _get_predecessor_advice
+                    _pred_advice = _get_predecessor_advice(_role.callsign)
+                    if _pred_advice:
+                        context["predecessor_advice"] = {
+                            "callsign": _role.callsign,
+                            "lessons": _pred_advice[:10],  # cap at 10 items
+                            "source": "experience_reports + feedback_docs",
+                        }
+                except Exception:
+                    pass  # Predecessor advice never blocks session init
+
                 # MARKER_195.22: Auto-regenerate CLAUDE.md for this role on every session_init.
                 # Prevents stale files from merge overwrites — the #1 recurring bug (5 days running).
                 # Writes to both worktree and ~/.claude/projects/ (dual-write).
