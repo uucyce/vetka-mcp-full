@@ -374,6 +374,8 @@ interface CutEditorState {
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
   closeGap: () => void;                          // Find and remove gaps in targeted lanes
   extendEdit: () => void;                        // Extend nearest edit to playhead
+  // MARKER_TD4: Numeric trim — trim selected clip's nearest edge by N frames
+  numericTrimSelected: (frames: number) => void;
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
@@ -934,6 +936,23 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const oldEnd = bestClipStart + bestClipDur;
       const newDur = Math.max(0.01, oldEnd - currentTime);
       void get().applyTimelineOps([{ op: 'trim_clip', clip_id: bestClipId, start_sec: currentTime, duration_sec: newDur }]);
+    }
+  },
+
+  // MARKER_TD4: Numeric trim — trim selected clip's out point by N frames
+  // Positive frames = extend, negative = shorten. Uses trim_clip op.
+  // FCP7 Ch.20: type number while trim tool active → trim by exact frame count
+  numericTrimSelected: (frames: number) => {
+    const { selectedClipId, lanes, projectFramerate } = get();
+    if (!selectedClipId) return;
+    const deltaSec = frames / (projectFramerate || 25);
+    for (const lane of lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+      if (clip) {
+        const newDur = Math.max(0.01, clip.duration_sec + deltaSec);
+        void get().applyTimelineOps([{ op: 'trim_clip', clip_id: selectedClipId, duration_sec: newDur }]);
+        return;
+      }
     }
   },
 
