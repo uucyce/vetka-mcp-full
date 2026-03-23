@@ -65,6 +65,8 @@ def _fuzzy_match_score(
     original_name: str,
     original_size: int,
     candidate_path: str,
+    *,
+    original_duration: float = 0.0,
 ) -> tuple[float, str]:
     """Score a candidate file as a potential relink target.
 
@@ -74,6 +76,7 @@ def _fuzzy_match_score(
       - Stem match (ignore extension): 0.4
       - Size within 5%: +0.2
       - Same extension: +0.1
+      - Duration within ±0.5s: +0.3 (MARKER_B49)
     """
     cand = Path(candidate_path)
     orig = Path(original_name)
@@ -106,6 +109,14 @@ def _fuzzy_match_score(
         except OSError:
             pass
 
+    # MARKER_B49: Duration match (within ±0.5s)
+    if original_duration > 0:
+        cand_dur = _probe_duration_fast(candidate_path)
+        if cand_dur is not None and cand_dur > 0:
+            if abs(cand_dur - original_duration) <= 0.5:
+                score += 0.3
+                reasons.append("duration_match")
+
     return min(1.0, score), "+".join(reasons)
 
 
@@ -114,7 +125,8 @@ def check_project_media(
     *,
     search_roots: list[str] | None = None,
     max_suggestions: int = 3,
-) -> list[MediaStatus]:
+    auto_relink_threshold: float = 0.0,
+) -> tuple[list[MediaStatus], dict[str, str]]:
     """Check all source files in timeline for online/offline status.
 
     For offline files, optionally search search_roots for fuzzy matches.
@@ -123,16 +135,27 @@ def check_project_media(
         timeline: Timeline state dict with lanes/clips.
         search_roots: Directories to search for moved files (optional).
         max_suggestions: Max relink suggestions per offline file.
+        auto_relink_threshold: If > 0, auto-generate remap for suggestions above this score.
 
     Returns:
-        List of MediaStatus for each unique source path.
+        Tuple of (MediaStatus list, auto_remap dict {old_path: new_path}).
     """
     source_map = _collect_source_paths(timeline)
+    # Collect clip durations for duration matching
+    clip_durations: dict[str, float] = {}
+    for lane in timeline.get("lanes", []):
+        for clip in lane.get("clips", []):
+            sp = clip.get("source_path", "")
+            if sp and sp not in clip_durations:
+                clip_durations[sp] = float(clip.get("duration_sec", 0))
+
     results: list[MediaStatus] = []
+    auto_remap: dict[str, str] = {}
 
     for source_path, clip_ids in source_map.items():
         ms = MediaStatus(source_path=source_path, clip_ids=clip_ids)
         p = Path(source_path)
+        original_duration = clip_durations.get(source_path, 0.0)
 
         if p.is_file():
             ms.status = "online"
@@ -146,7 +169,6 @@ def check_project_media(
             if search_roots:
                 candidates: list[tuple[float, str, str]] = []
                 original_name = p.name
-                # Try to get original size from metadata (best effort)
                 original_size = 0
 
                 for root in search_roots:
@@ -155,9 +177,12 @@ def check_project_media(
                     for dirpath, _dirs, files in os.walk(root):
                         for fname in files:
                             if Path(fname).stem != p.stem:
-                                continue  # Quick filter: stem must match
+                                continue
                             cand_path = os.path.join(dirpath, fname)
-                            score, reason = _fuzzy_match_score(original_name, original_size, cand_path)
+                            score, reason = _fuzzy_match_score(
+                                original_name, original_size, cand_path,
+                                original_duration=original_duration,
+                            )
                             if score > 0.3:
                                 candidates.append((score, cand_path, reason))
 
@@ -170,9 +195,15 @@ def check_project_media(
                 if ms.suggestions and ms.suggestions[0]["score"] >= 0.7:
                     ms.status = "moved"  # High confidence — likely just moved
 
+                # MARKER_B49: Auto-relink for high-confidence matches
+                if (auto_relink_threshold > 0
+                        and ms.suggestions
+                        and ms.suggestions[0]["score"] >= auto_relink_threshold):
+                    auto_remap[source_path] = ms.suggestions[0]["path"]
+
         results.append(ms)
 
-    return results
+    return results, auto_remap
 
 
 def relink_media(

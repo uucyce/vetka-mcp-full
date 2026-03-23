@@ -92,7 +92,7 @@ def test_check_all_online(tmp_path: Path):
             {"source_path": str(f2), "clip_id": "c2"},
         ]}]
     }
-    results = check_project_media(timeline)
+    results, _ = check_project_media(timeline)
     assert len(results) == 2
     assert all(r.status == "online" for r in results)
     assert results[0].file_size > 0
@@ -105,7 +105,7 @@ def test_check_offline_no_search():
             {"source_path": "/nonexistent/clip.mp4", "clip_id": "c1"},
         ]}]
     }
-    results = check_project_media(timeline)
+    results, _ = check_project_media(timeline)
     assert len(results) == 1
     assert results[0].status == "offline"
     assert results[0].suggestions == []
@@ -124,7 +124,7 @@ def test_check_offline_with_search(tmp_path: Path):
             {"source_path": "/old_location/clip_001.mp4", "clip_id": "c1"},
         ]}]
     }
-    results = check_project_media(timeline, search_roots=[str(search_dir)])
+    results, _ = check_project_media(timeline, search_roots=[str(search_dir)])
     assert len(results) == 1
     r = results[0]
     assert r.status == "moved"  # high confidence match
@@ -174,3 +174,47 @@ def test_relink_empty_remap():
     timeline = {"lanes": [{"clips": [{"source_path": "/a.mp4", "clip_id": "c1"}]}]}
     result = relink_media(timeline, {})
     assert result["remapped_count"] == 0
+
+
+# ─── MARKER_B49: Auto-relink + duration matching ───
+
+
+def test_auto_relink_above_threshold(tmp_path: Path):
+    """High-confidence match + threshold → auto_remap populated."""
+    search_dir = tmp_path / "moved"
+    search_dir.mkdir()
+    moved = search_dir / "clip.mp4"
+    moved.write_bytes(b"\x00" * 500)
+
+    timeline = {
+        "lanes": [{"clips": [
+            {"source_path": "/old/clip.mp4", "clip_id": "c1", "duration_sec": 10.0},
+        ]}]
+    }
+    results, auto_remap = check_project_media(
+        timeline, search_roots=[str(search_dir)],
+        auto_relink_threshold=0.5,
+    )
+    assert len(results) == 1
+    # Should have auto-remap since exact name match scores 0.6+
+    assert "/old/clip.mp4" in auto_remap
+    assert auto_remap["/old/clip.mp4"] == str(moved)
+
+
+def test_auto_relink_below_threshold(tmp_path: Path):
+    """Low score + high threshold → no auto_remap."""
+    search_dir = tmp_path / "moved"
+    search_dir.mkdir()
+    moved = search_dir / "clip.mov"  # different extension
+    moved.write_bytes(b"\x00" * 100)
+
+    timeline = {
+        "lanes": [{"clips": [
+            {"source_path": "/old/clip.mp4", "clip_id": "c1"},
+        ]}]
+    }
+    _, auto_remap = check_project_media(
+        timeline, search_roots=[str(search_dir)],
+        auto_relink_threshold=0.9,  # very high threshold
+    )
+    assert len(auto_remap) == 0

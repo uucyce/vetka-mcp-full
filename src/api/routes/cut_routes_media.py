@@ -750,22 +750,31 @@ class CutConformCheckRequest(BaseModel):
     sandbox_root: str
     project_id: str = ""
     search_roots: list[str] = []
+    auto_relink_threshold: float = 0.0  # MARKER_B49: auto-relink above this score
 
 
 @media_router.post("/conform/check")
 async def cut_conform_check(body: CutConformCheckRequest) -> dict[str, Any]:
     """
-    MARKER_B47 — Check all source files in project for online/offline status.
-    For offline files, search search_roots for fuzzy match suggestions.
+    MARKER_B47 + B49 — Check source files, auto-relink above threshold.
     """
-    from src.services.cut_conform import check_project_media
+    from src.services.cut_conform import check_project_media, relink_media
     store = CutProjectStore(body.sandbox_root)
     timeline = store.load_timeline_state() or {}
 
-    results = check_project_media(
+    results, auto_remap = check_project_media(
         timeline,
         search_roots=body.search_roots or [],
+        auto_relink_threshold=body.auto_relink_threshold,
     )
+
+    # MARKER_B49: Apply auto-relinks if threshold produced remap
+    auto_relinked = 0
+    if auto_remap:
+        relink_result = relink_media(timeline, auto_remap)
+        auto_relinked = relink_result["remapped_count"]
+        if auto_relinked > 0:
+            store.save_timeline_state(timeline)
 
     online = sum(1 for r in results if r.status == "online")
     offline = sum(1 for r in results if r.status == "offline")
@@ -788,7 +797,9 @@ async def cut_conform_check(body: CutConformCheckRequest) -> dict[str, Any]:
             "online": online,
             "offline": offline,
             "moved": moved,
+            "auto_relinked": auto_relinked,
         },
+        "auto_remap": auto_remap,
     }
 
 
