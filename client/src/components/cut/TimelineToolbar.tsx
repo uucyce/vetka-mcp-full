@@ -15,9 +15,13 @@
  *   - Export button → File menu (future task)
  *   - Undo was never here (Cmd+Z)
  */
-import { type CSSProperties } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
+import {
+  SelectionIcon, RazorIcon, RippleIcon, RollIcon,
+  SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
+} from './icons/ToolIcons';
 
 const ROOT: CSSProperties = {
   display: 'flex',
@@ -77,43 +81,29 @@ const ZOOM_SLIDER: CSSProperties = {
   cursor: 'pointer',
 };
 
-// MARKER_W6.TOOL-SM + GAMMA-P0: Tool display — FCP7 names, monochrome only
-const TOOL_DISPLAY: Record<string, { label: string; shortcut: string; color: string }> = {
-  selection: { label: '\u2191',    shortcut: 'A', color: '#ccc' },  // Arrow tool (↑ cursor icon)
-  razor:     { label: '\u2702',    shortcut: 'B', color: '#ccc' },  // Blade (scissors icon)
-  slip:      { label: 'Slip',     shortcut: 'S', color: '#999' },
-  slide:     { label: 'Slide',    shortcut: 'U', color: '#999' },
-  ripple:    { label: 'Ripple',   shortcut: 'R', color: '#999' },
-  roll:      { label: 'Roll',     shortcut: 'N', color: '#999' },
-  hand:      { label: '\u270B',    shortcut: 'H', color: '#999' },  // Hand (open hand icon)
-  zoom:      { label: '\u2315',    shortcut: 'Z', color: '#999' },  // Zoom (magnifier icon)
-};
-
-const TOOL_INDICATOR: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 3,
-  fontSize: 9,
-  fontWeight: 700,
-  fontFamily: '"JetBrains Mono", "SF Mono", monospace',
-  letterSpacing: 0.5,
-  padding: '1px 6px',
-  borderRadius: 3,
-  background: '#1a1a1a',
-  lineHeight: '16px',
-};
-
-// MARKER_GAMMA-TT2: Primary tool buttons (clickable)
+// MARKER_GAMMA-ICON1: SVG tool icons — no Unicode, no emoji, pure monochrome
 type ToolId = 'selection' | 'razor' | 'slip' | 'slide' | 'ripple' | 'roll' | 'hand' | 'zoom';
-const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string; icon: string }[] = [
-  { id: 'selection', label: 'Selection', shortcut: 'V', icon: '\u2191' },
-  { id: 'razor',     label: 'Razor',     shortcut: 'C', icon: '\u2702' },
-  { id: 'ripple',    label: 'Ripple',    shortcut: 'B', icon: 'R' },
-  { id: 'roll',      label: 'Roll',      shortcut: 'N', icon: 'Rl' },
-  { id: 'slip',      label: 'Slip',      shortcut: 'Y', icon: 'Sl' },
-  { id: 'slide',     label: 'Slide',     shortcut: 'U', icon: 'Sd' },
-  { id: 'hand',      label: 'Hand',      shortcut: 'H', icon: '\u270B' },
-  { id: 'zoom',      label: 'Zoom',      shortcut: 'Z', icon: '\u2315' },
+
+const TOOL_SVG: Record<ToolId, (color: string) => ReactNode> = {
+  selection: (c) => <SelectionIcon color={c} size={14} />,
+  razor:     (c) => <RazorIcon color={c} size={14} />,
+  ripple:    (c) => <RippleIcon color={c} size={14} />,
+  roll:      (c) => <RollIcon color={c} size={14} />,
+  slip:      (c) => <SlipIcon color={c} size={14} />,
+  slide:     (c) => <SlideIcon color={c} size={14} />,
+  hand:      (c) => <HandIcon color={c} size={14} />,
+  zoom:      (c) => <ZoomIcon color={c} size={14} />,
+};
+
+const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string }[] = [
+  { id: 'selection', label: 'Selection', shortcut: 'V' },
+  { id: 'razor',     label: 'Razor',     shortcut: 'C' },
+  { id: 'ripple',    label: 'Ripple',    shortcut: 'B' },
+  { id: 'roll',      label: 'Roll',      shortcut: 'N' },
+  { id: 'slip',      label: 'Slip',      shortcut: 'Y' },
+  { id: 'slide',     label: 'Slide',     shortcut: 'U' },
+  { id: 'hand',      label: 'Hand',      shortcut: 'H' },
+  { id: 'zoom',      label: 'Zoom',      shortcut: 'Z' },
 ];
 
 export default function TimelineToolbar() {
@@ -149,7 +139,7 @@ export default function TimelineToolbar() {
               justifyContent: 'center',
             }}
           >
-            {tool.icon}
+            {TOOL_SVG[tool.id](isActive ? '#ccc' : '#555')}
           </button>
         );
       })}

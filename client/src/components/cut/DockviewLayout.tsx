@@ -62,6 +62,7 @@ import ToolsPalette from './ToolsPalette';
 import StatusBar from './StatusBar';
 import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
+import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 
 // ─── Component registry ─────────────────────────────────────────────
@@ -130,6 +131,36 @@ interface DockviewLayoutProps {
 }
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
+  // MARKER_GAMMA-BUG4: Show WelcomeScreen when no project loaded (sandbox_root missing)
+  const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
+  const projectId = useCutEditorStore((s) => s.projectId);
+
+  if (!sandboxRoot && !projectId) {
+    return (
+      <WelcomeScreen
+        onCreateProject={(name, preset) => {
+          // Navigate to /cut with params — CutStandalone will bootstrap
+          const params = new URLSearchParams(window.location.search);
+          params.set('project_name', name);
+          params.set('preset', preset);
+          window.location.search = params.toString();
+        }}
+        onOpenProject={(id, path) => {
+          if (id && path) {
+            addRecentProject(id, id, path);
+            const params = new URLSearchParams();
+            params.set('sandbox_root', path);
+            params.set('project_id', id);
+            window.location.search = params.toString();
+          } else {
+            // Open file picker — dispatch import event
+            window.dispatchEvent(new CustomEvent('cut:import-media'));
+          }
+        }}
+      />
+    );
+  }
+
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 

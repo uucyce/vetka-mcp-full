@@ -166,6 +166,8 @@ class RenderClip:
     lut_path: str = ""              # path to .cube LUT file
     # MARKER_B44: Per-clip keyframes for animated parameters
     keyframes: dict[str, list[dict]] = field(default_factory=dict)  # property → [{time_sec, value, easing}]
+    # MARKER_B53: Motion controls (position/scale/rotation/opacity/crop)
+    motion: dict[str, Any] = field(default_factory=dict)  # {x, y, scaleX, scaleY, rotation, opacity, cropL/R/T/B}
 
 
 @dataclass
@@ -280,6 +282,8 @@ def build_render_plan(
                 lut_path=str(clip.get("lut_path") or ""),
                 # MARKER_B44: Keyframes for animated parameters
                 keyframes=dict(clip.get("keyframes") or {}),
+                # MARKER_B53: Motion controls
+                motion=dict(clip.get("motion") or {}),
             ))
 
     clips.sort(key=lambda c: c.start_sec)
@@ -499,6 +503,42 @@ class FilterGraphBuilder:
             else:
                 effect_filters = compile_video_filters(clip.video_effects)
             parts.extend(effect_filters)
+
+        # MARKER_B53: Motion controls → FFmpeg filters
+        if clip.motion:
+            m = clip.motion
+            # Crop (percentage → pixels, applied first)
+            cl = float(m.get("cropLeft", 0))
+            cr = float(m.get("cropRight", 0))
+            ct = float(m.get("cropTop", 0))
+            cb = float(m.get("cropBottom", 0))
+            if cl > 0 or cr > 0 or ct > 0 or cb > 0:
+                # crop=out_w:out_h:x:y — expressed as expressions using iw/ih
+                parts.append(
+                    f"crop=iw*(1-{(cl+cr)/100:.4f}):ih*(1-{(ct+cb)/100:.4f})"
+                    f":iw*{cl/100:.4f}:ih*{ct/100:.4f}"
+                )
+            # Scale
+            sx = float(m.get("scaleX", 1))
+            sy = float(m.get("scaleY", sx))  # default uniform
+            if sx != 1.0 or sy != 1.0:
+                parts.append(f"scale=iw*{sx:.4f}:ih*{sy:.4f}")
+            # Rotation (degrees → radians for FFmpeg rotate filter)
+            rot = float(m.get("rotation", 0))
+            if rot != 0:
+                import math
+                rad = rot * math.pi / 180
+                parts.append(f"rotate={rad:.6f}:ow=rotw({rad:.6f}):oh=roth({rad:.6f}):fillcolor=black")
+            # Position (x/y offset via pad + crop trick)
+            px = float(m.get("x", 0))
+            py = float(m.get("y", 0))
+            if px != 0 or py != 0:
+                # Pad canvas larger, then crop back to original size at offset
+                parts.append(f"pad=iw+abs({px:.0f})*2:ih+abs({py:.0f})*2:{max(0,px):.0f}:{max(0,py):.0f}:black")
+            # Opacity (via colorchannelmixer alpha)
+            opacity = float(m.get("opacity", 1))
+            if opacity < 1.0:
+                parts.append(f"colorchannelmixer=aa={opacity:.4f}")
 
         # Speed
         if clip.speed != 1.0 and clip.speed > 0:
