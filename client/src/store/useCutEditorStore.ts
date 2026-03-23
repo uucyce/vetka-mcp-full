@@ -986,8 +986,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
   // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
+  // FCP7 Ch.24: default transition = 30 frames (1s at 30fps, 1.2s at 25fps)
   addDefaultTransition: () => {
-    const { lanes, currentTime, lockedLanes } = get();
+    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
+    const defaultFrames = 30;
+    const defaultDuration = defaultFrames / (projectFramerate || 25);
     let bestDist = Infinity;
     let bestClipId = '';
 
@@ -1009,7 +1012,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     void get().applyTimelineOps([{
       op: 'set_transition',
       clip_id: bestClipId,
-      transition: { type: 'cross_dissolve', duration_sec: 1.0, alignment: 'center' },
+      transition: { type: 'cross_dissolve', duration_sec: defaultDuration, alignment: 'center' },
     }]);
   },
 

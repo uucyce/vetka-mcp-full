@@ -2204,35 +2204,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             title={`${tx.type.replace(/_/g, ' ')} (${tx.duration_sec.toFixed(1)}s) — click to remove, right-click to change`}
                             onClick={(event) => {
                               event.stopPropagation();
-                              // Remove transition on click
-                              const s = useCutEditorStore.getState();
-                              const newLanes = s.lanes.map((l) => ({
-                                ...l,
-                                clips: l.clips.map((c) =>
-                                  c.clip_id === clip.clip_id
-                                    ? { ...c, transition_out: undefined }
-                                    : c
-                                ),
-                              }));
-                              s.setLanes(newLanes);
+                              // MARKER_UNDO-FIX: Remove transition via backend op for undo support
+                              void useCutEditorStore.getState().applyTimelineOps([{
+                                op: 'set_transition', clip_id: clip.clip_id, transition: null,
+                              }]);
                             }}
                             onContextMenu={(event) => {
                               event.preventDefault();
                               event.stopPropagation();
-                              // Cycle transition type on right-click
+                              // Cycle transition type via backend op for undo support
                               const types: Array<'cross_dissolve' | 'dip_to_black' | 'wipe'> = ['cross_dissolve', 'dip_to_black', 'wipe'];
                               const curIdx = types.indexOf(tx.type);
                               const nextType = types[(curIdx + 1) % types.length];
-                              const s = useCutEditorStore.getState();
-                              const newLanes = s.lanes.map((l) => ({
-                                ...l,
-                                clips: l.clips.map((c) =>
-                                  c.clip_id === clip.clip_id
-                                    ? { ...c, transition_out: { ...tx, type: nextType } }
-                                    : c
-                                ),
-                              }));
-                              s.setLanes(newLanes);
+                              void useCutEditorStore.getState().applyTimelineOps([{
+                                op: 'set_transition', clip_id: clip.clip_id,
+                                transition: { type: nextType, duration_sec: tx.duration_sec, alignment: tx.alignment },
+                              }]);
                             }}
                           >
                             {/* Diamond icon + type label */}
