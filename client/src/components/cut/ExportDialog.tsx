@@ -19,7 +19,8 @@ import { API_BASE, getSocketUrl } from '../../config/api.config';
 
 type ExportTab = 'master' | 'editorial' | 'publish';
 
-type VideoCodec = 'prores_422' | 'prores_4444' | 'h264' | 'h265' | 'dnxhd';
+// MARKER_B6.1: Full ProRes family + codecs
+type VideoCodec = 'prores_proxy' | 'prores_lt' | 'prores_422' | 'prores_422hq' | 'prores_4444' | 'prores_4444xq' | 'h264' | 'h265' | 'dnxhd';
 type Resolution = '4k' | '1080p' | '720p' | 'source';
 type EditorialFormat = 'premiere_xml' | 'fcpxml' | 'edl' | 'otio';
 // MARKER_B6.2: Audio codec type
@@ -40,11 +41,18 @@ interface ResolutionOption {
 }
 
 const CODECS: CodecOption[] = [
-  { id: 'prores_422', label: 'ProRes 422', ext: '.mov', description: 'High quality, large files. Best for post-production.' },
-  { id: 'prores_4444', label: 'ProRes 4444', ext: '.mov', description: 'Maximum quality with alpha. Largest files.' },
+  // Delivery
   { id: 'h264', label: 'H.264', ext: '.mp4', description: 'Universal delivery codec. Good quality/size ratio.' },
   { id: 'h265', label: 'H.265 (HEVC)', ext: '.mp4', description: 'Better compression than H.264. Modern devices.' },
-  { id: 'dnxhd', label: 'DNxHD', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
+  // MARKER_B6.1: Full ProRes family
+  { id: 'prores_proxy', label: 'ProRes Proxy', ext: '.mov', description: 'Smallest ProRes. Offline editing, proxy workflows.' },
+  { id: 'prores_lt', label: 'ProRes LT', ext: '.mov', description: 'Lightweight. 70% of 422 size, good for field editing.' },
+  { id: 'prores_422', label: 'ProRes 422', ext: '.mov', description: 'Standard broadcast quality. Industry workhorse.' },
+  { id: 'prores_422hq', label: 'ProRes 422 HQ', ext: '.mov', description: 'High quality mastering. Visually lossless.' },
+  { id: 'prores_4444', label: 'ProRes 4444', ext: '.mov', description: 'Maximum quality with alpha channel support.' },
+  { id: 'prores_4444xq', label: 'ProRes 4444 XQ', ext: '.mov', description: 'Highest ProRes quality. HDR/wide gamut mastering.' },
+  // Post-production
+  { id: 'dnxhd', label: 'DNxHR HQ', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
 ];
 
 // MARKER_B6.2: Audio codec options
@@ -335,8 +343,11 @@ export default function ExportDialog() {
     if (!p) return;
     // Map preset codec to our VideoCodec type
     const codecMap: Record<string, VideoCodec> = {
-      h264: 'h264', h265: 'h265', prores_422hq: 'prores_422', prores_4444: 'prores_4444',
-      dnxhr_hq: 'dnxhd', av1: 'h264', vp9: 'h264', // fallback for UI
+      h264: 'h264', h265: 'h265',
+      prores_proxy: 'prores_proxy', prores_lt: 'prores_lt',
+      prores_422: 'prores_422', prores_422hq: 'prores_422hq',
+      prores_4444: 'prores_4444', prores_4444xq: 'prores_4444xq',
+      dnxhr_hq: 'dnxhd', av1: 'h264', vp9: 'h264',
     };
     setCodec(codecMap[p.codec] || 'h264');
     setResolution((p.resolution || '1080p') as Resolution);
