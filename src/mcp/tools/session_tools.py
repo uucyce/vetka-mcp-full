@@ -799,8 +799,8 @@ class SessionInitTool(BaseMCPTool):
                 except Exception:
                     pass  # Predecessor advice never blocks session init
 
-                # MARKER_195.22: Auto-regenerate CLAUDE.md for this role on every session_init.
-                # Prevents stale files from merge overwrites — the #1 recurring bug (5 days running).
+                # MARKER_195.22 + MARKER_196.2.3: Auto-regenerate CLAUDE.md by role callsign.
+                # Triggered by role (explicit or branch-detected), not by git branch.
                 # Writes to both worktree and ~/.claude/projects/ (dual-write).
                 try:
                     from src.tools.generate_claude_md import write_claude_md
