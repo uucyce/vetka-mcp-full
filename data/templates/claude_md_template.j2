@@ -192,12 +192,15 @@ vetka_task_board action=complete task_id=<id> commit_hash=abc123
 {% endfor %}
 {% endif %}
 
-## Key Docs (read on connect)
-{% for doc in role.key_docs %}
+## Key Docs (read LATEST on connect)
+{% for doc in resolved_key_docs %}
 - `{{ doc }}`
 {% endfor %}
 {% if feedback_doc %}
 - `{{ feedback_doc }}`
+{% endif %}
+{% if predecessor_doc %}
+- Predecessor report: `{{ predecessor_doc }}`
 {% endif %}
 
 ## Shared Memory (auto-loaded, always current)
@@ -206,4 +209,5 @@ vetka_task_board action=complete task_id=<id> commit_hash=abc123
 - These memories apply to ALL agents across ALL worktrees
 
 ## Before Session End
-Write experience report: `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_{{ role.callsign | upper }}_{{ role.domain | upper }}_{DATE}.md` on main.
+The debrief pipeline triggers automatically on `action=complete`.
+Answer Q1-Q3 when prompted, then call `submit_experience_report`.
