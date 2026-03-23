@@ -123,10 +123,28 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   useEffect(() => {
     const onDown = (e: KeyboardEvent) => { if (e.key === 'k' && !e.metaKey && !e.ctrlKey) kHeldRef.current = true; };
     const onUp = (e: KeyboardEvent) => { if (e.key === 'k') kHeldRef.current = false; };
-    window.addEventListener('keydown', onDown);
-    window.addEventListener('keyup', onUp);
-    return () => { window.removeEventListener('keydown', onDown); window.removeEventListener('keyup', onUp); };
+    // MARKER_K_CAPTURE: Use capture phase — dockview/timeline stopPropagation blocks bubble
+    window.addEventListener('keydown', onDown, { capture: true });
+    window.addEventListener('keyup', onUp, { capture: true });
+    return () => { window.removeEventListener('keydown', onDown, { capture: true }); window.removeEventListener('keyup', onUp, { capture: true }); };
   }, []);
+
+  // ─── MARKER_MULTICAM_KEYS: Number keys 1-9 switch multicam angles ───
+  const multicamMode = useCutEditorStore((s) => s.multicamMode);
+  useEffect(() => {
+    if (!multicamMode) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const num = parseInt(e.key, 10);
+      if (num >= 1 && num <= 9) {
+        e.preventDefault();
+        e.stopPropagation();
+        useCutEditorStore.getState().multicamSwitchAngle(num - 1);
+      }
+    };
+    window.addEventListener('keydown', onKey, { capture: true });
+    return () => window.removeEventListener('keydown', onKey, { capture: true });
+  }, [multicamMode]);
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
@@ -619,9 +637,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         if (mediaPath) break;
       }
       if (!mediaPath) mediaPath = 'timeline';
+      // MARKER_FCP7_M: Generic marker (FCP7 Ch.52), not 'favorite'
       const newMarker = {
         marker_id: `marker_${Date.now()}`, media_path: mediaPath,
-        kind: 'favorite' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+        kind: 'comment' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
         score: 1.0, text: '',
       };
       if (s.sandboxRoot && s.projectId) {
@@ -638,34 +657,34 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         s.setMarkers([...s.markers, newMarker]);
       }
     },
-    // MARKER_W6.WIRE: Add Comment Marker (Shift+M)
-    addComment: async () => {
+    // MARKER_FCP7_SHIFT_M: Extend nearest marker to playhead (FCP7 Ch.52)
+    // If no marker before playhead, creates new marker from playhead
+    addComment: () => {
       const s = useCutEditorStore.getState();
-      let mediaPath = s.sourceMediaPath || '';
-      for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            mediaPath = clip.source_path; break;
-          }
+      // Find nearest marker that starts at or before playhead
+      let nearest: typeof s.markers[0] | null = null;
+      let nearestDist = Infinity;
+      for (const m of s.markers) {
+        if (m.start_sec <= s.currentTime) {
+          const dist = s.currentTime - m.start_sec;
+          if (dist < nearestDist) { nearest = m; nearestDist = dist; }
         }
-        if (mediaPath) break;
       }
-      if (!mediaPath) mediaPath = 'timeline';
-      const newMarker = {
-        marker_id: `marker_${Date.now()}`, media_path: mediaPath,
-        kind: 'comment' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
-        score: 1.0, text: 'Comment',
-      };
-      if (s.sandboxRoot && s.projectId) {
-        await fetch(`${API_BASE}/cut/time-markers/apply`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-            ...newMarker,
-          }),
-        });
-        await s.refreshProjectState?.();
+      if (nearest && nearestDist < 30) {
+        // Extend marker's end_sec to playhead
+        const updated = s.markers.map((m) =>
+          m.marker_id === nearest!.marker_id
+            ? { ...m, end_sec: Math.max(m.end_sec ?? m.start_sec, s.currentTime) }
+            : m,
+        );
+        s.setMarkers(updated);
       } else {
+        // No nearby marker — add new comment marker
+        const newMarker = {
+          marker_id: `marker_${Date.now()}`, media_path: 'timeline',
+          kind: 'comment' as const, start_sec: s.currentTime, end_sec: s.currentTime + 0.04,
+          score: 1.0, text: 'Comment',
+        };
         s.setMarkers([...s.markers, newMarker]);
       }
     },
@@ -811,6 +830,30 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
     // MARKER_SNAP_N: Snap toggle (N key, FCP7 standard)
     toggleSnap: () => useCutEditorStore.getState().toggleSnap(),
+    // MARKER_SUBCLIP: Make Subclip (Cmd+U, FCP7 Ch.12)
+    // Source In/Out → create subclip entry in project media list
+    makeSubclip: () => {
+      const s = useCutEditorStore.getState();
+      const srcPath = s.sourceMediaPath;
+      if (!srcPath) return;
+      const inPt = s.sourceMarkIn ?? 0;
+      const outPt = s.sourceMarkOut ?? inPt + 2;
+      if (outPt <= inPt) return;
+      // Create subclip as a virtual media item with in/out range
+      const subclipId = `subclip_${Date.now()}`;
+      const subclip = {
+        clip_id: subclipId,
+        source_path: srcPath,
+        source_in: inPt,
+        duration_sec: outPt - inPt,
+        start_sec: 0,
+        scene_id: `SC_${subclipId.slice(-4)}`,
+      };
+      // Notify via pipeline-activity event (ProjectPanel listens for new media)
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'subclip-created', subclip },
+      }));
+    },
     toggleViewMode: () => {
       const s = useCutEditorStore.getState();
       s.setViewMode(s.viewMode === 'nle' ? 'debug' : 'nle');

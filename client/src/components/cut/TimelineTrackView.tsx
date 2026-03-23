@@ -586,6 +586,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
+  // MARKER_MULTICAM_TL: Multicam angle lookup for timeline badges
+  const multicamAngles = useCutEditorStore((state) => state.multicamAngles);
+  const multicamMode = useCutEditorStore((state) => state.multicamMode);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_W6.TOOL-SM: Cursor maps per context
@@ -2209,6 +2212,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           {basename(clip.source_path)}
                         </span>
                       ) : null}
+
+                      {/* MARKER_MULTICAM_BADGE: Show angle number on multicam clips */}
+                      {multicamMode && width > 20 && (() => {
+                        const angleIdx = multicamAngles.findIndex((a) => a.source_path === clip.source_path);
+                        if (angleIdx < 0) return null;
+                        return (
+                          <span style={{
+                            position: 'absolute', top: 1, right: 2, zIndex: 4,
+                            fontSize: 8, fontWeight: 700, fontFamily: 'monospace',
+                            color: '#000', background: '#999', borderRadius: 2,
+                            padding: '0 3px', lineHeight: '12px',
+                          }}>
+                            {angleIdx + 1}
+                          </span>
+                        );
+                      })()}
 
                       {/* MARKER_TRANSITION: Transition overlay at clip's right edge (FCP7 Ch.47) */}
                       {clip.transition_out && width > 10 ? (() => {

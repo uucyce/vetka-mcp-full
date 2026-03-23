@@ -224,6 +224,12 @@ interface CutEditorState {
   syncSurface: SyncSurfaceItem[];
   markers: TimeMarker[];
 
+  // === MARKER_MULTICAM: Multicam state ===
+  multicamId: string | null;            // active multicam clip ID
+  multicamAngles: Array<{ source_path: string; label: string; offset_sec: number }>;
+  multicamActiveAngle: number;          // currently displayed angle index
+  multicamMode: boolean;                // true = multicam viewer active
+
   // === MARKER_W4.5: Project Settings ===
   projectFramerate: number;             // 23.976 | 24 | 25 | 29.97 | 30 | 50 | 59.94 | 60
   timecodeFormat: 'smpte' | 'milliseconds';  // HH:MM:SS:FF or HH:MM:SS.mmm
@@ -469,6 +475,15 @@ interface CutEditorState {
   setThumbnails: (items: ThumbnailItem[]) => void;
   setSyncSurface: (items: SyncSurfaceItem[]) => void;
   setMarkers: (items: TimeMarker[]) => void;
+
+  // MARKER_MULTICAM: Multicam actions
+  setMulticam: (id: string, angles: Array<{ source_path: string; label: string; offset_sec: number }>) => void;
+  clearMulticam: () => void;
+  setMulticamActiveAngle: (index: number) => void;
+  toggleMulticamMode: () => void;
+  multicamSwitchAngle: (angleIndex: number) => void;
+  createMulticamClip: (sourcePaths: string[], syncMethod?: 'waveform' | 'timecode' | 'marker') => Promise<void>;
+
   setEditorSession: (session: {
     sandboxRoot?: string | null;
     projectId?: string | null;
@@ -571,6 +586,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   thumbnails: [],
   syncSurface: [],
   markers: [],
+
+  // MARKER_MULTICAM: Multicam defaults
+  multicamId: null,
+  multicamAngles: [],
+  multicamActiveAngle: 0,
+  multicamMode: false,
 
   // MARKER_198: Timeline snapshot cache
   timelineSnapshots: new Map(),
@@ -790,18 +811,16 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
     get().seek(currentTime + (maxEnd - minStart));
   },
+  // MARKER_UNDO_PASTE_ATTR: Route through applyTimelineOps
   pasteAttributes: () => {
-    const { clipboard, selectedClipIds, lanes } = get();
+    const { clipboard, selectedClipIds } = get();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const sourceEffects = clipboard[0].effects;
     if (!sourceEffects) return;
-    const newLanes = lanes.map((lane) => ({
-      ...lane,
-      clips: lane.clips.map((c) =>
-        selectedClipIds.has(c.clip_id) ? { ...c, effects: { ...sourceEffects } } : c,
-      ),
+    const ops = [...selectedClipIds].map((id) => ({
+      op: 'set_effects', clip_id: id, effects: sourceEffects,
     }));
-    set({ lanes: newLanes });
+    void get().applyTimelineOps(ops);
   },
 
   // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps
@@ -956,52 +975,37 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // L-cut: video ends at playhead, audio continues past. Creates dialogue overlap.
   // J-cut: audio starts at playhead position, video starts later. Audio leads video.
   // Both find clip under playhead, then trim only video lanes (L-cut) or only audio lanes (J-cut).
+  // MARKER_UNDO_SPLIT_EDIT: L-cut/J-cut via applyTimelineOps
   splitEditLCut: () => {
     const { lanes, currentTime, lockedLanes } = get();
-    // Find clips under playhead
-    const newLanes = lanes.map((lane) => {
-      if (lockedLanes.has(lane.lane_id)) return lane;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
       const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
-      if (!isVideo) return lane; // L-cut: only trim video, leave audio untouched
-      return {
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          // Clip spans playhead → split: keep left part only (video ends at playhead)
-          if (c.start_sec < currentTime && cEnd > currentTime) {
-            return [{ ...c, duration_sec: currentTime - c.start_sec }];
-          }
-          return [c];
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+      if (!isVideo) continue;
+      for (const c of lane.clips) {
+        if (c.start_sec < currentTime && c.start_sec + c.duration_sec > currentTime) {
+          ops.push({ op: 'trim_clip', clip_id: c.clip_id, duration_sec: currentTime - c.start_sec });
+        }
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
   splitEditJCut: () => {
     const { lanes, currentTime, lockedLanes } = get();
-    // J-cut: trim video to start at playhead, audio keeps its earlier start
-    const newLanes = lanes.map((lane) => {
-      if (lockedLanes.has(lane.lane_id)) return lane;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
       const isVideo = lane.lane_type.startsWith('video') || lane.lane_type.startsWith('take_alt');
-      if (!isVideo) return lane; // J-cut: only trim video start, leave audio untouched
-      return {
-        ...lane,
-        clips: lane.clips.flatMap((c) => {
-          const cEnd = c.start_sec + c.duration_sec;
-          // Clip spans playhead → trim start: video starts at playhead
-          if (c.start_sec < currentTime && cEnd > currentTime) {
-            return [{
-              ...c,
-              start_sec: currentTime,
-              duration_sec: cEnd - currentTime,
-              source_in: (c.source_in ?? 0) + (currentTime - c.start_sec),
-            }];
-          }
-          return [c];
-        }),
-      };
-    });
-    set({ lanes: newLanes });
+      if (!isVideo) continue;
+      for (const c of lane.clips) {
+        const cEnd = c.start_sec + c.duration_sec;
+        if (c.start_sec < currentTime && cEnd > currentTime) {
+          ops.push({ op: 'trim_clip', clip_id: c.clip_id, start_sec: currentTime, duration_sec: cEnd - currentTime });
+        }
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
   },
 
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
@@ -1110,59 +1114,25 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
   // MARKER_W10.6: Per-clip effects
-  setClipEffects: (clipId, effects) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) =>
-          c.clip_id === clipId
-            ? { ...c, effects: { ...(c.effects ?? DEFAULT_CLIP_EFFECTS), ...effects } }
-            : c,
-        ),
-      })),
-    })),
-  resetClipEffects: (clipId) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) =>
-          c.clip_id === clipId ? { ...c, effects: undefined } : c,
-        ),
-      })),
-    })),
+  // MARKER_UNDO_EFFECTS: Effects + keyframes via applyTimelineOps
+  setClipEffects: (clipId, effects) => {
+    void get().applyTimelineOps([{ op: 'set_effects', clip_id: clipId, effects }]);
+  },
+  resetClipEffects: (clipId) => {
+    void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
+  },
 
-  // MARKER_KF67: Keyframe actions
-  addKeyframe: (clipId, property, timeSec, value) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) => {
-          if (c.clip_id !== clipId) return c;
-          const kfs = { ...(c.keyframes || {}) };
-          const arr = [...(kfs[property] || [])];
-          // Replace existing keyframe at same time or add new
-          const idx = arr.findIndex((k) => Math.abs(k.time_sec - timeSec) < 0.001);
-          const kf: Keyframe = { time_sec: timeSec, value, easing: 'linear' };
-          if (idx >= 0) arr[idx] = kf;
-          else arr.push(kf);
-          arr.sort((a, b) => a.time_sec - b.time_sec);
-          kfs[property] = arr;
-          return { ...c, keyframes: kfs };
-        }),
-      })),
-    })),
-  removeKeyframe: (clipId, property, timeSec) =>
-    set((state) => ({
-      lanes: state.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) => {
-          if (c.clip_id !== clipId || !c.keyframes?.[property]) return c;
-          const arr = c.keyframes[property].filter((k) => Math.abs(k.time_sec - timeSec) > 0.001);
-          const kfs = { ...c.keyframes, [property]: arr };
-          return { ...c, keyframes: kfs };
-        }),
-      })),
-    })),
+  // MARKER_UNDO_KF: Keyframe actions via applyTimelineOps
+  addKeyframe: (clipId, property, timeSec, value) => {
+    void get().applyTimelineOps([{
+      op: 'add_keyframe', clip_id: clipId, property, time_sec: timeSec, value,
+    }]);
+  },
+  removeKeyframe: (clipId, property, timeSec) => {
+    void get().applyTimelineOps([{
+      op: 'remove_keyframe', clip_id: clipId, property, time_sec: timeSec,
+    }]);
+  },
   getKeyframeTimes: () => {
     const { lanes, lockedLanes } = get();
     const times = new Set<number>();
@@ -1239,6 +1209,58 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setThumbnails: (items) => set({ thumbnails: items }),
   setSyncSurface: (items) => set({ syncSurface: items }),
   setMarkers: (items) => set({ markers: items }),
+
+  // MARKER_MULTICAM: Multicam action implementations
+  setMulticam: (id, angles) => set({ multicamId: id, multicamAngles: angles, multicamActiveAngle: 0, multicamMode: true }),
+  clearMulticam: () => set({ multicamId: null, multicamAngles: [], multicamActiveAngle: 0, multicamMode: false }),
+  setMulticamActiveAngle: (index) => set({ multicamActiveAngle: index }),
+  toggleMulticamMode: () => set((s) => ({ multicamMode: !s.multicamMode })),
+  multicamSwitchAngle: (angleIndex) => {
+    const { multicamId, multicamAngles, currentTime } = get();
+    if (!multicamId || angleIndex >= multicamAngles.length) return;
+    set({ multicamActiveAngle: angleIndex });
+    const angle = multicamAngles[angleIndex];
+    void get().applyTimelineOps([{
+      op: 'overwrite_at',
+      lane_id: 'V1',
+      start_sec: currentTime,
+      duration_sec: 5,
+      source_path: angle.source_path,
+      source_in: currentTime + angle.offset_sec,
+    }]);
+  },
+
+  // MARKER_MULTICAM_CREATE: Create multicam clip via backend POST /cut/multicam/create
+  createMulticamClip: async (sourcePaths, syncMethod = 'waveform') => {
+    try {
+      const response = await fetch(`${API_BASE}/cut/multicam/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source_paths: sourcePaths,
+          sync_method: syncMethod,
+          reference_index: 0,
+          fps: get().projectFramerate || 25,
+        }),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data.success || !data.multicam_id) throw new Error(data.error || 'create failed');
+      // Load multicam into store
+      const angles = (data.angles || []).map((a: any, i: number) => ({
+        source_path: a.source_path || sourcePaths[i] || '',
+        label: a.label || `Angle ${i + 1}`,
+        offset_sec: a.offset_sec || 0,
+      }));
+      get().setMulticam(data.multicam_id, angles);
+    } catch (err) {
+      console.error('[MULTICAM] Create failed:', err);
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Multicam create failed: ${err}` },
+      }));
+    }
+  },
+
   setEditorSession: (session) =>
     set((state) => ({
       sandboxRoot: session.sandboxRoot ?? state.sandboxRoot,
