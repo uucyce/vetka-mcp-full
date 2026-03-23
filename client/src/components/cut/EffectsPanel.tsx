@@ -11,6 +11,7 @@
  */
 import { useState, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
+import MotionControls from './MotionControls';
 
 const PANEL: CSSProperties = {
   display: 'flex',
@@ -257,9 +258,10 @@ export default function EffectsPanel() {
 
   return (
     <div style={PANEL} data-testid="effects-panel">
+      {/* MARKER_GAMMA-FX1: Unified Effect Controls header (Premiere style) */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
         <span style={{ fontSize: 10, fontWeight: 600, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Effects
+          Effect Controls
         </span>
         {(hasStoreChanges || hasExtChanges) && (
           <button style={RESET_BTN} onClick={handleReset} title="Reset all effects to default">
@@ -271,6 +273,9 @@ export default function EffectsPanel() {
       <div style={{ fontSize: 9, color: '#555', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {selectedClip.source_path.split('/').pop()}
       </div>
+
+      {/* MARKER_GAMMA-FX1: Motion section (Position/Scale/Rotation/Opacity/Crop) — FCP7 Ch.66 */}
+      <MotionControls />
 
       {CATEGORIES.map((cat) => {
         const isOpen = !collapsedCats.has(cat.name);

@@ -5,7 +5,7 @@
 import { useMemo, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import WaveformCanvas from './WaveformCanvas';
-import MotionControls from './MotionControls'; // MARKER_B4.1
+// MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (unified Effect Controls)
 
 // ─── Styles ───
 const SECTION: CSSProperties = {
@@ -172,8 +172,7 @@ export default function ClipInspector() {
         )}
       </div>
 
-      {/* MARKER_B4.1: Motion / Effects Inspector (Transform, Opacity, Crop) */}
-      <MotionControls />
+      {/* MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (Effect Controls) */}
 
       {/* Sync Info */}
       {(syncItem || clip.sync) && (
