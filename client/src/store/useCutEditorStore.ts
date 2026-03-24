@@ -1582,6 +1582,18 @@ usePanelSyncStore.subscribe((state, prev) => {
   }
 });
 
+// MARKER_PW8: Timeline ID sync — keep CutEditorStore.timelineId in sync with TimelineInstanceStore
+// DAG, StorySpace, Inspector can read useCutEditorStore(s => s.timelineId) instead of hardcoding 'main'
+import { useTimelineInstanceStore } from './useTimelineInstanceStore';
+useTimelineInstanceStore.subscribe((state, prev) => {
+  if (state.activeTimelineId && state.activeTimelineId !== prev.activeTimelineId) {
+    const current = useCutEditorStore.getState().timelineId;
+    if (current !== state.activeTimelineId) {
+      useCutEditorStore.setState({ timelineId: state.activeTimelineId });
+    }
+  }
+});
+
 // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E test access
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
