@@ -14,14 +14,22 @@ MARKER-99-01: STM decay formula - weight *= (1 - decay_rate * (age_seconds / 60)
 MARKER_187.5: Exponential decay + rehearsal + adaptive maxlen (Phase 187)
 """
 
+import json
 import math
 import os
 import threading
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 import logging
+
+# MARKER_198.P0.1: Worktree-safe project root resolution for disk persistence
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_parts = str(_PROJECT_ROOT).split(".claude")
+if len(_parts) > 1:
+    _PROJECT_ROOT = Path(_parts[0].rstrip("/"))
 
 logger = logging.getLogger(__name__)
 
@@ -332,6 +340,39 @@ class STMBuffer:
             decay_factor = math.exp(-effective_rate * age_minutes)
 
             entry.weight = max(self.min_weight, entry.weight * decay_factor)
+
+    def save_to_disk(self, path: Path = None) -> None:
+        """MARKER_198.P0.1: Persist STM state to disk for cross-session continuity.
+
+        Serializes the current buffer entries to a JSON snapshot file so the
+        next process restart can restore recent context via load_from_disk().
+        """
+        _path = path or _PROJECT_ROOT / "data" / "stm_snapshot.json"
+        _path.parent.mkdir(parents=True, exist_ok=True)
+        items = [e.to_dict() for e in self._buffer]
+        _path.write_text(json.dumps(items, default=str), encoding="utf-8")
+        logger.debug(f"STM saved to disk: {len(items)} entries → {_path}")
+
+    def load_from_disk(self, path: Path = None) -> None:
+        """MARKER_198.P0.1: Load previous session's STM from disk.
+
+        Restores entries persisted by save_to_disk().  Entries are appended
+        preserving their original timestamps and weights so decay continues
+        correctly across the restart boundary.  A corrupt or missing file is
+        silently ignored — the buffer simply starts empty.
+        """
+        _path = path or _PROJECT_ROOT / "data" / "stm_snapshot.json"
+        if not _path.exists():
+            logger.debug(f"STM snapshot not found at {_path} — starting fresh")
+            return
+        try:
+            items = json.loads(_path.read_text(encoding="utf-8"))
+            for item in items:
+                entry = STMEntry.from_dict(item)
+                self._buffer.append(entry)
+            logger.info(f"STM loaded from disk: {len(items)} entries restored from {_path}")
+        except Exception as exc:
+            logger.warning(f"STM snapshot corrupt ({exc}) — starting fresh")
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize entire buffer for state persistence."""

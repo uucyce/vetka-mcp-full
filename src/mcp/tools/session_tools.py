@@ -495,6 +495,18 @@ class SessionInitTool(BaseMCPTool):
             import logging
             logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
 
+        # MARKER_198.P0.1: Load STM snapshot from disk so previous session's context
+        # reaches REFLEX scoring.  Failures are silently ignored — session_init must
+        # never be blocked by memory subsystem errors.
+        _stm_items_for_reflex: list = []
+        try:
+            from src.memory.stm_buffer import get_stm_buffer
+            _stm = get_stm_buffer()
+            _stm.load_from_disk()
+            _stm_items_for_reflex = [e.content for e in _stm.get_context(max_items=5)]
+        except Exception:
+            pass  # STM load errors never block session init
+
         # MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_193.2: REFLEX session recommendations
         # Enhanced with agent_type inference for agent-aware scoring
         # MARKER_193.2: Now also injects reflex_warnings + blocked_tools from Guard
@@ -521,7 +533,12 @@ class SessionInitTool(BaseMCPTool):
                 current_task = in_prog[0]
             elif tb.get("top_pending"):
                 current_task = tb["top_pending"][0]
-            reflex_recs = reflex_session(context, agent_type=agent_type, current_task=current_task)
+            reflex_recs = reflex_session(
+                context,
+                agent_type=agent_type,
+                current_task=current_task,
+                stm_items=_stm_items_for_reflex,  # MARKER_198.P0.1: disk-loaded STM
+            )
             if reflex_recs:
                 context["reflex_recommendations"] = reflex_recs
         except Exception:
@@ -884,6 +901,15 @@ class SessionInitTool(BaseMCPTool):
                 context = compressed_context
         except Exception:
             pass  # Compression is best-effort, never blocks session_init
+
+        # MARKER_198.P0.1: Persist STM snapshot so the next session can restore it.
+        # Called here (end of session_init) to capture any entries added during
+        # the current init flow before returning to the caller.
+        try:
+            from src.memory.stm_buffer import get_stm_buffer
+            get_stm_buffer().save_to_disk()
+        except Exception:
+            pass  # STM save errors never block session init
 
         return {
             "success": True,
