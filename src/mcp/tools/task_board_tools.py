@@ -836,13 +836,19 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
 
 
 def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
-    """MARKER_196.6.3: Auto-create ExperienceReport from passive session data.
+    """MARKER_196.6.3 / MARKER_198.DEBRIEF: Auto-create ExperienceReport from passive session data.
 
     Collects metrics without requiring agent input:
     - Role/domain from session tracker
     - Task ID from completion
     - Files touched from session tracker
     - CORTEX tool success rates from REFLEX
+
+    Fix 3/4 (MARKER_198.DEBRIEF): agent callsign resolution priority:
+      1. session tracker role_callsign (if session_init was called in this process lifetime)
+      2. arguments["assigned_to"] (passed by agent on action=complete)
+      3. task["assigned_to"] from the board (survives process restarts — stored on disk)
+      4. "unknown" as final fallback
 
     Returns True if report was created.
     """
@@ -857,15 +863,35 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     tracker = get_session_tracker()
     session = tracker.get_session(_tracker_sid)
 
-    # Determine callsign/domain/branch from session role or task metadata
-    callsign = session.role_callsign or arguments.get("assigned_to") or "unknown"
+    # MARKER_198.DEBRIEF Fix 3/4: Resolve callsign with board task as fallback.
+    # Session tracker role is lost on subprocess restart — task.assigned_to persists on disk.
+    task_assigned_to = ""
+    if task_id:
+        try:
+            from src.orchestration.task_board import TaskBoard
+            _tb = TaskBoard()
+            _task_meta = _tb.get_task(task_id)
+            if _task_meta:
+                task_assigned_to = _task_meta.get("assigned_to", "") or ""
+        except Exception:
+            pass
+
+    callsign = (
+        session.role_callsign
+        or arguments.get("assigned_to")
+        or task_assigned_to
+        or "unknown"
+    )
     domain = session.role_domain or ""
     branch = session.role_branch or arguments.get("branch") or ""
 
     # Build passive report
     from src.services.experience_report import ExperienceReport, get_experience_store
 
-    # MARKER_196.6.1: Collect debrief answers from arguments (if agent provided them)
+    # MARKER_196.6.1 / MARKER_198.DEBRIEF Fix 4/4: Collect debrief answers from arguments.
+    # q1_bugs → lessons + bugs_found (also directly routed to CORTEX below)
+    # q2_worked → lessons (what worked / patterns)
+    # q3_idea → recommendations
     q1 = arguments.get("q1_bugs") or arguments.get("q1") or ""
     q2 = arguments.get("q2_worked") or arguments.get("q2") or ""
     q3 = arguments.get("q3_idea") or arguments.get("q3") or ""
@@ -912,6 +938,82 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     store = get_experience_store()
     store.submit(report)
+
+    # MARKER_198.DEBRIEF Fix 4/4: Direct CORTEX/ENGRAM routing for q1/q2/q3.
+    # smart_debrief._route_to_memory() uses regex triggers — short answers with no
+    # keywords skip all branches and fall through to CORTEX general fallback ONLY IF
+    # no other branch fired. Ensure debrief answers ALWAYS reach memory regardless
+    # of whether regex patterns match.
+    #
+    # Routing contract:
+    #   q1_bugs  → CORTEX (tool failure patterns) + ENGRAM (danger entry)
+    #   q2_worked → ENGRAM (pattern/architecture entry)
+    #   q3_idea   → ENGRAM (pattern entry)
+    if q1 or q2 or q3:
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            from src.memory.engram_cache import get_engram_cache
+            fb = get_reflex_feedback()
+            engram = get_engram_cache()
+            _agent_tag = callsign or "unknown"
+            _domain_tag = domain or "research"
+            _session_tag = _tracker_sid
+
+            if q1:
+                # q1_bugs → CORTEX: record as negative signal for __debrief_bug__ pseudo-tool
+                try:
+                    fb.record(
+                        tool_id="__debrief_bug__",
+                        success=False,
+                        useful=False,
+                        phase_type=_domain_tag,
+                        agent_role=_agent_tag,
+                        execution_time_ms=0.0,
+                        subtask_id=task_id,
+                        extra={"source": "debrief_q1", "text": q1[:300], "agent": _agent_tag},
+                    )
+                except Exception:
+                    pass
+                # q1_bugs → ENGRAM: danger/anti-pattern entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::bug::{_session_tag}",
+                        value=q1[:500],
+                        category="danger",
+                        source_learning_id=f"debrief_q1:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+
+            if q2:
+                # q2_worked → ENGRAM: architecture/pattern entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::worked::{_session_tag}",
+                        value=q2[:500],
+                        category="architecture",
+                        source_learning_id=f"debrief_q2:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+
+            if q3:
+                # q3_idea → ENGRAM: pattern/idea entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::idea::{_session_tag}",
+                        value=q3[:500],
+                        category="pattern",
+                        source_learning_id=f"debrief_q3:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass  # Direct routing never blocks completion
+
     return True
 
 
