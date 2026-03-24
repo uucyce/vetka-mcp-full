@@ -11,7 +11,6 @@ import {
   useMemo,
   type CSSProperties,
   type MouseEvent,
-  type RefObject,
   type WheelEvent as ReactWheelEvent,
 } from 'react';
 
@@ -61,16 +60,7 @@ const MIN_CLIP_DURATION_SEC = 0.15;
 const PLAYHEAD_FOLLOW_PADDING = 120;
 const SNAP_THRESHOLD_PX = 5;
 
-const RULER_STYLE: CSSProperties = {
-  height: RULER_HEIGHT,
-  background: '#111',
-  borderBottom: '1px solid #333',
-  position: 'relative',
-  overflow: 'hidden',
-  flexShrink: 0,
-  // MARKER_W5.TC: marginLeft removed — ruler now inside flex row with TC header
-  cursor: 'pointer',
-};
+// RULER_STYLE removed — ruler is now in TimelineRuler.tsx
 
 const TRACKS_CONTAINER: CSSProperties = {
   flex: 1,
@@ -152,9 +142,7 @@ function playheadHeadStyle(isActive: boolean): CSSProperties {
   };
 }
 
-// Legacy const refs for backward compat
-const PLAYHEAD_STYLE = playheadStyle(true);
-const PLAYHEAD_HEAD = playheadHeadStyle(true);
+// Legacy PLAYHEAD_STYLE/PLAYHEAD_HEAD removed — use playheadStyle(isActive) directly
 
 const MARKER_STYLE: CSSProperties = {
   position: 'absolute',
@@ -208,25 +196,7 @@ const TRACK_BUTTON: CSSProperties = {
   flexShrink: 0,
 };
 
-const TRACK_SLIDER: CSSProperties = {
-  width: 44,
-  height: 16,
-  appearance: 'none' as const,
-  background: '#333',
-  borderRadius: 2,
-  outline: 'none',
-  cursor: 'pointer',
-  transform: 'rotate(-90deg)',
-  transformOrigin: 'center',
-};
-
-const TRACK_SLIDER_WRAP: CSSProperties = {
-  width: 18,
-  height: 52,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-};
+// TRACK_SLIDER / TRACK_SLIDER_WRAP removed — volume slider now in AudioRubberBand.tsx
 
 // MARKER_W5.TRIM: Extended drag modes (FCP7 Ch.44)
 type ClipDragMode = 'move' | 'trim_left' | 'trim_right' | 'slip' | 'slide' | 'ripple_left' | 'ripple_right' | 'roll';
