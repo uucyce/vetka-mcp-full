@@ -345,7 +345,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusEffects:      'Cmd+5',
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
-  toggleSnap:        'n',
+  // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
+  toggleSnap:        's',
   makeSubclip:       'Cmd+u',
   // CUT-specific
   sceneDetect:       'Cmd+d',
@@ -675,7 +676,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusProject', label: 'Focus Project Panel', group: 'Window' },
   { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
   { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
-  { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
+  { action: 'toggleSnap', label: 'Toggle Snap (S/N)', group: 'Timeline' },
   { action: 'makeSubclip', label: 'Make Subclip (Cmd+U)', group: 'Editing' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
