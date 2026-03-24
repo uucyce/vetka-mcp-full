@@ -354,7 +354,7 @@ def reflex_session(
         scored = scorer.recommend_for_session(
             session_data,
             phase_type=phase_type,
-            top_n=10,
+            top_n=3,  # MARKER_197.SLIM: Reduced from 10 to 3 to cut token bloat
             agent_type=agent_type,
             current_task=current_task,
         )

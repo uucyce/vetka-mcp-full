@@ -39,8 +39,8 @@ _PROJECT_ROOT = _resolve_project_root()
 
 def _load_docs_content_sync(
     task: Dict[str, Any],
-    budget: int = 65536,
-    per_doc: int = 16384,
+    budget: int = 8192,   # MARKER_197.SLIM: Reduced from 65536 to 8192 to cut token bloat
+    per_doc: int = 4096,  # MARKER_197.SLIM: Reduced from 16384 to 4096 to cut token bloat
 ) -> str:
     """MARKER_191.7: Read architecture_docs + recon_docs file contents synchronously.
 
@@ -50,8 +50,8 @@ def _load_docs_content_sync(
 
     Args:
         task: Task dict with architecture_docs/recon_docs fields
-        budget: Total chars budget (default 64KB)
-        per_doc: Per-document char cap (default 16KB)
+        budget: Total chars budget (default 8KB)
+        per_doc: Per-document char cap (default 4KB)
 
     Returns:
         Formatted docs string, or empty string if no docs
