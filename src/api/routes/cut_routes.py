@@ -112,21 +112,23 @@ from src.api.routes.cut_routes_media import media_router
 from src.api.routes.cut_routes_export import export_router
 from src.api.routes.cut_routes_render import render_router
 
+# MARKER_B65: Bootstrap sub-module extracted for modularity
+from src.api.routes.cut_routes_bootstrap import (  # noqa: E402
+    CutBootstrapRequest,
+    _bootstrap_error,
+    _build_initial_timeline_state,
+    _execute_cut_bootstrap,
+    _run_cut_bootstrap_job,
+    _utc_now_iso,
+    _infer_cut_media_modality,
+)
+
 router.include_router(media_router)
 router.include_router(export_router)
 router.include_router(render_router)
 
 
-class CutBootstrapRequest(BaseModel):
-    source_path: str
-    sandbox_root: str
-    project_name: str = ""
-    mode: Literal["create_or_open", "open_existing", "create_new"] = "create_or_open"
-    quick_scan_limit: int = Field(default=5000, ge=1, le=200000)
-    bootstrap_profile: str = "default"
-    use_core_mirror: bool = True
-    create_project_if_missing: bool = True
-    timeline_id: str = "main"
+# CutBootstrapRequest — moved to cut_routes_bootstrap.py (MARKER_B65)
 
 
 class CutSceneAssemblyRequest(BaseModel):
@@ -438,18 +440,7 @@ def _time_marker_error(code: str, message: str, *, recoverable: bool = True) -> 
     }
 
 
-def _bootstrap_error(code: str, message: str, *, degraded_reason: str, recoverable: bool = True) -> dict[str, Any]:
-    return {
-        "success": False,
-        "schema_version": "cut_bootstrap_v1",
-        "error": {
-            "code": code,
-            "message": message,
-            "recoverable": recoverable,
-        },
-        "degraded_mode": True,
-        "degraded_reason": degraded_reason,
-    }
+# _bootstrap_error — moved to cut_routes_bootstrap.py (MARKER_B65)
 
 
 def _worker_job_error(code: str, message: str, *, existing_job: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -482,17 +473,7 @@ def _montage_error(code: str, message: str, *, recoverable: bool = True) -> dict
     }
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _infer_cut_media_modality(source_path: str) -> str:
-    ext = os.path.splitext(str(source_path or ""))[1].lower()
-    if ext in {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm"}:
-        return "video"
-    if ext in {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg"}:
-        return "audio"
-    return "unknown"
+# _utc_now_iso, _infer_cut_media_modality — moved to cut_routes_bootstrap.py (MARKER_B65)
 
 
 def _infer_cut_asset_kind(modality: str, lane_type: str) -> str:
@@ -505,187 +486,7 @@ def _infer_cut_asset_kind(modality: str, lane_type: str) -> str:
     return "media"
 
 
-def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, store: CutProjectStore | None = None) -> dict[str, Any]:
-    source_path = str(project.get("source_path") or "").strip()
-    scan = quick_scan_cut_source(source_path, limit=5000)
-    source_root = source_path
-    lanes: list[dict[str, Any]] = []
-
-    # MARKER_189.2: Load media_index for real durations (from scan-matrix-async)
-    media_index_files: dict[str, dict[str, Any]] = {}
-    # MARKER_189.4: Load scan_matrix for scene segments + waveforms + thumbnails
-    scan_matrix_items: dict[str, dict[str, Any]] = {}  # keyed by source_path
-    if store is not None:
-        mi = store.load_media_index()
-        if mi and isinstance(mi.get("files"), dict):
-            media_index_files = mi["files"]
-        smr = store.load_scan_matrix_result()
-        if smr and isinstance(smr.get("items"), list):
-            for item in smr["items"]:
-                sp = str(item.get("source_path", ""))
-                if sp:
-                    scan_matrix_items[sp] = item
-
-    video_lane = {"lane_id": "video_main", "lane_type": "video_main", "clips": []}
-    audio_lane = {"lane_id": "audio_sync", "lane_type": "audio_sync", "clips": []}
-    # MARKER_B58: Sync with CUT_VIDEO_EXT / CUT_AUDIO_EXT from cut_project_store
-    video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mxf", ".r3d", ".braw",
-                 ".mts", ".m2ts", ".dnxhd", ".dnxhr", ".hevc", ".h264", ".h265"}
-    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".aiff", ".aif"}
-    clip_counter = 0
-    timeline_cursor = 0.0  # running position on timeline
-    global_scene_counter = 0
-    scene_ids_used: list[str] = []
-
-    # MARKER_B63: .cutignore support — exclude directories from timeline scan
-    _cutignore_patterns: set[str] = set()
-    _cutignore_default = {"__pycache__", ".DS_Store", "node_modules", ".git"}
-    _cutignore_path = os.path.join(source_root, ".cutignore") if os.path.isdir(source_root) else ""
-    if _cutignore_path and os.path.isfile(_cutignore_path):
-        try:
-            with open(_cutignore_path, "r", encoding="utf-8") as _cif:
-                for _line in _cif:
-                    _line = _line.strip()
-                    if _line and not _line.startswith("#"):
-                        _cutignore_patterns.add(_line.rstrip("/"))
-        except Exception:
-            pass
-    _cutignore_all = _cutignore_default | _cutignore_patterns
-
-    # MARKER_B56-FIX: Recursive walk (was os.scandir — flat, missed subdirs)
-    _all_media: list[str] = []
-    if os.path.isdir(source_root):
-        for dirpath, _dirs, files in os.walk(source_root):
-            # MARKER_B63: Prune ignored directories in-place (prevents descent)
-            _dirs[:] = [d for d in _dirs if d not in _cutignore_all]
-            for fname in sorted(files, key=str.lower):
-                ext_check = os.path.splitext(fname)[1].lower()
-                if ext_check in video_ext or ext_check in audio_ext:
-                    _all_media.append(os.path.join(dirpath, fname))
-    elif os.path.isfile(source_root):
-        # Single file passed as source_path
-        ext_check = os.path.splitext(source_root)[1].lower()
-        if ext_check in video_ext or ext_check in audio_ext:
-            _all_media.append(source_root)
-
-    for file_path in _all_media:
-        path = SimpleNamespace(path=file_path, name=os.path.basename(file_path))
-        ext = os.path.splitext(path.name)[1].lower()
-
-        # MARKER_189.2: Resolve real duration from media_index → ffprobe fallback → 5.0
-        mi_entry = media_index_files.get(path.path) or {}
-        full_duration = float(mi_entry.get("duration_sec") or 0)
-        if full_duration <= 0:
-            full_duration = probe_duration(path.path)
-        if full_duration <= 0:
-            full_duration = 5.0  # ultimate fallback
-
-        # MARKER_189.4: Use scanner segments to create per-segment clips
-        sm_item = scan_matrix_items.get(path.path) or {}
-        video_scan = sm_item.get("video_scan") or {}
-        audio_scan = sm_item.get("audio_scan") or {}
-        segments = video_scan.get("segments") or []
-        thumbnail_paths = video_scan.get("thumbnail_paths") or []
-        waveform_bins = audio_scan.get("waveform_bins") or []
-
-        if ext in video_ext and len(segments) > 1:
-            # Multi-segment video: create one clip per detected scene segment
-            for seg_idx, seg in enumerate(segments):
-                clip_counter += 1
-                global_scene_counter += 1
-                seg_start = float(seg.get("start_sec", 0))
-                seg_end = float(seg.get("end_sec", 0))
-                seg_dur = float(seg.get("duration_sec", 0)) or (seg_end - seg_start)
-                if seg_dur <= 0:
-                    continue
-                scene_id = str(seg.get("segment_id", "")) or f"scene_{global_scene_counter:02d}"
-                if scene_id not in scene_ids_used:
-                    scene_ids_used.append(scene_id)
-                thumb = ""
-                if seg_idx < len(thumbnail_paths):
-                    thumb = thumbnail_paths[seg_idx]
-                clip = {
-                    "clip_id": f"clip_{clip_counter:04d}",
-                    "record_id": f"record_{clip_counter:04d}",
-                    "scene_id": scene_id,
-                    "take_id": f"take_{clip_counter:04d}",
-                    "start_sec": round(timeline_cursor, 3),
-                    "duration_sec": round(seg_dur, 3),
-                    "source_path": path.path,
-                    "source_in": round(seg_start, 3),
-                    "source_out": round(seg_end, 3),
-                    "sync": None,
-                    "thumbnail_path": thumb,
-                }
-                timeline_cursor += seg_dur
-                video_lane["clips"].append(clip)
-        else:
-            # Single-segment or audio-only: one clip per file
-            clip_counter += 1
-            global_scene_counter += 1
-            scene_id = f"scene_{global_scene_counter:02d}"
-            if scene_id not in scene_ids_used:
-                scene_ids_used.append(scene_id)
-            thumb = thumbnail_paths[0] if thumbnail_paths else ""
-            clip = {
-                "clip_id": f"clip_{clip_counter:04d}",
-                "record_id": f"record_{clip_counter:04d}",
-                "scene_id": scene_id,
-                "take_id": f"take_{clip_counter:04d}",
-                "start_sec": round(timeline_cursor, 3),
-                "duration_sec": round(full_duration, 3),
-                "source_path": path.path,
-                "sync": None,
-                "thumbnail_path": thumb,
-            }
-            if waveform_bins:
-                clip["waveform_bins"] = waveform_bins
-            timeline_cursor += full_duration
-            if ext in video_ext:
-                video_lane["clips"].append(clip)
-            else:
-                audio_lane["clips"].append(clip)
-
-    if video_lane["clips"]:
-        lanes.append(video_lane)
-    if audio_lane["clips"]:
-        lanes.append(audio_lane)
-
-    # MARKER_B55: Auto-detect FPS from first video clip (like Premiere Pro)
-    detected_fps = 25.0  # default fallback
-    if video_lane["clips"]:
-        first_clip_path = video_lane["clips"][0].get("source_path", "")
-        if first_clip_path:
-            try:
-                probe_result = probe_file(first_clip_path)
-                if probe_result.ok and probe_result.video_streams:
-                    raw_fps = probe_result.video_streams[0].fps
-                    if raw_fps > 0:
-                        detected_fps = round(raw_fps, 3)
-            except Exception:
-                pass  # fallback to 25
-
-    first_scene = scene_ids_used[0] if scene_ids_used else ""
-    return {
-        "schema_version": "cut_timeline_state_v1",
-        "project_id": str(project.get("project_id") or ""),
-        "timeline_id": str(timeline_id or "main"),
-        "revision": 1,
-        "fps": detected_fps,
-        "lanes": lanes,
-        "selection": {
-            "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],
-            "scene_ids": [first_scene] if first_scene else [],
-        },
-        "view": {
-            "zoom": 1.0,
-            "scroll_sec": 0.0,
-            "active_lane_id": lanes[0]["lane_id"] if lanes else "",
-        },
-        "updated_at": _utc_now_iso(),
-        "stats": scan["stats"],
-        "sync_groups": [],
-    }
+# _build_initial_timeline_state — moved to cut_routes_bootstrap.py (MARKER_B65)
 
 
 def _build_initial_scene_graph(
@@ -2948,7 +2749,13 @@ def _build_montage_decision_from_marker(
     }
 
 
-def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
+# _execute_cut_bootstrap — moved to cut_routes_bootstrap.py (MARKER_B65)
+# The following ~220 lines of bootstrap logic have been extracted.
+# Import at top of file: from src.api.routes.cut_routes_bootstrap import _execute_cut_bootstrap
+_EXECUTE_CUT_BOOTSTRAP_MOVED = True
+
+
+def _execute_cut_bootstrap_OLD_REMOVED(body: CutBootstrapRequest) -> dict[str, Any]:
     source_path = str(body.source_path or "").strip()
     sandbox_root = str(body.sandbox_root or "").strip()
     if not source_path or not os.path.isabs(source_path) or not os.path.exists(source_path):
@@ -3167,24 +2974,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
     }
 
 
-def _run_cut_bootstrap_job(job_id: str, body: CutBootstrapRequest) -> None:
-    store = get_cut_mcp_job_store()
-    store.update_job(job_id, state="running", progress=0.15)
-    try:
-        result = _execute_cut_bootstrap(body)
-        terminal_state = "done" if bool(result.get("success")) else "error"
-        store.update_job(job_id, state=terminal_state, progress=1.0, result=result)
-    except Exception as exc:
-        store.update_job(
-            job_id,
-            state="error",
-            progress=1.0,
-            error={
-                "code": "bootstrap_exception",
-                "message": str(exc),
-                "recoverable": False,
-            },
-        )
+# _run_cut_bootstrap_job — moved to cut_routes_bootstrap.py (MARKER_B65)
 
 
 def _run_cut_scene_assembly_job(job_id: str, body: CutSceneAssemblyRequest) -> None:
