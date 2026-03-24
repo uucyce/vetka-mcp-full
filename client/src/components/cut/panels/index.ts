@@ -32,3 +32,6 @@ export { default as MarkerListPanel } from './MarkerListPanel';
 
 // MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
 export { default as TimelineInstancePanel } from './TimelineInstancePanel';
+
+// MARKER_GAMMA-W6.3: Social Crosspost / Publish panel
+export { default as PublishPanel } from './PublishPanel';

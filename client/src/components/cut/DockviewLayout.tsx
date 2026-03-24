@@ -50,6 +50,7 @@ import {
   AudioMixerPanelDock,
   MarkerListPanel,
   TimelineInstancePanel,
+  PublishPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -107,6 +108,7 @@ const PANEL_COMPONENTS = {
   tools: ToolsPaletteDock,
   markers: MarkerListPanel,
   timelines: TimelineInstancePanel,
+  publish: withErrorBoundary('Publish', PublishPanel),
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,

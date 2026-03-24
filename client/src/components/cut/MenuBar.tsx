@@ -714,6 +714,7 @@ export default function MenuBar() {
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
+        { label: 'Publish / Crosspost', action: () => togglePanel('publish', 'publish', 'Publish') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
         { separator: true },
