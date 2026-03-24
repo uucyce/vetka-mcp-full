@@ -126,6 +126,7 @@ class CutBootstrapRequest(BaseModel):
     bootstrap_profile: str = "default"
     use_core_mirror: bool = True
     create_project_if_missing: bool = True
+    timeline_id: str = "main"
 
 
 class CutSceneAssemblyRequest(BaseModel):
@@ -3049,7 +3050,7 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             existing_clip_count += len(_lane.get("clips", []))
 
     if existing_timeline is None or existing_clip_count == 0:
-        timeline_id = str(getattr(body, "timeline_id", "") or "main")
+        timeline_id = str(body.timeline_id or "main")
         initial_timeline = _build_initial_timeline_state(project, timeline_id, store=store)
         store.save_timeline_state(initial_timeline)
         logger.info("MARKER_B58: Timeline created/rebuilt with %d media files",
