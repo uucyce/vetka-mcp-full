@@ -883,6 +883,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
+    // MARKER_A4: PULSE integration hotkeys
+    runPulseAnalysis: () => useCutEditorStore.getState().runPulseAnalysis(),
+    runAutoMontageFavorites: () => useCutEditorStore.getState().runAutoMontage('favorites'),
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
     focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),

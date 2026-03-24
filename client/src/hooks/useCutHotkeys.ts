@@ -121,7 +121,10 @@ export type CutHotkeyAction =
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
-  | 'escapeContext';
+  | 'escapeContext'
+  // MARKER_A4: PULSE integration
+  | 'runPulseAnalysis'
+  | 'runAutoMontageFavorites';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -235,6 +238,9 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
+  // MARKER_A4: PULSE
+  runPulseAnalysis:    'global',
+  runAutoMontageFavorites: 'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -352,6 +358,9 @@ export const PREMIERE_PRESET: HotkeyMap = {
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+p',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -452,6 +461,9 @@ export const FCP7_PRESET: HotkeyMap = {
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+p',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -682,6 +694,9 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
   { action: 'escapeContext', label: 'Cancel / Close', group: 'CUT' },
+  // MARKER_A4: PULSE
+  { action: 'runPulseAnalysis', label: 'PULSE Analyze All Scenes', group: 'PULSE' },
+  { action: 'runAutoMontageFavorites', label: 'Auto-Montage: Favorites', group: 'PULSE' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────

@@ -518,6 +518,15 @@ interface CutEditorState {
   // MARKER_198: Snapshot cache for multi-instance timeline swap
   snapshotTimeline: (id: string) => void;
   restoreTimeline: (id: string) => void;
+
+  // MARKER_A4.5: PULSE Auto-Montage — call backend, create new timeline tab with result
+  runAutoMontage: (mode: 'favorites' | 'script' | 'music') => Promise<void>;
+  // MARKER_A4.8: PULSE Analysis — enrich all scenes with Camelot/McKee/energy metadata
+  runPulseAnalysis: () => Promise<void>;
+  // PULSE analysis results stored here
+  pulseScores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }>;
+  montageInProgress: boolean;
+  pulseAnalysisInProgress: boolean;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -1453,6 +1462,102 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       };
     });
     return newId;
+  },
+
+  // MARKER_A4.5: PULSE Auto-Montage — 3 modes (favorites/script/music)
+  pulseScores: {},
+  montageInProgress: false,
+  pulseAnalysisInProgress: false,
+
+  runAutoMontage: async (mode) => {
+    const { sandboxRoot, projectId, timelineId, montageInProgress } = get();
+    if (montageInProgress) return;
+    if (!sandboxRoot || !projectId) {
+      console.warn('[PULSE] runAutoMontage: no project session');
+      return;
+    }
+    set({ montageInProgress: true });
+    try {
+      const resp = await fetch(`${API_BASE}/api/cut/pulse/auto-montage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId,
+          mode,
+        }),
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        console.error('[PULSE] auto-montage failed:', data.error || data);
+        return;
+      }
+      // Create new timeline tab with montage result
+      const label = data.timeline_label || `montage_${mode}`;
+      const newId = get().createVersionedTimeline(label, `pulse_${mode}`);
+      // Place montage clips on timeline
+      if (data.clips?.length) {
+        const lanes = get().lanes.map((l) => ({ ...l, clips: [] as typeof l.clips }));
+        const videoLane = lanes.find((l) => l.lane_type.startsWith('video')) || lanes[0];
+        const audioLane = lanes.find((l) => l.lane_type.startsWith('audio'));
+        if (videoLane) {
+          videoLane.clips = data.clips.map((c: Record<string, unknown>, i: number) => ({
+            clip_id: `montage_${i}`,
+            source_path: c.source_path as string,
+            source_in: (c.in_point as number) ?? 0,
+            start_sec: (c.timeline_position as number) ?? 0,
+            duration_sec: ((c.out_point as number) ?? 0) - ((c.in_point as number) ?? 0),
+            effects: {},
+          }));
+          if (audioLane) {
+            audioLane.clips = videoLane.clips.map((c) => ({ ...c, clip_id: `${c.clip_id}_a` }));
+          }
+        }
+        set({ lanes, timelineId: newId });
+      }
+      console.log(`[PULSE] Auto-montage complete: ${data.clips?.length ?? 0} clips, mode=${mode}`);
+    } catch (err) {
+      console.error('[PULSE] auto-montage error:', err);
+    } finally {
+      set({ montageInProgress: false });
+    }
+  },
+
+  // MARKER_A4.8: PULSE Analysis — enrich scenes with Camelot/McKee/energy
+  runPulseAnalysis: async () => {
+    const { sandboxRoot, projectId, pulseAnalysisInProgress } = get();
+    if (pulseAnalysisInProgress) return;
+    if (!sandboxRoot || !projectId) {
+      console.warn('[PULSE] runPulseAnalysis: no project session');
+      return;
+    }
+    set({ pulseAnalysisInProgress: true });
+    try {
+      const resp = await fetch(`${API_BASE}/api/cut/pulse/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandbox_root: sandboxRoot, project_id: projectId }),
+      });
+      const data = await resp.json();
+      if (data.success && data.scores) {
+        const scores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }> = {};
+        for (const score of data.scores) {
+          scores[score.scene_id || score.id] = {
+            camelot_key: score.camelot_key,
+            energy: score.energy,
+            pendulum: score.pendulum_position ?? score.pendulum,
+            dramatic_function: score.dramatic_function,
+          };
+        }
+        set({ pulseScores: scores });
+        console.log(`[PULSE] Analysis complete: ${Object.keys(scores).length} scenes scored`);
+      }
+    } catch (err) {
+      console.error('[PULSE] analysis error:', err);
+    } finally {
+      set({ pulseAnalysisInProgress: false });
+    }
   },
 }));
 
