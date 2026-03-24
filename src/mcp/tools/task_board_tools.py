@@ -646,6 +646,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
             if _ownership_warnings:
                 result["ownership_warnings"] = _ownership_warnings
+                # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
+                _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
             _inject_debrief(result, arguments)
             return result
 
@@ -718,6 +720,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_196.3.1: Attach ownership warnings to result
         if _ownership_warnings:
             result["ownership_warnings"] = _ownership_warnings
+            # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
+            _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
 
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
@@ -914,6 +918,58 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
 # MARKER_197: _detect_git_branch() removed — branch now comes from session role (196.2.2)
 # plus AgentRegistry auto-infer in complete action. No subprocess git calls needed.
+
+
+def _flag_cross_domain_violations(
+    board, task_id: str, task: dict, ownership_warnings: list, agent_callsign: str = ""
+) -> None:
+    """MARKER_197.OWNERSHIP: Record ownership violations in task history + alert Commander.
+
+    Called after task completion when ownership_warnings is non-empty.
+    Two effects:
+    1. Appends an 'ownership_violation' event to the completed task's status_history
+    2. Creates a P2 alert task assigned to Commander for review
+
+    Never raises — violations are informational, not blocking.
+    """
+    if not ownership_warnings:
+        return
+
+    try:
+        # 1. Record in task history
+        board._append_history(
+            task,
+            event="ownership_violation",
+            status=task.get("status", "done_worktree"),
+            agent_name=agent_callsign or task.get("assigned_to", "unknown"),
+            source="ownership_guard",
+            reason=f"{len(ownership_warnings)} file(s) outside owned paths",
+            extra={"warnings": ownership_warnings[:20]},  # cap at 20 to avoid bloat
+        )
+        board._save()
+
+        # 2. Create Commander alert task
+        alert_title = f"OWNERSHIP-ALERT: {agent_callsign or 'agent'} touched {len(ownership_warnings)} cross-domain file(s) in {task_id}"
+        board.add_task(
+            title=alert_title,
+            description=(
+                f"Agent '{agent_callsign}' completed task '{task.get('title', task_id)}' "
+                f"but modified files outside their owned_paths.\n\n"
+                f"Violations:\n" + "\n".join(f"- {w}" for w in ownership_warnings[:20])
+            ),
+            priority=2,
+            phase_type="fix",
+            project_id=task.get("project_id", "CUT"),
+            tags=["ownership-alert", "cross-domain", "auto-generated"],
+            role="Commander",
+            domain="architect",
+        )
+        logger.warning(
+            "[TaskBoard] OWNERSHIP ALERT: %s violated %d path(s) in %s — Commander task created",
+            agent_callsign, len(ownership_warnings), task_id,
+        )
+    except Exception as e:
+        logger.debug("[TaskBoard] Cross-domain flagging failed (non-critical): %s", e)
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,
