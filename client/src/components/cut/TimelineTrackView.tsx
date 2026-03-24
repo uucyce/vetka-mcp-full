@@ -189,17 +189,17 @@ const TRACK_BUTTON_ROW: CSSProperties = {
   gap: 1,
 };
 
-// MARKER_COMPACT: Track buttons — compact for 100px header
+// MARKER_TRACKHEADER1: Track buttons — 20x18 minimum for clickability (FCP7/Premiere standard)
 const TRACK_BUTTON: CSSProperties = {
-  width: 16,
-  height: 14,
+  width: 20,
+  height: 18,
   borderRadius: 2,
   border: '1px solid #333',
   background: '#111',
   color: '#888',
-  fontSize: 7,
+  fontSize: 8,
   fontWeight: 700,
-  lineHeight: '12px',
+  lineHeight: '16px',
   padding: 0,
   cursor: 'pointer',
   display: 'flex',
@@ -1885,12 +1885,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      width: 14, height: 12,
+                      width: 16, height: 14,
                       background: isHidden ? '#333' : 'transparent',
                       border: 'none',
                       marginLeft: 'auto',
                     }}
-                    title={isHidden ? 'Show track' : 'Hide track'}
+                    title={isHidden ? 'Show track (V)' : 'Hide track (V)'}
                     aria-label={isHidden ? 'Show visibility' : 'Hide visibility'}
                     data-testid={`cut-lane-visibility-${lane.lane_id}`}
                     onClick={(event) => {
@@ -1899,59 +1899,64 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     }}
                   >
                     {isHidden
-                      ? <IconEyeOff size={9} color="#888" />
-                      : <IconEye size={9} color="#444" />
+                      ? <IconEyeOff size={11} color="#999" />
+                      : <IconEye size={11} color="#555" />
                     }
                   </button>
                 </div>
                 {/* MARKER_COMPACT: 2×2 button grid — [target lock] [solo mute] */}
+                {/* MARKER_TRACKHEADER1: 2x2 button grid — larger icons, better contrast, hotkey tooltips */}
                 <div style={TRACK_BUTTON_ROW}>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: targetedLanes.has(lane.lane_id) ? '#999' : '#111',
-                      borderColor: targetedLanes.has(lane.lane_id) ? '#999' : '#333',
+                      background: targetedLanes.has(lane.lane_id) ? '#ccc' : '#111',
+                      borderColor: targetedLanes.has(lane.lane_id) ? '#ccc' : '#333',
                     }}
-                    title="Target lane"
+                    title="Target lane — click to toggle insert/overwrite target"
+                    data-testid={`cut-lane-target-${lane.lane_id}`}
                     onClick={(event) => { event.stopPropagation(); toggleTarget(lane.lane_id); }}
                   >
-                    <IconTarget size={9} color={targetedLanes.has(lane.lane_id) ? '#111' : '#555'} />
+                    <IconTarget size={12} color={targetedLanes.has(lane.lane_id) ? '#111' : '#666'} />
                   </button>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: lockedLanes.has(lane.lane_id) ? '#888' : '#111',
-                      borderColor: lockedLanes.has(lane.lane_id) ? '#888' : '#333',
+                      background: lockedLanes.has(lane.lane_id) ? '#999' : '#111',
+                      borderColor: lockedLanes.has(lane.lane_id) ? '#999' : '#333',
                     }}
-                    title="Lock lane"
+                    title={lockedLanes.has(lane.lane_id) ? 'Unlock lane' : 'Lock lane — prevent edits'}
+                    data-testid={`cut-lane-lock-${lane.lane_id}`}
                     onClick={(event) => { event.stopPropagation(); toggleLock(lane.lane_id); }}
                   >
                     {lockedLanes.has(lane.lane_id)
-                      ? <IconLock size={9} color="#111" />
-                      : <IconUnlock size={9} color="#555" />
+                      ? <IconLock size={12} color="#111" />
+                      : <IconUnlock size={12} color="#666" />
                     }
                   </button>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: soloLanes.has(lane.lane_id) ? '#aaa' : '#111',
-                      borderColor: soloLanes.has(lane.lane_id) ? '#aaa' : '#333',
+                      background: soloLanes.has(lane.lane_id) ? '#ccc' : '#111',
+                      borderColor: soloLanes.has(lane.lane_id) ? '#ccc' : '#333',
                     }}
-                    title="Solo"
+                    title="Solo — mute all other tracks"
+                    data-testid={`cut-lane-solo-${lane.lane_id}`}
                     onClick={(event) => { event.stopPropagation(); toggleSolo(lane.lane_id); }}
                   >
-                    <IconSolo size={9} color={soloLanes.has(lane.lane_id) ? '#111' : '#888'} />
+                    <IconSolo size={12} color={soloLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                   <button
                     style={{
                       ...TRACK_BUTTON,
-                      background: mutedLanes.has(lane.lane_id) ? '#888' : '#111',
-                      borderColor: mutedLanes.has(lane.lane_id) ? '#888' : '#333',
+                      background: mutedLanes.has(lane.lane_id) ? '#999' : '#111',
+                      borderColor: mutedLanes.has(lane.lane_id) ? '#999' : '#333',
                     }}
-                    title="Mute"
+                    title="Mute — silence this track"
+                    data-testid={`cut-lane-mute-${lane.lane_id}`}
                     onClick={(event) => { event.stopPropagation(); toggleMute(lane.lane_id); }}
                   >
-                    <IconMute size={9} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
+                    <IconMute size={12} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                 </div>
               </div>
