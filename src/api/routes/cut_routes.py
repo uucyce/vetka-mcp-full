@@ -537,10 +537,27 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
     global_scene_counter = 0
     scene_ids_used: list[str] = []
 
+    # MARKER_B63: .cutignore support — exclude directories from timeline scan
+    _cutignore_patterns: set[str] = set()
+    _cutignore_default = {"__pycache__", ".DS_Store", "node_modules", ".git"}
+    _cutignore_path = os.path.join(source_root, ".cutignore") if os.path.isdir(source_root) else ""
+    if _cutignore_path and os.path.isfile(_cutignore_path):
+        try:
+            with open(_cutignore_path, "r", encoding="utf-8") as _cif:
+                for _line in _cif:
+                    _line = _line.strip()
+                    if _line and not _line.startswith("#"):
+                        _cutignore_patterns.add(_line.rstrip("/"))
+        except Exception:
+            pass
+    _cutignore_all = _cutignore_default | _cutignore_patterns
+
     # MARKER_B56-FIX: Recursive walk (was os.scandir — flat, missed subdirs)
     _all_media: list[str] = []
     if os.path.isdir(source_root):
         for dirpath, _dirs, files in os.walk(source_root):
+            # MARKER_B63: Prune ignored directories in-place (prevents descent)
+            _dirs[:] = [d for d in _dirs if d not in _cutignore_all]
             for fname in sorted(files, key=str.lower):
                 ext_check = os.path.splitext(fname)[1].lower()
                 if ext_check in video_ext or ext_check in audio_ext:
