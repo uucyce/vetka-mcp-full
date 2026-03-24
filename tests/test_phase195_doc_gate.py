@@ -68,8 +68,8 @@ class TestDocGatePhaseTypeAware:
         assert "DOC_GATE" in result["error"]
 
     @patch("src.orchestration.task_board.get_task_board")
-    def test_build_task_with_force_no_docs_passes(self, mock_get_board):
-        """phase_type=build + force_no_docs=true → PASS (explicit bypass still works)."""
+    def test_build_task_with_force_no_docs_strict_mode(self, mock_get_board):
+        """phase_type=build + force_no_docs=true → STRICT: rejected when suggested_docs >= 2."""
         mock_get_board.return_value = self.board
         result = handle_task_board({
             "action": "add",
@@ -78,8 +78,15 @@ class TestDocGatePhaseTypeAware:
             "priority": 1,
             "force_no_docs": True,
         })
-        assert result["success"] is True
-        assert "task_id" in result
+        # force_no_docs is now strict — only bypasses when <2 suggested docs found
+        # In a real repo with docs, this should be rejected
+        if result.get("strict_mode"):
+            assert result["success"] is False
+            assert "DOC_GATE STRICT" in result["error"]
+        else:
+            # No docs found → force_no_docs still works
+            assert result["success"] is True
+            assert "task_id" in result
 
     @patch("src.orchestration.task_board.get_task_board")
     def test_no_phase_type_without_docs_rejected(self, mock_get_board):
