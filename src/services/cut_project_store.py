@@ -169,9 +169,27 @@ class CutProjectStore:
     File-backed persistence for standalone CUT sandbox bootstrap state.
     """
 
+    # MARKER_B69: Singleton for active project (used by PULSE endpoints)
+    _current_instance: "CutProjectStore | None" = None
+
     def __init__(self, sandbox_root: str) -> None:
         self.sandbox_root = _norm_abs(sandbox_root)
         self.paths = CutProjectPaths(self.sandbox_root)
+
+    @classmethod
+    def current(cls) -> "CutProjectStore | None":
+        """Return the currently active project store (set at bootstrap time)."""
+        return cls._current_instance
+
+    @classmethod
+    def get_instance(cls) -> "CutProjectStore | None":
+        """Alias for current() — used by PULSE and render endpoints."""
+        return cls._current_instance
+
+    @classmethod
+    def set_current(cls, store: "CutProjectStore | None") -> None:
+        """Register the active project store (called after bootstrap)."""
+        cls._current_instance = store
 
     def load_project(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.project_path, expected_schema="cut_project_v1")
