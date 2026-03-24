@@ -1,4 +1,0 @@
-# MARKER_195.22: Protect root CLAUDE.md from branch overwrites during merge.
-# Worktree agents have role-specific CLAUDE.md which differs from root generic.
-# Without this, merging any branch overwrites the root CLAUDE.md with role-specific content.
-CLAUDE.md merge=ours
