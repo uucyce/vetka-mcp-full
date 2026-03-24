@@ -653,7 +653,8 @@ export default function MenuBar() {
           { label: 'Editing', shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
           { label: 'Color', shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
           { label: 'Audio', shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
-          { label: 'Custom', shortcut: '⌥⇧4', action: () => switchWorkspace('custom') },
+          { label: 'Multicam', shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
+          { label: 'Custom', shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
           { separator: true },
           { label: 'Save Workspace...', action: () => {
             const api = dockStore.getState().apiRef;

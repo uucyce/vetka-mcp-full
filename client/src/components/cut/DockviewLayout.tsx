@@ -156,7 +156,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
   // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
-    for (const preset of ['editing', 'color', 'audio', 'custom'] as const) {
+    for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom'] as const) {
       try {
         const raw = localStorage.getItem('cut_dockview_' + preset);
         if (!raw) continue;

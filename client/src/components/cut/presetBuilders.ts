@@ -104,9 +104,33 @@ export function buildAudioLayout(api: DockviewApi, scriptText: string) {
   try { api.getPanel('effects')?.api.setActive(); } catch { /* ok */ }
 }
 
+/**
+ * MULTICAM workspace — multi-angle viewer + wide timeline (FCP7 Ch.42)
+ * Program Monitor large, Source stacked with angle grid concept
+ */
+export function buildMulticamLayout(api: DockviewApi, scriptText: string) {
+  // Source (left) — will show multicam angle grid when MulticamViewer is ready
+  api.addPanel({ id: 'source', component: 'source', title: 'SOURCE' });
+  // Program (center, large) — shows switched output
+  api.addPanel({ id: 'program', component: 'program', title: 'PROGRAM', position: { referencePanel: 'source', direction: 'right' } });
+  // Right: Project + Clip inspector stacked
+  api.addPanel({ id: 'project', component: 'project', title: 'Project', position: { referencePanel: 'program', direction: 'right' } });
+  api.addPanel({ id: 'clip', component: 'clip', title: 'Clip', position: { referencePanel: 'project', direction: 'within' } });
+  // Below Source: Mixer (audio monitoring during multicam)
+  api.addPanel({ id: 'mixer', component: 'mixer', title: 'Mixer', position: { referencePanel: 'source', direction: 'below' } });
+  // Timeline — wide, for multicam cutting
+  api.addPanel({ id: 'timeline', component: 'timeline', title: 'Timeline', params: { scriptText }, position: { direction: 'below' } });
+  // Sizes: program large, timeline tall
+  try { api.getPanel('source')?.api.setSize({ width: 300 }); } catch { /* ok */ }
+  try { api.getPanel('project')?.api.setSize({ width: 240 }); } catch { /* ok */ }
+  try { api.getPanel('timeline')?.api.setSize({ height: 340 }); } catch { /* ok */ }
+  try { api.getPanel('program')?.api.setActive(); } catch { /* ok */ }
+}
+
 export const PRESET_BUILDERS: Record<string, PresetBuilder> = {
   editing: buildEditingLayout,
   color: buildColorLayout,
   audio: buildAudioLayout,
+  multicam: buildMulticamLayout,
   custom: buildEditingLayout,
 };
