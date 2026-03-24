@@ -525,6 +525,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
   const setSourceMedia = useCutEditorStore((state) => state.setSourceMedia);
   const setHoveredClip = useCutEditorStore((state) => state.setHoveredClip);
+  const pulseScores = useCutEditorStore((s) => s.pulseScores); // MARKER_CAMELOT: PULSE key badges
 
   // ─── MARKER_W6.STORE: Multi-instance read migration (Phase 1) ──────
   // When timelineId prop is provided AND instance exists in the new store,
@@ -2177,6 +2178,36 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           {basename(clip.source_path)}
                         </span>
                       ) : null}
+
+                      {/* MARKER_CAMELOT: PULSE Camelot key badge */}
+                      {(() => {
+                        const pulse = pulseScores[clip.clip_id] || pulseScores[clip.source_path];
+                        if (!pulse?.camelot_key) return null;
+                        // Pendulum: -1 (dark/tense) to +1 (bright/resolved) → grey scale
+                        const brightness = pulse.pendulum != null ? Math.round(80 + (pulse.pendulum + 1) * 40) : 130;
+                        return (
+                          <div
+                            title={pulse.dramatic_function || `Key: ${pulse.camelot_key}`}
+                            style={{
+                              position: 'absolute',
+                              top: 2,
+                              right: 2,
+                              fontSize: 8,
+                              fontWeight: 700,
+                              padding: '1px 3px',
+                              borderRadius: 2,
+                              background: `rgb(${brightness}, ${brightness}, ${brightness})`,
+                              color: brightness > 120 ? '#111' : '#ddd',
+                              lineHeight: '10px',
+                              pointerEvents: 'none',
+                              zIndex: 5,
+                              letterSpacing: 0.3,
+                            }}
+                          >
+                            {pulse.camelot_key}
+                          </div>
+                        );
+                      })()}
 
                       {/* MARKER_MULTICAM_BADGE: Show angle number on multicam clips */}
                       {multicamMode && width > 20 && (() => {
