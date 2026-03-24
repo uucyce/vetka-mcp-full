@@ -289,6 +289,8 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
         )
 
     store = CutProjectStore(sandbox_root)
+    # MARKER_B69: Register as active singleton for PULSE/render endpoints
+    CutProjectStore.set_current(store)
     layout = store.sandbox_layout_status()
 
     # MARKER_181.3: Auto-create sandbox layout when create_project_if_missing is set
