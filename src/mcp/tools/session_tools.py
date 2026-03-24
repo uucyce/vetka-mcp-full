@@ -865,6 +865,26 @@ class SessionInitTool(BaseMCPTool):
         ]:
             context.pop(_slim_key, None)
 
+        # MARKER_198.P0.5: Apply ELISION L2 compression to session_init response
+        try:
+            from src.memory.elision import get_elision_compressor
+            compressor = get_elision_compressor()
+            # Compress the context dict — replaces verbose keys with short abbreviations
+            context_str = _json.dumps(context, default=str)
+            compressed = compressor.compress(context_str, level=2)
+            if compressed and compressed.compressed:
+                # Parse back to dict for MCP response
+                compressed_context = _json.loads(compressed.compressed)
+                legend = compressed.legend
+                compressed_context["_elision"] = {
+                    "level": 2,
+                    "ratio": compressed.compression_ratio,
+                    "legend": dict(list(legend.items())[:10]) if legend else {}
+                }
+                context = compressed_context
+        except Exception:
+            pass  # Compression is best-effort, never blocks session_init
+
         return {
             "success": True,
             "result": context
