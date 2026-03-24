@@ -1089,6 +1089,32 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, playAt, stopAll]);
 
+  // MARKER_SCRUB_SYNC: Timeline scrub → Source Monitor shows clip under playhead (FCP7 Canvas→Viewer follows)
+  const lastScrubSourceRef = useRef<{ path: string | null; time: number }>({ path: null, time: -1 });
+  useEffect(() => {
+    const s = useCutEditorStore.getState();
+    // Only sync when timeline is focused (not source monitor)
+    if (s.focusedPanel === 'source') return;
+    // Find clip under playhead on first video lane
+    const videoLane = s.lanes.find((l) => l.lane_type.startsWith('video') || l.lane_type.startsWith('take_alt'));
+    if (!videoLane) return;
+    for (const clip of videoLane.clips) {
+      if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+        const sourceRelativeTime = (clip.source_in ?? 0) + (currentTime - clip.start_sec);
+        const last = lastScrubSourceRef.current;
+        const pathChanged = clip.source_path !== last.path;
+        const timeChanged = Math.abs(sourceRelativeTime - last.time) > 0.04;
+        if (!pathChanged && !timeChanged) return;
+        if (pathChanged && clip.source_path && clip.source_path !== s.sourceMediaPath) {
+          s.setSourceMedia(clip.source_path);
+        }
+        s.seekSource(sourceRelativeTime);
+        lastScrubSourceRef.current = { path: clip.source_path, time: sourceRelativeTime };
+        return;
+      }
+    }
+  }, [currentTime]);
+
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
   return (
