@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
+import { usePanelSyncStore } from './usePanelSyncStore';
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -217,6 +218,9 @@ interface CutEditorState {
   // === MARKER_W1.3: Source/Program feed split ===
   sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
   programMediaPath: string | null;    // timeline playback → Program Monitor
+
+  // === MARKER_PW2: Panel Sync Bridge — scene selection from Script/DAG panels ===
+  selectedSceneId: string | null;     // active scene for PulseInspector/ClipInspector reactivity
 
   // === Data (set from CutStandalone projectState) ===
   lanes: TimelineLane[];
@@ -575,6 +579,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W1.3: Source/Program feed split
   sourceMediaPath: null,
   programMediaPath: null,
+
+  // MARKER_PW2: Panel Sync Bridge
+  selectedSceneId: null,
 
   // MARKER_W1.2: Panel Focus
   // MARKER_GAMMA-29: Default to 'timeline' so hotkeys work on load (was null → silent failures)
@@ -1560,6 +1567,20 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
   },
 }));
+
+// MARKER_PW2: Panel Sync Bridge — propagate Script/DAG clicks to editor store
+// Script click → activeSceneId updates → selectedSceneId → PulseInspector/ClipInspector reactive
+// DAG click → selectedAssetPath updates → setSourceMedia → Source Monitor loads clip
+usePanelSyncStore.subscribe((state, prev) => {
+  // When selectedAssetPath changes → load in Source Monitor
+  if (state.selectedAssetPath && state.selectedAssetPath !== prev.selectedAssetPath) {
+    useCutEditorStore.getState().setSourceMedia(state.selectedAssetPath);
+  }
+  // When activeSceneId changes → store it for PulseInspector/ClipInspector
+  if (state.activeSceneId && state.activeSceneId !== prev.activeSceneId) {
+    useCutEditorStore.setState({ selectedSceneId: state.activeSceneId });
+  }
+});
 
 // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E test access
 if (typeof window !== 'undefined') {
