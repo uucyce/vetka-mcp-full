@@ -1159,3 +1159,125 @@ async def cut_multicam_switch(body: CutMulticamSwitchRequest) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 
     return {"success": True, "clip": clip}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B62 — Video/Audio Streaming for Browser Playback
+# ---------------------------------------------------------------------------
+
+import re as _re
+
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+
+_STREAM_ALLOWED_EXT = {
+    ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf",
+    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".aiff", ".aif",
+}
+
+_MIME_MAP = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mxf": "application/mxf",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+}
+
+_RANGE_RE = _re.compile(r"bytes=(\d+)-(\d*)")
+
+
+@media_router.get("/stream")
+async def cut_media_stream(request: Request, source_path: str) -> StreamingResponse:
+    """
+    MARKER_B62: HTTP Range-aware video/audio streaming for browser <video>/<audio>.
+    Supports seeking via Range headers (206 Partial Content).
+    """
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    file_size = file_path.stat().st_size
+    content_type = _MIME_MAP.get(ext, "application/octet-stream")
+
+    range_header = request.headers.get("range")
+    if range_header:
+        match = _RANGE_RE.match(range_header)
+        if not match:
+            raise HTTPException(status_code=416, detail="Invalid Range header")
+
+        start = int(match.group(1))
+        end_str = match.group(2)
+        end = int(end_str) if end_str else file_size - 1
+
+        if start >= file_size or end >= file_size or start > end:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+
+        content_length = end - start + 1
+
+        def _range_iter():
+            chunk_size = 64 * 1024  # 64KB chunks
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            _range_iter(),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Full file response (no Range header)
+    def _full_iter():
+        chunk_size = 64 * 1024
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                yield data
+
+    return StreamingResponse(
+        _full_iter(),
+        status_code=200,
+        media_type=content_type,
+        headers={
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
