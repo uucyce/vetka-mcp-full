@@ -3,8 +3,6 @@ MARKER_ZETA.D3: CLAUDE.md Generator — auto-generate per-worktree agent instruc
 
 Reads:
   - agent_registry.yaml (D1) — role definitions
-  - data/experience_reports/*.json (D2) — latest experience reports
-  - docs/.../feedback/EXPERIENCE_*.md — markdown experience reports (fallback)
   - Task board state (optional, via MCP)
 
 Writes:
@@ -28,8 +26,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import glob
-import json
 import logging
 import re
 import sys
@@ -46,9 +42,9 @@ logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 _TEMPLATE_PATH = _PROJECT_ROOT / "data" / "templates" / "claude_md_template.j2"
 _REGISTRY_PATH = _PROJECT_ROOT / "data" / "templates" / "agent_registry.yaml"
-_EXPERIENCE_REPORTS_DIR = _PROJECT_ROOT / "data" / "experience_reports"
-_FEEDBACK_DOCS_DIR = _PROJECT_ROOT / "docs" / "190_ph_CUT_WORKFLOW_ARCH" / "feedback"
 _WORKTREES_DIR = _PROJECT_ROOT / ".claude" / "worktrees"
+
+# MARKER_197.SLIM: Dead helpers removed — predecessor/docs/feedback now come from session_init
 
 
 def _get_claude_projects_dir(worktree_dir: Path) -> Path:
@@ -70,147 +66,6 @@ def _load_template(template_path: Optional[Path] = None) -> jinja2.Template:
     path = template_path or _TEMPLATE_PATH
     with open(path, "r", encoding="utf-8") as f:
         return jinja2.Template(f.read(), undefined=jinja2.StrictUndefined)
-
-
-def _extract_predecessor_advice_from_json(callsign: str) -> list[str]:
-    """Extract lessons_learned + recommendations from JSON experience reports (D2)."""
-    advice = []
-    if not _EXPERIENCE_REPORTS_DIR.exists():
-        return advice
-
-    # Find all reports for this callsign, sorted newest first
-    reports = []
-    for path in _EXPERIENCE_REPORTS_DIR.glob("*.json"):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if data.get("agent_callsign", "").lower() == callsign.lower():
-                reports.append((path.stat().st_mtime, data))
-        except Exception:
-            continue
-
-    reports.sort(key=lambda x: x[0], reverse=True)
-
-    # Take up to 3 latest reports
-    for _, data in reports[:3]:
-        for lesson in data.get("lessons_learned", []):
-            if lesson not in advice:
-                advice.append(lesson)
-        for rec in data.get("recommendations", []):
-            if rec not in advice:
-                advice.append(rec)
-
-    return advice
-
-
-def _extract_predecessor_advice_from_md(callsign: str) -> list[str]:
-    """Extract advice from markdown EXPERIENCE_*.md files (fallback)."""
-    advice = []
-    if not _FEEDBACK_DOCS_DIR.exists():
-        return advice
-
-    # Find matching experience report files
-    pattern = f"EXPERIENCE_{callsign.upper()}_*.md"
-    files = sorted(
-        _FEEDBACK_DOCS_DIR.glob(pattern),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-
-    if not files:
-        return advice
-
-    # Parse latest file — extract bullet points from "Predecessor Advice" or "Recommendations" sections
-    latest = files[0]
-    try:
-        content = latest.read_text(encoding="utf-8")
-        # Look for sections with bullet points
-        in_advice_section = False
-        for line in content.splitlines():
-            header_lower = line.strip().lower()
-            if any(
-                kw in header_lower
-                for kw in ["recommendation", "predecessor", "successor", "what worked", "lesson"]
-            ):
-                in_advice_section = True
-                continue
-            if line.startswith("##") or line.startswith("# "):
-                in_advice_section = False
-                continue
-            if in_advice_section and line.strip().startswith("- "):
-                bullet = line.strip()[2:].strip()
-                if bullet and bullet not in advice:
-                    advice.append(bullet)
-    except Exception:
-        logger.debug("Could not parse %s", latest.name)
-
-    return advice
-
-
-def _get_predecessor_advice(callsign: str) -> list[str]:
-    """Get combined predecessor advice from JSON reports (primary) and MD files (fallback)."""
-    advice = _extract_predecessor_advice_from_json(callsign)
-    if not advice:
-        advice = _extract_predecessor_advice_from_md(callsign)
-    return advice
-
-
-def _find_latest_feedback_doc() -> Optional[str]:
-    """Find the latest FEEDBACK_WAVE*_ALL_AGENTS_*.md file."""
-    if not _FEEDBACK_DOCS_DIR.exists():
-        return None
-    files = sorted(
-        _FEEDBACK_DOCS_DIR.glob("FEEDBACK_WAVE*_ALL_*.md"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    if files:
-        return str(files[0].relative_to(_PROJECT_ROOT))
-    return None
-
-
-def _resolve_key_docs(key_docs: list[str]) -> list[str]:
-    """MARKER_195.21: Resolve key_docs — keep static files, glob-resolve patterns with dates.
-
-    If a doc path contains a date or wildcard-like suffix, find the latest matching file.
-    Static architecture docs (no date) pass through unchanged.
-    """
-    resolved = []
-    for doc in key_docs:
-        doc_path = _PROJECT_ROOT / doc
-        if doc_path.exists():
-            resolved.append(doc)
-            continue
-        # Try glob: maybe the file has a date suffix that changed
-        parent = doc_path.parent
-        stem = doc_path.stem
-        # Strip date suffix (YYYY-MM-DD) and glob for latest
-        date_stripped = re.sub(r"_\d{4}-\d{2}-\d{2}$", "_*", stem)
-        if date_stripped != stem and parent.exists():
-            matches = sorted(parent.glob(f"{date_stripped}{doc_path.suffix}"), key=lambda p: p.stat().st_mtime, reverse=True)
-            if matches:
-                resolved.append(str(matches[0].relative_to(_PROJECT_ROOT)))
-                continue
-        # File not found — still include as reference
-        resolved.append(doc)
-    return resolved
-
-
-def _find_latest_predecessor_doc(callsign: str) -> Optional[str]:
-    """MARKER_195.21: Find the latest experience/handoff doc for this role."""
-    if not _FEEDBACK_DOCS_DIR.exists():
-        return None
-    # Try EXPERIENCE_{CALLSIGN}_*.md
-    pattern = f"EXPERIENCE_{callsign.upper()}_*.md"
-    files = sorted(_FEEDBACK_DOCS_DIR.glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-    if files:
-        return str(files[0].relative_to(_PROJECT_ROOT))
-    # Try HANDOFF_*_{callsign}*.md or FEEDBACK_{callsign}_*.md
-    for alt_pattern in [f"HANDOFF_*_{callsign.upper()}_*.md", f"FEEDBACK_{callsign.upper()}_*.md"]:
-        files = sorted(_FEEDBACK_DOCS_DIR.glob(alt_pattern), key=lambda p: p.stat().st_mtime, reverse=True)
-        if files:
-            return str(files[0].relative_to(_PROJECT_ROOT))
-    return None
 
 
 def generate_claude_md(
