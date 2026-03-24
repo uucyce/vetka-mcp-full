@@ -1389,6 +1389,49 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             })
             continue
 
+        # MARKER_B68: set_clip_color — persist color grading params for render pipeline
+        if op_type == "set_clip_color":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                continue
+            _lane, clip = _find_clip(state, clip_id)
+            if clip is None:
+                continue
+            # Write color grading fields onto clip dict
+            color_fields = {
+                "log_profile": str(op.get("log_profile") or "").strip() or None,
+                "lut_path": str(op.get("lut_path") or "").strip() or None,
+                "color_effects": op.get("color_effects") if isinstance(op.get("color_effects"), list) else None,
+            }
+            for key, val in color_fields.items():
+                if val is not None:
+                    clip[key] = val
+                elif key in op:
+                    # Explicitly set to empty = clear the field
+                    clip.pop(key, None)
+            applied_ops.append({"op": op_type, "clip_id": clip_id, **{k: v for k, v in color_fields.items() if v is not None}})
+            continue
+
+        # MARKER_B68: set_clip_meta — generic clip metadata update (rating, notes, shot_scale, etc.)
+        if op_type == "set_clip_meta":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                continue
+            _lane, clip = _find_clip(state, clip_id)
+            if clip is None:
+                continue
+            meta = op.get("meta") or {}
+            if not isinstance(meta, dict):
+                continue
+            # Whitelist safe fields to prevent overwriting structural clip data
+            _safe_meta_keys = {"rating", "notes", "label", "color_label", "shot_scale", "scene_id",
+                               "log_profile", "lut_path", "camelot_key", "pulse_data", "tags"}
+            for key, val in meta.items():
+                if key in _safe_meta_keys:
+                    clip[key] = val
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "keys": list(meta.keys())})
+            continue
+
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
