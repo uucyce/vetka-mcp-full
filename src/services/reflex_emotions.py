@@ -103,6 +103,7 @@ class EmotionContext:
     """Context provided at scoring time — describes the current invocation.
 
     MARKER_195.2.CONTEXT
+    MARKER_198.P1.1: Added protocol_violation_count to wire Protocol Guard into Caution.
     """
     agent_id: str = ""
     phase_type: str = ""
@@ -117,6 +118,9 @@ class EmotionContext:
     tool_metadata: Dict[str, dict] = field(default_factory=dict)
     file_ownership: Dict[str, str] = field(default_factory=dict)
     current_task_recon_docs: List[str] = field(default_factory=list)
+    # MARKER_198.P1.1: Protocol Guard violation count — boosts caution proportionally.
+    # 0 = no violations; each violation adds +0.1 caution (capped at 0.9).
+    protocol_violation_count: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +133,15 @@ def compute_curiosity(usage_count: int, freshness_score: float) -> float:
 
     novelty = 1 / (1 + exp(0.5 * (usage_count - 5)))
     freshness_boost = freshness_score * 0.4
+
+    MARKER_198.P1.2: Tool Freshness -> Curiosity contract.
+    freshness_score is supplied by reflex_integration.reflex_session() IP-6,
+    which calls ToolSourceWatch.scan_all() on every session_init and then
+    derives a per-tool score capped at 0.75 with linear 48 h decay:
+      freshness_score = min(0.75, 1.0 - hours_since_update / 48)
+    This ensures freshness_boost peaks at 0.75 * 0.4 = 0.30 at t=0 and
+    reaches 0.0 at t=48 h, giving recently-updated tools a +0.30 Curiosity
+    boost that decays naturally over the freshness window.
     """
     try:
         novelty = 1.0 / (1.0 + math.exp(0.5 * (usage_count - 5)))
@@ -167,10 +180,14 @@ def compute_caution(
     is_foreign_file: bool,
     has_recon: bool,
     guard_warnings: List[str],
+    protocol_violation_count: int = 0,
 ) -> float:
     """Caution = max of all risk signals.
 
     READ-only tools get caution <= 0.1.
+
+    MARKER_198.P1.1: Protocol Guard violation count boosts caution proportionally.
+    Each violation adds +0.1 (capped at 0.9), scaled up from any existing guard risk.
     """
     try:
         perm = tool_permission.upper() if tool_permission else "READ"
@@ -190,9 +207,15 @@ def compute_caution(
         if not has_recon:
             risks.append(0.5)
 
-        # Guard risk
+        # Guard risk (binary: any warnings → 0.9 base)
         if guard_warnings:
             risks.append(0.9)
+
+        # MARKER_198.P1.1: Protocol violation count risk — scales with violation count.
+        # Each violation adds 0.1, minimum floor 0.4 when violations exist, max 0.9.
+        if protocol_violation_count > 0:
+            violation_risk = min(0.9, 0.4 + protocol_violation_count * 0.1)
+            risks.append(violation_risk)
 
         if not risks:
             # READ-only with no risk flags -> minimal caution
@@ -365,15 +388,17 @@ class EmotionEngine:
 
             curiosity = compute_curiosity(state.usage_count, ctx.freshness_score)
             trust = state.trust
+            # MARKER_198.P1.1: Pass protocol_violation_count into caution computation
             caution = compute_caution(
                 ctx.tool_permission,
                 ctx.is_foreign_file,
                 ctx.has_recon,
                 ctx.guard_warnings,
+                ctx.protocol_violation_count,
             )
 
-            # Guard warning caps trust
-            if ctx.guard_warnings:
+            # Guard warning or protocol violations cap trust
+            if ctx.guard_warnings or ctx.protocol_violation_count > 0:
                 trust = min(trust, _TRUST_GUARD_CAP)
 
             state.curiosity = curiosity
@@ -401,11 +426,13 @@ class EmotionEngine:
 
             curiosity = compute_curiosity(state.usage_count, ctx.freshness_score)
             trust = state.trust
+            # MARKER_198.P1.1: Pass protocol_violation_count into caution computation
             caution = compute_caution(
                 ctx.tool_permission,
                 ctx.is_foreign_file,
                 ctx.has_recon,
                 ctx.guard_warnings,
+                ctx.protocol_violation_count,
             )
 
             # Update state snapshot (not persisted until record_outcome)
@@ -444,6 +471,7 @@ class EmotionEngine:
                     state.failure_count += 1
 
                 # Recompute emotions
+                # MARKER_198.P1.1: Pass protocol_violation_count into caution computation
                 state.curiosity = compute_curiosity(state.usage_count, ctx.freshness_score)
                 state.trust = compute_trust(state.trust, success, ctx.guard_warnings)
                 state.caution = compute_caution(
@@ -451,6 +479,7 @@ class EmotionEngine:
                     ctx.is_foreign_file,
                     ctx.has_recon,
                     ctx.guard_warnings,
+                    ctx.protocol_violation_count,
                 )
                 state.mood_label = get_mood_label(state.curiosity, state.trust, state.caution)
                 state.last_updated = time.time()
@@ -489,11 +518,13 @@ class EmotionEngine:
 
             curiosity = compute_curiosity(state.usage_count, ctx.freshness_score)
             trust = state.trust
+            # MARKER_198.P1.1: Pass protocol_violation_count into caution computation
             caution = compute_caution(
                 ctx.tool_permission,
                 ctx.is_foreign_file,
                 ctx.has_recon,
                 ctx.guard_warnings,
+                ctx.protocol_violation_count,
             )
             modifier = compute_emotion_modifier(curiosity, trust, caution)
             mood = get_mood_label(curiosity, trust, caution)
