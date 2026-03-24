@@ -64,6 +64,7 @@ import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
 import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
+import MatchSequencePopup from './MatchSequencePopup';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -610,6 +611,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       <TimelineMiniMap />
       {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
       <StatusBar />
+      {/* MARKER_GAMMA-MATCH: Match Sequence Settings popup on first clip drop */}
+      <MatchSequencePopup />
     </div>
   );
 }

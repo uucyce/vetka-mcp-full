@@ -287,6 +287,8 @@ interface CutEditorState {
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
+  showMatchSequencePopup: boolean;  // MARKER_GAMMA-MATCH: Match Sequence Settings on first clip drop
+  pendingMatchClipPath: string | null; // First clip path for probe
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -424,6 +426,7 @@ interface CutEditorState {
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
+  setShowMatchSequencePopup: (show: boolean, clipPath?: string) => void;
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -619,6 +622,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
   showSpeedControl: false,          // MARKER_B11
+  showMatchSequencePopup: false,    // MARKER_GAMMA-MATCH
+  pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -1096,6 +1101,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
+  setShowMatchSequencePopup: (show: boolean, clipPath?: string) => set({
+    showMatchSequencePopup: show,
+    pendingMatchClipPath: clipPath ?? null,
+  }),
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),
@@ -1297,6 +1306,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Consumes text/cut-media-paths JSON array, creates clips sequentially at drop position
   dropMediaOnTimeline: (paths, laneId, dropTimeSec, mode) => {
     if (!paths.length) return;
+    // MARKER_GAMMA-MATCH: Detect first clip drop on empty timeline → offer to match sequence settings
+    const state = get();
+    const totalClips = state.lanes.reduce((n, l) => n + l.clips.length, 0);
+    if (totalClips === 0 && !localStorage.getItem('cut_suppress_match_popup')) {
+      state.setShowMatchSequencePopup(true, paths[0]);
+    }
     const DEFAULT_CLIP_DURATION = 5; // seconds — placeholder until probe gives real duration
     const op = mode === 'insert' ? 'insert_at' : 'overwrite_at';
     const ops: Array<Record<string, unknown>> = [];
