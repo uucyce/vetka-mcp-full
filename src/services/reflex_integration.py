@@ -332,6 +332,7 @@ def reflex_session(
     phase_type: str = "research",
     agent_type: str = "",
     current_task: Optional[Dict[str, Any]] = None,
+    stm_items: Optional[List[str]] = None,
 ) -> List[Dict]:
     """MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_191.3 + MARKER_193.2 — Get task-aware recommendations for session_init.
 
@@ -341,6 +342,7 @@ def reflex_session(
     MARKER_186.3: Now accepts agent_type for agent-aware scoring.
     MARKER_191.3: Now accepts current_task for task-aware semantic matching.
     MARKER_193.2: Guard filtering — blocked/warned tools annotated before return.
+    MARKER_198.P0.1: Now accepts stm_items from disk-persisted STM buffer.
 
     Returns:
         List of {tool_id, score, reason} dicts (blocked tools excluded).
@@ -357,6 +359,7 @@ def reflex_session(
             top_n=3,  # MARKER_197.SLIM: Reduced from 10 to 3 to cut token bloat
             agent_type=agent_type,
             current_task=current_task,
+            stm_items=stm_items,  # MARKER_198.P0.1: disk-loaded STM context
         )
 
         # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)
