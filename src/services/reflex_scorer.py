@@ -270,15 +270,28 @@ class ReflexContext:
             model_output_tps: Model speed
             agent_type: Agent type: "claude_code", "cursor", "dragon", etc.
         """
-        # Extract viewport zoom → HOPE level
-        viewport = session_data.get("viewport", {})
-        zoom = viewport.get("zoom", 0.5)
-        if zoom < 0.3:
-            hope_level = "LOW"
-        elif zoom > 1.0:
-            hope_level = "HIGH"
-        else:
-            hope_level = "MID"
+        # MARKER_198.P0.3: HOPE LOD from task complexity + model tier (NOT viewport zoom)
+        # LOW = compressed overview (for Haiku or high-complexity cross-domain tasks)
+        # MID = balanced (default, for Sonnet or medium tasks)
+        # HIGH = full detail (for Opus or low-complexity single-file tasks)
+        _task_complexity = session_data.get("task_board_summary", {}).get("top_pending", [{}])
+        _complexity_hint = "medium"  # default
+        if _task_complexity and isinstance(_task_complexity[0], dict):
+            _complexity_hint = _task_complexity[0].get("complexity", "medium")
+
+        # Model tier override
+        _agent_type = agent_type or "claude_code"
+        if "haiku" in _agent_type.lower():
+            hope_level = "LOW"  # Haiku always gets compressed context
+        elif "opus" in _agent_type.lower():
+            hope_level = "HIGH" if _complexity_hint == "low" else "MID"
+        else:  # sonnet, default
+            if _complexity_hint == "high":
+                hope_level = "LOW"
+            elif _complexity_hint == "low":
+                hope_level = "HIGH"
+            else:
+                hope_level = "MID"
 
         # Extract user tool preferences from ENGRAM
         user_prefs = session_data.get("user_preferences", {})

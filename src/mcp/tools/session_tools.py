@@ -355,22 +355,9 @@ class SessionInitTool(BaseMCPTool):
             except Exception as e:
                 context["pinned_error"] = str(e)
 
-        # Apply ELISION compression if requested
-        if compress:
-            try:
-                from src.memory.jarvis_prompt_enricher import JARVISPromptEnricher
-                enricher = JARVISPromptEnricher()
-                original_size = len(str(context))
-                compressed_str = enricher.compress_context(context)
-                compressed_size = len(compressed_str)
-                context["compression"] = {
-                    "enabled": True,
-                    "original_size": original_size,
-                    "compressed_size": compressed_size,
-                    "ratio": round(original_size / max(compressed_size, 1), 2)
-                }
-            except Exception as e:
-                context["compression"] = {"enabled": False, "error": str(e)}
+        # MARKER_197.ELISION: compression was computing compressed_str but never applying it.
+        # Removed the misleading compression metadata block — it was reporting fake savings.
+        # Real token reduction comes from stripping bloat keys below (MARKER_197.SLIM).
 
         # Save session state for later retrieval
         try:
@@ -391,13 +378,23 @@ class SessionInitTool(BaseMCPTool):
             in_progress = board.get_queue(status="in_progress")
             # MARKER_186.4: Count tasks awaiting merge (done_worktree)
             done_worktree = board.get_queue(status="done_worktree")
+            # MARKER_196.QA: QA pipeline status counts
+            need_qa = board.get_queue(status="need_qa")
+            verified = board.get_queue(status="verified")
+            needs_fix = board.get_queue(status="needs_fix")
+            claimed = board.get_queue(status="claimed")
             context["task_board_summary"] = {
                 "pending_count": len(pending),
                 "in_progress_count": len(in_progress),
+                "claimed_count": len(claimed),
                 "done_worktree_count": len(done_worktree),
+                "need_qa_count": len(need_qa),
+                "verified_count": len(verified),
+                "needs_fix_count": len(needs_fix),
                 "top_pending": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
                 "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]],
-                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]]
+                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]],
+                "qa_queue": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in need_qa[:5]],
             }
         except Exception as e:
             import logging
@@ -631,7 +628,7 @@ class SessionInitTool(BaseMCPTool):
             # Gather per-tool emotions for tools already in reflex_recommendations
             recs = context.get("reflex_recommendations", [])
             tool_emotions: Dict[str, Dict[str, float]] = {}
-            for rec in recs[:10]:  # Limit to top 10 tools
+            for rec in recs[:3]:  # MARKER_197.SLIM: Limit to top 3 tools (matches reflex top_n=3)
                 tid = rec.get("tool_id", "") if isinstance(rec, dict) else ""
                 if not tid:
                     continue
@@ -827,6 +824,10 @@ class SessionInitTool(BaseMCPTool):
             # MARKER_186.4: Warn about tasks awaiting merge
             if tb.get("done_worktree_count", 0) > 0:
                 next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=merge_request")
+            if tb.get("need_qa_count", 0) > 0:
+                next_steps.append(f"🔍 {tb['need_qa_count']} tasks awaiting QA → vetka_task_board action=verify")
+            if tb.get("needs_fix_count", 0) > 0:
+                next_steps.append(f"⚠️ {tb['needs_fix_count']} tasks failed QA, need fix")
 
             # From REFLEX
             recs = context.get("reflex_recommendations", [])
@@ -846,6 +847,23 @@ class SessionInitTool(BaseMCPTool):
                 context["next_steps"] = next_steps
         except Exception:
             pass
+
+        # MARKER_197.SLIM: Remove non-essential sections for coding agents
+        # These belong to JARVIS/VETKA personal assistant, not coding tools
+        for _slim_key in [
+            "reflex_emotions",        # JARVIS emotion layer, not for coders
+            "_all_agent_focus",       # debug only
+            "mgc_status",             # internal cache diagnostics
+            "compression",            # metadata about itself, circular
+            "recent_states_count",    # MCP state meta
+            "recent_state_ids",       # MCP state meta
+            "recent_commits",         # already in gitStatus system-reminder
+            "viewport_summary",       # 3D viewport, not for coding
+            "viewport",               # 3D viewport, not for coding
+            "viewport_patterns",      # 3D viewport preferences
+            "communication_style",    # AURA personal assistant layer
+        ]:
+            context.pop(_slim_key, None)
 
         return {
             "success": True,
