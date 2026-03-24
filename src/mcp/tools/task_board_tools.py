@@ -564,8 +564,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 worktree_path = str(candidate)
                 logger.info(f"[TaskBoard] Auto-detected worktree_path from branch: {worktree_path}")
 
-        if not current_branch:
-            current_branch = _detect_git_branch(cwd=worktree_path)
+        # MARKER_197: _detect_git_branch() removed — branch comes from session role (196.2.2)
+        # Fallback: AgentRegistry auto-infer below
 
         # MARKER_195.22: Auto-infer branch from task metadata via AgentRegistry
         # Prevents merge_request failures due to missing branch_name.
@@ -911,24 +911,9 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     return True
 
 
-def _detect_git_branch(cwd: str = None) -> str:
-    """MARKER_186.4: Detect current git branch. Works in worktrees.
-    MARKER_188.2: Accept cwd override for worktree context.
-    MARKER_195.20: Return empty string on failure (not "main") to avoid false done_main.
-    """
-    import subprocess
-    from pathlib import Path
-    git_cwd = cwd or str(Path(__file__).resolve().parents[3])
-    try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=git_cwd, capture_output=True, text=True, timeout=5,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
+
+# MARKER_197: _detect_git_branch() removed — branch now comes from session role (196.2.2)
+# plus AgentRegistry auto-infer in complete action. No subprocess git calls needed.
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,
