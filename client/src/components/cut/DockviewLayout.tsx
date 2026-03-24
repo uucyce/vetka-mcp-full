@@ -80,6 +80,17 @@ function withErrorBoundary(name: string, Comp: React.ComponentType<any>) {
   return Wrapped;
 }
 
+// MARKER_GAMMA-TESTID: Wrap panel with data-testid for E2E testing (Delta feedback)
+function withTestId(panelId: string, Comp: React.ComponentType<any>) {
+  const Wrapped = (props: any) => (
+    <div data-testid={`cut-panel-${panelId}`} style={{ width: '100%', height: '100%' }}>
+      <Comp {...props} />
+    </div>
+  );
+  Wrapped.displayName = `TID(${panelId})`;
+  return Wrapped;
+}
+
 const EffectsPanelDock = withErrorBoundary('Effects', EffectsPanel);
 const VideoScopesPanelDock = withErrorBoundary('Scopes', VideoScopes);
 const ColorCorrectorPanelDock = withErrorBoundary('Color', ColorCorrectionPanel);
@@ -427,7 +438,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   // handle all colored borders at the CSS level. No JS mutation watching needed.
 
   // Memoize components object to prevent re-renders
-  const components = useMemo(() => PANEL_COMPONENTS, []);
+  // MARKER_GAMMA-TESTID: Wrap all panels with data-testid='cut-panel-{name}'
+  const components = useMemo(() => {
+    const wrapped: Record<string, React.ComponentType<any>> = {};
+    for (const [id, Comp] of Object.entries(PANEL_COMPONENTS)) {
+      wrapped[id] = withTestId(id, Comp);
+    }
+    return wrapped;
+  }, []);
 
   // MARKER_GAMMA-15: Panel tab context menu
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; panelId: string } | null>(null);
