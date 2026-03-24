@@ -23,6 +23,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
+import { useAudioPlayback, type AudioClipInfo } from '../../hooks/useAudioPlayback';
 import DockviewLayout from './DockviewLayout';
 import { useDockviewStore } from '../../store/useDockviewStore';
 import MenuBar from './MenuBar';
@@ -1015,6 +1016,77 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // No clip under playhead — clear program monitor
     setProgramMedia(null);
   }, [currentTime, lanes, setProgramMedia]);
+
+  // ─── MARKER_B5.2: Audio playback wiring ───
+  // Hook provides playAt / stopAll synced to Web Audio API.
+  const { playAt, stopAll } = useAudioPlayback();
+
+  // Subscribe to audio-relevant store slices
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  const laneVolumes = useCutEditorStore((s) => s.laneVolumes);
+  const mutedLanes = useCutEditorStore((s) => s.mutedLanes);
+  const soloLanes = useCutEditorStore((s) => s.soloLanes);
+
+  // Track current time via ref to avoid re-triggering play on every frame tick.
+  // The effect that starts playback reads this ref at play-start time.
+  const audioCurrentTimeRef = useRef<number>(currentTime);
+  useEffect(() => {
+    audioCurrentTimeRef.current = currentTime;
+  });
+
+  // Build AudioClipInfo[] from all audio lanes — memoised on lane/volume/mute/solo changes.
+  const audioClips = useMemo<AudioClipInfo[]>(() => {
+    const hasSolo = soloLanes.size > 0;
+    const result: AudioClipInfo[] = [];
+    for (const lane of lanes) {
+      // Only audio lanes contribute to audio playback
+      if (!lane.lane_type.startsWith('audio')) continue;
+      const laneId = lane.lane_id;
+      const isMuted = mutedLanes.has(laneId) || (hasSolo && !soloLanes.has(laneId));
+      const volume = laneVolumes[laneId] ?? 1.0;
+      for (const clip of lane.clips) {
+        result.push({
+          clip_id: clip.clip_id,
+          source_path: clip.source_path,
+          start_sec: clip.start_sec,
+          duration_sec: clip.duration_sec,
+          source_in: (clip as any).source_in ?? 0,
+          volume,
+          pan: 0,
+          muted: isMuted,
+        });
+      }
+    }
+    return result;
+  }, [lanes, laneVolumes, mutedLanes, soloLanes]);
+
+  // Start / stop audio when isPlaying changes.
+  useEffect(() => {
+    if (isPlaying) {
+      playAt(audioClips, audioCurrentTimeRef.current);
+    } else {
+      stopAll();
+    }
+    // Intentionally NOT listing audioClips in deps — rebuilding clips list should not
+    // restart audio mid-play. Clips are read at play-start via audioCurrentTimeRef pattern.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playAt, stopAll]);
+
+  // Re-sync audio when user seeks while playback is active.
+  // Stable refs let us read latest values without adding them to the seek-effect deps.
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => { isPlayingRef.current = isPlaying; });
+
+  const audioClipsRef = useRef(audioClips);
+  useEffect(() => { audioClipsRef.current = audioClips; });
+
+  useEffect(() => {
+    if (!isPlayingRef.current) return;
+    // currentTime changed while playing → re-sync audio to new position
+    stopAll();
+    playAt(audioClipsRef.current, currentTime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, playAt, stopAll]);
 
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
