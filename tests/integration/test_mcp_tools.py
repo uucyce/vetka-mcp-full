@@ -435,17 +435,12 @@ class TestGenerateClaudeMd:
         assert content is not None
         assert "Beta" in content
 
-    def test_gamma_output_contains_role_title_and_owned_path(self, registry, template):
-        """Gamma CLAUDE.md contains role title and at least one owned path."""
+    def test_gamma_output_contains_role_title(self, registry, template):
+        """MARKER_197.SLIM: Gamma CLAUDE.md contains role title (owned paths via session_init)."""
         content = generate_claude_md("Gamma", registry=registry, template=template)
         assert content is not None
         assert "Gamma" in content
-        # At least one Gamma-owned path should appear in the generated content
-        role = registry.get_by_callsign("Gamma")
-        owned_paths_found = any(
-            Path(p).name in content for p in role.owned_paths
-        )
-        assert owned_paths_found, "No owned path found in Gamma CLAUDE.md output"
+        assert "UX" in content or "Ux" in content
 
     def test_delta_output_contains_role_title(self, registry, template):
         """Delta CLAUDE.md contains role title."""
@@ -476,22 +471,18 @@ class TestGenerateClaudeMd:
         content = generate_claude_md("Alpha", registry=registry, template=template)
         assert isinstance(content, str)
 
-    def test_alpha_owned_path_in_output(self, registry, template):
-        """Alpha CLAUDE.md contains at least one of its owned paths."""
+    def test_alpha_output_has_branch(self, registry, template):
+        """MARKER_197.SLIM: Alpha CLAUDE.md contains branch (role_context pointer)."""
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        role = registry.get_by_callsign("Alpha")
-        found = any(Path(p).name in content for p in role.owned_paths)
-        assert found, "No Alpha-owned path name found in generated CLAUDE.md"
+        assert "claude/cut-engine" in content, "Branch not found in slim CLAUDE.md"
 
-    def test_pending_tasks_injection(self, registry, template):
-        """Pending tasks list is reflected in generated content when provided."""
-        fake_tasks = [{"id": "tb_test_99", "title": "Probe task injection", "priority": 2, "status": "pending", "phase_type": "test"}]
-        content = generate_claude_md(
-            "Gamma",
-            registry=registry,
-            template=template,
-            pending_tasks=fake_tasks,
-        )
-        assert content is not None
-        assert "Probe task injection" in content, \
-            "Injected pending task title not found in CLAUDE.md output"
+    def test_slim_no_owned_paths_inline(self, registry, template):
+        """MARKER_197.SLIM: Owned paths NOT inlined — come from session_init role_context."""
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "useTimelineInstanceStore" not in content, \
+            "Owned paths should not be in slim CLAUDE.md (they come from session_init)"
+
+    def test_slim_references_role_context(self, registry, template):
+        """MARKER_197.SLIM: Slim template tells agent to use role_context from session_init."""
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "role_context" in content

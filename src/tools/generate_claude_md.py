@@ -219,13 +219,18 @@ def generate_claude_md(
     template: Optional[jinja2.Template] = None,
     pending_tasks: Optional[list[dict]] = None,
 ) -> Optional[str]:
-    """Generate CLAUDE.md content for a given callsign.
+    """MARKER_197.SLIM: Generate minimal CLAUDE.md — thin routing stub to session_init.
+
+    CLAUDE.md is now a bootstrap file only. All dynamic context (owned_paths,
+    predecessor advice, key docs, pending tasks) comes from session_init's
+    role_context — the universal JSON contract for any coding tool
+    (Claude Code, Codex, Gemini, Cursor, MCC, Mycelium).
 
     Args:
-        callsign: Agent callsign (Alpha, Beta, Gamma, Delta, Commander)
+        callsign: Agent callsign (Alpha, Beta, Gamma, Delta, Commander, Zeta, Epsilon)
         registry: AgentRegistry instance (loaded from agent_registry.yaml if None)
         template: Jinja2 template (loaded from claude_md_template.j2 if None)
-        pending_tasks: Optional list of pending tasks for this role
+        pending_tasks: Deprecated, ignored. Tasks come from session_init.
 
     Returns:
         Generated CLAUDE.md content string, or None if callsign not found.
@@ -240,19 +245,8 @@ def generate_claude_md(
         logger.warning("Unknown callsign: %s", callsign)
         return None
 
-    advice = _get_predecessor_advice(callsign)
-    feedback_doc = _find_latest_feedback_doc()
-    # MARKER_195.21: Resolve key_docs (glob dates) + find latest predecessor doc
-    resolved_docs = _resolve_key_docs(role.key_docs) if hasattr(role, "key_docs") else []
-    predecessor_doc = _find_latest_predecessor_doc(callsign)
-
     context = {
         "role": role,
-        "predecessor_advice": advice,
-        "resolved_key_docs": resolved_docs,
-        "pending_tasks": pending_tasks or [],
-        "feedback_doc": feedback_doc,
-        "predecessor_doc": predecessor_doc,
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
