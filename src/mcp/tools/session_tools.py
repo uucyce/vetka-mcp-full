@@ -1098,7 +1098,8 @@ async def vetka_session_init(
     include_viewport: bool = True,
     include_pinned: bool = True,
     compress: bool = True,
-    max_context_tokens: int = 4000
+    max_context_tokens: int = 4000,
+    role: str = None,  # MARKER_198.P0.7: Accept explicit role parameter (avoids failed first call)
 ) -> Dict[str, Any]:
     """
     Initialize MCP session with fat context.
@@ -1108,6 +1109,11 @@ async def vetka_session_init(
     MARKER_108_1: Phase 108.1 - Unified MCP-Chat ID
     If chat_id provided, links session to existing VETKA chat.
     If not, creates new chat and returns its ID as session_id.
+
+    MARKER_198.P0.7: Accept explicit role= parameter so agents can call
+    vetka_session_init(role="Zeta") without an unexpected keyword argument crash.
+    Role lookup via agent_registry happens inside _execute_async; branch detection
+    is the fallback when role is not provided.
     """
     tool = SessionInitTool()
     return await tool._execute_async({
@@ -1117,7 +1123,8 @@ async def vetka_session_init(
         "include_viewport": include_viewport,
         "include_pinned": include_pinned,
         "compress": compress,
-        "max_context_tokens": max_context_tokens
+        "max_context_tokens": max_context_tokens,
+        "role": role,  # MARKER_198.P0.7: Forward role to SessionInitTool._execute_async
     })
 
 
