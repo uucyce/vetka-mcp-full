@@ -3087,6 +3087,45 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
         }
     )
 
+    # MARKER_B64: Auto-trigger scan-matrix for waveform/thumbnail pre-generation
+    auto_scan_job_id = ""
+    _project_id = str(project.get("project_id") or "")
+    if media_count > 0 and not degraded_mode:
+        # Only auto-scan if no scan data exists yet (idempotent)
+        existing_scan = store.load_scan_matrix_result()
+        if existing_scan is None or not existing_scan.get("items"):
+            try:
+                _duplicate = _find_active_duplicate_job(
+                    job_type="scan_matrix", project_id=_project_id,
+                    sandbox_root=str(body.sandbox_root),
+                )
+                if _duplicate is None and _count_active_background_jobs_for_sandbox(str(body.sandbox_root)) < _SANDBOX_BACKGROUND_LIMIT:
+                    scan_body = CutScanMatrixRequest(
+                        sandbox_root=str(body.sandbox_root),
+                        project_id=_project_id,
+                        limit=min(media_count, 24),
+                        run_stt=False,  # Skip STT on auto-scan (expensive)
+                    )
+                    job_store = get_cut_mcp_job_store()
+                    scan_job = job_store.create_job("scan_matrix", {
+                        "project_id": _project_id,
+                        "sandbox_root": str(body.sandbox_root),
+                        "limit": scan_body.limit,
+                        "run_stt": False,
+                        "task_type": "scan_matrix",
+                        "auto_triggered": True,
+                    })
+                    auto_scan_job_id = str(scan_job["job_id"])
+                    thread = threading.Thread(
+                        target=_run_cut_scan_matrix_job,
+                        args=(auto_scan_job_id, scan_body),
+                        daemon=True,
+                    )
+                    thread.start()
+                    logger.info("MARKER_B64: Auto-triggered scan-matrix job %s for %d files", auto_scan_job_id, media_count)
+            except Exception as exc:
+                logger.warning("MARKER_B64: Auto-scan trigger failed: %s", exc)
+
     return {
         "success": True,
         "schema_version": "cut_bootstrap_v1",
@@ -3100,6 +3139,8 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
             "profile": profile_payload,
         },
         "stats": stats,
+        # MARKER_B64: Auto-scan job ID for polling
+        "auto_scan_job_id": auto_scan_job_id or None,
         # MARKER_B58: Include clip count for verification
         "timeline_clip_count": sum(
             len(l.get("clips", []))
