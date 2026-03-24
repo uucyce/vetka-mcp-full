@@ -331,9 +331,8 @@
   border-color: var(--border-dim);
 }
 
-/* Global wildcard: any outline on any dockview element */
-.dockview-theme-dark .dv-groupview,
-.dockview-theme-dark .dv-groupview * {
+/* MARKER_GAMMA-CSS1: Narrowed from wildcard * to direct children only */
+.dockview-theme-dark .dv-groupview {
   outline-color: #505050;
 }
 
@@ -346,23 +345,23 @@
 
 /* ═══ MARKER_GAMMA-B3: Professional NLE details ═════════════════════════ */
 
-/* ── Tool cursors (applied by Alpha on timeline container via data-tool) ── */
-[data-active-tool="selection"] { cursor: default; }
-[data-active-tool="razor"] { cursor: crosshair; }
-[data-active-tool="hand"] { cursor: grab; }
-[data-active-tool="hand"]:active { cursor: grabbing; }
-[data-active-tool="zoom"] { cursor: zoom-in; }
-[data-active-tool="zoom"].zoom-out { cursor: zoom-out; }
-[data-active-tool="ripple"] { cursor: col-resize; }
-[data-active-tool="roll"] { cursor: col-resize; }
-[data-active-tool="slip"] { cursor: ew-resize; }
-[data-active-tool="slide"] { cursor: ew-resize; }
+/* ── MARKER_GAMMA-CSS1: Tool cursors — scoped to .dockview-theme-dark to prevent global bleed ── */
+.dockview-theme-dark [data-active-tool="selection"] { cursor: default; }
+.dockview-theme-dark [data-active-tool="razor"] { cursor: crosshair; }
+.dockview-theme-dark [data-active-tool="hand"] { cursor: grab; }
+.dockview-theme-dark [data-active-tool="hand"]:active { cursor: grabbing; }
+.dockview-theme-dark [data-active-tool="zoom"] { cursor: zoom-in; }
+.dockview-theme-dark [data-active-tool="zoom"].zoom-out { cursor: zoom-out; }
+.dockview-theme-dark [data-active-tool="ripple"] { cursor: col-resize; }
+.dockview-theme-dark [data-active-tool="roll"] { cursor: col-resize; }
+.dockview-theme-dark [data-active-tool="slip"] { cursor: ew-resize; }
+.dockview-theme-dark [data-active-tool="slide"] { cursor: ew-resize; }
 
-/* ── Toolbar tooltip with hotkey hint ── */
-[data-tooltip] {
+/* ── MARKER_GAMMA-CSS1: Tooltip — scoped to .dockview-theme-dark ── */
+.dockview-theme-dark [data-tooltip] {
   position: relative;
 }
-[data-tooltip]::after {
+.dockview-theme-dark [data-tooltip]::after {
   content: attr(data-tooltip);
   position: absolute;
   bottom: calc(100% + 6px);
@@ -382,7 +381,7 @@
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
-[data-tooltip]:hover::after {
+.dockview-theme-dark [data-tooltip]:hover::after {
   opacity: 1;
 }
 
@@ -391,24 +390,24 @@
   0%, 100% { opacity: 0.3; }
   50% { opacity: 0.6; }
 }
-[data-testid="cut-loading-skeleton"] {
+.dockview-theme-dark [data-testid="cut-loading-skeleton"] {
   background: #1a1a1a;
   border-radius: 3px;
   animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
 }
-[data-testid="cut-loading-skeleton-row"] {
+.dockview-theme-dark [data-testid="cut-loading-skeleton-row"] {
   display: flex;
   gap: 8px;
   padding: 6px;
 }
-[data-testid="cut-loading-skeleton-block"] {
+.dockview-theme-dark [data-testid="cut-loading-skeleton-block"] {
   background: #222;
   border-radius: 2px;
   animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
 }
 
 /* ── Empty state panels (monochrome, professional) ── */
-[data-testid="cut-empty-state"] {
+.dockview-theme-dark [data-testid="cut-empty-state"] {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -421,12 +420,12 @@
   user-select: none;
   gap: 8px;
 }
-[data-testid="cut-empty-state"] svg {
+.dockview-theme-dark [data-testid="cut-empty-state"] svg {
   opacity: 0.3;
   width: 48px;
   height: 48px;
 }
-[data-testid="cut-empty-state"] span {
+.dockview-theme-dark [data-testid="cut-empty-state"] span {
   color: #444;
   font-size: 11px;
 }
@@ -434,8 +433,8 @@
 /* ═══ MARKER_GAMMA-B2: Panel sizing + responsive ════════════════════════ */
 
 /* Monitor panels: maintain 16:9 aspect ratio */
-[data-testid="cut-panel-source"] > div:first-child,
-[data-testid="cut-panel-program"] > div:first-child {
+.dockview-theme-dark [data-testid="cut-panel-source"] > div:first-child,
+.dockview-theme-dark [data-testid="cut-panel-program"] > div:first-child {
   aspect-ratio: 16 / 9;
   max-height: 100%;
   overflow: hidden;
@@ -466,7 +465,7 @@
 }
 
 /* Timeline panel: stretch full width, no min-height constraint override */
-[data-testid="cut-panel-timeline"] {
+.dockview-theme-dark [data-testid="cut-panel-timeline"] {
   min-height: 120px;
 }
 
@@ -494,7 +493,7 @@
 /* ═══ MARKER_GAMMA-B1: Timeline clip visual polish (professional NLE look) ═══ */
 
 /* ── Clip blocks: name, duration, truncation ── */
-[data-testid="cut-timeline-clip"] {
+.dockview-theme-dark [data-testid="cut-timeline-clip"] {
   border-radius: 2px;
   overflow: hidden;
   font-family: system-ui, -apple-system, sans-serif;
@@ -502,12 +501,12 @@
   color: #ccc;
   transition: box-shadow 0.1s;
 }
-[data-testid="cut-timeline-clip"]:hover {
+.dockview-theme-dark [data-testid="cut-timeline-clip"]:hover {
   box-shadow: inset 0 0 0 1px #555;
 }
 
 /* Clip name label — truncate with ellipsis */
-[data-testid="cut-clip-label"] {
+.dockview-theme-dark [data-testid="cut-clip-label"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -521,7 +520,7 @@
 }
 
 /* Clip duration badge — tiny pill in corner */
-[data-testid="cut-clip-duration"] {
+.dockview-theme-dark [data-testid="cut-clip-duration"] {
   position: absolute;
   bottom: 2px;
   right: 3px;
@@ -536,15 +535,15 @@
 }
 
 /* ── Selected clip highlight (monochrome) ── */
-[data-testid="cut-timeline-clip"][data-selected="true"] {
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-selected="true"] {
   box-shadow: inset 0 0 0 1.5px #666;
 }
-[data-testid="cut-timeline-clip"][data-selected="true"]:hover {
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-selected="true"]:hover {
   box-shadow: inset 0 0 0 1.5px #888;
 }
 
 /* ── Audio clip waveform overlay ── */
-[data-testid="cut-clip-waveform"] {
+.dockview-theme-dark [data-testid="cut-clip-waveform"] {
   position: absolute;
   inset: 0;
   opacity: 0.6;
@@ -554,13 +553,13 @@
 }
 
 /* ── Playhead (red vertical line — only allowed color besides markers) ── */
-[data-testid="cut-playhead"] {
+.dockview-theme-dark [data-testid="cut-playhead"] {
   background: #cc3333;
   width: 1px;
   z-index: 20;
   pointer-events: none;
 }
-[data-testid="cut-playhead"]::before {
+.dockview-theme-dark [data-testid="cut-playhead"]::before {
   content: '';
   position: absolute;
   top: 0;
@@ -573,58 +572,58 @@
 }
 
 /* ── Video clip: thumbnail behind name ── */
-[data-testid="cut-timeline-clip"][data-lane-type="video"] {
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-lane-type="video"] {
   background: #1a1a1a;
 }
 /* Audio clip: darker background */
-[data-testid="cut-timeline-clip"][data-lane-type="audio"] {
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-lane-type="audio"] {
   background: #0f0f0f;
 }
 
 /* ── Transition handle (edit point) ── */
-[data-testid="cut-transition-handle"] {
+.dockview-theme-dark [data-testid="cut-transition-handle"] {
   background: #444;
   border-radius: 1px;
   cursor: col-resize;
   transition: background 0.1s;
 }
-[data-testid="cut-transition-handle"]:hover {
+.dockview-theme-dark [data-testid="cut-transition-handle"]:hover {
   background: #888;
 }
 
 /* ═══ MARKER_GAMMA-TIMELINE: ThumbnailStrip + Timeline visual polish ═══ */
 
 /* ThumbnailStrip inside timeline clips — filmstrip look */
-[data-testid="thumbnail-strip"] {
+.dockview-theme-dark [data-testid="thumbnail-strip"] {
   border-radius: 2px;
   opacity: 0.85;
   transition: opacity 0.15s;
 }
-[data-testid="thumbnail-strip"]:hover {
+.dockview-theme-dark [data-testid="thumbnail-strip"]:hover {
   opacity: 1;
 }
 /* Filmstrip frame borders — subtle separator between frames */
-[data-testid="thumbnail-strip"] img {
+.dockview-theme-dark [data-testid="thumbnail-strip"] img {
   border-right: 1px solid rgba(0, 0, 0, 0.5);
   image-rendering: auto;
 }
-[data-testid="thumbnail-strip"] img:last-child {
+.dockview-theme-dark [data-testid="thumbnail-strip"] img:last-child {
   border-right: none;
 }
 
 /* Timeline ruler — FCP7 monochrome */
-[data-testid="cut-timeline-ruler"] {
+.dockview-theme-dark [data-testid="cut-timeline-ruler"] {
   background: #111;
   border-bottom: 1px solid #333;
   user-select: none;
 }
-[data-testid="cut-timeline-ruler"] [data-ruler-label] {
+.dockview-theme-dark [data-testid="cut-timeline-ruler"] [data-ruler-label] {
   font-family: "JetBrains Mono", "SF Mono", monospace;
   -webkit-font-smoothing: antialiased;
 }
 
 /* Track header area — consistent with NLE dark theme */
-[data-testid^="cut-track-header"] {
+.dockview-theme-dark [data-testid^="cut-track-header"] {
   background: #0d0d0d;
   border-bottom: 1px solid #1a1a1a;
   border-right: 1px solid #222;
@@ -632,22 +631,22 @@
 }
 
 /* Track resize handle (when Alpha integrates TrackResizeHandle.tsx) */
-[data-testid="track-resize-handle"] {
+.dockview-theme-dark [data-testid="track-resize-handle"] {
   background: transparent;
   cursor: row-resize;
   transition: background-color 0.1s;
 }
-[data-testid="track-resize-handle"]:hover {
+.dockview-theme-dark [data-testid="track-resize-handle"]:hover {
   background: #333;
 }
-[data-testid="track-resize-handle"][data-dragging="true"] {
+.dockview-theme-dark [data-testid="track-resize-handle"][data-dragging="true"] {
   background: #555;
 }
 
 /* ═══ MARKER_GAMMA-POLISH1: Context menu consistent styling ════════════════ */
 
-[data-testid="cut-clip-context-menu"],
-[data-testid="cut-context-menu"] {
+.dockview-theme-dark [data-testid="cut-clip-context-menu"],
+.dockview-theme-dark [data-testid="cut-context-menu"] {
   background: #0b0b0b !important;
   border: 1px solid #2a2a2a !important;
   border-radius: 6px !important;
@@ -657,8 +656,8 @@
   color: #ccc;
 }
 
-[data-testid="cut-clip-context-menu"] button:hover,
-[data-testid="cut-context-menu"] button:hover {
+.dockview-theme-dark [data-testid="cut-clip-context-menu"] button:hover,
+.dockview-theme-dark [data-testid="cut-context-menu"] button:hover {
   background: #1a1a1a !important;
 }
 
