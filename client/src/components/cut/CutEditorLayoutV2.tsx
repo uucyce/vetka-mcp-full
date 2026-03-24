@@ -32,6 +32,7 @@ import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
+import TrimEditWindow from './TrimEditWindow';
 
 
 // ─── Styles ───
@@ -1098,6 +1099,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_TRIM_WINDOW: Floating trim edit overlay (FCP7 Ch.45-46) */}
+      <TrimEditWindow />
       <SaveIndicator />
     </div>
   );
