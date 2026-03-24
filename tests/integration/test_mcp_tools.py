@@ -256,7 +256,8 @@ class TestSessionInit:
         assert isinstance(result, dict)
         # The execute() method may return a context dict or a success wrapper
         inner = result.get("result", result)
-        assert "session_id" in inner or "status" in inner  # either live or async pending
+        # MARKER_198.P0.5: ELISION L2 may rename session_id → sid
+        assert "session_id" in inner or "sid" in inner or "status" in inner
 
     def test_session_init_with_explicit_chat_id(self):
         """Providing chat_id=X causes session_id to equal X."""
@@ -278,7 +279,9 @@ class TestSessionInit:
         result = asyncio.run(_run())
         assert isinstance(result, dict)
         inner = result.get("result", result)
-        assert inner.get("session_id") == "my-fixed-chat-id"
+        # MARKER_198.P0.5: ELISION L2 may rename session_id → sid
+        actual_sid = inner.get("session_id") or inner.get("sid")
+        assert actual_sid == "my-fixed-chat-id"
         assert inner.get("linked_to_existing") is True
 
     def test_session_init_initialized_flag(self):
