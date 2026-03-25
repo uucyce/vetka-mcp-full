@@ -199,6 +199,9 @@ export default function EffectsPanel() {
   const lanes = useCutEditorStore((s) => s.lanes);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
+  const addKeyframe = useCutEditorStore((s) => s.addKeyframe);
+  const removeKeyframe = useCutEditorStore((s) => s.removeKeyframe);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
 
   // Find selected clip
   let selectedClip = null;
@@ -235,6 +238,26 @@ export default function EffectsPanel() {
     }
     setExtEffects((prev) => ({ ...prev, [key]: newVal }));
   }, [extEffects, selectedClipId, setClipEffects]);
+
+  // MARKER_GAMMA-KF: Keyframe diamond — add/remove at playhead
+  const clipStartTime = selectedClip?.start_time ?? 0;
+  const relativeTime = currentTime - clipStartTime;
+  const clipKeyframes = selectedClip?.keyframes ?? {};
+
+  const hasKeyframeAt = useCallback((property: string): boolean => {
+    const kfs = clipKeyframes[property];
+    if (!kfs || kfs.length === 0) return false;
+    return kfs.some((kf) => Math.abs(kf.time_sec - relativeTime) < 0.02);
+  }, [clipKeyframes, relativeTime]);
+
+  const handleKeyframeDiamond = useCallback((property: string, value: number) => {
+    if (!selectedClipId) return;
+    if (hasKeyframeAt(property)) {
+      removeKeyframe(selectedClipId, property, relativeTime);
+    } else {
+      addKeyframe(selectedClipId, property, relativeTime, value);
+    }
+  }, [selectedClipId, relativeTime, hasKeyframeAt, addKeyframe, removeKeyframe]);
 
   const handleReset = useCallback(() => {
     if (selectedClipId) resetClipEffects(selectedClipId);
@@ -301,6 +324,23 @@ export default function EffectsPanel() {
                       style={SLIDER}
                     />
                     <span style={VALUE}>{s.fmt(getValue(s.key, s.storeKey))}</span>
+                    {selectedClipId && s.storeKey && (
+                      <button
+                        title={hasKeyframeAt(s.key) ? 'Remove keyframe' : 'Add keyframe'}
+                        onClick={() => handleKeyframeDiamond(s.key, getValue(s.key, s.storeKey))}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: '0 2px',
+                          fontSize: 8,
+                          color: hasKeyframeAt(s.key) ? '#ccc' : '#444',
+                          lineHeight: 1,
+                        }}
+                      >
+                        ◆
+                      </button>
+                    )}
                   </div>
                 ))}
                 {cat.toggles && (
