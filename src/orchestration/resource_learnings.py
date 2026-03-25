@@ -202,7 +202,7 @@ class ResourceLearningStore:
 
         Uses sync get_embedding() instead of async. Same Qdrant upsert + fallback logic.
         """
-        point_id = uuid.uuid4().hex[:16]
+        point_id = str(uuid.uuid4())
 
         payload = {
             "text": text,
@@ -266,7 +266,7 @@ class ResourceLearningStore:
         Returns:
             Point ID if stored, None if failed
         """
-        point_id = uuid.uuid4().hex[:16]
+        point_id = str(uuid.uuid4())
 
         payload = {
             "text": text,
