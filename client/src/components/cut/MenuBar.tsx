@@ -265,6 +265,7 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Export', submenu: [
+          // Editorial formats
           { label: 'Premiere XML', action: () => {
             window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'premiere_xml' } }));
             store.getState().setShowExportDialog(true);
@@ -279,6 +280,42 @@ export default function MenuBar() {
           }},
           { label: 'OTIO', action: () => {
             window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'otio' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { separator: true },
+          // Publish presets
+          { label: 'YouTube', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'youtube' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'Instagram Reels', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'instagram_reels' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'TikTok', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'tiktok' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'Telegram', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'telegram' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { separator: true },
+          // Master render codecs
+          { label: 'ProRes 422', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'prores_422' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'ProRes 4444', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'prores_4444' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'H.264', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'h264' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'H.265 (HEVC)', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'h265' } }));
             store.getState().setShowExportDialog(true);
           }},
         ]},
