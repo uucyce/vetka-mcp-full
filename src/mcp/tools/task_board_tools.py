@@ -288,7 +288,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     # MARKER_195.6: Record task_board action for protocol tracking
     # MARKER_195.21: Use consistent session_id (was hardcoded "mcp_default", debrief read "default")
-    _tracker_sid = arguments.get("session_id") or "mcp_default"
+    # MARKER_198.ROLE: Aligned fallback to "default" — session_init stores role on "default",
+    # so task_board must look it up on the same key.
+    _tracker_sid = arguments.get("session_id") or "default"
     try:
         from src.services.session_tracker import get_session_tracker
         get_session_tracker().record_action(
@@ -319,6 +321,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if action == "add":
             arguments.setdefault("role", _session_role["callsign"])
             arguments.setdefault("domain", _session_role["domain"])
+
+    # MARKER_198.ROLE: Fallback — if session role lookup failed but explicit role= was passed,
+    # use it for assigned_to on claim. Prevents "unknown" when session tracker has no binding.
+    if action == "claim" and arguments.get("role") and arguments.get("assigned_to", "unknown") == "unknown":
+        arguments["assigned_to"] = arguments["role"]
 
     if action == "add":
         title = arguments.get("title")
@@ -434,12 +441,30 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         else:
             max_limit = min(int(arguments.get("limit") or 40), 100)
             page = tasks[:max_limit]
-        result = {
-            "success": True,
-            "count": total,
-            "returned": len(page),
-            "truncated": total > len(page),
-            "tasks": [
+
+        # MARKER_198.ROLE: Personalized list — own tasks first, others collapsed
+        # Determine current agent's callsign from session or explicit role= argument
+        _my_callsign = None
+        if _session_role:
+            _my_callsign = _session_role["callsign"]
+        if not _my_callsign and arguments.get("role"):
+            _my_callsign = arguments["role"]
+
+        if _my_callsign:
+            _my_callsign_lower = _my_callsign.lower()
+            my_tasks = []
+            other_tasks = []
+            for t in page:
+                is_mine = (
+                    (t.get("role") or "").lower() == _my_callsign_lower
+                    or (t.get("assigned_to") or "").lower() == _my_callsign_lower
+                )
+                if is_mine:
+                    my_tasks.append(t)
+                else:
+                    other_tasks.append(t)
+            # Full detail for own tasks
+            my_tasks_out = [
                 {
                     "id": t["id"],
                     "title": t["title"],
@@ -450,10 +475,55 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     "source": t.get("source", ""),
                     "assigned_tier": t.get("assigned_tier"),
                     "project_id": t.get("project_id", ""),
+                    "role": t.get("role", ""),
+                    "assigned_to": t.get("assigned_to", ""),
                 }
-                for t in page
-            ],
-        }
+                for t in my_tasks
+            ]
+            # Collapsed for others — title truncated, fewer fields
+            other_tasks_out = [
+                {
+                    "id": t["id"],
+                    "title": t["title"][:60] + ("..." if len(t["title"]) > 60 else ""),
+                    "priority": t["priority"],
+                    "status": t["status"],
+                    "role": t.get("role", ""),
+                }
+                for t in other_tasks
+            ]
+            result = {
+                "success": True,
+                "count": total,
+                "returned": len(page),
+                "truncated": total > len(page),
+                "my_role": _my_callsign,
+                "my_tasks": my_tasks_out,
+                "my_count": len(my_tasks_out),
+                "other_tasks": other_tasks_out,
+                "other_count": len(other_tasks_out),
+            }
+        else:
+            result = {
+                "success": True,
+                "count": total,
+                "returned": len(page),
+                "truncated": total > len(page),
+                "tasks": [
+                    {
+                        "id": t["id"],
+                        "title": t["title"],
+                        "priority": t["priority"],
+                        "status": t["status"],
+                        "phase_type": t["phase_type"],
+                        "complexity": t["complexity"],
+                        "source": t.get("source", ""),
+                        "assigned_tier": t.get("assigned_tier"),
+                        "project_id": t.get("project_id", ""),
+                    }
+                    for t in page
+                ],
+            }
+
         if project_resolve:
             result["project_resolve"] = project_resolve
         return result
