@@ -401,6 +401,7 @@ interface CutEditorState {
   toggleSolo: (laneId: string) => void;
   toggleLock: (laneId: string) => void;      // MARKER_W2.1
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
+  setExclusiveTarget: (laneId: string) => void; // MARKER_TL3: Exclusive lane target
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
@@ -807,6 +808,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       else targetedLanes.add(laneId);
       return { targetedLanes };
     }),
+  // MARKER_TL3: Exclusive target — click lane header (no Shift) selects only this lane
+  setExclusiveTarget: (laneId) =>
+    set(() => ({ targetedLanes: new Set([laneId]) })),
   // MARKER_FIX-TIMELINE-2: Track visibility toggle (eye icon)
   toggleVisibility: (laneId) =>
     set((state) => {

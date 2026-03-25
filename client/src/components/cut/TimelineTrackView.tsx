@@ -491,6 +491,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
   const toggleLock = useCutEditorStore((state) => state.toggleLock);
   const toggleTarget = useCutEditorStore((state) => state.toggleTarget);
+  const setExclusiveTarget = useCutEditorStore((state) => state.setExclusiveTarget);
   const toggleVisibility = useCutEditorStore((state) => state.toggleVisibility);
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
@@ -1848,7 +1849,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const laneH = trackHeights[lane.lane_id] ?? trackHeight;
           return (
             <div key={lane.lane_id} data-testid={`cut-timeline-lane-${lane.lane_id}`} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
-              <div style={LANE_HEADER}>
+              <div style={{ ...LANE_HEADER, cursor: 'pointer' }} onClick={(e) => {
+                if (e.shiftKey) { toggleTarget(lane.lane_id); } else { setExclusiveTarget(lane.lane_id); }
+              }}>
                 {/* MARKER_COMPACT: Label row — icon + label + eye toggle inline */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', justifyContent: 'center' }}>
                   <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>{config.icon}</span>
