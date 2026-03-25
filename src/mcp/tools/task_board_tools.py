@@ -122,7 +122,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -178,6 +178,9 @@ TASK_BOARD_SCHEMA = {
         "q1_bugs": {"type": "string", "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)"},
         "q2_worked": {"type": "string", "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)"},
         "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
+        # MARKER_191.16: close / bulk_close fields
+        "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
+        "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close)"},
     },
     "required": ["action"]
 }
@@ -791,6 +794,49 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         notes = arguments.get("notes", "")
         verified_by = arguments.get("verified_by", arguments.get("assigned_to", ""))
         return board.verify_task(task_id, verdict, notes, verified_by)
+
+    # MARKER_191.16: close — close task without git commit, with a reason field
+    elif action == "close":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for close"}
+        reason = arguments.get("reason", "closed")
+        task = board.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        updated = board.update_task(
+            task_id,
+            status="done_main",
+            _history_event="closed",
+            _history_source="task_board_close",
+            _history_reason=reason,
+        )
+        if updated:
+            return {"success": True, "task_id": task_id, "status": "done_main", "closed": True, "reason": reason}
+        return {"success": False, "error": f"Failed to close task {task_id}"}
+
+    # MARKER_191.16: bulk_close — close multiple tasks at once without git commit
+    elif action == "bulk_close":
+        task_ids = arguments.get("task_ids", [])
+        if not task_ids:
+            return {"success": False, "error": "task_ids list is required for bulk_close"}
+        reason = arguments.get("reason", "bulk_closed")
+        results = []
+        for tid in task_ids:
+            task = board.get_task(tid)
+            if not task:
+                results.append({"task_id": tid, "success": False, "error": "not found"})
+                continue
+            updated = board.update_task(
+                tid,
+                status="done_main",
+                _history_event="closed",
+                _history_source="task_board_bulk_close",
+                _history_reason=reason,
+            )
+            results.append({"task_id": tid, "success": bool(updated)})
+        closed_count = sum(1 for r in results if r.get("success"))
+        return {"success": True, "closed_count": closed_count, "total": len(task_ids), "results": results}
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
