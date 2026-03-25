@@ -224,6 +224,8 @@ interface CutEditorState {
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
+  masterVolume: number;                // MARKER_B75: master bus volume 0..1.5
+  masterPan: number;                   // MARKER_B75: master bus pan -1..+1
   snapEnabled: boolean;
 
   // === Selection ===
@@ -405,6 +407,8 @@ interface CutEditorState {
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
+  setMasterVolume: (v: number) => void;  // MARKER_B75
+  setMasterPan: (v: number) => void;     // MARKER_B75
   toggleSnap: () => void;
   setSelectedClip: (id: string | null) => void;
   // MARKER_W3.7: Multi-select
@@ -615,6 +619,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   hiddenLanes: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
+  masterVolume: 1.0,
+  masterPan: 0,
   snapEnabled: true,
 
   // Selection
@@ -834,6 +840,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         [laneId]: Math.max(-1, Math.min(1, pan)),
       },
     })),
+  // MARKER_B75: Master bus volume + pan
+  setMasterVolume: (v) => set({ masterVolume: Math.max(0, Math.min(1.5, v)) }),
+  setMasterPan: (v) => set({ masterPan: Math.max(-1, Math.min(1, v)) }),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
   setSelectedClip: (id) => set({ selectedClipId: id, selectedClipIds: id ? new Set([id]) : new Set() }),
   // MARKER_W3.7: Multi-select actions

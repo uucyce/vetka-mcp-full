@@ -136,8 +136,26 @@ def _estimate_bpm_autocorrelation(samples: NDArray[np.float32], sr: int) -> tupl
         onset_env /= mx
 
     # Find onset peaks
-    from scipy.signal import find_peaks
-    peak_indices, _ = find_peaks(onset_env, height=0.3, distance=sr // (hop * 4))
+    try:
+        from scipy.signal import find_peaks as _scipy_find_peaks
+        peak_indices, _ = _scipy_find_peaks(onset_env, height=0.3, distance=sr // (hop * 4))
+    except ImportError:
+        # scipy not available — use simple local-maxima fallback
+        _min_dist = max(1, sr // (hop * 4))
+        _height = 0.3
+        _candidates = [
+            i for i in range(1, len(onset_env) - 1)
+            if onset_env[i] > onset_env[i - 1] and onset_env[i] > onset_env[i + 1]
+            and onset_env[i] >= _height
+        ]
+        # enforce minimum distance between peaks
+        peak_indices_list: list[int] = []
+        last = -_min_dist
+        for idx in _candidates:
+            if idx - last >= _min_dist:
+                peak_indices_list.append(idx)
+                last = idx
+        peak_indices = np.array(peak_indices_list, dtype=np.intp)
     onset_times = [float(idx * hop / sr) for idx in peak_indices]
 
     # Autocorrelation for BPM
