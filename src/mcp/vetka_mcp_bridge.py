@@ -112,6 +112,13 @@ from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
 # MARKER_119.8: Context7 library docs for @coder
 from src.mcp.tools.library_docs_tool import register_library_docs_tool
 
+# MARKER_198.P2.4: Register failure workaround hook at import time
+try:
+    from src.services.reflex_workaround_hook import register_workaround_hook
+    register_workaround_hook()
+except Exception:
+    pass  # Hook registration is optional
+
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
 VETKA_TIMEOUT = 90.0  # FIX_95.6: Increased from 30s for LLM calls (Grok can take 60s+)
