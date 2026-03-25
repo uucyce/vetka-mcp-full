@@ -14,10 +14,13 @@ MARKER_108_7_AUTO_DIGEST: Auto-update project_digest.json after successful commi
 """
 import subprocess
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from .base_tool import BaseMCPTool
+
+logger = logging.getLogger("VETKA_MCP")
 
 # MARKER_178.FIX_HARDCODE: Resolve PROJECT_ROOT dynamically (worktree-safe)
 def _resolve_git_root() -> Path:
