@@ -625,7 +625,16 @@ export default function MenuBar() {
         { label: 'Delete Tracks...', disabled: true },
         { separator: true },
         { label: 'Nest Item(s)', disabled: true },
-        { label: 'Solo Selected Item(s)', disabled: true },
+        { label: 'Solo Selected Item(s)', action: () => {
+          const s = store.getState();
+          if (!s.selectedClipId) return;
+          for (const lane of s.lanes) {
+            if (lane.clips.some((c) => c.clip_id === s.selectedClipId)) {
+              s.toggleSolo(lane.lane_id);
+              break;
+            }
+          }
+        }},
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
           // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
@@ -763,7 +772,9 @@ export default function MenuBar() {
       items: [
         { label: 'Keyboard Shortcuts Reference', action: () => setHotkeyEditorOpen(true) },
         { separator: true },
-        { label: 'About CUT', disabled: true },
+        { label: 'About CUT', action: () => {
+          window.alert('CUT — Cognitive Universal Timeline\nNarrative graph navigator for film editors.\n\nVersion: 0.1.0-alpha\nBuilt with VETKA AI');
+        }},
       ],
     },
   ];
