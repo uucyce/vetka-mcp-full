@@ -1988,7 +1988,23 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
-                      onDoubleClick={() => {
+                      onDoubleClick={(e) => {
+                        // MARKER_DBLCLICK_TRIM: double-click near edit point opens TrimEditWindow
+                        const TRIM_ZONE_PX = 10;
+                        const offsetX = e.nativeEvent.offsetX;
+                        const clipWidthPx = Math.max(4, width);
+                        if (offsetX <= TRIM_ZONE_PX) {
+                          // head trim — left edge
+                          e.stopPropagation();
+                          useCutEditorStore.getState().setTrimEditActive(true, clip.clip_id, startSec);
+                          return;
+                        }
+                        if (offsetX >= clipWidthPx - TRIM_ZONE_PX) {
+                          // tail trim — right edge
+                          e.stopPropagation();
+                          useCutEditorStore.getState().setTrimEditActive(true, clip.clip_id, startSec + durationSec);
+                          return;
+                        }
                         // MARKER_DBLCLICK_SOURCE: FCP7 — double-click clip opens in Source Monitor
                         const s = useCutEditorStore.getState();
                         s.setSourceMedia(clip.source_path);
@@ -2181,7 +2197,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
                       {/* MARKER_CAMELOT: PULSE Camelot key badge */}
                       {(() => {
-                        const pulse = pulseScores[clip.clip_id] || pulseScores[clip.source_path];
+                        const pulse = pulseScores[clip.scene_id || ''] || pulseScores[clip.clip_id] || pulseScores[clip.source_path];
                         if (!pulse?.camelot_key) return null;
                         // Pendulum: -1 (dark/tense) to +1 (bright/resolved) → grey scale
                         const brightness = pulse.pendulum != null ? Math.round(80 + (pulse.pendulum + 1) * 40) : 130;
