@@ -1371,6 +1371,131 @@ class TaskBoard:
         return cleaned
 
     # ==========================================
+    # MARKER_198.STALE: STALE TASK DETECTION
+    # ==========================================
+
+    def stale_check(self, limit: int = 50, auto_close: bool = False) -> Dict[str, Any]:
+        """MARKER_198.STALE: Detect pending/needs_fix tasks that are already implemented.
+
+        Searches git log --all for [task:ID] commits across ALL branches.
+        Also checks if task title keywords appear in recent commit messages.
+
+        Args:
+            limit: Max pending tasks to scan (default 50, most recent first)
+            auto_close: If True, close confirmed stale tasks. If False, only flag them.
+
+        Returns:
+            {candidates: [{task_id, title, evidence, score}], closed: [...], scanned: int}
+        """
+        import subprocess
+
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('pending', 'needs_fix') "
+            "ORDER BY priority ASC, created_at DESC LIMIT ?",
+            (limit,),
+        )
+        tasks = [self._row_to_task(row) for row in cursor]
+
+        candidates = []
+        closed = []
+
+        for task in tasks:
+            tid = task["id"]
+            title = task.get("title", "")
+            evidence = []
+            score = 0.0
+
+            # Check 1: git log --all for [task:ID] tag in commit messages
+            try:
+                tag_result = subprocess.run(
+                    ["git", "log", "--all", "--oneline", "--fixed-strings",
+                     f"--grep=[task:{tid}]", "-1"],
+                    cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                )
+                if tag_result.returncode == 0 and tag_result.stdout.strip():
+                    commit_line = tag_result.stdout.strip()
+                    evidence.append(f"commit_tagged: {commit_line}")
+                    score += 0.9  # Very strong signal
+            except Exception:
+                pass
+
+            # Check 2: title keywords in recent commit messages (weaker signal)
+            if score < 0.5 and title:
+                # Extract key terms from title (skip common prefixes)
+                _title_clean = title
+                for _prefix in ("ZETA-FIX:", "ALPHA-P1:", "BETA-", "GAMMA-", "DELTA-",
+                                 "EPSILON-", "MERGE-REQUEST:", "ZETA:", "ZETA-RECON:"):
+                    _title_clean = _title_clean.replace(_prefix, "").strip()
+                # Use first 3 significant words as grep pattern
+                _words = [w for w in _title_clean.split() if len(w) > 3][:3]
+                if len(_words) >= 2:
+                    _pattern = ".*".join(_words[:2])
+                    try:
+                        kw_result = subprocess.run(
+                            ["git", "log", "--all", "--oneline", f"--grep={_pattern}",
+                             "-i", "-1"],
+                            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                        )
+                        if kw_result.returncode == 0 and kw_result.stdout.strip():
+                            commit_line = kw_result.stdout.strip()
+                            evidence.append(f"title_keyword_match: {commit_line}")
+                            score += 0.4
+                    except Exception:
+                        pass
+
+            # Check 3: allowed_paths have commits newer than task creation
+            if score < 0.5:
+                allowed = task.get("allowed_paths") or []
+                created_at = task.get("created_at", "")
+                if allowed and created_at:
+                    try:
+                        for ap in allowed[:3]:
+                            ap_result = subprocess.run(
+                                ["git", "log", "--all", "--oneline",
+                                 f"--since={created_at[:10]}", "-1", "--", ap],
+                                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                            )
+                            if ap_result.returncode == 0 and ap_result.stdout.strip():
+                                evidence.append(f"path_changed_after_creation: {ap} → {ap_result.stdout.strip()}")
+                                score += 0.2
+                                break
+                    except Exception:
+                        pass
+
+            if evidence:
+                entry = {
+                    "task_id": tid,
+                    "title": title[:80],
+                    "status": task.get("status"),
+                    "score": round(score, 2),
+                    "evidence": evidence,
+                }
+                candidates.append(entry)
+
+                if auto_close and score >= 0.8:
+                    self.update_task(
+                        tid,
+                        status="done_main",
+                        _history_event="stale_auto_closed",
+                        _history_source="stale_check",
+                        _history_reason=f"score={score:.2f}: {evidence[0][:100]}",
+                    )
+                    closed.append(tid)
+                    logger.info(f"[TaskBoard] Stale auto-closed {tid}: {evidence[0][:60]}")
+
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        return {
+            "success": True,
+            "scanned": len(tasks),
+            "candidates": candidates,
+            "candidates_count": len(candidates),
+            "closed": closed,
+            "closed_count": len(closed),
+            "auto_close": auto_close,
+        }
+
+    # ==========================================
     # MARKER_130.C16A: AGENT COORDINATION
     # ==========================================
 
@@ -2460,7 +2585,24 @@ class TaskBoard:
         logger.info(f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
                      f"tests_delta={eval_delta['tests_delta']}")
 
-        return {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
+        # MARKER_198.STALE: Post-merge stale scan — flag pending tasks that may be resolved by this merge
+        stale_hint = None
+        try:
+            stale_result = self.stale_check(limit=30, auto_close=False)
+            if stale_result.get("candidates_count", 0) > 0:
+                stale_hint = {
+                    "stale_candidates": stale_result["candidates_count"],
+                    "top_stale": stale_result["candidates"][:5],
+                    "hint": "Run action=stale_check auto_close=true to close confirmed stale tasks",
+                }
+                logger.info(f"[MergeRequest] Post-merge stale scan found {stale_result['candidates_count']} candidates")
+        except Exception as _e:
+            logger.debug(f"[MergeRequest] Post-merge stale scan failed (non-fatal): {_e}")
+
+        result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
+        if stale_hint:
+            result["stale_hint"] = stale_hint
+        return result
 
     async def _execute_merge(
         self, branch: str, strategy: str, commits: List[str]
