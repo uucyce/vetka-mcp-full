@@ -167,6 +167,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
       const s = useCutEditorStore.getState();
+      // MARKER_TD5: Dynamic Trim — J moves edit point backward when trim overlay is active
+      if (s.trimEditActive) {
+        const frameSec = 1 / s.projectFramerate;
+        s.setTrimEditActive(true, s.trimEditClipId, Math.max(0, s.trimEditPoint - frameSec));
+        return;
+      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
@@ -194,6 +200,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     shuttleForward: () => {
       const s = useCutEditorStore.getState();
+      // MARKER_TD5: Dynamic Trim — L moves edit point forward when trim overlay is active
+      if (s.trimEditActive) {
+        const frameSec = 1 / s.projectFramerate;
+        s.setTrimEditActive(true, s.trimEditClipId, s.trimEditPoint + frameSec);
+        return;
+      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
