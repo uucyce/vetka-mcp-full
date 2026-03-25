@@ -1159,10 +1159,31 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W10.6: Per-clip effects
   // MARKER_UNDO_EFFECTS: Effects + keyframes via applyTimelineOps
+  // Optimistic local update + backend undo stack
   setClipEffects: (clipId, effects) => {
+    // Local optimistic: merge partial effects onto clip
+    set((s) => ({
+      lanes: s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId
+            ? { ...c, effects: { ...(c.effects || DEFAULT_CLIP_EFFECTS), ...effects } }
+            : c
+        ),
+      })),
+    }));
     void get().applyTimelineOps([{ op: 'set_effects', clip_id: clipId, effects }]);
   },
   resetClipEffects: (clipId) => {
+    // Local optimistic: reset effects to undefined (neutral)
+    set((s) => ({
+      lanes: s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId ? { ...c, effects: undefined } : c
+        ),
+      })),
+    }));
     void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
   },
 
