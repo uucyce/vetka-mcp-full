@@ -1081,8 +1081,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const audioClipsRef = useRef(audioClips);
   useEffect(() => { audioClipsRef.current = audioClips; });
 
+  const lastSyncedTimeRef = useRef(0);
+
   useEffect(() => {
     if (!isPlayingRef.current) return;
+    const delta = Math.abs(currentTime - lastSyncedTimeRef.current);
+    if (delta < 0.1) return; // Skip rAF ticks (~0.016s), only re-sync on real seeks
+    lastSyncedTimeRef.current = currentTime;
     // currentTime changed while playing → re-sync audio to new position
     stopAll();
     playAt(audioClipsRef.current, currentTime);
