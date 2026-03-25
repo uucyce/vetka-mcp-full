@@ -310,7 +310,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   slipTool:          'y',
   slideTool:         'u',
   rippleTool:        'b',
-  rollTool:          'n',
+  rollTool:          'Shift+n',
   handTool:          'h',
   zoomTool:          'z',
   // Markers
