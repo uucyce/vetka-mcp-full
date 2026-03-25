@@ -32,8 +32,8 @@ vetka_task_board action=active_agents
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | Memory, pipeline, task_board, REFLEX |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
-| `cd ~/Documents/VETKA_Project/vetka_live_03 && claude` | **Sigma/Zeta/...** | Cross-cutting | Инфра, REFLEX, pipeline |
 
 Или одной строкой (копируй целиком):
 ```bash
@@ -52,11 +52,11 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude
 # Epsilon (QA2)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 
-# Commander
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
+# Zeta (Harness)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
 
-# Cross-cutting (Sigma/Zeta)
-cd ~/Documents/VETKA_Project/vetka_live_03 && claude
+# Commander (Architect)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
 ```
 
 
@@ -76,11 +76,11 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --
 # Epsilon (QA2)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions
 
-# Zeta (Harness)
+# Zeta (Harness / Memory / Infrastructure)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
 
-# Commander (ты)
-cd ~/Documents/VETKA_Project/vetka_live_03 && claude
+# Commander (Architect / Coordinator)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
 
 
 
