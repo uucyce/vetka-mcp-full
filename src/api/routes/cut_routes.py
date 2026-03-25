@@ -1450,6 +1450,72 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_id": clip_id, "keys": list(meta.keys())})
             continue
 
+        # MARKER_B71: set_effects — set/replace effects list on a clip
+        if op_type == "set_effects":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for set_effects")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            effects = op.get("effects")
+            if effects is None:
+                clip.pop("effects", None)
+            else:
+                if not isinstance(effects, list):
+                    raise ValueError("effects must be a list")
+                clip["effects"] = effects
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
+            continue
+
+        # MARKER_B71: add_keyframe — append a keyframe to clip's keyframes list
+        if op_type == "add_keyframe":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for add_keyframe")
+            prop = str(op.get("property") or "").strip()
+            if not prop:
+                raise ValueError("property is required for add_keyframe")
+            time_sec = float(op.get("time_sec", -1))
+            if time_sec < 0:
+                raise ValueError("time_sec must be >= 0 for add_keyframe")
+            value = op.get("value")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            keyframes = clip.setdefault("keyframes", [])
+            kf = {"property": prop, "time_sec": round(time_sec, 4), "value": value}
+            if "easing" in op:
+                kf["easing"] = str(op["easing"])
+            keyframes.append(kf)
+            keyframes.sort(key=lambda k: (str(k.get("property") or ""), float(k.get("time_sec") or 0.0)))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "value": value})
+            continue
+
+        # MARKER_B71: remove_keyframe — remove keyframe by property+time
+        if op_type == "remove_keyframe":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for remove_keyframe")
+            prop = str(op.get("property") or "").strip()
+            if not prop:
+                raise ValueError("property is required for remove_keyframe")
+            time_sec = float(op.get("time_sec", -1))
+            if time_sec < 0:
+                raise ValueError("time_sec must be >= 0 for remove_keyframe")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            keyframes = clip.get("keyframes", [])
+            original_len = len(keyframes)
+            clip["keyframes"] = [
+                k for k in keyframes
+                if not (str(k.get("property") or "") == prop and abs(float(k.get("time_sec") or 0.0) - time_sec) < 0.001)
+            ]
+            removed = original_len - len(clip["keyframes"])
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "removed": removed})
+            continue
+
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
@@ -3471,3 +3537,5 @@ async def cut_apply_script_to_dag(body: dict) -> dict:
 # cut_audio_loudness, cut_loudness_standards
 # ---------------------------------------------------------------------------
 # (Render code removed — now in cut_routes_render.py)
+# MARKER_B72: Re-export _emit_render_progress for backward compat (tests import from here)
+from src.api.routes.cut_routes_render import _emit_render_progress as _emit_render_progress  # noqa: F401
