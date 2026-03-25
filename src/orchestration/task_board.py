@@ -1198,6 +1198,12 @@ class TaskBoard:
             if updates["status"] not in VALID_STATUSES:
                 logger.warning(f"[TaskBoard] Invalid status: {updates['status']}")
                 return False
+            # MARKER_198.GUARD: Block done_worktree without commit_hash
+            if updates["status"] == "done_worktree":
+                has_commit = updates.get("commit_hash") or task.get("commit_hash")
+                if not has_commit:
+                    logger.warning(f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash")
+                    return False
         if "phase_type" in updates:
             try:
                 updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
@@ -1504,6 +1510,17 @@ class TaskBoard:
         is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 
+        # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
+        if final_status == "done_worktree" and not commit_hash and not manual_override:
+            return {
+                "success": False,
+                "error": (
+                    f"Cannot mark task {task_id} as done_worktree without commit_hash. "
+                    "Use action=complete with branch= to auto-commit, or provide commit_hash manually."
+                ),
+                "task_id": task_id,
+            }
+
         update = {
             "status": final_status,
             "completed_at": datetime.now().isoformat(),
@@ -1516,6 +1533,10 @@ class TaskBoard:
             update["branch_name"] = branch
         if commit_hash:
             update["commit_hash"] = commit_hash
+        elif manual_override and final_status == "done_worktree":
+            # MARKER_198.GUARD: manual_override bypasses commit_hash guard —
+            # set marker so update_task's done_worktree guard passes
+            update["commit_hash"] = "manual_override"
         if commit_message:
             update["commit_message"] = commit_message[:200]  # Truncate
         if task.get("require_closure_proof"):
