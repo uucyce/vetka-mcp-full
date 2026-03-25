@@ -47,6 +47,7 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
         "roadmap_before_tasks": {"severity": "warn", "enabled": True},
         "experience_report_after_task": {"severity": "warn", "enabled": True},
         "recon_relevance": {"severity": "warn", "enabled": True},
+        "no_raw_git_merge": {"severity": "block", "enabled": True},
     },
     "exempt_paths": ["docs/", "tests/", "data/"],
     "enforce_paths": ["src/**/*.py", "client/src/**/*.ts", "client/src/**/*.tsx"],
@@ -54,6 +55,11 @@ _DEFAULT_CONFIG: Dict[str, Any] = {
 
 # Edit/Write tool names that trigger code-edit rules
 _EDIT_TOOL_NAMES = {"Edit", "Write", "vetka_edit_file", "NotebookEdit"}
+
+# Regex to detect raw `git merge` while allowing safe variants like --abort, --continue, --quit, merge-base
+# Note: \bgit\s+merge(?![-\w]) ensures we don't match git merge-base (hyphenated subcommands)
+# The negative lookahead also skips --abort / --continue / --quit safe flags
+_GIT_MERGE_RE = re.compile(r'\bgit\s+merge(?!-|\s+(?:--abort|--continue|--quit)\b)')
 
 # All known MCP tool prefixes
 _MCP_TOOL_PREFIXES = ("vetka_",)
@@ -387,12 +393,45 @@ class ProtocolGuard:
             ),
         )
 
+    def _check_no_raw_git_merge(self, session: Any, tool_name: str, args: Dict) -> Optional[ProtocolViolation]:
+        """Block raw `git merge` commands — must use task_board action=merge_request."""
+        if tool_name not in ("Bash", "run_bash"):
+            return None
+        if not self._is_enabled("no_raw_git_merge"):
+            return None
+
+        command = args.get("command", "")
+        if not _GIT_MERGE_RE.search(command):
+            return None
+
+        # Log to CORTEX — never let this break the guard
+        try:
+            from src.services.reflex_feedback import ReflexFeedback
+            fb = ReflexFeedback()
+            fb.record(
+                tool_id="Bash",
+                phase_type="git_ops",
+                outcome="blocked",
+                usefulness=0.0,
+                verifier_pass=False,
+                notes="no_raw_git_merge: blocked raw git merge command",
+            )
+        except Exception:
+            pass
+
+        return ProtocolViolation(
+            rule_id="no_raw_git_merge",
+            severity=self._severity("no_raw_git_merge"),
+            message="Raw git merge blocked. Use task_board action=merge_request.",
+            suggestion="Run: vetka_task_board action=merge_request branch=<your-branch>",
+        )
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     # MARKER_196.3: Critical rules that must NEVER have severity downgraded by trust
-    _CRITICAL_RULES = {"task_before_code", "taskboard_before_work"}
+    _CRITICAL_RULES = {"task_before_code", "taskboard_before_work", "no_raw_git_merge"}
 
     def check(self, session: Any, tool_name: str, args: Optional[Dict] = None) -> List[ProtocolViolation]:
         """Evaluate all rules against the given tool invocation.
@@ -416,6 +455,7 @@ class ProtocolGuard:
             self._check_roadmap_before_tasks,
             self._check_experience_report_after_task,
             self._check_recon_relevance,
+            self._check_no_raw_git_merge,
         ]
 
         for checker in checkers:
