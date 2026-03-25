@@ -135,6 +135,33 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
   );
 }
 
+// ─── MARKER_B75: Clipping indicator — latched red light (FCP7 Ch.55) ──
+
+function ClipIndicator({ level }: { level: number }) {
+  const [clipped, setClipped] = useState(false);
+
+  useEffect(() => {
+    if (level >= 0.95) setClipped(true);
+  }, [level]);
+
+  if (!clipped) return null;
+
+  return (
+    <div
+      onClick={() => setClipped(false)}
+      title="CLIP — click to reset"
+      style={{
+        width: 16, height: 10, lineHeight: '10px', textAlign: 'center' as const,
+        fontSize: 6, fontFamily: 'monospace', fontWeight: 700,
+        background: '#ef4444', color: '#fff', borderRadius: 1,
+        cursor: 'pointer', userSelect: 'none' as const, flexShrink: 0,
+      }}
+    >
+      CLIP
+    </div>
+  );
+}
+
 // ─── VU indicator (simulated) ──────────────────────────────────────
 
 function VuIndicator({ level, muted }: { level: number; muted: boolean }) {
@@ -273,6 +300,7 @@ function ChannelStrip({
       <div style={LABEL}>{label}</div>
       {/* MARKER_B52: Use real audio level × volume for VU */}
       <VuIndicator level={audioLevel * volume} muted={muted} />
+      <ClipIndicator level={audioLevel * volume} />
       <VolumeFader value={volume} onChange={onVolumeChange} />
       <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666' }}>
         {Math.round(volume * 100)}%
@@ -364,6 +392,7 @@ export default function AudioMixer() {
       <div style={{ ...STRIP, background: '#151515' }}>
         <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
         <VuIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={false} />
+        <ClipIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} />
         <VolumeFader value={masterVolume} onChange={setMasterVolume} />
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
           {Math.round(masterVolume * 100)}%
