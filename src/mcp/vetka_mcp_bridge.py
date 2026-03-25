@@ -1960,6 +1960,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log error response to group chat
             await log_mcp_response(name, None, request_id, duration_ms, error=error_text)
 
+            # MARKER_198.P2.5: Post-tool hooks on HTTP error (was missing for 4xx/5xx)
+            try:
+                from src.mcp.bridge_hooks import run_post_hooks
+                _hook_sid = session_context.get()
+                _suggestion = await run_post_hooks(name, arguments, error_text, _hook_sid, error=Exception(f"HTTP {response.status_code}"))
+                if _suggestion:
+                    error_text += f"\n\n[WORKAROUND]\n{_suggestion}"
+            except Exception:
+                pass
+
             return [TextContent(type="text", text=error_text)]
 
     except httpx.ConnectError as e:

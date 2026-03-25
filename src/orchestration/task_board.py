@@ -2600,20 +2600,7 @@ class TaskBoard:
             return 0
         except Exception:
             return 0
-    # ==========================================
-    # TODO MARKER_126.11B: MULTI-AGENT CLAIM SUPPORT
-    # ==========================================
-    # def claim_task(self, task_id: str, agent_id: str, agent_type: str = "mcp") -> bool:
-    #     """External agent claims a task. Sets status='claimed', records agent info."""
-    #     pass
-    #
-    # def release_task(self, task_id: str, agent_id: str, new_status: str = "done") -> bool:
-    #     """Agent releases task after completion."""
-    #     pass
-    #
-    # def get_claimable_tasks(self, limit: int = 5) -> List[Dict]:
-    #     """Returns pending tasks ready for claiming. For session_init."""
-    #     pass
+    # MARKER_126.11B stubs removed — superseded by live claim_task() at line ~1377
 
     # ==========================================
     # STATISTICS (MARKER_126.0B)
