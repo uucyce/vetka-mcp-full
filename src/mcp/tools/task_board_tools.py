@@ -180,7 +180,7 @@ TASK_BOARD_SCHEMA = {
         "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
         # MARKER_191.16: close / bulk_close fields
         "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
-        "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close)"},
+        "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close or bulk complete via action=complete)"},
     },
     "required": ["action"]
 }
@@ -540,6 +540,36 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     # MARKER_186.4: worktree-aware completion — detect branch, set done_worktree/done_main
     # Flow: agent → complete → detect branch → auto-commit (scoped) → digest → close task
     elif action == "complete":
+        # MARKER_191.19: Bulk complete — multiple task_ids in one commit
+        task_ids = arguments.get("task_ids", [])
+        if task_ids and len(task_ids) > 1:
+            # Bulk mode: complete multiple tasks with a single commit hash
+            commit_hash = arguments.get("commit_hash")
+            commit_message = arguments.get("commit_message")
+            branch = arguments.get("branch")
+            results = []
+            for tid in task_ids:
+                task = board.get_task(tid)
+                if not task:
+                    results.append({"task_id": tid, "success": False, "error": "not found"})
+                    continue
+                r = board.complete_task(
+                    tid,
+                    commit_hash or "",
+                    commit_message or f"bulk complete {len(task_ids)} tasks",
+                    branch=branch,
+                )
+                results.append({"task_id": tid, "success": r.get("success", False)})
+            completed_count = sum(1 for r in results if r.get("success"))
+            return {
+                "success": True,
+                "completed_count": completed_count,
+                "total": len(task_ids),
+                "results": results,
+                "commit_hash": commit_hash,
+            }
+
+        # Original single task_id path continues...
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for complete"}
