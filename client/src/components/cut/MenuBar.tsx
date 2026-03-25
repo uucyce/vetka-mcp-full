@@ -536,76 +536,40 @@ export default function MenuBar() {
         { label: 'Render All', disabled: true },
         { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
-          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
-          // TODO: Replace with store.getState().splitClip() when Alpha adds store action
+          // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
           const s = store.getState();
           const t = s.currentTime;
-          const newLanes = s.lanes.map((lane) => ({
-            ...lane,
-            clips: lane.clips.flatMap((c) => {
-              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                const leftDur = t - c.start_sec;
-                const rightDur = c.duration_sec - leftDur;
-                return [
-                  { ...c, duration_sec: leftDur },
-                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
-                    source_in: (c.source_in ?? 0) + leftDur },
-                ];
-              }
-              return [c];
-            }),
-          }));
-          s.setLanes(newLanes);
+          const selectedLane = s.lanes.find((lane) =>
+            lane.clips.some((c) => c.clip_id === s.selectedClipId)
+          );
+          if (!selectedLane) return;
+          const clipsToSplit = selectedLane.clips.filter(
+            (c) => t > c.start_sec && t < c.start_sec + c.duration_sec
+          );
+          if (clipsToSplit.length === 0) return;
+          const ops = clipsToSplit.map((c) => ({ op: 'split_at' as const, clip_id: c.clip_id, split_sec: t }));
+          void store.getState().applyTimelineOps(ops);
         }},
         { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => {
-          // MARKER_GAMMA-2: Split on ALL tracks at playhead
+          // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
           const s = store.getState();
           const t = s.currentTime;
-          const newLanes = s.lanes.map((lane) => ({
-            ...lane,
-            clips: lane.clips.flatMap((c) => {
-              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                const leftDur = t - c.start_sec;
-                const rightDur = c.duration_sec - leftDur;
-                return [
-                  { ...c, duration_sec: leftDur },
-                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
-                    source_in: (c.source_in ?? 0) + leftDur },
-                ];
-              }
-              return [c];
-            }),
-          }));
-          s.setLanes(newLanes);
+          const clipsToSplit = s.lanes.flatMap((lane) =>
+            lane.clips.filter((c) => t > c.start_sec && t < c.start_sec + c.duration_sec)
+          );
+          if (clipsToSplit.length === 0) return;
+          const ops = clipsToSplit.map((c) => ({ op: 'split_at' as const, clip_id: c.clip_id, split_sec: t }));
+          void store.getState().applyTimelineOps(ops);
         }},
         { separator: true },
         { label: 'Lift', shortcut: ';', action: () => store.getState().liftClip() },
         { label: 'Extract', shortcut: "'", action: () => store.getState().extractClip() },
         { separator: true },
         { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
-          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
-          // TODO: Replace with store.getState().rippleDelete() when Alpha adds store action
+          // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
           const s = store.getState();
           if (!s.selectedClipId) return;
-          let clipStart = 0;
-          let clipDur = 0;
-          let clipLaneId = '';
-          for (const lane of s.lanes) {
-            const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
-            if (clip) { clipStart = clip.start_sec; clipDur = clip.duration_sec; clipLaneId = lane.lane_id; break; }
-          }
-          if (!clipLaneId) return;
-          const newLanes = s.lanes.map((lane) => {
-            if (lane.lane_id !== clipLaneId) return lane;
-            return {
-              ...lane,
-              clips: lane.clips
-                .filter((c) => c.clip_id !== s.selectedClipId)
-                .map((c) => c.start_sec > clipStart ? { ...c, start_sec: Math.max(0, c.start_sec - clipDur) } : c),
-            };
-          });
-          s.setLanes(newLanes);
-          s.setSelectedClip(null);
+          void store.getState().applyTimelineOps([{ op: 'ripple_delete', clip_id: s.selectedClipId }]);
         }},
         { label: 'Close Gap', action: () => store.getState().closeGap() },
         { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
