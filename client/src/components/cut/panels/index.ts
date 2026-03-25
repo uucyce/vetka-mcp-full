@@ -35,3 +35,6 @@ export { default as TimelineInstancePanel } from './TimelineInstancePanel';
 
 // MARKER_GAMMA-W6.3: Social Crosspost / Publish panel
 export { default as PublishPanel } from './PublishPanel';
+
+// MARKER_GAMMA-MULTICAM-PANEL: Multicam angle grid panel (FCP7 Ch.42)
+export { default as MulticamPanel } from './MulticamPanel';
