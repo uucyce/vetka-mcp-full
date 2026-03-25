@@ -20,6 +20,7 @@ import ColorWheel from './ColorWheel';
 interface ColorState {
   exposure: number;      // stops: -4..+4
   temperature: number;   // K: 2000..12000
+  tint: number;          // green-magenta: -100..+100
   saturation: number;    // 0..3
   hue: number;           // degrees: -180..180
   contrast: number;      // 0..3
@@ -34,7 +35,7 @@ interface ColorState {
 }
 
 const DEFAULT_COLOR: ColorState = {
-  exposure: 0, temperature: 6500, saturation: 1.0, hue: 0, contrast: 1.0,
+  exposure: 0, temperature: 6500, tint: 0, saturation: 1.0, hue: 0, contrast: 1.0,
   liftR: 0, liftG: 0, liftB: 0,
   midR: 0, midG: 0, midB: 0,
   gainR: 0, gainG: 0, gainB: 0,
@@ -189,6 +190,9 @@ export default function ColorCorrectionPanel() {
         if (color.contrast !== 1) effects.push({ type: 'contrast', params: { value: color.contrast }, enabled: true });
         if (color.saturation !== 1) effects.push({ type: 'saturation', params: { value: color.saturation }, enabled: true });
         if (color.hue !== 0) effects.push({ type: 'hue', params: { degrees: color.hue }, enabled: true });
+        if (color.temperature !== 6500 || color.tint !== 0) {
+          effects.push({ type: 'white_balance', params: { temperature: color.temperature, tint: color.tint }, enabled: true });
+        }
         // MARKER_B52: 3-way color wheels → lift/midtone/gain effects for preview
         if (color.liftR !== 0 || color.liftG !== 0 || color.liftB !== 0) {
           effects.push({ type: 'lift', params: { r: color.liftR, g: color.liftG, b: color.liftB }, enabled: true });
@@ -280,6 +284,13 @@ export default function ColorCorrectionPanel() {
           <input type="range" style={SLIDER} min={2000} max={12000} step={100} value={color.temperature}
             onChange={(e) => updateField('temperature', Number(e.target.value))} />
           <span style={VALUE}>{color.temperature}</span>
+        </div>
+
+        <div style={ROW}>
+          <span style={LABEL}>Tint</span>
+          <input type="range" style={SLIDER} min={-100} max={100} step={5} value={color.tint}
+            onChange={(e) => updateField('tint', Number(e.target.value))} />
+          <span style={VALUE}>{color.tint}</span>
         </div>
 
         <div style={ROW}>

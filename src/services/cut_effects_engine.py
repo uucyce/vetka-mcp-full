@@ -129,6 +129,7 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         type="white_balance", label="White Balance", category="color",
         params_schema={
             "temperature": {"type": "float", "min": 2000, "max": 12000, "default": 6500, "step": 100},
+            "tint": {"type": "float", "min": -100, "max": 100, "default": 0, "step": 5},
         },
     ),
 
@@ -646,6 +647,15 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
                     parts.append(f"rm={r_adj*0.5:.3f}:gm={g_adj*0.5:.3f}:bm={b_adj*0.5:.3f}")
                     parts.append(f"rh={r_adj*0.3:.3f}:gh={g_adj*0.3:.3f}:bh={b_adj*0.3:.3f}")
                     filters.append(f"colorbalance={':'.join(parts)}")
+            tint = float(p.get("tint", 0))
+            if abs(tint) > 1:
+                # Tint: positive = magenta (boost R+B, reduce G), negative = green (boost G, reduce R+B)
+                tint_adj = tint / 200.0  # scale to -0.5..+0.5
+                # Apply as green channel adjustment (inverse = magenta)
+                tint_parts = []
+                tint_parts.append(f"rs={tint_adj*0.3:.3f}:gs={-tint_adj:.3f}:bs={tint_adj*0.3:.3f}")
+                tint_parts.append(f"rm={tint_adj*0.15:.3f}:gm={-tint_adj*0.5:.3f}:bm={tint_adj*0.15:.3f}")
+                filters.append(f"colorbalance={':'.join(tint_parts)}")
 
         # MARKER_B16: Lift/Gamma/Gain (3-way color corrector)
         elif t == "lift":
