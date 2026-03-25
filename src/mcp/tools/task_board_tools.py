@@ -117,7 +117,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -932,6 +932,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             results.append({"task_id": tid, "success": bool(updated)})
         closed_count = sum(1 for r in results if r.get("success"))
         return {"success": True, "closed_count": closed_count, "total": len(task_ids), "results": results}
+
+    # MARKER_198.STALE: Stale detection — find pending tasks already implemented
+    elif action == "stale_check":
+        limit = int(arguments.get("limit", 50))
+        auto_close = arguments.get("auto_close", False)
+        if isinstance(auto_close, str):
+            auto_close = auto_close.lower() in ("true", "1", "yes")
+        return board.stale_check(limit=limit, auto_close=auto_close)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
