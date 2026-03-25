@@ -117,9 +117,13 @@ class TestResetClipEffects:
         assert re.search(r"resetClipEffects:\s*\(clipId", source)
 
     def test_sets_undefined_or_default(self, source):
-        """Reset should set effects to undefined or DEFAULT_CLIP_EFFECTS."""
-        # Pattern: effects: undefined or effects: { ...DEFAULT }
-        assert re.search(r"effects:\s*undefined|effects:\s*DEFAULT_CLIP_EFFECTS", source)
+        """Reset should set effects to undefined/DEFAULT or dispatch reset_effects op."""
+        # Original: inline effects: undefined / DEFAULT_CLIP_EFFECTS
+        # Post-A4.11: ops-based via applyTimelineOps with reset_effects op
+        assert re.search(
+            r"effects:\s*undefined|effects:\s*DEFAULT_CLIP_EFFECTS|op:\s*['\"]reset_effects['\"]",
+            source,
+        )
 
 
 class TestClipHasEffectsField:
