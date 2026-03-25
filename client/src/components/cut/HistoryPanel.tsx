@@ -4,9 +4,10 @@
  * Click entry → revert to that state. Entries above current = grayed (redo-able).
  * Mounted in Analysis tab group (left_bottom).
  */
-import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
+import { API_BASE, getSocketUrl } from '../../config/api.config';
+import { io, type Socket } from 'socket.io-client';
 
 type HistoryEntry = {
   index: number;
@@ -108,12 +109,29 @@ export default function HistoryPanel() {
     }
   }, [projectId, sandboxRoot, timelineId]);
 
-  // Poll undo stack periodically (every 3s when visible)
+  // MARKER_GAMMA-HISTORY-WS: WebSocket for instant undo/redo refresh + 10s fallback poll
+  const socketRef = useRef<Socket | null>(null);
   useEffect(() => {
     fetchStack();
-    const interval = setInterval(fetchStack, 3000);
-    return () => clearInterval(interval);
-  }, [fetchStack]);
+    // WebSocket: listen for timeline undo/redo events
+    const socket = io(getSocketUrl(), { transports: ['websocket', 'polling'], reconnection: true });
+    socketRef.current = socket;
+    const onTimelineEvent = (data: { event_type?: string; timeline_id?: string }) => {
+      if (data.timeline_id && data.timeline_id !== timelineId) return;
+      if (data.event_type === 'timeline_undo' || data.event_type === 'timeline_redo' || data.event_type === 'timeline_edited') {
+        fetchStack();
+      }
+    };
+    socket.on('cut_timeline_event', onTimelineEvent);
+    // Fallback poll every 10s (in case socket misses an event)
+    const interval = setInterval(fetchStack, 10000);
+    return () => {
+      socket.off('cut_timeline_event', onTimelineEvent);
+      socket.disconnect();
+      socketRef.current = null;
+      clearInterval(interval);
+    };
+  }, [fetchStack, timelineId]);
 
   const handleUndoTo = useCallback(async (targetIndex: number) => {
     if (!projectId || !sandboxRoot || !timelineId) return;
