@@ -911,6 +911,84 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # STM save errors never block session init
 
+        # MARKER_198.MEM_HEALTH: Memory subsystem health dashboard
+        try:
+            memory_health = {}
+
+            # AURA
+            try:
+                from src.memory.aura_store import get_aura_store
+                aura = get_aura_store()
+                aura_entries = len(aura._preferences) if hasattr(aura, '_preferences') else 0
+                memory_health["aura"] = {"entries": aura_entries, "status": "ok" if aura_entries > 0 else "cold"}
+            except Exception:
+                memory_health["aura"] = {"status": "error"}
+
+            # ENGRAM L1
+            try:
+                from src.memory.engram_cache import get_engram_cache
+                engram = get_engram_cache()
+                all_entries = engram.get_all()
+                danger_count = len(engram.get_danger_entries())
+                memory_health["engram_l1"] = {
+                    "entries": len(all_entries),
+                    "danger": danger_count,
+                    "status": "ok" if len(all_entries) > 0 else "cold",
+                }
+            except Exception:
+                memory_health["engram_l1"] = {"status": "error"}
+
+            # CORTEX / REFLEX
+            try:
+                from src.services.reflex_feedback import get_reflex_feedback
+                fb = get_reflex_feedback()
+                summary = fb.get_feedback_summary()
+                memory_health["cortex"] = {
+                    "entries": summary.get("total_entries", 0),
+                    "success_rate": round(summary.get("success_rate", 0), 3),
+                    "status": "ok" if summary.get("total_entries", 0) > 10 else "cold",
+                }
+            except Exception:
+                memory_health["cortex"] = {"status": "error"}
+
+            # STM
+            try:
+                from src.memory.stm_buffer import get_stm_buffer
+                stm = get_stm_buffer()
+                stm_count = len(stm.items) if hasattr(stm, 'items') else 0
+                memory_health["stm"] = {"items": stm_count, "status": "ok" if stm_count > 0 else "cold"}
+            except Exception:
+                memory_health["stm"] = {"status": "error"}
+
+            # Resource Learnings (Qdrant L2)
+            try:
+                from src.orchestration.resource_learnings import get_learning_store
+                store = get_learning_store()
+                stats = store.get_stats()
+                memory_health["qdrant_l2"] = {
+                    "source": stats.get("source", "unknown"),
+                    "count": stats.get("count", 0),
+                    "status": "ok" if stats.get("count", 0) > 0 else "cold",
+                }
+            except Exception:
+                memory_health["qdrant_l2"] = {"status": "error"}
+
+            # Bridge hooks
+            try:
+                from src.mcp.bridge_hooks import get_hook_stats
+                hooks = get_hook_stats()
+                memory_health["bridge_hooks"] = {
+                    "pre": hooks.get("pre_hooks", 0),
+                    "post": hooks.get("post_hooks", 0),
+                    "status": "ok" if hooks.get("post_hooks", 0) > 0 else "not_registered",
+                }
+            except Exception:
+                memory_health["bridge_hooks"] = {"status": "error"}
+
+            context["memory_health"] = memory_health
+        except Exception:
+            pass  # Memory health never blocks session_init
+
         return {
             "success": True,
             "result": context
