@@ -32,3 +32,6 @@ export { default as MarkerListPanel } from './MarkerListPanel';
 
 // MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
 export { default as TimelineInstancePanel } from './TimelineInstancePanel';
+
+// MARKER_MULTICAM_DOCK: Multicam Viewer panel
+export { default as MulticamViewerPanelDock } from './MulticamViewerPanelDock';

@@ -14,7 +14,6 @@ import { useState, useCallback, useEffect, useRef, lazy, Suspense, type CSSPrope
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { PRESET_BUILDERS } from './presetBuilders';
-import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
   loadPresetName,
@@ -260,10 +259,10 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Export', submenu: [
-          { label: 'Premiere XML', disabled: true },
-          { label: 'FCPXML', disabled: true },
-          { label: 'EDL', disabled: true },
-          { label: 'OTIO', disabled: true },
+          { label: 'Premiere XML', action: () => store.getState().setShowExportDialog(true) },
+          { label: 'FCPXML', action: () => store.getState().setShowExportDialog(true) },
+          { label: 'EDL', action: () => store.getState().setShowExportDialog(true) },
+          { label: 'OTIO', action: () => store.getState().setShowExportDialog(true) },
         ]},
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
@@ -494,7 +493,9 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
         }},
         { separator: true },
-        { label: 'Replace', shortcut: 'F11', disabled: true },
+        { label: 'Replace', shortcut: 'F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11' }));
+        }},
         { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
         { label: 'Superimpose', shortcut: 'F12', disabled: true },
         { separator: true },
@@ -502,8 +503,11 @@ export default function MenuBar() {
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
-          // Scale selected clip resolution to match sequence resolution
-          // TODO: requires per-clip transform state
+          // Scale selected clip to fill sequence resolution via MotionControls scaleX/scaleY.
+          // TODO: TimelineClip has no source_width/source_height fields — cannot compute
+          // sequenceWidth / clipNaturalWidth without backend probe metadata on the clip object.
+          // Unblock by adding source_width + source_height to TimelineClip type and populating
+          // them during project load / clip add. Then: scale = sequenceWidth / source_width.
         }, disabled: true },
         { separator: true },
         { label: `${store.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
@@ -535,78 +539,13 @@ export default function MenuBar() {
         { label: 'Render In to Out', shortcut: '⌥R', disabled: true },
         { label: 'Render All', disabled: true },
         { separator: true },
-        { label: 'Add Edit', shortcut: '⌘K', action: () => {
-          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
-          // TODO: Replace with store.getState().splitClip() when Alpha adds store action
-          const s = store.getState();
-          const t = s.currentTime;
-          const newLanes = s.lanes.map((lane) => ({
-            ...lane,
-            clips: lane.clips.flatMap((c) => {
-              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                const leftDur = t - c.start_sec;
-                const rightDur = c.duration_sec - leftDur;
-                return [
-                  { ...c, duration_sec: leftDur },
-                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
-                    source_in: (c.source_in ?? 0) + leftDur },
-                ];
-              }
-              return [c];
-            }),
-          }));
-          s.setLanes(newLanes);
-        }},
-        { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => {
-          // MARKER_GAMMA-2: Split on ALL tracks at playhead
-          const s = store.getState();
-          const t = s.currentTime;
-          const newLanes = s.lanes.map((lane) => ({
-            ...lane,
-            clips: lane.clips.flatMap((c) => {
-              if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-                const leftDur = t - c.start_sec;
-                const rightDur = c.duration_sec - leftDur;
-                return [
-                  { ...c, duration_sec: leftDur },
-                  { ...c, clip_id: c.clip_id + '_split', start_sec: t, duration_sec: rightDur,
-                    source_in: (c.source_in ?? 0) + leftDur },
-                ];
-              }
-              return [c];
-            }),
-          }));
-          s.setLanes(newLanes);
-        }},
+        { label: 'Add Edit', shortcut: '⌘K', action: () => store.getState().splitClip() },
+        { label: 'Add Edit to All Tracks', shortcut: '⌘⇧K', action: () => store.getState().splitClipAllTracks() },
         { separator: true },
         { label: 'Lift', shortcut: ';', action: () => store.getState().liftClip() },
         { label: 'Extract', shortcut: "'", action: () => store.getState().extractClip() },
         { separator: true },
-        { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => {
-          // MARKER_GAMMA-2: Direct store call (was keyboard dispatch)
-          // TODO: Replace with store.getState().rippleDelete() when Alpha adds store action
-          const s = store.getState();
-          if (!s.selectedClipId) return;
-          let clipStart = 0;
-          let clipDur = 0;
-          let clipLaneId = '';
-          for (const lane of s.lanes) {
-            const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
-            if (clip) { clipStart = clip.start_sec; clipDur = clip.duration_sec; clipLaneId = lane.lane_id; break; }
-          }
-          if (!clipLaneId) return;
-          const newLanes = s.lanes.map((lane) => {
-            if (lane.lane_id !== clipLaneId) return lane;
-            return {
-              ...lane,
-              clips: lane.clips
-                .filter((c) => c.clip_id !== s.selectedClipId)
-                .map((c) => c.start_sec > clipStart ? { ...c, start_sec: Math.max(0, c.start_sec - clipDur) } : c),
-            };
-          });
-          s.setLanes(newLanes);
-          s.setSelectedClip(null);
-        }},
+        { label: 'Ripple Delete', shortcut: '⌥⌫', action: () => store.getState().extractClip() },
         { label: 'Close Gap', action: () => store.getState().closeGap() },
         { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
         { separator: true },
@@ -629,20 +568,8 @@ export default function MenuBar() {
         { label: 'Solo Selected Item(s)', disabled: true },
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
-          // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
-          // TODO: Replace with store.getState().runSceneDetection() when Alpha adds store action
-          const s = store.getState();
-          if (!s.sandboxRoot || !s.projectId) return;
-          void (async () => {
-            await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-              }),
-            });
-            await s.refreshProjectState?.();
-          })();
+          // MARKER_SCENE-DETECT: Delegate to store action (wired in useCutEditorStore)
+          void store.getState().runSceneDetection();
         }},
       ],
     },
@@ -704,6 +631,7 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Tools', action: () => togglePanel('tools', 'tools', 'Tools') },
         { label: 'Audio Mixer', action: () => togglePanel('mixer', 'mixer', 'Mixer') },
+        { label: 'Multicam Viewer', action: () => togglePanel('multicam', 'multicam', 'Multicam') },
         { label: 'Effects', action: () => togglePanel('effects', 'effects', 'Effects') },
         { label: 'Video Scopes', action: () => togglePanel('scopes', 'scopes', 'Scopes') },
         { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },

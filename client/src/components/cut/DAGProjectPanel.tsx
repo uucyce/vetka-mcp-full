@@ -10,7 +10,7 @@
  *
  * Ref: CUT_TARGET_ARCHITECTURE.md §2.2, CUT_DATA_MODEL.md
  */
-import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -409,6 +409,10 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
             }, disabled: !dagCtx.path },
             { separator: true },
             { label: 'Focus in Project Panel', action: () => { syncFromDAG(dagCtx.nodeId, dagCtx.path); setDagCtx(null); } },
+            { label: 'Reveal in Finder', action: () => {
+              if (dagCtx.path) fetch('/api/files/open-in-finder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_path: dagCtx.path }) });
+              setDagCtx(null);
+            }, disabled: !dagCtx.path },
           ].map((item, i) =>
             'separator' in item ? (
               <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />

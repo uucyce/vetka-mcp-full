@@ -188,8 +188,30 @@ export default function ScriptPanel({ scriptText = '' }: ScriptPanelProps) {
     }
   }, [playheadSec, isPlaying, chunks, lastSyncSource]);
 
+  const handleApplyToDAG = () => {
+    if (!scriptText.trim()) return;
+    fetch(`${API_BASE}/cut/project/apply-script`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: scriptText }),
+    }).catch((err) => console.warn('[ScriptPanel] apply-script failed:', err));
+  };
+
   return (
     <div style={PANEL}>
+      {chunks.length > 0 && (
+        <div style={{ padding: '4px 8px', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'flex-end' }}>
+          <button
+            onClick={handleApplyToDAG}
+            style={{
+              background: '#2a2a2a', border: '1px solid #444', color: '#ccc',
+              fontSize: 10, padding: '2px 8px', cursor: 'pointer', borderRadius: 2,
+            }}
+          >
+            Apply to DAG
+          </button>
+        </div>
+      )}
       <div ref={listRef} style={CHUNK_LIST}>
         {chunks.length === 0 && (
           <div style={EMPTY_STATE}>

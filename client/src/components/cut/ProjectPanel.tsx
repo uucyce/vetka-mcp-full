@@ -229,6 +229,7 @@ export default function ProjectPanel() {
   const refreshProjectState = useCutEditorStore((s) => s.refreshProjectState);
   const setEditorSession = useCutEditorStore((s) => s.setEditorSession);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
+  const setThumbnails = useCutEditorStore((s) => s.setThumbnails);
   const lanes = useCutEditorStore((s) => s.lanes);
   const activeMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   // MARKER_W1.3: Project click → Source Monitor (not program)
@@ -320,6 +321,33 @@ export default function ProjectPanel() {
       window.removeEventListener('cut:trigger-import', handler);
     };
   }, [openFilePicker]);
+
+  // MARKER_SUBCLIP: Listen for makeSubclip events from CutEditorLayoutV2
+  useEffect(() => {
+    const handler = (e: CustomEvent) => {
+      if (e.detail?.status === 'subclip-created' && e.detail?.subclip) {
+        const sc = e.detail.subclip as {
+          clip_id: string;
+          source_path: string;
+          source_in: number;
+          duration_sec: number;
+        };
+        const newItem = {
+          item_id: sc.clip_id,
+          source_path: sc.source_path,
+          modality: 'video' as const,
+          duration_sec: sc.duration_sec,
+        };
+        // Append to thumbnails list — avoids duplicate if already present
+        const current = useCutEditorStore.getState().thumbnails;
+        if (!current.some((t) => t.item_id === sc.clip_id)) {
+          setThumbnails([...current, newItem]);
+        }
+      }
+    };
+    window.addEventListener('pipeline-activity', handler as EventListener);
+    return () => window.removeEventListener('pipeline-activity', handler as EventListener);
+  }, [setThumbnails]);
 
   // ─── Job polling — returns the completed job result ───
   const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
@@ -1088,20 +1116,28 @@ export default function ProjectPanel() {
               window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: ctxMenu.path } }));
               setCtxMenu(null);
             }},
+            // MARKER_GAMMA-3: Make Subclip — triggers makeSubclip handler (Cmd+U, FCP7 Ch.12)
+            { label: 'Make Subclip  ⌘U', action: () => {
+              setCtxMenu(null);
+              document.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', metaKey: true, bubbles: true }));
+            }},
             { separator: true },
-            { label: 'Reveal in Finder', action: () => { setCtxMenu(null); }, disabled: true },
+            { label: 'Reveal in Finder', action: () => {
+              fetch('/api/files/open-in-finder', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_path: ctxMenu.path }) });
+              setCtxMenu(null);
+            }},
           ].map((item, i) =>
             'separator' in item ? (
               <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
             ) : (
               <div
                 key={i}
-                onClick={item.disabled ? undefined : item.action}
+                onClick={item.action}
                 style={{
-                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
-                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                  padding: '4px 12px', cursor: 'pointer',
+                  color: '#ccc', whiteSpace: 'nowrap',
                 }}
-                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
                 {item.label}

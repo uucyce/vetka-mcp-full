@@ -17,7 +17,7 @@
  * @phase 198
  */
 import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
-import { useCutEditorStore, type TimelineLane } from '../../store/useCutEditorStore';
+import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { getAudioScopeSocket } from './WaveformMinimap';
 
 // ─── Styles ────────────────────────────────────────────────────────
@@ -306,9 +306,11 @@ export default function AudioMixer() {
   const setLaneVolume = useCutEditorStore((s) => s.setLaneVolume);
 
   // Master volume (local state — not in store yet)
+  // TODO: migrate masterVolume to store for render engine integration
   const [masterVolume, setMasterVolume] = useState(1.0);
-  // MARKER_GAMMA-17: Pan per lane (local state — move to store when Alpha adds lanePans)
-  const [lanePans, setLanePans] = useState<Record<string, number>>({});
+  // MARKER_GAMMA-17: Pan per lane — wired to store (lanePans / setLanePan)
+  const lanePans = useCutEditorStore((s) => s.lanePans);
+  const setLanePan = useCutEditorStore((s) => s.setLanePan);
   // MARKER_B52: Real audio levels from WebSocket (replaces simulated VU)
   const [audioLevels, setAudioLevels] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
   useEffect(() => {
@@ -320,9 +322,14 @@ export default function AudioMixer() {
     return () => { socket.off('audio_scope_data', onData); };
   }, []);
   const [masterPan, setMasterPan] = useState(0);
+  // MARKER_MASTER_MUTE_SOLO: Local master mute/solo state
+  // When masterMuted: all lanes are visually dimmed and audio output is muted.
+  // When masterSolo: only master passes (all lanes individually silenced).
+  const [masterMuted, setMasterMuted] = useState(false);
+  const [masterSoloed, setMasterSoloed] = useState(false);
   const setPan = useCallback((laneId: string, v: number) => {
-    setLanePans((prev) => ({ ...prev, [laneId]: v }));
-  }, []);
+    setLanePan(laneId, v);
+  }, [setLanePan]);
 
   // Filter to audio-relevant lanes (audio_sync, aux, or all if < 6 lanes)
   const audioLanes = lanes.length > 0 ? lanes : [];
@@ -363,15 +370,23 @@ export default function AudioMixer() {
       {/* Master strip */}
       <div style={{ ...STRIP, background: '#151515' }}>
         <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
-        <VuIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={false} />
+        <VuIndicator level={masterMuted ? 0 : masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={masterMuted} />
         <VolumeFader value={masterVolume} onChange={setMasterVolume} />
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
           {Math.round(masterVolume * 100)}%
         </div>
         <PanKnob value={masterPan} onChange={setMasterPan} />
         <div style={{ display: 'flex', gap: 2 }}>
-          <button style={SMALL_BTN(false, '#999')} disabled>M</button>
-          <button style={SMALL_BTN(false, '#ccc')} disabled>S</button>
+          <button
+            style={SMALL_BTN(masterMuted, '#999')}
+            onClick={() => setMasterMuted((v) => !v)}
+            title="Mute master bus"
+          >M</button>
+          <button
+            style={SMALL_BTN(masterSoloed, '#ccc')}
+            onClick={() => setMasterSoloed((v) => !v)}
+            title="Solo master bus"
+          >S</button>
         </div>
       </div>
     </div>
