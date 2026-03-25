@@ -16,11 +16,16 @@ MARKER-99-02: MGC promotion threshold - items with access_count >= threshold sta
 import asyncio
 import json
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 import hashlib
+
+# MARKER_198.P1.3: Gen1 SQLite path — worktree-safe absolute path
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+_GEN1_DB_PATH = _PROJECT_ROOT / "data" / "mgc_gen1.db"
 
 logger = logging.getLogger(__name__)
 
@@ -128,8 +133,39 @@ class MGCCache:
 
         # Lock for thread safety
         self._lock = asyncio.Lock()
+        self._json_lock = asyncio.Lock()
+
+        # MARKER_198.P1.3: Initialize Gen1 SQLite
+        self._gen1_enabled = False
+        self._gen1_db_path = _GEN1_DB_PATH
+        self._init_gen1_db()
 
         logger.debug(f"MGCCache initialized: gen0_max={gen0_max}, threshold={promotion_threshold}")
+
+    def _init_gen1_db(self):
+        """MARKER_198.P1.3: Initialize Gen1 SQLite database with WAL mode."""
+        try:
+            self._gen1_db_path = _GEN1_DB_PATH
+            self._gen1_db_path.parent.mkdir(parents=True, exist_ok=True)
+            conn = sqlite3.connect(str(self._gen1_db_path))
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS mgc_gen1 (
+                    key_hash TEXT PRIMARY KEY,
+                    key TEXT NOT NULL,
+                    value_json TEXT NOT NULL,
+                    access_count INTEGER DEFAULT 0,
+                    created_at TEXT,
+                    last_accessed TEXT
+                )
+            """)
+            conn.commit()
+            conn.close()
+            self._gen1_enabled = True
+            logger.info(f"[MGC] Gen1 SQLite initialized: {self._gen1_db_path}")
+        except Exception as e:
+            logger.warning(f"[MGC] Gen1 SQLite init failed: {e}")
+            self._gen1_enabled = False
 
     async def get(self, key: str) -> Optional[Any]:
         """
@@ -153,8 +189,8 @@ class MGCCache:
                 logger.debug(f"MGC Gen 0 hit: {key}")
                 return entry.value
 
-        # Gen 1: Qdrant (warm) - async lookup
-        if self.qdrant:
+        # Gen 1: SQLite (warm) - async lookup
+        if self._gen1_enabled or self.qdrant:
             result = await self._get_from_qdrant(key)
             if result is not None:
                 self._hits["gen1"] += 1
@@ -222,7 +258,7 @@ class MGCCache:
                 deleted = True
 
         # Also try to delete from Gen 1 and Gen 2
-        if self.qdrant:
+        if self._gen1_enabled or self.qdrant:
             await self._delete_from_qdrant(key)
         await self._delete_from_json(key)
 
@@ -295,46 +331,86 @@ class MGCCache:
                 self.gen0[key] = entry
                 logger.debug(f"MGC promote: {key} -> Gen 0")
 
-    # === Gen 1: Qdrant Operations ===
+    # === Gen 1: SQLite Operations (MARKER_198.P1.3) ===
 
     async def _get_from_qdrant(self, key: str) -> Optional[Any]:
-        """Retrieve from Qdrant (Gen 1)."""
-        if not self.qdrant:
+        """MARKER_198.P1.3: Gen1 SQLite lookup (was Qdrant stub)."""
+        if not self._gen1_enabled:
             return None
-
         try:
-            # Use key as filter
-            key_hash = self._hash_key(key)
-            # This is a placeholder - actual implementation depends on Qdrant schema
-            # In practice, you'd store MGC entries in a dedicated collection
-            # with key_hash as payload field
-            return None  # TODO: Implement when integrating with real Qdrant
+            key_hash = hashlib.md5(key.encode()).hexdigest()
+
+            def _db_get():
+                conn = sqlite3.connect(str(self._gen1_db_path))
+                row = conn.execute(
+                    "SELECT value_json, access_count FROM mgc_gen1 WHERE key_hash = ?",
+                    (key_hash,)
+                ).fetchone()
+                if row:
+                    # Update access count and last_accessed
+                    import time
+                    conn.execute(
+                        "UPDATE mgc_gen1 SET access_count = access_count + 1, last_accessed = ? WHERE key_hash = ?",
+                        (time.strftime("%Y-%m-%d %H:%M:%S"), key_hash)
+                    )
+                    conn.commit()
+                conn.close()
+                return row
+
+            row = await asyncio.to_thread(_db_get)
+            if row:
+                value = json.loads(row[0])
+                logger.debug(f"[MGC] Gen1 HIT: {key[:40]} (access_count={row[1]+1})")
+                return value
+            return None
         except Exception as e:
-            logger.warning(f"MGC Qdrant get failed: {e}")
+            logger.debug(f"[MGC] Gen1 get failed: {e}")
             return None
 
-    async def _store_in_qdrant(self, entry: MGCEntry) -> None:
-        """Store entry in Qdrant (Gen 1)."""
-        if not self.qdrant:
-            # Fallback to JSON if no Qdrant
+    async def _store_in_qdrant(self, entry: 'MGCEntry') -> None:
+        """MARKER_198.P1.3: Gen1 SQLite store (was Qdrant stub)."""
+        if not self._gen1_enabled:
             await self._store_in_json(entry)
             return
-
         try:
-            # Placeholder - actual implementation depends on Qdrant schema
-            logger.debug(f"MGC would store in Qdrant: {entry.key}")
-            # For now, fallback to JSON
-            await self._store_in_json(entry)
+            key_hash = hashlib.md5(entry.key.encode()).hexdigest()
+            value_json = json.dumps(entry.value, default=str)
+
+            def _db_store():
+                conn = sqlite3.connect(str(self._gen1_db_path))
+                conn.execute(
+                    """INSERT OR REPLACE INTO mgc_gen1
+                       (key_hash, key, value_json, access_count, created_at, last_accessed)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (key_hash, entry.key, value_json, entry.access_count,
+                     entry.created_at.isoformat() if hasattr(entry.created_at, 'isoformat') else str(entry.created_at),
+                     entry.last_accessed.isoformat() if hasattr(entry.last_accessed, 'isoformat') else str(entry.last_accessed))
+                )
+                conn.commit()
+                conn.close()
+
+            await asyncio.to_thread(_db_store)
+            logger.debug(f"[MGC] Gen1 STORE: {entry.key[:40]}")
         except Exception as e:
-            logger.warning(f"MGC Qdrant store failed: {e}")
+            logger.debug(f"[MGC] Gen1 store failed, falling back to JSON: {e}")
             await self._store_in_json(entry)
 
     async def _delete_from_qdrant(self, key: str) -> None:
-        """Delete from Qdrant (Gen 1)."""
-        if not self.qdrant:
+        """MARKER_198.P1.3: Gen1 SQLite delete."""
+        if not self._gen1_enabled:
             return
-        # Placeholder
-        pass
+        try:
+            key_hash = hashlib.md5(key.encode()).hexdigest()
+
+            def _db_delete():
+                conn = sqlite3.connect(str(self._gen1_db_path))
+                conn.execute("DELETE FROM mgc_gen1 WHERE key_hash = ?", (key_hash,))
+                conn.commit()
+                conn.close()
+
+            await asyncio.to_thread(_db_delete)
+        except Exception:
+            pass
 
     # === Gen 2: JSON Operations ===
 
@@ -344,7 +420,7 @@ class MGCCache:
             if not self.json_path.exists():
                 return None
 
-            async with asyncio.Lock():
+            async with self._json_lock:
                 data = json.loads(self.json_path.read_text())
                 key_hash = self._hash_key(key)
                 if key_hash in data:
@@ -403,9 +479,19 @@ class MGCCache:
         total_hits = sum(self._hits.values())
         total_requests = total_hits + self._misses
 
+        gen1_count = 0
+        if self._gen1_enabled:
+            try:
+                conn = sqlite3.connect(str(self._gen1_db_path))
+                gen1_count = conn.execute("SELECT COUNT(*) FROM mgc_gen1").fetchone()[0]
+                conn.close()
+            except Exception:
+                pass
+
         return {
             "gen0_size": len(self.gen0),
             "gen0_max": self.gen0_max,
+            "gen1_count": gen1_count,
             "hits": self._hits.copy(),
             "misses": self._misses,
             "evictions": self._evictions,
