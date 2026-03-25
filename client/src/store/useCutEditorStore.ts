@@ -1714,6 +1714,13 @@ useTimelineInstanceStore.subscribe((state, prev) => {
   }
 });
 
+// MARKER_FCP7_SEQUENCE_SYNC: Keep sequences in sync with timelineTabs
+useCutEditorStore.subscribe((state, prev) => {
+  if (state.timelineTabs !== prev.timelineTabs) {
+    useCutEditorStore.setState({ sequences: state.timelineTabs });
+  }
+});
+
 // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E test access
 if (typeof window !== 'undefined') {
   (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
