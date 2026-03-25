@@ -222,7 +222,11 @@ export default function MenuBar() {
     {
       label: 'File',
       items: [
-        { label: 'New Project...', shortcut: '⌥⌘N', disabled: true },
+        { label: 'New Project...', shortcut: '⌥⌘N', action: () => {
+          if (window.confirm('Create a new project? Unsaved changes will be lost.')) {
+            window.location.href = window.location.pathname;
+          }
+        }},
         { label: 'New Sequence', shortcut: '⌘N', action: () => {
           const s = store.getState();
           const name = s.projectId || 'untitled';
@@ -233,7 +237,9 @@ export default function MenuBar() {
             dockStore.getState().addTimelinePanel(newId, tab?.label || `Cut ${newId}`);
           }
         }},
-        { label: 'Open Project...', shortcut: '⌘O', disabled: true },
+        { label: 'Open Project...', shortcut: '⌘O', action: () => {
+          window.dispatchEvent(new CustomEvent('cut:import-media'));
+        }},
         { label: 'Recent Projects', submenu: [
           { label: '(no recent projects)', disabled: true },
         ]},
@@ -259,10 +265,22 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Export', submenu: [
-          { label: 'Premiere XML', disabled: true },
-          { label: 'FCPXML', disabled: true },
-          { label: 'EDL', disabled: true },
-          { label: 'OTIO', disabled: true },
+          { label: 'Premiere XML', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'premiere_xml' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'FCPXML', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'fcpxml' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'EDL', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'edl' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'OTIO', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'otio' } }));
+            store.getState().setShowExportDialog(true);
+          }},
         ]},
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
@@ -493,9 +511,15 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
         }},
         { separator: true },
-        { label: 'Replace', shortcut: 'F11', disabled: true },
-        { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
-        { label: 'Superimpose', shortcut: 'F12', disabled: true },
+        { label: 'Replace', shortcut: 'F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11' }));
+        }},
+        { label: 'Fit to Fill', shortcut: '⇧F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', shiftKey: true }));
+        }},
+        { label: 'Superimpose', shortcut: 'F12', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12' }));
+        }},
         { separator: true },
         { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
