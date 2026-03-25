@@ -180,9 +180,9 @@ class TestPremierePreset:
         assert premiere["razorTool"] == "c"
 
     def test_ripple_roll(self, premiere):
-        """Premiere: B=Ripple, N=Roll."""
+        """Premiere: B=Ripple, Shift+N=Roll (N reserved for toggleSnap)."""
         assert premiere["rippleTool"] == "b"
-        assert premiere["rollTool"] == "n"
+        assert premiere["rollTool"] == "Shift+n"
 
     def test_split(self, premiere):
         """Premiere: Cmd+K = Add Edit."""
