@@ -287,6 +287,24 @@ class GitCommitTool(BaseMCPTool):
             if auto_completed:
                 result_data["auto_completed_tasks"] = auto_completed
 
+            # MARKER_198.P1.9: Surface tasks whose allowed_paths overlap committed files
+            try:
+                _diff_result = subprocess.run(
+                    ["git", "diff-tree", "--no-commit-id", "-r", "--name-only", commit_hash],
+                    capture_output=True, text=True, cwd=str(git_root),
+                )
+                if _diff_result.returncode == 0:
+                    _committed_files = [f.strip() for f in _diff_result.stdout.strip().split("\n") if f.strip()]
+                    if _committed_files:
+                        from src.orchestration.task_board import get_task_board as _get_tb
+                        _board = _get_tb()
+                        _matched = _board.find_tasks_by_changed_files(_committed_files)
+                        if _matched:
+                            result_data["matched_tasks"] = _matched
+                            logger.info(f"[P1.9] {len(_matched)} tasks match committed files")
+            except Exception as _e:
+                logger.debug(f"[P1.9] Post-commit task match failed: {_e}")
+
             # MARKER_GIT_AUTO_PUSH: Auto-push to remote if requested
             if auto_push:
                 push_result = self._git_push()

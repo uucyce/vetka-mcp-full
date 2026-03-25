@@ -1996,6 +1996,41 @@ class TaskBoard:
 
         return completed
 
+    def find_tasks_by_changed_files(self, changed_files: list) -> list:
+        """MARKER_198.P1.9: Find pending/claimed/running tasks whose allowed_paths intersect changed_files.
+
+        Uses prefix matching: file 'src/mcp/tools/foo.py' matches allowed_path 'src/mcp/tools/'.
+        Returns list of task dicts (id, title, status, allowed_paths).
+        """
+        if not changed_files:
+            return []
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('pending', 'claimed', 'running')"
+        )
+        candidates = []
+        for row in cursor:
+            task = self._row_to_task(row)
+            allowed = task.get("allowed_paths") or []
+            if not allowed:
+                continue
+            matched = False
+            for cf in changed_files:
+                for ap in allowed:
+                    ap_norm = ap.rstrip("/")
+                    if cf == ap or cf.startswith(ap_norm + "/"):
+                        matched = True
+                        break
+                if matched:
+                    break
+            if matched:
+                candidates.append({
+                    "id": task["id"],
+                    "title": task.get("title", ""),
+                    "status": task.get("status", ""),
+                    "allowed_paths": allowed,
+                })
+        return candidates
+
     def _commit_matches_task(self, task: Dict[str, Any], commit_msg: str, msg_lower: str) -> bool:
         """Check if commit message matches a task.
 
