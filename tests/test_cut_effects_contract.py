@@ -98,8 +98,13 @@ class TestSetClipEffects:
 
     def test_merges_with_existing(self, source):
         """Must spread existing effects before applying new ones."""
-        # Pattern: { ...c.effects, ...effects } or similar merge
-        assert re.search(r"\.\.\..*effects.*\.\.\.effects|\{.*c\.effects.*effects\}", source, re.DOTALL)
+        # Original: inline { ...c.effects, ...effects } spread
+        # Post-A4.11: ops-based via applyTimelineOps with set_effects op (merge on backend)
+        assert re.search(
+            r"\.\.\..*effects.*\.\.\.effects|\{.*c\.effects.*effects\}|op:\s*['\"]set_effects['\"]",
+            source,
+            re.DOTALL,
+        )
 
     def test_defaults_when_no_existing(self, source):
         """Must use DEFAULT_CLIP_EFFECTS when clip has no effects."""
