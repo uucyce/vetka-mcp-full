@@ -38,6 +38,20 @@ from src.services.cut_project_store import (
     quick_scan_cut_source,
 )
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
+from src.services.cut_scene_graph_taxonomy import (
+    SCENE_GRAPH_EDGE_CONTAINS,
+    SCENE_GRAPH_EDGE_FOLLOWS,
+    SCENE_GRAPH_EDGE_REFERENCES,
+    SCENE_GRAPH_EDGE_SEMANTIC_MATCH,
+    SCENE_GRAPH_NODE_ASSET,
+    SCENE_GRAPH_NODE_SCENE,
+    SCENE_GRAPH_NODE_TAKE,
+)
+from src.api.routes.cut_routes_bootstrap import (
+    _build_initial_timeline_state,
+    _infer_cut_media_modality,
+    _utc_now_iso,
+)
 
 logger = logging.getLogger("cut.workers")
 
@@ -1320,6 +1334,206 @@ def _build_montage_decision_from_marker(
 
 
 # _run_cut_bootstrap_job — moved to cut_routes_bootstrap.py (MARKER_B65)
+
+
+# MARKER_B74: Moved from cut_routes.py — needed by _run_cut_scene_assembly_job
+def _infer_cut_asset_kind(modality: str, lane_type: str) -> str:
+    if modality in {"video", "audio"}:
+        return modality
+    if lane_type.startswith("video"):
+        return "video"
+    if lane_type.startswith("audio"):
+        return "audio"
+    return "media"
+
+
+def _build_initial_scene_graph(
+    project: dict[str, Any], timeline_state: dict[str, Any], graph_id: str,
+    *, store: CutProjectStore | None = None,
+) -> dict[str, Any]:
+    """Build initial scene graph from timeline state. MARKER_B74: moved from cut_routes.py."""
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    scenes: dict[str, dict[str, Any]] = {}
+    scene_order: list[str] = []
+    take_node_ids: dict[tuple[str, str], str] = {}
+    take_index_by_scene: dict[str, int] = {}
+    asset_counter = 0
+    take_counter = 0
+
+    for lane in timeline_state.get("lanes", []):
+        lane_id = str(lane.get("lane_id") or "")
+        lane_type = str(lane.get("lane_type") or "")
+        for clip in lane.get("clips", []):
+            scene_id = str(clip.get("scene_id") or "").strip() or "scene_01"
+            take_id = str(clip.get("take_id") or "").strip() or "take_01"
+            record_id = str(clip.get("record_id") or "").strip() or take_id
+            source_path = str(clip.get("source_path") or "")
+            clip_id = str(clip.get("clip_id") or "")
+            duration_sec = float(clip.get("duration_sec") or 0.0)
+            modality = _infer_cut_media_modality(source_path)
+            if scene_id not in scenes:
+                scene_order.append(scene_id)
+                scene_label = scene_id.replace("_", " ").title()
+                scene_node = {
+                    "node_id": scene_id,
+                    "node_type": SCENE_GRAPH_NODE_SCENE,
+                    "label": scene_label,
+                    "record_ref": None,
+                    "metadata": {
+                        "timeline_id": str(timeline_state.get("timeline_id") or "main"),
+                        "timeline_lane": lane_id,
+                        "scene_index": len(scene_order),
+                        "summary": "",
+                        "lane_ids": [lane_id],
+                        "source_paths": [],
+                        "take_count": 0,
+                        "asset_count": 0,
+                        "clip_count": 0,
+                        "duration_sec": 0.0,
+                    },
+                }
+                scenes[scene_id] = scene_node
+                nodes.append(scene_node)
+            take_key = (scene_id, take_id)
+            if take_key not in take_node_ids:
+                take_counter += 1
+                take_index_by_scene[scene_id] = take_index_by_scene.get(scene_id, 0) + 1
+                take_node_id = f"take_node_{take_counter:04d}"
+                take_node_ids[take_key] = take_node_id
+                nodes.append(
+                    {
+                        "node_id": take_node_id,
+                        "node_type": SCENE_GRAPH_NODE_TAKE,
+                        "label": take_id.replace("_", " ").title(),
+                        "record_ref": record_id,
+                        "metadata": {
+                            "scene_id": scene_id,
+                            "take_id": take_id,
+                            "take_index": take_index_by_scene[scene_id],
+                            "lane_id": lane_id,
+                            "lane_type": lane_type,
+                            "clip_id": clip_id,
+                            "source_path": source_path,
+                            "duration_sec": duration_sec,
+                            "modality": modality,
+                        },
+                    }
+                )
+                edges.append(
+                    {
+                        "edge_id": f"edge_contains_{scene_id}_{take_counter:04d}",
+                        "edge_type": SCENE_GRAPH_EDGE_CONTAINS,
+                        "source": scene_id,
+                        "target": take_node_id,
+                        "weight": 1.0,
+                    }
+                )
+                scene_meta = scenes[scene_id]["metadata"]
+                scene_meta["take_count"] = int(scene_meta.get("take_count") or 0) + 1
+            asset_counter += 1
+            asset_node_id = f"asset_{asset_counter:04d}"
+            asset_label = os.path.basename(source_path) or asset_node_id
+            asset_meta: dict[str, Any] = {
+                        "scene_id": scene_id,
+                        "take_id": take_id,
+                        "clip_id": clip_id,
+                        "source_path": source_path,
+                        "start_sec": float(clip.get("start_sec") or 0.0),
+                        "duration_sec": duration_sec,
+                        "timeline_lane": lane_id,
+                        "lane_type": lane_type,
+                        "asset_kind": _infer_cut_asset_kind(modality, lane_type),
+                        "modality": modality,
+            }
+            if clip.get("thumbnail_path"):
+                asset_meta["thumbnail_path"] = clip["thumbnail_path"]
+            if clip.get("source_in") is not None:
+                asset_meta["source_in"] = clip["source_in"]
+                asset_meta["source_out"] = clip.get("source_out", 0.0)
+            nodes.append(
+                {
+                    "node_id": asset_node_id,
+                    "node_type": SCENE_GRAPH_NODE_ASSET,
+                    "label": asset_label,
+                    "record_ref": record_id,
+                    "metadata": asset_meta,
+                }
+            )
+            edges.append(
+                {
+                    "edge_id": f"edge_references_{asset_counter:04d}",
+                    "edge_type": SCENE_GRAPH_EDGE_REFERENCES,
+                    "source": take_node_ids[take_key],
+                    "target": asset_node_id,
+                    "weight": 1.0,
+                }
+            )
+            scene_meta = scenes[scene_id]["metadata"]
+            scene_meta["asset_count"] = int(scene_meta.get("asset_count") or 0) + 1
+            scene_meta["clip_count"] = int(scene_meta.get("clip_count") or 0) + 1
+            scene_meta["duration_sec"] = round(float(scene_meta.get("duration_sec") or 0.0) + duration_sec, 4)
+            if lane_id not in scene_meta["lane_ids"]:
+                scene_meta["lane_ids"].append(lane_id)
+            if source_path and source_path not in scene_meta["source_paths"]:
+                scene_meta["source_paths"].append(source_path)
+
+    for index in range(len(scene_order) - 1):
+        edges.append(
+            {
+                "edge_id": f"edge_follows_{index + 1:04d}",
+                "edge_type": SCENE_GRAPH_EDGE_FOLLOWS,
+                "source": scene_order[index],
+                "target": scene_order[index + 1],
+                "weight": 1.0,
+            }
+        )
+
+    # MARKER_189.4: Inject scanner SignalEdge[] as semantic_match edges
+    if store is not None:
+        smr = store.load_scan_matrix_result()
+        if smr and isinstance(smr.get("items"), list):
+            scanner_edge_counter = 0
+            for item in smr["items"]:
+                for scan_key in ("video_scan", "audio_scan"):
+                    scan_data = item.get(scan_key) or {}
+                    for edge in scan_data.get("edges") or []:
+                        scanner_edge_counter += 1
+                        edge_type = SCENE_GRAPH_EDGE_SEMANTIC_MATCH
+                        channel = str(edge.get("channel", ""))
+                        if channel == "temporal":
+                            edge_type = SCENE_GRAPH_EDGE_FOLLOWS
+                        edges.append({
+                            "edge_id": f"edge_scanner_{scanner_edge_counter:04d}",
+                            "edge_type": edge_type,
+                            "source": str(edge.get("source", "")),
+                            "target": str(edge.get("target", "")),
+                            "weight": float(edge.get("confidence", 0.5)),
+                            "metadata": {
+                                "channel": channel,
+                                "evidence": edge.get("evidence", []),
+                                "source_type": edge.get("source_type", ""),
+                                "target_type": edge.get("target_type", ""),
+                            },
+                        })
+
+    for scene_id, scene_node in scenes.items():
+        metadata = scene_node["metadata"]
+        take_count = int(metadata.get("take_count") or 0)
+        asset_count = int(metadata.get("asset_count") or 0)
+        duration_sec = float(metadata.get("duration_sec") or 0.0)
+        metadata["summary"] = f"{take_count} takes · {asset_count} assets · {duration_sec:.1f}s"
+        metadata["source_paths"] = sorted(metadata.get("source_paths", []))
+
+    return {
+        "schema_version": "cut_scene_graph_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "graph_id": str(graph_id or "main"),
+        "revision": 1,
+        "nodes": nodes,
+        "edges": edges,
+        "updated_at": _utc_now_iso(),
+    }
 
 
 def _run_cut_scene_assembly_job(job_id: str, body: CutSceneAssemblyRequest) -> None:
