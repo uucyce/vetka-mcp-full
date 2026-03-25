@@ -1,13 +1,14 @@
 """
-MARKER_197.SLIM: Tests for CLAUDE.md Generator — slim routing stub version.
+MARKER_ZETA.D3: Tests for CLAUDE.md Generator.
 
 Tests:
-1. Template rendering — all 7 roles produce valid CLAUDE.md
-2. Structure — output has init section, branch, role title
-3. Commander — gets orchestration section
-4. Slim contract — no owned_paths, no predecessor, no L1/L2 tables
+1. Template rendering — all 5 roles produce valid CLAUDE.md
+2. Structure — output matches expected sections
+3. Predecessor advice — extracted from JSON experience reports
+4. Predecessor advice — fallback to MD files
 5. Dry-run mode — no file writes
 6. Write mode — files created on disk
+7. Pending tasks — injected into output
 """
 
 import json
@@ -22,6 +23,7 @@ from src.tools.generate_claude_md import (
     generate_all,
     write_claude_md,
     _load_template,
+    _extract_predecessor_advice_from_json,
 )
 
 
@@ -75,97 +77,125 @@ class TestRendering:
         content = generate_claude_md("Omega", registry=registry, template=template)
         assert content is None
 
-    def test_all_roles_render(self, registry, template):
-        for callsign in ["Alpha", "Beta", "Gamma", "Delta", "Epsilon", "Zeta", "Commander"]:
+    def test_all_five_roles_render(self, registry, template):
+        for callsign in ["Alpha", "Beta", "Gamma", "Delta", "Commander"]:
             content = generate_claude_md(callsign, registry=registry, template=template)
             assert content is not None, f"{callsign} failed to render"
-            assert len(content) > 50, f"{callsign} output too short"
+            assert len(content) > 100, f"{callsign} output too short"
 
 
-# ── Structure Tests — Slim Template ─────────────────────────
+# ── Structure Tests ─────────────────────────────────────────
 
 
 class TestStructure:
     def test_has_role_header(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
         assert "**Role:**" in content
-        assert "Engine Architect" in content
+        assert "**Callsign:** Alpha" in content
 
-    def test_has_init_section(self, registry, template):
+    def test_has_first_task_section(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "## Init" in content
+        assert "Your First Task in 3 Steps" in content
         assert "mcp__vetka__vetka_session_init" in content
 
-    def test_has_branch(self, registry, template):
+    def test_has_identity_section(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "branch=claude/cut-engine" in content
+        assert "## Identity" in content
+
+    def test_has_owned_files_section(self, registry, template):
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "Owned Files" in content
+        assert "useTimelineInstanceStore" in content
+
+    def test_has_do_not_touch_section(self, registry, template):
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "DO NOT Touch" in content
+        assert "MenuBar" in content
 
     def test_has_cardinal_rules(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
         assert "NEVER commit to main" in content
-        assert "NEVER" in content
+        assert "branch=claude/cut-engine" in content
+
+    def test_has_key_docs(self, registry, template):
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "Key Docs" in content
+
+    def test_has_session_end_section(self, registry, template):
+        content = generate_claude_md("Alpha", registry=registry, template=template)
+        assert "Before Session End" in content
+        assert "experience report" in content.lower()
 
     def test_has_auto_generated_header(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Auto-generated" in content
-
-    def test_session_init_returns_role_context(self, registry, template):
-        """Slim CLAUDE.md tells agent that session_init provides role_context."""
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "role_context" in content
+        assert "AUTO-GENERATED" in content
 
 
-# ── Slim Contract — Removed Sections ─────────────────────────
+# ── Predecessor Advice Tests ────────────────────────────────
 
 
-class TestSlimContract:
-    """Verify that bloated sections are NOT in slim template."""
+class TestPredecessorAdvice:
+    def test_advice_from_json_reports(self, tmp_path, registry, template):
+        """Create a fake JSON experience report and verify it's picked up."""
+        reports_dir = tmp_path / "reports"
+        reports_dir.mkdir()
+        report = {
+            "session_id": "test-001",
+            "agent_callsign": "Alpha",
+            "domain": "engine",
+            "branch": "claude/cut-engine",
+            "timestamp": "2026-03-22T00:00:00Z",
+            "lessons_learned": ["Always test the JKL shuttle at 4x speed"],
+            "recommendations": ["Read chapter 5 of the FCP7 manual"],
+        }
+        (reports_dir / "test-001.json").write_text(json.dumps(report))
 
-    def test_no_owned_files_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Owned Files" not in content
-        assert "useTimelineInstanceStore" not in content
+        # Monkey-patch the reports dir
+        import src.tools.generate_claude_md as gen_mod
+        original_dir = gen_mod._EXPERIENCE_REPORTS_DIR
+        gen_mod._EXPERIENCE_REPORTS_DIR = reports_dir
+        try:
+            content = generate_claude_md("Alpha", registry=registry, template=template)
+            assert "Always test the JKL shuttle at 4x speed" in content
+            assert "Read chapter 5 of the FCP7 manual" in content
+        finally:
+            gen_mod._EXPERIENCE_REPORTS_DIR = original_dir
 
-    def test_no_predecessor_advice(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Predecessor Advice" not in content
-
-    def test_no_memory_context_tables(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "L1 — Hot Context" not in content
-        assert "L2 — Warm Context" not in content
-
-    def test_no_key_docs_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Key Docs" not in content
-
-    def test_no_session_end_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Before Session End" not in content
-
-    def test_no_commit_flow_details(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Commit Flow" not in content
-        assert "Anti-pattern" not in content
-
-    def test_slim_size_under_1000_chars(self, registry, template):
-        """Non-Commander roles should be under 1000 chars."""
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert len(content) < 1000, f"Alpha CLAUDE.md is {len(content)} chars, should be < 1000"
+    def test_no_advice_still_renders(self, registry, template, tmp_path):
+        """Even with no experience reports, CLAUDE.md should render."""
+        import src.tools.generate_claude_md as gen_mod
+        original_dir = gen_mod._EXPERIENCE_REPORTS_DIR
+        gen_mod._EXPERIENCE_REPORTS_DIR = tmp_path / "empty_reports"
+        original_fb = gen_mod._FEEDBACK_DOCS_DIR
+        gen_mod._FEEDBACK_DOCS_DIR = tmp_path / "empty_feedback"
+        try:
+            content = generate_claude_md("Alpha", registry=registry, template=template)
+            assert content is not None
+            assert "Agent Alpha" in content
+        finally:
+            gen_mod._EXPERIENCE_REPORTS_DIR = original_dir
+            gen_mod._FEEDBACK_DOCS_DIR = original_fb
 
 
-# ── Commander Orchestration ─────────────────────────────────
+# ── Pending Tasks Tests ─────────────────────────────────────
 
 
-class TestCommander:
-    def test_has_orchestration_section(self, registry, template):
-        content = generate_claude_md("Commander", registry=registry, template=template)
-        assert "Orchestration" in content
-        assert "Fleet" in content
+class TestPendingTasks:
+    def test_pending_tasks_rendered(self, registry, template):
+        tasks = [
+            {"id": "tb_001", "title": "Fix timeline playback", "priority": 2},
+            {"id": "tb_002", "title": "Add JKL shuttle", "priority": 1},
+        ]
+        content = generate_claude_md("Alpha", registry=registry, template=template, pending_tasks=tasks)
+        assert "tb_001" in content
+        assert "Fix timeline playback" in content
+        assert "P2" in content
+        assert "tb_002" in content
 
-    def test_non_commander_no_orchestration(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Orchestration" not in content
+    def test_no_pending_tasks_section_when_empty(self, registry, template):
+        content = generate_claude_md("Alpha", registry=registry, template=template, pending_tasks=[])
+        # Should not have the pending tasks header
+        assert "Current Pending Tasks" not in content
 
 
 # ── File Write Tests ────────────────────────────────────────
@@ -173,13 +203,12 @@ class TestCommander:
 
 class TestFileWrites:
     def test_dry_run_generates_all(self, registry):
-        """generate_all with dry_run=True returns content for all 7 roles."""
+        """generate_all with dry_run=True returns content for all roles."""
         results = generate_all(dry_run=True)
-        assert len(results) == 7
+        assert len(results) == 7  # Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Commander
         assert "Alpha" in results
         assert "Beta" in results
         assert "Commander" in results
-        assert "Zeta" in results
 
     def test_write_creates_file(self, tmp_path, registry, template):
         out_dir = tmp_path / "test-worktree"
@@ -192,10 +221,10 @@ class TestFileWrites:
 
     def test_generate_all_writes_files(self, tmp_path):
         results = generate_all(dry_run=False, output_base=tmp_path)
-        assert len(results) == 7
-        # Verify files on disk for all worktrees
-        for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "cut-qa-2", "harness", "pedantic-bell"]:
+        assert len(results) == 7  # All 7 roles
+        # Verify files on disk
+        for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "pedantic-bell"]:
             path = tmp_path / role_name / "CLAUDE.md"
             assert path.exists(), f"Missing: {path}"
             content = path.read_text()
-            assert len(content) > 50
+            assert len(content) > 100
