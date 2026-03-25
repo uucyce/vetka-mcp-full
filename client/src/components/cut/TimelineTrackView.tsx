@@ -2026,8 +2026,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
+                          background: 'transparent',
+                          transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_left', event)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          e.currentTarget.style.borderRight = '1px solid rgba(255, 255, 255, 0.5)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderRight = '';
+                        }}
                       />
                       <div
                         data-clip="1"
@@ -2039,8 +2049,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
+                          background: 'transparent',
+                          transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          e.currentTarget.style.borderLeft = '1px solid rgba(255, 255, 255, 0.5)';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderLeft = '';
+                        }}
                       />
 
                       {/* MARKER_TL5: Through edit indicator — triangle at left edge (FCP7 Ch.10 p.152) */}
