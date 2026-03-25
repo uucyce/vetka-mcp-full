@@ -51,6 +51,7 @@ import {
   MarkerListPanel,
   TimelineInstancePanel,
   PublishPanel,
+  MulticamPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -123,6 +124,7 @@ const PANEL_COMPONENTS = {
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
+  multicam: MulticamPanel,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
