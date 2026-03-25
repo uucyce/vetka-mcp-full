@@ -35,14 +35,16 @@ def _make_board(tmp_path: Path) -> TaskBoard:
 def _close_via_handler(board: TaskBoard, task_id: str, reason: str = "closed") -> dict:
     """Drive handle_task_board(action=close) with a patched get_task_board()."""
     from src.mcp.tools.task_board_tools import handle_task_board
-    with patch("src.mcp.tools.task_board_tools.get_task_board", return_value=board):
+    # get_task_board is imported locally inside handle_task_board, patch the source module
+    with patch("src.orchestration.task_board.get_task_board", return_value=board):
         return handle_task_board({"action": "close", "task_id": task_id, "reason": reason})
 
 
 def _bulk_close_via_handler(board: TaskBoard, task_ids: list, reason: str = "bulk_closed") -> dict:
     """Drive handle_task_board(action=bulk_close) with a patched get_task_board()."""
     from src.mcp.tools.task_board_tools import handle_task_board
-    with patch("src.mcp.tools.task_board_tools.get_task_board", return_value=board):
+    # get_task_board is imported locally inside handle_task_board, patch the source module
+    with patch("src.orchestration.task_board.get_task_board", return_value=board):
         return handle_task_board({"action": "bulk_close", "task_ids": task_ids, "reason": reason})
 
 
@@ -86,7 +88,7 @@ def test_close_missing_task_id(tmp_path):
     """Close without task_id → returns error."""
     board = _make_board(tmp_path)
     from src.mcp.tools.task_board_tools import handle_task_board
-    with patch("src.mcp.tools.task_board_tools.get_task_board", return_value=board):
+    with patch("src.orchestration.task_board.get_task_board", return_value=board):
         result = handle_task_board({"action": "close"})
 
     assert result["success"] is False
@@ -142,7 +144,7 @@ def test_bulk_close_empty_list(tmp_path):
     """bulk_close with empty task_ids → returns error."""
     board = _make_board(tmp_path)
     from src.mcp.tools.task_board_tools import handle_task_board
-    with patch("src.mcp.tools.task_board_tools.get_task_board", return_value=board):
+    with patch("src.orchestration.task_board.get_task_board", return_value=board):
         result = handle_task_board({"action": "bulk_close", "task_ids": []})
 
     assert result["success"] is False
