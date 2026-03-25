@@ -3537,3 +3537,5 @@ async def cut_apply_script_to_dag(body: dict) -> dict:
 # cut_audio_loudness, cut_loudness_standards
 # ---------------------------------------------------------------------------
 # (Render code removed — now in cut_routes_render.py)
+# MARKER_B72: Re-export _emit_render_progress for backward compat (tests import from here)
+from src.api.routes.cut_routes_render import _emit_render_progress as _emit_render_progress  # noqa: F401
