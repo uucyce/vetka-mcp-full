@@ -138,8 +138,8 @@ class TestFCP7Editing:
     """FCP7 App.A: Core editing operations."""
 
     def test_split_at_playhead(self, fcp7):
-        """FCP7: Ctrl+V = Add Edit (split at playhead)."""
-        assert fcp7["splitClip"] == "Ctrl+v"
+        """FCP7 App.A: Add Edit = ⌘K (intentional override — Ctrl+V collides with paste)."""
+        assert fcp7["splitClip"] == "Cmd+k"
 
     def test_insert_overwrite(self, fcp7):
         assert fcp7["insertEdit"] == ","
