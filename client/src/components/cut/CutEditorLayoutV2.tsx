@@ -1034,7 +1034,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   // ─── MARKER_B5.2: Audio playback wiring ───
   // Hook provides playAt / stopAll synced to Web Audio API.
-  const { playAt, stopAll } = useAudioPlayback();
+  const { playAt, stopAll, prefetch } = useAudioPlayback();
 
   // Subscribe to audio-relevant store slices
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
@@ -1102,6 +1102,25 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     playAt(audioClipsRef.current, currentTime);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, playAt, stopAll]);
+
+  // MARKER_AUDIO_PREFETCH: Prefetch next clip's audio when playhead approaches clip boundary (2s lookahead)
+  const lastPrefetchRef = useRef('');
+  useEffect(() => {
+    if (!isPlayingRef.current) return;
+    const s = useCutEditorStore.getState();
+    const audioLane = s.lanes.find((l) => l.lane_type.startsWith('audio'));
+    if (!audioLane) return;
+    for (const clip of audioLane.clips) {
+      const clipEnd = clip.start_sec + clip.duration_sec;
+      // If playhead is within 2s before clip start and we haven't prefetched this clip yet
+      if (currentTime >= clip.start_sec - 2 && currentTime < clip.start_sec && lastPrefetchRef.current !== clip.clip_id) {
+        lastPrefetchRef.current = clip.clip_id;
+        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id }]);
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, prefetch]);
 
   // MARKER_SCRUB_SYNC: Timeline scrub → Source Monitor shows clip under playhead (FCP7 Canvas→Viewer follows)
   const lastScrubSourceRef = useRef<{ path: string | null; time: number }>({ path: null, time: -1 });
