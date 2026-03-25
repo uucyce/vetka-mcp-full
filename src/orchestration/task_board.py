@@ -2472,7 +2472,19 @@ class TaskBoard:
                     )
                     stdout, stderr = await proc.communicate()
                     if proc.returncode != 0:
-                        # Abort cherry-pick
+                        stderr_text = stderr.decode().strip()
+                        # MARKER_198.P1.MERGE: Handle empty cherry-pick (commit already on main)
+                        if "empty" in stderr_text or "nothing to commit" in stderr_text:
+                            skip_proc = await asyncio.create_subprocess_exec(
+                                "git", "cherry-pick", "--skip",
+                                cwd=str(PROJECT_ROOT),
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                            )
+                            await skip_proc.communicate()
+                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
+                            continue
+                        # Abort cherry-pick on real conflict
                         abort_proc = await asyncio.create_subprocess_exec(
                             "git", "cherry-pick", "--abort",
                             cwd=str(PROJECT_ROOT),
@@ -2482,7 +2494,7 @@ class TaskBoard:
                         await abort_proc.communicate()
                         return {
                             "success": False,
-                            "error": f"Cherry-pick failed for {commit_hash}: {stderr.decode().strip()}",
+                            "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
                             "conflicting_commit": commit_hash,
                         }
 
