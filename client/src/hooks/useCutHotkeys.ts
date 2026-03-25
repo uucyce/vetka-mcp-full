@@ -124,7 +124,9 @@ export type CutHotkeyAction =
   | 'escapeContext'
   // MARKER_A4: PULSE integration
   | 'runPulseAnalysis'
-  | 'runAutoMontageFavorites';
+  | 'runAutoMontageFavorites'
+  // MARKER_EXPORT: Timeline export
+  | 'exportTimeline';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -241,6 +243,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   // MARKER_A4: PULSE
   runPulseAnalysis:    'global',
   runAutoMontageFavorites: 'global',
+  exportTimeline:         'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -361,6 +364,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // MARKER_A4: PULSE integration
   runPulseAnalysis:  'Cmd+Shift+p',
   runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -464,6 +469,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // MARKER_A4: PULSE integration
   runPulseAnalysis:  'Cmd+Shift+p',
   runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -697,6 +704,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // MARKER_A4: PULSE
   { action: 'runPulseAnalysis', label: 'PULSE Analyze All Scenes', group: 'PULSE' },
   { action: 'runAutoMontageFavorites', label: 'Auto-Montage: Favorites', group: 'PULSE' },
+  // MARKER_EXPORT
+  { action: 'exportTimeline', label: 'Export Timeline (Premiere XML)', group: 'File' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────

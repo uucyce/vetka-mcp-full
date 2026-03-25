@@ -564,6 +564,9 @@ interface CutEditorState {
   pulseScores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }>;
   montageInProgress: boolean;
   pulseAnalysisInProgress: boolean;
+  // MARKER_EXPORT: Timeline export to editorial formats
+  exportTimeline: (format: 'premiere-xml' | 'fcpxml' | 'otio' | 'edl') => Promise<void>;
+  exportInProgress: boolean;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -1547,6 +1550,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   pulseScores: {},
   montageInProgress: false,
   pulseAnalysisInProgress: false,
+  exportInProgress: false,
 
   runAutoMontage: async (mode) => {
     const { sandboxRoot, projectId, timelineId, montageInProgress } = get();
@@ -1636,6 +1640,61 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       console.error('[PULSE] analysis error:', err);
     } finally {
       set({ pulseAnalysisInProgress: false });
+    }
+  },
+
+  // MARKER_EXPORT: Export timeline to editorial format (Premiere XML, FCPXML, OTIO, EDL)
+  exportTimeline: async (format) => {
+    const { sandboxRoot, projectId, timelineId, projectFramerate } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] exportTimeline: no project session');
+      return;
+    }
+    set({ exportInProgress: true });
+    try {
+      const response = await fetch(`${API_BASE}/cut/export/${format}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          fps: projectFramerate || 25,
+        }),
+      });
+      if (!response.ok) throw new Error(`Export failed: HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error?.message || 'Export failed');
+      // Determine content and file extension
+      const content = data.xml_content || data.otio_content || data.edl_content || '';
+      const ext = { 'premiere-xml': 'xml', 'fcpxml': 'fcpxml', 'otio': 'otio', 'edl': 'edl' }[format] || 'xml';
+      const mimeType = format === 'otio' ? 'application/json' : 'text/xml';
+      // Trigger file download
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectId}_${timelineId || 'main'}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      // Notify success
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'success', message: `Exported ${format}: ${data.export_path || 'download'}` },
+        }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Export failed';
+      console.error('[CUT] exportTimeline error:', msg);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: msg },
+        }));
+      }
+    } finally {
+      set({ exportInProgress: false });
     }
   },
 }));

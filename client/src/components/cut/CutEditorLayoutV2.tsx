@@ -900,6 +900,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_A4: PULSE integration hotkeys
     runPulseAnalysis: () => useCutEditorStore.getState().runPulseAnalysis(),
     runAutoMontageFavorites: () => useCutEditorStore.getState().runAutoMontage('favorites'),
+    // MARKER_EXPORT: Export timeline (Cmd+E → default Premiere XML)
+    exportTimeline: () => useCutEditorStore.getState().exportTimeline('premiere-xml'),
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
     focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
