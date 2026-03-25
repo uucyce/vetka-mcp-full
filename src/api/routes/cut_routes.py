@@ -121,6 +121,7 @@ class CutBootstrapRequest(BaseModel):
     source_path: str
     sandbox_root: str
     project_name: str = ""
+    timeline_id: str = "main"
     mode: Literal["create_or_open", "open_existing", "create_new"] = "create_or_open"
     quick_scan_limit: int = Field(default=5000, ge=1, le=200000)
     bootstrap_profile: str = "default"

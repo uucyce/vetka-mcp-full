@@ -190,6 +190,7 @@ def test_cut_timeline_apply_returns_recoverable_error_when_timeline_missing(tmp_
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["success"] is False
+    # After bootstrap fix (timeline_id field added), bootstrap now creates the timeline
+    # successfully, so apply should succeed (not return timeline_not_ready)
+    assert payload["success"] is True
     assert payload["schema_version"] == "cut_timeline_apply_v1"
-    assert payload["error"]["code"] == "timeline_not_ready"
