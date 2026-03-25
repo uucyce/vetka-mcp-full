@@ -131,8 +131,8 @@ test.describe.serial('FCP7 Menus: Sequence (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // FCP7: Sequence > Lift (;) — remove In-to-Out, leave gap
-  // TODO: Needs Sequence > Lift menu item + lift operation (remove In-to-Out, leave gap) — Gamma
-  test.fixme('SEQ1: Sequence menu contains Lift (;)', async ({ page }) => {
+  // WIRED: MenuBar.tsx line 582 — Gamma completed
+  test('SEQ1: Sequence menu contains Lift (;)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'Sequence', 'Lift');
     expect(found).toBe(true);
@@ -204,8 +204,8 @@ test.describe.serial('FCP7 Menus: Mark (TDD)', () => {
   test.afterAll(() => { cleanupServer(); });
 
   // FCP7: Mark > Mark Clip (X) — set In/Out to clip boundaries
-  // TODO: Needs Mark > Mark Clip menu item — set In/Out to clip boundaries — Gamma
-  test.fixme('MARK1: Mark menu contains Mark Clip (X)', async ({ page }) => {
+  // WIRED: MenuBar.tsx line 400 — Gamma completed
+  test('MARK1: Mark menu contains Mark Clip (X)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'Mark', 'Mark Clip');
     expect(found).toBe(true);
@@ -390,8 +390,8 @@ test.describe.serial('FCP7 Menus: File (TDD)', () => {
   test.beforeAll(async () => { await ensureDevServer(); });
   test.afterAll(() => { cleanupServer(); });
 
-  // TODO: Needs File > New Sequence menu item + sequence creation — Gamma
-  test.fixme('FILE1: File menu contains New Sequence (⌘N)', async ({ page }) => {
+  // WIRED: MenuBar.tsx line 227 — Gamma completed
+  test('FILE1: File menu contains New Sequence (⌘N)', async ({ page }) => {
     await navigateToCut(page);
     const found = await menuContains(page, 'File', 'New Sequence');
     expect(found).toBe(true);
