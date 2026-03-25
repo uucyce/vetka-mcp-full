@@ -611,8 +611,8 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Trim Edit', shortcut: 'T', disabled: true },
         { separator: true },
-        { label: 'Add Video Transition', shortcut: '⌘T', disabled: true },
-        { label: 'Add Audio Transition', shortcut: '⌘⇧T', disabled: true },
+        { label: 'Add Video Transition', shortcut: '⌘T', action: () => store.getState().addDefaultTransition() },
+        { label: 'Add Audio Transition', shortcut: '⌘⇧T', action: () => store.getState().addDefaultTransition() },
         { label: 'Transition Alignment', submenu: [
           { label: 'Center on Edit', disabled: true },
           { label: 'Start on Edit', disabled: true },
