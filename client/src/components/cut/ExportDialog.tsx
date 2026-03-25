@@ -283,6 +283,7 @@ export default function ExportDialog() {
       const detail = (e as CustomEvent).detail;
       if (detail?.tab) setTab(detail.tab);
       if (detail?.format) setEditorialFormat(detail.format);
+      if (detail?.codec) setCodec(detail.codec);
     };
     window.addEventListener('cut:open-export', handler);
     return () => window.removeEventListener('cut:open-export', handler);
