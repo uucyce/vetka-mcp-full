@@ -107,7 +107,7 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
         left: 0,
         width: '100%',
         height: fillH,
-        background: value > 1.0 ? '#c44' : '#555',
+        background: value > 1.0 ? '#999' : '#555',
         borderRadius: 2,
         transition: 'height 0.05s',
       }} />
@@ -135,11 +135,47 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
   );
 }
 
+// ─── MARKER_B75: Clipping indicator — latched red light (FCP7 Ch.55) ──
+
+function ClipIndicator({ level }: { level: number }) {
+  const [clipped, setClipped] = useState(false);
+  const [flash, setFlash] = useState(true);
+
+  useEffect(() => {
+    if (level >= 0.95) setClipped(true);
+  }, [level]);
+
+  // Flashing effect: toggle every 400ms while clipped
+  useEffect(() => {
+    if (!clipped) return;
+    const id = setInterval(() => setFlash((f) => !f), 400);
+    return () => clearInterval(id);
+  }, [clipped]);
+
+  if (!clipped) return null;
+
+  return (
+    <div
+      onClick={() => { setClipped(false); setFlash(true); }}
+      title="CLIP — click to reset"
+      style={{
+        width: 16, height: 10, lineHeight: '10px', textAlign: 'center' as const,
+        fontSize: 6, fontFamily: 'monospace', fontWeight: 700,
+        background: flash ? '#fff' : '#666', color: flash ? '#000' : '#aaa', borderRadius: 1,
+        cursor: 'pointer', userSelect: 'none' as const, flexShrink: 0,
+        transition: 'background 0.15s, color 0.15s',
+      }}
+    >
+      CLIP
+    </div>
+  );
+}
+
 // ─── VU indicator (simulated) ──────────────────────────────────────
 
 function VuIndicator({ level, muted }: { level: number; muted: boolean }) {
   const h = muted ? 0 : Math.min(1, level) * 40;
-  const color = level > 0.85 ? '#ef4444' : level > 0.6 ? '#eab308' : '#22c55e';
+  const color = level > 0.85 ? '#bbb' : level > 0.6 ? '#777' : '#444';
   return (
     <div style={{ width: 6, height: 40, background: '#1a1a1a', borderRadius: 1, position: 'relative', overflow: 'hidden' }}>
       <div style={{
@@ -273,6 +309,7 @@ function ChannelStrip({
       <div style={LABEL}>{label}</div>
       {/* MARKER_B52: Use real audio level × volume for VU */}
       <VuIndicator level={audioLevel * volume} muted={muted} />
+      <ClipIndicator level={audioLevel * volume} />
       <VolumeFader value={volume} onChange={onVolumeChange} />
       <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666' }}>
         {Math.round(volume * 100)}%
@@ -305,10 +342,14 @@ export default function AudioMixer() {
   const toggleSolo = useCutEditorStore((s) => s.toggleSolo);
   const setLaneVolume = useCutEditorStore((s) => s.setLaneVolume);
 
-  // Master volume (local state — not in store yet)
-  const [masterVolume, setMasterVolume] = useState(1.0);
-  // MARKER_GAMMA-17: Pan per lane (local state — move to store when Alpha adds lanePans)
-  const [lanePans, setLanePans] = useState<Record<string, number>>({});
+  // MARKER_B75: Master volume + pan from store (was useState)
+  const masterVolume = useCutEditorStore((s) => s.masterVolume);
+  const setMasterVolume = useCutEditorStore((s) => s.setMasterVolume);
+  const masterPan = useCutEditorStore((s) => s.masterPan);
+  const setMasterPan = useCutEditorStore((s) => s.setMasterPan);
+  // MARKER_B75: Lane pans from store (was useState)
+  const lanePans = useCutEditorStore((s) => s.lanePans);
+  const setLanePan = useCutEditorStore((s) => s.setLanePan);
   // MARKER_B52: Real audio levels from WebSocket (replaces simulated VU)
   const [audioLevels, setAudioLevels] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
   useEffect(() => {
@@ -318,10 +359,6 @@ export default function AudioMixer() {
     };
     socket.on('audio_scope_data', onData);
     return () => { socket.off('audio_scope_data', onData); };
-  }, []);
-  const [masterPan, setMasterPan] = useState(0);
-  const setPan = useCallback((laneId: string, v: number) => {
-    setLanePans((prev) => ({ ...prev, [laneId]: v }));
   }, []);
 
   // Filter to audio-relevant lanes (audio_sync, aux, or all if < 6 lanes)
@@ -351,7 +388,7 @@ export default function AudioMixer() {
           soloed={soloLanes.has(lane.lane_id)}
           audioLevel={(audioLevels.left + audioLevels.right) / 2}
           onVolumeChange={(v) => setLaneVolume(lane.lane_id, v)}
-          onPanChange={(v) => setPan(lane.lane_id, v)}
+          onPanChange={(v) => setLanePan(lane.lane_id, v)}
           onToggleMute={() => toggleMute(lane.lane_id)}
           onToggleSolo={() => toggleSolo(lane.lane_id)}
         />
@@ -364,6 +401,7 @@ export default function AudioMixer() {
       <div style={{ ...STRIP, background: '#151515' }}>
         <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
         <VuIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={false} />
+        <ClipIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} />
         <VolumeFader value={masterVolume} onChange={setMasterVolume} />
         <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
           {Math.round(masterVolume * 100)}%

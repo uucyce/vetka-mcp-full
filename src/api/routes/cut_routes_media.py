@@ -1163,9 +1163,11 @@ async def cut_multicam_switch(body: CutMulticamSwitchRequest) -> dict[str, Any]:
 
 # ---------------------------------------------------------------------------
 # MARKER_B62 — Video/Audio Streaming for Browser Playback
+# MARKER_B73 — Transcode-on-the-fly for non-browser-native formats
 # ---------------------------------------------------------------------------
 
 import re as _re
+import threading
 
 from fastapi import Request
 from fastapi.responses import StreamingResponse
@@ -1195,29 +1197,150 @@ _MIME_MAP = {
 
 _RANGE_RE = _re.compile(r"bytes=(\d+)-(\d*)")
 
+# ---------------------------------------------------------------------------
+# MARKER_B73: Browser-native codec detection + transcode cache
+# ---------------------------------------------------------------------------
 
-@media_router.get("/stream")
-async def cut_media_stream(request: Request, source_path: str) -> StreamingResponse:
+# Video codecs Chrome can decode natively
+_BROWSER_NATIVE_VIDEO = {"h264", "vp8", "vp9", "av1", "theora"}
+# Audio codecs Chrome can decode natively
+_BROWSER_NATIVE_AUDIO = {"aac", "mp3", "opus", "vorbis", "flac", "mp4a"}
+# Containers Chrome can demux natively
+_BROWSER_NATIVE_CONTAINERS = {"mp4", "mov", "webm", "ogg", "m4v", "m4a", "mp3", "flac"}
+
+# In-progress transcode lock per source path (prevents duplicate transcodes)
+_transcode_locks: dict[str, threading.Lock] = {}
+_transcode_locks_guard = threading.Lock()
+
+_TRANSCODE_CACHE_DIR_NAME = "cut_stream_cache"
+
+
+def _get_transcode_cache_dir() -> Path:
+    """Get or create the transcode cache directory."""
+    cache_dir = Path.home() / ".cut_cache" / _TRANSCODE_CACHE_DIR_NAME
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _cache_key(source_path: Path) -> str:
+    """Stable cache key from file path + mtime + size."""
+    stat = source_path.stat()
+    raw = f"{source_path}:{stat.st_mtime_ns}:{stat.st_size}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _needs_browser_transcode(source_path: Path) -> dict[str, Any] | None:
     """
-    MARKER_B62: HTTP Range-aware video/audio streaming for browser <video>/<audio>.
-    Supports seeking via Range headers (206 Partial Content).
+    Probe file and decide if transcode is needed for browser playback.
+    Returns None if native playback is fine.
+    Returns dict with transcode instructions if needed.
     """
-    source_path = source_path.strip()
-    if not source_path or not os.path.isabs(source_path):
-        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+    try:
+        probe = probe_file(str(source_path), timeout=5.0)
+    except Exception:
+        return None
 
-    file_path = Path(source_path)
-    if not file_path.exists() or not file_path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
+    if not probe.ok:
+        return None
 
-    ext = file_path.suffix.lower()
-    if ext not in _STREAM_ALLOWED_EXT:
-        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+    video_codec = (probe.video_codec or "").lower()
+    audio_codec = (probe.audio_codec or "").lower()
+    container = (probe.container or "").lower()
+    container_parts = {c.strip() for c in container.split(",") if c.strip()}
 
+    video_native = (not video_codec) or video_codec in _BROWSER_NATIVE_VIDEO
+    audio_native = (not audio_codec) or audio_codec in _BROWSER_NATIVE_AUDIO
+    container_native = bool(container_parts & _BROWSER_NATIVE_CONTAINERS)
+
+    if video_native and audio_native and container_native:
+        return None
+
+    # Build transcode command parts
+    result: dict[str, Any] = {"video_codec": video_codec, "audio_codec": audio_codec}
+
+    # Video: copy if browser-native, transcode otherwise
+    if video_native and video_codec:
+        result["v_args"] = ["-c:v", "copy"]
+    elif video_codec:
+        result["v_args"] = ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+    else:
+        result["v_args"] = ["-vn"]
+
+    # Audio: copy if browser-native, transcode to AAC otherwise
+    if audio_native and audio_codec:
+        result["a_args"] = ["-c:a", "copy"]
+    elif audio_codec:
+        result["a_args"] = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        result["a_args"] = ["-an"]
+
+    return result
+
+
+def _get_or_transcode(source_path: Path) -> Path | None:
+    """
+    Return path to browser-playable version of the file.
+    Returns None if no transcode needed (serve original).
+    Returns cached transcoded file path if transcode was done.
+    """
+    decision = _needs_browser_transcode(source_path)
+    if decision is None:
+        return None
+
+    cache_dir = _get_transcode_cache_dir()
+    key = _cache_key(source_path)
+    cached = cache_dir / f"{key}.mp4"
+
+    # Fast path: cache hit
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached
+
+    # Get per-file lock to prevent duplicate transcodes
+    with _transcode_locks_guard:
+        if str(source_path) not in _transcode_locks:
+            _transcode_locks[str(source_path)] = threading.Lock()
+        lock = _transcode_locks[str(source_path)]
+
+    with lock:
+        # Double-check after acquiring lock
+        if cached.exists() and cached.stat().st_size > 0:
+            return cached
+
+        # Transcode to fragmented MP4
+        tmp_path = cached.with_suffix(".tmp.mp4")
+        cmd = [
+            "ffmpeg", "-y", "-i", str(source_path),
+            *decision["v_args"],
+            *decision["a_args"],
+            "-f", "mp4",
+            "-movflags", "+faststart",
+            str(tmp_path),
+        ]
+
+        try:
+            subprocess.run(
+                cmd, capture_output=True, timeout=600,
+                check=True,
+            )
+            tmp_path.rename(cached)
+            return cached
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            tmp_path.unlink(missing_ok=True)
+            return None
+        finally:
+            # Clean up lock if no longer needed
+            with _transcode_locks_guard:
+                _transcode_locks.pop(str(source_path), None)
+
+
+def _serve_file_range(
+    file_path: Path,
+    content_type: str,
+    range_header: str | None,
+) -> StreamingResponse:
+    """Serve a file with optional HTTP Range support."""
     file_size = file_path.stat().st_size
-    content_type = _MIME_MAP.get(ext, "application/octet-stream")
 
-    range_header = request.headers.get("range")
     if range_header:
         match = _RANGE_RE.match(range_header)
         if not match:
@@ -1237,7 +1360,7 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
         content_length = end - start + 1
 
         def _range_iter():
-            chunk_size = 64 * 1024  # 64KB chunks
+            chunk_size = 64 * 1024
             with open(file_path, "rb") as f:
                 f.seek(start)
                 remaining = content_length
@@ -1261,7 +1384,7 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
             },
         )
 
-    # Full file response (no Range header)
+    # Full file response
     def _full_iter():
         chunk_size = 64 * 1024
         with open(file_path, "rb") as f:
@@ -1281,3 +1404,33 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
             "Cache-Control": "public, max-age=3600",
         },
     )
+
+
+@media_router.get("/stream")
+async def cut_media_stream(request: Request, source_path: str) -> StreamingResponse:
+    """
+    MARKER_B62+B73: HTTP Range-aware video/audio streaming for browser playback.
+    Auto-detects non-browser-native codecs (ProRes, PCM, DNxHD, etc.) and serves
+    a transcoded MP4/H.264+AAC from disk cache. Native files pass through directly.
+    """
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    # MARKER_B73: Check if transcode needed for browser playback
+    transcoded = _get_or_transcode(file_path)
+    if transcoded is not None:
+        # Serve transcoded MP4 — always video/mp4 content type
+        return _serve_file_range(transcoded, "video/mp4", request.headers.get("range"))
+
+    # Native file — serve directly
+    content_type = _MIME_MAP.get(ext, "application/octet-stream")
+    return _serve_file_range(file_path, content_type, request.headers.get("range"))

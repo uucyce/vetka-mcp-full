@@ -11,8 +11,10 @@
  *   - Play/pause/seek synced to store isPlaying + currentTime
  *   - Per-clip volume from laneVolumes (future: keyframe automation)
  *   - Multiple simultaneous clips (layered audio tracks)
- *   - LRU buffer cache to avoid re-fetching
+ *   - LRU buffer cache to avoid re-fetching (50MB cap)
  *   - Lazy AudioContext creation (first user interaction)
+ *   - Chunked fetch for clips longer than CHUNK_DURATION (server 30s cap)
+ *   - Gapless stitching via OfflineAudioContext
  *
  * Alpha wires this into CutEditorLayoutV2 or VideoPreview.
  *
@@ -21,6 +23,22 @@
  */
 import { useRef, useCallback, useEffect } from 'react';
 import { API_BASE } from '../config/api.config';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** Server-enforced maximum segment duration per request (seconds). */
+const CHUNK_DURATION = 30;
+
+/** Maximum number of cache entries (full clips + individual chunks). */
+const MAX_CACHE_ENTRIES = 50;
+
+/**
+ * Approximate memory cap for the buffer cache in bytes (~50 MB).
+ * Each Float32 sample = 4 bytes; AudioBuffer size = length * channels * 4.
+ */
+const MAX_CACHE_BYTES = 50 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -58,20 +76,82 @@ interface ActiveSource {
 // Buffer cache (module-level singleton)
 // ---------------------------------------------------------------------------
 
-const MAX_CACHE_ENTRIES = 32;
 const bufferCache = new Map<string, AudioBuffer>();
+
+/** Running total of approximate bytes held in bufferCache. */
+let cacheTotalBytes = 0;
 
 function cacheKey(sourcePath: string, sourceIn: number, duration: number): string {
   return `${sourcePath}|${sourceIn.toFixed(2)}|${duration.toFixed(2)}`;
 }
 
+/** Approximate byte size of an AudioBuffer (Float32 samples). */
+function bufferBytes(buf: AudioBuffer): number {
+  return buf.length * buf.numberOfChannels * 4;
+}
+
 function cacheSet(key: string, buffer: AudioBuffer): void {
-  if (bufferCache.size >= MAX_CACHE_ENTRIES) {
-    // Evict oldest entry
-    const firstKey = bufferCache.keys().next().value;
-    if (firstKey) bufferCache.delete(firstKey);
+  // If key already present, subtract its old size first
+  const existing = bufferCache.get(key);
+  if (existing) {
+    cacheTotalBytes -= bufferBytes(existing);
   }
+
+  // Evict by entry count
+  while (bufferCache.size >= MAX_CACHE_ENTRIES) {
+    const firstKey = bufferCache.keys().next().value;
+    if (!firstKey) break;
+    const evicted = bufferCache.get(firstKey);
+    bufferCache.delete(firstKey);
+    if (evicted) cacheTotalBytes -= bufferBytes(evicted);
+  }
+
+  // Evict by memory cap
+  const incoming = bufferBytes(buffer);
+  while (cacheTotalBytes + incoming > MAX_CACHE_BYTES && bufferCache.size > 0) {
+    const firstKey = bufferCache.keys().next().value;
+    if (!firstKey) break;
+    const evicted = bufferCache.get(firstKey);
+    bufferCache.delete(firstKey);
+    if (evicted) cacheTotalBytes -= bufferBytes(evicted);
+  }
+
   bufferCache.set(key, buffer);
+  cacheTotalBytes += incoming;
+}
+
+function cacheClear(): void {
+  bufferCache.clear();
+  cacheTotalBytes = 0;
+}
+
+// ---------------------------------------------------------------------------
+// stitchBuffers helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Stitch multiple decoded AudioBuffers into a single continuous AudioBuffer
+ * using OfflineAudioContext. Buffers must share the same sampleRate and
+ * channel count (they will — all come from the same source file).
+ */
+async function stitchBuffers(buffers: AudioBuffer[]): Promise<AudioBuffer> {
+  const totalLength = buffers.reduce((sum, b) => sum + b.length, 0);
+  const sampleRate = buffers[0].sampleRate;
+  const channels = buffers[0].numberOfChannels;
+
+  const offline = new OfflineAudioContext(channels, totalLength, sampleRate);
+
+  let offsetSamples = 0;
+  for (const buf of buffers) {
+    const src = offline.createBufferSource();
+    src.buffer = buf;
+    src.connect(offline.destination);
+    // start() time is in seconds relative to OfflineAudioContext timeline
+    src.start(offsetSamples / sampleRate);
+    offsetSamples += buf.length;
+  }
+
+  return offline.startRendering();
 }
 
 // ---------------------------------------------------------------------------
@@ -95,24 +175,27 @@ export function useAudioPlayback() {
     return ctxRef.current;
   }, []);
 
-  // Fetch + decode audio buffer for a clip
-  const loadClipAudio = useCallback(async (
+  /**
+   * Fetch + decode a single chunk from the server.
+   * Returns null on network/decode error.
+   * Caches the chunk under its own key for LRU reuse.
+   */
+  const fetchChunk = useCallback(async (
     sourcePath: string,
-    sourceIn: number,
-    duration: number,
+    chunkStart: number,
+    chunkDuration: number,
   ): Promise<AudioBuffer | null> => {
-    const key = cacheKey(sourcePath, sourceIn, duration);
+    const chunkKey = cacheKey(sourcePath, chunkStart, chunkDuration);
 
-    // Check cache
-    const cached = bufferCache.get(key);
+    const cached = bufferCache.get(chunkKey);
     if (cached) return cached;
 
-    // Deduplicate in-flight fetches
-    if (pendingFetchesRef.current.has(key)) return null;
-    pendingFetchesRef.current.add(key);
+    // Re-use pending dedup for chunks too
+    if (pendingFetchesRef.current.has(chunkKey)) return null;
+    pendingFetchesRef.current.add(chunkKey);
 
     try {
-      const url = `${API_BASE}/cut/audio/clip-segment?source_path=${encodeURIComponent(sourcePath)}&start_sec=${sourceIn}&duration_sec=${Math.min(30, duration)}&sample_rate=44100&channels=2`;
+      const url = `${API_BASE}/cut/audio/clip-segment?source_path=${encodeURIComponent(sourcePath)}&start_sec=${chunkStart}&duration_sec=${chunkDuration}&sample_rate=44100&channels=2`;
       const response = await fetch(url);
       if (!response.ok) return null;
 
@@ -121,14 +204,80 @@ export function useAudioPlayback() {
 
       const ctx = getContext();
       const audioBuffer = await ctx.decodeAudioData(arrayBuffer);
-      cacheSet(key, audioBuffer);
+      cacheSet(chunkKey, audioBuffer);
       return audioBuffer;
+    } catch {
+      return null;
+    } finally {
+      pendingFetchesRef.current.delete(chunkKey);
+    }
+  }, [getContext]);
+
+  /**
+   * Fetch + decode audio buffer for a clip.
+   *
+   * - duration <= CHUNK_DURATION: single request (original behavior, no regression).
+   * - duration > CHUNK_DURATION: split into N chunks of CHUNK_DURATION seconds
+   *   (last chunk may be shorter), fetch all in parallel, stitch with
+   *   OfflineAudioContext, cache the stitched result under the full-range key.
+   */
+  const loadClipAudio = useCallback(async (
+    sourcePath: string,
+    sourceIn: number,
+    duration: number,
+  ): Promise<AudioBuffer | null> => {
+    const key = cacheKey(sourcePath, sourceIn, duration);
+
+    // Check cache (full stitched buffer)
+    const cached = bufferCache.get(key);
+    if (cached) return cached;
+
+    // Deduplicate in-flight fetches for the full key
+    if (pendingFetchesRef.current.has(key)) return null;
+    pendingFetchesRef.current.add(key);
+
+    try {
+      if (duration <= CHUNK_DURATION) {
+        // --- Short clip: single fetch (original path) ---
+        const buf = await fetchChunk(sourcePath, sourceIn, duration);
+        if (!buf) return null;
+        // fetchChunk already caches under its own key; also store under full key
+        // (they are the same here — no duplicate bytes, just an alias)
+        cacheSet(key, buf);
+        return buf;
+      }
+
+      // --- Long clip: chunked fetch ---
+      const chunks: Array<{ start: number; dur: number }> = [];
+      let remaining = duration;
+      let cursor = sourceIn;
+      while (remaining > 0) {
+        const chunkDur = Math.min(CHUNK_DURATION, remaining);
+        chunks.push({ start: cursor, dur: chunkDur });
+        cursor += chunkDur;
+        remaining -= chunkDur;
+      }
+
+      // Fetch all chunks in parallel
+      const chunkBuffers = await Promise.all(
+        chunks.map((c) => fetchChunk(sourcePath, c.start, c.dur)),
+      );
+
+      // If any chunk failed, abort
+      if (chunkBuffers.some((b) => b === null)) return null;
+
+      const validBuffers = chunkBuffers as AudioBuffer[];
+
+      // Stitch all chunks into one seamless buffer
+      const stitched = await stitchBuffers(validBuffers);
+      cacheSet(key, stitched);
+      return stitched;
     } catch {
       return null;
     } finally {
       pendingFetchesRef.current.delete(key);
     }
-  }, [getContext]);
+  }, [fetchChunk]);
 
   // Stop all active sources
   const stopAll = useCallback(() => {
@@ -267,7 +416,7 @@ export function useAudioPlayback() {
     /** Get or create AudioContext */
     getContext,
     /** Clear buffer cache */
-    clearCache: () => bufferCache.clear(),
+    clearCache: cacheClear,
   };
 }
 
@@ -275,5 +424,5 @@ export function useAudioPlayback() {
  * Clear the global audio buffer cache (e.g., on project change).
  */
 export function clearAudioBufferCache(): void {
-  bufferCache.clear();
+  cacheClear();
 }

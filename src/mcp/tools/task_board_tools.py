@@ -39,8 +39,8 @@ _PROJECT_ROOT = _resolve_project_root()
 
 def _load_docs_content_sync(
     task: Dict[str, Any],
-    budget: int = 65536,
-    per_doc: int = 16384,
+    budget: int = 8192,   # MARKER_197.SLIM: Reduced from 65536 to 8192 to cut token bloat
+    per_doc: int = 4096,  # MARKER_197.SLIM: Reduced from 16384 to 4096 to cut token bloat
 ) -> str:
     """MARKER_191.7: Read architecture_docs + recon_docs file contents synchronously.
 
@@ -50,8 +50,8 @@ def _load_docs_content_sync(
 
     Args:
         task: Task dict with architecture_docs/recon_docs fields
-        budget: Total chars budget (default 64KB)
-        per_doc: Per-document char cap (default 16KB)
+        budget: Total chars budget (default 8KB)
+        per_doc: Per-document char cap (default 4KB)
 
     Returns:
         Formatted docs string, or empty string if no docs
@@ -122,7 +122,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "verify"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -154,7 +154,7 @@ TASK_BOARD_SCHEMA = {
         # For "get", "update", "remove", "claim", "complete":
         "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
+        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
         # For "verify":
         "verdict": {"type": "string", "enum": ["pass", "fail"], "description": "QA verdict for action=verify: pass → verified, fail → needs_fix"},
         "verified_by": {"type": "string", "description": "Agent performing verification (default: Delta)"},
@@ -178,6 +178,9 @@ TASK_BOARD_SCHEMA = {
         "q1_bugs": {"type": "string", "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)"},
         "q2_worked": {"type": "string", "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)"},
         "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
+        # MARKER_191.16: close / bulk_close fields
+        "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
+        "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close or bulk complete via action=complete)"},
     },
     "required": ["action"]
 }
@@ -537,6 +540,36 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     # MARKER_186.4: worktree-aware completion — detect branch, set done_worktree/done_main
     # Flow: agent → complete → detect branch → auto-commit (scoped) → digest → close task
     elif action == "complete":
+        # MARKER_191.19: Bulk complete — multiple task_ids in one commit
+        task_ids = arguments.get("task_ids", [])
+        if task_ids and len(task_ids) > 1:
+            # Bulk mode: complete multiple tasks with a single commit hash
+            commit_hash = arguments.get("commit_hash")
+            commit_message = arguments.get("commit_message")
+            branch = arguments.get("branch")
+            results = []
+            for tid in task_ids:
+                task = board.get_task(tid)
+                if not task:
+                    results.append({"task_id": tid, "success": False, "error": "not found"})
+                    continue
+                r = board.complete_task(
+                    tid,
+                    commit_hash or "",
+                    commit_message or f"bulk complete {len(task_ids)} tasks",
+                    branch=branch,
+                )
+                results.append({"task_id": tid, "success": r.get("success", False)})
+            completed_count = sum(1 for r in results if r.get("success"))
+            return {
+                "success": True,
+                "completed_count": completed_count,
+                "total": len(task_ids),
+                "results": results,
+                "commit_hash": commit_hash,
+            }
+
+        # Original single task_id path continues...
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for complete"}
@@ -564,8 +597,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 worktree_path = str(candidate)
                 logger.info(f"[TaskBoard] Auto-detected worktree_path from branch: {worktree_path}")
 
-        if not current_branch:
-            current_branch = _detect_git_branch(cwd=worktree_path)
+        # MARKER_197: _detect_git_branch() removed — branch comes from session role (196.2.2)
+        # Fallback: AgentRegistry auto-infer below
 
         # MARKER_195.22: Auto-infer branch from task metadata via AgentRegistry
         # Prevents merge_request failures due to missing branch_name.
@@ -646,6 +679,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
             if _ownership_warnings:
                 result["ownership_warnings"] = _ownership_warnings
+                # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
+                _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
             _inject_debrief(result, arguments)
             return result
 
@@ -718,6 +753,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_196.3.1: Attach ownership warnings to result
         if _ownership_warnings:
             result["ownership_warnings"] = _ownership_warnings
+            # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
+            _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
 
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
@@ -759,6 +796,25 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         role = arguments.get("role", "")
         return board.promote_to_main(task_id, merge_commit_hash, role=role)
 
+    # MARKER_196.QA: request_qa — move done_worktree → need_qa
+    elif action == "request_qa":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for request_qa"}
+        task = board.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        if task["status"] != "done_worktree":
+            return {"success": False, "error": f"Task {task_id} is '{task['status']}', expected done_worktree"}
+        board.update_task(
+            task_id, status="need_qa",
+            _history_event="qa_requested",
+            _history_source="task_board",
+            _history_reason="QA review requested",
+            _history_agent_name=arguments.get("assigned_to", ""),
+        )
+        return {"success": True, "task_id": task_id, "status": "need_qa", "message": "Task moved to QA queue"}
+
     # MARKER_195.20: QA Gate — verify a done_worktree task before merge
     elif action == "verify":
         task_id = arguments.get("task_id")
@@ -768,6 +824,49 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         notes = arguments.get("notes", "")
         verified_by = arguments.get("verified_by", arguments.get("assigned_to", ""))
         return board.verify_task(task_id, verdict, notes, verified_by)
+
+    # MARKER_191.16: close — close task without git commit, with a reason field
+    elif action == "close":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for close"}
+        reason = arguments.get("reason", "closed")
+        task = board.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        updated = board.update_task(
+            task_id,
+            status="done_main",
+            _history_event="closed",
+            _history_source="task_board_close",
+            _history_reason=reason,
+        )
+        if updated:
+            return {"success": True, "task_id": task_id, "status": "done_main", "closed": True, "reason": reason}
+        return {"success": False, "error": f"Failed to close task {task_id}"}
+
+    # MARKER_191.16: bulk_close — close multiple tasks at once without git commit
+    elif action == "bulk_close":
+        task_ids = arguments.get("task_ids", [])
+        if not task_ids:
+            return {"success": False, "error": "task_ids list is required for bulk_close"}
+        reason = arguments.get("reason", "bulk_closed")
+        results = []
+        for tid in task_ids:
+            task = board.get_task(tid)
+            if not task:
+                results.append({"task_id": tid, "success": False, "error": "not found"})
+                continue
+            updated = board.update_task(
+                tid,
+                status="done_main",
+                _history_event="closed",
+                _history_source="task_board_bulk_close",
+                _history_reason=reason,
+            )
+            results.append({"task_id": tid, "success": bool(updated)})
+        closed_count = sum(1 for r in results if r.get("success"))
+        return {"success": True, "closed_count": closed_count, "total": len(task_ids), "results": results}
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
@@ -813,13 +912,19 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
 
 
 def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
-    """MARKER_196.6.3: Auto-create ExperienceReport from passive session data.
+    """MARKER_196.6.3 / MARKER_198.DEBRIEF: Auto-create ExperienceReport from passive session data.
 
     Collects metrics without requiring agent input:
     - Role/domain from session tracker
     - Task ID from completion
     - Files touched from session tracker
     - CORTEX tool success rates from REFLEX
+
+    Fix 3/4 (MARKER_198.DEBRIEF): agent callsign resolution priority:
+      1. session tracker role_callsign (if session_init was called in this process lifetime)
+      2. arguments["assigned_to"] (passed by agent on action=complete)
+      3. task["assigned_to"] from the board (survives process restarts — stored on disk)
+      4. "unknown" as final fallback
 
     Returns True if report was created.
     """
@@ -834,15 +939,35 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     tracker = get_session_tracker()
     session = tracker.get_session(_tracker_sid)
 
-    # Determine callsign/domain/branch from session role or task metadata
-    callsign = session.role_callsign or arguments.get("assigned_to") or "unknown"
+    # MARKER_198.DEBRIEF Fix 3/4: Resolve callsign with board task as fallback.
+    # Session tracker role is lost on subprocess restart — task.assigned_to persists on disk.
+    task_assigned_to = ""
+    if task_id:
+        try:
+            from src.orchestration.task_board import TaskBoard
+            _tb = TaskBoard()
+            _task_meta = _tb.get_task(task_id)
+            if _task_meta:
+                task_assigned_to = _task_meta.get("assigned_to", "") or ""
+        except Exception:
+            pass
+
+    callsign = (
+        session.role_callsign
+        or arguments.get("assigned_to")
+        or task_assigned_to
+        or "unknown"
+    )
     domain = session.role_domain or ""
     branch = session.role_branch or arguments.get("branch") or ""
 
     # Build passive report
     from src.services.experience_report import ExperienceReport, get_experience_store
 
-    # MARKER_196.6.1: Collect debrief answers from arguments (if agent provided them)
+    # MARKER_196.6.1 / MARKER_198.DEBRIEF Fix 4/4: Collect debrief answers from arguments.
+    # q1_bugs → lessons + bugs_found (also directly routed to CORTEX below)
+    # q2_worked → lessons (what worked / patterns)
+    # q3_idea → recommendations
     q1 = arguments.get("q1_bugs") or arguments.get("q1") or ""
     q2 = arguments.get("q2_worked") or arguments.get("q2") or ""
     q3 = arguments.get("q3_idea") or arguments.get("q3") or ""
@@ -889,27 +1014,236 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     store = get_experience_store()
     store.submit(report)
+
+    # MARKER_198.P1.7: Direct Qdrant L2 ingest — debrief + experience → Qdrant.
+    # This is the missing link: MCP path never called resource_learnings.
+    # Flow: debrief text → sync Gemma embedding → Qdrant L2 upsert → fallback to JSON.
+    # ENGRAM L2→L1 auto-promotion (P0.4) triggers on search via get_learnings_for_architect().
+    try:
+        from src.orchestration.resource_learnings import get_learning_store
+
+        _l2_store = get_learning_store()
+        _files = list(session.files_edited)[:20]
+        _stored_ids = []
+
+        # Get task metadata for richer learning context
+        _task_title = ""
+        _task_desc = ""
+        if task_id:
+            try:
+                from src.orchestration.task_board import get_task_board as _gtb
+                _task_data = _gtb().get_task(task_id)
+                if _task_data:
+                    _task_title = _task_data.get("title", "")
+                    _task_desc = _task_data.get("description", "")
+            except Exception:
+                pass
+
+        # 1. Co-change pattern learning (which files change together)
+        if _files and len(_files) >= 2:
+            _dirs = set()
+            for _f in _files[:10]:
+                _parts = Path(_f).parts
+                if len(_parts) >= 2:
+                    _dirs.add(_parts[-2] if _parts[-2] != "src" else "/".join(_parts[-3:-1]))
+            if _dirs:
+                _cochange_text = (
+                    f"Files that change together for '{_task_title[:50]}': "
+                    f"{', '.join(f[:60] for f in _files[:5])}. "
+                    f"Directories involved: {', '.join(_dirs)}."
+                )
+                _pid = _l2_store.store_learning_sync(
+                    text=_cochange_text, category="pattern",
+                    run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                    files=_files[:10],
+                    metadata={"source": "mcp_complete", "agent": callsign},
+                )
+                if _pid:
+                    _stored_ids.append(_pid)
+
+        # 2. Task completion pattern
+        if _task_title and _files:
+            _completion_text = (
+                f"Task '{_task_title[:60]}' completed by {callsign}, "
+                f"modifying {len(_files)} files. "
+                f"Approach: {_task_desc[:100] if _task_desc else 'MCP agent pipeline'}."
+            )
+            _pid = _l2_store.store_learning_sync(
+                text=_completion_text, category="optimization",
+                run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                files=_files[:5],
+                metadata={"source": "mcp_complete", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+
+        # 3. Debrief answers as individual Qdrant L2 learnings
+        if q1:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[BUG] {q1}", category="pitfall",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q1", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+        if q2:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[WORKED] {q2}", category="pattern",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q2", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+        if q3:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[IDEA] {q3}", category="architecture",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q3", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+
+        if _stored_ids:
+            logger.info(
+                f"[P1.7] Qdrant L2 ingest: {len(_stored_ids)} learnings for task {task_id} "
+                f"(agent={callsign})"
+            )
+    except Exception as e:
+        logger.warning(f"[P1.7] Qdrant L2 ingest failed (non-blocking): {e}")
+
+    # MARKER_198.DEBRIEF Fix 4/4: Direct CORTEX/ENGRAM routing for q1/q2/q3.
+    # smart_debrief._route_to_memory() uses regex triggers — short answers with no
+    # keywords skip all branches and fall through to CORTEX general fallback ONLY IF
+    # no other branch fired. Ensure debrief answers ALWAYS reach memory regardless
+    # of whether regex patterns match.
+    #
+    # Routing contract:
+    #   q1_bugs  → CORTEX (tool failure patterns) + ENGRAM (danger entry)
+    #   q2_worked → ENGRAM (pattern/architecture entry)
+    #   q3_idea   → ENGRAM (pattern entry)
+    if q1 or q2 or q3:
+        try:
+            from src.services.reflex_feedback import get_reflex_feedback
+            from src.memory.engram_cache import get_engram_cache
+            fb = get_reflex_feedback()
+            engram = get_engram_cache()
+            _agent_tag = callsign or "unknown"
+            _domain_tag = domain or "research"
+            _session_tag = _tracker_sid
+
+            if q1:
+                # q1_bugs → CORTEX: record as negative signal for __debrief_bug__ pseudo-tool
+                try:
+                    fb.record(
+                        tool_id="__debrief_bug__",
+                        success=False,
+                        useful=False,
+                        phase_type=_domain_tag,
+                        agent_role=_agent_tag,
+                        execution_time_ms=0.0,
+                        subtask_id=task_id,
+                        extra={"source": "debrief_q1", "text": q1[:300], "agent": _agent_tag},
+                    )
+                except Exception:
+                    pass
+                # q1_bugs → ENGRAM: danger/anti-pattern entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::bug::{_session_tag}",
+                        value=q1[:500],
+                        category="danger",
+                        source_learning_id=f"debrief_q1:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+
+            if q2:
+                # q2_worked → ENGRAM: architecture/pattern entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::worked::{_session_tag}",
+                        value=q2[:500],
+                        category="architecture",
+                        source_learning_id=f"debrief_q2:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+
+            if q3:
+                # q3_idea → ENGRAM: pattern/idea entry
+                try:
+                    engram.put(
+                        key=f"{_agent_tag}::debrief::idea::{_session_tag}",
+                        value=q3[:500],
+                        category="pattern",
+                        source_learning_id=f"debrief_q3:{_session_tag}",
+                        match_count=0,
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass  # Direct routing never blocks completion
+
     return True
 
 
-def _detect_git_branch(cwd: str = None) -> str:
-    """MARKER_186.4: Detect current git branch. Works in worktrees.
-    MARKER_188.2: Accept cwd override for worktree context.
-    MARKER_195.20: Return empty string on failure (not "main") to avoid false done_main.
+
+# MARKER_197: _detect_git_branch() removed — branch now comes from session role (196.2.2)
+# plus AgentRegistry auto-infer in complete action. No subprocess git calls needed.
+
+
+def _flag_cross_domain_violations(
+    board, task_id: str, task: dict, ownership_warnings: list, agent_callsign: str = ""
+) -> None:
+    """MARKER_197.OWNERSHIP: Record ownership violations in task history + alert Commander.
+
+    Called after task completion when ownership_warnings is non-empty.
+    Two effects:
+    1. Appends an 'ownership_violation' event to the completed task's status_history
+    2. Creates a P2 alert task assigned to Commander for review
+
+    Never raises — violations are informational, not blocking.
     """
-    import subprocess
-    from pathlib import Path
-    git_cwd = cwd or str(Path(__file__).resolve().parents[3])
+    if not ownership_warnings:
+        return
+
     try:
-        result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            cwd=git_cwd, capture_output=True, text=True, timeout=5,
+        # 1. Record in task history
+        board._append_history(
+            task,
+            event="ownership_violation",
+            status=task.get("status", "done_worktree"),
+            agent_name=agent_callsign or task.get("assigned_to", "unknown"),
+            source="ownership_guard",
+            reason=f"{len(ownership_warnings)} file(s) outside owned paths",
+            extra={"warnings": ownership_warnings[:20]},  # cap at 20 to avoid bloat
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except Exception:
-        pass
-    return ""  # MARKER_195.20: empty, not "main" — let complete_task decide safely
+        board._save()
+
+        # 2. Create Commander alert task
+        alert_title = f"OWNERSHIP-ALERT: {agent_callsign or 'agent'} touched {len(ownership_warnings)} cross-domain file(s) in {task_id}"
+        board.add_task(
+            title=alert_title,
+            description=(
+                f"Agent '{agent_callsign}' completed task '{task.get('title', task_id)}' "
+                f"but modified files outside their owned_paths.\n\n"
+                f"Violations:\n" + "\n".join(f"- {w}" for w in ownership_warnings[:20])
+            ),
+            priority=2,
+            phase_type="fix",
+            project_id=task.get("project_id", "CUT"),
+            tags=["ownership-alert", "cross-domain", "auto-generated"],
+            role="Commander",
+            domain="architect",
+        )
+        logger.warning(
+            "[TaskBoard] OWNERSHIP ALERT: %s violated %d path(s) in %s — Commander task created",
+            agent_callsign, len(ownership_warnings), task_id,
+        )
+    except Exception as e:
+        logger.debug("[TaskBoard] Cross-domain flagging failed (non-critical): %s", e)
 
 
 def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,

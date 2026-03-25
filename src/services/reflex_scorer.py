@@ -255,6 +255,7 @@ class ReflexContext:
         model_context_length: int = 128000,
         model_output_tps: float = 50.0,
         agent_type: str = "",
+        stm_items: Optional[List[str]] = None,
     ) -> "ReflexContext":
         """Build ReflexContext from vetka_session_init response.
 
@@ -270,15 +271,28 @@ class ReflexContext:
             model_output_tps: Model speed
             agent_type: Agent type: "claude_code", "cursor", "dragon", etc.
         """
-        # Extract viewport zoom → HOPE level
-        viewport = session_data.get("viewport", {})
-        zoom = viewport.get("zoom", 0.5)
-        if zoom < 0.3:
-            hope_level = "LOW"
-        elif zoom > 1.0:
-            hope_level = "HIGH"
-        else:
-            hope_level = "MID"
+        # MARKER_198.P0.3: HOPE LOD from task complexity + model tier (NOT viewport zoom)
+        # LOW = compressed overview (for Haiku or high-complexity cross-domain tasks)
+        # MID = balanced (default, for Sonnet or medium tasks)
+        # HIGH = full detail (for Opus or low-complexity single-file tasks)
+        _task_complexity = session_data.get("task_board_summary", {}).get("top_pending", [{}])
+        _complexity_hint = "medium"  # default
+        if _task_complexity and isinstance(_task_complexity[0], dict):
+            _complexity_hint = _task_complexity[0].get("complexity", "medium")
+
+        # Model tier override
+        _agent_type = agent_type or "claude_code"
+        if "haiku" in _agent_type.lower():
+            hope_level = "LOW"  # Haiku always gets compressed context
+        elif "opus" in _agent_type.lower():
+            hope_level = "HIGH" if _complexity_hint == "low" else "MID"
+        else:  # sonnet, default
+            if _complexity_hint == "high":
+                hope_level = "LOW"
+            elif _complexity_hint == "low":
+                hope_level = "HIGH"
+            else:
+                hope_level = "MID"
 
         # Extract user tool preferences from ENGRAM
         user_prefs = session_data.get("user_preferences", {})
@@ -296,13 +310,67 @@ class ReflexContext:
         # MARKER_186.3: Map agent_type to agent_role for role-based filtering
         agent_role = _agent_type_to_role(agent_type)
 
+        # MARKER_198.P0.2: Compute CAM surprise from task embedding delta.
+        # Information novelty = how different the current task is from the previous one.
+        # NOT viewport camera — this measures context shift between sessions.
+        cam_surprise = 0.0
+        try:
+            import json as _json_cam
+            from pathlib import Path as _Path
+
+            def _cam_project_root() -> "_Path":
+                """Worktree-safe project root (same pattern as experience_report.py)."""
+                candidate = _Path(__file__).resolve().parent.parent.parent
+                parts = candidate.parts
+                try:
+                    wt_idx = parts.index(".claude")
+                    main_root = _Path(*parts[:wt_idx])
+                    if main_root.exists():
+                        return main_root
+                except ValueError:
+                    pass
+                return candidate
+
+            _cam_path = _cam_project_root() / "data" / "cam_last_task.json"
+
+            # Determine current task text from session data
+            _current_task_text = task_text.strip()
+            if not _current_task_text:
+                # Fall back to top_pending title if task_text was not provided
+                _tbs = session_data.get("task_board_summary", {})
+                _top = _tbs.get("top_pending", [])
+                if _top and isinstance(_top[0], dict):
+                    _current_task_text = _top[0].get("title", "")
+
+            if _cam_path.exists() and _current_task_text:
+                _prev = _json_cam.loads(_cam_path.read_text())
+                _prev_text = _prev.get("task_text", "")
+                if _prev_text and _prev_text != _current_task_text:
+                    # Word-overlap surprise: fewer shared words → higher surprise
+                    _prev_words = set(_prev_text.lower().split())
+                    _curr_words = set(_current_task_text.lower().split())
+                    _total = len(_prev_words | _curr_words)
+                    if _total > 0:
+                        _overlap = len(_prev_words & _curr_words)
+                        _similarity = _overlap / _total
+                        cam_surprise = round(1.0 - _similarity, 4)
+
+            # Persist current task text for the next session's comparison
+            if _current_task_text:
+                _cam_path.parent.mkdir(parents=True, exist_ok=True)
+                _cam_path.write_text(
+                    _json_cam.dumps({"task_text": _current_task_text})
+                )
+        except Exception:
+            pass  # CAM surprise is best-effort — never blocks session init
+
         return ReflexContext(
             task_text=task_text,
             phase_type=phase_type,
             agent_role=agent_role,
-            cam_surprise=0.0,  # Not available at session start
+            cam_surprise=cam_surprise,
             user_tool_prefs=tool_prefs,
-            stm_items=[],  # STM empty at session start
+            stm_items=stm_items or [],  # MARKER_198.P0.1: populated from disk if available
             hope_level=hope_level,
             mgc_stats=mgc_stats,
             feedback_scores=feedback_scores or {},
@@ -842,11 +910,13 @@ class ReflexScorer:
         top_n: int = 10,
         agent_type: str = "",
         current_task: Optional[Dict[str, Any]] = None,
+        stm_items: Optional[List[str]] = None,
     ) -> List[ScoredTool]:
         """Recommend tools for session_init response (IP-6).
 
         MARKER_186.3: Enhanced with agent_type and auto-context from git.
         MARKER_191.3: Enhanced with current_task for task-aware semantic matching.
+        MARKER_198.P0.1: Enhanced with stm_items from disk-persisted STM buffer.
         Builds ReflexContext from session data, returns broad recommendations.
         """
         if not REFLEX_ENABLED:
@@ -873,6 +943,7 @@ class ReflexScorer:
             phase_type=phase_type,
             feedback_scores=feedback_scores,
             agent_type=agent_type,
+            stm_items=stm_items,  # MARKER_198.P0.1: pass disk-loaded STM items
         )
 
         try:

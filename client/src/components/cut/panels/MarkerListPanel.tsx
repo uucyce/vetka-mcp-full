@@ -9,7 +9,7 @@
  * Reads markers from useCutEditorStore. Marker colors match timeline rendering.
  */
 import { useState, useCallback, useMemo, type CSSProperties } from 'react';
-import { useCutEditorStore, type TimeMarker, type MarkerKind } from '../../../store/useCutEditorStore';
+import { useCutEditorStore } from '../../../store/useCutEditorStore';
 
 // Marker colors — matches TimelineTrackView MARKER_COLORS (exception to monochrome rule)
 const MARKER_COLORS: Record<string, string> = {
@@ -18,7 +18,7 @@ const MARKER_COLORS: Record<string, string> = {
   comment: '#3b82f6',
   cam: '#a855f7',
   insight: '#22c55e',
-  chat: '#94a3b8',
+  chat: '#888',
   bpm_audio: '#22c55e',
   bpm_visual: '#4a9eff',
   bpm_script: '#ffffff',

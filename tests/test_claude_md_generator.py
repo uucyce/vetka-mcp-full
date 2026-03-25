@@ -205,7 +205,7 @@ class TestFileWrites:
     def test_dry_run_generates_all(self, registry):
         """generate_all with dry_run=True returns content for all roles."""
         results = generate_all(dry_run=True)
-        assert len(results) >= 6  # 7 with Zeta
+        assert len(results) == 7  # Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Commander
         assert "Alpha" in results
         assert "Beta" in results
         assert "Commander" in results
@@ -221,8 +221,8 @@ class TestFileWrites:
 
     def test_generate_all_writes_files(self, tmp_path):
         results = generate_all(dry_run=False, output_base=tmp_path)
-        assert len(results) >= 6
-        # Verify core worktree files on disk
+        assert len(results) == 7  # All 7 roles
+        # Verify files on disk
         for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "pedantic-bell"]:
             path = tmp_path / role_name / "CLAUDE.md"
             assert path.exists(), f"Missing: {path}"

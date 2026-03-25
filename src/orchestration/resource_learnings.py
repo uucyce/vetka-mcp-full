@@ -9,9 +9,16 @@ Flow:
     Verifier merge → extract_lessons() → embed → Qdrant
     Architect plan → search_learnings(task_description) → inject into context
 
+MARKER_198.P0.4: ENGRAM L2→L1 auto-promotion implemented.
+When a learning is matched >=3 times, it auto-promotes to ENGRAM L1 via
+engram_cache.put(). Match counts are persisted in
+data/reflex/learning_match_counts.json using PROJECT_ROOT absolute path
+(worktree-safe — never relative paths).
+
 @status: active
-@phase: 183.2
-@depends: src/memory/qdrant_client.py, src/utils/embedding_service.py
+@phase: 183.2 / 198.P0.4
+@depends: src/memory/qdrant_client.py, src/utils/embedding_service.py,
+          src/memory/engram_cache.py
 """
 
 import json
@@ -27,8 +34,109 @@ logger = logging.getLogger("VETKA_LEARNINGS")
 COLLECTION_NAME = "VetkaResourceLearnings"
 VECTOR_SIZE = 768
 
+# MARKER_198.P0.4: Use PROJECT_ROOT absolute path — worktree-safe (never relative)
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
+
 # Local fallback file when Qdrant is unavailable
-_FALLBACK_FILE = Path(__file__).parent.parent.parent / "data" / "resource_learnings.json"
+_FALLBACK_FILE = _PROJECT_ROOT / "data" / "resource_learnings.json"
+
+# MARKER_198.P0.4: Counter file for L2→L1 auto-promotion threshold tracking
+_MATCH_COUNTS_FILE = _PROJECT_ROOT / "data" / "reflex" / "learning_match_counts.json"
+
+# MARKER_198.P0.4: Number of L2 matches required to trigger ENGRAM L1 promotion
+_PROMOTION_THRESHOLD = 3
+
+
+def _load_match_counts() -> Dict[str, int]:
+    """Load learning match counts from disk. Returns empty dict on any error.
+
+    MARKER_198.P0.4: Persisted in data/reflex/learning_match_counts.json.
+    """
+    try:
+        if _MATCH_COUNTS_FILE.exists():
+            return json.loads(_MATCH_COUNTS_FILE.read_text())
+    except Exception as e:
+        logger.warning(f"[Learnings] Could not load match counts: {e}")
+    return {}
+
+
+def _save_match_counts(counts: Dict[str, int]) -> None:
+    """Persist learning match counts to disk.
+
+    MARKER_198.P0.4: Creates parent dirs if absent (first-run safe).
+    """
+    try:
+        _MATCH_COUNTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _MATCH_COUNTS_FILE.write_text(json.dumps(counts, indent=2))
+    except Exception as e:
+        logger.warning(f"[Learnings] Could not save match counts: {e}")
+
+
+def _derive_engram_key(result: Any) -> str:
+    """Derive a stable ENGRAM key from a Qdrant result payload.
+
+    MARKER_198.P0.4: Key format follows Phase 186 Grok spec:
+    agent::file::action::phase_type
+
+    Falls back to compound of task_id + point id when rich metadata absent.
+    """
+    payload = result.payload if hasattr(result, "payload") else {}
+    task_id = payload.get("task_id") or "unknown"
+    files = payload.get("files") or []
+    filename = Path(files[0]).name if files else "unknown"
+    category = payload.get("category") or "pattern"
+    # Map learning category to action concept
+    action_map = {
+        "pitfall": "danger",
+        "optimization": "optimize",
+        "pattern": "pattern",
+        "architecture": "arch",
+    }
+    action = action_map.get(category, category)
+    # agent wildcard: these learnings are cross-agent
+    return f"*::{filename}::{action}::{task_id}"
+
+
+def _promote_to_engram_l1(result: Any, match_count: int) -> None:
+    """Auto-promote a Qdrant learning result to ENGRAM L1 cache.
+
+    MARKER_198.P0.4: Called when match_count >= _PROMOTION_THRESHOLD.
+    Category mapping: 'pitfall' → 'danger', everything else → 'architecture'.
+    """
+    try:
+        from src.memory.engram_cache import get_engram_cache
+        payload = result.payload if hasattr(result, "payload") else {}
+        lesson_text = payload.get("text", "")
+        if not lesson_text:
+            return
+
+        raw_category = payload.get("category", "pattern")
+        # MARKER_198.P0.4: pitfalls become danger (permanent TTL); others architecture
+        engram_category = "danger" if raw_category == "pitfall" else "architecture"
+
+        # Derive stable key
+        key = payload.get("key") or _derive_engram_key(result)
+        source_id = str(getattr(result, "id", None) or "")
+
+        engram = get_engram_cache()
+        is_new = engram.put(
+            key=key,
+            value=lesson_text,
+            category=engram_category,
+            source_learning_id=source_id or None,
+            match_count=match_count,
+        )
+        if is_new:
+            logger.info(
+                f"[Learnings] ENGRAM L1 promoted (new): key={key!r} "
+                f"category={engram_category} match_count={match_count}"
+            )
+        else:
+            logger.debug(
+                f"[Learnings] ENGRAM L1 updated: key={key!r} match_count={match_count}"
+            )
+    except Exception as e:
+        logger.warning(f"[Learnings] ENGRAM L1 promotion failed: {e}")
 
 
 class ResourceLearningStore:
@@ -80,6 +188,60 @@ class ResourceLearningStore:
             self._qdrant = None
             return False
 
+    def store_learning_sync(
+        self,
+        text: str,
+        category: str = "pattern",
+        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        files: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """MARKER_198.P1.7: Synchronous store — for use from sync code paths (MCP complete).
+
+        Uses sync get_embedding() instead of async. Same Qdrant upsert + fallback logic.
+        """
+        point_id = str(uuid.uuid4())
+
+        payload = {
+            "text": text,
+            "category": category,
+            "run_id": run_id,
+            "task_id": task_id,
+            "session_id": session_id,
+            "files": files or [],
+            "timestamp": time.time(),
+            "timestamp_iso": time.strftime("%Y-%m-%d %H:%M:%S"),
+            **(metadata or {}),
+        }
+
+        if not self._ensure_init():
+            return self._store_fallback(point_id, payload)
+
+        try:
+            from src.utils.embedding_service import get_embedding
+            vector = get_embedding(text)
+            if not vector:
+                logger.warning("[Learnings] Empty embedding (sync), using fallback")
+                return self._store_fallback(point_id, payload)
+
+            from qdrant_client.models import PointStruct
+            self._qdrant.client.upsert(
+                collection_name=COLLECTION_NAME,
+                points=[PointStruct(
+                    id=point_id,
+                    vector=vector,
+                    payload=payload,
+                )],
+            )
+            logger.info(f"[Learnings] Stored (sync): {text[:60]}... (id={point_id})")
+            return point_id
+
+        except Exception as e:
+            logger.warning(f"[Learnings] Qdrant store failed (sync): {e}")
+            return self._store_fallback(point_id, payload)
+
     async def store_learning(
         self,
         text: str,
@@ -104,7 +266,7 @@ class ResourceLearningStore:
         Returns:
             Point ID if stored, None if failed
         """
-        point_id = uuid.uuid4().hex[:16]
+        point_id = str(uuid.uuid4())
 
         payload = {
             "text": text,
@@ -387,16 +549,77 @@ async def extract_and_store_learnings(
 async def get_learnings_for_architect(task_description: str, limit: int = 3) -> str:
     """Search past learnings and format for architect injection.
 
+    MARKER_198.P0.4: After fetching results from Qdrant / fallback, increments
+    per-learning match counts (persisted in data/reflex/learning_match_counts.json).
+    When a learning's match_count reaches _PROMOTION_THRESHOLD (3), it is
+    auto-promoted to ENGRAM L1 via _promote_to_engram_l1().
+
     Returns formatted string for architect user_content, or empty string.
     """
     store = get_learning_store()
-    results = await store.search_learnings(task_description, limit=limit)
 
-    if not results:
+    # MARKER_198.P0.4: Fetch raw Qdrant results when possible so we can use
+    # the original result objects for key derivation and promotion.
+    # Fall back to search_learnings() dicts when Qdrant is unavailable.
+    raw_results = None
+    if store._ensure_init() and store._qdrant is not None:
+        try:
+            from src.utils.embedding_service import get_embedding_async
+            vector = await get_embedding_async(task_description)
+            if vector:
+                raw_results = store._qdrant.client.search(
+                    collection_name=COLLECTION_NAME,
+                    query_vector=vector,
+                    limit=limit,
+                )
+                raw_results = [r for r in raw_results if r.score > 0.3]
+        except Exception as e:
+            logger.warning(f"[Learnings] Raw search for promotion tracking failed: {e}")
+            raw_results = None
+
+    # Fallback: use dict-based search (no Qdrant objects available)
+    if raw_results is None:
+        results = await store.search_learnings(task_description, limit=limit)
+        if not results:
+            return ""
+        lines = ["[Past Learnings]"]
+        for r in results:
+            lines.append(f"- [{r['category']}] {r['text'][:120]} (score: {r['score']})")
+        return "\n".join(lines)
+
+    if not raw_results:
         return ""
 
+    # MARKER_198.P0.4: Track match counts and auto-promote at threshold
+    counts = _load_match_counts()
+    promoted_keys: List[str] = []
+
+    for result in raw_results:
+        payload = result.payload if hasattr(result, "payload") else {}
+        # Use explicit key field when present, else derive a stable key
+        learning_key = payload.get("key") or _derive_engram_key(result)
+
+        counts[learning_key] = counts.get(learning_key, 0) + 1
+
+        if counts[learning_key] >= _PROMOTION_THRESHOLD:
+            _promote_to_engram_l1(result, counts[learning_key])
+            promoted_keys.append(learning_key)
+
+    _save_match_counts(counts)
+
+    if promoted_keys:
+        logger.info(
+            f"[Learnings] {len(promoted_keys)} learning(s) promoted to ENGRAM L1: "
+            f"{promoted_keys}"
+        )
+
+    # Format output for architect injection
     lines = ["[Past Learnings]"]
-    for r in results:
-        lines.append(f"- [{r['category']}] {r['text'][:120]} (score: {r['score']})")
+    for result in raw_results:
+        payload = result.payload if hasattr(result, "payload") else {}
+        category = payload.get("category", "")
+        text = payload.get("text", "")
+        score = round(result.score, 3)
+        lines.append(f"- [{category}] {text[:120]} (score: {score})")
 
     return "\n".join(lines)

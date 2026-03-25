@@ -121,7 +121,12 @@ export type CutHotkeyAction =
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
-  | 'escapeContext';
+  | 'escapeContext'
+  // MARKER_A4: PULSE integration
+  | 'runPulseAnalysis'
+  | 'runAutoMontageFavorites'
+  // MARKER_EXPORT: Timeline export
+  | 'exportTimeline';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -235,6 +240,10 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
+  // MARKER_A4: PULSE
+  runPulseAnalysis:    'global',
+  runAutoMontageFavorites: 'global',
+  exportTimeline:         'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -345,12 +354,18 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusEffects:      'Cmd+5',
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
-  toggleSnap:        'n',
+  // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
+  toggleSnap:        's',
   makeSubclip:       'Cmd+u',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+p',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -451,6 +466,11 @@ export const FCP7_PRESET: HotkeyMap = {
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+p',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -675,12 +695,17 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusProject', label: 'Focus Project Panel', group: 'Window' },
   { action: 'focusEffects', label: 'Focus Effects Panel', group: 'Window' },
   { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
-  { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
+  { action: 'toggleSnap', label: 'Toggle Snap (S/N)', group: 'Timeline' },
   { action: 'makeSubclip', label: 'Make Subclip (Cmd+U)', group: 'Editing' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
   { action: 'escapeContext', label: 'Cancel / Close', group: 'CUT' },
+  // MARKER_A4: PULSE
+  { action: 'runPulseAnalysis', label: 'PULSE Analyze All Scenes', group: 'PULSE' },
+  { action: 'runAutoMontageFavorites', label: 'Auto-Montage: Favorites', group: 'PULSE' },
+  // MARKER_EXPORT
+  { action: 'exportTimeline', label: 'Export Timeline (Premiere XML)', group: 'File' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────

@@ -129,6 +129,7 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         type="white_balance", label="White Balance", category="color",
         params_schema={
             "temperature": {"type": "float", "min": 2000, "max": 12000, "default": 6500, "step": 100},
+            "tint": {"type": "float", "min": -100, "max": 100, "default": 0, "step": 5},
         },
     ),
 
@@ -394,6 +395,49 @@ def list_effect_types() -> list[dict[str, Any]]:
 # FFmpeg filter compilation
 # ---------------------------------------------------------------------------
 
+
+# MARKER_B76: Tanner Helland Kelvin→RGB conversion for white balance
+def _kelvin_to_rgb_adjustment(kelvin: float) -> tuple[float, float, float]:
+    """Convert color temperature to RGB adjustment relative to 6500K (daylight).
+
+    Returns (r_adj, g_adj, b_adj) where 0.0 = no change, positive = boost, negative = reduce.
+    Based on Tanner Helland's algorithm for approximating blackbody radiation.
+    """
+    import math
+
+    def _kelvin_to_rgb(k: float) -> tuple[float, float, float]:
+        """Raw Kelvin to normalized RGB (0-1)."""
+        t = max(1000, min(40000, k)) / 100.0
+        # Red
+        if t <= 66:
+            r = 1.0
+        else:
+            r = max(0.0, min(1.0, 1.292936186 * ((t - 60) ** -0.1332047592)))
+        # Green
+        if t <= 66:
+            g = max(0.0, min(1.0, 0.3900815788 * math.log(t) - 0.6318414438))
+        else:
+            g = max(0.0, min(1.0, 1.129890861 * ((t - 60) ** -0.0755148492)))
+        # Blue
+        if t >= 66:
+            b = 1.0
+        elif t <= 19:
+            b = 0.0
+        else:
+            b = max(0.0, min(1.0, 0.5432067891 * math.log(t - 10) - 1.19625408))
+        return (r, g, b)
+
+    ref_r, ref_g, ref_b = _kelvin_to_rgb(6500)
+    tgt_r, tgt_g, tgt_b = _kelvin_to_rgb(kelvin)
+
+    # Compute adjustment as ratio difference, scaled to colorbalance range (-1..+1)
+    r_adj = (tgt_r / ref_r - 1.0) * 0.5
+    g_adj = (tgt_g / ref_g - 1.0) * 0.5
+    b_adj = (tgt_b / ref_b - 1.0) * 0.5
+
+    return (round(r_adj, 4), round(g_adj, 4), round(b_adj, 4))
+
+
 # ---------------------------------------------------------------------------
 # MARKER_B44: Keyframe interpolation + FFmpeg mapping
 # ---------------------------------------------------------------------------
@@ -594,11 +638,24 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
 
         elif t == "white_balance":
             temp = float(p.get("temperature", 6500))
-            if temp != 6500:
-                shift = (temp - 6500) / 6500
-                rs = -shift * 0.3
-                bs = shift * 0.3
-                filters.append(f"colorbalance=rs={rs:.3f}:bs={bs:.3f}")
+            if abs(temp - 6500) > 50:
+                # MARKER_B76: Tanner Helland Kelvin→RGB, normalized to 6500K reference
+                r_adj, g_adj, b_adj = _kelvin_to_rgb_adjustment(temp)
+                parts = []
+                if abs(r_adj) > 0.001 or abs(g_adj) > 0.001 or abs(b_adj) > 0.001:
+                    parts.append(f"rs={r_adj:.3f}:gs={g_adj:.3f}:bs={b_adj:.3f}")
+                    parts.append(f"rm={r_adj*0.5:.3f}:gm={g_adj*0.5:.3f}:bm={b_adj*0.5:.3f}")
+                    parts.append(f"rh={r_adj*0.3:.3f}:gh={g_adj*0.3:.3f}:bh={b_adj*0.3:.3f}")
+                    filters.append(f"colorbalance={':'.join(parts)}")
+            tint = float(p.get("tint", 0))
+            if abs(tint) > 1:
+                # Tint: positive = magenta (boost R+B, reduce G), negative = green (boost G, reduce R+B)
+                tint_adj = tint / 200.0  # scale to -0.5..+0.5
+                # Apply as green channel adjustment (inverse = magenta)
+                tint_parts = []
+                tint_parts.append(f"rs={tint_adj*0.3:.3f}:gs={-tint_adj:.3f}:bs={tint_adj*0.3:.3f}")
+                tint_parts.append(f"rm={tint_adj*0.15:.3f}:gm={-tint_adj*0.5:.3f}:bm={tint_adj*0.15:.3f}")
+                filters.append(f"colorbalance={':'.join(tint_parts)}")
 
         # MARKER_B16: Lift/Gamma/Gain (3-way color corrector)
         elif t == "lift":

@@ -138,7 +138,7 @@ class TestFCP7Editing:
     """FCP7 App.A: Core editing operations."""
 
     def test_split_at_playhead(self, fcp7):
-        """FCP7/Premiere: Cmd+K = Split at playhead (blade tool)."""
+        """FCP7 App.A: Add Edit = ⌘K (intentional override — Ctrl+V collides with paste)."""
         assert fcp7["splitClip"] == "Cmd+k"
 
     def test_insert_overwrite(self, fcp7):

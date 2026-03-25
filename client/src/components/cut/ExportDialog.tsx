@@ -853,7 +853,7 @@ export default function ExportDialog() {
                   key={fmt.id}
                   style={{
                     ...RADIO_ITEM,
-                    background: editorialFormat === fmt.id ? '#1f1f2a' : 'transparent',
+                    background: editorialFormat === fmt.id ? '#222' : 'transparent',
                   }}
                   onClick={() => setEditorialFormat(fmt.id)}
                 >
@@ -879,7 +879,7 @@ export default function ExportDialog() {
                   key={preset.id}
                   style={{ ...RADIO_ITEM, opacity: isRendering ? 0.5 : 1, pointerEvents: isRendering ? 'none' : 'auto' }}
                   onClick={() => startPublish(preset.id)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#1f1f2a'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#222'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
                 >
                   <div>
