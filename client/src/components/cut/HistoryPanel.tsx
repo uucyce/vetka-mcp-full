@@ -21,7 +21,7 @@ type UndoStackResponse = {
   can_undo: boolean;
   can_redo: boolean;
   max_depth: number;
-  labels: string[];
+  labels: Array<string | { index: number; label: string; timestamp?: string }>;
 };
 
 const CONTAINER: CSSProperties = {
@@ -89,9 +89,10 @@ export default function HistoryPanel() {
       const res = await fetch(`${API_BASE}/cut/undo-stack?${params}`);
       if (!res.ok) return;
       const data: UndoStackResponse = await res.json();
-      const items: HistoryEntry[] = data.labels.map((label, i) => ({
+      const items: HistoryEntry[] = data.labels.map((entry, i) => ({
         index: i,
-        label,
+        label: typeof entry === 'string' ? entry : entry.label,
+        timestamp: typeof entry === 'object' ? entry.timestamp : undefined,
       }));
       // Always add "Open Project" as base entry
       if (items.length === 0) {

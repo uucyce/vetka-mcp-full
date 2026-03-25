@@ -40,6 +40,7 @@ export default function StatusBar() {
   const duration = useCutEditorStore((s) => s.duration);
   const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
   const activePreset = useDockviewStore((s) => s.activePreset);
+  const renderProgress = useCutEditorStore((s) => s.renderProgress);
   // MARKER_GAMMA-SB2: Sequence name from timelineId
   const timelineId = useCutEditorStore((s) => s.timelineId);
   const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
@@ -89,6 +90,31 @@ export default function StatusBar() {
       <span>{fpsLabel}</span>
       <span style={SEP}>|</span>
       <span style={{ textTransform: 'capitalize' }}>{activePreset}</span>
+
+      {renderProgress != null && (
+        <>
+          <span style={SEP}>|</span>
+          <span data-testid="render-progress" style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+            Render {Math.round(renderProgress * 100)}%
+            <span style={{
+              display: 'inline-block',
+              width: 40,
+              height: 4,
+              background: '#222',
+              borderRadius: 2,
+              overflow: 'hidden',
+            }}>
+              <span style={{
+                display: 'block',
+                width: `${renderProgress * 100}%`,
+                height: '100%',
+                background: '#999',
+                borderRadius: 2,
+              }} />
+            </span>
+          </span>
+        </>
+      )}
 
       {trackCount > 0 && (
         <>
