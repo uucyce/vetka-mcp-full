@@ -114,7 +114,7 @@ function MediaAssetNode({ data }: NodeProps<Node<DAGNodeData>>) {
         {data.label}
       </div>
       {data.camelot_key && (
-        <div style={{ fontSize: 7, color: '#5DCAA5', fontFamily: 'monospace', marginTop: 1 }}>
+        <div style={{ fontSize: 7, color: '#999', fontFamily: 'monospace', marginTop: 1 }}>
           {data.camelot_key}
         </div>
       )}
