@@ -478,7 +478,7 @@ export default function MenuBar() {
             s.currentTime >= m.start_sec - 0.05 && s.currentTime <= m.end_sec + 0.05
           );
           if (atPlayhead) {
-            s.setMarkers(s.markers.filter((m) => m.marker_id !== atPlayhead.marker_id));
+            s.deleteMarker(atPlayhead.marker_id);
           }
         }},
       ],

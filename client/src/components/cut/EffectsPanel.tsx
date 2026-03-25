@@ -447,15 +447,20 @@ function saveFavorites(favs: Set<string>) {
 // MARKER_GAMMA-P2.1a: Map browser effect IDs to ClipEffects store fields
 // Exported for TimelineTrackView drop handler (GAMMA-LAYOUT1 build fix)
 export const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
+  // Video Filters
   brightness:    { brightness: 0.15 },
   color_balance: { brightness: 0.05, saturation: 1.2 },
   saturation:    { saturation: 1.5 },
-  gamma:         { brightness: 0.1 },
+  gamma:         { gamma: 1.5 },
   blur:          { blur: 3 },
-  sharpen:       { blur: -1 },  // negative = sharpen conceptually
-  denoise:       { blur: 0.5 },
-  vignette:      { opacity: 0.9 },
+  sharpen:       { sharpen: 2 },
+  denoise:       { denoise: 3 },
+  vignette:      { vignette: 0.5 },
   lut_apply:     { contrast: 0.2, saturation: 1.3 },
+  chroma_key:    { opacity: 0.8 },
+  // Generators
+  color_matte:   { brightness: 0, contrast: 0, saturation: 0 },
+  slug:          { brightness: -1, opacity: 1 },
 };
 
 // MARKER_GAMMA-P2.5: Recently Used persistence
