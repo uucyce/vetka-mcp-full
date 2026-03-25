@@ -401,7 +401,8 @@ function saveFavorites(favs: Set<string>) {
 }
 
 // MARKER_GAMMA-P2.1a: Map browser effect IDs to ClipEffects store fields
-const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
+// Exported for TimelineTrackView drop handler (GAMMA-LAYOUT1 build fix)
+export const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
   brightness:    { brightness: 0.15 },
   color_balance: { brightness: 0.05, saturation: 1.2 },
   saturation:    { saturation: 1.5 },

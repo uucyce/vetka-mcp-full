@@ -653,7 +653,8 @@ export default function MenuBar() {
           { label: 'Editing', shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
           { label: 'Color', shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
           { label: 'Audio', shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
-          { label: 'Custom', shortcut: '⌥⇧4', action: () => switchWorkspace('custom') },
+          { label: 'Multicam', shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
+          { label: 'Custom', shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
           { separator: true },
           { label: 'Save Workspace...', action: () => {
             const api = dockStore.getState().apiRef;
@@ -710,10 +711,11 @@ export default function MenuBar() {
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
         { separator: true },
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
-        { label: 'Transitions', action: () => togglePanel('transitions', 'transitions', 'Transitions') },
+        // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
+        { label: 'Publish / Crosspost', action: () => togglePanel('publish', 'publish', 'Publish') },
         { label: 'Script', action: () => togglePanel('script', 'script', 'Script') },
         { label: 'Graph', action: () => togglePanel('graph', 'graph', 'Graph') },
         { separator: true },
