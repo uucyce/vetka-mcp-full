@@ -511,9 +511,15 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
         }},
         { separator: true },
-        { label: 'Replace', shortcut: 'F11', disabled: true },
-        { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
-        { label: 'Superimpose', shortcut: 'F12', disabled: true },
+        { label: 'Replace', shortcut: 'F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11' }));
+        }},
+        { label: 'Fit to Fill', shortcut: '⇧F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', shiftKey: true }));
+        }},
+        { label: 'Superimpose', shortcut: 'F12', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12' }));
+        }},
         { separator: true },
         { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
