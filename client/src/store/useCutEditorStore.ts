@@ -548,6 +548,17 @@ interface CutEditorState {
   renameTimelineTab: (index: number, label: string) => void;
   /** MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1) */
   createVersionedTimeline: (projectName: string, mode?: string) => string;
+  // MARKER_FCP7_SEQUENCE: Multi-sequence aliases (map to timeline tabs)
+  sequences: Array<{ id: string; label: string }>;
+  createSequence: (name?: string) => string;
+  deleteSequence: (index: number) => void;
+  switchSequence: (index: number) => void;
+  // MARKER_FCP7_CH42: Multicam angle switching (stub — backend multicam exists)
+  switchAngle: (angleIndex: number) => void;
+  // MARKER_FCP7_CH39: Subclip creation
+  createSubclip: (name?: string) => void;
+  // MARKER_FCP7_CH49: Sequence nesting
+  nestSequence: () => void;
   // MARKER_W5.2: Parallel Timelines
   setParallelTimeline: (tabIndex: number | null) => void;
   swapParallelTimeline: () => void;  // swap active ↔ parallel
@@ -667,6 +678,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   activeTimelineTabIndex: 0,
   nextTimelineVersion: 1,
   parallelTimelineTabIndex: null,
+  sequences: [] as Array<{ id: string; label: string }>,
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
@@ -1544,6 +1556,23 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       };
     });
     return newId;
+  },
+
+  // MARKER_FCP7_SEQUENCE: Multi-sequence aliases (thin wrappers around timeline tabs)
+  createSequence: (name) => get().createVersionedTimeline(name || 'Untitled Sequence'),
+  deleteSequence: (index) => get().removeTimelineTab(index),
+  switchSequence: (index) => get().setActiveTimelineTab(index),
+  // MARKER_FCP7_CH42: Multicam angle switching (stub — needs MulticamViewer wiring)
+  switchAngle: (_angleIndex) => {
+    console.warn('[CUT] switchAngle: multicam angle switching not yet wired to UI');
+  },
+  // MARKER_FCP7_CH39: Subclip from In/Out marks
+  createSubclip: (_name) => {
+    console.warn('[CUT] createSubclip: subclip creation not yet implemented');
+  },
+  // MARKER_FCP7_CH49: Nest sequence inside another
+  nestSequence: () => {
+    console.warn('[CUT] nestSequence: sequence nesting not yet implemented');
   },
 
   // MARKER_A4.5: PULSE Auto-Montage — 3 modes (favorites/script/music)
