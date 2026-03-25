@@ -1996,6 +1996,41 @@ class TaskBoard:
 
         return completed
 
+    def find_tasks_by_changed_files(self, changed_files: list) -> list:
+        """MARKER_198.P1.9: Find pending/claimed/running tasks whose allowed_paths intersect changed_files.
+
+        Uses prefix matching: file 'src/mcp/tools/foo.py' matches allowed_path 'src/mcp/tools/'.
+        Returns list of task dicts (id, title, status, allowed_paths).
+        """
+        if not changed_files:
+            return []
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('pending', 'claimed', 'running')"
+        )
+        candidates = []
+        for row in cursor:
+            task = self._row_to_task(row)
+            allowed = task.get("allowed_paths") or []
+            if not allowed:
+                continue
+            matched = False
+            for cf in changed_files:
+                for ap in allowed:
+                    ap_norm = ap.rstrip("/")
+                    if cf == ap or cf.startswith(ap_norm + "/"):
+                        matched = True
+                        break
+                if matched:
+                    break
+            if matched:
+                candidates.append({
+                    "id": task["id"],
+                    "title": task.get("title", ""),
+                    "status": task.get("status", ""),
+                    "allowed_paths": allowed,
+                })
+        return candidates
+
     def _commit_matches_task(self, task: Dict[str, Any], commit_msg: str, msg_lower: str) -> bool:
         """Check if commit message matches a task.
 
@@ -2437,7 +2472,19 @@ class TaskBoard:
                     )
                     stdout, stderr = await proc.communicate()
                     if proc.returncode != 0:
-                        # Abort cherry-pick
+                        stderr_text = stderr.decode().strip()
+                        # MARKER_198.P1.MERGE: Handle empty cherry-pick (commit already on main)
+                        if "empty" in stderr_text or "nothing to commit" in stderr_text:
+                            skip_proc = await asyncio.create_subprocess_exec(
+                                "git", "cherry-pick", "--skip",
+                                cwd=str(PROJECT_ROOT),
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                            )
+                            await skip_proc.communicate()
+                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
+                            continue
+                        # Abort cherry-pick on real conflict
                         abort_proc = await asyncio.create_subprocess_exec(
                             "git", "cherry-pick", "--abort",
                             cwd=str(PROJECT_ROOT),
@@ -2447,7 +2494,7 @@ class TaskBoard:
                         await abort_proc.communicate()
                         return {
                             "success": False,
-                            "error": f"Cherry-pick failed for {commit_hash}: {stderr.decode().strip()}",
+                            "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
                             "conflicting_commit": commit_hash,
                         }
 

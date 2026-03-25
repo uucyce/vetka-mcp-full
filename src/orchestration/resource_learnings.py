@@ -188,6 +188,60 @@ class ResourceLearningStore:
             self._qdrant = None
             return False
 
+    def store_learning_sync(
+        self,
+        text: str,
+        category: str = "pattern",
+        run_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        files: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Optional[str]:
+        """MARKER_198.P1.7: Synchronous store — for use from sync code paths (MCP complete).
+
+        Uses sync get_embedding() instead of async. Same Qdrant upsert + fallback logic.
+        """
+        point_id = uuid.uuid4().hex[:16]
+
+        payload = {
+            "text": text,
+            "category": category,
+            "run_id": run_id,
+            "task_id": task_id,
+            "session_id": session_id,
+            "files": files or [],
+            "timestamp": time.time(),
+            "timestamp_iso": time.strftime("%Y-%m-%d %H:%M:%S"),
+            **(metadata or {}),
+        }
+
+        if not self._ensure_init():
+            return self._store_fallback(point_id, payload)
+
+        try:
+            from src.utils.embedding_service import get_embedding
+            vector = get_embedding(text)
+            if not vector:
+                logger.warning("[Learnings] Empty embedding (sync), using fallback")
+                return self._store_fallback(point_id, payload)
+
+            from qdrant_client.models import PointStruct
+            self._qdrant.client.upsert(
+                collection_name=COLLECTION_NAME,
+                points=[PointStruct(
+                    id=point_id,
+                    vector=vector,
+                    payload=payload,
+                )],
+            )
+            logger.info(f"[Learnings] Stored (sync): {text[:60]}... (id={point_id})")
+            return point_id
+
+        except Exception as e:
+            logger.warning(f"[Learnings] Qdrant store failed (sync): {e}")
+            return self._store_fallback(point_id, payload)
+
     async def store_learning(
         self,
         text: str,

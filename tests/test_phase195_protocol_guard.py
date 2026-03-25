@@ -579,3 +579,69 @@ class TestPhaseClosureDebrief:
         assert "change" in prompt
         assert "195.2.1: Final task" in prompt
         print("  test_generate_debrief_prompt")
+
+
+# ════════════════════════════════════════════════════════════════
+# Cat 8 -- No Raw Git Merge Rule (4 tests) 198.P1.8
+# ════════════════════════════════════════════════════════════════
+
+def _mock_session_full():
+    """Helper: a fully compliant mock session (all flags green)."""
+    s = MagicMock()
+    s.task_claimed = True
+    s.claimed_task_id = "tb_merge_test"
+    s.claimed_task_has_recon_docs = True
+    s.files_read = set()
+    s.task_board_checked = True
+    s.session_init_called = True
+    s.roadmap_exists = True
+    s.tasks_completed = 0
+    s.experience_report_submitted = False
+    return s
+
+
+class TestNoRawGitMerge:
+    """Category 8: no_raw_git_merge rule — blocks raw git merge via Bash."""
+
+    # -- 31. Raw git merge on Bash is blocked --
+    def test_git_merge_blocked(self, guard):
+        """Bash tool with 'git merge feature-branch' -> violation returned."""
+        session = _mock_session_full()
+        violation = guard._check_no_raw_git_merge(
+            session, "Bash", {"command": "git merge feature-branch"}
+        )
+        assert violation is not None
+        assert violation.rule_id == "no_raw_git_merge"
+        assert violation.severity == "block"
+        assert "merge_request" in violation.message
+        print("  test_git_merge_blocked")
+
+    # -- 32. git merge --abort is allowed --
+    def test_git_merge_abort_allowed(self, guard):
+        """'git merge --abort' -> no violation (safe variant)."""
+        session = _mock_session_full()
+        violation = guard._check_no_raw_git_merge(
+            session, "Bash", {"command": "git merge --abort"}
+        )
+        assert violation is None
+        print("  test_git_merge_abort_allowed")
+
+    # -- 33. git merge-base is allowed --
+    def test_git_merge_base_allowed(self, guard):
+        """'git merge-base main HEAD' -> no violation (different subcommand)."""
+        session = _mock_session_full()
+        violation = guard._check_no_raw_git_merge(
+            session, "Bash", {"command": "git merge-base main HEAD"}
+        )
+        assert violation is None
+        print("  test_git_merge_base_allowed")
+
+    # -- 34. Non-Bash tool with merge in args is ignored --
+    def test_non_bash_ignored(self, guard):
+        """vetka_git_commit with 'merge' in args -> no violation (only Bash is checked)."""
+        session = _mock_session_full()
+        violation = guard._check_no_raw_git_merge(
+            session, "vetka_git_commit", {"command": "git merge main"}
+        )
+        assert violation is None
+        print("  test_non_bash_ignored")

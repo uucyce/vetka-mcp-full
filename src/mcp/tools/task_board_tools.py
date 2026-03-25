@@ -939,6 +939,102 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     store = get_experience_store()
     store.submit(report)
 
+    # MARKER_198.P1.7: Direct Qdrant L2 ingest — debrief + experience → Qdrant.
+    # This is the missing link: MCP path never called resource_learnings.
+    # Flow: debrief text → sync Gemma embedding → Qdrant L2 upsert → fallback to JSON.
+    # ENGRAM L2→L1 auto-promotion (P0.4) triggers on search via get_learnings_for_architect().
+    try:
+        from src.orchestration.resource_learnings import get_learning_store
+
+        _l2_store = get_learning_store()
+        _files = list(session.files_edited)[:20]
+        _stored_ids = []
+
+        # Get task metadata for richer learning context
+        _task_title = ""
+        _task_desc = ""
+        if task_id:
+            try:
+                from src.orchestration.task_board import get_task_board as _gtb
+                _task_data = _gtb().get_task(task_id)
+                if _task_data:
+                    _task_title = _task_data.get("title", "")
+                    _task_desc = _task_data.get("description", "")
+            except Exception:
+                pass
+
+        # 1. Co-change pattern learning (which files change together)
+        if _files and len(_files) >= 2:
+            _dirs = set()
+            for _f in _files[:10]:
+                _parts = Path(_f).parts
+                if len(_parts) >= 2:
+                    _dirs.add(_parts[-2] if _parts[-2] != "src" else "/".join(_parts[-3:-1]))
+            if _dirs:
+                _cochange_text = (
+                    f"Files that change together for '{_task_title[:50]}': "
+                    f"{', '.join(f[:60] for f in _files[:5])}. "
+                    f"Directories involved: {', '.join(_dirs)}."
+                )
+                _pid = _l2_store.store_learning_sync(
+                    text=_cochange_text, category="pattern",
+                    run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                    files=_files[:10],
+                    metadata={"source": "mcp_complete", "agent": callsign},
+                )
+                if _pid:
+                    _stored_ids.append(_pid)
+
+        # 2. Task completion pattern
+        if _task_title and _files:
+            _completion_text = (
+                f"Task '{_task_title[:60]}' completed by {callsign}, "
+                f"modifying {len(_files)} files. "
+                f"Approach: {_task_desc[:100] if _task_desc else 'MCP agent pipeline'}."
+            )
+            _pid = _l2_store.store_learning_sync(
+                text=_completion_text, category="optimization",
+                run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                files=_files[:5],
+                metadata={"source": "mcp_complete", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+
+        # 3. Debrief answers as individual Qdrant L2 learnings
+        if q1:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[BUG] {q1}", category="pitfall",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q1", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+        if q2:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[WORKED] {q2}", category="pattern",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q2", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+        if q3:
+            _pid = _l2_store.store_learning_sync(
+                text=f"[IDEA] {q3}", category="architecture",
+                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                metadata={"source": "debrief_q3", "agent": callsign},
+            )
+            if _pid:
+                _stored_ids.append(_pid)
+
+        if _stored_ids:
+            logger.info(
+                f"[P1.7] Qdrant L2 ingest: {len(_stored_ids)} learnings for task {task_id} "
+                f"(agent={callsign})"
+            )
+    except Exception as e:
+        logger.warning(f"[P1.7] Qdrant L2 ingest failed (non-blocking): {e}")
+
     # MARKER_198.DEBRIEF Fix 4/4: Direct CORTEX/ENGRAM routing for q1/q2/q3.
     # smart_debrief._route_to_memory() uses regex triggers — short answers with no
     # keywords skip all branches and fall through to CORTEX general fallback ONLY IF
