@@ -1070,6 +1070,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     # Log request to VETKA group chat
     await log_mcp_request(name, arguments, request_id)
 
+    # MARKER_198.P2.1: Pre-tool hooks (enrich args, block calls)
+    try:
+        from src.mcp.bridge_hooks import run_pre_hooks
+        _hook_sid = session_context.get()
+        arguments, _early_return = await run_pre_hooks(name, arguments, _hook_sid)
+        if _early_return is not None:
+            return _early_return if isinstance(_early_return, list) else [TextContent(type="text", text=str(_early_return))]
+    except Exception:
+        pass  # Hooks never block the bridge
+
     if not http_client:
         error_msg = "Error: HTTP client not initialized. Please restart the MCP server."
         await log_mcp_response(name, None, request_id, 0, error=error_msg)
@@ -1920,9 +1930,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log successful response to group chat
             await log_mcp_response(name, data, request_id, duration_ms)
 
+            result_text = format_result(name, data)
+
+            # MARKER_198.P2.1: Post-tool hooks (record outcome, suggest workaround)
+            try:
+                from src.mcp.bridge_hooks import run_post_hooks
+                _hook_sid = session_context.get()
+                _suggestion = await run_post_hooks(name, arguments, result_text, _hook_sid)
+                if _suggestion:
+                    result_text += f"\n\n[MEMORY SUGGESTION]\n{_suggestion}"
+            except Exception:
+                pass
+
             return [TextContent(
                 type="text",
-                text=format_result(name, data)
+                text=result_text
             )]
         else:
             error_text = f"Error: HTTP {response.status_code}\n{response.text}"
@@ -1933,12 +1955,22 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
             return [TextContent(type="text", text=error_text)]
 
-    except httpx.ConnectError:
+    except httpx.ConnectError as e:
         duration_ms = (time.time() - start_time) * 1000
         error_msg = "Error: Cannot connect to VETKA server at localhost:5001.\nMake sure VETKA is running: python main.py"
 
         # Log connection error to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+
+        # MARKER_198.P2.1: Post-tool hooks on error
+        try:
+            from src.mcp.bridge_hooks import run_post_hooks
+            _hook_sid = session_context.get()
+            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
+            if _suggestion:
+                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
+        except Exception:
+            pass
 
         return [TextContent(type="text", text=error_msg)]
     except Exception as e:
@@ -1947,6 +1979,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # Log exception to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+
+        # MARKER_198.P2.1: Post-tool hooks on error
+        try:
+            from src.mcp.bridge_hooks import run_post_hooks
+            _hook_sid = session_context.get()
+            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
+            if _suggestion:
+                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
+        except Exception:
+            pass
 
         return [TextContent(type="text", text=error_msg)]
 
