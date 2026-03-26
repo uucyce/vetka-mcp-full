@@ -454,7 +454,7 @@ class TaskBoard:
         # It inserted 1648 rows on every init when schema_version failed to write,
         # causing 14 MCP processes to deadlock on the same write lock.
         # FTS5 index is now populated incrementally via _index_task_fts() on save/update.
-        # To backfill old tasks manually: action=search_fts query="__backfill__"
+        # To backfill old tasks manually: use action=backfill_fts via task_board tool.
 
     # ==========================================
     # MARKER_199.FTS5: Full-Text Search
@@ -496,18 +496,21 @@ class TaskBoard:
         except Exception:
             pass
 
-    def _backfill_fts(self):
+    def _backfill_fts(self) -> int:
         """MARKER_199.FTS5: One-time backfill of all existing tasks into FTS5 index.
 
         Uses batched commits (100 per batch) to avoid holding a write lock
         for the entire backfill. If locked, skips gracefully — next init retries.
+
+        Returns:
+            Number of tasks indexed (0 if already populated, table missing, or locked).
         """
         try:
             existing = self.db.execute("SELECT COUNT(*) FROM tasks_fts").fetchone()[0]
             if existing > 0:
-                return  # Already populated
+                return 0  # Already populated
         except Exception:
-            return  # Table doesn't exist yet
+            return 0  # Table doesn't exist yet
 
         try:
             cursor = self.db.execute("SELECT * FROM tasks")
@@ -524,11 +527,13 @@ class TaskBoard:
             if batch > 0:
                 self.db.commit()
             logger.info(f"[FTS5] Backfilled {count} tasks into full-text index")
+            return count
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
                 logger.warning("[FTS5] Backfill skipped — database locked. Will retry on next init.")
             else:
                 logger.warning(f"[FTS5] Backfill failed: {e}")
+            return 0
 
     def search_fts(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """MARKER_199.FTS5: Full-text search across tasks.

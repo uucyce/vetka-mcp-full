@@ -117,7 +117,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped", "backfill_fts"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -1050,6 +1050,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         results = board.search_fts(query, limit)
         return {"success": True, "results": results, "count": len(results), "query": query}
 
+    elif action == "backfill_fts":
+        board = _get_board()
+        count = board._backfill_fts()
+        return {"success": True, "indexed": count, "message": f"FTS5 index rebuilt: {count} tasks indexed"}
+
     # MARKER_199.DEBRIEF: List tasks auto-closed without debrief
     elif action == "debrief_skipped":
         limit = int(arguments.get("limit", 10))
@@ -1095,8 +1100,8 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
         )
         if _passive_report_created:
             result["passive_report"] = True
-    except Exception:
-        pass  # Passive metrics never block completion
+    except Exception as e:
+        logger.warning("[Debrief] passive report failed (non-fatal): %s", e)
 
 
 def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
