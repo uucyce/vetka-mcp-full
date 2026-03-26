@@ -43,7 +43,9 @@ from .base_tool import BaseMCPTool
 
 class _JepaCacheHit(Exception):
     """MARKER_199.JEPA_TTL: Sentinel to skip JEPA computation when cache is warm."""
+
     pass
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,7 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
     """
     try:
         if DIGEST_PATH.exists():
-            with open(DIGEST_PATH, 'r') as f:
+            with open(DIGEST_PATH, "r") as f:
                 digest = _json.load(f)
 
             # Return condensed version for MCP context
@@ -75,12 +77,16 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
             return {
                 "phase": digest.get("current_phase", {}),
                 "summary": digest.get("summary", {}).get("headline", ""),
-                "achievements": digest.get("summary", {}).get("key_achievements", [])[:5],
+                "achievements": digest.get("summary", {}).get("key_achievements", [])[
+                    :5
+                ],
                 "pending": digest.get("summary", {}).get("pending_items", [])[:3],
                 "system": digest.get("system_status", {}),
                 "instructions": digest.get("agent_instructions", {}),
                 "last_updated": digest.get("last_updated"),
-                "recent_fixes": [f.get("id") for f in digest.get("recent_fixes", [])[:5]],
+                "recent_fixes": [
+                    f.get("id") for f in digest.get("recent_fixes", [])[:5]
+                ],
                 "agent_focus": digest.get("agent_focus", {}),
             }
     except Exception:
@@ -91,6 +97,7 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
 # ---------------------------------------------------------------------------
 # MARKER_195.2.4: Emotion display helpers
 # ---------------------------------------------------------------------------
+
 
 def _compute_mood_label(tool_emotions: Dict[str, Dict[str, float]]) -> str:
     """Derive a single mood label from per-tool emotions.
@@ -120,7 +127,9 @@ def _generate_emotion_summary(tool_emotions: Dict[str, Dict[str, float]]) -> str
     if not tool_emotions:
         return ""
     parts = []
-    high_curiosity = [t for t, e in tool_emotions.items() if e.get("curiosity", 0) > 0.7]
+    high_curiosity = [
+        t for t, e in tool_emotions.items() if e.get("curiosity", 0) > 0.7
+    ]
     low_trust = [t for t, e in tool_emotions.items() if e.get("trust", 0) < 0.3]
     high_caution = [t for t, e in tool_emotions.items() if e.get("caution", 0) > 0.6]
 
@@ -160,42 +169,42 @@ class SessionInitTool(BaseMCPTool):
                 "user_id": {
                     "type": "string",
                     "description": "User identifier (default: 'default')",
-                    "default": "default"
+                    "default": "default",
                 },
                 "group_id": {
                     "type": "string",
-                    "description": "Group chat ID if in group context (optional)"
+                    "description": "Group chat ID if in group context (optional)",
                 },
                 "chat_id": {
                     "type": "string",
-                    "description": "Chat ID to link session with existing chat (optional, Phase 108.1)"
+                    "description": "Chat ID to link session with existing chat (optional, Phase 108.1)",
                 },
                 "include_viewport": {
                     "type": "boolean",
                     "description": "Include 3D viewport context if available",
-                    "default": True
+                    "default": True,
                 },
                 "include_pinned": {
                     "type": "boolean",
                     "description": "Include pinned files context",
-                    "default": True
+                    "default": True,
                 },
                 "compress": {
                     "type": "boolean",
                     "description": "Apply ELISION compression to context",
-                    "default": True
+                    "default": True,
                 },
                 "max_context_tokens": {
                     "type": "integer",
                     "description": "Maximum tokens for context (default: 4000)",
-                    "default": 4000
+                    "default": 4000,
                 },
                 "role": {
                     "type": "string",
-                    "description": "Agent callsign (e.g. Alpha, Beta, Zeta). If provided, session is bound to this role and task board is unlocked. If omitted, falls back to branch detection."
-                }
+                    "description": "Agent callsign (e.g. Alpha, Beta, Zeta). If provided, session is bound to this role and task board is unlocked. If omitted, falls back to branch detection.",
+                },
             },
-            "required": []
+            "required": [],
         }
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -210,8 +219,8 @@ class SessionInitTool(BaseMCPTool):
                     "success": True,
                     "result": {
                         "status": "initializing",
-                        "message": "Session initialization started asynchronously"
-                    }
+                        "message": "Session initialization started asynchronously",
+                    },
                 }
             else:
                 return loop.run_until_complete(self._execute_async(arguments))
@@ -223,7 +232,10 @@ class SessionInitTool(BaseMCPTool):
         """Async implementation of session initialization."""
         # MARKER_191.5: user_id resolution chain: arg > env > fallback
         import os
-        user_id = arguments.get("user_id") or os.environ.get("VETKA_USER_ID") or "danila"
+
+        user_id = (
+            arguments.get("user_id") or os.environ.get("VETKA_USER_ID") or "danila"
+        )
         group_id = arguments.get("group_id")
         chat_id = arguments.get("chat_id")  # MARKER_108_1: Unified MCP-Chat ID
         include_viewport = arguments.get("include_viewport", True)
@@ -242,20 +254,23 @@ class SessionInitTool(BaseMCPTool):
             # Create new VETKA chat and use its ID as session_id
             try:
                 from src.chat.chat_history_manager import get_chat_history_manager
+
                 chat_mgr = get_chat_history_manager()
                 # Create chat with MCP context
                 new_chat_id = chat_mgr.get_or_create_chat(
                     file_path="unknown",
                     context_type="topic",
                     topic="MCP Session",
-                    display_name=f"MCP {user_id[:8]}"
+                    display_name=f"MCP {user_id[:8]}",
                 )
                 session_id = new_chat_id
                 chat_id = new_chat_id
                 linked_to_existing = False
             except Exception as e:
                 # Fallback to old session_id format if chat creation fails
-                session_id = f"session_{user_id}_{group_id or 'solo'}_{int(time.time())}"
+                session_id = (
+                    f"session_{user_id}_{group_id or 'solo'}_{int(time.time())}"
+                )
                 chat_id = None
                 linked_to_existing = False
                 print(f"[SessionInit] Failed to create chat, using session_id: {e}")
@@ -293,22 +308,31 @@ class SessionInitTool(BaseMCPTool):
             try:
                 from src.memory.aura_store import get_aura_store
                 from src.memory.user_memory import create_user_preferences
+
                 aura = get_aura_store()
                 prefs = aura.get_user_preferences(user_id)
                 if not prefs:
                     prefs = create_user_preferences(user_id)
                     aura.set_preference(
-                        agent_type="default", user_id=user_id,
-                        category="communication_style", key="preferred_language",
-                        value="ru"
+                        agent_type="default",
+                        user_id=user_id,
+                        category="communication_style",
+                        key="preferred_language",
+                        value="ru",
                     )
                     prefs = aura.get_user_preferences(user_id)
-                    logger.info(f"[session_init] Auto-bootstrapped AURA profile for user_id={user_id}")
+                    logger.info(
+                        f"[session_init] Auto-bootstrapped AURA profile for user_id={user_id}"
+                    )
                 result = {"user_id": prefs.user_id, "has_preferences": True}
-                if hasattr(prefs, 'communication_style'):
-                    result["communication_style"] = getattr(prefs.communication_style, '__dict__', {})
-                if hasattr(prefs, 'viewport_patterns'):
-                    result["viewport_patterns"] = getattr(prefs.viewport_patterns, '__dict__', {})
+                if hasattr(prefs, "communication_style"):
+                    result["communication_style"] = getattr(
+                        prefs.communication_style, "__dict__", {}
+                    )
+                if hasattr(prefs, "viewport_patterns"):
+                    result["viewport_patterns"] = getattr(
+                        prefs.viewport_patterns, "__dict__", {}
+                    )
                 return result
             except Exception as e:
                 return {"user_id": user_id, "has_preferences": False, "_error": str(e)}
@@ -316,6 +340,7 @@ class SessionInitTool(BaseMCPTool):
         async def _load_mcp_states():
             try:
                 from src.mcp.state import get_mcp_state_manager
+
                 mcp_mgr = get_mcp_state_manager()
                 recent = await mcp_mgr.get_all_states(limit=10)
                 return {"count": len(recent), "ids": list(recent.keys())[:5]}
@@ -329,16 +354,21 @@ class SessionInitTool(BaseMCPTool):
                 viewport_context = await self._get_viewport_context(session_id)
                 if viewport_context:
                     from src.api.handlers.message_utils import build_viewport_summary
+
                     viewport_summary = build_viewport_summary(viewport_context)
                     if viewport_summary:
                         return {
                             "summary": viewport_summary,
                             "viewport": {
                                 "zoom": viewport_context.get("zoom_level", 1),
-                                "visible_count": len(viewport_context.get("viewport_nodes", [])),
-                                "pinned_count": len(viewport_context.get("pinned_nodes", [])),
-                                "hyperlink": "[→ viewport] vetka_get_viewport_detail"
-                            }
+                                "visible_count": len(
+                                    viewport_context.get("viewport_nodes", [])
+                                ),
+                                "pinned_count": len(
+                                    viewport_context.get("pinned_nodes", [])
+                                ),
+                                "hyperlink": "[→ viewport] vetka_get_viewport_detail",
+                            },
                         }
             except Exception as e:
                 return {"_error": str(e)}
@@ -351,22 +381,29 @@ class SessionInitTool(BaseMCPTool):
                 pinned_files = await self._get_pinned_files(session_id, chat_id)
                 if pinned_files:
                     from src.api.handlers.message_utils import build_pinned_context
+
                     pinned_context = build_pinned_context(pinned_files, max_files=5)
                     if pinned_context:
                         return {
                             "context": pinned_context,
                             "pinned": {
                                 "count": len(pinned_files),
-                                "files": [pf.get("name", pf.get("path", "")) for pf in pinned_files[:5]],
-                                "hyperlink": "[→ pins] vetka_get_pinned_files"
-                            }
+                                "files": [
+                                    pf.get("name", pf.get("path", ""))
+                                    for pf in pinned_files[:5]
+                                ],
+                                "hyperlink": "[→ pins] vetka_get_pinned_files",
+                            },
                         }
             except Exception as e:
                 return {"_error": str(e)}
             return None
 
         aura_result, mcp_result, viewport_result, pinned_result = await asyncio.gather(
-            _load_aura_prefs(), _load_mcp_states(), _load_viewport(), _load_pinned(),
+            _load_aura_prefs(),
+            _load_mcp_states(),
+            _load_viewport(),
+            _load_pinned(),
             return_exceptions=True,
         )
 
@@ -414,6 +451,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_199.PARALLEL_IO: moved from blocking await to background task
         try:
             from src.mcp.state import get_mcp_state_manager
+
             mcp = get_mcp_state_manager()
             asyncio.ensure_future(mcp.save_state(session_id, context, ttl_seconds=3600))
             context["persisted"] = True
@@ -424,6 +462,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_178.1.1: Load active tasks from TaskBoard
         try:
             from src.orchestration.task_board import get_task_board
+
             board = get_task_board()
             # MARKER_181.5.6: Fixed list_tasks() → get_queue() (method was renamed)
             pending = board.get_queue(status="pending")
@@ -443,23 +482,86 @@ class SessionInitTool(BaseMCPTool):
                 "need_qa_count": len(need_qa),
                 "verified_count": len(verified),
                 "needs_fix_count": len(needs_fix),
-                "top_pending": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "priority": t.get("priority", 5)} for t in pending[:5]],
-                "in_progress": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in in_progress[:5]],
-                "awaiting_merge": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in done_worktree[:5]],
-                "qa_queue": [{"task_id": t.get("task_id", "?"), "title": t.get("title", "")[:60], "assigned_to": t.get("assigned_to", "")} for t in need_qa[:5]],
+                "top_pending": [
+                    {
+                        "task_id": t.get("task_id", "?"),
+                        "title": t.get("title", "")[:60],
+                        "priority": t.get("priority", 5),
+                    }
+                    for t in pending[:5]
+                ],
+                "in_progress": [
+                    {
+                        "task_id": t.get("task_id", "?"),
+                        "title": t.get("title", "")[:60],
+                        "assigned_to": t.get("assigned_to", ""),
+                    }
+                    for t in in_progress[:5]
+                ],
+                "awaiting_merge": [
+                    {
+                        "task_id": t.get("task_id", "?"),
+                        "title": t.get("title", "")[:60],
+                        "assigned_to": t.get("assigned_to", ""),
+                    }
+                    for t in done_worktree[:5]
+                ],
+                "qa_queue": [
+                    {
+                        "task_id": t.get("task_id", "?"),
+                        "title": t.get("title", "")[:60],
+                        "assigned_to": t.get("assigned_to", ""),
+                    }
+                    for t in need_qa[:5]
+                ],
             }
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).warning(f"TaskBoard load failed: {e}")
+
+        # MARKER_ZETA.DOC_SNIPPETS: Inject doc snippets for top pending tasks
+        try:
+            from src.mcp.tools.task_board_tools import _load_docs_content_sync
+
+            top_doc_hints = []
+            for t in pending[:3] if pending else []:
+                # Only load if task has docs defined
+                if t.get("architecture_docs") or t.get("recon_docs"):
+                    snippet = _load_docs_content_sync(t, budget=500, per_doc=500)
+                    if snippet:
+                        # Extract just the content, strip DOCS header/footer
+                        lines = snippet.strip().split("\n")
+                        content_lines = [
+                            l for l in lines if not l.startswith("---") and l.strip()
+                        ]
+                        brief = "\n".join(content_lines[:6])  # First 6 lines max
+                        if brief:
+                            top_doc_hints.append(
+                                f"[{t.get('task_id', '?')}] {t.get('title', '')[:50]}: {brief[:200]}"
+                            )
+            if top_doc_hints:
+                context.setdefault("context_hints", []).extend(top_doc_hints)
+        except Exception:
+            pass  # Doc injection optional — don't block session_init
 
         # MARKER_187.2: semantic_recall — inject past learnings from Qdrant
         try:
             from src.orchestration.resource_learnings import get_learnings_for_architect
+
             # Build query from digest + top pending task
             tb = context.get("task_board_summary", {})
             digest_summary = context.get("project_digest", {}).get("summary", "")
-            top_task = (tb.get("top_pending") or [{}])[0].get("title", "") if tb.get("top_pending") else ""
-            in_prog = (tb.get("in_progress") or [{}])[0].get("title", "") if tb.get("in_progress") else ""
+            top_task = (
+                (tb.get("top_pending") or [{}])[0].get("title", "")
+                if tb.get("top_pending")
+                else ""
+            )
+            in_prog = (
+                (tb.get("in_progress") or [{}])[0].get("title", "")
+                if tb.get("in_progress")
+                else ""
+            )
             query_parts = [p for p in [digest_summary, top_task, in_prog] if p]
             if query_parts:
                 recall_query = " | ".join(query_parts)
@@ -472,6 +574,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_ZETA.F4.ENGRAM: Inject ENGRAM learnings into session_init
         try:
             from src.memory.engram_cache import get_engram_cache
+
             _engram = get_engram_cache()
             _engram_ctx = {}
             # Danger entries — permanent, critical anti-patterns
@@ -491,7 +594,9 @@ class SessionInitTool(BaseMCPTool):
             # Top patterns by hit_count — most validated learnings
             _patterns = _engram.get_all_by_category("pattern")
             if _patterns:
-                _patterns_sorted = sorted(_patterns, key=lambda x: x.hit_count, reverse=True)
+                _patterns_sorted = sorted(
+                    _patterns, key=lambda x: x.hit_count, reverse=True
+                )
                 _engram_ctx["patterns"] = [
                     {"key": e.key, "value": e.value[:200], "hits": e.hit_count}
                     for e in _patterns_sorted[:5]
@@ -509,15 +614,17 @@ class SessionInitTool(BaseMCPTool):
         # agent don't change within a session. Saves ~1-3s per init.
         try:
             import os as _os
+
             if _os.environ.get("VETKA_SESSION_JEPA_LENS_ENABLE", "1") != "0":
                 import time as _time
+
                 _jepa_start = _time.monotonic()
                 _JEPA_TIMEOUT = 1.5  # seconds
                 _JEPA_TTL = 300  # 5 min cache
 
                 # Check TTL cache first (keyed by role callsign)
                 _jepa_cache_key = f"jepa_lens_{_role.callsign if _role else 'unknown'}"
-                if not hasattr(SessionInitTool, '_jepa_cache'):
+                if not hasattr(SessionInitTool, "_jepa_cache"):
                     SessionInitTool._jepa_cache = {}
                 _cached = SessionInitTool._jepa_cache.get(_jepa_cache_key)
                 if _cached and (_time.monotonic() - _cached.get("_ts", 0)) < _JEPA_TTL:
@@ -533,12 +640,16 @@ class SessionInitTool(BaseMCPTool):
                     _intent_parts.append(f"role:{_role.callsign} domain:{_role.domain}")
                 _phase_info = context.get("current_phase", {})
                 if _phase_info:
-                    _intent_parts.append(f"phase:{_phase_info.get('number', '?')} {_phase_info.get('name', '')}")
+                    _intent_parts.append(
+                        f"phase:{_phase_info.get('number', '?')} {_phase_info.get('name', '')}"
+                    )
                 _tbs = context.get("tbs") or context.get("task_board_summary", {})
                 _top_tasks = _tbs.get("top_pending", [])
                 for _t in _top_tasks[:5]:
                     _intent_parts.append(_t.get("title", "")[:80])
-                _intent = " | ".join(_intent_parts) if _intent_parts else "general session"
+                _intent = (
+                    " | ".join(_intent_parts) if _intent_parts else "general session"
+                )
 
                 # Build corpus: ENGRAM entries + semantic lessons + top tasks
                 _corpus = []
@@ -547,18 +658,22 @@ class SessionInitTool(BaseMCPTool):
                 # ENGRAM dangers/architecture/patterns
                 _el = context.get("engram_learnings") or context.get("el", {})
                 for _cat in ("dangers", "architecture", "patterns"):
-                    for _entry in (_el.get(_cat) or []):
+                    for _entry in _el.get(_cat) or []:
                         _val = _entry.get("value", "")
                         if _val:
                             _corpus.append(f"[{_cat}] {_val[:200]}")
-                            _corpus_labels.append(f"engram.{_cat}.{_entry.get('key', '?')[:40]}")
+                            _corpus_labels.append(
+                                f"engram.{_cat}.{_entry.get('key', '?')[:40]}"
+                            )
 
                 # MARKER_198.P3.L2: Structured Qdrant L2 search (replaces string-split)
                 try:
                     from src.orchestration.resource_learnings import get_learning_store
+
                     _l2_store = get_learning_store()
                     _l2_results = _l2_store.search_learnings_sync(
-                        query=_intent, limit=15,
+                        query=_intent,
+                        limit=15,
                     )
                     for _lr in _l2_results:
                         _l2_text = _lr.get("text", "")
@@ -595,11 +710,35 @@ class SessionInitTool(BaseMCPTool):
                         for _i, (_vec, _label, _text) in enumerate(
                             zip(_result.vectors[1:], _corpus_labels, _corpus)
                         ):
-                            _dot = sum(float(_intent_vec[j]) * float(_vec[j]) for j in range(len(_intent_vec)))
-                            _na = sum(float(_intent_vec[j]) ** 2 for j in range(len(_intent_vec))) ** 0.5
-                            _nb = sum(float(_vec[j]) ** 2 for j in range(len(_intent_vec))) ** 0.5
-                            _sim = float(_dot / (_na * _nb)) if _na > 1e-12 and _nb > 1e-12 else 0.0
-                            _scored.append({"label": _label, "text": _text[:120], "score": round(_sim, 4)})
+                            _dot = sum(
+                                float(_intent_vec[j]) * float(_vec[j])
+                                for j in range(len(_intent_vec))
+                            )
+                            _na = (
+                                sum(
+                                    float(_intent_vec[j]) ** 2
+                                    for j in range(len(_intent_vec))
+                                )
+                                ** 0.5
+                            )
+                            _nb = (
+                                sum(
+                                    float(_vec[j]) ** 2 for j in range(len(_intent_vec))
+                                )
+                                ** 0.5
+                            )
+                            _sim = (
+                                float(_dot / (_na * _nb))
+                                if _na > 1e-12 and _nb > 1e-12
+                                else 0.0
+                            )
+                            _scored.append(
+                                {
+                                    "label": _label,
+                                    "text": _text[:120],
+                                    "score": round(_sim, 4),
+                                }
+                            )
 
                         _scored.sort(key=lambda x: x["score"], reverse=True)
                         _elapsed = _time.monotonic() - _jepa_start
@@ -615,7 +754,8 @@ class SessionInitTool(BaseMCPTool):
                         context["jepa_session_lens"] = _lens_data
                         # MARKER_199.JEPA_TTL: Save to cache
                         SessionInitTool._jepa_cache[_jepa_cache_key] = {
-                            "data": _lens_data, "_ts": _time.monotonic()
+                            "data": _lens_data,
+                            "_ts": _time.monotonic(),
                         }
         except _JepaCacheHit:
             pass  # Cache hit — context already populated
@@ -625,6 +765,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_ZETA.F4.MGC: Inject MGC cache status into session_init
         try:
             from src.memory.mgc_cache import get_mgc_cache
+
             _mgc = get_mgc_cache()
             _mgc_stats = _mgc.get_stats()
             if _mgc_stats:
@@ -632,7 +773,9 @@ class SessionInitTool(BaseMCPTool):
                     "gen0_size": _mgc_stats.get("gen0_size", 0),
                     "hit_rate": _mgc_stats.get("hit_rate", 0),
                     "gen0_hit_rate": _mgc_stats.get("gen0_hit_rate", 0),
-                    "total_hits": sum(_mgc_stats.get(k, 0) for k in ("gen0", "gen1", "gen2")),
+                    "total_hits": sum(
+                        _mgc_stats.get(k, 0) for k in ("gen0", "gen1", "gen2")
+                    ),
                     "misses": _mgc_stats.get("misses", 0),
                     "evictions": _mgc_stats.get("evictions", 0),
                 }
@@ -642,10 +785,13 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_178.1.2: Recent commits
         try:
             import subprocess
+
             result = subprocess.run(
                 ["git", "log", "--oneline", "-5"],
-                capture_output=True, text=True, timeout=3,
-                cwd=str(Path(__file__).resolve().parent.parent.parent.parent)
+                capture_output=True,
+                text=True,
+                timeout=3,
+                cwd=str(Path(__file__).resolve().parent.parent.parent.parent),
             )
             if result.returncode == 0:
                 context["recent_commits"] = result.stdout.strip().split("\n")[:5]
@@ -655,16 +801,22 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_178.1.3: Capability manifest
         try:
             from src.mcp.tools.capability_broker import build_manifest
+
             manifest = build_manifest()
             context["capabilities"] = {
                 "transports": [
-                    {"kind": t.kind.value, "status": t.status.value, "capabilities": t.capabilities}
+                    {
+                        "kind": t.kind.value,
+                        "status": t.status.value,
+                        "capabilities": t.capabilities,
+                    }
                     for t in manifest.transports
                 ],
-                "recommended": manifest.recommended
+                "recommended": manifest.recommended,
             }
         except Exception as e:
             import logging
+
             logging.getLogger(__name__).warning(f"Capability manifest failed: {e}")
 
         # MARKER_198.P0.1: Load STM snapshot from disk so previous session's context
@@ -673,6 +825,7 @@ class SessionInitTool(BaseMCPTool):
         _stm_items_for_reflex: list = []
         try:
             from src.memory.stm_buffer import get_stm_buffer
+
             _stm = get_stm_buffer()
             _stm.load_from_disk()
             _stm_items_for_reflex = [e.content for e in _stm.get_context(max_items=5)]
@@ -684,6 +837,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_193.2: Now also injects reflex_warnings + blocked_tools from Guard
         try:
             from src.services.reflex_integration import reflex_session
+
             # MARKER_186.3: Infer agent_type from user_id or environment
             agent_type = context.get("_agent_type", "")
             if not agent_type:
@@ -719,6 +873,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_193.2: Inject reflex_warnings and blocked_tools from Guard
         try:
             from src.services.reflex_guard import get_feedback_guard, GuardContext
+
             guard = get_feedback_guard()
             guard_ctx = GuardContext(
                 agent_type=agent_type,
@@ -731,8 +886,12 @@ class SessionInitTool(BaseMCPTool):
             )
             if active_dangers:
                 context["reflex_warnings"] = [
-                    {"tool_pattern": d.tool_pattern, "reason": d.reason,
-                     "severity": d.severity, "source": d.source}
+                    {
+                        "tool_pattern": d.tool_pattern,
+                        "reason": d.reason,
+                        "severity": d.severity,
+                        "source": d.source,
+                    }
                     for d in active_dangers
                 ]
                 context["blocked_tools"] = [
@@ -750,6 +909,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_194.1: Claimed tasks overlay — show other agents' active work
         try:
             from src.orchestration.task_board import get_task_board
+
             _board = get_task_board()
             claimed_tasks = _board.get_queue(status="claimed")
             other_agents_work = []
@@ -758,13 +918,15 @@ class SessionInitTool(BaseMCPTool):
                 # Skip current agent's own tasks
                 if t_agent_type == agent_type:
                     continue
-                other_agents_work.append({
-                    "agent": t.get("assigned_to", t_agent_type or "unknown"),
-                    "task_id": t.get("task_id", t.get("id", "?")),
-                    "title": t.get("title", "")[:60],
-                    "allowed_paths": t.get("allowed_paths", []),
-                    "claimed_at": t.get("assigned_at", ""),
-                })
+                other_agents_work.append(
+                    {
+                        "agent": t.get("assigned_to", t_agent_type or "unknown"),
+                        "task_id": t.get("task_id", t.get("id", "?")),
+                        "title": t.get("title", "")[:60],
+                        "allowed_paths": t.get("allowed_paths", []),
+                        "claimed_at": t.get("assigned_at", ""),
+                    }
+                )
             if other_agents_work:
                 context["other_agents"] = other_agents_work
         except Exception:
@@ -777,6 +939,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_178.4.12: REFLEX report — last match_rates + feedback summary
         try:
             from src.services.reflex_feedback import ReflexFeedback
+
             fb = ReflexFeedback()
             summary = fb.get_feedback_summary()
             if summary and summary.get("total_entries", 0) > 0:
@@ -793,6 +956,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_195.6.INIT: Tool Freshness Watchdog — auto-scan for code changes
         try:
             from src.services.tool_source_watch import get_tool_source_watch
+
             watch = get_tool_source_watch()
             freshness_events = watch.scan_all()
             if freshness_events:
@@ -813,11 +977,14 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_195.2.4: REFLEX Emotions — agent mood + per-tool emotions
         try:
             from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+
             emo_engine = get_reflex_emotions()
             # Gather per-tool emotions for tools already in reflex_recommendations
             recs = context.get("reflex_recommendations", [])
             tool_emotions: Dict[str, Dict[str, float]] = {}
-            for rec in recs[:3]:  # MARKER_197.SLIM: Limit to top 3 tools (matches reflex top_n=3)
+            for rec in recs[
+                :3
+            ]:  # MARKER_197.SLIM: Limit to top 3 tools (matches reflex top_n=3)
                 tid = rec.get("tool_id", "") if isinstance(rec, dict) else ""
                 if not tid:
                     continue
@@ -842,6 +1009,7 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_195.5: Protocol status in session_init
         try:
             from src.services.session_tracker import get_session_tracker
+
             _pt_tracker = get_session_tracker()
             _pt_sid = context.get("session_id", "default")
             _pt_tracker.record_action(_pt_sid, "vetka_session_init", {})
@@ -855,7 +1023,10 @@ class SessionInitTool(BaseMCPTool):
                 "files_edited": len(_pt_session.files_edited),
                 "protocol_checklist": [
                     {"step": "session_init", "done": True},
-                    {"step": "task_board_check", "done": _pt_session.task_board_checked},
+                    {
+                        "step": "task_board_check",
+                        "done": _pt_session.task_board_checked,
+                    },
                     {"step": "claim_task", "done": _pt_session.task_claimed},
                 ],
             }
@@ -887,21 +1058,32 @@ class SessionInitTool(BaseMCPTool):
             # Fallback: branch detection (backward-compatible, no role= provided)
             if not _role and not role_name:
                 import os
+
                 _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
                 _branch_result = _sp.run(
                     ["git", "branch", "--show-current"],
-                    capture_output=True, text=True, timeout=5,
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                     cwd=_detect_cwd,
                 )
-                _current_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else ""
+                _current_branch = (
+                    _branch_result.stdout.strip()
+                    if _branch_result.returncode == 0
+                    else ""
+                )
 
                 if _current_branch == "main" or not _current_branch:
                     _toplevel = _sp.run(
                         ["git", "rev-parse", "--show-toplevel"],
-                        capture_output=True, text=True, timeout=5,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
                         cwd=_detect_cwd,
                     )
-                    _toplevel_path = _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
+                    _toplevel_path = (
+                        _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
+                    )
                     if _toplevel_path and "worktrees" in _toplevel_path:
                         _wt_name = Path(_toplevel_path).name
                         for _r in _reg.roles:
@@ -965,6 +1147,7 @@ class SessionInitTool(BaseMCPTool):
                 # MARKER_196.2.1: Bind role to session for auto-attribution
                 try:
                     from src.services.session_tracker import get_session_tracker
+
                     _role_tracker = get_session_tracker()
                     _role_tracker.set_role(context.get("session_id", "default"), _role)
                 except Exception:
@@ -979,10 +1162,15 @@ class SessionInitTool(BaseMCPTool):
                 # Writes to both worktree and ~/.claude/projects/ (dual-write).
                 try:
                     from src.tools.generate_claude_md import write_claude_md
+
                     write_claude_md(_role.callsign, registry=_reg)
-                    logger.debug(f"[SessionInit] Auto-regenerated CLAUDE.md for {_role.callsign}")
+                    logger.debug(
+                        f"[SessionInit] Auto-regenerated CLAUDE.md for {_role.callsign}"
+                    )
                 except Exception as _gen_err:
-                    logger.debug(f"[SessionInit] CLAUDE.md regen failed (non-fatal): {_gen_err}")
+                    logger.debug(
+                        f"[SessionInit] CLAUDE.md regen failed (non-fatal): {_gen_err}"
+                    )
 
         except Exception:
             pass  # Role context never blocks session init
@@ -995,17 +1183,27 @@ class SessionInitTool(BaseMCPTool):
             tb = context.get("task_board_summary", {})
             if tb.get("pending_count", 0) > 0:
                 # MARKER_178.5.2: Reference both task board tools (primary + fallback)
-                next_steps.append(f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list (or vetka_task_board as fallback)")
+                next_steps.append(
+                    f"{tb['pending_count']} pending tasks -> mycelium_task_board action=list (or vetka_task_board as fallback)"
+                )
             if tb.get("in_progress_count", 0) > 0:
-                items = ", ".join(t["title"][:30] for t in tb.get("in_progress", [])[:2])
+                items = ", ".join(
+                    t["title"][:30] for t in tb.get("in_progress", [])[:2]
+                )
                 next_steps.append(f"In progress: {items}")
             # MARKER_186.4: Warn about tasks awaiting merge
             if tb.get("done_worktree_count", 0) > 0:
-                next_steps.append(f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=merge_request")
+                next_steps.append(
+                    f"⚠️ {tb['done_worktree_count']} tasks done on worktree branches, awaiting merge → vetka_task_board action=merge_request"
+                )
             if tb.get("need_qa_count", 0) > 0:
-                next_steps.append(f"🔍 {tb['need_qa_count']} tasks awaiting QA → vetka_task_board action=verify")
+                next_steps.append(
+                    f"🔍 {tb['need_qa_count']} tasks awaiting QA → vetka_task_board action=verify"
+                )
             if tb.get("needs_fix_count", 0) > 0:
-                next_steps.append(f"⚠️ {tb['needs_fix_count']} tasks failed QA, need fix")
+                next_steps.append(
+                    f"⚠️ {tb['needs_fix_count']} tasks failed QA, need fix"
+                )
 
             # MARKER_199.DEBRIEF: Warn about tasks closed without debrief
             try:
@@ -1041,23 +1239,24 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_197.SLIM: Remove non-essential sections for coding agents
         # These belong to JARVIS/VETKA personal assistant, not coding tools
         for _slim_key in [
-            "reflex_emotions",        # JARVIS emotion layer, not for coders
-            "_all_agent_focus",       # debug only
-            "mgc_status",             # internal cache diagnostics
-            "compression",            # metadata about itself, circular
-            "recent_states_count",    # MCP state meta
-            "recent_state_ids",       # MCP state meta
-            "recent_commits",         # already in gitStatus system-reminder
-            "viewport_summary",       # 3D viewport, not for coding
-            "viewport",               # 3D viewport, not for coding
-            "viewport_patterns",      # 3D viewport preferences
-            "communication_style",    # AURA personal assistant layer
+            "reflex_emotions",  # JARVIS emotion layer, not for coders
+            "_all_agent_focus",  # debug only
+            "mgc_status",  # internal cache diagnostics
+            "compression",  # metadata about itself, circular
+            "recent_states_count",  # MCP state meta
+            "recent_state_ids",  # MCP state meta
+            "recent_commits",  # already in gitStatus system-reminder
+            "viewport_summary",  # 3D viewport, not for coding
+            "viewport",  # 3D viewport, not for coding
+            "viewport_patterns",  # 3D viewport preferences
+            "communication_style",  # AURA personal assistant layer
         ]:
             context.pop(_slim_key, None)
 
         # MARKER_198.P0.5: Apply ELISION L2 compression to session_init response
         try:
             from src.memory.elision import get_elision_compressor
+
             compressor = get_elision_compressor()
             # Compress the context dict — replaces verbose keys with short abbreviations
             context_str = _json.dumps(context, default=str)
@@ -1069,7 +1268,7 @@ class SessionInitTool(BaseMCPTool):
                 compressed_context["_elision"] = {
                     "level": 2,
                     "ratio": compressed.compression_ratio,
-                    "legend": dict(list(legend.items())[:10]) if legend else {}
+                    "legend": dict(list(legend.items())[:10]) if legend else {},
                 }
                 context = compressed_context
         except Exception:
@@ -1080,6 +1279,7 @@ class SessionInitTool(BaseMCPTool):
         # the current init flow before returning to the caller.
         try:
             from src.memory.stm_buffer import get_stm_buffer
+
             get_stm_buffer().save_to_disk()
         except Exception:
             pass  # STM save errors never block session init
@@ -1091,15 +1291,22 @@ class SessionInitTool(BaseMCPTool):
             # AURA
             try:
                 from src.memory.aura_store import get_aura_store
+
                 aura = get_aura_store()
-                aura_entries = len(aura._preferences) if hasattr(aura, '_preferences') else 0
-                memory_health["aura"] = {"entries": aura_entries, "status": "ok" if aura_entries > 0 else "cold"}
+                aura_entries = (
+                    len(aura._preferences) if hasattr(aura, "_preferences") else 0
+                )
+                memory_health["aura"] = {
+                    "entries": aura_entries,
+                    "status": "ok" if aura_entries > 0 else "cold",
+                }
             except Exception:
                 memory_health["aura"] = {"status": "error"}
 
             # ENGRAM L1
             try:
                 from src.memory.engram_cache import get_engram_cache
+
                 engram = get_engram_cache()
                 all_entries = engram.get_all()
                 danger_count = len(engram.get_danger_entries())
@@ -1114,6 +1321,7 @@ class SessionInitTool(BaseMCPTool):
             # CORTEX / REFLEX
             try:
                 from src.services.reflex_feedback import get_reflex_feedback
+
                 fb = get_reflex_feedback()
                 summary = fb.get_feedback_summary()
                 memory_health["cortex"] = {
@@ -1127,15 +1335,20 @@ class SessionInitTool(BaseMCPTool):
             # STM
             try:
                 from src.memory.stm_buffer import get_stm_buffer
+
                 stm = get_stm_buffer()
-                stm_count = len(stm.items) if hasattr(stm, 'items') else 0
-                memory_health["stm"] = {"items": stm_count, "status": "ok" if stm_count > 0 else "cold"}
+                stm_count = len(stm.items) if hasattr(stm, "items") else 0
+                memory_health["stm"] = {
+                    "items": stm_count,
+                    "status": "ok" if stm_count > 0 else "cold",
+                }
             except Exception:
                 memory_health["stm"] = {"status": "error"}
 
             # Resource Learnings (Qdrant L2)
             try:
                 from src.orchestration.resource_learnings import get_learning_store
+
                 store = get_learning_store()
                 stats = store.get_stats()
                 memory_health["qdrant_l2"] = {
@@ -1149,11 +1362,14 @@ class SessionInitTool(BaseMCPTool):
             # Bridge hooks
             try:
                 from src.mcp.bridge_hooks import get_hook_stats
+
                 hooks = get_hook_stats()
                 memory_health["bridge_hooks"] = {
                     "pre": hooks.get("pre_hooks", 0),
                     "post": hooks.get("post_hooks", 0),
-                    "status": "ok" if hooks.get("post_hooks", 0) > 0 else "not_registered",
+                    "status": "ok"
+                    if hooks.get("post_hooks", 0) > 0
+                    else "not_registered",
                 }
             except Exception:
                 memory_health["bridge_hooks"] = {"status": "error"}
@@ -1162,10 +1378,7 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Memory health never blocks session_init
 
-        return {
-            "success": True,
-            "result": context
-        }
+        return {"success": True, "result": context}
 
     async def _get_viewport_context(self, session_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -1179,6 +1392,7 @@ class SessionInitTool(BaseMCPTool):
         try:
             # Try MCP state first (client may have synced viewport)
             from src.mcp.state import get_mcp_state_manager
+
             mcp = get_mcp_state_manager()
             state = await mcp.get_state(session_id)
             if state and "viewport" in state:
@@ -1187,8 +1401,9 @@ class SessionInitTool(BaseMCPTool):
             # Try CAM engine viewport patterns
             try:
                 from src.orchestration.cam_engine import get_cam_engine
+
                 cam = get_cam_engine()
-                if hasattr(cam, 'get_viewport_state'):
+                if hasattr(cam, "get_viewport_state"):
                     return cam.get_viewport_state()
             except Exception:
                 pass
@@ -1198,7 +1413,7 @@ class SessionInitTool(BaseMCPTool):
                 "zoom_level": 1,
                 "viewport_nodes": [],
                 "pinned_nodes": [],
-                "camera_position": {"x": 0, "y": 0, "z": 100}
+                "camera_position": {"x": 0, "y": 0, "z": 100},
             }
         except Exception as e:
             print(f"[SessionInit] Viewport context error: {e}")
@@ -1219,8 +1434,9 @@ class SessionInitTool(BaseMCPTool):
             # Try chat history manager first
             if chat_id:
                 from src.chat.chat_history_manager import get_chat_history_manager
+
                 chat_mgr = get_chat_history_manager()
-                if hasattr(chat_mgr, 'get_pinned_files'):
+                if hasattr(chat_mgr, "get_pinned_files"):
                     chat_pinned = chat_mgr.get_pinned_files(chat_id)
                     if chat_pinned:
                         pinned.extend(chat_pinned)
@@ -1228,20 +1444,24 @@ class SessionInitTool(BaseMCPTool):
             # Try CAM pinned nodes
             try:
                 from src.orchestration.cam_engine import get_cam_engine
+
                 cam = get_cam_engine()
-                if hasattr(cam, 'get_pinned_nodes'):
+                if hasattr(cam, "get_pinned_nodes"):
                     cam_pinned = cam.get_pinned_nodes()
                     for node in cam_pinned:
                         if isinstance(node, dict):
                             pinned.append(node)
                         else:
-                            pinned.append({"path": str(node), "name": str(node).split("/")[-1]})
+                            pinned.append(
+                                {"path": str(node), "name": str(node).split("/")[-1]}
+                            )
             except Exception:
                 pass
 
             # Try MCP state
             if not pinned:
                 from src.mcp.state import get_mcp_state_manager
+
                 mcp = get_mcp_state_manager()
                 state = await mcp.get_state(session_id)
                 if state and "pinned_files" in state:
@@ -1275,10 +1495,10 @@ class SessionStatusTool(BaseMCPTool):
             "properties": {
                 "session_id": {
                     "type": "string",
-                    "description": "Session ID to check status for"
+                    "description": "Session ID to check status for",
                 }
             },
-            "required": ["session_id"]
+            "required": ["session_id"],
         }
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
@@ -1292,8 +1512,8 @@ class SessionStatusTool(BaseMCPTool):
                     "result": {
                         "status": "checking",
                         "session_id": arguments.get("session_id"),
-                        "message": "Status check initiated"
-                    }
+                        "message": "Status check initiated",
+                    },
                 }
             else:
                 return loop.run_until_complete(self._execute_async(arguments))
@@ -1305,13 +1525,11 @@ class SessionStatusTool(BaseMCPTool):
         session_id = arguments.get("session_id")
 
         if not session_id:
-            return {
-                "success": False,
-                "error": "session_id is required"
-            }
+            return {"success": False, "error": "session_id is required"}
 
         try:
             from src.mcp.state import get_mcp_state_manager
+
             mcp = get_mcp_state_manager()
             state = await mcp.get_state(session_id)
 
@@ -1322,8 +1540,9 @@ class SessionStatusTool(BaseMCPTool):
                         "exists": True,
                         "session_id": session_id,
                         "session": state,
-                        "age_seconds": time.time() - state.get("initialized_at", time.time())
-                    }
+                        "age_seconds": time.time()
+                        - state.get("initialized_at", time.time()),
+                    },
                 }
             else:
                 return {
@@ -1331,14 +1550,11 @@ class SessionStatusTool(BaseMCPTool):
                     "result": {
                         "exists": False,
                         "session_id": session_id,
-                        "message": "Session not found or expired"
-                    }
+                        "message": "Session not found or expired",
+                    },
                 }
         except Exception as e:
-            return {
-                "success": False,
-                "error": str(e)
-            }
+            return {"success": False, "error": str(e)}
 
 
 # Convenience functions for direct import
@@ -1367,16 +1583,18 @@ async def vetka_session_init(
     is the fallback when role is not provided.
     """
     tool = SessionInitTool()
-    return await tool._execute_async({
-        "user_id": user_id,
-        "group_id": group_id,
-        "chat_id": chat_id,  # MARKER_108_1: Pass chat_id
-        "include_viewport": include_viewport,
-        "include_pinned": include_pinned,
-        "compress": compress,
-        "max_context_tokens": max_context_tokens,
-        "role": role,  # MARKER_198.P0.7: Forward role to SessionInitTool._execute_async
-    })
+    return await tool._execute_async(
+        {
+            "user_id": user_id,
+            "group_id": group_id,
+            "chat_id": chat_id,  # MARKER_108_1: Pass chat_id
+            "include_viewport": include_viewport,
+            "include_pinned": include_pinned,
+            "compress": compress,
+            "max_context_tokens": max_context_tokens,
+            "role": role,  # MARKER_198.P0.7: Forward role to SessionInitTool._execute_async
+        }
+    )
 
 
 async def vetka_session_status(session_id: str) -> Dict[str, Any]:
@@ -1396,7 +1614,4 @@ def register_session_tools(tool_list: list):
     Args:
         tool_list: List to append tool instances to
     """
-    tool_list.extend([
-        SessionInitTool(),
-        SessionStatusTool()
-    ])
+    tool_list.extend([SessionInitTool(), SessionStatusTool()])

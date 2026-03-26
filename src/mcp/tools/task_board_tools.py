@@ -32,12 +32,63 @@ def _resolve_project_root() -> Path:
 _PROJECT_ROOT = _resolve_project_root()
 
 
+# MARKER_ZETA.DOCS_CACHE: Simple TTL cache for doc file reads
+import time
+import hashlib
+
+_doc_cache: Dict[str, tuple] = {}  # key → (content_str, timestamp)
+_DOC_CACHE_TTL = 300  # 5 minutes
+_DOC_CACHE_MAX = 64
+
+
+def _cache_key(doc_ref: str) -> str:
+    """Stable cache key from doc path."""
+    return hashlib.md5(doc_ref.encode()).hexdigest()[:12]
+
+
+def _read_doc_cached(doc_ref: str, max_chars: int) -> Optional[str]:
+    """Read doc file with TTL cache. Returns content or None."""
+    key = _cache_key(doc_ref)
+    now = time.time()
+
+    # Check cache
+    if key in _doc_cache:
+        content, ts = _doc_cache[key]
+        if now - ts < _DOC_CACHE_TTL:
+            return content[:max_chars] if max_chars else content
+
+    # Cache miss — read from disk
+    full_path = _PROJECT_ROOT / doc_ref
+    if not full_path.exists():
+        full_path = _PROJECT_ROOT / doc_ref.lstrip("/")
+    if not full_path.exists():
+        return None
+
+    try:
+        content = full_path.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return None
+
+    # Evict if cache full
+    if len(_doc_cache) >= _DOC_CACHE_MAX:
+        oldest_key = min(_doc_cache, key=lambda k: _doc_cache[k][1])
+        _doc_cache.pop(oldest_key, None)
+
+    _doc_cache[key] = (content, now)
+    return content[:max_chars] if max_chars else content
+
+
 def _load_docs_content_sync(
     task: Dict[str, Any],
-    budget: int = 8192,   # MARKER_197.SLIM: Reduced from 65536 to 8192 to cut token bloat
+    budget: int = 8192,  # MARKER_197.SLIM: Reduced from 65536 to 8192 to cut token bloat
     per_doc: int = 4096,  # MARKER_197.SLIM: Reduced from 16384 to 4096 to cut token bloat
 ) -> str:
     """MARKER_191.7: Read architecture_docs + recon_docs file contents synchronously.
+
+    MARKER_ZETA.ELISION: Applies ELISION L2 compression when total content > 4000 chars
+    (mirrors async _inject_docs_content behavior in task_board.py).
+
+    MARKER_ZETA.DOCS_CACHE: Uses TTL cache to avoid repeated disk reads.
 
     Used by claim/get actions to inject doc content into MCP response.
     MCP agents (Claude Code, Desktop, Cursor) don't go through dispatch_task,
@@ -53,7 +104,7 @@ def _load_docs_content_sync(
     """
     doc_paths = []
     for field in ("architecture_docs", "recon_docs"):
-        for doc_ref in (task.get(field) or []):
+        for doc_ref in task.get(field) or []:
             doc_ref = str(doc_ref).strip()
             if doc_ref:
                 doc_paths.append((field, doc_ref))
@@ -71,38 +122,54 @@ def _load_docs_content_sync(
             docs_skipped.append(doc_ref)
             continue
 
-        full_path = _PROJECT_ROOT / doc_ref
-        if not full_path.exists():
-            full_path = _PROJECT_ROOT / doc_ref.lstrip("/")
-        if not full_path.exists():
+        content = _read_doc_cached(doc_ref, per_doc)
+        if content is None:
             docs_skipped.append(f"{doc_ref} (not found)")
             continue
 
-        try:
-            content = full_path.read_text(encoding="utf-8", errors="replace")
-            if len(content) > per_doc:
-                content = content[:per_doc] + f"\n... [truncated, {len(content)} total chars]"
+        # Truncate if read returned full content and it's long
+        if len(content) > per_doc:
+            content = (
+                content[:per_doc] + f"\n... [truncated, {len(content)} total chars]"
+            )
 
-            remaining = budget - total_chars
-            if len(content) > remaining:
-                content = content[:remaining] + "\n... [budget exceeded]"
+        remaining = budget - total_chars
+        if len(content) > remaining:
+            content = content[:remaining] + "\n... [budget exceeded]"
 
-            sections.append(f"### {doc_ref} ({field})\n{content}")
-            total_chars += len(content)
-            docs_included += 1
-        except Exception as e:
-            docs_skipped.append(f"{doc_ref} (error: {e})")
+        sections.append(f"### {doc_ref} ({field})\n{content}")
+        total_chars += len(content)
+        docs_included += 1
 
     if not sections:
         return ""
 
+    # MARKER_ZETA.ELISION: Apply ELISION L2 compression when content is large
+    docs_text = "\n\n".join(sections)
+    compressed = False
+    try:
+        if total_chars > 4000:
+            from src.memory.elision import compress_context
+
+            result = compress_context(docs_text, level=2)
+            if result.get("compressed"):
+                ratio = result.get("ratio", 1.0)
+                if ratio > 1.1:
+                    docs_text = result["compressed"]
+                    compressed = True
+                    logger.info(f"[TaskBoard] Sync docs compressed: ratio={ratio:.2f}")
+    except Exception:
+        pass  # ELISION optional, proceed with raw text
+
     header = f"--- DOCS ({docs_included} files"
     if docs_skipped:
         header += f", {len(docs_skipped)} skipped"
+    if compressed:
+        header += ", ELISION L2"
     header += ") ---\n"
     footer = "\n--- END DOCS ---"
 
-    return header + "\n\n".join(sections) + footer
+    return header + docs_text + footer
 
 
 # ==========================================
@@ -117,73 +184,248 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped", "backfill_fts"],
-            "description": "Operation to perform"
+            "enum": [
+                "add",
+                "list",
+                "get",
+                "update",
+                "remove",
+                "summary",
+                "claim",
+                "complete",
+                "active_agents",
+                "merge_request",
+                "promote_to_main",
+                "request_qa",
+                "verify",
+                "close",
+                "bulk_close",
+                "stale_check",
+                "batch_merge",
+                "search_fts",
+                "debrief_skipped",
+                "backfill_fts",
+            ],
+            "description": "Operation to perform",
         },
         # For "add":
         "title": {"type": "string", "description": "Task title (required for add)"},
-        "description": {"type": "string", "description": "Detailed task description — free text for context, problem statement, approach"},
-        "profile": {"type": "string", "enum": ["p6"], "description": "Task intake profile with protocol defaults"},
-        "priority": {"type": "number", "description": "1=critical, 2=high, 3=medium, 4=low, 5=someday"},
-        "phase_type": {"type": "string", "enum": ["build", "fix", "research", "test"], "description": "Task type"},
-        "complexity": {"type": "string", "enum": ["low", "medium", "high"], "description": "Estimated complexity"},
+        "description": {
+            "type": "string",
+            "description": "Detailed task description — free text for context, problem statement, approach",
+        },
+        "profile": {
+            "type": "string",
+            "enum": ["p6"],
+            "description": "Task intake profile with protocol defaults",
+        },
+        "priority": {
+            "type": "number",
+            "description": "1=critical, 2=high, 3=medium, 4=low, 5=someday",
+        },
+        "phase_type": {
+            "type": "string",
+            "enum": ["build", "fix", "research", "test"],
+            "description": "Task type",
+        },
+        "complexity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Estimated complexity",
+        },
         "preset": {"type": "string", "description": "Pipeline preset override"},
-        "tags": {"type": "array", "items": {"type": "string"}, "description": "Tags for categorization"},
-        "dependencies": {"type": "array", "items": {"type": "string"}, "description": "Task IDs that must complete first"},
-        "project_id": {"type": "string", "description": "Logical project ID. For add: assigns project. For list: smart filter — case-insensitive, RU keyboard layout auto-fix, prefix autocomplete (e.g. 'c'→'cut', 'СГЕ'→'CUT')."},
-        "project_lane": {"type": "string", "description": "Specific multitask lane/MCC tab identifier"},
-        "architecture_docs": {"type": "array", "items": {"type": "string"}, "description": "Architecture docs linked to the task"},
-        "recon_docs": {"type": "array", "items": {"type": "string"}, "description": "Recon docs linked to the task"},
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Tags for categorization",
+        },
+        "dependencies": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Task IDs that must complete first",
+        },
+        "project_id": {
+            "type": "string",
+            "description": "Logical project ID. For add: assigns project. For list: smart filter — case-insensitive, RU keyboard layout auto-fix, prefix autocomplete (e.g. 'c'→'cut', 'СГЕ'→'CUT').",
+        },
+        "project_lane": {
+            "type": "string",
+            "description": "Specific multitask lane/MCC tab identifier",
+        },
+        "architecture_docs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Architecture docs linked to the task",
+        },
+        "recon_docs": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Recon docs linked to the task",
+        },
         # MARKER_191.6: Structured task fields — discoverable by agents at tool discovery time
-        "allowed_paths": {"type": "array", "items": {"type": "string"}, "description": "Target files/directories this task should modify. Also serves as ownership guard — agent should not touch files outside this list. Example: ['src/orchestration/task_board.py', 'src/mcp/tools/']"},
-        "completion_contract": {"type": "array", "items": {"type": "string"}, "description": "Acceptance criteria checklist. Each item = one verifiable condition the agent must satisfy. Example: ['API returns 200 on valid input', 'unit tests pass', 'no console errors in browser']"},
-        "implementation_hints": {"type": "string", "description": "Algorithm hints, approach notes, or technical guidance for the implementing agent. Free text. Example: 'Use re.search with word boundary, not substring match. Check _commit_matches_task for the pattern.'"},
+        "allowed_paths": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Target files/directories this task should modify. Also serves as ownership guard — agent should not touch files outside this list. Example: ['src/orchestration/task_board.py', 'src/mcp/tools/']",
+        },
+        "completion_contract": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Acceptance criteria checklist. Each item = one verifiable condition the agent must satisfy. Example: ['API returns 200 on valid input', 'unit tests pass', 'no console errors in browser']",
+        },
+        "implementation_hints": {
+            "type": "string",
+            "description": "Algorithm hints, approach notes, or technical guidance for the implementing agent. Free text. Example: 'Use re.search with word boundary, not substring match. Check _commit_matches_task for the pattern.'",
+        },
         # MARKER_ZETA.D4: Agent role/domain binding fields
-        "role": {"type": "string", "description": "Agent callsign from agent_registry.yaml: Alpha, Beta, Gamma, Delta, Commander"},
-        "domain": {"type": "string", "description": "Task domain from agent_registry.yaml: engine, media, ux, qa, architect"},
-        "closure_tests": {"type": "array", "items": {"type": "string"}, "description": "Shell commands required for closure proof. Example: ['python -m pytest tests/test_task_board.py -v', 'python -c \"import ast; ast.parse(open(f).read())\"']"},
-        "closure_files": {"type": "array", "items": {"type": "string"}, "description": "Files allowed for scoped auto-commit at task completion. If set, only these files are staged."},
+        "role": {
+            "type": "string",
+            "description": "Agent callsign from agent_registry.yaml: Alpha, Beta, Gamma, Delta, Commander",
+        },
+        "domain": {
+            "type": "string",
+            "description": "Task domain from agent_registry.yaml: engine, media, ux, qa, architect",
+        },
+        "closure_tests": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Shell commands required for closure proof. Example: ['python -m pytest tests/test_task_board.py -v', 'python -c \"import ast; ast.parse(open(f).read())\"']",
+        },
+        "closure_files": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Files allowed for scoped auto-commit at task completion. If set, only these files are staged.",
+        },
         # MARKER_130.C16B: Agent assignment fields
-        "assigned_to": {"type": "string", "description": "Agent name: opus, cursor, dragon, grok"},
-        "agent_type": {"type": "string", "description": "Agent type: claude_code, cursor, mycelium, grok, human"},
+        "assigned_to": {
+            "type": "string",
+            "description": "Agent name: opus, cursor, dragon, grok",
+        },
+        "agent_type": {
+            "type": "string",
+            "description": "Agent type: claude_code, cursor, mycelium, grok, human",
+        },
         # For "get", "update", "remove", "claim", "complete":
-        "task_id": {"type": "string", "description": "Task ID (required for get/update/remove/claim/complete)"},
+        "task_id": {
+            "type": "string",
+            "description": "Task ID (required for get/update/remove/claim/complete)",
+        },
         # For "update":
-        "status": {"type": "string", "enum": ["pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "verified", "needs_fix"]},
+        "status": {
+            "type": "string",
+            "enum": [
+                "pending",
+                "queued",
+                "claimed",
+                "running",
+                "done",
+                "done_worktree",
+                "need_qa",
+                "done_main",
+                "failed",
+                "cancelled",
+                "verified",
+                "needs_fix",
+            ],
+        },
         # For "verify":
-        "verdict": {"type": "string", "enum": ["pass", "fail"], "description": "QA verdict for action=verify: pass → verified, fail → needs_fix"},
-        "verified_by": {"type": "string", "description": "Agent performing verification (default: Delta)"},
-        "notes": {"type": "string", "description": "Verification notes (for verify action)"},
+        "verdict": {
+            "type": "string",
+            "enum": ["pass", "fail"],
+            "description": "QA verdict for action=verify: pass → verified, fail → needs_fix",
+        },
+        "verified_by": {
+            "type": "string",
+            "description": "Agent performing verification (default: Delta)",
+        },
+        "notes": {
+            "type": "string",
+            "description": "Verification notes (for verify action)",
+        },
         # For "list":
-        "filter_status": {"type": "string", "description": "Filter by status (optional for list)"},
-        "limit": {"type": "number", "description": "Max tasks to return in list (default: 40, max: 100)"},
+        "filter_status": {
+            "type": "string",
+            "description": "Filter by status (optional for list)",
+        },
+        "limit": {
+            "type": "number",
+            "description": "Max tasks to return in list (default: 40, max: 100)",
+        },
         # MARKER_190.DOC_GATE: Force-create task without docs (bypass doc gate)
-        "force_no_docs": {"type": "boolean", "description": "Bypass doc requirement gate. Use only when truly no relevant docs exist."},
+        "force_no_docs": {
+            "type": "boolean",
+            "description": "Bypass doc requirement gate. Use only when truly no relevant docs exist.",
+        },
         # For "update" / "complete":
-        "branch_name": {"type": "string", "description": "Git branch name (e.g. claude/cut-engine). Saved on complete, needed by merge_request."},
-        "commit_hash": {"type": "string", "description": "Git commit hash (for complete/promote_to_main)"},
-        "commit_message": {"type": "string", "description": "Commit message (for complete)"},
+        "branch_name": {
+            "type": "string",
+            "description": "Git branch name (e.g. claude/cut-engine). Saved on complete, needed by merge_request.",
+        },
+        "commit_hash": {
+            "type": "string",
+            "description": "Git commit hash (for complete/promote_to_main)",
+        },
+        "commit_message": {
+            "type": "string",
+            "description": "Commit message (for complete)",
+        },
         # MARKER_186.4: Branch name for worktree-aware completion
-        "branch": {"type": "string", "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects."},
+        "branch": {
+            "type": "string",
+            "description": "Git branch name (for complete). If on worktree branch, status=done_worktree. If omitted, auto-detects.",
+        },
         # MARKER_188.2: Worktree path for auto-commit from worktree context
-        "worktree_path": {"type": "string", "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree."},
+        "worktree_path": {
+            "type": "string",
+            "description": "Absolute path to worktree root. Required for auto-commit when agent runs in a worktree.",
+        },
         # MARKER_192.2: execution_mode — controls closure proof requirements
-        "execution_mode": {"type": "string", "enum": ["pipeline", "manual"], "description": "Closure proof mode. 'pipeline' = full proof (pipeline_success + verifier + tests). 'manual' = relaxed (commit_hash only). Auto-inferred from agent_type if omitted."},
+        "execution_mode": {
+            "type": "string",
+            "enum": ["pipeline", "manual"],
+            "description": "Closure proof mode. 'pipeline' = full proof (pipeline_success + verifier + tests). 'manual' = relaxed (commit_hash only). Auto-inferred from agent_type if omitted.",
+        },
         # MARKER_196.6.1: Debrief answers captured in action=complete
-        "q1_bugs": {"type": "string", "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)"},
-        "q2_worked": {"type": "string", "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)"},
-        "q3_idea": {"type": "string", "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)"},
+        "q1_bugs": {
+            "type": "string",
+            "description": "Debrief Q1: What bugs did you notice? (optional, for action=complete)",
+        },
+        "q2_worked": {
+            "type": "string",
+            "description": "Debrief Q2: What unexpectedly worked? (optional, for action=complete)",
+        },
+        "q3_idea": {
+            "type": "string",
+            "description": "Debrief Q3: What idea came to mind? (optional, for action=complete)",
+        },
         # MARKER_191.16: close / bulk_close fields
-        "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
-        "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close or bulk complete via action=complete)"},
+        "reason": {
+            "type": "string",
+            "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled",
+        },
+        "task_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "List of task IDs (for bulk_close or bulk complete via action=complete)",
+        },
         # MARKER_198.STALE: stale_check parameters
-        "auto_close": {"type": "boolean", "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run)."},
+        "auto_close": {
+            "type": "boolean",
+            "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
+        },
         # MARKER_198.MERGE: merge_request strategy
-        "strategy": {"type": "string", "enum": ["cherry-pick", "merge", "squash"], "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit."},
+        "strategy": {
+            "type": "string",
+            "enum": ["cherry-pick", "merge", "squash"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
+        },
         # MARKER_199.FTS5: search_fts parameters
-        "query": {"type": "string", "description": "FTS5 search query for action=search_fts. Supports: AND, OR, phrase \"...\", prefix*"},
+        "query": {
+            "type": "string",
+            "description": 'FTS5 search query for action=search_fts. Supports: AND, OR, phrase "...", prefix*',
+        },
     },
-    "required": ["action"]
+    "required": ["action"],
 }
 
 
@@ -209,7 +451,9 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
         import urllib.parse
         import json as _json
 
-        params = urllib.parse.urlencode({"q": title, "limit": limit * 4, "mode": "hybrid"})
+        params = urllib.parse.urlencode(
+            {"q": title, "limit": limit * 4, "mode": "hybrid"}
+        )
         url = f"http://localhost:5001/api/search/hybrid?{params}"
         req = urllib.request.Request(url, method="GET")
         req.add_header("Accept", "application/json")
@@ -233,7 +477,9 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
                 if len(suggestions) >= limit:
                     break
             if suggestions:
-                logger.debug(f"[DocGate] vetka_search found {len(suggestions)} docs for: {title[:50]}")
+                logger.debug(
+                    f"[DocGate] vetka_search found {len(suggestions)} docs for: {title[:50]}"
+                )
                 hybrid_results = suggestions
             else:
                 hybrid_results = []
@@ -243,16 +489,40 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
 
     # Strategy 2: keyword glob search in docs/ (complements hybrid with filename matching)
     import re
-    keywords = [w.lower() for w in re.split(r'[\s:_\-—/]+', title) if len(w) >= 3]
-    stop_words = {"bug", "fix", "arch", "the", "for", "and", "with", "new", "add", "test", "task",
-                   "при", "что", "как", "это", "все", "нет", "без", "или", "показывают", "одно"}
+
+    keywords = [w.lower() for w in re.split(r"[\s:_\-—/]+", title) if len(w) >= 3]
+    stop_words = {
+        "bug",
+        "fix",
+        "arch",
+        "the",
+        "for",
+        "and",
+        "with",
+        "new",
+        "add",
+        "test",
+        "task",
+        "при",
+        "что",
+        "как",
+        "это",
+        "все",
+        "нет",
+        "без",
+        "или",
+        "показывают",
+        "одно",
+    }
     keywords = [k for k in keywords if k not in stop_words]
 
     if not keywords:
         return []
 
     suggestions = []
-    for md_file in sorted(docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+    for md_file in sorted(
+        docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
         score = sum(1 for k in keywords if k in name_lower)
         if score > 0:
@@ -294,8 +564,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     _tracker_sid = arguments.get("session_id") or "default"
     try:
         from src.services.session_tracker import get_session_tracker
+
         get_session_tracker().record_action(
-            _tracker_sid, "vetka_task_board",
+            _tracker_sid,
+            "vetka_task_board",
             {"action": action, "task_id": arguments.get("task_id", "")},
         )
     except Exception:
@@ -309,6 +581,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     _session_role = None
     try:
         from src.services.session_tracker import get_session_tracker
+
         _session_role = get_session_tracker().get_role(_tracker_sid)
     except Exception:
         pass
@@ -325,7 +598,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     # MARKER_198.ROLE: Fallback — if session role lookup failed but explicit role= was passed,
     # use it for assigned_to on claim. Prevents "unknown" when session tracker has no binding.
-    if action == "claim" and arguments.get("role") and arguments.get("assigned_to", "unknown") == "unknown":
+    if (
+        action == "claim"
+        and arguments.get("role")
+        and arguments.get("assigned_to", "unknown") == "unknown"
+    ):
         arguments["assigned_to"] = arguments["role"]
 
     if action == "add":
@@ -340,7 +617,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # If missing: search docs/ by title, suggest matches, REJECT until attached.
         # force_no_docs=true bypasses (for truly novel tasks with no prior docs).
         # MARKER_195.3: phase_type-aware — research/test auto-exempt (they create docs, not consume them).
-        arch_docs = [d for d in (payload.get("architecture_docs") or []) if str(d).strip()]
+        arch_docs = [
+            d for d in (payload.get("architecture_docs") or []) if str(d).strip()
+        ]
         recon_docs = [d for d in (payload.get("recon_docs") or []) if str(d).strip()]
         force_no_docs = bool(payload.pop("force_no_docs", False))
         phase_type = payload.get("phase_type", "")
@@ -356,12 +635,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 return {
                     "success": False,
                     "error": "DOC_GATE: Task requires at least one architecture_doc or recon_doc. "
-                             "Attach a doc or pass force_no_docs=true to bypass.",
+                    "Attach a doc or pass force_no_docs=true to bypass.",
                     "doc_gate": True,
                     "suggested_docs": suggested,
                     "hint": "Re-call with architecture_docs=[...] or recon_docs=[...] from suggestions above. "
-                            "Use force_no_docs=true ONLY if no relevant docs exist. "
-                            "Note: phase_type=research and phase_type=test are auto-exempt.",
+                    "Use force_no_docs=true ONLY if no relevant docs exist. "
+                    "Note: phase_type=research and phase_type=test are auto-exempt.",
                 }
             # MARKER_196.DOCGATE: Strict mode — block force_no_docs for fix/build
             # when suggested_docs clearly shows relevant docs exist.
@@ -370,18 +649,19 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 return {
                     "success": False,
                     "error": f"DOC_GATE STRICT: force_no_docs rejected — {len(suggested)} relevant docs found. "
-                             "For fix/build tasks, attach at least one doc from the list below.",
+                    "For fix/build tasks, attach at least one doc from the list below.",
                     "doc_gate": True,
                     "strict_mode": True,
                     "suggested_docs": suggested,
                     "hint": "Re-call with architecture_docs=[...] or recon_docs=[...]. "
-                            "force_no_docs is only allowed when suggested_docs is empty or has <2 matches.",
+                    "force_no_docs is only allowed when suggested_docs is empty or has <2 matches.",
                 }
             # Allow bypass for tasks with 0-1 weak matches
             if suggested:
                 logger.warning(
                     "[DOC_GATE] force_no_docs accepted (weak match) for '%s': %s",
-                    title, suggested[:3],
+                    title,
+                    suggested[:3],
                 )
 
         try:
@@ -414,12 +694,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 implementation_hints=payload.get("implementation_hints"),
                 depends_on_docs=payload.get("depends_on_docs"),
                 execution_mode=payload.get("execution_mode"),
-                role=payload.get("role"),        # MARKER_ZETA.D4
-                domain=payload.get("domain"),    # MARKER_ZETA.D4
+                role=payload.get("role"),  # MARKER_ZETA.D4
+                domain=payload.get("domain"),  # MARKER_ZETA.D4
             )
         except ValueError as exc:
             return {"success": False, "error": str(exc)}
-        result = {"success": True, "task_id": task_id, "message": f"Task '{title}' added"}
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "message": f"Task '{title}' added",
+        }
         # MARKER_196.DOCGATE: Surface warnings if force_no_docs was used
         _dg_warnings = payload.get("_doc_gate_warnings")
         if _dg_warnings:
@@ -435,7 +719,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 # Exclude the task we just created
                 overlapping = [t for t in overlapping if t.get("id") != task_id]
                 if overlapping:
-                    overlap_titles = [f"{t['id']}: {t.get('title', '')[:50]}" for t in overlapping[:5]]
+                    overlap_titles = [
+                        f"{t['id']}: {t.get('title', '')[:50]}" for t in overlapping[:5]
+                    ]
                     result["api_contract_warning"] = {
                         "message": (
                             f"PATH OVERLAP: {len(overlapping)} active task(s) share allowed_paths with this task. "
@@ -443,10 +729,17 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                             "Consider adding a Python Protocol stub to implementation_hints."
                         ),
                         "overlapping_tasks": overlap_titles,
-                        "shared_paths": [p for p in new_paths if any(
-                            any(p.startswith(ap) or ap.startswith(p) for ap in (t.get("allowed_paths") or []))
-                            for t in overlapping
-                        )][:10],
+                        "shared_paths": [
+                            p
+                            for p in new_paths
+                            if any(
+                                any(
+                                    p.startswith(ap) or ap.startswith(p)
+                                    for ap in (t.get("allowed_paths") or [])
+                                )
+                                for t in overlapping
+                            )
+                        ][:10],
                     }
             except Exception:
                 pass  # Contract guard is advisory, never blocks
@@ -460,7 +753,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         filter_project = str(arguments.get("project_id") or "").strip()
         project_resolve = None
         if filter_project:
-            tasks, project_resolve = board.filter_tasks_by_project(tasks, filter_project)
+            tasks, project_resolve = board.filter_tasks_by_project(
+                tasks, filter_project
+            )
         # MARKER_189.13 + MARKER_191.4: Dynamic limit; no limit when filtering by project
         total = len(tasks)
         if filter_project and not arguments.get("limit"):
@@ -474,23 +769,40 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if _session_role and len(page) >= 3:
             try:
                 import os as _os
+
                 if _os.environ.get("VETKA_TASK_JEPA_RANK", "1") != "0":
                     from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+
                     _role_intent = f"role:{_session_role['callsign']} domain:{_session_role.get('domain', '')} {_session_role.get('role_title', '')}"
-                    _task_texts = [f"{t.get('title', '')} {t.get('description', '')[:100]}" for t in page]
+                    _task_texts = [
+                        f"{t.get('title', '')} {t.get('description', '')[:100]}"
+                        for t in page
+                    ]
                     _all = [_role_intent] + _task_texts
                     _emb = embed_texts_for_overlay(_all, target_dim=128)
                     if _emb.vectors and len(_emb.vectors) == len(_all):
                         _iv = _emb.vectors[0]
                         _scores = []
                         for _idx, _tv in enumerate(_emb.vectors[1:]):
-                            _dot = sum(float(_iv[j]) * float(_tv[j]) for j in range(len(_iv)))
-                            _na = sum(float(_iv[j]) ** 2 for j in range(len(_iv))) ** 0.5
-                            _nb = sum(float(_tv[j]) ** 2 for j in range(len(_iv))) ** 0.5
-                            _sim = _dot / (_na * _nb) if _na > 1e-12 and _nb > 1e-12 else 0.0
+                            _dot = sum(
+                                float(_iv[j]) * float(_tv[j]) for j in range(len(_iv))
+                            )
+                            _na = (
+                                sum(float(_iv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            )
+                            _nb = (
+                                sum(float(_tv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            )
+                            _sim = (
+                                _dot / (_na * _nb)
+                                if _na > 1e-12 and _nb > 1e-12
+                                else 0.0
+                            )
                             _scores.append((_idx, _sim))
                         # Stable sort: primary=relevance score desc, secondary=original priority asc
-                        _scores.sort(key=lambda x: (-x[1], page[x[0]].get("priority", 5)))
+                        _scores.sort(
+                            key=lambda x: (-x[1], page[x[0]].get("priority", 5))
+                        )
                         page = [page[_idx] for _idx, _ in _scores]
             except Exception:
                 pass  # JEPA task lens never blocks list
@@ -508,10 +820,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             my_tasks = []
             other_tasks = []
             for t in page:
-                is_mine = (
-                    (t.get("role") or "").lower() == _my_callsign_lower
-                    or (t.get("assigned_to") or "").lower() == _my_callsign_lower
-                )
+                is_mine = (t.get("role") or "").lower() == _my_callsign_lower or (
+                    t.get("assigned_to") or ""
+                ).lower() == _my_callsign_lower
                 if is_mine:
                     my_tasks.append(t)
                 else:
@@ -602,12 +913,29 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         # Collect updatable fields
         updates = {}
-        for field in ["title", "description", "priority", "phase_type", "complexity",
-                       "preset", "status", "tags", "dependencies", "project_id",
-                       "project_lane", "architecture_docs", "recon_docs",
-                       "closure_tests", "closure_files",
-                       "allowed_paths", "completion_contract", "implementation_hints",
-                       "role", "domain", "branch_name"]:
+        for field in [
+            "title",
+            "description",
+            "priority",
+            "phase_type",
+            "complexity",
+            "preset",
+            "status",
+            "tags",
+            "dependencies",
+            "project_id",
+            "project_lane",
+            "architecture_docs",
+            "recon_docs",
+            "closure_tests",
+            "closure_files",
+            "allowed_paths",
+            "completion_contract",
+            "implementation_hints",
+            "role",
+            "domain",
+            "branch_name",
+        ]:
             if field in arguments and arguments[field] is not None:
                 updates[field] = arguments[field]
 
@@ -626,7 +954,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             if not task_exists:
                 result["error"] = f"Task {task_id} not found"
             else:
-                result["error"] = f"update_task returned False (possible invalid status or phase_type)"
+                result["error"] = (
+                    f"update_task returned False (possible invalid status or phase_type)"
+                )
         return result
 
     elif action == "remove":
@@ -634,7 +964,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not task_id:
             return {"success": False, "error": "task_id is required for remove"}
         ok = board.remove_task(task_id)
-        return {"success": ok, "message": f"Task {task_id} removed" if ok else f"Task {task_id} not found"}
+        return {
+            "success": ok,
+            "message": f"Task {task_id} removed" if ok else f"Task {task_id} not found",
+        }
 
     elif action == "summary":
         summary = board.get_board_summary()
@@ -674,7 +1007,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             for tid in task_ids:
                 task = board.get_task(tid)
                 if not task:
-                    results.append({"task_id": tid, "success": False, "error": "not found"})
+                    results.append(
+                        {"task_id": tid, "success": False, "error": "not found"}
+                    )
                     continue
                 r = board.complete_task(
                     tid,
@@ -711,14 +1046,21 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         current_branch = arguments.get("branch")
 
         # Auto-detect worktree_path from branch name (claude/<name> → .claude/worktrees/<name>)
-        if not worktree_path and current_branch and current_branch.startswith("claude/"):
+        if (
+            not worktree_path
+            and current_branch
+            and current_branch.startswith("claude/")
+        ):
             from pathlib import Path
+
             _main_root = Path(__file__).resolve().parents[3]
             wt_name = current_branch.split("/", 1)[1]
             candidate = _main_root / ".claude" / "worktrees" / wt_name
             if candidate.exists():
                 worktree_path = str(candidate)
-                logger.info(f"[TaskBoard] Auto-detected worktree_path from branch: {worktree_path}")
+                logger.info(
+                    f"[TaskBoard] Auto-detected worktree_path from branch: {worktree_path}"
+                )
 
         # MARKER_197: _detect_git_branch() removed — branch comes from session role (196.2.2)
         # Fallback: AgentRegistry auto-infer below
@@ -729,6 +1071,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not current_branch or current_branch == "main":
             try:
                 from src.services.agent_registry import get_agent_registry
+
                 registry = get_agent_registry()
                 _candidates = [
                     task.get("role", ""),
@@ -746,7 +1089,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     agent_role = registry.get_by_callsign(_cand)
                     if agent_role and agent_role.branch and agent_role.branch != "main":
                         current_branch = agent_role.branch
-                        logger.info(f"[TaskBoard] Auto-inferred branch={current_branch} from '{_cand}'")
+                        logger.info(
+                            f"[TaskBoard] Auto-inferred branch={current_branch} from '{_cand}'"
+                        )
                         break
             except Exception as e:
                 logger.debug(f"[TaskBoard] Branch inference from registry failed: {e}")
@@ -761,37 +1106,56 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if _session_role:
             try:
                 from src.services.agent_registry import get_agent_registry
+
                 _ow_reg = get_agent_registry()
                 _ow_role = _ow_reg.get_by_callsign(_session_role["callsign"])
                 if _ow_role:
                     import subprocess as _ow_sp
+
                     _ow_cwd = worktree_path or str(Path(__file__).resolve().parents[3])
                     _ow_diff = _ow_sp.run(
                         ["git", "diff", "--name-only", "--cached"],
-                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        cwd=_ow_cwd,
                     )
                     # Also check unstaged
                     _ow_diff2 = _ow_sp.run(
                         ["git", "diff", "--name-only"],
-                        capture_output=True, text=True, timeout=5, cwd=_ow_cwd,
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        cwd=_ow_cwd,
                     )
                     _changed = set()
                     if _ow_diff.returncode == 0:
-                        _changed.update(f.strip() for f in _ow_diff.stdout.splitlines() if f.strip())
+                        _changed.update(
+                            f.strip() for f in _ow_diff.stdout.splitlines() if f.strip()
+                        )
                     if _ow_diff2.returncode == 0:
-                        _changed.update(f.strip() for f in _ow_diff2.stdout.splitlines() if f.strip())
+                        _changed.update(
+                            f.strip()
+                            for f in _ow_diff2.stdout.splitlines()
+                            if f.strip()
+                        )
 
                     for _cf in _changed:
-                        _result = _ow_reg.validate_file_ownership(_ow_role.callsign, _cf)
+                        _result = _ow_reg.validate_file_ownership(
+                            _ow_role.callsign, _cf
+                        )
                         if _result.is_blocked:
-                            _ownership_warnings.append(f"BLOCKED: {_cf} (pattern: {_result.matched_blocked_pattern})")
+                            _ownership_warnings.append(
+                                f"BLOCKED: {_cf} (pattern: {_result.matched_blocked_pattern})"
+                            )
                         elif not _result.is_owned and not _result.shared_zone:
                             _ownership_warnings.append(f"NOT_OWNED: {_cf}")
 
                     if _ownership_warnings:
                         logger.warning(
                             "[TaskBoard] Ownership warnings for %s: %s",
-                            _ow_role.callsign, _ownership_warnings,
+                            _ow_role.callsign,
+                            _ownership_warnings,
                         )
             except Exception:
                 pass  # Ownership check never blocks completion
@@ -799,23 +1163,41 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # Case A: agent already committed — just close
         # MARKER_195.20: Pass worktree_path for branch auto-detection fallback
         if commit_hash:
-            result = board.complete_task(task_id, commit_hash, commit_message, branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+            result = board.complete_task(
+                task_id,
+                commit_hash,
+                commit_message,
+                branch=current_branch,
+                worktree_path=worktree_path,
+                execution_mode=exec_mode,
+            )
             if _ownership_warnings:
                 result["ownership_warnings"] = _ownership_warnings
                 # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
-                _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
+                _flag_cross_domain_violations(
+                    board,
+                    task_id,
+                    task,
+                    _ownership_warnings,
+                    agent_callsign=_session_role.get("callsign", "")
+                    if _session_role
+                    else "",
+                )
             _inject_debrief(result, arguments)
             return result
 
         # MARKER_182.7: Try Verifier merge if run_id is available (Phase 182+ path)
         task_result = task.get("result") or {}
         run_id = task_result.get("run_id") if isinstance(task_result, dict) else None
-        session_id = task_result.get("session_id") if isinstance(task_result, dict) else None
+        session_id = (
+            task_result.get("session_id") if isinstance(task_result, dict) else None
+        )
 
         if run_id and run_id.startswith("run_"):
             try:
                 import asyncio
                 from src.orchestration.agent_pipeline import AgentPipeline
+
                 merge_result = asyncio.get_event_loop().run_until_complete(
                     AgentPipeline.verify_and_merge(
                         run_id=run_id,
@@ -826,24 +1208,42 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 )
                 if merge_result.get("success") and merge_result.get("commit_hash"):
                     # Verifier merge succeeded — close task
-                    result = board.complete_task(task_id, merge_result["commit_hash"], merge_result.get("commit_message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+                    result = board.complete_task(
+                        task_id,
+                        merge_result["commit_hash"],
+                        merge_result.get("commit_message"),
+                        branch=current_branch,
+                        worktree_path=worktree_path,
+                        execution_mode=exec_mode,
+                    )
                     result["verifier_merge"] = merge_result
                     _inject_debrief(result, arguments)
                     return result
                 # If no commit_hash but success (nothing to commit) — fall through to legacy
                 if merge_result.get("success"):
-                    logger.info(f"[TaskBoard] Verifier merge: {merge_result.get('note', 'nothing to merge')}")
+                    logger.info(
+                        f"[TaskBoard] Verifier merge: {merge_result.get('note', 'nothing to merge')}"
+                    )
                 else:
-                    logger.warning(f"[TaskBoard] Verifier merge failed: {merge_result.get('error')}, falling back to legacy")
+                    logger.warning(
+                        f"[TaskBoard] Verifier merge failed: {merge_result.get('error')}, falling back to legacy"
+                    )
             except Exception as vm_err:
-                logger.warning(f"[TaskBoard] Verifier merge exception (falling back): {vm_err}")
+                logger.warning(
+                    f"[TaskBoard] Verifier merge exception (falling back): {vm_err}"
+                )
 
         # Case B/C: no commit yet — try auto-commit (legacy path)
         # MARKER_188.2: Pass worktree_path for correct cwd in git operations
         # MARKER_195.22: Pass closure_files from MCP arguments (overrides task.closure_files)
         mcp_closure_files = arguments.get("closure_files")
-        auto = _try_auto_commit(task_id, task, commit_message, cwd=worktree_path,
-                                override_closure_files=mcp_closure_files)
+        auto = _try_auto_commit(
+            task_id,
+            task,
+            commit_message,
+            cwd=worktree_path,
+            override_closure_files=mcp_closure_files,
+        )
 
         # If commit failed or scoping rejected files → do NOT close task
         # MARKER_195.22: Also catch attempted=False + success=False (allowed_paths mismatch)
@@ -870,14 +1270,29 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return _auto_result
 
         # Close task (commit succeeded or nothing to commit)
-        result = board.complete_task(task_id, auto.get("hash"), auto.get("message"), branch=current_branch, worktree_path=worktree_path, execution_mode=exec_mode)
+        result = board.complete_task(
+            task_id,
+            auto.get("hash"),
+            auto.get("message"),
+            branch=current_branch,
+            worktree_path=worktree_path,
+            execution_mode=exec_mode,
+        )
         result["auto_commit"] = auto
 
         # MARKER_196.3.1: Attach ownership warnings to result
         if _ownership_warnings:
             result["ownership_warnings"] = _ownership_warnings
             # MARKER_197.OWNERSHIP: Flag cross-domain + alert Commander
-            _flag_cross_domain_violations(board, task_id, task, _ownership_warnings, agent_callsign=_session_role.get("callsign", "") if _session_role else "")
+            _flag_cross_domain_violations(
+                board,
+                task_id,
+                task,
+                _ownership_warnings,
+                agent_callsign=_session_role.get("callsign", "")
+                if _session_role
+                else "",
+            )
 
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
@@ -898,15 +1313,19 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         try:
             import asyncio
+
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 import concurrent.futures
+
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     result = pool.submit(
                         asyncio.run, board.merge_request(task_id, strategy=strategy)
                     ).result()
             else:
-                result = loop.run_until_complete(board.merge_request(task_id, strategy=strategy))
+                result = loop.run_until_complete(
+                    board.merge_request(task_id, strategy=strategy)
+                )
             return result
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}
@@ -915,7 +1334,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "promote_to_main":
         task_id = arguments.get("task_id")
         if not task_id:
-            return {"success": False, "error": "task_id is required for promote_to_main"}
+            return {
+                "success": False,
+                "error": "task_id is required for promote_to_main",
+            }
         merge_commit_hash = arguments.get("commit_hash")
         role = arguments.get("role", "")
         return board.promote_to_main(task_id, merge_commit_hash, role=role)
@@ -929,22 +1351,34 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
         if task["status"] != "done_worktree":
-            return {"success": False, "error": f"Task {task_id} is '{task['status']}', expected done_worktree"}
+            return {
+                "success": False,
+                "error": f"Task {task_id} is '{task['status']}', expected done_worktree",
+            }
         board.update_task(
-            task_id, status="need_qa",
+            task_id,
+            status="need_qa",
             _history_event="qa_requested",
             _history_source="task_board",
             _history_reason="QA review requested",
             _history_agent_name=arguments.get("assigned_to", ""),
         )
-        return {"success": True, "task_id": task_id, "status": "need_qa", "message": "Task moved to QA queue"}
+        return {
+            "success": True,
+            "task_id": task_id,
+            "status": "need_qa",
+            "message": "Task moved to QA queue",
+        }
 
     # MARKER_195.20: QA Gate — verify a done_worktree task before merge
     elif action == "verify":
         task_id = arguments.get("task_id")
         verdict = arguments.get("verdict")  # "pass" or "fail"
         if not task_id or not verdict:
-            return {"success": False, "error": "task_id and verdict ('pass' or 'fail') required for verify"}
+            return {
+                "success": False,
+                "error": "task_id and verdict ('pass' or 'fail') required for verify",
+            }
         notes = arguments.get("notes", "")
         verified_by = arguments.get("verified_by", arguments.get("assigned_to", ""))
         return board.verify_task(task_id, verdict, notes, verified_by)
@@ -966,14 +1400,23 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             _history_reason=reason,
         )
         if updated:
-            return {"success": True, "task_id": task_id, "status": "done_main", "closed": True, "reason": reason}
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": "done_main",
+                "closed": True,
+                "reason": reason,
+            }
         return {"success": False, "error": f"Failed to close task {task_id}"}
 
     # MARKER_191.16: bulk_close — close multiple tasks at once without git commit
     elif action == "bulk_close":
         task_ids = arguments.get("task_ids", [])
         if not task_ids:
-            return {"success": False, "error": "task_ids list is required for bulk_close"}
+            return {
+                "success": False,
+                "error": "task_ids list is required for bulk_close",
+            }
         reason = arguments.get("reason", "bulk_closed")
         results = []
         for tid in task_ids:
@@ -990,7 +1433,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             )
             results.append({"task_id": tid, "success": bool(updated)})
         closed_count = sum(1 for r in results if r.get("success"))
-        return {"success": True, "closed_count": closed_count, "total": len(task_ids), "results": results}
+        return {
+            "success": True,
+            "closed_count": closed_count,
+            "total": len(task_ids),
+            "results": results,
+        }
 
     # MARKER_198.STALE: Stale detection — find pending tasks already implemented
     elif action == "stale_check":
@@ -1009,21 +1457,31 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             done_wt = board.get_queue(status="done_worktree")
             task_ids = [t["id"] for t in done_wt]
             if not task_ids:
-                return {"success": True, "message": "No done_worktree tasks to merge", "merged_count": 0}
+                return {
+                    "success": True,
+                    "message": "No done_worktree tasks to merge",
+                    "merged_count": 0,
+                }
 
         results = []
         merged = 0
         failed = 0
         import asyncio
+
         for tid in task_ids:
             try:
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
+
                     with concurrent.futures.ThreadPoolExecutor() as pool:
-                        merge_result = pool.submit(asyncio.run, board.merge_request(tid, strategy=strategy)).result()
+                        merge_result = pool.submit(
+                            asyncio.run, board.merge_request(tid, strategy=strategy)
+                        ).result()
                 else:
-                    merge_result = loop.run_until_complete(board.merge_request(tid, strategy=strategy))
+                    merge_result = loop.run_until_complete(
+                        board.merge_request(tid, strategy=strategy)
+                    )
                 results.append({"task_id": tid, **merge_result})
                 if merge_result.get("success"):
                     merged += 1
@@ -1048,12 +1506,21 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "query is required for search_fts"}
         limit = int(arguments.get("limit", 20))
         results = board.search_fts(query, limit)
-        return {"success": True, "results": results, "count": len(results), "query": query}
+        return {
+            "success": True,
+            "results": results,
+            "count": len(results),
+            "query": query,
+        }
 
     elif action == "backfill_fts":
         board = _get_board()
         count = board._backfill_fts()
-        return {"success": True, "indexed": count, "message": f"FTS5 index rebuilt: {count} tasks indexed"}
+        return {
+            "success": True,
+            "indexed": count,
+            "message": f"FTS5 index rebuilt: {count} tasks indexed",
+        }
 
     # MARKER_199.DEBRIEF: List tasks auto-closed without debrief
     elif action == "debrief_skipped":
@@ -1063,7 +1530,6 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
-
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:
@@ -1082,8 +1548,7 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
             "Stale code, broken tools, bad process that everyone walks past?"
         ),
         "q2_worked": (
-            "What unexpectedly worked? A workaround or pattern "
-            "worth making standard?"
+            "What unexpectedly worked? A workaround or pattern worth making standard?"
         ),
         "q3_idea": (
             "What idea came to mind that nobody asked about? "
@@ -1096,7 +1561,8 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
     # Even if agent never answers debrief Qs, we get a baseline report.
     try:
         _passive_report_created = _create_passive_experience_report(
-            arguments, result,
+            arguments,
+            result,
         )
         if _passive_report_created:
             result["passive_report"] = True
@@ -1129,6 +1595,7 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     # Get session state
     from src.services.session_tracker import get_session_tracker
+
     tracker = get_session_tracker()
     session = tracker.get_session(_tracker_sid)
 
@@ -1138,6 +1605,7 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     if task_id:
         try:
             from src.orchestration.task_board import TaskBoard
+
             _tb = TaskBoard()
             _task_meta = _tb.get_task(task_id)
             if _task_meta:
@@ -1193,6 +1661,7 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     # Enrich with CORTEX tool stats
     try:
         from src.services.reflex_feedback import ReflexFeedback
+
         fb = ReflexFeedback()
         summary = fb.get_feedback_summary()
         if summary and summary.get("total_entries", 0) > 0:
@@ -1225,6 +1694,7 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
         if task_id:
             try:
                 from src.orchestration.task_board import get_task_board as _gtb
+
                 _task_data = _gtb().get_task(task_id)
                 if _task_data:
                     _task_title = _task_data.get("title", "")
@@ -1238,7 +1708,9 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
             for _f in _files[:10]:
                 _parts = Path(_f).parts
                 if len(_parts) >= 2:
-                    _dirs.add(_parts[-2] if _parts[-2] != "src" else "/".join(_parts[-3:-1]))
+                    _dirs.add(
+                        _parts[-2] if _parts[-2] != "src" else "/".join(_parts[-3:-1])
+                    )
             if _dirs:
                 _cochange_text = (
                     f"Files that change together for '{_task_title[:50]}': "
@@ -1246,8 +1718,11 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
                     f"Directories involved: {', '.join(_dirs)}."
                 )
                 _pid = _l2_store.store_learning_sync(
-                    text=_cochange_text, category="pattern",
-                    run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                    text=_cochange_text,
+                    category="pattern",
+                    run_id=_tracker_sid,
+                    task_id=task_id,
+                    session_id=_tracker_sid,
                     files=_files[:10],
                     metadata={"source": "mcp_complete", "agent": callsign},
                 )
@@ -1262,8 +1737,11 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
                 f"Approach: {_task_desc[:100] if _task_desc else 'MCP agent pipeline'}."
             )
             _pid = _l2_store.store_learning_sync(
-                text=_completion_text, category="optimization",
-                run_id=_tracker_sid, task_id=task_id, session_id=_tracker_sid,
+                text=_completion_text,
+                category="optimization",
+                run_id=_tracker_sid,
+                task_id=task_id,
+                session_id=_tracker_sid,
                 files=_files[:5],
                 metadata={"source": "mcp_complete", "agent": callsign},
             )
@@ -1273,24 +1751,33 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
         # 3. Debrief answers as individual Qdrant L2 learnings
         if q1:
             _pid = _l2_store.store_learning_sync(
-                text=f"[BUG] {q1}", category="pitfall",
-                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                text=f"[BUG] {q1}",
+                category="pitfall",
+                task_id=task_id,
+                session_id=_tracker_sid,
+                files=_files[:5],
                 metadata={"source": "debrief_q1", "agent": callsign},
             )
             if _pid:
                 _stored_ids.append(_pid)
         if q2:
             _pid = _l2_store.store_learning_sync(
-                text=f"[WORKED] {q2}", category="pattern",
-                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                text=f"[WORKED] {q2}",
+                category="pattern",
+                task_id=task_id,
+                session_id=_tracker_sid,
+                files=_files[:5],
                 metadata={"source": "debrief_q2", "agent": callsign},
             )
             if _pid:
                 _stored_ids.append(_pid)
         if q3:
             _pid = _l2_store.store_learning_sync(
-                text=f"[IDEA] {q3}", category="architecture",
-                task_id=task_id, session_id=_tracker_sid, files=_files[:5],
+                text=f"[IDEA] {q3}",
+                category="architecture",
+                task_id=task_id,
+                session_id=_tracker_sid,
+                files=_files[:5],
                 metadata={"source": "debrief_q3", "agent": callsign},
             )
             if _pid:
@@ -1318,6 +1805,7 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
         try:
             from src.services.reflex_feedback import get_reflex_feedback
             from src.memory.engram_cache import get_engram_cache
+
             fb = get_reflex_feedback()
             engram = get_engram_cache()
             _agent_tag = callsign or "unknown"
@@ -1335,7 +1823,11 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
                         agent_role=_agent_tag,
                         execution_time_ms=0.0,
                         subtask_id=task_id,
-                        extra={"source": "debrief_q1", "text": q1[:300], "agent": _agent_tag},
+                        extra={
+                            "source": "debrief_q1",
+                            "text": q1[:300],
+                            "agent": _agent_tag,
+                        },
                     )
                 except Exception:
                     pass
@@ -1380,7 +1872,6 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
             pass  # Direct routing never blocks completion
 
     return True
-
 
 
 # MARKER_197: _detect_git_branch() removed — branch now comes from session role (196.2.2)
@@ -1433,14 +1924,21 @@ def _flag_cross_domain_violations(
         )
         logger.warning(
             "[TaskBoard] OWNERSHIP ALERT: %s violated %d path(s) in %s — Commander task created",
-            agent_callsign, len(ownership_warnings), task_id,
+            agent_callsign,
+            len(ownership_warnings),
+            task_id,
         )
     except Exception as e:
         logger.debug("[TaskBoard] Cross-domain flagging failed (non-critical): %s", e)
 
 
-def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: str = None,
-                     override_closure_files: list = None) -> dict:
+def _try_auto_commit(
+    task_id: str,
+    task: dict,
+    commit_message: str = None,
+    cwd: str = None,
+    override_closure_files: list = None,
+) -> dict:
     """MARKER_181.4: Auto-commit via GitCommitTool.execute().
     MARKER_188.2: Accept cwd override for worktree auto-commit.
     MARKER_195.22: Accept override_closure_files from MCP arguments.
@@ -1463,7 +1961,10 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
     try:
         git_dir_result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if git_dir_result.returncode == 0:
             git_dir = Path(git_dir_result.stdout.strip())
@@ -1473,13 +1974,19 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
             if lock_file.exists():
                 # Check if lock is stale (older than 60 seconds)
                 import time
+
                 lock_age = time.time() - lock_file.stat().st_mtime
                 if lock_age > 60:
                     lock_file.unlink()
-                    logger.warning(f"[TaskBoard] Removed stale index.lock (age: {lock_age:.0f}s)")
+                    logger.warning(
+                        f"[TaskBoard] Removed stale index.lock (age: {lock_age:.0f}s)"
+                    )
                 else:
-                    return {"attempted": False, "success": False,
-                            "error": f"Git index.lock exists (age: {lock_age:.0f}s). Another git operation in progress."}
+                    return {
+                        "attempted": False,
+                        "success": False,
+                        "error": f"Git index.lock exists (age: {lock_age:.0f}s). Another git operation in progress.",
+                    }
     except Exception:
         pass  # Non-fatal — proceed with commit attempt
 
@@ -1487,20 +1994,38 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
     try:
         status = subprocess.run(
             ["git", "status", "--porcelain"],
-            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=10,
+            cwd=str(PROJECT_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
     except Exception as e:
-        return {"attempted": False, "success": False, "error": f"git status failed: {e}"}
+        return {
+            "attempted": False,
+            "success": False,
+            "error": f"git status failed: {e}",
+        }
 
     if not status.stdout.strip():
         # Case C: nothing to commit — OK for research tasks
-        return {"attempted": False, "success": True, "hash": None, "message": None,
-                "note": "nothing to commit"}
+        return {
+            "attempted": False,
+            "success": True,
+            "hash": None,
+            "message": None,
+            "note": "nothing to commit",
+        }
 
     # 2. Determine scoped files (NOT git add -A)
     # MARKER_195.22: Scoped staging — override > task.closure_files > allowed_paths > all dirty
-    closure_files = [str(p) for p in (override_closure_files or task.get("closure_files") or []) if str(p).strip()]
-    allowed_paths = [str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()]
+    closure_files = [
+        str(p)
+        for p in (override_closure_files or task.get("closure_files") or [])
+        if str(p).strip()
+    ]
+    allowed_paths = [
+        str(p) for p in (task.get("allowed_paths") or []) if str(p).strip()
+    ]
 
     # Parse ALL dirty files from porcelain
     all_changed = []
@@ -1521,13 +2046,17 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
                 if fpath == ap or fpath.startswith(ap.rstrip("/") + "/"):
                     return True
             return False
+
         closure_files = [f for f in all_changed if _matches_allowed(f)]
         if not closure_files:
             # allowed_paths set but no dirty files match — warn, don't grab everything
-            return {"attempted": False, "success": False,
-                    "error": f"No dirty files match allowed_paths {allowed_paths}. "
-                             f"Dirty files: {all_changed[:10]}. "
-                             "Set closure_files explicitly or update allowed_paths."}
+            return {
+                "attempted": False,
+                "success": False,
+                "error": f"No dirty files match allowed_paths {allowed_paths}. "
+                f"Dirty files: {all_changed[:10]}. "
+                "Set closure_files explicitly or update allowed_paths.",
+            }
     else:
         # No scope at all — fallback to all dirty, but log warning
         closure_files = all_changed
@@ -1538,8 +2067,12 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
             )
 
     if not closure_files:
-        return {"attempted": False, "success": True, "hash": None,
-                "note": "no changed files found"}
+        return {
+            "attempted": False,
+            "success": True,
+            "hash": None,
+            "note": "no changed files found",
+        }
 
     # 3. Build commit message with [task:tb_xxxx]
     task_title = task.get("title", "task")
@@ -1568,9 +2101,18 @@ def _try_auto_commit(task_id: str, task: dict, commit_message: str = None, cwd: 
     if not result.get("success"):
         error = result.get("error", "unknown")
         if "nothing to commit" in str(error).lower():
-            return {"attempted": False, "success": True, "hash": None,
-                    "note": "nothing to commit"}
-        return {"attempted": True, "success": False, "error": error, "message": auto_msg}
+            return {
+                "attempted": False,
+                "success": True,
+                "hash": None,
+                "note": "nothing to commit",
+            }
+        return {
+            "attempted": True,
+            "success": False,
+            "error": error,
+            "message": auto_msg,
+        }
 
     result_data = result.get("result", {})
     logger.info(f"[TaskBoard] Auto-commit {result_data.get('hash')}: {auto_msg[:60]}")
@@ -1591,13 +2133,13 @@ TASK_DISPATCH_SCHEMA = {
     "properties": {
         "task_id": {
             "type": "string",
-            "description": "Task ID to dispatch. If omitted, dispatches highest-priority task."
+            "description": "Task ID to dispatch. If omitted, dispatches highest-priority task.",
         },
         "chat_id": {
             "type": "string",
-            "description": "Chat ID for progress streaming (optional)"
-        }
-    }
+            "description": "Chat ID for progress streaming (optional)",
+        },
+    },
 }
 
 
@@ -1627,16 +2169,13 @@ async def handle_task_dispatch(arguments: Dict[str, Any]) -> Dict[str, Any]:
 TASK_IMPORT_SCHEMA = {
     "type": "object",
     "properties": {
-        "file_path": {
-            "type": "string",
-            "description": "Path to todo file to import"
-        },
+        "file_path": {"type": "string", "description": "Path to todo file to import"},
         "source_tag": {
             "type": "string",
-            "description": "Source tag for imported tasks (e.g., 'dragon_todo', 'titan_todo')"
-        }
+            "description": "Source tag for imported tasks (e.g., 'dragon_todo', 'titan_todo')",
+        },
     },
-    "required": ["file_path"]
+    "required": ["file_path"],
 }
 
 
@@ -1660,5 +2199,5 @@ def handle_task_import(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "imported_count": count,
         "file": file_path,
         "source_tag": source_tag,
-        "total_tasks": len(board.tasks)
+        "total_tasks": len(board.tasks),
     }
