@@ -415,11 +415,10 @@ class TaskBoard:
             except Exception as e:
                 logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
 
-        # Backfill runs separately — even if migration already done, backfill retries if empty
-        try:
-            self._backfill_fts()
-        except Exception:
-            pass  # Backfill is non-critical, retries on next init
+        # MARKER_199.DDL_FAST: _backfill_fts() removed from init path.
+        # It inserted 1648 rows on every init when schema_version failed to write,
+        # causing 14 MCP processes to deadlock on the same write lock.
+        # FTS5 index is now populated incrementally via _index_task_fts() on save/update.
 
     # ==========================================
     # MARKER_199.FTS5: Full-Text Search
