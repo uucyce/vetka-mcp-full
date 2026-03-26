@@ -393,3 +393,78 @@ def analyze_loudness(
         result.compliant = lufs_ok and peak_ok
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B_P2_HOTKEYS: Audio level adjustment (Alt+Up / Alt+Down)
+# ---------------------------------------------------------------------------
+
+# Range limits for lane volume in dB
+_MIN_DB: float = -96.0   # silence floor
+_MAX_DB: float = 12.0    # +12 dB hard ceiling
+
+
+def db_to_linear(db: float) -> float:
+    """Convert dB value to linear scale. -96 dB → 0, 0 dB → 1.0."""
+    if db <= _MIN_DB:
+        return 0.0
+    import math
+    return 10.0 ** (db / 20.0)
+
+
+def linear_to_db(linear: float) -> float:
+    """Convert linear volume to dB. 0 → -96, 1.0 → 0, 1.5 → ~3.5 dB."""
+    if linear <= 0.0:
+        return _MIN_DB
+    import math
+    return 20.0 * math.log10(linear)
+
+
+def clamp_db(db: float) -> float:
+    """Clamp dB value to valid range [_MIN_DB, _MAX_DB]."""
+    return max(_MIN_DB, min(_MAX_DB, db))
+
+
+def adjust_lane_volume_db(current_linear: float, delta_db: float) -> float:
+    """
+    Adjust a lane's linear volume by delta_db (e.g. ±1 dB per key step).
+
+    Converts current linear → dB → adjusts by delta → clamps → back to linear.
+
+    Args:
+        current_linear: Current volume in linear scale (0..1.5 range from store).
+        delta_db: Signed dB step (positive = louder, negative = quieter).
+
+    Returns:
+        New volume in linear scale (0..1.5), clamped to valid range.
+    """
+    current_db = linear_to_db(current_linear)
+    new_db = clamp_db(current_db + delta_db)
+    return db_to_linear(new_db)
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B_P2_HOTKEYS: Audio scrubbing state (Shift+S toggle)
+# In-memory flag — persisted per project session.
+# ---------------------------------------------------------------------------
+
+# Global scrubbing registry: project_id → bool
+# Lightweight in-memory state (not persisted to disk — resets on server restart).
+_audio_scrubbing_state: dict[str, bool] = {}
+
+
+def get_audio_scrubbing(project_id: str) -> bool:
+    """Get audio scrubbing state for a project. Default: True (enabled)."""
+    return _audio_scrubbing_state.get(project_id, True)
+
+
+def set_audio_scrubbing(project_id: str, enabled: bool) -> None:
+    """Set audio scrubbing state for a project."""
+    _audio_scrubbing_state[project_id] = enabled
+
+
+def toggle_audio_scrubbing(project_id: str) -> bool:
+    """Toggle audio scrubbing state. Returns new state."""
+    new_state = not get_audio_scrubbing(project_id)
+    set_audio_scrubbing(project_id, new_state)
+    return new_state

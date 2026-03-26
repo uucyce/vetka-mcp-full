@@ -325,6 +325,9 @@ interface CutEditorState {
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
 
+  // === MARKER_B_P2_HOTKEYS: Audio playback features ===
+  audioScrubbing: boolean;          // Shift+S: audio plays during jog/scrub
+
   // === MARKER_W4.3: Save status ===
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   lastSavedAt: string | null;     // ISO timestamp from backend
@@ -462,6 +465,18 @@ interface CutEditorState {
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
+
+  // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
+  /** Cmd+R — render only the In/Out selection range. No-op if no marks set. */
+  renderSelection: () => Promise<void>;
+  /** Alt+R — render entire timeline (full export, no range restriction). */
+  renderAll: () => Promise<void>;
+
+  // MARKER_B_P2_HOTKEYS: Audio feature actions
+  /** Alt+Up/Down — adjust a lane's volume by ±deltaDb steps. */
+  adjustAudioLevel: (laneId: string, deltaDb: number) => void;
+  /** Shift+S — toggle audio playback during scrub/jog. */
+  toggleAudioScrubbing: () => void;
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running: boolean) => void;
   setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
@@ -688,6 +703,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   renderProgress: null,
   renderStatus: null,
   renderError: null,
+
+  // MARKER_B_P2_HOTKEYS: Audio features
+  audioScrubbing: true,             // Shift+S: default ON (FCP7 behavior)
 
   // MARKER_W5.1: Auto-Montage
   montageRunning: false,
@@ -1170,6 +1188,146 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),
+
+  // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
+  renderSelection: async () => {
+    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] renderSelection: no project session');
+      return;
+    }
+    if (sequenceMarkIn == null || sequenceMarkOut == null) {
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'warn', message: 'Render Selection: no In/Out marks set. Use I/O to mark range.' },
+      }));
+      return;
+    }
+    // Build mixer state from store
+    const mixerLanes: Record<string, { volume: number; mute: boolean; solo: boolean; pan: number }> = {};
+    for (const [laneId, vol] of Object.entries(laneVolumes)) {
+      mixerLanes[laneId] = {
+        volume: vol,
+        mute: mutedLanes.has(laneId),
+        solo: soloLanes.has(laneId),
+        pan: 0,
+      };
+    }
+    try {
+      set({ renderProgress: 0.0, renderStatus: 'Starting selection render...', renderError: null });
+      const resp = await fetch(`${API_BASE}/cut/render/selection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          in_point: sequenceMarkIn,
+          out_point: sequenceMarkOut,
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'render_selection failed');
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'info', message: `Render Selection started (job ${data.job_id})` },
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ renderError: msg, renderProgress: null, renderStatus: null });
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Render Selection failed: ${msg}` },
+      }));
+    }
+  },
+
+  renderAll: async () => {
+    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] renderAll: no project session');
+      return;
+    }
+    // Build mixer state from store
+    const mixerLanes: Record<string, { volume: number; mute: boolean; solo: boolean; pan: number }> = {};
+    for (const [laneId, vol] of Object.entries(laneVolumes)) {
+      mixerLanes[laneId] = {
+        volume: vol,
+        mute: mutedLanes.has(laneId),
+        solo: soloLanes.has(laneId),
+        pan: 0,
+      };
+    }
+    try {
+      set({ renderProgress: 0.0, renderStatus: 'Starting full render...', renderError: null });
+      const resp = await fetch(`${API_BASE}/cut/render/all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'render_all failed');
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'info', message: `Render All started (job ${data.job_id})` },
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ renderError: msg, renderProgress: null, renderStatus: null });
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Render All failed: ${msg}` },
+      }));
+    }
+  },
+
+  // MARKER_B_P2_HOTKEYS: Audio feature actions
+  adjustAudioLevel: (laneId, deltaDb) => {
+    // Pure client-side: convert current linear volume → dB → adjust → clamp → back to linear.
+    // The backend /cut/audio/level/adjust endpoint is available for server-computed values,
+    // but we mirror the same math here to avoid an async round-trip for a hotkey.
+    set((state) => {
+      const currentLinear = laneId === '__master__'
+        ? state.masterVolume
+        : (state.laneVolumes[laneId] ?? 1.0);
+
+      // Convert to dB, adjust, clamp to [-96, +12] dB, back to linear
+      const MIN_DB = -96.0;
+      const MAX_DB = 12.0;
+      const currentDb = currentLinear <= 0 ? MIN_DB : 20 * Math.log10(currentLinear);
+      const newDb = Math.max(MIN_DB, Math.min(MAX_DB, currentDb + deltaDb));
+      const newLinear = newDb <= MIN_DB ? 0 : 10 ** (newDb / 20);
+      const clamped = Math.max(0, Math.min(1.5, newLinear));
+
+      if (laneId === '__master__') {
+        return { masterVolume: clamped };
+      }
+      return {
+        laneVolumes: { ...state.laneVolumes, [laneId]: clamped },
+      };
+    });
+  },
+
+  toggleAudioScrubbing: () => {
+    const { audioScrubbing, projectId } = get();
+    const newState = !audioScrubbing;
+    set({ audioScrubbing: newState });
+    // Notify backend (fire-and-forget — backend keeps in-memory state)
+    if (projectId) {
+      fetch(`${API_BASE}/cut/audio/scrubbing/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      }).catch(() => {/* non-critical */});
+    }
+    window.dispatchEvent(new CustomEvent('pipeline-activity', {
+      detail: { status: 'info', message: `Audio scrubbing ${newState ? 'ON' : 'OFF'}` },
+    }));
+  },
+
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running) => set({ montageRunning: running }),
   setMontageMode: (mode) => set({ montageMode: mode }),
