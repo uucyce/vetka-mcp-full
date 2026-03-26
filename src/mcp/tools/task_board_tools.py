@@ -117,7 +117,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped", "backfill_fts"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped", "backfill_fts", "context_packet"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -594,6 +594,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if docs:
             result["docs_content"] = docs
         return result
+
+    # MARKER_199.MCC: context_packet — resolve task into MCC-ready packet for local models
+    elif action == "context_packet":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for context_packet"}
+        packet = board.get_context_packet(task_id)
+        if not packet:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        return {"success": True, "context_packet": packet}
 
     elif action == "update":
         task_id = arguments.get("task_id")
