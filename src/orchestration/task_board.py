@@ -193,6 +193,7 @@ class TaskBoard:
         # MARKER_192.3: SQLite connection + schema + migration
         self.db = self._connect()
         self._ensure_schema()
+        self._run_migrations()
         self._migrate_json_to_sqlite()
 
         # Load settings from DB
@@ -307,6 +308,167 @@ class TaskBoard:
                 );
             """)
 
+    # ==========================================
+    # MARKER_199.MIGRATION: Schema Versioning
+    # ==========================================
+
+    def _get_schema_version(self) -> int:
+        """Get current schema version from meta table."""
+        try:
+            row = self.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            return int(row[0]) if row else 0
+        except Exception:
+            return 0
+
+    def _set_schema_version(self, version: int):
+        """Set schema version in meta table."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(version),)
+        )
+        self.db.commit()
+
+    def _run_migrations(self):
+        """MARKER_199.MIGRATION: Run pending schema migrations.
+
+        Each migration is idempotent and version-gated.
+        """
+        current = self._get_schema_version()
+
+        if current < 1:
+            # Migration 1: FTS5 full-text search (MARKER_199.FTS5)
+            try:
+                self.db.executescript("""
+                    CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
+                        task_id UNINDEXED,
+                        title,
+                        description,
+                        commit_message,
+                        tags_text,
+                        tokenize='unicode61'
+                    );
+                """)
+                self._backfill_fts()
+                self._set_schema_version(1)
+                logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
+            except Exception as e:
+                logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+
+    # ==========================================
+    # MARKER_199.FTS5: Full-Text Search
+    # ==========================================
+
+    def _index_task_fts(self, task: dict):
+        """Index or re-index a single task in FTS5."""
+        task_id = task.get("id", "")
+        if not task_id:
+            return
+        try:
+            # Remove old entry if exists
+            old = self.db.execute(
+                "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if old:
+                self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+            # Insert new entry
+            tags = task.get("tags", [])
+            tags_text = " ".join(tags) if isinstance(tags, list) else str(tags or "")
+            self.db.execute(
+                "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (task_id, task.get("title", ""), task.get("description", ""),
+                 task.get("commit_message", ""), tags_text),
+            )
+        except Exception as e:
+            # FTS indexing never blocks task operations
+            logger.debug(f"[FTS5] Index failed for {task_id}: {e}")
+
+    def _remove_task_fts(self, task_id: str):
+        """Remove a task from the FTS5 index."""
+        try:
+            old = self.db.execute(
+                "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if old:
+                self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+        except Exception:
+            pass
+
+    def _backfill_fts(self):
+        """MARKER_199.FTS5: One-time backfill of all existing tasks into FTS5 index."""
+        try:
+            existing = self.db.execute("SELECT COUNT(*) FROM tasks_fts").fetchone()[0]
+            if existing > 0:
+                return  # Already populated
+        except Exception:
+            return  # Table doesn't exist yet
+
+        cursor = self.db.execute("SELECT * FROM tasks")
+        count = 0
+        for row in cursor:
+            task = self._row_to_task(row)
+            self._index_task_fts(task)
+            count += 1
+        self.db.commit()
+        logger.info(f"[FTS5] Backfilled {count} tasks into full-text index")
+
+    def search_fts(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """MARKER_199.FTS5: Full-text search across tasks.
+
+        Supports FTS5 query syntax: AND, OR, phrase "...", prefix*.
+        Returns list of {task_id, snippet, rank} dicts.
+
+        Args:
+            query: FTS5 query string (e.g. 'WebSocket scope', '"dirty working tree"')
+            limit: Max results (default 20)
+        """
+        if not query or not query.strip():
+            return []
+        try:
+            rows = self.db.execute(
+                "SELECT task_id, snippet(tasks_fts, 1, '[', ']', '...', 10) AS snippet, "
+                "rank FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank LIMIT ?",
+                (query, limit),
+            ).fetchall()
+            results = []
+            for row in rows:
+                results.append({
+                    "task_id": row[0],
+                    "snippet": row[1],
+                    "rank": round(float(row[2]), 4),
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"[FTS5] Search failed for query '{query}': {e}")
+            return []
+
+    def get_debrief_skipped_tasks(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """MARKER_199.DEBRIEF: Find tasks auto-closed without debrief.
+
+        Tasks closed by git_auto_close skip the entire debrief→memory pipeline.
+        Returns recently closed tasks that need Commander attention for debrief.
+        """
+        try:
+            cursor = self.db.execute(
+                "SELECT id, title, assigned_to, completed_at, extra FROM tasks "
+                "WHERE status IN ('done_worktree', 'done_main') "
+                "AND extra LIKE '%git_auto_close%' "
+                "ORDER BY completed_at DESC LIMIT ?",
+                (limit,),
+            )
+            skipped = []
+            for row in cursor:
+                skipped.append({
+                    "task_id": row[0],
+                    "title": row[1],
+                    "assigned_to": row[2] or "unknown",
+                    "completed_at": row[3],
+                })
+            return skipped
+        except Exception as e:
+            logger.debug(f"[Debrief] Skipped query failed: {e}")
+            return []
+
     @staticmethod
     def _task_to_row(task: dict) -> dict:
         """Convert in-memory task dict to DB row dict.
@@ -375,6 +537,8 @@ class TaskBoard:
                 f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
                 values,
             )
+        # MARKER_199.FTS5: Keep full-text index in sync
+        self._index_task_fts(task)
 
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
@@ -383,6 +547,8 @@ class TaskBoard:
         """
         with self.db:
             self.db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        # MARKER_199.FTS5: Remove from full-text index
+        self._remove_task_fts(task_id)
 
     def _load_all_tasks(self) -> Dict[str, dict]:
         """SELECT all tasks from SQLite → dict keyed by task ID.
@@ -2455,10 +2621,11 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str, strategy: str = None) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
+        MARKER_198.MERGE: Added strategy parameter (caller > task field > default).
 
         Flow:
         1. Validate task has branch_name
@@ -2467,6 +2634,11 @@ class TaskBoard:
         4. Execute merge (cherry-pick by default)
         5. Log to ActionRegistry
         6. Auto-close task with merge commit hash
+
+        Args:
+            task_id: Task to merge
+            strategy: Override merge strategy (cherry-pick/merge/squash).
+                      Priority: caller kwarg > task.merge_strategy > "cherry-pick"
 
         Returns:
             {success, merge_result, eval_delta, ...} or {error}
@@ -2493,7 +2665,8 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        strategy = task.get("merge_strategy", "cherry-pick")
+        # MARKER_198.MERGE: Strategy resolution — caller > task > default
+        strategy = strategy or task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
