@@ -33,6 +33,7 @@ import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
+import { PublishDialog } from '../publish/PublishDialog';
 
 
 // ─── Styles ───
@@ -966,13 +967,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
     },
     collapseExpandTrack: () => {
-      const s = useCutEditorStore.getState();
-      // Toggle between minimum (28) and default (56) height
-      if (s.trackHeight <= 28) {
-        s.setTrackHeight(56);
-      } else {
-        s.setTrackHeight(28);
-      }
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
     },
     renameClipInline: () => {
       const s = useCutEditorStore.getState();
@@ -986,6 +986,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     toggleTimelineDisplayMode: () => {
       useCutEditorStore.getState().cycleTimelineDisplayMode();
+    },
+    publishDialog: () => {
+      useCutEditorStore.getState().setShowPublishDialog(true);
     },
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
@@ -1081,6 +1084,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
       <EditMarkerDialog />
       <TimecodeEntryOverlay />
+      {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
+      <PublishDialog />
       <SaveIndicator />
     </div>
   );
