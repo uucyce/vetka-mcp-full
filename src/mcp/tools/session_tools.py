@@ -614,10 +614,8 @@ class SessionInitTool(BaseMCPTool):
             _digest = {}
 
             # 1. HOT IDEAS — debrief ideas from ENGRAM, ranked by hit_count
-            _engram_for_digest = _engram if "_engram" in dir() else None
-            if _engram_for_digest is None:
-                from src.memory.engram_cache import get_engram_cache
-                _engram_for_digest = get_engram_cache()
+            from src.memory.engram_cache import get_engram_cache as _get_engram
+            _engram_for_digest = _get_engram()
             _all_patterns = _engram_for_digest.get_all_by_category("pattern")
             _ideas = [e for e in _all_patterns if "::debrief::idea::" in e.key]
             if _ideas:
