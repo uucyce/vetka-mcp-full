@@ -1416,20 +1416,32 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Digest never blocks session init
 
-        # MARKER_198.P0.5: Apply ELISION L2 compression to session_init response
+        # MARKER_198.P0.5 + MARKER_199.ELISION_ADAPTIVE: Model-adaptive compression
+        # Haiku (small context) → L3, Sonnet (medium) → L2, Opus (large) → L1
+        # Auto-infer from max_context_tokens if compress_level not explicitly set.
         try:
             from src.memory.elision import get_elision_compressor
 
             compressor = get_elision_compressor()
-            # Compress the context dict — replaces verbose keys with short abbreviations
+
+            # MARKER_199.ELISION_ADAPTIVE: Select level by model capacity
+            _compress_level = arguments.get("compress_level")
+            if _compress_level is None:
+                if max_context_tokens <= 2000:
+                    _compress_level = 3  # Haiku-tier: aggressive compression
+                elif max_context_tokens <= 4000:
+                    _compress_level = 2  # Sonnet-tier: balanced
+                else:
+                    _compress_level = 1  # Opus-tier: minimal compression
+            _compress_level = max(1, min(5, int(_compress_level)))
+
             context_str = _json.dumps(context, default=str)
-            compressed = compressor.compress(context_str, level=2)
+            compressed = compressor.compress(context_str, level=_compress_level)
             if compressed and compressed.compressed:
-                # Parse back to dict for MCP response
                 compressed_context = _json.loads(compressed.compressed)
                 legend = compressed.legend
                 compressed_context["_elision"] = {
-                    "level": 2,
+                    "level": _compress_level,
                     "ratio": compressed.compression_ratio,
                     "legend": dict(list(legend.items())[:10]) if legend else {},
                 }
