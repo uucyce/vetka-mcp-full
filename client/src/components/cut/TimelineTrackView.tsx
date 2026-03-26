@@ -1798,7 +1798,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             top: 0,
             width: Math.max(2, (markOut - markIn) * zoom),
             height: RULER_HEIGHT,
-            background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(239, 68, 68, 0.2))',
+            background: 'rgba(255, 255, 255, 0.12)',
             pointerEvents: 'none',
             zIndex: 20,
           }}
@@ -2489,10 +2489,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             padding: '0 3px',
                             borderRadius: 2,
                             background: clip.speed < 0
-                              ? 'rgba(239, 68, 68, 0.8)'   // red for reverse
+                              ? 'rgba(200, 200, 200, 0.85)' // bright for reverse
                               : clip.speed < 1
-                                ? 'rgba(74, 222, 128, 0.7)' // green for slow-mo
-                                : 'rgba(251, 146, 60, 0.7)',// orange for speed-up
+                                ? 'rgba(120, 120, 120, 0.75)' // dim for slow-mo
+                                : 'rgba(170, 170, 170, 0.8)', // mid for speed-up
                             color: '#fff',
                             textShadow: '0 1px 2px rgba(0,0,0,0.8)',
                             lineHeight: '13px',
@@ -2957,8 +2957,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             width: Math.max(4, dragState.durationSec * zoom),
             height: trackHeight - 6,
             bottom: 'auto',
-            background: 'rgba(37, 99, 235, 0.28)',
-            border: '1px dashed rgba(96, 165, 250, 0.95)',
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: '1px dashed rgba(200, 200, 200, 0.8)',
             pointerEvents: 'none',
             zIndex: 120,
             cursor: dragState.mode === 'move' ? 'grabbing' : 'ew-resize',
