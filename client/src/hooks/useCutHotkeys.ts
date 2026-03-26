@@ -126,7 +126,14 @@ export type CutHotkeyAction =
   | 'runPulseAnalysis'
   | 'runAutoMontageFavorites'
   // MARKER_EXPORT: Timeline export
-  | 'exportTimeline';
+  | 'exportTimeline'
+  // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
+  | 'selectClipAtPlayhead'
+  | 'selectAllOnTrack'
+  | 'deselectAll'
+  | 'selectForward'
+  | 'toggleAVSelection'
+  | 'linkUnlinkClips';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -244,6 +251,13 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   runPulseAnalysis:    'global',
   runAutoMontageFavorites: 'global',
   exportTimeline:         'global',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead:   'global',
+  selectAllOnTrack:       'global',
+  deselectAll:            'global',
+  selectForward:          'global',
+  toggleAVSelection:      'global',
+  linkUnlinkClips:        'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -366,6 +380,13 @@ export const PREMIERE_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead: 'F6',
+  selectAllOnTrack:  'Alt+a',
+  deselectAll:       'Cmd+Shift+a',
+  selectForward:     'Alt+Shift+ArrowRight',
+  toggleAVSelection: 't',
+  // linkUnlinkClips: Premiere already has Cmd+L via toggleLinkedSelection — no separate alias needed
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -471,6 +492,13 @@ export const FCP7_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead: 'F6',
+  selectAllOnTrack:  'Alt+a',
+  deselectAll:       'Cmd+Shift+a',
+  selectForward:     'Alt+Shift+ArrowRight',
+  toggleAVSelection: 't',
+  linkUnlinkClips:   'Cmd+l',  // Premiere Cmd+L alias (FCP7 uses Shift+L via toggleLinkedSelection)
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -706,6 +734,13 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'runAutoMontageFavorites', label: 'Auto-Montage: Favorites', group: 'PULSE' },
   // MARKER_EXPORT
   { action: 'exportTimeline', label: 'Export Timeline (Premiere XML)', group: 'File' },
+  // MARKER_SEL6: Selection actions
+  { action: 'selectClipAtPlayhead', label: 'Select Clip at Playhead (F6)', group: 'Selection' },
+  { action: 'selectAllOnTrack', label: 'Select All on Track (Alt+A)', group: 'Selection' },
+  { action: 'deselectAll', label: 'Deselect All (Cmd+Shift+A)', group: 'Selection' },
+  { action: 'selectForward', label: 'Select Forward from Playhead', group: 'Selection' },
+  { action: 'toggleAVSelection', label: 'Toggle A/V Selection Target (T)', group: 'Selection' },
+  { action: 'linkUnlinkClips', label: 'Link/Unlink Clips (Cmd+L)', group: 'Selection' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────

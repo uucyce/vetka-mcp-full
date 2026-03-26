@@ -903,6 +903,76 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_EXPORT: Export timeline (Cmd+E → default Premiere XML)
     exportTimeline: () => useCutEditorStore.getState().exportTimeline('premiere-xml'),
 
+    // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
+    // F6 — select clip at playhead position
+    selectClipAtPlayhead: () => {
+      const s = useCutEditorStore.getState();
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            s.setSelectedClip(clip.clip_id);
+            return;
+          }
+        }
+      }
+    },
+    // Alt+A — select all clips on the same track as the currently selected clip
+    selectAllOnTrack: () => {
+      const s = useCutEditorStore.getState();
+      const selId = s.selectedClipId;
+      if (!selId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === selId)) {
+          const ids = new Set(lane.clips.map((c) => c.clip_id));
+          useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: selId });
+          return;
+        }
+      }
+    },
+    // Cmd+Shift+A — deselect all
+    deselectAll: () => {
+      useCutEditorStore.getState().clearSelection();
+    },
+    // Alt+Shift+Right — select all clips forward from playhead
+    selectForward: () => {
+      const s = useCutEditorStore.getState();
+      const ids = new Set<string>();
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (clip.start_sec >= s.currentTime - 0.001) {
+            ids.add(clip.clip_id);
+          }
+        }
+      }
+      if (ids.size > 0) {
+        useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: [...ids][0] });
+      }
+    },
+    // T — toggle A/V selection targeting (cycle: all → video-only → audio-only → all)
+    toggleAVSelection: () => {
+      const s = useCutEditorStore.getState();
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video')).map((l) => l.lane_id);
+      const audioLanes = s.lanes.filter((l) => l.lane_type.startsWith('audio')).map((l) => l.lane_id);
+      const targeted = s.targetedLanes;
+      const allTargeted = [...videoLanes, ...audioLanes].every((id) => targeted.has(id));
+      const onlyVideo = videoLanes.every((id) => targeted.has(id)) && audioLanes.every((id) => !targeted.has(id));
+      let next: Set<string>;
+      if (allTargeted || targeted.size === 0) {
+        next = new Set(videoLanes);       // → video only
+      } else if (onlyVideo) {
+        next = new Set(audioLanes);       // → audio only
+      } else {
+        next = new Set([...videoLanes, ...audioLanes]); // → all
+      }
+      useCutEditorStore.setState({ targetedLanes: next });
+    },
+    // Cmd+L — link/unlink clips (alias for toggleLinkedSelection)
+    linkUnlinkClips: () => {
+      useCutEditorStore.getState().toggleLinkedSelection();
+    },
+
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
     focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
     focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
