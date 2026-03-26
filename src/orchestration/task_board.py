@@ -82,17 +82,20 @@ VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
-# Counter for generating IDs
-_task_counter = 0
+# MARKER_198.ID_FIX: Replaced per-process counter with random suffix
+# Old: _task_counter (RAM, reset on restart → ID collisions across worktrees)
+# New: microsecond timestamp + 4-char random hex (collision probability ~1 in 65K per microsecond)
+import random as _random
 DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
 DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 
 
 def _generate_task_id() -> str:
-    """Generate unique task ID."""
-    global _task_counter
-    _task_counter += 1
-    return f"tb_{int(time.time())}_{_task_counter}"
+    """Generate unique task ID. Uses microsecond timestamp + random hex suffix."""
+    _ts = int(time.time())
+    _us = int((time.time() % 1) * 1000000)  # microsecond component
+    _rnd = _random.randint(0, 0xFFFF)
+    return f"tb_{_ts}_{_us:06d}_{_rnd:04x}"
 
 
 class TaskBoard:
@@ -348,8 +351,36 @@ class TaskBoard:
                 task[field] = None
         return task
 
+    def _insert_task(self, task: dict):
+        """MARKER_198.ID_FIX: INSERT only — fails on collision instead of silent overwrite.
+
+        Used by add_task(). Retries with new ID on collision (up to 3 attempts).
+        """
+        import sqlite3 as _sqlite3
+        for _attempt in range(3):
+            if _attempt > 0:
+                # Regenerate ID on collision
+                task["id"] = _generate_task_id()
+                logger.warning(f"[TaskBoard] ID collision, retry #{_attempt} with {task['id']}")
+            row = self._task_to_row(task)
+            row["updated_at"] = datetime.now().isoformat()
+            columns = list(row.keys())
+            placeholders = ", ".join("?" for _ in columns)
+            col_names = ", ".join(columns)
+            values = [row[c] for c in columns]
+            try:
+                with self.db:
+                    self.db.execute(
+                        f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
+                        values,
+                    )
+                return task["id"]  # success
+            except _sqlite3.IntegrityError:
+                continue  # collision — retry with new ID
+        raise ValueError(f"Failed to insert task after 3 attempts — persistent ID collision")
+
     def _save_task(self, task: dict):
-        """INSERT OR REPLACE a single task into SQLite.
+        """INSERT OR REPLACE a single task into SQLite (for updates to existing tasks).
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
         """
@@ -1112,11 +1143,14 @@ class TaskBoard:
                 "protocol_version": task_payload.get("protocol_version") or "",
             },
         )
-        self.tasks[task_id] = task_payload
-        self._save_task(task_payload)
+        # MARKER_198.ID_FIX: Use _insert_task (INSERT only, retry on collision)
+        # instead of _save_task (INSERT OR REPLACE, silent overwrite)
+        actual_id = self._insert_task(task_payload)
+        task_payload["id"] = actual_id  # may have changed on retry
+        self.tasks[actual_id] = task_payload
         self._notify_board_update("added")
-        logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
-        return task_id
+        logger.info(f"[TaskBoard] Added task {actual_id}: {title} (P{priority}, {phase_type})")
+        return actual_id
 
     # MARKER_155.2A: Auto-assign module from task content
     # Maps keywords in title/description/tags to roadmap module IDs
@@ -2430,7 +2464,7 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str, strategy: Optional[str] = None) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
@@ -2468,7 +2502,8 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        strategy = task.get("merge_strategy", "cherry-pick")
+        # MARKER_198.MERGE: Strategy override from caller takes precedence
+        strategy = strategy or task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
@@ -2614,7 +2649,18 @@ class TaskBoard:
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
         """
+        _stashed = False
         try:
+            # MARKER_198.MERGE: Auto-stash dirty working tree before merge
+            proc = await asyncio.create_subprocess_exec(
+                "git", "stash", "push", "-m", "taskboard-merge-autostash",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _stash_out, _ = await proc.communicate()
+            _stashed = b"Saved working directory" in _stash_out
+
             # Ensure we're on main
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
@@ -2622,7 +2668,11 @@ class TaskBoard:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await proc.communicate()
+            _co_out, _co_err = await proc.communicate()
+            if proc.returncode != 0:
+                if _stashed:
+                    await asyncio.create_subprocess_exec("git", "stash", "pop", cwd=str(PROJECT_ROOT))
+                return {"status": "error", "error": f"Failed to checkout main: {_co_err.decode().strip()}"}
 
             if strategy == "cherry-pick":
                 # Cherry-pick commits in order (oldest first)
@@ -2716,9 +2766,25 @@ class TaskBoard:
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
 
+            # MARKER_198.MERGE: Restore stashed changes
+            if _stashed:
+                await asyncio.create_subprocess_exec(
+                    "git", "stash", "pop", cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                )
+
             return {"success": True, "commit_hash": commit_hash}
 
         except Exception as e:
+            # Restore stash on failure too
+            if _stashed:
+                try:
+                    await asyncio.create_subprocess_exec(
+                        "git", "stash", "pop", cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                    )
+                except Exception:
+                    pass
             return {"success": False, "error": f"Merge execution failed: {e}"}
 
     async def _count_tests(self) -> int:
