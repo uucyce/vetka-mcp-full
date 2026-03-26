@@ -488,14 +488,28 @@ class SessionInitTool(BaseMCPTool):
                             _corpus.append(f"[{_cat}] {_val[:200]}")
                             _corpus_labels.append(f"engram.{_cat}.{_entry.get('key', '?')[:40]}")
 
-                # Semantic lessons (Qdrant L2)
-                _sl = context.get("semantic_lessons", "")
-                if isinstance(_sl, str) and _sl:
-                    for _line in _sl.strip().split("\n"):
-                        _line = _line.strip("- ").strip()
-                        if _line and len(_line) > 10:
-                            _corpus.append(_line[:200])
-                            _corpus_labels.append("qdrant_l2")
+                # MARKER_198.P3.L2: Structured Qdrant L2 search (replaces string-split)
+                try:
+                    from src.orchestration.resource_learnings import get_learning_store
+                    _l2_store = get_learning_store()
+                    _l2_results = _l2_store.search_learnings_sync(
+                        query=_intent, limit=15,
+                    )
+                    for _lr in _l2_results:
+                        _l2_text = _lr.get("text", "")
+                        if _l2_text and len(_l2_text) > 10:
+                            _l2_cat = _lr.get("category", "unknown")
+                            _corpus.append(f"[{_l2_cat}] {_l2_text[:200]}")
+                            _corpus_labels.append(f"qdrant_l2.{_l2_cat}")
+                except Exception:
+                    # Fallback to old string-split if Qdrant unavailable
+                    _sl = context.get("semantic_lessons", "")
+                    if isinstance(_sl, str) and _sl:
+                        for _line in _sl.strip().split("\n"):
+                            _line = _line.strip("- ").strip()
+                            if _line and len(_line) > 10:
+                                _corpus.append(_line[:200])
+                                _corpus_labels.append("qdrant_l2")
 
                 # Top pending tasks
                 for _t in _top_tasks[:10]:
