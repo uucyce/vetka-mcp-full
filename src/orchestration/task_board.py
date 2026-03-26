@@ -82,20 +82,17 @@ VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
-# MARKER_198.ID_FIX: Replaced per-process counter with random suffix
-# Old: _task_counter (RAM, reset on restart → ID collisions across worktrees)
-# New: microsecond timestamp + 4-char random hex (collision probability ~1 in 65K per microsecond)
-import random as _random
+# Counter for generating IDs
+_task_counter = 0
 DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
 DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 
 
 def _generate_task_id() -> str:
-    """Generate unique task ID. Uses microsecond timestamp + random hex suffix."""
-    _ts = int(time.time())
-    _us = int((time.time() % 1) * 1000000)  # microsecond component
-    _rnd = _random.randint(0, 0xFFFF)
-    return f"tb_{_ts}_{_us:06d}_{_rnd:04x}"
+    """Generate unique task ID."""
+    global _task_counter
+    _task_counter += 1
+    return f"tb_{int(time.time())}_{_task_counter}"
 
 
 class TaskBoard:
@@ -113,6 +110,17 @@ class TaskBoard:
     # MARKER_133.C33C: Class-level semaphore for concurrent dispatch limiting
     _dispatch_semaphore: Optional[asyncio.Semaphore] = None
     _dispatch_semaphore_size: int = 2  # Default max concurrent
+
+    # MARKER_198.WORKTREE_GUARD: Protected role worktrees — never auto-remove
+    # Source of truth: data/templates/agent_registry.yaml
+    PROTECTED_WORKTREES = frozenset({
+        "cut-engine",    # Alpha
+        "cut-media",     # Beta
+        "cut-ux",        # Gamma
+        "cut-qa",        # Delta
+        "cut-qa-2",      # Epsilon
+        "harness",       # Zeta
+    })
 
     @classmethod
     def _get_dispatch_semaphore(cls, max_concurrent: int = 2) -> asyncio.Semaphore:
@@ -351,36 +359,8 @@ class TaskBoard:
                 task[field] = None
         return task
 
-    def _insert_task(self, task: dict):
-        """MARKER_198.ID_FIX: INSERT only — fails on collision instead of silent overwrite.
-
-        Used by add_task(). Retries with new ID on collision (up to 3 attempts).
-        """
-        import sqlite3 as _sqlite3
-        for _attempt in range(3):
-            if _attempt > 0:
-                # Regenerate ID on collision
-                task["id"] = _generate_task_id()
-                logger.warning(f"[TaskBoard] ID collision, retry #{_attempt} with {task['id']}")
-            row = self._task_to_row(task)
-            row["updated_at"] = datetime.now().isoformat()
-            columns = list(row.keys())
-            placeholders = ", ".join("?" for _ in columns)
-            col_names = ", ".join(columns)
-            values = [row[c] for c in columns]
-            try:
-                with self.db:
-                    self.db.execute(
-                        f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
-                        values,
-                    )
-                return task["id"]  # success
-            except _sqlite3.IntegrityError:
-                continue  # collision — retry with new ID
-        raise ValueError(f"Failed to insert task after 3 attempts — persistent ID collision")
-
     def _save_task(self, task: dict):
-        """INSERT OR REPLACE a single task into SQLite (for updates to existing tasks).
+        """INSERT OR REPLACE a single task into SQLite.
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
         """
@@ -1143,14 +1123,11 @@ class TaskBoard:
                 "protocol_version": task_payload.get("protocol_version") or "",
             },
         )
-        # MARKER_198.ID_FIX: Use _insert_task (INSERT only, retry on collision)
-        # instead of _save_task (INSERT OR REPLACE, silent overwrite)
-        actual_id = self._insert_task(task_payload)
-        task_payload["id"] = actual_id  # may have changed on retry
-        self.tasks[actual_id] = task_payload
+        self.tasks[task_id] = task_payload
+        self._save_task(task_payload)
         self._notify_board_update("added")
-        logger.info(f"[TaskBoard] Added task {actual_id}: {title} (P{priority}, {phase_type})")
-        return actual_id
+        logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
+        return task_id
 
     # MARKER_155.2A: Auto-assign module from task content
     # Maps keywords in title/description/tags to roadmap module IDs
@@ -1403,6 +1380,20 @@ class TaskBoard:
             logger.info(f"[TaskBoard] Cleaned {cleaned} stale tasks")
 
         return cleaned
+
+    # ==========================================
+    # MARKER_198.WORKTREE_GUARD: WORKTREE PROTECTION
+    # ==========================================
+
+    def _is_protected_worktree(self, worktree_name: str) -> bool:
+        """Check if worktree is a protected role worktree.
+
+        MARKER_198.WORKTREE_GUARD: These worktrees are permanent infrastructure.
+        They should never be auto-removed, even if their branch is merged.
+        """
+        # Normalize: ".claude/worktrees/cut-engine" → "cut-engine"
+        name = worktree_name.rstrip("/").split("/")[-1]
+        return name in self.PROTECTED_WORKTREES
 
     # ==========================================
     # MARKER_198.STALE: STALE TASK DETECTION
@@ -2464,7 +2455,7 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str, strategy: Optional[str] = None) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
@@ -2502,8 +2493,7 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        # MARKER_198.MERGE: Strategy override from caller takes precedence
-        strategy = strategy or task.get("merge_strategy", "cherry-pick")
+        strategy = task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
@@ -2649,18 +2639,7 @@ class TaskBoard:
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
         """
-        _stashed = False
         try:
-            # MARKER_198.MERGE: Auto-stash dirty working tree before merge
-            proc = await asyncio.create_subprocess_exec(
-                "git", "stash", "push", "-m", "taskboard-merge-autostash",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _stash_out, _ = await proc.communicate()
-            _stashed = b"Saved working directory" in _stash_out
-
             # Ensure we're on main
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
@@ -2668,11 +2647,15 @@ class TaskBoard:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            _co_out, _co_err = await proc.communicate()
-            if proc.returncode != 0:
-                if _stashed:
-                    await asyncio.create_subprocess_exec("git", "stash", "pop", cwd=str(PROJECT_ROOT))
-                return {"status": "error", "error": f"Failed to checkout main: {_co_err.decode().strip()}"}
+            await proc.communicate()
+
+            # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
+            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
+            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
+            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
+            claude_md_backup = None
+            if claude_md_path.exists():
+                claude_md_backup = claude_md_path.read_text()
 
             if strategy == "cherry-pick":
                 # Cherry-pick commits in order (oldest first)
@@ -2756,6 +2739,29 @@ class TaskBoard:
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
+            if claude_md_backup is not None and claude_md_path.exists():
+                current_content = claude_md_path.read_text()
+                if current_content != claude_md_backup:
+                    claude_md_path.write_text(claude_md_backup)
+                    # Stage the restoration
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "add", "CLAUDE.md",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    # Amend the last commit to exclude the agent's CLAUDE.md change
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "commit", "--amend", "--no-edit",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
+
             # Get resulting commit hash
             proc = await asyncio.create_subprocess_exec(
                 "git", "rev-parse", "HEAD",
@@ -2766,25 +2772,9 @@ class TaskBoard:
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
 
-            # MARKER_198.MERGE: Restore stashed changes
-            if _stashed:
-                await asyncio.create_subprocess_exec(
-                    "git", "stash", "pop", cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                )
-
             return {"success": True, "commit_hash": commit_hash}
 
         except Exception as e:
-            # Restore stash on failure too
-            if _stashed:
-                try:
-                    await asyncio.create_subprocess_exec(
-                        "git", "stash", "pop", cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-                    )
-                except Exception:
-                    pass
             return {"success": False, "error": f"Merge execution failed: {e}"}
 
     async def _count_tests(self) -> int:
