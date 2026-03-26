@@ -113,6 +113,7 @@ ELISION_MAP = {
     "session_id": "sid",
     "reflex_recommendations": "rr",
     "engram_learnings": "el",
+    "jepa_session_lens": "jsl",
     "task_board_summary": "tbs",
     "predecessor_advice": "pa",
     "protocol_status": "ps",
