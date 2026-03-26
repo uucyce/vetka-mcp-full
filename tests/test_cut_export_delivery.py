@@ -204,7 +204,7 @@ class TestThumbnailGeneration:
 class TestSocketIOProgress:
     def test_emit_function_exists(self) -> None:
         """_emit_render_progress should be importable and not crash on call."""
-        # Import from cut_routes — it's a module-level function
+        # B41 extracted render routes to cut_routes_render.py
         # We can't easily test SocketIO emit without a running server,
         # but we verify the function exists and handles errors gracefully.
         from src.api.routes.cut_routes_render import _emit_render_progress

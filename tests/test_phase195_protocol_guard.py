@@ -448,7 +448,12 @@ class TestSingletonAndConfig:
         s = tracker.get_session(SID)
         s.claimed_task_has_recon_docs = True
 
-        violations = guard.check(s, "Edit", {"file_path": "src/services/foo.py"})
+        # Mock trust modulation so REFLEX emotions don't downgrade severity
+        from unittest.mock import patch, MagicMock
+        mock_emo = MagicMock()
+        mock_emo.get_emotion_state.return_value = MagicMock(trust=0.5)
+        with patch("src.services.reflex_emotions.get_reflex_emotions", return_value=mock_emo):
+            violations = guard.check(s, "Edit", {"file_path": "src/services/foo.py"})
         read_violations = [v for v in violations if v.rule_id == "read_before_edit"]
 
         assert len(read_violations) == 1
