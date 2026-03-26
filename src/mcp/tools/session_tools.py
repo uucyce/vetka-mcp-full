@@ -1346,7 +1346,7 @@ class SessionInitTool(BaseMCPTool):
                 if _role_brief:
                     _digest["role_brief"] = _role_brief
 
-            # 5. PULSE — project heartbeat stats (cheap: task_board summary + git log)
+            # 5. ACTIVITY — project stats for last 24h (git log + task board velocity)
             try:
                 import subprocess as _sp
                 # Recent commits (24h, all branches) — grouped by author
@@ -1381,9 +1381,9 @@ class SessionInitTool(BaseMCPTool):
                     if _cortex:
                         _pulse["cortex_success_rate"] = _cortex.get("success_rate", 0)
                         _pulse["cortex_entries"] = _cortex.get("entries", 0)
-                    _digest["pulse"] = _pulse
+                    _digest["activity"] = _pulse
             except Exception:
-                pass  # Pulse is best-effort
+                pass  # Activity is best-effort
 
             # 6. OWNERSHIP ALERT — files in my owned_paths touched by others
             if _role_ctx and _role_ctx.get("owned_paths"):
