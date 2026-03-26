@@ -2455,10 +2455,11 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str, strategy: str = None) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
+        MARKER_198.MERGE: Accept strategy param from task_board_tools.
 
         Flow:
         1. Validate task has branch_name
@@ -2493,7 +2494,8 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        strategy = task.get("merge_strategy", "cherry-pick")
+        if strategy is None:
+            strategy = task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
