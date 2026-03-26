@@ -23,6 +23,8 @@ export interface RecoveryInfo {
 
 export function useCutSaveSystem() {
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
+  const hasUnsavedChanges = useCutEditorStore((s) => s.hasUnsavedChanges);
+  const saveStatus = useCutEditorStore((s) => s.saveStatus);
   const recoveryRef = useRef<RecoveryInfo | null>(null);
 
   // ── Save project (delegates to the same backend as useCutAutosave) ──
