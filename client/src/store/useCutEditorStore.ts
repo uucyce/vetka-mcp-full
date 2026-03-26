@@ -53,6 +53,19 @@ export type ClipEffects = {
   saturation: number;   // 0..2, default 1
   blur: number;         // 0..20, default 0 (px radius)
   opacity: number;      // 0..1, default 1
+  // MARKER_EFX_EXT: Extended effect params (EffectsPanel categories)
+  gamma: number;        // 0.2..3, default 1 (gamma correction)
+  sharpen: number;      // 0..5, default 0 (unsharp mask)
+  denoise: number;      // 0..10, default 0 (noise reduction)
+  vignette: number;     // 0..1, default 0 (edge darkening)
+  crop_top: number;     // 0..0.5, default 0 (fraction)
+  crop_bottom: number;  // 0..0.5, default 0
+  crop_left: number;    // 0..0.5, default 0
+  crop_right: number;   // 0..0.5, default 0
+  hflip: number;        // 0 | 1, default 0 (horizontal flip)
+  vflip: number;        // 0 | 1, default 0 (vertical flip)
+  fade_in: number;      // 0..5, default 0 (seconds)
+  fade_out: number;     // 0..5, default 0 (seconds)
 };
 
 export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
@@ -61,6 +74,18 @@ export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
   saturation: 1,
   blur: 0,
   opacity: 1,
+  gamma: 1,
+  sharpen: 0,
+  denoise: 0,
+  vignette: 0,
+  crop_top: 0,
+  crop_bottom: 0,
+  crop_left: 0,
+  crop_right: 0,
+  hflip: 0,
+  vflip: 0,
+  fade_in: 0,
+  fade_out: 0,
 };
 
 // MARKER_TRANSITION: Transition between clips (FCP7 Ch.47)
