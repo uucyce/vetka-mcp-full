@@ -498,14 +498,21 @@ class ReflexScorer:
     def score(self, tool: Any, context: ReflexContext) -> float:
         """Score a single tool against context. Returns 0.0-1.0.
 
-        MARKER_195.2.3: Now applies emotion modifier (same as recommend()).
+        MARKER_199.EMOTION_SCORE: Emotion modifier is applied here (same as recommend()).
+        final_score = base_score * emotion_modifier(curiosity, trust, caution)
+        Modifier is clamped to [0.3, 1.5]; result is clamped to [0.0, 1.0].
+        Emotion errors are swallowed — they must never break scoring.
+
+        Previous: MARKER_195.2.3 (initial wiring, single-signal only).
+        Now: full EmotionContext with agent_id, phase_type, permission (parity with recommend()).
         """
         if not REFLEX_ENABLED:
             return 0.0
         signals = self.score_signals(tool, context)
         total = self._weighted_sum(signals)
 
-        # MARKER_195.2.3: Apply emotion modifier to single-tool scoring
+        # MARKER_199.EMOTION_SCORE: Apply emotion modifier to single-tool scoring.
+        # Builds EmotionContext identical to recommend() so both paths are consistent.
         try:
             from src.services.reflex_emotions import get_reflex_emotions, EmotionContext as EmoCtx
             emotion_engine = get_reflex_emotions()
@@ -514,6 +521,11 @@ class ReflexScorer:
                 agent_id=context.extra.get("agent_type", ""),
                 phase_type=context.phase_type,
                 tool_permission=getattr(tool, "permission", "READ"),
+                is_foreign_file=context.extra.get("is_foreign_file", False),
+                has_recon=context.extra.get("has_recon", True),
+                guard_warnings=context.extra.get("guard_warnings", []),
+                freshness_score=context.extra.get("freshness_score", 0.0),
+                protocol_violation_count=context.extra.get("protocol_violation_count", 0),
             )
             breakdown = emotion_engine.get_modifier_breakdown(tool_id, emo_ctx)
             emo_modifier = breakdown.get("modifier", 1.0)
