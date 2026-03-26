@@ -12,6 +12,7 @@ import {
 import { useCutEditorStore } from './store/useCutEditorStore';
 import { useTimelineInstanceStore } from './store/useTimelineInstanceStore';
 import { usePanelSyncBridge } from './hooks/usePanelSyncBridge';
+import { useCutSaveSystem } from './hooks/useCutSaveSystem';
 
 type CutProject = {
   project_id: string;
@@ -524,6 +525,8 @@ export default function CutStandalone() {
 
   // MARKER_W1.1: Bridge PanelSyncStore → EditorStore (script/DAG clicks → source monitor + playhead)
   usePanelSyncBridge();
+  // MARKER_W4.3: Save system (Cmd+S, beforeunload guard, recovery check)
+  const { checkRecovery, recoverFromSnapshot } = useCutSaveSystem();
 
   const query = useMemo(parseQuery, []);
   const playerLabInputRef = useRef<HTMLInputElement | null>(null);
@@ -853,6 +856,23 @@ export default function CutStandalone() {
       }
       setProjectId(payload.project.project_id);
       await refreshProjectState(payload.project.project_id);
+
+      // MARKER_W4.3: Check for crash recovery after project load
+      const recovery = await checkRecovery();
+      if (recovery?.recovery_available && recovery.snapshot_dir) {
+        const doRecover = window.confirm(
+          `Autosave found from ${recovery.autosave_at || 'unknown time'}.\n` +
+          `Last explicit save: ${recovery.last_save_at || 'never'}.\n\n` +
+          'Recover from autosave?'
+        );
+        if (doRecover) {
+          const ok = await recoverFromSnapshot(recovery.snapshot_dir);
+          if (ok) {
+            await refreshProjectState(payload.project.project_id);
+            setStatus('Recovered from autosave');
+          }
+        }
+      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Bootstrap failed');
     } finally {
