@@ -437,6 +437,31 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             max_limit = min(int(arguments.get("limit") or 40), 100)
             page = tasks[:max_limit]
 
+        # MARKER_198.JEPA_TASK_LENS: Re-rank tasks by semantic relevance to agent role
+        if _session_role and len(page) >= 3:
+            try:
+                import os as _os
+                if _os.environ.get("VETKA_TASK_JEPA_RANK", "1") != "0":
+                    from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+                    _role_intent = f"role:{_session_role['callsign']} domain:{_session_role.get('domain', '')} {_session_role.get('role_title', '')}"
+                    _task_texts = [f"{t.get('title', '')} {t.get('description', '')[:100]}" for t in page]
+                    _all = [_role_intent] + _task_texts
+                    _emb = embed_texts_for_overlay(_all, target_dim=128)
+                    if _emb.vectors and len(_emb.vectors) == len(_all):
+                        _iv = _emb.vectors[0]
+                        _scores = []
+                        for _idx, _tv in enumerate(_emb.vectors[1:]):
+                            _dot = sum(float(_iv[j]) * float(_tv[j]) for j in range(len(_iv)))
+                            _na = sum(float(_iv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            _nb = sum(float(_tv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            _sim = _dot / (_na * _nb) if _na > 1e-12 and _nb > 1e-12 else 0.0
+                            _scores.append((_idx, _sim))
+                        # Stable sort: primary=relevance score desc, secondary=original priority asc
+                        _scores.sort(key=lambda x: (-x[1], page[x[0]].get("priority", 5)))
+                        page = [page[_idx] for _idx, _ in _scores]
+            except Exception:
+                pass  # JEPA task lens never blocks list
+
         # MARKER_198.ROLE: Personalized list — own tasks first, others collapsed
         # Determine current agent's callsign from session or explicit role= argument
         _my_callsign = None
