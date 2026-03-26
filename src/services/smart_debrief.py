@@ -246,8 +246,8 @@ def process_smart_debrief(report) -> dict:
 
     # 1. Auto-create tasks
     try:
-        from src.orchestration.task_board import TaskBoard
-        board = TaskBoard()
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
         results["tasks_created"] = _create_auto_tasks(report, board)
     except Exception as e:
         logger.debug("[SmartDebrief] Task creation skipped: %s", e)

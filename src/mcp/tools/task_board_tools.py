@@ -1559,15 +1559,18 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
     # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
     # Collects: session role, tasks completed, files touched, CORTEX tool stats.
     # Even if agent never answers debrief Qs, we get a baseline report.
-    try:
-        _passive_report_created = _create_passive_experience_report(
-            arguments,
-            result,
-        )
-        if _passive_report_created:
-            result["passive_report"] = True
-    except Exception as e:
-        logger.warning("[Debrief] passive report failed (non-fatal): %s", e)
+    # MARKER_199.PERF: Fire-and-forget in daemon thread — debrief pipeline has sync HTTP
+    # calls to Ollama+Qdrant (~300-2500ms) that should never block action=complete response.
+    import threading
+
+    def _bg_passive_report():
+        try:
+            _create_passive_experience_report(arguments, result)
+        except Exception as e:
+            logger.warning("[Debrief] passive report failed (non-fatal): %s", e)
+
+    threading.Thread(target=_bg_passive_report, daemon=True, name="debrief-passive").start()
+    result["passive_report"] = True  # optimistic — thread will log if it fails
 
 
 def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
@@ -1604,9 +1607,9 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
     task_assigned_to = ""
     if task_id:
         try:
-            from src.orchestration.task_board import TaskBoard
+            from src.orchestration.task_board import get_task_board
 
-            _tb = TaskBoard()
+            _tb = get_task_board()
             _task_meta = _tb.get_task(task_id)
             if _task_meta:
                 task_assigned_to = _task_meta.get("assigned_to", "") or ""
@@ -1660,9 +1663,9 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     # Enrich with CORTEX tool stats
     try:
-        from src.services.reflex_feedback import ReflexFeedback
+        from src.services.reflex_feedback import get_reflex_feedback
 
-        fb = ReflexFeedback()
+        fb = get_reflex_feedback()
         summary = fb.get_feedback_summary()
         if summary and summary.get("total_entries", 0) > 0:
             report.reflex_summary = {

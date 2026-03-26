@@ -223,7 +223,7 @@ class TaskBoard:
         """Close SQLite connection and checkpoint WAL."""
         if hasattr(self, 'db') and self.db:
             try:
-                self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 self.db.close()
             except Exception:
                 pass
