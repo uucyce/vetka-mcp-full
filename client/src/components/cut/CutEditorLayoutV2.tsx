@@ -31,6 +31,8 @@ import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
+import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 
 
 // ─── Styles ───
@@ -916,6 +918,59 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
+
+    // MARKER_GAMMA-P1: 6 new FCP7 UI actions
+    editMarkerDialog: () => {
+      const s = useCutEditorStore.getState();
+      // Find marker nearest to playhead (within 0.1s tolerance)
+      const marker = s.markers.find((m) =>
+        Math.abs(m.start_sec - s.currentTime) < 0.1
+      );
+      if (marker) {
+        s.setShowEditMarkerDialog(true, marker.marker_id);
+      }
+    },
+    timecodeEntry: () => {
+      useCutEditorStore.getState().setShowTimecodeEntry(true);
+    },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      const s = useCutEditorStore.getState();
+      // Toggle between minimum (28) and default (56) height
+      if (s.trackHeight <= 28) {
+        s.setTrackHeight(56);
+      } else {
+        s.setTrackHeight(28);
+      }
+    },
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      const selected = s.selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
+    },
+    toggleTimelineDisplayMode: () => {
+      useCutEditorStore.getState().cycleTimelineDisplayMode();
+    },
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
@@ -1007,6 +1062,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
+      <EditMarkerDialog />
+      <TimecodeEntryOverlay />
       <SaveIndicator />
     </div>
   );
