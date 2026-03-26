@@ -148,3 +148,17 @@ Every store method called by handlers exists and is implemented in `useCutEditor
 | WebSocket reconnect | Present | Required | PASS |
 | Inline styles (timeline) | **73** | <100 | PASS (baseline) |
 | Chunk size limit | OK | ≤1000KB | PASS |
+
+### Performance Architecture Findings
+
+| Area | Status | Gap |
+|------|--------|-----|
+| React.memo | Partial — icons + Ruler + ResizeHandle | **TimelineTrackView, CutEditorLayoutV2 NOT memoized** |
+| useMemo/useCallback | Good in TimelineTrackView (25+ callbacks) | CutEditorLayoutV2 has no memoized derived state |
+| Virtual scrolling | **Not implemented** | react-window installed but unused; all clips in DOM |
+| Debounce/throttle | Hand-rolled 100ms timestamps | No timeline interaction debounce |
+| Web Workers | **None** | All heavy compute server-side (FFmpeg, Whisper) |
+| Canvas rendering | Extensive Canvas 2D for waveforms/scopes | Timeline clips are DOM divs, not canvas |
+| Bundle splitting | **No manual strategy** | Single entry bundle, no vendor isolation |
+
+**Risk assessment:** With <50 clips, DOM rendering is fine. At 200+ clips (multicam), virtual scrolling becomes critical. `react-window` is already a dependency — just needs wiring.
