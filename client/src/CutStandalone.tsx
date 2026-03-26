@@ -542,7 +542,7 @@ export default function CutStandalone() {
 
   // MARKER_W1.1: Bridge PanelSyncStore → EditorStore (script/DAG clicks → source monitor + playhead)
   usePanelSyncBridge();
-  // MARKER_W4.3: Save system (Cmd+S, autosave timer, beforeunload guard)
+  // MARKER_W4.3: Save system (Cmd+S, beforeunload guard, recovery check)
   const { checkRecovery, recoverFromSnapshot } = useCutSaveSystem();
 
   const query = useMemo(parseQuery, []);
