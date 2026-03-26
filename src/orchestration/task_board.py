@@ -259,7 +259,7 @@ class TaskBoard:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -348,11 +348,21 @@ class TaskBoard:
                         tokenize='unicode61'
                     );
                 """)
-                self._backfill_fts()
                 self._set_schema_version(1)
                 logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e).lower():
+                    logger.warning("[TaskBoard] Migration 1 deferred — database locked")
+                    return  # Will retry on next init
+                logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
             except Exception as e:
                 logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+
+        # Backfill runs separately — even if migration already done, backfill retries if empty
+        try:
+            self._backfill_fts()
+        except Exception:
+            pass  # Backfill is non-critical, retries on next init
 
     # ==========================================
     # MARKER_199.FTS5: Full-Text Search
@@ -395,7 +405,11 @@ class TaskBoard:
             pass
 
     def _backfill_fts(self):
-        """MARKER_199.FTS5: One-time backfill of all existing tasks into FTS5 index."""
+        """MARKER_199.FTS5: One-time backfill of all existing tasks into FTS5 index.
+
+        Uses batched commits (100 per batch) to avoid holding a write lock
+        for the entire backfill. If locked, skips gracefully — next init retries.
+        """
         try:
             existing = self.db.execute("SELECT COUNT(*) FROM tasks_fts").fetchone()[0]
             if existing > 0:
@@ -403,14 +417,26 @@ class TaskBoard:
         except Exception:
             return  # Table doesn't exist yet
 
-        cursor = self.db.execute("SELECT * FROM tasks")
-        count = 0
-        for row in cursor:
-            task = self._row_to_task(row)
-            self._index_task_fts(task)
-            count += 1
-        self.db.commit()
-        logger.info(f"[FTS5] Backfilled {count} tasks into full-text index")
+        try:
+            cursor = self.db.execute("SELECT * FROM tasks")
+            count = 0
+            batch = 0
+            for row in cursor:
+                task = self._row_to_task(row)
+                self._index_task_fts(task)
+                count += 1
+                batch += 1
+                if batch >= 100:
+                    self.db.commit()
+                    batch = 0
+            if batch > 0:
+                self.db.commit()
+            logger.info(f"[FTS5] Backfilled {count} tasks into full-text index")
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logger.warning("[FTS5] Backfill skipped — database locked. Will retry on next init.")
+            else:
+                logger.warning(f"[FTS5] Backfill failed: {e}")
 
     def search_fts(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
         """MARKER_199.FTS5: Full-text search across tasks.
