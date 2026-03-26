@@ -585,6 +585,7 @@ export default function MenuBar() {
         { label: 'Make Subclip', shortcut: '⌘U', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', metaKey: true }));
         }},
+        { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
           // Scale selected clip resolution to match sequence resolution
