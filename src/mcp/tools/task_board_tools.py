@@ -176,6 +176,10 @@ TASK_BOARD_SCHEMA = {
         # MARKER_191.16: close / bulk_close fields
         "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
         "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close or bulk complete via action=complete)"},
+        # MARKER_198.STALE: stale_check parameters
+        "auto_close": {"type": "boolean", "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run)."},
+        # MARKER_198.MERGE: merge_request strategy
+        "strategy": {"type": "string", "enum": ["cherry-pick", "merge", "squash"], "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit."},
     },
     "required": ["action"]
 }
@@ -856,11 +860,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         agents = board.get_active_agents()
         return {"success": True, "agents": agents, "count": len(agents)}
 
-    # MARKER_184.5: merge_request action — worktree → main merge via TaskBoard
+    # MARKER_184.5 + MARKER_198.MERGE: merge_request with strategy param
     elif action == "merge_request":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for merge_request"}
+        strategy = arguments.get("strategy")  # None = use task default or "cherry-pick"
 
         try:
             import asyncio
@@ -869,10 +874,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     result = pool.submit(
-                        asyncio.run, board.merge_request(task_id)
+                        asyncio.run, board.merge_request(task_id, strategy=strategy)
                     ).result()
             else:
-                result = loop.run_until_complete(board.merge_request(task_id))
+                result = loop.run_until_complete(board.merge_request(task_id, strategy=strategy))
             return result
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}

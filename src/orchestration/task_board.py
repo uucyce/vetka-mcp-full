@@ -111,6 +111,17 @@ class TaskBoard:
     _dispatch_semaphore: Optional[asyncio.Semaphore] = None
     _dispatch_semaphore_size: int = 2  # Default max concurrent
 
+    # MARKER_198.WORKTREE_GUARD: Protected role worktrees — never auto-remove
+    # Source of truth: data/templates/agent_registry.yaml
+    PROTECTED_WORKTREES = frozenset({
+        "cut-engine",    # Alpha
+        "cut-media",     # Beta
+        "cut-ux",        # Gamma
+        "cut-qa",        # Delta
+        "cut-qa-2",      # Epsilon
+        "harness",       # Zeta
+    })
+
     @classmethod
     def _get_dispatch_semaphore(cls, max_concurrent: int = 2) -> asyncio.Semaphore:
         """Get or create the dispatch semaphore.
@@ -1371,6 +1382,20 @@ class TaskBoard:
         return cleaned
 
     # ==========================================
+    # MARKER_198.WORKTREE_GUARD: WORKTREE PROTECTION
+    # ==========================================
+
+    def _is_protected_worktree(self, worktree_name: str) -> bool:
+        """Check if worktree is a protected role worktree.
+
+        MARKER_198.WORKTREE_GUARD: These worktrees are permanent infrastructure.
+        They should never be auto-removed, even if their branch is merged.
+        """
+        # Normalize: ".claude/worktrees/cut-engine" → "cut-engine"
+        name = worktree_name.rstrip("/").split("/")[-1]
+        return name in self.PROTECTED_WORKTREES
+
+    # ==========================================
     # MARKER_198.STALE: STALE TASK DETECTION
     # ==========================================
 
@@ -2624,6 +2649,14 @@ class TaskBoard:
             )
             await proc.communicate()
 
+            # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
+            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
+            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
+            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
+            claude_md_backup = None
+            if claude_md_path.exists():
+                claude_md_backup = claude_md_path.read_text()
+
             if strategy == "cherry-pick":
                 # Cherry-pick commits in order (oldest first)
                 for commit_hash in reversed(commits):
@@ -2705,6 +2738,29 @@ class TaskBoard:
                 await proc.communicate()
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
+
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
+            if claude_md_backup is not None and claude_md_path.exists():
+                current_content = claude_md_path.read_text()
+                if current_content != claude_md_backup:
+                    claude_md_path.write_text(claude_md_backup)
+                    # Stage the restoration
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "add", "CLAUDE.md",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    # Amend the last commit to exclude the agent's CLAUDE.md change
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "commit", "--amend", "--no-edit",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
 
             # Get resulting commit hash
             proc = await asyncio.create_subprocess_exec(
