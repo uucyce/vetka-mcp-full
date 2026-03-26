@@ -320,6 +320,8 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
+        { label: 'Publish...', shortcut: '⌘⇧P', action: () => store.getState().setShowPublishDialog(true) },
+        { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
       ],
     },
