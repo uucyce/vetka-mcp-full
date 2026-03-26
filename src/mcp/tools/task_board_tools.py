@@ -1001,6 +1001,48 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 docs = _load_docs_content_sync(task)
                 if docs:
                     result["docs_content"] = docs
+
+                # MARKER_199.CLAIM_MEMORY: Inject similar completed tasks + Qdrant learnings
+                # Agent sees predecessor approaches at the right moment — claim time.
+                try:
+                    import re as _re_claim
+                    _clean = _re_claim.sub(r'[^\w\s]', '', task.get("title", ""))
+                    _words = _clean.split()[:5]
+                    if _words:
+                        _fts_hits = board.search_fts(" ".join(_words), limit=8)
+                        _similar = []
+                        for _h in _fts_hits:
+                            if _h.get("task_id") == task_id:
+                                continue
+                            _st = board.get_task(_h["task_id"])
+                            if _st and _st.get("status") in ("done", "done_main", "done_worktree", "verified"):
+                                _similar.append({
+                                    "task_id": _h["task_id"],
+                                    "title": _st.get("title", "")[:80],
+                                    "commit_message": (_st.get("commit_message") or "")[:120],
+                                    "assigned_to": _st.get("assigned_to", ""),
+                                })
+                                if len(_similar) >= 3:
+                                    break
+                        if _similar:
+                            result["similar_completed"] = _similar
+                except Exception:
+                    pass  # Claim-time memory is best-effort
+
+                # Qdrant L2 learnings related to this task
+                try:
+                    from src.orchestration.resource_learnings import get_learning_store
+                    _l2 = get_learning_store()
+                    _query = task.get("title", "") + " " + (task.get("description", "")[:200])
+                    _learnings = _l2.search_learnings_sync(query=_query, limit=3)
+                    if _learnings:
+                        result["related_learnings"] = [
+                            {"text": lr.get("text", "")[:150], "category": lr.get("category", "")}
+                            for lr in _learnings
+                        ]
+                except Exception:
+                    pass  # L2 learnings are best-effort
+
         return result
 
     # MARKER_181.4: complete action — unified pipeline
