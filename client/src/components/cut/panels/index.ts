@@ -32,3 +32,6 @@ export { default as MarkerListPanel } from './MarkerListPanel';
 
 // MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
 export { default as TimelineInstancePanel } from './TimelineInstancePanel';
+
+// MARKER_SOURCE_ACQUIRE: Source Acquire panel (FCP7 Log & Capture)
+export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';

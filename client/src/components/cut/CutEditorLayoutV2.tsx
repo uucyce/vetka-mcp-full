@@ -1165,6 +1165,57 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       useCutEditorStore.getState().toggleLinkedSelection();
     },
 
+    // MARKER_SOURCE_ACQUIRE: Cmd+8 — open Source Acquire panel
+    focusSourceAcquire: () => {
+      window.dispatchEvent(new CustomEvent('cut:focus-panel', { detail: { panelId: 'acquire' } }));
+    },
+
+    // MARKER_FCP7FIX: 4 missing actions — revealMasterClip, collapse/expand, rename
+    // Shift+F — reveal master clip in project browser (fires CustomEvent for DAG panel to handle)
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === clipId);
+        if (clip?.source_path) {
+          window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', { detail: { sourcePath: clip.source_path } }));
+          return;
+        }
+      }
+    },
+    // Shift+- — toggle track collapse for the lane of the selected clip
+    collapseExpandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.toggleTrackCollapse(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Shift+= — expand track to max height for the lane of the selected clip
+    expandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.expandTrackMax(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Enter — start inline rename on selected clip
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      if (s.selectedClipId) {
+        s.setRenamingClip(s.selectedClipId);
+      }
+    },
+
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
     focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
     focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),

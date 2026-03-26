@@ -50,6 +50,7 @@ import {
   AudioMixerPanelDock,
   MarkerListPanel,
   TimelineInstancePanel,
+  SourceAcquirePanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -109,6 +110,7 @@ const PANEL_COMPONENTS = {
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
+  acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────

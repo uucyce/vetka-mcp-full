@@ -141,6 +141,8 @@ export type CutHotkeyAction =
   | 'selectForward'
   | 'toggleAVSelection'
   | 'linkUnlinkClips'
+  // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
+  | 'focusSourceAcquire'
   // MARKER_FCP7FIX: 4 missing actions from FCP7 recon
   | 'revealMasterClip'
   | 'collapseExpandTrack'
@@ -277,6 +279,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   selectForward:          'global',
   toggleAVSelection:      'global',
   linkUnlinkClips:        'global',
+  // MARKER_SOURCE_ACQUIRE
+  focusSourceAcquire:     'global',
   // MARKER_FCP7FIX: 4 missing actions
   revealMasterClip:       ['project', 'timeline'],  // FCP7 Shift+F — browser/timeline context
   collapseExpandTrack:    ['timeline'],              // toggle track collapse — timeline only
@@ -390,6 +394,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  focusSourceAcquire:'Cmd+8',  // MARKER_SOURCE_ACQUIRE: FCP7 Log & Capture
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
   // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
@@ -515,6 +520,7 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  focusSourceAcquire:'Cmd+8',  // MARKER_SOURCE_ACQUIRE: FCP7 Log & Capture
   // Linked selection (FCP7 standard: Shift+L) + Snap (N)
   toggleLinkedSelection: 'Shift+l',
   toggleSnap:        'n',
@@ -796,6 +802,8 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'selectForward', label: 'Select Forward from Playhead', group: 'Selection' },
   { action: 'toggleAVSelection', label: 'Toggle A/V Selection Target (T)', group: 'Selection' },
   { action: 'linkUnlinkClips', label: 'Link/Unlink Clips (Cmd+L)', group: 'Selection' },
+  // MARKER_SOURCE_ACQUIRE
+  { action: 'focusSourceAcquire', label: 'Source Acquire (Cmd+8)', group: 'Navigation' },
   // MARKER_FCP7FIX: 4 missing actions
   { action: 'revealMasterClip', label: 'Reveal Master Clip (Shift+F)', group: 'Navigation' },
   { action: 'collapseExpandTrack', label: 'Collapse/Expand Track (Shift+-)', group: 'View' },
