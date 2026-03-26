@@ -1094,17 +1094,35 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
     # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
     # Collects: session role, tasks completed, files touched, CORTEX tool stats.
     # Even if agent never answers debrief Qs, we get a baseline report.
-    try:
-        _passive_report_created = _create_passive_experience_report(
-            arguments, result,
-        )
-        if _passive_report_created:
-            result["passive_report"] = True
-    except Exception as e:
-        logger.warning("[Debrief] passive report failed (non-fatal): %s", e)
+    # MARKER_199.PERF: Fire-and-forget in daemon thread — debrief pipeline has sync HTTP
+    # calls to Ollama+Qdrant (~300-2500ms) that should never block action=complete response.
+    # MARKER_199.DAEMON_ISOLATE: Pre-fetch task metadata in main thread so daemon
+    # never touches task_board. Prevents SQLite lock contention on shared singleton.
+    import threading
+
+    _task_meta_prefetch = None
+    task_id = arguments.get("task_id") or result.get("task_id", "")
+    if task_id:
+        try:
+            from src.orchestration.task_board import get_task_board
+            _tb = get_task_board()
+            _task_meta_prefetch = _tb.get_task(task_id)
+        except Exception:
+            pass
+
+    def _bg_passive_report():
+        try:
+            _create_passive_experience_report(arguments, result, _task_meta_prefetch)
+        except Exception as e:
+            logger.warning("[Debrief] passive report failed (non-fatal): %s", e)
+
+    threading.Thread(target=_bg_passive_report, daemon=True, name="debrief-passive").start()
+    result["passive_report"] = True  # optimistic — thread will log if it fails
 
 
-def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
+def _create_passive_experience_report(
+    arguments: dict, result: dict, task_meta: dict = None,
+) -> bool:
     """MARKER_196.6.3 / MARKER_198.DEBRIEF: Auto-create ExperienceReport from passive session data.
 
     Collects metrics without requiring agent input:
@@ -1118,6 +1136,10 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
       2. arguments["assigned_to"] (passed by agent on action=complete)
       3. task["assigned_to"] from the board (survives process restarts — stored on disk)
       4. "unknown" as final fallback
+
+    MARKER_199.DAEMON_ISOLATE: task_meta is pre-fetched by caller in main thread.
+    This function MUST NOT import or access TaskBoard — it runs in a daemon thread
+    and would cause SQLite lock contention on the shared singleton connection.
 
     Returns True if report was created.
     """
@@ -1134,16 +1156,10 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     # MARKER_198.DEBRIEF Fix 3/4: Resolve callsign with board task as fallback.
     # Session tracker role is lost on subprocess restart — task.assigned_to persists on disk.
+    # MARKER_199.DAEMON_ISOLATE: task_meta pre-fetched by caller, no TaskBoard access here.
     task_assigned_to = ""
-    if task_id:
-        try:
-            from src.orchestration.task_board import TaskBoard
-            _tb = TaskBoard()
-            _task_meta = _tb.get_task(task_id)
-            if _task_meta:
-                task_assigned_to = _task_meta.get("assigned_to", "") or ""
-        except Exception:
-            pass
+    if task_meta:
+        task_assigned_to = task_meta.get("assigned_to", "") or ""
 
     callsign = (
         session.role_callsign
@@ -1192,8 +1208,8 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
 
     # Enrich with CORTEX tool stats
     try:
-        from src.services.reflex_feedback import ReflexFeedback
-        fb = ReflexFeedback()
+        from src.services.reflex_feedback import get_reflex_feedback
+        fb = get_reflex_feedback()
         summary = fb.get_feedback_summary()
         if summary and summary.get("total_entries", 0) > 0:
             report.reflex_summary = {
@@ -1220,17 +1236,12 @@ def _create_passive_experience_report(arguments: dict, result: dict) -> bool:
         _stored_ids = []
 
         # Get task metadata for richer learning context
+        # MARKER_199.DAEMON_ISOLATE: use pre-fetched task_meta, no TaskBoard access
         _task_title = ""
         _task_desc = ""
-        if task_id:
-            try:
-                from src.orchestration.task_board import get_task_board as _gtb
-                _task_data = _gtb().get_task(task_id)
-                if _task_data:
-                    _task_title = _task_data.get("title", "")
-                    _task_desc = _task_data.get("description", "")
-            except Exception:
-                pass
+        if task_meta:
+            _task_title = task_meta.get("title", "")
+            _task_desc = task_meta.get("description", "")
 
         # 1. Co-change pattern learning (which files change together)
         if _files and len(_files) >= 2:
