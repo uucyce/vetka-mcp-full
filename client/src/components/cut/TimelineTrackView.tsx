@@ -443,6 +443,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const [dragState, setDragState] = useState<ClipDragState | null>(null);
   const [dropZone, setDropZone] = useState<DropZoneState | null>(null);
   const [scrubActive, setScrubActive] = useState(false);
+  // MARKER_W6.HAND-ZOOM: Hand tool pan state (tracks drag start for scroll delta)
+  const [handPanState, setHandPanState] = useState<{ startX: number; startScroll: number } | null>(null);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraftState | null>(null);
   const [contextMenu, setContextMenu] = useState<ClipContextMenuState | null>(null);
   const [snapIndicator, setSnapIndicator] = useState<SnapIndicatorState | null>(null);
@@ -506,8 +508,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_W6.TOOL-SM: Cursor maps per context
   // Lane background cursor (when hovering empty space)
+  // MARKER_W6.HAND-ZOOM: hand shows 'grabbing' during active pan
   const TOOL_CURSOR: Record<string, string> = {
-    selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in',
+    selection: 'default', razor: 'crosshair', hand: handPanState ? 'grabbing' : 'grab', zoom: 'zoom-in',
     slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   // Clip body cursor (when hovering over a clip)
@@ -971,10 +974,44 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const handleTrackClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if ((event.target as HTMLElement).dataset.clip) return;
+      // MARKER_W6.HAND-ZOOM: Hand/Zoom tools handle their own click behavior
+      if (activeTool === 'hand' || activeTool === 'zoom') return;
       seek(timeFromTrackClientX(event.clientX));
       setContextMenu(null);
     },
-    [seek, timeFromTrackClientX]
+    [activeTool, seek, timeFromTrackClientX]
+  );
+
+  // MARKER_W6.HAND-ZOOM: Hand drag-to-pan + Zoom click-to-zoom on empty track area
+  const handleTrackMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if ((event.target as HTMLElement).dataset.clip) return;
+
+      // Hand tool: start pan drag
+      if (activeTool === 'hand') {
+        event.preventDefault();
+        setHandPanState({ startX: event.clientX, startScroll: scrollLeftRef.current });
+        return;
+      }
+
+      // Zoom tool: click-to-zoom centered on cursor (Alt+click = zoom out, FCP7 Ch.15)
+      if (activeTool === 'zoom') {
+        event.preventDefault();
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        if (!containerRect) return;
+        const cursorLocalX = event.clientX - containerRect.left - LANE_HEADER_WIDTH;
+        const currentZoom = zoomRef.current;
+        const currentScroll = scrollLeftRef.current;
+        const cursorTime = (cursorLocalX + currentScroll) / currentZoom;
+        const factor = event.altKey ? 0.5 : 2.0;
+        const newZoom = Math.max(10, Math.min(500, currentZoom * factor));
+        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
+        useCutEditorStore.getState().setZoom(newZoom);
+        useCutEditorStore.getState().setScrollLeft(newScroll);
+        return;
+      }
+    },
+    [activeTool]
   );
 
   const handleTrackDoubleClick = useCallback(
@@ -1253,13 +1290,19 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   }, [contextMenu, markerDraft]);
 
   useEffect(() => {
-    if (!dragState && !scrubActive) {
+    if (!dragState && !scrubActive && !handPanState) {
       return undefined;
     }
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       if (scrubActive) {
         seek(timeFromRulerClientX(event.clientX));
+      }
+      // MARKER_W6.HAND-ZOOM: Hand tool drag-to-pan
+      if (handPanState) {
+        const delta = handPanState.startX - event.clientX;
+        useCutEditorStore.getState().setScrollLeft(Math.max(0, handPanState.startScroll + delta));
+        return;
       }
       if (!dragState) {
         return;
@@ -1458,6 +1501,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const activeDrag = dragState;
       setScrubActive(false);
       setSnapIndicator(null);
+      // MARKER_W6.HAND-ZOOM: End hand-tool panning
+      if (handPanState) {
+        setHandPanState(null);
+      }
       if (!activeDrag) {
         setDragState(null);
         return;
@@ -1686,7 +1733,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [applyTimelineOps, dragState, laneIdFromClientY, scrubActive, seek, timeFromRulerClientX, timeFromTrackClientX]);
+  }, [applyTimelineOps, dragState, handPanState, laneIdFromClientY, scrubActive, seek, timeFromRulerClientX, timeFromTrackClientX]);
 
   useEffect(() => {
     if (!isPlaying || dragState || scrubActive) {
@@ -1938,6 +1985,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               <div
                 data-testid={`cut-timeline-lane-${lane.lane_id}`}
                 style={{ ...LANE_CONTENT, cursor: TOOL_CURSOR[activeTool] || 'default' }}
+                onMouseDown={handleTrackMouseDown}
                 onClick={handleTrackClick}
                 onDoubleClick={(event) => handleTrackDoubleClick(event, lane.lane_id)}
                 onDragOver={(event) => handleLaneDragOver(event, lane.lane_id, event.currentTarget)}
