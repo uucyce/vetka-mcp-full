@@ -396,7 +396,7 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'S', action: () => {
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'N', action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
@@ -560,7 +560,7 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12' }));
         }},
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
+        { label: 'Speed/Duration...', shortcut: '⌘J', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
@@ -682,7 +682,7 @@ export default function MenuBar() {
           { label: 'End on Edit', disabled: true },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'S', action: () => store.getState().toggleSnap() },
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'N', action: () => store.getState().toggleSnap() },
         { separator: true },
         { label: 'Insert Tracks...', disabled: true },
         { label: 'Delete Tracks...', disabled: true },
