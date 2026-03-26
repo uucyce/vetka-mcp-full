@@ -259,6 +259,26 @@ def reflex_verifier(
             logger.info("[REFLEX IP-5] Verifier %s → %d tools feedback for %s (run=%s, conf=%.2f)",
                         status, count, subtask_id, run_id or "?", verifier_confidence)
 
+        # MARKER_199.VERIFIER_TRUST — Wire verifier outcome into Trust emotion.
+        # Pass → build trust (+0.15 EMA); Fail → drop trust fast (-0.35 EMA).
+        # Wrapped in try/except: emotions never break the verifier pipeline.
+        try:
+            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
+            emo_engine = get_reflex_emotions()
+            emo_ctx = EmotionContext(phase_type=phase_type)
+            for tid in tools_used:
+                if tid:
+                    emo_engine.record_outcome(tid, success=verifier_passed, context=emo_ctx)
+            if tools_used:
+                logger.debug(
+                    "[REFLEX IP-5] VERIFIER_TRUST: %s → trust %s for %d tool(s)",
+                    "PASS" if verifier_passed else "FAIL",
+                    "+" if verifier_passed else "-",
+                    len(tools_used),
+                )
+        except Exception as _emo_err:
+            logger.debug("[REFLEX IP-5] VERIFIER_TRUST emotion update failed (non-fatal): %s", _emo_err)
+
         # MARKER_182.REFLEX: Log to ActionRegistry if run_id provided
         if run_id:
             try:
