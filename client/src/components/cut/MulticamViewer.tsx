@@ -7,8 +7,9 @@
  * Grid layouts: 2x2 (4 angles), 3x3 (9 angles), 1+3 (1 big + 3 small).
  * Active angle highlighted with border.
  */
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { API_BASE } from '../../config/api.config';
 
 const GRID: CSSProperties = {
   display: 'grid',
@@ -65,6 +66,86 @@ const EMPTY: CSSProperties = {
   userSelect: 'none',
 };
 
+const THUMB_IMG: CSSProperties = {
+  width: '100%',
+  height: '100%',
+  objectFit: 'cover',
+  display: 'block',
+};
+
+const THUMB_FALLBACK: CSSProperties = {
+  width: '100%',
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: '#0d0d0d',
+};
+
+// Debounced thumbnail that updates on playhead scrub
+const thumbCache = new Map<string, string>();
+
+function AngleThumbnail({ sourcePath, timeSec, isActive }: {
+  sourcePath: string;
+  timeSec: number;
+  isActive: boolean;
+}) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastFetchedRef = useRef<string>('');
+
+  useEffect(() => {
+    // Debounce thumbnail fetches during scrub (300ms)
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    const fetchKey = `${sourcePath}@${timeSec.toFixed(1)}`;
+    if (fetchKey === lastFetchedRef.current) return;
+
+    timerRef.current = setTimeout(() => {
+      const url = `${API_BASE}/cut/thumbnail?source_path=${encodeURIComponent(sourcePath)}&time_sec=${timeSec.toFixed(2)}&width=240&height=135`;
+
+      const cached = thumbCache.get(url);
+      if (cached) {
+        setSrc(cached);
+        lastFetchedRef.current = fetchKey;
+        return;
+      }
+
+      let cancelled = false;
+      fetch(url)
+        .then((r) => r.ok ? r.blob() : null)
+        .then((blob) => {
+          if (cancelled || !blob) return;
+          const objectUrl = URL.createObjectURL(blob);
+          thumbCache.set(url, objectUrl);
+          setSrc(objectUrl);
+          lastFetchedRef.current = fetchKey;
+          setError(false);
+        })
+        .catch(() => {
+          if (!cancelled) setError(true);
+        });
+
+      return () => { cancelled = true; };
+    }, 300);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [sourcePath, timeSec]);
+
+  if (error || !src) {
+    return (
+      <div style={{ ...THUMB_FALLBACK, background: isActive ? '#1a1a1a' : '#0d0d0d' }}>
+        <span style={{ color: '#333', fontSize: 10 }}>No preview</span>
+      </div>
+    );
+  }
+
+  return <img src={src} alt="angle" style={THUMB_IMG} />;
+}
+
 function basename(path: string): string {
   return path.split('/').pop()?.split('\\').pop() || path;
 }
@@ -74,6 +155,7 @@ export default function MulticamViewer() {
   const angles = useCutEditorStore((s) => s.multicamAngles);
   const activeAngle = useCutEditorStore((s) => s.multicamActiveAngle);
   const switchAngle = useCutEditorStore((s) => s.multicamSwitchAngle);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
 
   const gridCols = useMemo(() => {
     if (angles.length <= 1) return 1;
@@ -97,19 +179,11 @@ export default function MulticamViewer() {
           data-testid={`multicam-angle-${i}`}
           onClick={() => switchAngle(i)}
         >
-          {/* Angle preview placeholder — VideoPreview integration needed */}
-          <div style={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: i === activeAngle ? '#1a1a1a' : '#0d0d0d',
-          }}>
-            <span style={{ color: '#333', fontSize: 20, fontWeight: 700 }}>
-              {i + 1}
-            </span>
-          </div>
+          <AngleThumbnail
+            sourcePath={angle.source_path}
+            timeSec={currentTime}
+            isActive={i === activeAngle}
+          />
           <div style={ANGLE_NUM}>{i + 1}</div>
           <div style={LABEL}>{angle.label || basename(angle.source_path)}</div>
         </div>
