@@ -222,19 +222,29 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from SQLite")
 
     def _backfill_modules(self):
-        """MARKER_155.2A: Backfill 'module' field for existing tasks."""
-        updated = 0
-        for task in self.tasks.values():
-            if "module" not in task or not task.get("module"):
-                task["module"] = self._auto_assign_module(
-                    task.get("title", ""),
-                    task.get("description", ""),
-                    task.get("tags", []),
-                )
-                self._save_task(task)
-                updated += 1
-        if updated > 0:
-            logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
+        """MARKER_155.2A: Backfill 'module' field for existing tasks.
+
+        MARKER_199.LOCK_SAFE: Non-blocking — skips on database lock.
+        Module backfill is optional enrichment, not critical for operation.
+        """
+        try:
+            updated = 0
+            for task in self.tasks.values():
+                if "module" not in task or not task.get("module"):
+                    task["module"] = self._auto_assign_module(
+                        task.get("title", ""),
+                        task.get("description", ""),
+                        task.get("tags", []),
+                    )
+                    self._save_task(task)
+                    updated += 1
+            if updated > 0:
+                logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logger.debug("[TaskBoard] Module backfill skipped — database locked")
+            else:
+                raise
 
     def _save(self, action: str = "update"):
         """Persist settings and notify UI.
@@ -259,7 +269,7 @@ class TaskBoard:
         db_path.parent.mkdir(parents=True, exist_ok=True)
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=30000")
+        conn.execute("PRAGMA busy_timeout=10000")
         conn.row_factory = sqlite3.Row
         return conn
 

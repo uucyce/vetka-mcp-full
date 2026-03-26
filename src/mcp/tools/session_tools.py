@@ -371,8 +371,8 @@ class SessionInitTool(BaseMCPTool):
 
         # MARKER_178.1.1: Load active tasks from TaskBoard
         try:
-            from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
-            board = TaskBoard(TASK_BOARD_FILE)
+            from src.orchestration.task_board import get_task_board
+            board = get_task_board()
             # MARKER_181.5.6: Fixed list_tasks() → get_queue() (method was renamed)
             pending = board.get_queue(status="pending")
             in_progress = board.get_queue(status="in_progress")
@@ -677,8 +677,8 @@ class SessionInitTool(BaseMCPTool):
 
         # MARKER_194.1: Claimed tasks overlay — show other agents' active work
         try:
-            from src.orchestration.task_board import TaskBoard, TASK_BOARD_FILE
-            _board = TaskBoard(TASK_BOARD_FILE)
+            from src.orchestration.task_board import get_task_board
+            _board = get_task_board()
             claimed_tasks = _board.get_queue(status="claimed")
             other_agents_work = []
             for t in claimed_tasks:
