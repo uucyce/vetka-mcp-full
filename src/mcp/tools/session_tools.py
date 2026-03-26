@@ -607,46 +607,8 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # ENGRAM errors never block session init
 
-        # MARKER_199.DIGEST: Hot ideas + new tools surface in session_init
-        # Sources: ENGRAM debrief::idea entries ranked by hit_count,
-        # tool_catalog.json tools with 0 CORTEX records = undiscovered.
-        try:
-            _digest = {}
-
-            # 1. HOT IDEAS — debrief ideas from ENGRAM, ranked by hit_count
-            from src.memory.engram_cache import get_engram_cache as _get_engram
-            _engram_for_digest = _get_engram()
-            _all_patterns = _engram_for_digest.get_all_by_category("pattern")
-            _ideas = [e for e in _all_patterns if "::debrief::idea::" in e.key]
-            if _ideas:
-                _ideas.sort(key=lambda x: x.hit_count, reverse=True)
-                _digest["hot_ideas"] = [
-                    {"key": e.key[:80], "value": e.value[:120], "hits": e.hit_count}
-                    for e in _ideas[:5]
-                ]
-
-            # 2. NEW TOOLS — tools in catalog but never seen by CORTEX
-            try:
-                from src.services.reflex_feedback import get_reflex_feedback as _get_fb
-                _fb_digest = _get_fb()
-                _fb_summary = _fb_digest.get_feedback_summary()
-                _known_tools = set((_fb_summary.get("per_tool") or {}).keys())
-
-                _catalog_path = Path(__file__).parent.parent.parent.parent / "data" / "reflex" / "tool_catalog.json"
-                if _catalog_path.exists():
-                    import json as _json_digest
-                    _catalog = _json_digest.loads(_catalog_path.read_text())
-                    _catalog_tools = [t["tool_id"] for t in _catalog.get("tools", [])]
-                    _new_tools = [t for t in _catalog_tools if t not in _known_tools]
-                    if _new_tools:
-                        _digest["new_tools"] = _new_tools[:10]
-            except Exception:
-                pass  # New tools discovery is best-effort
-
-            if _digest:
-                context["digest"] = _digest
-        except Exception:
-            pass  # Digest never blocks session init
+        # MARKER_199.DIGEST: Moved to end of init (before ELISION) so it can
+        # aggregate JEPA lens, role context, recent commits — all computed above.
 
         # MARKER_198.P3.JEPA_LENS: JEPA-driven relevance ranking for session context
         # Replaces naive top-N with cosine-ranked items from ENGRAM + tasks + lessons.
@@ -1293,6 +1255,101 @@ class SessionInitTool(BaseMCPTool):
             "communication_style",  # AURA personal assistant layer
         ]:
             context.pop(_slim_key, None)
+
+        # MARKER_199.DIGEST: Agent newspaper — hot ideas, JEPA forecast, new tools, role brief.
+        # Runs last so it can aggregate JEPA lens, role context, recent commits.
+        try:
+            _digest = {}
+
+            # 1. HOT IDEAS — debrief ideas ranked by hit_count, grouped by agent count
+            from src.memory.engram_cache import get_engram_cache as _get_engram
+            _engram_d = _get_engram()
+            _all_patterns = _engram_d.get_all_by_category("pattern")
+            _ideas = [e for e in _all_patterns if "::debrief::idea::" in e.key]
+            if _ideas:
+                # Deduplicate by value similarity (first 60 chars) and count unique agents
+                _idea_map = {}  # value_prefix → {agents: set, best_entry, total_hits}
+                for e in _ideas:
+                    _vkey = e.value[:60].lower().strip()
+                    _agent = e.key.split("::")[0] if "::" in e.key else "unknown"
+                    if _vkey not in _idea_map:
+                        _idea_map[_vkey] = {"agents": set(), "entry": e, "hits": 0}
+                    _idea_map[_vkey]["agents"].add(_agent)
+                    _idea_map[_vkey]["hits"] += max(1, e.hit_count)
+                # Score: agents × hits (consensus signal)
+                _scored_ideas = sorted(
+                    _idea_map.values(),
+                    key=lambda x: len(x["agents"]) * x["hits"],
+                    reverse=True,
+                )
+                _digest["hot_ideas"] = [
+                    {
+                        "idea": x["entry"].value[:150],
+                        "agents": len(x["agents"]),
+                        "score": len(x["agents"]) * x["hits"],
+                    }
+                    for x in _scored_ideas[:5]
+                ]
+
+            # 2. JEPA FORECAST — top 3 predicted directions from JEPA lens
+            _jepa = context.get("jepa_session_lens", {})
+            _jepa_items = _jepa.get("top_items", [])
+            if _jepa_items:
+                _digest["jepa_forecast"] = [
+                    {"direction": item.get("label", "")[:80], "score": round(item.get("score", 0), 2)}
+                    for item in _jepa_items[:3]
+                ]
+
+            # 3. NEW TOOLS — tools in catalog but never seen by CORTEX, with descriptions
+            try:
+                from src.services.reflex_feedback import get_reflex_feedback as _get_fb
+                _fb_d = _get_fb()
+                _fb_sum = _fb_d.get_feedback_summary()
+                _known = set((_fb_sum.get("per_tool") or {}).keys())
+                _cat_path = Path(__file__).parent.parent.parent.parent / "data" / "reflex" / "tool_catalog.json"
+                if _cat_path.exists():
+                    _cat = _json.loads(_cat_path.read_text())
+                    _cat_tools = _cat.get("tools", [])
+                    _new = [t for t in _cat_tools if t["tool_id"] not in _known]
+                    if _new:
+                        _digest["new_tools"] = [
+                            {"id": t["tool_id"], "desc": t.get("description", "")[:80]}
+                            for t in _new[:8]
+                        ]
+            except Exception:
+                pass
+
+            # 4. ROLE BRIEF — per-role context: recent commits in domain, domain-specific warnings
+            _role_ctx = context.get("role_context", {})
+            if _role_ctx:
+                _role_brief = {}
+                # Recent commits from my_focus
+                _focus = context.get("my_focus", {})
+                _last = _focus.get("last_completed", "")
+                if _last:
+                    _role_brief["last_commit"] = _last[:100]
+                _hot = _focus.get("hot_files", [])
+                if _hot:
+                    _role_brief["hot_files_count"] = len(_hot)
+                # Domain-specific danger entries
+                _domain = _role_ctx.get("domain", "")
+                if _domain:
+                    _dangers = _engram_d.get_danger_entries()
+                    _domain_dangers = [
+                        d for d in _dangers
+                        if _domain in d.key or _domain in d.value[:100].lower()
+                    ]
+                    if _domain_dangers:
+                        _role_brief["domain_warnings"] = [
+                            d.value[:100] for d in _domain_dangers[:3]
+                        ]
+                if _role_brief:
+                    _digest["role_brief"] = _role_brief
+
+            if _digest:
+                context["digest"] = _digest
+        except Exception:
+            pass  # Digest never blocks session init
 
         # MARKER_198.P0.5: Apply ELISION L2 compression to session_init response
         try:
