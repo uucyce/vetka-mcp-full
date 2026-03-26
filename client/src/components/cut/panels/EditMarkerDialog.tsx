@@ -71,6 +71,7 @@ export function EditMarkerDialog() {
   useEffect(() => {
     if (show && marker) {
       setName(marker.text || '');
+      setName(marker.name || '');
       setNotes((marker as any).notes || '');
       setTimeout(() => nameRef.current?.focus(), 50);
     }
