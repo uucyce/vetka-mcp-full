@@ -341,7 +341,7 @@ class TestCh47Transitions:
 # ═══════════════════════════════════════════════════════
 
 class TestCh42Multicam:
-    """FCP7 Ch.42: Multicam backend exists, no frontend."""
+    """FCP7 Ch.42: Multicam backend + MulticamViewer frontend (MARKER_MULTICAM_VIEWER)."""
 
     def test_multicam_backend_exists(self):
         """cut_multicam_sync.py must exist."""
@@ -356,10 +356,38 @@ class TestCh42Multicam:
         content = backend.read_text()
         assert "cross_correlat" in content.lower() or "correlate" in content.lower() or "sync" in content.lower()
 
-    def test_no_multicam_ui(self):
-        """GAP: No multicam angle switcher in frontend."""
-        # Search for multicam/multiclip component
-        cut_dir = CLIENT_SRC / "components" / "cut"
-        multicam_files = list(cut_dir.glob("*ulticam*")) + list(cut_dir.glob("*ulticlip*"))
-        if not multicam_files:
-            pytest.skip("GAP: No multicam UI component exists yet")
+    def test_multicam_viewer_exists(self):
+        """MulticamViewer.tsx must exist with required testids."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist in components/cut"
+        content = viewer.read_text()
+        assert 'data-testid="multicam-viewer-grid"' in content, "Must have static grid testid"
+        assert "data-testid={" in content, "Must have dynamic angle testids"
+
+    def test_multicam_viewer_store_contract(self):
+        """MulticamViewer.tsx must import and use store fields."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "useCutEditorStore" in content, "Must import useCutEditorStore"
+        assert "multicamMode" in content, "Must read multicamMode from store"
+        assert "multicamAngles" in content, "Must read multicamAngles from store"
+        assert "multicamActiveAngle" in content, "Must read multicamActiveAngle from store"
+        assert "multicamSwitchAngle" in content, "Must read multicamSwitchAngle from store"
+
+    def test_multicam_viewer_grid_logic(self):
+        """MulticamViewer.tsx must have grid layout and empty state guard."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "gridTemplateColumns" in content, "Must use CSS gridTemplateColumns for layout"
+        assert "repeat(" in content, "Must use repeat() for dynamic column count"
+        assert "No multicam clip loaded" in content, "Must have empty state guard message"
+
+    def test_multicam_angle_switching_wired(self):
+        """MulticamViewer.tsx must wire click events to store switchAngle action."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "onClick" in content, "Must have onClick handler on angle tiles"
+        assert "switchAngle" in content, "Must call switchAngle store action on click"
