@@ -25,6 +25,7 @@ Part of VETKA OS:
 """
 
 import logging
+import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -182,9 +183,18 @@ def reflex_post_fc(
         for te in tool_executions:
             tool_name = te.get("name", "")
             result = te.get("result", {})
-            success = result.get("success", False)
-            # Usefulness heuristic: has non-empty result content
-            useful = success and bool(result.get("result"))
+            raw_success = result.get("success", False)
+            # MARKER_199.CORTEX_BENIGN_MISS — distinguish tool error from "no result"
+            # File-not-found / no-match is normal operation, NOT a tool failure.
+            error_msg = str(result.get("error", ""))
+            is_benign_miss = bool(re.search(
+                r"not found|no such file|does not exist|no match|empty|not exist"
+                r"|нет файла|файл не найден",
+                error_msg, re.IGNORECASE
+            )) if error_msg else False
+            success = raw_success or is_benign_miss
+            # Usefulness: only true when tool ran successfully AND returned content
+            useful = raw_success and bool(result.get("result"))
 
             fb.record(
                 tool_id=tool_name,
