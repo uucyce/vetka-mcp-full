@@ -94,17 +94,18 @@ def audio_panels(source):
 class TestEditingPresetPanels:
     """Editing workspace: Navigation + Analysis + Monitors + Effects + Timeline."""
 
+    # GAMMA-LAYOUT1: transitions merged into EffectsPanel as a category
     EXPECTED_IDS = {
         "project", "script", "graph",
         "source", "program",
         "inspector", "clip", "history", "storyspace",
-        "effects", "transitions",
+        "effects",
         "timeline",
     }
 
     def test_panel_count(self, editing_panels):
-        assert len(editing_panels) == 12, \
-            f"Editing preset: expected 12 panels, got {len(editing_panels)}"
+        assert len(editing_panels) == 11, \
+            f"Editing preset: expected 11 panels, got {len(editing_panels)}"
 
     def test_all_expected_panels(self, editing_panels):
         ids = {p["id"] for p in editing_panels}
@@ -134,11 +135,10 @@ class TestEditingPresetPanels:
             assert panel.get("reference") == "inspector", \
                 f"{panel_id} should reference inspector"
 
-    def test_effects_tab_group(self, editing_panels):
-        """Transitions must be tab within Effects."""
-        transitions = next(p for p in editing_panels if p["id"] == "transitions")
-        assert transitions.get("direction") == "within"
-        assert transitions.get("reference") == "effects"
+    def test_effects_panel_exists(self, editing_panels):
+        """Effects panel must exist (transitions merged into it per GAMMA-LAYOUT1)."""
+        effects = next(p for p in editing_panels if p["id"] == "effects")
+        assert effects is not None
 
     def test_timeline_is_bottom(self, editing_panels):
         """Timeline must use direction: 'below' (full-width bottom)."""
