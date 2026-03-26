@@ -3,12 +3,14 @@
  * Reads activeMediaPath from useCutEditorStore, syncs currentTime.
  * Displays poster from thumbnail_bundle when paused.
  * MARKER_170.PLAYBACK.A2: Error overlay + loading indicator (Opus Sprint).
+ * MARKER_B26: Zebra overlay for out-of-range pixel detection.
  */
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
+import ZebraOverlay from './ZebraOverlay';
 
 const CONTAINER_STYLE: CSSProperties = {
   position: 'relative',
@@ -158,6 +160,9 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
   const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
   const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
+  // MARKER_B26: Zebra overlay state
+  const showZebra = useCutEditorStore((s) => s.showZebra);
+  const toggleZebra = useCutEditorStore((s) => s.toggleZebra);
 
   // MARKER_B22: Live grading — read color_correction from selected clip for CSS filter preview
   const ccForCssFilter = useCutEditorStore((s) => {
@@ -420,6 +425,39 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         </div>
       )}
       <TranscriptOverlay />
+      {/* MARKER_B26: Zebra overlay for broadcast safe monitoring */}
+      {showZebra && activeMediaPath && (
+        <ZebraOverlay
+          mediaPath={activeMediaPath}
+          currentTime={currentTime}
+        />
+      )}
+      {/* MARKER_B26: Zebra toggle button — bottom-left corner, monochrome */}
+      {activeMediaPath && (
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleZebra(); }}
+          data-testid="zebra-toggle"
+          title={showZebra ? 'Zebra overlay ON (click to disable)' : 'Enable zebra overlay (broadcast safe)'}
+          style={{
+            position: 'absolute',
+            bottom: 8,
+            left: 8,
+            background: showZebra ? 'rgba(200,200,200,0.15)' : 'rgba(0,0,0,0.5)',
+            border: `1px solid ${showZebra ? '#888' : '#444'}`,
+            color: showZebra ? '#ddd' : '#666',
+            fontSize: 9,
+            fontFamily: 'system-ui',
+            borderRadius: 3,
+            padding: '2px 6px',
+            cursor: 'pointer',
+            zIndex: 10,
+            letterSpacing: 0.5,
+            userSelect: 'none',
+          }}
+        >
+          ZEBRA
+        </button>
+      )}
       {/* MARKER_W5.2: Safe margins overlay */}
       {(showTitleSafe || showActionSafe) && (
         <svg

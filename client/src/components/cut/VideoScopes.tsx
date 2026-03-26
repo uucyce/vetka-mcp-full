@@ -4,6 +4,7 @@
  * FCP7 Reference: Ch.78 "Measuring and Setting Video Levels"
  * MARKER_B27: SocketIO real-time scopes (scope_request → scope_data).
  * Falls back to HTTP GET /cut/scopes/analyze when socket disconnected.
+ * MARKER_B26: Broadcast safe percentage readouts (over-white, under-black, chroma-illegal).
  *
  * Four modes (tabs):
  *   - Waveform: Y=luma (0-100 IRE), X=pixel column, green phosphor
@@ -11,8 +12,8 @@
  *   - Vectorscope: circular CbCr plot with skin tone line
  *   - Histogram: stacked R/G/B curves
  *
- * @phase B27
- * @task tb_1774165550_2
+ * @phase B27, B26
+ * @task tb_1774165550_2, tb_1774410744_1
  */
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { io, type Socket } from 'socket.io-client';
@@ -374,6 +375,8 @@ export default function VideoScopes() {
     else if (mode === 'histogram' && scopeData.histogram) drawHistogram(ctx, scopeData.histogram, size, size);
   }, [scopeData, mode]);
 
+  const bs = scopeData?.broadcast_safe;
+
   return (
     <div style={PANEL_STYLE} data-testid="cut-video-scopes">
       <div style={TAB_BAR}>
@@ -389,23 +392,57 @@ export default function VideoScopes() {
           : error ? <span style={{ color: '#999', fontSize: 10 }}>{error}</span>
           : <canvas ref={canvasRef} data-testid="scope-canvas" />}
       </div>
+      {/* MARKER_B26: Broadcast safe percentage readouts */}
+      {bs && (
+        <div
+          style={{
+            padding: '3px 8px',
+            fontSize: 9,
+            fontFamily: '"JetBrains Mono", "SF Mono", monospace',
+            color: '#777',
+            borderTop: '1px solid #1a1a1a',
+            display: 'flex',
+            gap: 10,
+            flexShrink: 0,
+            flexWrap: 'wrap',
+          }}
+          data-testid="broadcast-safe-readout"
+        >
+          <span
+            style={{ color: bs.over_white_pct > 0 ? '#aaa' : '#444' }}
+            title="Over-white: pixels with luma Y > 235 (broadcast illegal)"
+          >
+            OW: {bs.over_white_pct.toFixed(2)}%
+          </span>
+          <span
+            style={{ color: bs.under_black_pct > 0 ? '#aaa' : '#444' }}
+            title="Under-black: pixels with luma Y < 16 (broadcast illegal)"
+          >
+            UB: {bs.under_black_pct.toFixed(2)}%
+          </span>
+          <span
+            style={{ color: bs.chroma_illegal_pct > 0 ? '#aaa' : '#444' }}
+            title="Chroma-illegal: Cb/Cr outside 16-240 range"
+          >
+            CH: {bs.chroma_illegal_pct.toFixed(2)}%
+          </span>
+          <span
+            style={{
+              marginLeft: 'auto',
+              color: bs.total_illegal_pct === 0 ? '#444' : bs.total_illegal_pct > 5 ? '#bbb' : '#888',
+              fontWeight: bs.total_illegal_pct > 5 ? 600 : 400,
+            }}
+            title="Total illegal pixels"
+          >
+            {bs.total_illegal_pct === 0 ? 'SAFE' : bs.total_illegal_pct > 5 ? `ILLEGAL ${bs.total_illegal_pct.toFixed(1)}%` : `WARN ${bs.total_illegal_pct.toFixed(1)}%`}
+          </span>
+        </div>
+      )}
       <div style={{ ...STATUS_BAR, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 4 }}>
         <span>
           {loading ? 'Analyzing...' : scopeData ? `${scopeData.frame_w}x${scopeData.frame_h} @ ${currentTime.toFixed(2)}s` : ''}
           {' '}<span style={{ color: socketConnected ? '#555' : '#777', fontSize: 8 }}>{socketConnected ? 'WS' : 'HTTP'}</span>
         </span>
-        {/* MARKER_B26: Broadcast safe indicator */}
-        {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct > 0 && (
-          <span
-            style={{ fontSize: 8, color: scopeData.broadcast_safe.total_illegal_pct > 5 ? '#ccc' : '#888' }}
-            title={`Over white: ${scopeData.broadcast_safe.over_white_pct}% | Under black: ${scopeData.broadcast_safe.under_black_pct}% | Chroma: ${scopeData.broadcast_safe.chroma_illegal_pct}%`}
-          >
-            {scopeData.broadcast_safe.total_illegal_pct > 5 ? 'ILLEGAL' : 'WARN'} {scopeData.broadcast_safe.total_illegal_pct}%
-          </span>
-        )}
-        {scopeData?.broadcast_safe && scopeData.broadcast_safe.total_illegal_pct === 0 && (
-          <span style={{ fontSize: 8, color: '#888' }}>SAFE</span>
-        )}
         {/* MARKER_B25: Pre-grade / Post-grade toggle */}
         <button
           onClick={() => setPostGrade((v) => !v)}
