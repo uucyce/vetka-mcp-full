@@ -548,10 +548,16 @@ class TaskBoard:
         if not query or not query.strip():
             return []
         try:
+            # MARKER_199.FTS5_SANITIZE: Strip special chars that FTS5 interprets as operators
+            # (colons, dashes, arrows, etc.) to prevent "no such column" errors.
+            import re as _re_fts
+            _sanitized = _re_fts.sub(r'[^\w\s"*]', ' ', query).strip()
+            if not _sanitized:
+                return []
             rows = self.db.execute(
                 "SELECT task_id, snippet(tasks_fts, 1, '[', ']', '...', 10) AS snippet, "
                 "rank FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank LIMIT ?",
-                (query, limit),
+                (_sanitized, limit),
             ).fetchall()
             results = []
             for row in rows:
