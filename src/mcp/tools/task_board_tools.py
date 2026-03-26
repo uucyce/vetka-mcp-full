@@ -117,7 +117,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check", "batch_merge", "search_fts", "debrief_skipped"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -180,6 +180,8 @@ TASK_BOARD_SCHEMA = {
         "auto_close": {"type": "boolean", "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run)."},
         # MARKER_198.MERGE: merge_request strategy
         "strategy": {"type": "string", "enum": ["cherry-pick", "merge", "squash"], "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit."},
+        # MARKER_199.FTS5: search_fts parameters
+        "query": {"type": "string", "description": "FTS5 search query for action=search_fts. Supports: AND, OR, phrase \"...\", prefix*"},
     },
     "required": ["action"]
 }
@@ -422,6 +424,33 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         _dg_warnings = payload.get("_doc_gate_warnings")
         if _dg_warnings:
             result["doc_gate_warning"] = _dg_warnings[0]
+
+        # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
+        # When parallel tasks share allowed_paths, they risk API drift (different method names).
+        # Surface a warning so Commander can provide a Protocol contract.
+        new_paths = payload.get("allowed_paths") or []
+        if new_paths:
+            try:
+                overlapping = board.find_tasks_by_changed_files(new_paths)
+                # Exclude the task we just created
+                overlapping = [t for t in overlapping if t.get("id") != task_id]
+                if overlapping:
+                    overlap_titles = [f"{t['id']}: {t.get('title', '')[:50]}" for t in overlapping[:5]]
+                    result["api_contract_warning"] = {
+                        "message": (
+                            f"PATH OVERLAP: {len(overlapping)} active task(s) share allowed_paths with this task. "
+                            "Risk of API drift if parallel agents use different method names. "
+                            "Consider adding a Python Protocol stub to implementation_hints."
+                        ),
+                        "overlapping_tasks": overlap_titles,
+                        "shared_paths": [p for p in new_paths if any(
+                            any(p.startswith(ap) or ap.startswith(p) for ap in (t.get("allowed_paths") or []))
+                            for t in overlapping
+                        )][:10],
+                    }
+            except Exception:
+                pass  # Contract guard is advisory, never blocks
+
         return result
 
     elif action == "list":
@@ -970,6 +999,62 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(auto_close, str):
             auto_close = auto_close.lower() in ("true", "1", "yes")
         return board.stale_check(limit=limit, auto_close=auto_close)
+
+    # MARKER_199.BATCH: Batch merge — merge multiple done_worktree tasks in one call
+    elif action == "batch_merge":
+        task_ids = arguments.get("task_ids", [])
+        strategy = arguments.get("strategy")
+        if not task_ids:
+            # Auto-collect all done_worktree tasks if no IDs specified
+            done_wt = board.get_queue(status="done_worktree")
+            task_ids = [t["id"] for t in done_wt]
+            if not task_ids:
+                return {"success": True, "message": "No done_worktree tasks to merge", "merged_count": 0}
+
+        results = []
+        merged = 0
+        failed = 0
+        import asyncio
+        for tid in task_ids:
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    with concurrent.futures.ThreadPoolExecutor() as pool:
+                        merge_result = pool.submit(asyncio.run, board.merge_request(tid, strategy=strategy)).result()
+                else:
+                    merge_result = loop.run_until_complete(board.merge_request(tid, strategy=strategy))
+                results.append({"task_id": tid, **merge_result})
+                if merge_result.get("success"):
+                    merged += 1
+                else:
+                    failed += 1
+            except Exception as e:
+                results.append({"task_id": tid, "success": False, "error": str(e)})
+                failed += 1
+
+        return {
+            "success": True,
+            "merged_count": merged,
+            "failed_count": failed,
+            "total": len(task_ids),
+            "results": results,
+        }
+
+    # MARKER_199.FTS5: Full-text search across tasks
+    elif action == "search_fts":
+        query = arguments.get("query", "")
+        if not query:
+            return {"success": False, "error": "query is required for search_fts"}
+        limit = int(arguments.get("limit", 20))
+        results = board.search_fts(query, limit)
+        return {"success": True, "results": results, "count": len(results), "query": query}
+
+    # MARKER_199.DEBRIEF: List tasks auto-closed without debrief
+    elif action == "debrief_skipped":
+        limit = int(arguments.get("limit", 10))
+        skipped = board.get_debrief_skipped_tasks(limit)
+        return {"success": True, "skipped": skipped, "count": len(skipped)}
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

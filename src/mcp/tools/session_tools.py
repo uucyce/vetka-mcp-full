@@ -935,6 +935,18 @@ class SessionInitTool(BaseMCPTool):
             if tb.get("needs_fix_count", 0) > 0:
                 next_steps.append(f"⚠️ {tb['needs_fix_count']} tasks failed QA, need fix")
 
+            # MARKER_199.DEBRIEF: Warn about tasks closed without debrief
+            try:
+                skipped = board.get_debrief_skipped_tasks(limit=5)
+                if skipped:
+                    agents = set(s.get("assigned_to", "?") for s in skipped)
+                    next_steps.append(
+                        f"DEBRIEF SKIPPED: {len(skipped)} tasks auto-closed without Q1-Q3 debrief "
+                        f"(agents: {', '.join(agents)}). Use action=debrief_skipped to see list."
+                    )
+            except Exception:
+                pass
+
             # From REFLEX
             recs = context.get("reflex_recommendations", [])
             if recs:
