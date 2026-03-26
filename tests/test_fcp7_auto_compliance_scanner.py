@@ -62,8 +62,9 @@ def parse_fcp7_preset(source: str) -> dict[str, str]:
         return {}
     block = match.group(1)
     bindings = {}
-    for m in re.finditer(r"(\w+)\s*:\s*'([^']+)'", block):
-        bindings[m.group(1)] = m.group(2)
+    # Match single-quoted: key: 'value' or double-quoted: key: "value"
+    for m in re.finditer(r"""(\w+)\s*:\s*(?:'([^']*)'|"([^"]*)")""", block):
+        bindings[m.group(1)] = m.group(2) if m.group(2) is not None else m.group(3)
     return bindings
 
 
