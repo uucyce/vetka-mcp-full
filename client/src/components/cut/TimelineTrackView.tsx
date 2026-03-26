@@ -2146,7 +2146,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 6,
-                                color: '#9ca3af',
+                                color: '#999',
                                 textTransform: 'uppercase',
                                 letterSpacing: 0.4,
                                 textShadow: '0 1px 2px rgba(0,0,0,0.65)',
@@ -2169,7 +2169,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                       width: 2,
                                       height: barHeight,
                                       borderRadius: 1,
-                                      background: '#9ca3af',
+                                      background: '#999',
                                       opacity: 0.8 - index * 0.15,
                                     }}
                                   />
@@ -2187,7 +2187,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 padding: '1px 4px',
                                 borderRadius: 3,
                                 background: 'rgba(0, 0, 0, 0.72)',
-                                color: '#d1d5db',
+                                color: '#ccc',
                                 fontSize: 9,
                                 lineHeight: 1.2,
                                 pointerEvents: 'none',
