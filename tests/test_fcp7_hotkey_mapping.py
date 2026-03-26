@@ -138,7 +138,8 @@ class TestFCP7Editing:
     """FCP7 App.A: Core editing operations."""
 
     def test_split_at_playhead(self, fcp7):
-        """FCP7 App.A: Add Edit = ⌘K (intentional override — Ctrl+V collides with paste)."""
+        """FCP7 manual: Ctrl+V = Add Edit, but Ctrl+V collides with paste on Mac.
+        MARKER_CTRLV_FIX: We use Cmd+K (Premiere convention) to avoid collision."""
         assert fcp7["splitClip"] == "Cmd+k"
 
     def test_insert_overwrite(self, fcp7):
@@ -180,9 +181,9 @@ class TestPremierePreset:
         assert premiere["razorTool"] == "c"
 
     def test_ripple_roll(self, premiere):
-        """Premiere: B=Ripple, N=Roll."""
+        """Premiere: B=Ripple, Shift+N=Roll (N reserved for toggleSnap)."""
         assert premiere["rippleTool"] == "b"
-        assert premiere["rollTool"] == "n"
+        assert premiere["rollTool"] == "Shift+n"
 
     def test_split(self, premiere):
         """Premiere: Cmd+K = Add Edit."""

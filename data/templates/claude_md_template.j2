@@ -12,12 +12,26 @@
 ```
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+{%- if role.domain == "architect" %}
+You ARE the merge authority. You may `git merge` worktree branches into main.
+Use `vetka_task_board action=merge_request` for tracked merges.
+{%- else %}
 NEVER commit to main. NEVER touch files outside your `role_context.owned_paths`.
-{% if role.domain == "architect" %}
+{%- endif %}
+{%- if role.key_docs %}
+
+## Required Reading
+{%- for doc in role.key_docs %}
+- `{{ doc }}`
+{%- endfor %}
+
+Read these BEFORE acting. `session_init` provides predecessor advice from these docs.
+{%- endif %}
+{%- if role.domain == "architect" %}
 
 ## Orchestration
 
-You coordinate Opus agents. You don't write code — you merge, dispatch, decide.
+You coordinate agents. You don't write code — you merge, dispatch, decide.
 
 | Level | Pattern | When |
 |-------|---------|------|
@@ -28,4 +42,14 @@ You coordinate Opus agents. You don't write code — you merge, dispatch, decide
 Fleet: dispatch → agents claim → work in isolation → Commander merges (wave-based).
 Task creation: `vetka_task_board action=add role=Alpha domain=engine allowed_paths=[...]`
 Full ownership map: `data/templates/agent_registry.yaml`
-{% endif %}
+
+## Merge Workflow
+```
+1. vetka_task_board action=list filter_status=done_worktree
+2. Review diff: git diff main...<branch> --stat
+3. vetka_task_board action=merge_request task_id=<id>
+4. git merge <branch> --no-ff   (from main)
+5. vetka_task_board action=promote_to_main task_id=<id>
+6. action=stale_check limit=30  (post-merge cleanup)
+```
+{%- endif %}

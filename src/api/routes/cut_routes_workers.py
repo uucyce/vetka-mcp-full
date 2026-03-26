@@ -2359,6 +2359,43 @@ def _run_cut_scan_matrix_job(job_id: str, body: CutScanMatrixRequest) -> None:
             sandbox_root=str(body.sandbox_root),
         )
 
+        # MARKER_B73_PRE: Pre-transcode non-native media for instant first Play.
+        # Runs after scan completes — background thread pool, max 2 concurrent.
+        pre_transcode_count = 0
+        try:
+            from src.api.routes.cut_routes_media import _get_or_transcode, _needs_browser_transcode
+            from concurrent.futures import ThreadPoolExecutor
+
+            non_native_paths: list[str] = []
+            for mp in media_paths:
+                mp_ext = os.path.splitext(mp)[1].lower()
+                if mp_ext in VIDEO_EXTENSIONS:
+                    try:
+                        decision = _needs_browser_transcode(Path(mp))
+                        if decision is not None:
+                            non_native_paths.append(mp)
+                    except Exception:
+                        pass
+
+            if non_native_paths:
+                def _pretranscode(p: str) -> bool:
+                    try:
+                        result = _get_or_transcode(Path(p))
+                        return result is not None
+                    except Exception:
+                        return False
+
+                with ThreadPoolExecutor(max_workers=2) as pool:
+                    futures = [pool.submit(_pretranscode, p) for p in non_native_paths]
+                    for f in futures:
+                        try:
+                            if f.result(timeout=600):
+                                pre_transcode_count += 1
+                        except Exception:
+                            pass
+        except ImportError:
+            pass  # graceful if transcode module unavailable
+
         job_store.update_job(
             job_id,
             state="done",
@@ -2369,6 +2406,7 @@ def _run_cut_scan_matrix_job(job_id: str, body: CutScanMatrixRequest) -> None:
                 "media_index_path": store.paths.media_index_path,
                 "scan_matrix_path": store.paths.scan_matrix_result_path,
                 "triple_write": triple_result,
+                "pre_transcoded": pre_transcode_count,
             },
         )
     except Exception as exc:

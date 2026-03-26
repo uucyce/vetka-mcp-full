@@ -6,6 +6,10 @@ For cinema professionals. By filmmakers, for filmmakers.
 
 v1.0 \| 2026-03-14 \| Данила Гулин + Claude Opus 4.6
 
+> **NOTE:** This is the original design vision document (v1.0).
+> For current implementation state verified from code, see **[docs/VETKA_CUT_MANUAL.md](../../VETKA_CUT_MANUAL.md)**.
+> PULSE system details: Manual §9.4. DAG/Scene Graph: Manual §9.1.
+
 0\. Architectural principles: the constitution
 
 **CUT не ищет единственно верный монтаж. CUT исследует множество допустимых монтажей под разные цели, аудитории и контексты.**

@@ -277,6 +277,18 @@ export default function ExportDialog() {
   const socketRef = useRef<Socket | null>(null);
   const useSocketProgress = useRef(false);
 
+  // MARKER_GAMMA-T1: Listen for MenuBar export sub-menu pre-selection
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.tab) setTab(detail.tab);
+      if (detail?.format) setEditorialFormat(detail.format);
+      if (detail?.codec) setCodec(detail.codec);
+    };
+    window.addEventListener('cut:open-export', handler);
+    return () => window.removeEventListener('cut:open-export', handler);
+  }, []);
+
   // MARKER_B4.2: SocketIO render_progress listener
   useEffect(() => {
     const jobId = activeJobIdRef.current;

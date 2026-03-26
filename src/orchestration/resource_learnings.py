@@ -364,6 +364,55 @@ class ResourceLearningStore:
             logger.warning(f"[Learnings] Search failed: {e}")
             return self._search_fallback(query, limit)
 
+    def search_learnings_sync(
+        self,
+        query: str,
+        limit: int = 10,
+        category: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """MARKER_198.P3.L2: Synchronous semantic search for JEPA Session Lens.
+
+        Same logic as search_learnings() but uses sync get_embedding().
+        """
+        if not self._ensure_init():
+            return self._search_fallback(query, limit)
+
+        try:
+            from src.utils.embedding_service import get_embedding
+            vector = get_embedding(query)
+            if not vector:
+                return self._search_fallback(query, limit)
+
+            query_filter = None
+            if category:
+                from qdrant_client.models import Filter, FieldCondition, MatchValue
+                query_filter = Filter(must=[
+                    FieldCondition(key="category", match=MatchValue(value=category))
+                ])
+
+            results = self._qdrant.client.search(
+                collection_name=COLLECTION_NAME,
+                query_vector=vector,
+                limit=limit,
+                query_filter=query_filter,
+            )
+
+            return [
+                {
+                    "text": r.payload.get("text", ""),
+                    "category": r.payload.get("category", ""),
+                    "score": round(r.score, 3),
+                    "task_id": r.payload.get("task_id"),
+                    "source": r.payload.get("source", "qdrant_l2"),
+                }
+                for r in results
+                if r.score > 0.3
+            ]
+
+        except Exception as e:
+            logger.warning(f"[Learnings] Sync search failed: {e}")
+            return self._search_fallback(query, limit)
+
     def get_stats(self) -> Dict[str, Any]:
         """Get collection statistics."""
         if not self._ensure_init():

@@ -229,7 +229,7 @@ class TestPremiereCriticalBindings:
         ("selectTool", "v"),
         ("razorTool", "c"),
         ("rippleTool", "b"),
-        ("rollTool", "n"),
+        ("rollTool", "Shift+n"),
         ("splitClip", "Cmd+k"),
         ("insertEdit", ","),
         ("overwriteEdit", "."),
@@ -264,7 +264,7 @@ class TestActionScope:
         if not scope_block_match:
             pytest.skip("ACTION_SCOPE not found")
         scope_block = scope_block_match.group(1)
-        scoped_actions = re.findall(r"(\w+):\s", scope_block)
+        scoped_actions = re.findall(r"(\w+):\s*'", scope_block)
         missing = [a for a in all_actions if a not in scoped_actions]
         assert not missing, f"Actions without scope: {missing}"
 

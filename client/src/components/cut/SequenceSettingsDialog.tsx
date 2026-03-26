@@ -83,6 +83,7 @@ export default function SequenceSettingsDialog({
   const [customW, setCustomW] = useState(store.sequenceWidth);
   const [customH, setCustomH] = useState(store.sequenceHeight);
   const [fps, setFps] = useState(store.projectFramerate);
+  const [dropFrame, setDropFrame] = useState(store.dropFrame);
   const [colorSpace, setColorSpace] = useState(store.sequenceColorSpace);
   const [sampleRate, setSampleRate] = useState(store.audioSampleRate);
   const [bitDepth, setBitDepth] = useState(store.audioBitDepth);
@@ -99,6 +100,7 @@ export default function SequenceSettingsDialog({
       s.setSequenceHeight(customH);
     }
     s.setProjectFramerate(fps);
+    s.setDropFrame(dropFrame);
     s.setSequenceColorSpace(colorSpace);
     s.setAudioSampleRate(sampleRate);
     s.setAudioBitDepth(bitDepth);
@@ -126,7 +128,7 @@ export default function SequenceSettingsDialog({
 
     setSaving(false);
     onClose();
-  }, [resolution, customW, customH, fps, colorSpace, sampleRate, bitDepth, sandboxRoot, projectId, onClose]);
+  }, [resolution, customW, customH, fps, dropFrame, colorSpace, sampleRate, bitDepth, sandboxRoot, projectId, onClose]);
 
   if (!open) return null;
 
@@ -183,6 +185,18 @@ export default function SequenceSettingsDialog({
               ))}
             </select>
           </div>
+
+          {(fps === 29.97 || fps === 59.94) && (
+            <div style={ROW}>
+              <span style={LABEL}>Drop Frame Timecode</span>
+              <input
+                type="checkbox"
+                checked={dropFrame}
+                onChange={(e) => setDropFrame(e.target.checked)}
+                style={{ cursor: 'pointer' }}
+              />
+            </div>
+          )}
 
           <div style={ROW}>
             <span style={LABEL}>Color Space</span>

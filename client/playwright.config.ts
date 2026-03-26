@@ -14,6 +14,8 @@
  *   cd client && npx playwright test --workers=1         # sequential (less port contention)
  */
 import { defineConfig } from "@playwright/test";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 
 export default defineConfig({
   testDir: "./e2e",

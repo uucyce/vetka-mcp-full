@@ -552,9 +552,9 @@
   z-index: 1;
 }
 
-/* ── Playhead (red vertical line — only allowed color besides markers) ── */
+/* ── Playhead (monochrome grey — FCP7 style) ── */
 .dockview-theme-dark [data-testid="cut-playhead"] {
-  background: #cc3333;
+  background: #999999;
   width: 1px;
   z-index: 20;
   pointer-events: none;
@@ -568,7 +568,7 @@
   height: 0;
   border-left: 5px solid transparent;
   border-right: 5px solid transparent;
-  border-top: 6px solid #cc3333;
+  border-top: 6px solid #999999;
 }
 
 /* ── Video clip: thumbnail behind name ── */
@@ -661,15 +661,15 @@
   background: #1a1a1a !important;
 }
 
-/* ═══ MARKER_GAMMA-POLISH1: Playhead red accent (visible through all tracks) ════ */
+/* ═══ MARKER_GAMMA-POLISH1: Playhead monochrome accent (visible through all tracks) ════ */
 
-/* Override playhead from white to red for better visibility — NLE standard */
+/* Override playhead for visibility — monochrome grey */
 .dockview-theme-dark [data-testid="cut-playhead"] {
-  background: #cc3333 !important;
+  background: #999999 !important;
   z-index: 100;
 }
 .dockview-theme-dark [data-testid="cut-playhead-head"] {
-  border-top-color: #cc3333 !important;
+  border-top-color: #999999 !important;
 }
 
 /* ═══ MARKER_GAMMA-POLISH1: Selected clip highlight ═══════════════════════ */

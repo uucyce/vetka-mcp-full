@@ -1,4 +1,8 @@
 # CUT ↔ FCP7 Feature Coverage Matrix
+
+> **SUPERSEDED:** Live coverage data is now in **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)** Appendix A (78% compliance, 36 features).
+> This file remains as historical Delta audit from 2026-03-22.
+
 **Author:** Delta (QA) | **Date:** 2026-03-22 | **Source:** FCP7 Bible Ch.41-115 + App.A
 
 ## How to Read

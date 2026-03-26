@@ -111,6 +111,8 @@ _SANDBOX_BACKGROUND_LIMIT = 2
 from src.api.routes.cut_routes_media import media_router
 from src.api.routes.cut_routes_export import export_router
 from src.api.routes.cut_routes_render import render_router
+# MARKER_B_P2_HOTKEYS: Audio sub-router (scrubbing, level adjust, solo)
+from src.api.routes.cut_routes_audio import audio_router
 
 # MARKER_B65: Bootstrap sub-module extracted for modularity
 from src.api.routes.cut_routes_bootstrap import (  # noqa: E402
@@ -126,6 +128,12 @@ from src.api.routes.cut_routes_bootstrap import (  # noqa: E402
 router.include_router(media_router)
 router.include_router(export_router)
 router.include_router(render_router)
+router.include_router(audio_router)  # MARKER_B_P2_HOTKEYS
+
+# MARKER_BOTIO: Import sub-router — OTIO / Premiere XML / FCPXML / EDL import
+from src.api.routes.cut_routes_import import import_router  # noqa: E402
+
+router.include_router(import_router)
 
 # MARKER_B70: PULSE sub-router extracted for modularity (26 endpoints, ~1300 lines)
 from src.api.routes.cut_routes_pulse import pulse_router  # noqa: E402

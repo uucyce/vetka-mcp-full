@@ -23,7 +23,6 @@ import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
-import { useAudioPlayback, type AudioClipInfo } from '../../hooks/useAudioPlayback';
 import DockviewLayout from './DockviewLayout';
 import { useDockviewStore } from '../../store/useDockviewStore';
 import MenuBar from './MenuBar';
@@ -32,7 +31,9 @@ import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
-import TrimEditWindow from './TrimEditWindow';
+import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
+import { PublishDialog } from '../publish/PublishDialog';
 
 
 // ─── Styles ───
@@ -167,12 +168,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
       const s = useCutEditorStore.getState();
-      // MARKER_TD5: Dynamic Trim — J moves edit point backward when trim overlay is active
-      if (s.trimEditActive) {
-        const frameSec = 1 / s.projectFramerate;
-        s.setTrimEditActive(true, s.trimEditClipId, Math.max(0, s.trimEditPoint - frameSec));
-        return;
-      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
@@ -200,12 +195,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     shuttleForward: () => {
       const s = useCutEditorStore.getState();
-      // MARKER_TD5: Dynamic Trim — L moves edit point forward when trim overlay is active
-      if (s.trimEditActive) {
-        const frameSec = 1 / s.projectFramerate;
-        s.setTrimEditActive(true, s.trimEditClipId, s.trimEditPoint + frameSec);
-        return;
-      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
@@ -365,30 +354,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setSelectedClip(null);
       s.clearSelection();
     },
-    // MARKER_SPLIT_LOCAL_FIRST: Local-first split for instant visual feedback
-    splitClip: () => {
+    splitClip: async () => {
       const s = useCutEditorStore.getState();
       const t = s.currentTime;
+      // Find clip under playhead to get its clip_id
       for (const lane of s.lanes) {
         for (const c of lane.clips) {
-          if (t > c.start_sec + 0.01 && t < c.start_sec + c.duration_sec - 0.01) {
-            // Local-first: split into two halves instantly
-            const leftDur = t - c.start_sec;
-            const rightDur = c.duration_sec - leftDur;
-            const newLanes = s.lanes.map((l) => ({
-              ...l,
-              clips: l.clips.flatMap((cl) => {
-                if (cl.clip_id !== c.clip_id) return [cl];
-                return [
-                  { ...cl, clip_id: `${cl.clip_id}_L`, duration_sec: leftDur },
-                  { ...cl, clip_id: `${cl.clip_id}_R`, start_sec: t, duration_sec: rightDur,
-                    source_in: (cl.source_in ?? 0) + leftDur },
-                ];
-              }),
-            }));
-            s.setLanes(newLanes);
-            // Async backend with skipRefresh (local state is truth)
-            s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }], { skipRefresh: true }).catch(() => {});
+          if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
+            await s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }]);
             return;
           }
         }
@@ -897,18 +870,29 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
-    // MARKER_A4: PULSE integration hotkeys
-    runPulseAnalysis: () => useCutEditorStore.getState().runPulseAnalysis(),
-    runAutoMontageFavorites: () => useCutEditorStore.getState().runAutoMontage('favorites'),
-    // MARKER_EXPORT: Export timeline (Cmd+E → default Premiere XML)
-    exportTimeline: () => useCutEditorStore.getState().exportTimeline('premiere-xml'),
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
-    focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
-    focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
-    focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
-    focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
-    focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
+    // Updates store state AND physically activates the dockview panel tab.
+    focusSource: () => {
+      useCutEditorStore.getState().setFocusedPanel('source');
+      try { useDockviewStore.getState().apiRef?.getPanel('source')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProgram: () => {
+      useCutEditorStore.getState().setFocusedPanel('program');
+      try { useDockviewStore.getState().apiRef?.getPanel('program')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusTimeline: () => {
+      useCutEditorStore.getState().setFocusedPanel('timeline');
+      try { useDockviewStore.getState().apiRef?.getPanel('timeline')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProject: () => {
+      useCutEditorStore.getState().setFocusedPanel('project');
+      try { useDockviewStore.getState().apiRef?.getPanel('project')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusEffects: () => {
+      useCutEditorStore.getState().setFocusedPanel('effects');
+      try { useDockviewStore.getState().apiRef?.getPanel('effects')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
 
     // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
     matchFrame: () => {
@@ -951,6 +935,61 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
+
+    // MARKER_GAMMA-P1: 6 new FCP7 UI actions
+    editMarkerDialog: () => {
+      const s = useCutEditorStore.getState();
+      // Find marker nearest to playhead (within 0.1s tolerance)
+      const marker = s.markers.find((m) =>
+        Math.abs(m.start_sec - s.currentTime) < 0.1
+      );
+      if (marker) {
+        s.setShowEditMarkerDialog(true, marker.marker_id);
+      }
+    },
+    timecodeEntry: () => {
+      useCutEditorStore.getState().setShowTimecodeEntry(true);
+    },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
+    },
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      const selected = s.selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
+    },
+    toggleTimelineDisplayMode: () => {
+      useCutEditorStore.getState().cycleTimelineDisplayMode();
+    },
+    publishDialog: () => {
+      useCutEditorStore.getState().setShowPublishDialog(true);
+    },
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
@@ -1032,122 +1071,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     setProgramMedia(null);
   }, [currentTime, lanes, setProgramMedia]);
 
-  // ─── MARKER_B5.2: Audio playback wiring ───
-  // Hook provides playAt / stopAll synced to Web Audio API.
-  const { playAt, stopAll, prefetch } = useAudioPlayback();
-
-  // Subscribe to audio-relevant store slices
-  const isPlaying = useCutEditorStore((s) => s.isPlaying);
-  const laneVolumes = useCutEditorStore((s) => s.laneVolumes);
-  const mutedLanes = useCutEditorStore((s) => s.mutedLanes);
-  const soloLanes = useCutEditorStore((s) => s.soloLanes);
-
-  // Track current time via ref to avoid re-triggering play on every frame tick.
-  // The effect that starts playback reads this ref at play-start time.
-  const audioCurrentTimeRef = useRef<number>(currentTime);
-  useEffect(() => {
-    audioCurrentTimeRef.current = currentTime;
-  });
-
-  // Build AudioClipInfo[] from all audio lanes — memoised on lane/volume/mute/solo changes.
-  const audioClips = useMemo<AudioClipInfo[]>(() => {
-    const hasSolo = soloLanes.size > 0;
-    const result: AudioClipInfo[] = [];
-    for (const lane of lanes) {
-      // Only audio lanes contribute to audio playback
-      if (!lane.lane_type.startsWith('audio')) continue;
-      const laneId = lane.lane_id;
-      const isMuted = mutedLanes.has(laneId) || (hasSolo && !soloLanes.has(laneId));
-      const volume = laneVolumes[laneId] ?? 1.0;
-      for (const clip of lane.clips) {
-        result.push({
-          clip_id: clip.clip_id,
-          source_path: clip.source_path,
-          start_sec: clip.start_sec,
-          duration_sec: clip.duration_sec,
-          source_in: (clip as any).source_in ?? 0,
-          volume,
-          pan: 0,
-          muted: isMuted,
-        });
-      }
-    }
-    return result;
-  }, [lanes, laneVolumes, mutedLanes, soloLanes]);
-
-  // Start / stop audio when isPlaying changes.
-  useEffect(() => {
-    if (isPlaying) {
-      playAt(audioClips, audioCurrentTimeRef.current);
-    } else {
-      stopAll();
-    }
-    // Intentionally NOT listing audioClips in deps — rebuilding clips list should not
-    // restart audio mid-play. Clips are read at play-start via audioCurrentTimeRef pattern.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, playAt, stopAll]);
-
-  // Re-sync audio when user seeks while playback is active.
-  // Stable refs let us read latest values without adding them to the seek-effect deps.
-  const isPlayingRef = useRef(isPlaying);
-  useEffect(() => { isPlayingRef.current = isPlaying; });
-
-  const audioClipsRef = useRef(audioClips);
-  useEffect(() => { audioClipsRef.current = audioClips; });
-
-  useEffect(() => {
-    if (!isPlayingRef.current) return;
-    // currentTime changed while playing → re-sync audio to new position
-    stopAll();
-    playAt(audioClipsRef.current, currentTime);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime, playAt, stopAll]);
-
-  // MARKER_AUDIO_PREFETCH: Prefetch next clip's audio when playhead approaches clip boundary (2s lookahead)
-  const lastPrefetchRef = useRef('');
-  useEffect(() => {
-    if (!isPlayingRef.current) return;
-    const s = useCutEditorStore.getState();
-    const audioLane = s.lanes.find((l) => l.lane_type.startsWith('audio'));
-    if (!audioLane) return;
-    for (const clip of audioLane.clips) {
-      const clipEnd = clip.start_sec + clip.duration_sec;
-      // If playhead is within 2s before clip start and we haven't prefetched this clip yet
-      if (currentTime >= clip.start_sec - 2 && currentTime < clip.start_sec && lastPrefetchRef.current !== clip.clip_id) {
-        lastPrefetchRef.current = clip.clip_id;
-        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id }]);
-        break;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime, prefetch]);
-
-  // MARKER_SCRUB_SYNC: Timeline scrub → Source Monitor shows clip under playhead (FCP7 Canvas→Viewer follows)
-  const lastScrubSourceRef = useRef<{ path: string | null; time: number }>({ path: null, time: -1 });
-  useEffect(() => {
-    const s = useCutEditorStore.getState();
-    // Only sync when timeline is focused (not source monitor)
-    if (s.focusedPanel === 'source') return;
-    // Find clip under playhead on first video lane
-    const videoLane = s.lanes.find((l) => l.lane_type.startsWith('video') || l.lane_type.startsWith('take_alt'));
-    if (!videoLane) return;
-    for (const clip of videoLane.clips) {
-      if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
-        const sourceRelativeTime = (clip.source_in ?? 0) + (currentTime - clip.start_sec);
-        const last = lastScrubSourceRef.current;
-        const pathChanged = clip.source_path !== last.path;
-        const timeChanged = Math.abs(sourceRelativeTime - last.time) > 0.04;
-        if (!pathChanged && !timeChanged) return;
-        if (pathChanged && clip.source_path && clip.source_path !== s.sourceMediaPath) {
-          s.setSourceMedia(clip.source_path);
-        }
-        s.seekSource(sourceRelativeTime);
-        lastScrubSourceRef.current = { path: clip.source_path, time: sourceRelativeTime };
-        return;
-      }
-    }
-  }, [currentTime]);
-
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
   return (
@@ -1158,8 +1081,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
-      {/* MARKER_TRIM_WINDOW: Floating trim edit overlay (FCP7 Ch.45-46) */}
-      <TrimEditWindow />
+      {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
+      <EditMarkerDialog />
+      <TimecodeEntryOverlay />
+      {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
+      <PublishDialog />
       <SaveIndicator />
     </div>
   );

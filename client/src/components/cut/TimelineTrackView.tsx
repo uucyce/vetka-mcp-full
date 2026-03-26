@@ -443,8 +443,12 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const [dragState, setDragState] = useState<ClipDragState | null>(null);
   const [dropZone, setDropZone] = useState<DropZoneState | null>(null);
   const [scrubActive, setScrubActive] = useState(false);
+  // MARKER_W6.HAND-ZOOM: Hand tool pan state (tracks drag start for scroll delta)
+  const [handPanState, setHandPanState] = useState<{ startX: number; startScroll: number } | null>(null);
   const [markerDraft, setMarkerDraft] = useState<MarkerDraftState | null>(null);
   const [contextMenu, setContextMenu] = useState<ClipContextMenuState | null>(null);
+  // MARKER_GAMMA-2: Marker context menu state (for ruler marker right-click → delete)
+  const [markerCtxMenu, setMarkerCtxMenu] = useState<{ x: number; y: number; markerId: string } | null>(null);
   const [snapIndicator, setSnapIndicator] = useState<SnapIndicatorState | null>(null);
   const [waveformHover, setWaveformHover] = useState<WaveformHoverState | null>(null);
 
@@ -504,10 +508,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const multicamMode = useCutEditorStore((state) => state.multicamMode);
   // MARKER_W3.6: Tool State Machine — cursor changes based on active tool
   const activeTool = useCutEditorStore((state) => state.activeTool);
+  // MARKER_GAMMA-2: Marker CRUD actions
+  const deleteMarker = useCutEditorStore((state) => state.deleteMarker);
   // MARKER_W6.TOOL-SM: Cursor maps per context
   // Lane background cursor (when hovering empty space)
+  // MARKER_W6.HAND-ZOOM: hand shows 'grabbing' during active pan
   const TOOL_CURSOR: Record<string, string> = {
-    selection: 'default', razor: 'crosshair', hand: 'grab', zoom: 'zoom-in',
+    selection: 'default', razor: 'crosshair', hand: handPanState ? 'grabbing' : 'grab', zoom: 'zoom-in',
     slip: 'ew-resize', slide: 'col-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   // Clip body cursor (when hovering over a clip)
@@ -971,10 +978,44 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const handleTrackClick = useCallback(
     (event: MouseEvent<HTMLDivElement>) => {
       if ((event.target as HTMLElement).dataset.clip) return;
+      // MARKER_W6.HAND-ZOOM: Hand/Zoom tools handle their own click behavior
+      if (activeTool === 'hand' || activeTool === 'zoom') return;
       seek(timeFromTrackClientX(event.clientX));
       setContextMenu(null);
     },
-    [seek, timeFromTrackClientX]
+    [activeTool, seek, timeFromTrackClientX]
+  );
+
+  // MARKER_W6.HAND-ZOOM: Hand drag-to-pan + Zoom click-to-zoom on empty track area
+  const handleTrackMouseDown = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      if ((event.target as HTMLElement).dataset.clip) return;
+
+      // Hand tool: start pan drag
+      if (activeTool === 'hand') {
+        event.preventDefault();
+        setHandPanState({ startX: event.clientX, startScroll: scrollLeftRef.current });
+        return;
+      }
+
+      // Zoom tool: click-to-zoom centered on cursor (Alt+click = zoom out, FCP7 Ch.15)
+      if (activeTool === 'zoom') {
+        event.preventDefault();
+        const containerRect = containerRef.current?.getBoundingClientRect();
+        if (!containerRect) return;
+        const cursorLocalX = event.clientX - containerRect.left - LANE_HEADER_WIDTH;
+        const currentZoom = zoomRef.current;
+        const currentScroll = scrollLeftRef.current;
+        const cursorTime = (cursorLocalX + currentScroll) / currentZoom;
+        const factor = event.altKey ? 0.5 : 2.0;
+        const newZoom = Math.max(10, Math.min(500, currentZoom * factor));
+        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
+        useCutEditorStore.getState().setZoom(newZoom);
+        useCutEditorStore.getState().setScrollLeft(newScroll);
+        return;
+      }
+    },
+    [activeTool]
   );
 
   const handleTrackDoubleClick = useCallback(
@@ -1232,12 +1273,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   );
 
   useEffect(() => {
-    if (!markerDraft && !contextMenu) {
+    if (!markerDraft && !contextMenu && !markerCtxMenu) {
       return undefined;
     }
     const close = () => {
       setMarkerDraft(null);
       setContextMenu(null);
+      setMarkerCtxMenu(null);
     };
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
@@ -1250,16 +1292,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       window.removeEventListener('mousedown', close);
       window.removeEventListener('keydown', handleKey);
     };
-  }, [contextMenu, markerDraft]);
+  }, [contextMenu, markerDraft, markerCtxMenu]);
 
   useEffect(() => {
-    if (!dragState && !scrubActive) {
+    if (!dragState && !scrubActive && !handPanState) {
       return undefined;
     }
 
     const handleMouseMove = (event: globalThis.MouseEvent) => {
       if (scrubActive) {
         seek(timeFromRulerClientX(event.clientX));
+      }
+      // MARKER_W6.HAND-ZOOM: Hand tool drag-to-pan
+      if (handPanState) {
+        const delta = handPanState.startX - event.clientX;
+        useCutEditorStore.getState().setScrollLeft(Math.max(0, handPanState.startScroll + delta));
+        return;
       }
       if (!dragState) {
         return;
@@ -1458,6 +1506,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       const activeDrag = dragState;
       setScrubActive(false);
       setSnapIndicator(null);
+      // MARKER_W6.HAND-ZOOM: End hand-tool panning
+      if (handPanState) {
+        setHandPanState(null);
+      }
       if (!activeDrag) {
         setDragState(null);
         return;
@@ -1686,7 +1738,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [applyTimelineOps, dragState, laneIdFromClientY, scrubActive, seek, timeFromRulerClientX, timeFromTrackClientX]);
+  }, [applyTimelineOps, dragState, handPanState, laneIdFromClientY, scrubActive, seek, timeFromRulerClientX, timeFromTrackClientX]);
 
   useEffect(() => {
     if (!isPlaying || dragState || scrubActive) {
@@ -1704,8 +1756,13 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     }
   }, [currentTime, dragState, isPlaying, scrubActive, scrollLeft, setScrollLeft, zoom]);
 
+  // MARKER_GAMMA-1: hand tool → 'grabbing' while dragging, 'grab' otherwise
+  const containerCursor = (activeTool === 'hand' && dragState != null)
+    ? 'grabbing'
+    : (TOOL_CURSOR[activeTool] || 'default');
+
   return (
-    <div ref={containerRef} data-testid="cut-timeline-track-view" style={{ ...CONTAINER_STYLE, cursor: TOOL_CURSOR[activeTool] || 'default' }} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
+    <div ref={containerRef} data-testid="cut-timeline-track-view" style={{ ...CONTAINER_STYLE, cursor: containerCursor }} onWheel={handleWheel} onMouseDown={handleTimelineActivate}>
       {/* MARKER_W5.TC: Ruler row — editable timecode field + time ruler */}
       <div style={{ display: 'flex', flexDirection: 'row', flexShrink: 0, height: RULER_HEIGHT }}>
         {/* Timecode field in lane header area (FCP7 Current Timecode) */}
@@ -1751,7 +1808,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             top: 0,
             width: Math.max(2, (markOut - markIn) * zoom),
             height: RULER_HEIGHT,
-            background: 'linear-gradient(90deg, rgba(34, 197, 94, 0.2), rgba(239, 68, 68, 0.2))',
+            background: 'rgba(255, 255, 255, 0.12)',
             pointerEvents: 'none',
             zIndex: 20,
           }}
@@ -1796,6 +1853,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         }
         const color = MARKER_COLORS[marker.kind] || '#888';
         return (
+          // MARKER_GAMMA-2: pointerEvents enabled for right-click delete
           <div
             key={`ruler_${marker.marker_id}`}
             style={{
@@ -1805,9 +1863,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               width: 10,
               height: RULER_HEIGHT,
               zIndex: 22,
-              pointerEvents: 'none',
+              pointerEvents: 'auto',
+              cursor: 'pointer',
             }}
-            title={`${marker.kind}: ${marker.text || ''}`}
+            title={`${marker.kind}: ${marker.text || ''} — right-click to delete`}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              setMarkerCtxMenu({ x: e.clientX, y: e.clientY, markerId: marker.marker_id });
+            }}
           >
             <div
               style={{
@@ -1938,6 +2002,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               <div
                 data-testid={`cut-timeline-lane-${lane.lane_id}`}
                 style={{ ...LANE_CONTENT, cursor: TOOL_CURSOR[activeTool] || 'default' }}
+                onMouseDown={handleTrackMouseDown}
                 onClick={handleTrackClick}
                 onDoubleClick={(event) => handleTrackDoubleClick(event, lane.lane_id)}
                 onDragOver={(event) => handleLaneDragOver(event, lane.lane_id, event.currentTarget)}
@@ -2129,7 +2194,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 6,
-                                color: '#9ca3af',
+                                color: '#999',
                                 textTransform: 'uppercase',
                                 letterSpacing: 0.4,
                                 textShadow: '0 1px 2px rgba(0,0,0,0.65)',
@@ -2152,7 +2217,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                       width: 2,
                                       height: barHeight,
                                       borderRadius: 1,
-                                      background: '#9ca3af',
+                                      background: '#999',
                                       opacity: 0.8 - index * 0.15,
                                     }}
                                   />
@@ -2170,7 +2235,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 padding: '1px 4px',
                                 borderRadius: 3,
                                 background: 'rgba(0, 0, 0, 0.72)',
-                                color: '#d1d5db',
+                                color: '#ccc',
                                 fontSize: 9,
                                 lineHeight: 1.2,
                                 pointerEvents: 'none',
@@ -2425,10 +2490,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             padding: '0 3px',
                             borderRadius: 2,
                             background: clip.speed < 0
-                              ? 'rgba(239, 68, 68, 0.8)'   // red for reverse
+                              ? 'rgba(200, 200, 200, 0.85)' // bright for reverse
                               : clip.speed < 1
-                                ? 'rgba(74, 222, 128, 0.7)' // green for slow-mo
-                                : 'rgba(251, 146, 60, 0.7)',// orange for speed-up
+                                ? 'rgba(120, 120, 120, 0.75)' // dim for slow-mo
+                                : 'rgba(170, 170, 170, 0.8)', // mid for speed-up
                             color: '#fff',
                             textShadow: '0 1px 2px rgba(0,0,0,0.8)',
                             lineHeight: '13px',
@@ -2884,6 +2949,46 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         </div>
       ) : null}
 
+      {/* MARKER_GAMMA-2: Marker context menu — right-click a ruler marker to delete */}
+      {markerCtxMenu ? (
+        <div
+          data-testid="cut-marker-context-menu"
+          style={{
+            position: 'fixed',
+            left: markerCtxMenu.x,
+            top: markerCtxMenu.y,
+            zIndex: 10001,
+            background: '#0b0b0b',
+            border: '1px solid #2a2a2a',
+            borderRadius: 4,
+            padding: '3px 0',
+            minWidth: 140,
+            boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+            fontSize: 11,
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc',
+          }}
+          onMouseLeave={() => setMarkerCtxMenu(null)}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <button
+            style={{
+              display: 'block', width: '100%', background: 'none', border: 'none',
+              textAlign: 'left', padding: '5px 12px', cursor: 'pointer',
+              fontSize: 11, fontFamily: 'system-ui', color: '#ccc',
+            }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+            onClick={() => {
+              deleteMarker(markerCtxMenu.markerId);
+              setMarkerCtxMenu(null);
+            }}
+          >
+            Delete Marker
+          </button>
+        </div>
+      ) : null}
+
       {dragState && clipOverlayTop !== null ? (
         <div
           style={{
@@ -2893,8 +2998,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             width: Math.max(4, dragState.durationSec * zoom),
             height: trackHeight - 6,
             bottom: 'auto',
-            background: 'rgba(37, 99, 235, 0.28)',
-            border: '1px dashed rgba(96, 165, 250, 0.95)',
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: '1px dashed rgba(200, 200, 200, 0.8)',
             pointerEvents: 'none',
             zIndex: 120,
             cursor: dragState.mode === 'move' ? 'grabbing' : 'ew-resize',

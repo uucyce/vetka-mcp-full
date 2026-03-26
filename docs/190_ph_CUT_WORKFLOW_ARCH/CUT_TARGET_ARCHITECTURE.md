@@ -1,6 +1,9 @@
 # CUT Target Architecture
 # Целевая архитектура по v1.0 + уточнения
 
+> **NOTE:** This document describes the TARGET architecture (design intent).
+> For CURRENT implementation state verified from code, see **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)** — the single source of truth.
+
 **Date:** 2026-03-17, updated 2026-03-18
 **Basis:** VETKA_CUT_Interface_Architecture_v1.docx
 **Status:** ALL QUESTIONS RESOLVED ✅

@@ -90,6 +90,8 @@ export default function TimelineDisplayControls() {
   const showVideoTracks = useCutEditorStore((s) => s.showVideoTracks);
   const showAudioTracks = useCutEditorStore((s) => s.showAudioTracks);
   const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
+  const proxyMode = useCutEditorStore((s) => s.proxyMode);
+  const setProxyMode = useCutEditorStore((s) => s.setProxyMode);
 
   const toggleShowClipNames = useCutEditorStore((s) => s.toggleShowClipNames);
   const toggleShowClipBorders = useCutEditorStore((s) => s.toggleShowClipBorders);
@@ -221,6 +223,24 @@ export default function TimelineDisplayControls() {
               <CheckMark checked={timecodeDisplayMode === mode} />
               <span>
                 {mode === 'timecode' ? 'Timecode (HH:MM:SS:FF)' : mode === 'frames' ? 'Frames' : 'Seconds'}
+              </span>
+            </div>
+          ))}
+
+          <div style={SEPARATOR} />
+
+          {/* MARKER_B72: Group D: Playback Quality / Proxy toggle */}
+          <div style={GROUP_LABEL}>Playback Quality</div>
+          {(['full', 'proxy', 'auto'] as const).map((mode) => (
+            <div
+              key={mode}
+              style={TOGGLE_ROW}
+              onClick={() => setProxyMode(mode)}
+              data-testid={`proxy-mode-${mode}`}
+            >
+              <CheckMark checked={proxyMode === mode} />
+              <span>
+                {mode === 'full' ? 'Full Resolution' : mode === 'proxy' ? 'Proxy (Performance)' : 'Auto (Proxy if needed)'}
               </span>
             </div>
           ))}

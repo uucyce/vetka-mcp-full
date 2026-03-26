@@ -345,6 +345,137 @@ async def cut_render_queue(
     }
 
 
+# ---------------------------------------------------------------------------
+# MARKER_B_P2_HOTKEYS: Render selection (Cmd+R) and render all (Alt+R)
+# Convenience wrappers over /render/master that pre-fill range from store.
+# ---------------------------------------------------------------------------
+
+
+class CutRenderSelectionRequest(BaseModel):
+    """Request for render-selection (Cmd+R) — renders only In/Out range."""
+    sandbox_root: str = ""
+    project_id: str = "project"
+    timeline_id: str = "main"
+    codec: str = "h264"
+    resolution: str = "1080p"
+    quality: int = Field(default=80, ge=1, le=100)
+    fps: int = Field(default=25, ge=1, le=120)
+    in_point: float = Field(description="Sequence IN point (seconds)")
+    out_point: float = Field(description="Sequence OUT point (seconds)")
+    audio_codec: str = "aac"
+    mixer: dict[str, Any] | None = None
+
+
+class CutRenderAllRequest(BaseModel):
+    """Request for render-all (Alt+R) — renders entire timeline."""
+    sandbox_root: str = ""
+    project_id: str = "project"
+    timeline_id: str = "main"
+    codec: str = "h264"
+    resolution: str = "1080p"
+    quality: int = Field(default=80, ge=1, le=100)
+    fps: int = Field(default=25, ge=1, le=120)
+    audio_codec: str = "aac"
+    mixer: dict[str, Any] | None = None
+
+
+@render_router.post("/render/selection")
+async def cut_render_selection(req: CutRenderSelectionRequest) -> dict[str, Any]:
+    """
+    MARKER_B_P2_HOTKEYS — Render selection (Cmd+R hotkey backend).
+
+    Renders only the In/Out range defined by the sequence marks.
+    Delegates to /render/master with range_in/range_out set.
+
+    Returns job_id for SSE progress polling.
+    """
+    if req.out_point <= req.in_point:
+        return {"success": False, "error": "out_point must be greater than in_point"}
+
+    master_req = CutRenderMasterRequest(
+        sandbox_root=req.sandbox_root,
+        project_id=req.project_id,
+        timeline_id=req.timeline_id,
+        codec=req.codec,
+        resolution=req.resolution,
+        quality=req.quality,
+        fps=req.fps,
+        range_in=req.in_point,
+        range_out=req.out_point,
+        audio_codec=req.audio_codec,
+        mixer=req.mixer,
+    )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job("render_selection", {
+        "sandbox_root": req.sandbox_root,
+        "project_id": req.project_id,
+        "timeline_id": req.timeline_id,
+        "codec": req.codec,
+        "in_point": req.in_point,
+        "out_point": req.out_point,
+        "duration_sec": round(req.out_point - req.in_point, 3),
+    })
+    thread = threading.Thread(
+        target=_run_master_render_job,
+        args=(str(job["job_id"]), master_req),
+        daemon=True,
+    )
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_render_selection_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+        "in_point": req.in_point,
+        "out_point": req.out_point,
+    }
+
+
+@render_router.post("/render/all")
+async def cut_render_all(req: CutRenderAllRequest) -> dict[str, Any]:
+    """
+    MARKER_B_P2_HOTKEYS — Render all (Alt+R hotkey backend).
+
+    Renders entire timeline from start to end (no range restriction).
+    Equivalent to /render/master with no range_in/range_out.
+
+    Returns job_id for SSE progress polling.
+    """
+    master_req = CutRenderMasterRequest(
+        sandbox_root=req.sandbox_root,
+        project_id=req.project_id,
+        timeline_id=req.timeline_id,
+        codec=req.codec,
+        resolution=req.resolution,
+        quality=req.quality,
+        fps=req.fps,
+        range_in=None,
+        range_out=None,
+        audio_codec=req.audio_codec,
+        mixer=req.mixer,
+    )
+    job_store = get_cut_mcp_job_store()
+    job = job_store.create_job("render_all", {
+        "sandbox_root": req.sandbox_root,
+        "project_id": req.project_id,
+        "timeline_id": req.timeline_id,
+        "codec": req.codec,
+        "resolution": req.resolution,
+    })
+    thread = threading.Thread(
+        target=_run_master_render_job,
+        args=(str(job["job_id"]), master_req),
+        daemon=True,
+    )
+    thread.start()
+    return {
+        "success": True,
+        "schema_version": "cut_render_all_v1",
+        "job_id": str(job["job_id"]),
+        "job": job,
+    }
+
+
 @render_router.delete("/render/queue/{job_id}")
 async def cut_render_queue_remove(job_id: str) -> dict[str, Any]:
     """

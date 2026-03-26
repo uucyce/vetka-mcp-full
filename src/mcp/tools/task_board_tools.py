@@ -2,14 +2,9 @@
 Task Board MCP Tools — Phase 121
 
 Three MCP tools for managing the Task Board:
-1. vetka_task_board  — CRUD + list + summary
+1. vetka_task_board  — CRUD + list + summary + claim + complete
 2. vetka_task_dispatch — dispatch tasks to pipeline
 3. vetka_task_import — import from todo files
-
-TODO MARKER_126.11C: Add fourth tool:
-4. vetka_task_claim — claim/release tasks for external agents
-   - action: "claim" | "release" | "my_tasks"
-   - Enables Claude Code, Grok, etc. to claim tasks without Mycelium
 
 @status: active
 @phase: 121
@@ -122,7 +117,7 @@ TASK_BOARD_SCHEMA = {
             # MARKER_130.C16B: Added claim, complete, active_agents actions
             # MARKER_186.4: Added promote_to_main — transitions done_worktree → done_main
             # MARKER_195.20: Added verify — QA gate (done_worktree → verified/needs_fix)
-            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close"],
+            "enum": ["add", "list", "get", "update", "remove", "summary", "claim", "complete", "active_agents", "merge_request", "promote_to_main", "request_qa", "verify", "close", "bulk_close", "stale_check"],
             "description": "Operation to perform"
         },
         # For "add":
@@ -181,6 +176,10 @@ TASK_BOARD_SCHEMA = {
         # MARKER_191.16: close / bulk_close fields
         "reason": {"type": "string", "description": "Reason for closing (for close/bulk_close): already_implemented, duplicate, obsolete, research_done, cancelled"},
         "task_ids": {"type": "array", "items": {"type": "string"}, "description": "List of task IDs (for bulk_close or bulk complete via action=complete)"},
+        # MARKER_198.STALE: stale_check parameters
+        "auto_close": {"type": "boolean", "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run)."},
+        # MARKER_198.MERGE: merge_request strategy
+        "strategy": {"type": "string", "enum": ["cherry-pick", "merge", "squash"], "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit."},
     },
     "required": ["action"]
 }
@@ -288,7 +287,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
     # MARKER_195.6: Record task_board action for protocol tracking
     # MARKER_195.21: Use consistent session_id (was hardcoded "mcp_default", debrief read "default")
-    _tracker_sid = arguments.get("session_id") or "mcp_default"
+    # MARKER_198.ROLE: Aligned fallback to "default" — session_init stores role on "default",
+    # so task_board must look it up on the same key.
+    _tracker_sid = arguments.get("session_id") or "default"
     try:
         from src.services.session_tracker import get_session_tracker
         get_session_tracker().record_action(
@@ -319,6 +320,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if action == "add":
             arguments.setdefault("role", _session_role["callsign"])
             arguments.setdefault("domain", _session_role["domain"])
+
+    # MARKER_198.ROLE: Fallback — if session role lookup failed but explicit role= was passed,
+    # use it for assigned_to on claim. Prevents "unknown" when session tracker has no binding.
+    if action == "claim" and arguments.get("role") and arguments.get("assigned_to", "unknown") == "unknown":
+        arguments["assigned_to"] = arguments["role"]
 
     if action == "add":
         title = arguments.get("title")
@@ -434,12 +440,55 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         else:
             max_limit = min(int(arguments.get("limit") or 40), 100)
             page = tasks[:max_limit]
-        result = {
-            "success": True,
-            "count": total,
-            "returned": len(page),
-            "truncated": total > len(page),
-            "tasks": [
+
+        # MARKER_198.JEPA_TASK_LENS: Re-rank tasks by semantic relevance to agent role
+        if _session_role and len(page) >= 3:
+            try:
+                import os as _os
+                if _os.environ.get("VETKA_TASK_JEPA_RANK", "1") != "0":
+                    from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+                    _role_intent = f"role:{_session_role['callsign']} domain:{_session_role.get('domain', '')} {_session_role.get('role_title', '')}"
+                    _task_texts = [f"{t.get('title', '')} {t.get('description', '')[:100]}" for t in page]
+                    _all = [_role_intent] + _task_texts
+                    _emb = embed_texts_for_overlay(_all, target_dim=128)
+                    if _emb.vectors and len(_emb.vectors) == len(_all):
+                        _iv = _emb.vectors[0]
+                        _scores = []
+                        for _idx, _tv in enumerate(_emb.vectors[1:]):
+                            _dot = sum(float(_iv[j]) * float(_tv[j]) for j in range(len(_iv)))
+                            _na = sum(float(_iv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            _nb = sum(float(_tv[j]) ** 2 for j in range(len(_iv))) ** 0.5
+                            _sim = _dot / (_na * _nb) if _na > 1e-12 and _nb > 1e-12 else 0.0
+                            _scores.append((_idx, _sim))
+                        # Stable sort: primary=relevance score desc, secondary=original priority asc
+                        _scores.sort(key=lambda x: (-x[1], page[x[0]].get("priority", 5)))
+                        page = [page[_idx] for _idx, _ in _scores]
+            except Exception:
+                pass  # JEPA task lens never blocks list
+
+        # MARKER_198.ROLE: Personalized list — own tasks first, others collapsed
+        # Determine current agent's callsign from session or explicit role= argument
+        _my_callsign = None
+        if _session_role:
+            _my_callsign = _session_role["callsign"]
+        if not _my_callsign and arguments.get("role"):
+            _my_callsign = arguments["role"]
+
+        if _my_callsign:
+            _my_callsign_lower = _my_callsign.lower()
+            my_tasks = []
+            other_tasks = []
+            for t in page:
+                is_mine = (
+                    (t.get("role") or "").lower() == _my_callsign_lower
+                    or (t.get("assigned_to") or "").lower() == _my_callsign_lower
+                )
+                if is_mine:
+                    my_tasks.append(t)
+                else:
+                    other_tasks.append(t)
+            # Full detail for own tasks
+            my_tasks_out = [
                 {
                     "id": t["id"],
                     "title": t["title"],
@@ -450,10 +499,55 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     "source": t.get("source", ""),
                     "assigned_tier": t.get("assigned_tier"),
                     "project_id": t.get("project_id", ""),
+                    "role": t.get("role", ""),
+                    "assigned_to": t.get("assigned_to", ""),
                 }
-                for t in page
-            ],
-        }
+                for t in my_tasks
+            ]
+            # Collapsed for others — title truncated, fewer fields
+            other_tasks_out = [
+                {
+                    "id": t["id"],
+                    "title": t["title"][:60] + ("..." if len(t["title"]) > 60 else ""),
+                    "priority": t["priority"],
+                    "status": t["status"],
+                    "role": t.get("role", ""),
+                }
+                for t in other_tasks
+            ]
+            result = {
+                "success": True,
+                "count": total,
+                "returned": len(page),
+                "truncated": total > len(page),
+                "my_role": _my_callsign,
+                "my_tasks": my_tasks_out,
+                "my_count": len(my_tasks_out),
+                "other_tasks": other_tasks_out,
+                "other_count": len(other_tasks_out),
+            }
+        else:
+            result = {
+                "success": True,
+                "count": total,
+                "returned": len(page),
+                "truncated": total > len(page),
+                "tasks": [
+                    {
+                        "id": t["id"],
+                        "title": t["title"],
+                        "priority": t["priority"],
+                        "status": t["status"],
+                        "phase_type": t["phase_type"],
+                        "complexity": t["complexity"],
+                        "source": t.get("source", ""),
+                        "assigned_tier": t.get("assigned_tier"),
+                        "project_id": t.get("project_id", ""),
+                    }
+                    for t in page
+                ],
+            }
+
         if project_resolve:
             result["project_resolve"] = project_resolve
         return result
@@ -766,11 +860,12 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         agents = board.get_active_agents()
         return {"success": True, "agents": agents, "count": len(agents)}
 
-    # MARKER_184.5: merge_request action — worktree → main merge via TaskBoard
+    # MARKER_184.5 + MARKER_198.MERGE: merge_request with strategy param
     elif action == "merge_request":
         task_id = arguments.get("task_id")
         if not task_id:
             return {"success": False, "error": "task_id is required for merge_request"}
+        strategy = arguments.get("strategy")  # None = use task default or "cherry-pick"
 
         try:
             import asyncio
@@ -779,10 +874,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 import concurrent.futures
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     result = pool.submit(
-                        asyncio.run, board.merge_request(task_id)
+                        asyncio.run, board.merge_request(task_id, strategy=strategy)
                     ).result()
             else:
-                result = loop.run_until_complete(board.merge_request(task_id))
+                result = loop.run_until_complete(board.merge_request(task_id, strategy=strategy))
             return result
         except Exception as e:
             return {"success": False, "error": f"merge_request failed: {e}"}
@@ -867,6 +962,14 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             results.append({"task_id": tid, "success": bool(updated)})
         closed_count = sum(1 for r in results if r.get("success"))
         return {"success": True, "closed_count": closed_count, "total": len(task_ids), "results": results}
+
+    # MARKER_198.STALE: Stale detection — find pending tasks already implemented
+    elif action == "stale_check":
+        limit = int(arguments.get("limit", 50))
+        auto_close = arguments.get("auto_close", False)
+        if isinstance(auto_close, str):
+            auto_close = auto_close.lower() in ("true", "1", "yes")
+        return board.stale_check(limit=limit, auto_close=auto_close)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

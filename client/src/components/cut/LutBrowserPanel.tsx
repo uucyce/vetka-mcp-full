@@ -59,7 +59,7 @@ const BTN: CSSProperties = {
 };
 
 const BTN_DANGER: CSSProperties = {
-  ...BTN, borderColor: '#633', color: '#c66',
+  ...BTN, borderColor: '#444', color: '#888',
 };
 
 const PREVIEW_AREA: CSSProperties = {

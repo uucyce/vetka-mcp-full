@@ -14,11 +14,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -525,6 +528,124 @@ async def cut_thumbnail(
                           headers={"Cache-Control": "public, max-age=86400"})
 
     return {"success": False, "error": "thumbnail_generation_failed"}
+
+
+@media_router.get("/thumbnail-strip")
+async def cut_thumbnail_strip(
+    source_path: str,
+    duration: float,
+    count: int = 5,
+    frame_height: int = 56,
+) -> Any:
+    """MARKER_B95 — Sprite sheet: N frames stitched horizontally into a single JPEG.
+
+    One HTTP request per clip instead of N. Frontend uses CSS background-position
+    to display individual frames.
+
+    Args:
+        source_path: Path to source media file.
+        duration: Clip duration in seconds.
+        count: Number of frames to extract (1-20).
+        frame_height: Height of each frame in px. Width auto-calculated from aspect ratio.
+
+    Returns:
+        Single JPEG image: frame_width*count × frame_height pixels.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    count = max(1, min(20, count))
+    frame_height = max(28, min(224, frame_height))
+
+    # Probe aspect ratio
+    try:
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(p),
+        ]
+        probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5)
+        if probe.returncode != 0:
+            return {"success": False, "error": "probe_failed"}
+        dims = probe.stdout.strip().split("x")
+        orig_w, orig_h = int(dims[0]), int(dims[1])
+    except Exception:
+        return {"success": False, "error": "probe_failed"}
+
+    aspect = orig_w / max(orig_h, 1)
+    frame_width = int(frame_height * aspect)
+    frame_width += frame_width % 2  # must be even for ffmpeg
+
+    # Cache key
+    cache_key = hashlib.md5(
+        f"strip|{source_path}|{duration}|{count}|{frame_height}".encode()
+    ).hexdigest()
+    cache_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"strip_{cache_key}.jpg")
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    # Compute seek times (avoid first/last 5%)
+    times = []
+    if count == 1:
+        times.append(min(1.0, duration * 0.1))
+    else:
+        for i in range(count):
+            t = duration * 0.05 + (i / (count - 1)) * duration * 0.9
+            times.append(round(t, 2))
+
+    # Extract frames and stitch with ffmpeg filter_complex
+    # Build: input per seek time → scale → hstack
+    inputs: list[str] = []
+    filter_parts: list[str] = []
+    for i, t in enumerate(times):
+        inputs.extend(["-ss", str(t), "-i", str(p)])
+        filter_parts.append(f"[{i}:v]scale={frame_width}:{frame_height},setsar=1[f{i}]")
+
+    if count == 1:
+        filter_complex = f"{filter_parts[0]}; [f0]null[out]"
+    else:
+        labels = "".join(f"[f{i}]" for i in range(count))
+        filter_complex = "; ".join(filter_parts) + f"; {labels}hstack=inputs={count}[out]"
+
+    cmd = [
+        "ffmpeg", "-v", "error",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-vframes", "1",
+        "-q:v", "5", "-f", "image2", cache_path,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            logger.warning("Sprite sheet ffmpeg failed: %s", result.stderr[:500])
+            return {"success": False, "error": "ffmpeg_failed"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "timeout"}
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    return {"success": False, "error": "sprite_generation_failed"}
 
 
 # ---------------------------------------------------------------------------

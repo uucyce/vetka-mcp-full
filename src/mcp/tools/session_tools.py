@@ -450,6 +450,106 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # ENGRAM errors never block session init
 
+        # MARKER_198.P3.JEPA_LENS: JEPA-driven relevance ranking for session context
+        # Replaces naive top-N with cosine-ranked items from ENGRAM + tasks + lessons.
+        # Feature-flag: VETKA_SESSION_JEPA_LENS_ENABLE (default: true)
+        try:
+            import os as _os
+            if _os.environ.get("VETKA_SESSION_JEPA_LENS_ENABLE", "1") != "0":
+                import time as _time
+                _jepa_start = _time.monotonic()
+                _JEPA_TIMEOUT = 1.5  # seconds
+
+                from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+
+                # Build intent query from role + phase + top pending tasks
+                _intent_parts = []
+                if _role:
+                    _intent_parts.append(f"role:{_role.callsign} domain:{_role.domain}")
+                _phase_info = context.get("current_phase", {})
+                if _phase_info:
+                    _intent_parts.append(f"phase:{_phase_info.get('number', '?')} {_phase_info.get('name', '')}")
+                _tbs = context.get("tbs") or context.get("task_board_summary", {})
+                _top_tasks = _tbs.get("top_pending", [])
+                for _t in _top_tasks[:5]:
+                    _intent_parts.append(_t.get("title", "")[:80])
+                _intent = " | ".join(_intent_parts) if _intent_parts else "general session"
+
+                # Build corpus: ENGRAM entries + semantic lessons + top tasks
+                _corpus = []
+                _corpus_labels = []
+
+                # ENGRAM dangers/architecture/patterns
+                _el = context.get("engram_learnings") or context.get("el", {})
+                for _cat in ("dangers", "architecture", "patterns"):
+                    for _entry in (_el.get(_cat) or []):
+                        _val = _entry.get("value", "")
+                        if _val:
+                            _corpus.append(f"[{_cat}] {_val[:200]}")
+                            _corpus_labels.append(f"engram.{_cat}.{_entry.get('key', '?')[:40]}")
+
+                # MARKER_198.P3.L2: Structured Qdrant L2 search (replaces string-split)
+                try:
+                    from src.orchestration.resource_learnings import get_learning_store
+                    _l2_store = get_learning_store()
+                    _l2_results = _l2_store.search_learnings_sync(
+                        query=_intent, limit=15,
+                    )
+                    for _lr in _l2_results:
+                        _l2_text = _lr.get("text", "")
+                        if _l2_text and len(_l2_text) > 10:
+                            _l2_cat = _lr.get("category", "unknown")
+                            _corpus.append(f"[{_l2_cat}] {_l2_text[:200]}")
+                            _corpus_labels.append(f"qdrant_l2.{_l2_cat}")
+                except Exception:
+                    # Fallback to old string-split if Qdrant unavailable
+                    _sl = context.get("semantic_lessons", "")
+                    if isinstance(_sl, str) and _sl:
+                        for _line in _sl.strip().split("\n"):
+                            _line = _line.strip("- ").strip()
+                            if _line and len(_line) > 10:
+                                _corpus.append(_line[:200])
+                                _corpus_labels.append("qdrant_l2")
+
+                # Top pending tasks
+                for _t in _top_tasks[:10]:
+                    _title = _t.get("title", "")
+                    if _title:
+                        _corpus.append(f"[task] {_title[:120]}")
+                        _corpus_labels.append(f"task.{_t.get('tid', '?')}")
+
+                if _corpus and len(_corpus) >= 3:
+                    # Embed intent + corpus together, intent is index 0
+                    _all_texts = [_intent] + _corpus
+                    _result = embed_texts_for_overlay(_all_texts, target_dim=128)
+
+                    if _result.vectors and len(_result.vectors) == len(_all_texts):
+                        _intent_vec = _result.vectors[0]
+                        # Cosine rank corpus against intent
+                        _scored = []
+                        for _i, (_vec, _label, _text) in enumerate(
+                            zip(_result.vectors[1:], _corpus_labels, _corpus)
+                        ):
+                            _dot = sum(float(_intent_vec[j]) * float(_vec[j]) for j in range(len(_intent_vec)))
+                            _na = sum(float(_intent_vec[j]) ** 2 for j in range(len(_intent_vec))) ** 0.5
+                            _nb = sum(float(_vec[j]) ** 2 for j in range(len(_intent_vec))) ** 0.5
+                            _sim = float(_dot / (_na * _nb)) if _na > 1e-12 and _nb > 1e-12 else 0.0
+                            _scored.append({"label": _label, "text": _text[:120], "score": round(_sim, 4)})
+
+                        _scored.sort(key=lambda x: x["score"], reverse=True)
+                        _elapsed = _time.monotonic() - _jepa_start
+
+                        context["jepa_session_lens"] = {
+                            "intent": _intent[:200],
+                            "top_items": _scored[:15],
+                            "corpus_size": len(_corpus),
+                            "provider_mode": _result.provider_mode,
+                            "elapsed_ms": round(_elapsed * 1000),
+                            "marker": "MARKER_198.P3.JEPA_LENS",
+                        }
+        except Exception:
+            pass  # JEPA lens never blocks session init
+
         # MARKER_ZETA.F4.MGC: Inject MGC cache status into session_init
         try:
             from src.memory.mgc_cache import get_mgc_cache
@@ -798,20 +898,9 @@ class SessionInitTool(BaseMCPTool):
                 except Exception:
                     pass  # Role binding never blocks session init
 
-                # MARKER_ZETA.F4.PREDECESSOR: Auto-inject predecessor advice into session_init
-                # Solves: agents see file path in CLAUDE.md but may not read it.
-                # Now the content arrives directly in session_init response.
-                try:
-                    from src.tools.generate_claude_md import _get_predecessor_advice
-                    _pred_advice = _get_predecessor_advice(_role.callsign)
-                    if _pred_advice:
-                        context["predecessor_advice"] = {
-                            "callsign": _role.callsign,
-                            "lessons": _pred_advice[:10],  # cap at 10 items
-                            "source": "experience_reports + feedback_docs",
-                        }
-                except Exception:
-                    pass  # Predecessor advice never blocks session init
+                # MARKER_ZETA.F4.PREDECESSOR: Removed — _get_predecessor_advice
+                # was deleted in ZETA-SLIM3. Predecessor context now comes from
+                # semantic_lessons (Qdrant L2) and ENGRAM patterns above.
 
                 # MARKER_195.22 + MARKER_196.2.3: Auto-regenerate CLAUDE.md by role callsign.
                 # Triggered by role (explicit or branch-detected), not by git branch.

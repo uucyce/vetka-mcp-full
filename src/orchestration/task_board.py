@@ -111,6 +111,17 @@ class TaskBoard:
     _dispatch_semaphore: Optional[asyncio.Semaphore] = None
     _dispatch_semaphore_size: int = 2  # Default max concurrent
 
+    # MARKER_198.WORKTREE_GUARD: Protected role worktrees — never auto-remove
+    # Source of truth: data/templates/agent_registry.yaml
+    PROTECTED_WORKTREES = frozenset({
+        "cut-engine",    # Alpha
+        "cut-media",     # Beta
+        "cut-ux",        # Gamma
+        "cut-qa",        # Delta
+        "cut-qa-2",      # Epsilon
+        "harness",       # Zeta
+    })
+
     @classmethod
     def _get_dispatch_semaphore(cls, max_concurrent: int = 2) -> asyncio.Semaphore:
         """Get or create the dispatch semaphore.
@@ -1198,6 +1209,12 @@ class TaskBoard:
             if updates["status"] not in VALID_STATUSES:
                 logger.warning(f"[TaskBoard] Invalid status: {updates['status']}")
                 return False
+            # MARKER_198.GUARD: Block done_worktree without commit_hash
+            if updates["status"] == "done_worktree":
+                has_commit = updates.get("commit_hash") or task.get("commit_hash")
+                if not has_commit:
+                    logger.warning(f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash")
+                    return False
         if "phase_type" in updates:
             try:
                 updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
@@ -1365,6 +1382,145 @@ class TaskBoard:
         return cleaned
 
     # ==========================================
+    # MARKER_198.WORKTREE_GUARD: WORKTREE PROTECTION
+    # ==========================================
+
+    def _is_protected_worktree(self, worktree_name: str) -> bool:
+        """Check if worktree is a protected role worktree.
+
+        MARKER_198.WORKTREE_GUARD: These worktrees are permanent infrastructure.
+        They should never be auto-removed, even if their branch is merged.
+        """
+        # Normalize: ".claude/worktrees/cut-engine" → "cut-engine"
+        name = worktree_name.rstrip("/").split("/")[-1]
+        return name in self.PROTECTED_WORKTREES
+
+    # ==========================================
+    # MARKER_198.STALE: STALE TASK DETECTION
+    # ==========================================
+
+    def stale_check(self, limit: int = 50, auto_close: bool = False) -> Dict[str, Any]:
+        """MARKER_198.STALE: Detect pending/needs_fix tasks that are already implemented.
+
+        Searches git log --all for [task:ID] commits across ALL branches.
+        Also checks if task title keywords appear in recent commit messages.
+
+        Args:
+            limit: Max pending tasks to scan (default 50, most recent first)
+            auto_close: If True, close confirmed stale tasks. If False, only flag them.
+
+        Returns:
+            {candidates: [{task_id, title, evidence, score}], closed: [...], scanned: int}
+        """
+        import subprocess
+
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('pending', 'needs_fix') "
+            "ORDER BY priority ASC, created_at DESC LIMIT ?",
+            (limit,),
+        )
+        tasks = [self._row_to_task(row) for row in cursor]
+
+        candidates = []
+        closed = []
+
+        for task in tasks:
+            tid = task["id"]
+            title = task.get("title", "")
+            evidence = []
+            score = 0.0
+
+            # Check 1: git log --all for [task:ID] tag in commit messages
+            try:
+                tag_result = subprocess.run(
+                    ["git", "log", "--all", "--oneline", "--fixed-strings",
+                     f"--grep=[task:{tid}]", "-1"],
+                    cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                )
+                if tag_result.returncode == 0 and tag_result.stdout.strip():
+                    commit_line = tag_result.stdout.strip()
+                    evidence.append(f"commit_tagged: {commit_line}")
+                    score += 0.9  # Very strong signal
+            except Exception:
+                pass
+
+            # Check 2: title keywords in recent commit messages (weaker signal)
+            if score < 0.5 and title:
+                # Extract key terms from title (skip common prefixes)
+                _title_clean = title
+                for _prefix in ("ZETA-FIX:", "ALPHA-P1:", "BETA-", "GAMMA-", "DELTA-",
+                                 "EPSILON-", "MERGE-REQUEST:", "ZETA:", "ZETA-RECON:"):
+                    _title_clean = _title_clean.replace(_prefix, "").strip()
+                # Use first 3 significant words as grep pattern
+                _words = [w for w in _title_clean.split() if len(w) > 3][:3]
+                if len(_words) >= 2:
+                    _pattern = ".*".join(_words[:2])
+                    try:
+                        kw_result = subprocess.run(
+                            ["git", "log", "--all", "--oneline", f"--grep={_pattern}",
+                             "-i", "-1"],
+                            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                        )
+                        if kw_result.returncode == 0 and kw_result.stdout.strip():
+                            commit_line = kw_result.stdout.strip()
+                            evidence.append(f"title_keyword_match: {commit_line}")
+                            score += 0.4
+                    except Exception:
+                        pass
+
+            # Check 3: allowed_paths have commits newer than task creation
+            if score < 0.5:
+                allowed = task.get("allowed_paths") or []
+                created_at = task.get("created_at", "")
+                if allowed and created_at:
+                    try:
+                        for ap in allowed[:3]:
+                            ap_result = subprocess.run(
+                                ["git", "log", "--all", "--oneline",
+                                 f"--since={created_at[:10]}", "-1", "--", ap],
+                                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                            )
+                            if ap_result.returncode == 0 and ap_result.stdout.strip():
+                                evidence.append(f"path_changed_after_creation: {ap} → {ap_result.stdout.strip()}")
+                                score += 0.2
+                                break
+                    except Exception:
+                        pass
+
+            if evidence:
+                entry = {
+                    "task_id": tid,
+                    "title": title[:80],
+                    "status": task.get("status"),
+                    "score": round(score, 2),
+                    "evidence": evidence,
+                }
+                candidates.append(entry)
+
+                if auto_close and score >= 0.8:
+                    self.update_task(
+                        tid,
+                        status="done_main",
+                        _history_event="stale_auto_closed",
+                        _history_source="stale_check",
+                        _history_reason=f"score={score:.2f}: {evidence[0][:100]}",
+                    )
+                    closed.append(tid)
+                    logger.info(f"[TaskBoard] Stale auto-closed {tid}: {evidence[0][:60]}")
+
+        candidates.sort(key=lambda x: x["score"], reverse=True)
+
+        return {
+            "success": True,
+            "scanned": len(tasks),
+            "candidates": candidates,
+            "candidates_count": len(candidates),
+            "closed": closed,
+            "closed_count": len(closed),
+            "auto_close": auto_close,
+        }
+
+    # ==========================================
     # MARKER_130.C16A: AGENT COORDINATION
     # ==========================================
 
@@ -1504,6 +1660,17 @@ class TaskBoard:
         is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 
+        # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
+        if final_status == "done_worktree" and not commit_hash and not manual_override:
+            return {
+                "success": False,
+                "error": (
+                    f"Cannot mark task {task_id} as done_worktree without commit_hash. "
+                    "Use action=complete with branch= to auto-commit, or provide commit_hash manually."
+                ),
+                "task_id": task_id,
+            }
+
         update = {
             "status": final_status,
             "completed_at": datetime.now().isoformat(),
@@ -1516,6 +1683,10 @@ class TaskBoard:
             update["branch_name"] = branch
         if commit_hash:
             update["commit_hash"] = commit_hash
+        elif manual_override and final_status == "done_worktree":
+            # MARKER_198.GUARD: manual_override bypasses commit_hash guard —
+            # set marker so update_task's done_worktree guard passes
+            update["commit_hash"] = "manual_override"
         if commit_message:
             update["commit_message"] = commit_message[:200]  # Truncate
         if task.get("require_closure_proof"):
@@ -2284,10 +2455,11 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str, strategy: str = None) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
+        MARKER_198.MERGE: Accept strategy param from task_board_tools.
 
         Flow:
         1. Validate task has branch_name
@@ -2322,7 +2494,8 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        strategy = task.get("merge_strategy", "cherry-pick")
+        if strategy is None:
+            strategy = task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
@@ -2439,7 +2612,24 @@ class TaskBoard:
         logger.info(f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
                      f"tests_delta={eval_delta['tests_delta']}")
 
-        return {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
+        # MARKER_198.STALE: Post-merge stale scan — flag pending tasks that may be resolved by this merge
+        stale_hint = None
+        try:
+            stale_result = self.stale_check(limit=30, auto_close=False)
+            if stale_result.get("candidates_count", 0) > 0:
+                stale_hint = {
+                    "stale_candidates": stale_result["candidates_count"],
+                    "top_stale": stale_result["candidates"][:5],
+                    "hint": "Run action=stale_check auto_close=true to close confirmed stale tasks",
+                }
+                logger.info(f"[MergeRequest] Post-merge stale scan found {stale_result['candidates_count']} candidates")
+        except Exception as _e:
+            logger.debug(f"[MergeRequest] Post-merge stale scan failed (non-fatal): {_e}")
+
+        result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
+        if stale_hint:
+            result["stale_hint"] = stale_hint
+        return result
 
     async def _execute_merge(
         self, branch: str, strategy: str, commits: List[str]
@@ -2460,6 +2650,14 @@ class TaskBoard:
                 stderr=asyncio.subprocess.PIPE,
             )
             await proc.communicate()
+
+            # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
+            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
+            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
+            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
+            claude_md_backup = None
+            if claude_md_path.exists():
+                claude_md_backup = claude_md_path.read_text()
 
             if strategy == "cherry-pick":
                 # Cherry-pick commits in order (oldest first)
@@ -2543,6 +2741,29 @@ class TaskBoard:
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
+            if claude_md_backup is not None and claude_md_path.exists():
+                current_content = claude_md_path.read_text()
+                if current_content != claude_md_backup:
+                    claude_md_path.write_text(claude_md_backup)
+                    # Stage the restoration
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "add", "CLAUDE.md",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    # Amend the last commit to exclude the agent's CLAUDE.md change
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "commit", "--amend", "--no-edit",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
+
             # Get resulting commit hash
             proc = await asyncio.create_subprocess_exec(
                 "git", "rev-parse", "HEAD",
@@ -2579,20 +2800,7 @@ class TaskBoard:
             return 0
         except Exception:
             return 0
-    # ==========================================
-    # TODO MARKER_126.11B: MULTI-AGENT CLAIM SUPPORT
-    # ==========================================
-    # def claim_task(self, task_id: str, agent_id: str, agent_type: str = "mcp") -> bool:
-    #     """External agent claims a task. Sets status='claimed', records agent info."""
-    #     pass
-    #
-    # def release_task(self, task_id: str, agent_id: str, new_status: str = "done") -> bool:
-    #     """Agent releases task after completion."""
-    #     pass
-    #
-    # def get_claimable_tasks(self, limit: int = 5) -> List[Dict]:
-    #     """Returns pending tasks ready for claiming. For session_init."""
-    #     pass
+    # MARKER_126.11B stubs removed — superseded by live claim_task() at line ~1377
 
     # ==========================================
     # STATISTICS (MARKER_126.0B)

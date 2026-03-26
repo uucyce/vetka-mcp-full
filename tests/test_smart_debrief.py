@@ -263,14 +263,6 @@ def mock_reflex():
 
 
 @pytest.fixture
-def mock_aura():
-    with patch("src.memory.aura_store.get_aura_store") as m:
-        store = MagicMock()
-        m.return_value = store
-        yield store
-
-
-@pytest.fixture
 def mock_mgc():
     with patch("src.memory.mgc_cache.get_mgc_cache") as m:
         mgc = MagicMock()

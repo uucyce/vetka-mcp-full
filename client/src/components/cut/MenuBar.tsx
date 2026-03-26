@@ -222,7 +222,11 @@ export default function MenuBar() {
     {
       label: 'File',
       items: [
-        { label: 'New Project...', shortcut: '⌥⌘N', disabled: true },
+        { label: 'New Project...', shortcut: '⌥⌘N', action: () => {
+          if (window.confirm('Create a new project? Unsaved changes will be lost.')) {
+            window.location.href = window.location.pathname;
+          }
+        }},
         { label: 'New Sequence', shortcut: '⌘N', action: () => {
           const s = store.getState();
           const name = s.projectId || 'untitled';
@@ -233,7 +237,9 @@ export default function MenuBar() {
             dockStore.getState().addTimelinePanel(newId, tab?.label || `Cut ${newId}`);
           }
         }},
-        { label: 'Open Project...', shortcut: '⌘O', disabled: true },
+        { label: 'Open Project...', shortcut: '⌘O', action: () => {
+          window.dispatchEvent(new CustomEvent('cut:import-media'));
+        }},
         { label: 'Recent Projects', submenu: [
           { label: '(no recent projects)', disabled: true },
         ]},
@@ -259,11 +265,62 @@ export default function MenuBar() {
         { separator: true },
         { label: 'Export Media...', shortcut: '⌘M', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Export', submenu: [
-          { label: 'Premiere XML', disabled: true },
-          { label: 'FCPXML', disabled: true },
-          { label: 'EDL', disabled: true },
-          { label: 'OTIO', disabled: true },
+          // Editorial formats
+          { label: 'Premiere XML', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'premiere_xml' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'FCPXML', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'fcpxml' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'EDL', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'edl' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'OTIO', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'editorial', format: 'otio' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { separator: true },
+          // Publish presets
+          { label: 'YouTube', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'youtube' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'Instagram Reels', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'instagram_reels' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'TikTok', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'tiktok' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'Telegram', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'publish', publishPreset: 'telegram' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { separator: true },
+          // Master render codecs
+          { label: 'ProRes 422', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'prores_422' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'ProRes 4444', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'prores_4444' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'H.264', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'h264' } }));
+            store.getState().setShowExportDialog(true);
+          }},
+          { label: 'H.265 (HEVC)', action: () => {
+            window.dispatchEvent(new CustomEvent('cut:open-export', { detail: { tab: 'master', codec: 'h265' } }));
+            store.getState().setShowExportDialog(true);
+          }},
         ]},
+        { separator: true },
+        { label: 'Publish...', shortcut: '⌘⇧P', action: () => store.getState().setShowPublishDialog(true) },
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
       ],
@@ -339,7 +396,7 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'S', action: () => {
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'N', action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
@@ -493,11 +550,17 @@ export default function MenuBar() {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: '.' }));
         }},
         { separator: true },
-        { label: 'Replace', shortcut: 'F11', disabled: true },
-        { label: 'Fit to Fill', shortcut: '⇧F11', disabled: true },
-        { label: 'Superimpose', shortcut: 'F12', disabled: true },
+        { label: 'Replace', shortcut: 'F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11' }));
+        }},
+        { label: 'Fit to Fill', shortcut: '⇧F11', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F11', shiftKey: true }));
+        }},
+        { label: 'Superimpose', shortcut: 'F12', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F12' }));
+        }},
         { separator: true },
-        { label: 'Speed/Duration...', shortcut: '⌘R', action: () => store.getState().setShowSpeedControl(true) },
+        { label: 'Speed/Duration...', shortcut: '⌘J', action: () => store.getState().setShowSpeedControl(true) },
         { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
@@ -583,7 +646,7 @@ export default function MenuBar() {
           { label: 'End on Edit', disabled: true },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'S', action: () => store.getState().toggleSnap() },
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'N', action: () => store.getState().toggleSnap() },
         { separator: true },
         { label: 'Insert Tracks...', disabled: true },
         { label: 'Delete Tracks...', disabled: true },

@@ -102,6 +102,7 @@ type SliderDef = {
 type ToggleDef = {
   key: string;
   label: string;
+  storeKey?: keyof ClipEffects;
 };
 
 type CategoryDef = {
@@ -142,8 +143,8 @@ const CATEGORIES: CategoryDef[] = [
       { key: 'crop_right', label: 'Crop R', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%`, storeKey: 'crop_right' },
     ],
     toggles: [
-      { key: 'hflip', label: 'Flip H' },
-      { key: 'vflip', label: 'Flip V' },
+      { key: 'hflip', label: 'Flip H', storeKey: 'hflip' },
+      { key: 'vflip', label: 'Flip V', storeKey: 'vflip' },
     ],
   },
   {
@@ -161,7 +162,7 @@ const CATEGORIES: CategoryDef[] = [
   },
 ];
 
-// Default values for toggle reset (mirrors DEFAULT_CLIP_EFFECTS for extended fields)
+// Default values for extended effects (not in store)
 const EXT_DEFAULTS: Record<string, number> = {
   gamma: 1, sharpen: 0, denoise: 0, vignette: 0,
   crop_top: 0, crop_bottom: 0, crop_left: 0, crop_right: 0,
@@ -199,9 +200,6 @@ export default function EffectsPanel() {
   const lanes = useCutEditorStore((s) => s.lanes);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
-  const addKeyframe = useCutEditorStore((s) => s.addKeyframe);
-  const removeKeyframe = useCutEditorStore((s) => s.removeKeyframe);
-  const currentTime = useCutEditorStore((s) => s.currentTime);
 
   // Find selected clip
   let selectedClip = null;
@@ -214,7 +212,7 @@ export default function EffectsPanel() {
 
   const storeEffects = selectedClip?.effects ?? DEFAULT_CLIP_EFFECTS;
 
-  // Extended effects — local mirror for toggle UI (store is source of truth via storeKey)
+  // Extended effects — local state per clip (until Alpha extends ClipEffects type)
   const [extEffects, setExtEffects] = useState<Record<string, number>>({ ...EXT_DEFAULTS });
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
 
@@ -231,33 +229,13 @@ export default function EffectsPanel() {
     }
   }, [selectedClipId, setClipEffects]);
 
-  const handleToggle = useCallback((key: string) => {
-    const newVal = (extEffects[key] ?? 0) ? 0 : 1;
-    if (selectedClipId && (key in DEFAULT_CLIP_EFFECTS)) {
-      setClipEffects(selectedClipId, { [key]: newVal } as Partial<ClipEffects>);
-    }
+  const handleToggle = useCallback((key: string, storeKey?: keyof ClipEffects) => {
+    const newVal = extEffects[key] ? 0 : 1;
     setExtEffects((prev) => ({ ...prev, [key]: newVal }));
-  }, [extEffects, selectedClipId, setClipEffects]);
-
-  // MARKER_GAMMA-KF: Keyframe diamond — add/remove at playhead
-  const clipStartTime = selectedClip?.start_time ?? 0;
-  const relativeTime = currentTime - clipStartTime;
-  const clipKeyframes = selectedClip?.keyframes ?? {};
-
-  const hasKeyframeAt = useCallback((property: string): boolean => {
-    const kfs = clipKeyframes[property];
-    if (!kfs || kfs.length === 0) return false;
-    return kfs.some((kf) => Math.abs(kf.time_sec - relativeTime) < 0.02);
-  }, [clipKeyframes, relativeTime]);
-
-  const handleKeyframeDiamond = useCallback((property: string, value: number) => {
-    if (!selectedClipId) return;
-    if (hasKeyframeAt(property)) {
-      removeKeyframe(selectedClipId, property, relativeTime);
-    } else {
-      addKeyframe(selectedClipId, property, relativeTime, value);
+    if (storeKey && selectedClipId) {
+      setClipEffects(selectedClipId, { [storeKey]: newVal });
     }
-  }, [selectedClipId, relativeTime, hasKeyframeAt, addKeyframe, removeKeyframe]);
+  }, [extEffects, selectedClipId, setClipEffects]);
 
   const handleReset = useCallback(() => {
     if (selectedClipId) resetClipEffects(selectedClipId);
@@ -324,23 +302,6 @@ export default function EffectsPanel() {
                       style={SLIDER}
                     />
                     <span style={VALUE}>{s.fmt(getValue(s.key, s.storeKey))}</span>
-                    {selectedClipId && s.storeKey && (
-                      <button
-                        title={hasKeyframeAt(s.key) ? 'Remove keyframe' : 'Add keyframe'}
-                        onClick={() => handleKeyframeDiamond(s.key, getValue(s.key, s.storeKey))}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: '0 2px',
-                          fontSize: 8,
-                          color: hasKeyframeAt(s.key) ? '#ccc' : '#444',
-                          lineHeight: 1,
-                        }}
-                      >
-                        ◆
-                      </button>
-                    )}
                   </div>
                 ))}
                 {cat.toggles && (
@@ -348,8 +309,8 @@ export default function EffectsPanel() {
                     {cat.toggles.map((t) => (
                       <button
                         key={t.key}
-                        style={TOGGLE_BTN(!!(storeEffects[t.key as keyof ClipEffects] ?? extEffects[t.key]))}
-                        onClick={() => handleToggle(t.key)}
+                        style={TOGGLE_BTN(!!extEffects[t.key])}
+                        onClick={() => handleToggle(t.key, t.storeKey)}
                       >
                         {t.label}
                       </button>
@@ -445,22 +406,16 @@ function saveFavorites(favs: Set<string>) {
 }
 
 // MARKER_GAMMA-P2.1a: Map browser effect IDs to ClipEffects store fields
-// Exported for TimelineTrackView drop handler (GAMMA-LAYOUT1 build fix)
-export const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
-  // Video Filters
+const EFFECT_APPLY_MAP: Record<string, Partial<import('../../store/useCutEditorStore').ClipEffects>> = {
   brightness:    { brightness: 0.15 },
   color_balance: { brightness: 0.05, saturation: 1.2 },
   saturation:    { saturation: 1.5 },
-  gamma:         { gamma: 1.5 },
+  gamma:         { brightness: 0.1 },
   blur:          { blur: 3 },
-  sharpen:       { sharpen: 2 },
-  denoise:       { denoise: 3 },
-  vignette:      { vignette: 0.5 },
+  sharpen:       { blur: -1 },  // negative = sharpen conceptually
+  denoise:       { blur: 0.5 },
+  vignette:      { opacity: 0.9 },
   lut_apply:     { contrast: 0.2, saturation: 1.3 },
-  chroma_key:    { opacity: 0.8 },
-  // Generators
-  color_matte:   { brightness: 0, contrast: 0, saturation: 0 },
-  slug:          { brightness: -1, opacity: 1 },
 };
 
 // MARKER_GAMMA-P2.5: Recently Used persistence

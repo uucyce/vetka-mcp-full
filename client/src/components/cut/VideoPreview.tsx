@@ -9,6 +9,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
+import FrameViewerSplit from './FrameViewerSplit';
 
 const CONTAINER_STYLE: CSSProperties = {
   position: 'relative',
@@ -153,6 +154,14 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const pause = useCutEditorStore((s) => isSource ? s.pauseSource : s.pause);
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
+
+  // MARKER_FRAME_SPLIT: Frame viewer split toggle (local state, toggled via CustomEvent)
+  const [showFrameSplit, setShowFrameSplit] = useState(false);
+  useEffect(() => {
+    const handler = () => setShowFrameSplit((v) => !v);
+    document.addEventListener('cut:toggle-frame-split', handler);
+    return () => document.removeEventListener('cut:toggle-frame-split', handler);
+  }, []);
 
   // MARKER_W5.2: Monitor overlay state
   const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
@@ -460,6 +469,14 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         barWidth={6}
         style={METER_STRIP_STYLE}
       />
+      {/* MARKER_FRAME_SPLIT: Split viewer overlay — original vs graded */}
+      {showFrameSplit && resolvedSrc && (
+        <FrameViewerSplit
+          videoSrc={resolvedSrc}
+          gradedFilter={videoCssFilter}
+          poster={activeThumbnail?.poster_url}
+        />
+      )}
       <div style={TIMECODE_STYLE}>{formatTimecode(currentTime)}</div>
     </div>
   );

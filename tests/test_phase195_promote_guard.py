@@ -246,7 +246,8 @@ def test_verify_fail(tmp_path):
     """MARKER_195.20: QA gate — verdict=fail transitions done_worktree → needs_fix."""
     board = _make_board(tmp_path)
     tid = board.add_task("Buggy task", priority=3)
-    board.update_task(tid, status="done_worktree")
+    # MARKER_198.GUARD: must provide commit_hash to reach done_worktree
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
 
     result = board.verify_task(tid, "fail", "Test X fails on edge case", "Delta")
 
@@ -304,7 +305,8 @@ def test_verify_invalid_verdict(tmp_path):
     """MARKER_195.20: invalid verdict returns error."""
     board = _make_board(tmp_path)
     tid = board.add_task("Task", priority=3)
-    board.update_task(tid, status="done_worktree")
+    # MARKER_198.GUARD: must provide commit_hash to reach done_worktree
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
 
     result = board.verify_task(tid, "maybe")
     assert result["success"] is False
