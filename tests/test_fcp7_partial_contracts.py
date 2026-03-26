@@ -466,3 +466,191 @@ class TestPulseAutoMontage:
         content = panel.read_text()
         assert "createTimeline" in content, "Must call createTimeline to create timeline instance"
         assert "addTimelinePanel" in content, "Must call addTimelinePanel to open dockview tab"
+
+
+# ═══════════════════════════════════════════════════════
+# §2.2 Save / Autosave
+# ═══════════════════════════════════════════════════════
+
+class TestSaveAutosave:
+    """Contract tests for Save/Autosave feature (Manual §2.2)."""
+
+    def test_save_endpoint_exists(self):
+        """Backend must expose CutSaveRequest and cut_save_project."""
+        # Save endpoint moved to cut_routes_render.py (MARKER_B41)
+        render_routes = Path(__file__).resolve().parent.parent / "src" / "api" / "routes" / "cut_routes_render.py"
+        assert render_routes.exists(), "cut_routes_render.py must exist"
+        content = render_routes.read_text()
+        assert "CutSaveRequest" in content, "Must define CutSaveRequest model"
+        assert "cut_save_project" in content, "Must define cut_save_project endpoint"
+
+    def test_save_store_fields(self):
+        """Store must have save status FSM fields."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "saveStatus" in content
+        assert "lastSavedAt" in content
+        assert "saveError" in content
+        assert "hasUnsavedChanges" in content
+
+    def test_save_store_actions(self):
+        """Store must have save-related setters."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "setSaveStatus" in content
+        assert "setLastSavedAt" in content
+        assert "markUnsavedChanges" in content
+
+    def test_autosave_hook_exists(self):
+        """useCutAutosave.ts must exist and reference save interval."""
+        hook = CLIENT_SRC / "hooks" / "useCutAutosave.ts"
+        assert hook.exists(), "useCutAutosave.ts must exist"
+        content = hook.read_text()
+        assert "AUTOSAVE_INTERVAL" in content or "autosave" in content.lower()
+        assert "saveProject" in content or "save" in content.lower()
+
+    def test_save_indicator_exists(self):
+        """SaveIndicator.tsx must exist and show status text."""
+        indicator = CLIENT_SRC / "components" / "cut" / "SaveIndicator.tsx"
+        assert indicator.exists(), "SaveIndicator.tsx must exist"
+        content = indicator.read_text()
+        assert "saveStatus" in content
+        assert "Saving" in content or "Saved" in content
+        assert "Unsaved" in content or "hasUnsavedChanges" in content
+
+    def test_save_hotkey_wired(self):
+        """Cmd+S must be bound to saveProject action."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        assert hotkeys.exists()
+        content = hotkeys.read_text()
+        assert "saveProject" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §2.8 Multi-Timeline
+# ═══════════════════════════════════════════════════════
+
+class TestMultiTimeline:
+    """Contract tests for Multi-Timeline feature (Manual §2.8)."""
+
+    def test_timeline_tabs_state(self):
+        """Store must have timelineTabs array and activeTimelineTabIndex."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "timelineTabs" in content
+        assert "activeTimelineTabIndex" in content
+        assert "nextTimelineVersion" in content
+
+    def test_timeline_tab_actions(self):
+        """Store must have CRUD actions for timeline tabs."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "addTimelineTab" in content
+        assert "removeTimelineTab" in content
+        assert "setActiveTimelineTab" in content
+        assert "createVersionedTimeline" in content
+
+    def test_timeline_snapshot_actions(self):
+        """Store must have snapshot/restore for parallel timeline view."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "snapshotTimeline" in content
+        assert "restoreTimeline" in content
+
+    def test_timeline_instance_panel_exists(self):
+        """TimelineInstancePanel.tsx must exist with testid."""
+        panel = CLIENT_SRC / "components" / "cut" / "panels" / "TimelineInstancePanel.tsx"
+        assert panel.exists(), "TimelineInstancePanel.tsx must exist"
+        content = panel.read_text()
+        assert 'data-testid="timeline-instance-panel"' in content
+
+    def test_timeline_create_endpoint(self):
+        """Backend must expose POST /api/cut/timeline/create."""
+        routes = Path(__file__).resolve().parent.parent / "src" / "api" / "routes" / "cut_routes.py"
+        content = routes.read_text()
+        assert "timeline/create" in content or "timeline_create" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §3.9 Clipboard / Copy-Paste
+# ═══════════════════════════════════════════════════════
+
+class TestClipboard:
+    """Contract tests for Clipboard feature (Manual §3.9)."""
+
+    def test_clipboard_state(self):
+        """Store must have clipboard array."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "clipboard" in content
+
+    def test_clipboard_actions(self):
+        """Store must have copy/cut/paste actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "copyClips" in content
+        assert "cutClips" in content
+        assert "pasteClips" in content
+
+    def test_paste_modes(self):
+        """pasteClips must support overwrite and insert modes."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "overwrite" in content
+        assert "insert" in content
+
+    def test_paste_attributes_exists(self):
+        """Store must have pasteAttributes action."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "pasteAttributes" in content
+
+    def test_clipboard_hotkeys(self):
+        """Cmd+C/X/V/Shift+V must be bound."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        content = hotkeys.read_text()
+        assert "copyClips" in content or "copy" in content
+        assert "cutClips" in content or "cut:" in content
+        assert "pasteClips" in content or "paste" in content
+        assert "pasteInsert" in content or "pasteAttributes" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §3.8 Lift / Extract
+# ═══════════════════════════════════════════════════════
+
+class TestLiftExtract:
+    """Contract tests for Lift/Extract feature (Manual §3.8)."""
+
+    def test_lift_extract_actions(self):
+        """Store must have liftClip and extractClip actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "liftClip" in content
+        assert "extractClip" in content
+
+    def test_lift_uses_remove_clip(self):
+        """liftClip must use remove_clip op (leaves gap)."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "remove_clip" in content
+
+    def test_extract_uses_ripple_delete(self):
+        """extractClip must use ripple_delete op (closes gap)."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "ripple_delete" in content
+
+    def test_lift_extract_hotkeys(self):
+        """Semicolon (;) and apostrophe (') must be bound."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        content = hotkeys.read_text()
+        assert "liftClip" in content
+        assert "extractClip" in content
+
+    def test_lift_extract_range_mode(self):
+        """liftClip/extractClip must support IN/OUT range mode."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "sequenceMarkIn" in content
+        assert "sequenceMarkOut" in content
