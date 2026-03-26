@@ -1346,6 +1346,71 @@ class SessionInitTool(BaseMCPTool):
                 if _role_brief:
                     _digest["role_brief"] = _role_brief
 
+            # 5. PULSE — project heartbeat stats (cheap: task_board summary + git log)
+            try:
+                import subprocess as _sp
+                # Recent commits (24h, all branches) — grouped by author
+                _git_log = _sp.run(
+                    ["git", "log", "--oneline", "--since=24 hours ago", "--all",
+                     "--format=%an|%s"],
+                    capture_output=True, text=True, timeout=3,
+                    cwd=str(Path(__file__).parent.parent.parent.parent),
+                ).stdout.strip()
+                if _git_log:
+                    _lines = _git_log.split("\n")
+                    _authors = {}
+                    for _line in _lines:
+                        _parts = _line.split("|", 1)
+                        if len(_parts) == 2:
+                            _auth = _parts[0].strip()
+                            _authors[_auth] = _authors.get(_auth, 0) + 1
+                    _pulse = {
+                        "commits_24h": len(_lines),
+                        "by_author": _authors,
+                        "latest": [_l.split("|", 1)[-1].strip()[:80] for _l in _lines[:5]],
+                    }
+                    # Task board velocity from tbs
+                    _tbs = context.get("tbs") or context.get("task_board_summary", {})
+                    if _tbs:
+                        _pulse["tasks_pending"] = _tbs.get("pending_count", 0)
+                        _pulse["tasks_verified"] = _tbs.get("verified_count", 0)
+                        _pulse["tasks_need_qa"] = _tbs.get("need_qa_count", 0)
+                        _pulse["tasks_needs_fix"] = _tbs.get("needs_fix_count", 0)
+                    # CORTEX trend
+                    _cortex = context.get("memory_health", {}).get("cortex", {})
+                    if _cortex:
+                        _pulse["cortex_success_rate"] = _cortex.get("success_rate", 0)
+                        _pulse["cortex_entries"] = _cortex.get("entries", 0)
+                    _digest["pulse"] = _pulse
+            except Exception:
+                pass  # Pulse is best-effort
+
+            # 6. OWNERSHIP ALERT — files in my owned_paths touched by others
+            if _role_ctx and _role_ctx.get("owned_paths"):
+                try:
+                    _owned = _role_ctx["owned_paths"]
+                    _my_callsign = _role_ctx.get("callsign", "").lower()
+                    _touched_by_others = []
+                    for _line in (_git_log or "").split("\n"):
+                        _parts = _line.split("|", 1)
+                        if len(_parts) == 2:
+                            _auth = _parts[0].strip().lower()
+                            _msg = _parts[1].strip()
+                            # Check if commit is from another agent
+                            if _my_callsign and _my_callsign not in _auth.lower():
+                                # Check if any owned path is in the commit message
+                                for _op in _owned:
+                                    _fname = Path(_op).name
+                                    if _fname in _msg:
+                                        _touched_by_others.append(
+                                            f"{_auth}: {_msg[:60]}"
+                                        )
+                                        break
+                    if _touched_by_others:
+                        _digest["ownership_alerts"] = _touched_by_others[:5]
+                except Exception:
+                    pass
+
             if _digest:
                 context["digest"] = _digest
         except Exception:
