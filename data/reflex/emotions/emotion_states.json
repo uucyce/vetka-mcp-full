@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 5.824319868470494e-24,
-    "trust": 0.9999999937785777,
+    "curiosity": 3.532628572200807e-24,
+    "trust": 0.999999994711791,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 112,
-    "success_count": 112,
+    "usage_count": 113,
+    "success_count": 113,
     "failure_count": 0,
-    "last_updated": 1774501054.66518
+    "last_updated": 1774501450.435031
   },
   "Read": {
     "tool_id": "Read",
@@ -2421,14 +2421,14 @@
   },
   "__debrief_bug__": {
     "tool_id": "__debrief_bug__",
-    "curiosity": 1.0129990980873921e-05,
-    "trust": 2.8876462583732624e-06,
+    "curiosity": 1.670142184809518e-05,
+    "trust": 4.442532705189634e-06,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 28,
+    "usage_count": 27,
     "success_count": 0,
-    "failure_count": 28,
-    "last_updated": 1774501054.8869288
+    "failure_count": 27,
+    "last_updated": 1774501451.034134
   },
   "Bash": {
     "tool_id": "Bash",
@@ -2461,6 +2461,6 @@
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
-    "last_updated": 1774499530.028169
+    "last_updated": 1774499531.292638
   }
 }

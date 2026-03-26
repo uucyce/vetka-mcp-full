@@ -38,3 +38,6 @@ export { default as PublishPanel } from './PublishPanel';
 
 // MARKER_GAMMA-MULTICAM-PANEL: Multicam angle grid panel (FCP7 Ch.42)
 export { default as MulticamPanel } from './MulticamPanel';
+
+// MARKER_SOURCE_ACQUIRE: Source Acquire panel (FCP7 Log & Capture)
+export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';

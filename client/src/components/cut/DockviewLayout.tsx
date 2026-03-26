@@ -52,6 +52,7 @@ import {
   TimelineInstancePanel,
   PublishPanel,
   MulticamPanel,
+  SourceAcquirePanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -125,6 +126,7 @@ const PANEL_COMPONENTS = {
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
   multicam: MulticamPanel,
+  acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
