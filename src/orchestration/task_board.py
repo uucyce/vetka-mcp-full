@@ -1468,6 +1468,118 @@ class TaskBoard:
             self.tasks.pop(task_id, None)
         return task
 
+    def get_context_packet(
+        self, task_id: str, *, max_chars: int = 24000, doc_budget: int = 8192,
+    ) -> Optional[Dict[str, Any]]:
+        """MARKER_199.MCC: Build MCC-ready context packet for a task.
+
+        Resolves task into a self-contained packet that local models (Qwen, etc.)
+        can consume without additional lookups. Used by MCC dev panel.
+
+        Args:
+            task_id: Task identifier
+            max_chars: Total budget for the packet (default 24k for coder role)
+            doc_budget: Budget for attached docs (default 8192 chars)
+
+        Returns:
+            Context packet dict or None if task not found.
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return None
+
+        # Core task metadata (always included)
+        packet: Dict[str, Any] = {
+            "task_id": task_id,
+            "title": task.get("title", ""),
+            "description": task.get("description", ""),
+            "priority": task.get("priority", 3),
+            "status": task.get("status", "pending"),
+            "phase_type": task.get("phase_type", "build"),
+            "complexity": task.get("complexity", "medium"),
+            "domain": task.get("domain", ""),
+            "role": task.get("role", ""),
+            "project_id": task.get("project_id", ""),
+            "allowed_paths": task.get("allowed_paths") or [],
+            "blocked_paths": task.get("blocked_paths") or [],
+            "completion_contract": task.get("completion_contract") or [],
+            "implementation_hints": task.get("implementation_hints", ""),
+            "closure_tests": task.get("closure_tests") or [],
+            "dependencies": task.get("dependencies") or [],
+            "owner_agent": task.get("owner_agent", ""),
+            "assigned_to": task.get("assigned_to", ""),
+        }
+
+        # Attached docs (architecture + recon) — truncated to doc_budget
+        arch_docs = task.get("architecture_docs") or []
+        recon_docs = task.get("recon_docs") or []
+        all_doc_paths = arch_docs + recon_docs
+        if all_doc_paths:
+            docs_content = []
+            chars_used = 0
+            per_doc_limit = doc_budget // max(1, len(all_doc_paths))
+            for doc_path in all_doc_paths:
+                if chars_used >= doc_budget:
+                    break
+                try:
+                    from pathlib import Path as _P
+                    _project_root = _P(__file__).parent.parent.parent
+                    _full = _project_root / doc_path
+                    if _full.exists():
+                        _text = _full.read_text(errors="replace")
+                        _remaining = doc_budget - chars_used
+                        _chunk = _text[:min(per_doc_limit, _remaining)]
+                        docs_content.append({
+                            "path": doc_path,
+                            "content": _chunk,
+                        })
+                        chars_used += len(_chunk)
+                except Exception:
+                    pass
+            if docs_content:
+                packet["docs"] = docs_content
+
+        # Similar completed tasks (for learning) — top 3 by FTS5
+        try:
+            import re as _re_cp
+            _clean_title = _re_cp.sub(r'[^\w\s]', '', task.get("title", ""))
+            title_words = _clean_title.split()[:5]
+            if title_words:
+                similar = self.search_fts(" ".join(title_words), limit=5)
+                completed_similar = []
+                for s in similar:
+                    if s.get("task_id") == task_id:
+                        continue
+                    st = self.get_task(s["task_id"])
+                    if st and st.get("status") in ("done", "done_main", "done_worktree", "verified"):
+                        completed_similar.append({
+                            "task_id": s["task_id"],
+                            "title": st.get("title", "")[:80],
+                            "commit_message": st.get("commit_message", "")[:120],
+                        })
+                    if len(completed_similar) >= 3:
+                        break
+                if completed_similar:
+                    packet["similar_completed"] = completed_similar
+        except Exception:
+            pass
+
+        # Truncate total packet to max_chars
+        import json as _json_cp
+        _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
+        if len(_serialized) > max_chars:
+            # Trim docs first
+            if "docs" in packet:
+                while len(_serialized) > max_chars and packet["docs"]:
+                    packet["docs"][-1]["content"] = packet["docs"][-1]["content"][:len(packet["docs"][-1]["content"]) // 2]
+                    if len(packet["docs"][-1]["content"]) < 100:
+                        packet["docs"].pop()
+                    _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
+
+        packet["_chars"] = len(_serialized)
+        packet["_max_chars"] = max_chars
+        return packet
+
     def update_task(self, task_id: str, **updates) -> bool:
         """Update task fields.
 
@@ -1838,6 +1950,7 @@ class TaskBoard:
             "assigned_to": agent_name,
             "agent_type": agent_type,
             "assigned_at": datetime.now().isoformat(),
+            "owner_agent": agent_name,  # MARKER_199.MCC: populate for MCC dev panel
         }
         # Set execution_mode if: (a) not set at all, or (b) was default "pipeline" but no agent claimed yet
         if (not task.get("execution_mode")

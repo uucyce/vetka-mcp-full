@@ -205,6 +205,7 @@ TASK_BOARD_SCHEMA = {
                 "search_fts",
                 "debrief_skipped",
                 "backfill_fts",
+                "context_packet",
             ],
             "description": "Operation to perform",
         },
@@ -905,6 +906,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if docs:
             result["docs_content"] = docs
         return result
+
+    # MARKER_199.MCC: context_packet — resolve task into MCC-ready packet for local models
+    elif action == "context_packet":
+        task_id = arguments.get("task_id")
+        if not task_id:
+            return {"success": False, "error": "task_id is required for context_packet"}
+        packet = board.get_context_packet(task_id)
+        if not packet:
+            return {"success": False, "error": f"Task {task_id} not found"}
+        return {"success": True, "context_packet": packet}
 
     elif action == "update":
         task_id = arguments.get("task_id")
