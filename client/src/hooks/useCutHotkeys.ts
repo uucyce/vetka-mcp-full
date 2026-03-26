@@ -118,6 +118,13 @@ export type CutHotkeyAction =
   | 'toggleSnap'
   // Subclip
   | 'makeSubclip'
+  // MARKER_GAMMA-P1: 6 new FCP7 UI actions
+  | 'editMarkerDialog'
+  | 'timecodeEntry'
+  | 'revealMasterClip'
+  | 'collapseExpandTrack'
+  | 'renameClipInline'
+  | 'toggleTimelineDisplayMode'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -251,6 +258,13 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   toggleLinkedSelection: 'global',
   toggleSnap:          'global',
   makeSubclip:         'global',
+  // MARKER_GAMMA-P1: New FCP7 UI actions
+  editMarkerDialog:    'global',
+  timecodeEntry:       'global',
+  revealMasterClip:    ['timeline', 'program'],
+  collapseExpandTrack: ['timeline'],
+  renameClipInline:    ['timeline'],
+  toggleTimelineDisplayMode: 'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -385,6 +399,13 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
   toggleSnap:        's',
   makeSubclip:       'Cmd+u',
+  // MARKER_GAMMA-P1: New FCP7 UI actions
+  editMarkerDialog:  'Enter',
+  timecodeEntry:     'F2',
+  revealMasterClip:  'Shift+f',
+  collapseExpandTrack: 'Ctrl+ArrowUp',
+  renameClipInline:  'Alt+Enter',
+  toggleTimelineDisplayMode: 'Cmd+Alt+w',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -504,6 +525,13 @@ export const FCP7_PRESET: HotkeyMap = {
   toggleLinkedSelection: 'Shift+l',
   toggleSnap:        'n',
   makeSubclip:       'Cmd+u',
+  // MARKER_GAMMA-P1: New FCP7 UI actions
+  editMarkerDialog:  'Enter',
+  timecodeEntry:     'F2',
+  revealMasterClip:  'Shift+f',
+  collapseExpandTrack: 'Ctrl+ArrowUp',
+  renameClipInline:  'Alt+Enter',
+  toggleTimelineDisplayMode: 'Cmd+Alt+w',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
