@@ -47,6 +47,23 @@ class CutColorApplyRequest(BaseModel):
     max_width: int = 540
 
 
+class CutZebraRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 512
+
+
+class CutBroadcastSafeRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    mode: str = "normal"  # "conservative" (100 IRE), "normal" (110 IRE), "relaxed" (115 IRE)
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 540
+
+
 class CutLutImportRequest(BaseModel):
     sandbox_root: str
     project_id: str
@@ -105,6 +122,185 @@ async def cut_scopes_analyze(
         source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size,
         log_profile=log_profile, lut_path=lut_path,
     )
+
+
+# MARKER_B26: Zebra data endpoint
+@media_router.post("/scopes/zebra")
+async def cut_scopes_zebra(body: CutZebraRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Zebra detection: over-white, under-black, chroma-illegal.
+
+    Returns percentages + base64 PNG zebra mask with alpha channel.
+    Mask values: 0=safe (transparent), 1=over-white (light stripe), 2=under-black (dark stripe), 3=chroma-illegal.
+
+    Input: { source_path, time, log_profile?, lut_path?, max_width? }
+    Output: { over_white_pct, under_black_pct, chroma_illegal_pct, total_illegal_pct, zebra_mask_b64 }
+    """
+    import io as _io
+    from src.services.cut_scope_renderer import extract_frame_rgb, detect_out_of_range
+
+    try:
+        import numpy as np_local
+        HAS_NP = True
+    except ImportError:
+        HAS_NP = False
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    result = detect_out_of_range(frame)
+
+    # Build PNG zebra mask with alpha channel for frontend overlay
+    # mask values: 1=over-white, 2=under-black, 3=chroma-illegal, 0=safe
+    zebra_mask_b64 = ""
+    if HAS_NP:
+        try:
+            mask_data = result.get("zebra_mask", [])
+            if mask_data:
+                mask_arr = np_local.array(mask_data, dtype=np_local.uint8)
+                h_m, w_m = mask_arr.shape
+                # Build RGBA image: R=over-white indicator, A=opacity mask
+                rgba = np_local.zeros((h_m, w_m, 4), dtype=np_local.uint8)
+                # over-white: light grey stripe pattern (value=1)
+                ow = mask_arr == 1
+                # under-black: dark grey stripe pattern (value=2)
+                ub = mask_arr == 2
+                # chroma illegal: mid-grey (value=3)
+                ci = mask_arr == 3
+
+                # Encode class in R channel: 200=over, 100=under, 150=chroma
+                rgba[ow, 0] = 200  # R: over-white marker
+                rgba[ub, 0] = 100  # R: under-black marker
+                rgba[ci, 0] = 150  # R: chroma-illegal marker
+                # G channel: encode type (1/2/3)
+                rgba[ow, 1] = 1
+                rgba[ub, 1] = 2
+                rgba[ci, 1] = 3
+                # Alpha: 255 for all out-of-range pixels, 0 for safe
+                out_of_range = (mask_arr > 0)
+                rgba[out_of_range, 3] = 255
+
+                # Encode as PNG via ffmpeg (raw rgba → png)
+                raw_bytes = rgba.tobytes()
+                cmd = [
+                    "ffmpeg", "-v", "error",
+                    "-f", "rawvideo", "-pix_fmt", "rgba",
+                    "-s", f"{w_m}x{h_m}", "-i", "pipe:0",
+                    "-f", "image2", "-vcodec", "png", "pipe:1",
+                ]
+                import subprocess as _sp
+                proc = _sp.run(cmd, input=raw_bytes, capture_output=True, timeout=5)
+                if proc.returncode == 0 and proc.stdout:
+                    zebra_mask_b64 = base64.b64encode(proc.stdout).decode("ascii")
+        except Exception as e:
+            logger.warning("Zebra mask PNG encode failed: %s", e)
+
+    return {
+        "success": True,
+        "over_white_pct": result["over_white_pct"],
+        "under_black_pct": result["under_black_pct"],
+        "chroma_illegal_pct": result["chroma_illegal_pct"],
+        "total_illegal_pct": result["total_illegal_pct"],
+        "zebra_mask_b64": zebra_mask_b64,
+        "frame_w": frame.shape[1],
+        "frame_h": frame.shape[0],
+    }
+
+
+# MARKER_B26: Broadcast safe filter endpoint
+@media_router.post("/color/broadcast-safe")
+async def cut_color_broadcast_safe(body: CutBroadcastSafeRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Apply broadcast-safe clamping to a preview frame.
+
+    Modes:
+      - "conservative": strict Rec.709 studio swing (Y: 16-235, Cb/Cr: 16-240)
+      - "normal": Y 16-240 (110 IRE headroom for EBU R68)
+      - "relaxed": Y 16-244 (115 IRE, common for digital delivery)
+
+    Returns base64 JPEG of the clamped frame.
+    """
+    from src.services.cut_scope_renderer import extract_frame_rgb, broadcast_safe_clamp
+    import numpy as np_local
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    # Mode-specific luma ceiling override
+    mode = body.mode.lower()
+    if mode == "normal":
+        # Temporarily expand luma max to 240 (~110 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=240)
+    elif mode == "relaxed":
+        # Expand luma max to 244 (~115 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=244)
+    else:
+        # conservative (default): strict 16-235
+        frame_clamped = broadcast_safe_clamp(frame)
+
+    h, w, _ = frame_clamped.shape
+    try:
+        import subprocess as _sp
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}", "-i", "pipe:0",
+            "-vframes", "1", "-f", "image2", "-vcodec", "mjpeg", "-q:v", "4", "pipe:1",
+        ]
+        proc = _sp.run(cmd, input=frame_clamped.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode != 0:
+            return {"success": False, "error": "jpeg_encode_failed"}
+        jpeg_b64 = base64.b64encode(proc.stdout).decode("ascii")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {
+        "success": True, "width": w, "height": h, "format": "jpeg",
+        "data": jpeg_b64, "mode": mode,
+    }
+
+
+def _broadcast_safe_clamp_mode(frame_rgb: "np.ndarray", luma_max: int = 235) -> "np.ndarray":
+    """Broadcast safe clamp with configurable luma ceiling. Internal helper for B26."""
+    try:
+        import numpy as _np
+    except ImportError:
+        return frame_rgb
+
+    r = frame_rgb[:, :, 0].astype(_np.float32)
+    g = frame_rgb[:, :, 1].astype(_np.float32)
+    b = frame_rgb[:, :, 2].astype(_np.float32)
+
+    y = 16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255
+    cb = 128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255
+    cr = 128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255
+
+    y = _np.clip(y, 16, luma_max)
+    cb = _np.clip(cb, 16, 240)
+    cr = _np.clip(cr, 16, 240)
+
+    r_out = 1.164 * (y - 16) + 1.596 * (cr - 128)
+    g_out = 1.164 * (y - 16) - 0.392 * (cb - 128) - 0.813 * (cr - 128)
+    b_out = 1.164 * (y - 16) + 2.017 * (cb - 128)
+
+    result = _np.stack([r_out, g_out, b_out], axis=-1)
+    return _np.clip(result, 0, 255).astype(_np.uint8)
 
 
 # ---------------------------------------------------------------------------
@@ -1555,3 +1751,93 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
     # Native file — serve directly
     content_type = _MIME_MAP.get(ext, "application/octet-stream")
     return _serve_file_range(file_path, content_type, request.headers.get("range"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: Motion Analysis (MARKER_B74)
+# ---------------------------------------------------------------------------
+
+
+class CutMotionAnalyzeRequest(BaseModel):
+    """Request for optical flow motion intensity analysis."""
+    video_path: str | None = None
+    project_id: str | None = None
+    clip_id: str | None = None
+    sandbox_root: str | None = None
+    fps: float = 24.0
+    sample_every_n: int = 5
+    spike_threshold: float = 0.7
+
+
+@media_router.post("/analyze/motion")
+async def cut_analyze_motion(body: CutMotionAnalyzeRequest) -> dict[str, Any]:
+    """
+    MARKER_B74 — Optical flow motion intensity analysis for PULSE scene scoring.
+
+    Computes per-frame motion intensity (0.0=static, 1.0=max motion) using
+    OpenCV Farneback dense optical flow on sampled frames.
+
+    Accepts either:
+      - video_path: absolute path to video file (direct mode)
+      - project_id + clip_id + sandbox_root: look up clip from project store
+
+    Returns MotionProfile JSON including motion_samples, avg_motion, max_motion,
+    motion_variance, cut_density (estimated cuts/min), and spike timestamps.
+
+    Runs analysis in a background thread (non-blocking for long files).
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src.services.cut_motion_analyzer import get_motion_analyzer
+
+    # Resolve video path
+    video_path: str | None = body.video_path
+
+    if not video_path and body.project_id and body.clip_id and body.sandbox_root:
+        # Look up clip from project store
+        try:
+            store = CutProjectStore(body.sandbox_root)
+            media_index = store.load_media_index()
+            if media_index:
+                clips = media_index.get("clips") or media_index.get("files") or []
+                for clip in clips:
+                    if str(clip.get("clip_id") or clip.get("id") or "") == str(body.clip_id):
+                        video_path = clip.get("path") or clip.get("source_path")
+                        break
+        except Exception as exc:
+            logger.warning("Failed to load clip from store: %s", exc)
+
+    if not video_path:
+        raise HTTPException(
+            status_code=400,
+            detail="video_path required, or provide project_id + clip_id + sandbox_root",
+        )
+
+    if not os.path.isabs(video_path):
+        raise HTTPException(status_code=400, detail="video_path must be absolute")
+
+    analyzer = get_motion_analyzer()
+
+    # Run in thread pool — optical flow is CPU-heavy
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        profile = await loop.run_in_executor(
+            pool,
+            lambda: analyzer.analyze_clip(
+                video_path,
+                fps=body.fps,
+                sample_every_n=body.sample_every_n,
+            ),
+        )
+
+    # Compute spike timestamps
+    spikes = analyzer.detect_motion_spikes(profile, threshold=body.spike_threshold)
+
+    result = profile.to_dict()
+    result["spike_timestamps"] = spikes
+    result["spike_count"] = len(spikes)
+    result["success"] = not bool(profile.error)
+    result["video_path"] = video_path
+
+    return result

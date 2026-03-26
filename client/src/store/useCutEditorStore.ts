@@ -341,6 +341,8 @@ interface CutEditorState {
   showTitleSafe: boolean;           // 4:3 title safe zone overlay
   showActionSafe: boolean;          // 4:3 action safe zone overlay
   showMonitorOverlays: boolean;     // timecode + clip name on monitor
+  // === MARKER_B26: Zebra overlay ===
+  showZebra: boolean;               // zebra overlay for out-of-range pixels
 
   // === MARKER_CLIPBOARD: Clipboard for Cut/Copy/Paste ===
   clipboard: TimelineClip[];  // copied/cut clips
@@ -494,6 +496,8 @@ interface CutEditorState {
   toggleTitleSafe: () => void;
   toggleActionSafe: () => void;
   toggleMonitorOverlays: () => void;
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => void;
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -735,6 +739,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showTitleSafe: false,
   showActionSafe: false,
   showMonitorOverlays: false,
+  // MARKER_B26: Zebra overlay
+  showZebra: false,
 
   // MARKER_DISPLAY-CTRL: Timeline Display Controls defaults (FCP7 Ch.9 §141-148)
   showClipNames: true,
@@ -1371,6 +1377,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleTitleSafe: () => set((s) => ({ showTitleSafe: !s.showTitleSafe })),
   toggleActionSafe: () => set((s) => ({ showActionSafe: !s.showActionSafe })),
   toggleMonitorOverlays: () => set((s) => ({ showMonitorOverlays: !s.showMonitorOverlays })),
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => set((s) => ({ showZebra: !s.showZebra })),
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status) => set({ saveStatus: status }),
