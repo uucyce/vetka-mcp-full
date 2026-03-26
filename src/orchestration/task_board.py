@@ -205,6 +205,13 @@ class TaskBoard:
         self.tasks = self._load_all_tasks()
         self._backfill_modules()
 
+        # MARKER_199.PERF: Checkpoint WAL after init to prevent WAL bloat
+        # across concurrent agent connections
+        try:
+            self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+        except Exception:
+            pass  # Non-critical — checkpoint will happen eventually
+
     # ==========================================
     # PERSISTENCE
     # ==========================================
@@ -225,10 +232,12 @@ class TaskBoard:
         """MARKER_155.2A: Backfill 'module' field for existing tasks.
 
         MARKER_199.LOCK_SAFE: Non-blocking — skips on database lock.
+        MARKER_199.PERF: Batched — single transaction instead of per-task commit.
         Module backfill is optional enrichment, not critical for operation.
         """
         try:
-            updated = 0
+            # Collect tasks needing module assignment (in-memory only)
+            pending_updates = []
             for task in self.tasks.values():
                 if "module" not in task or not task.get("module"):
                     task["module"] = self._auto_assign_module(
@@ -236,10 +245,48 @@ class TaskBoard:
                         task.get("description", ""),
                         task.get("tags", []),
                     )
-                    self._save_task(task)
-                    updated += 1
-            if updated > 0:
-                logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
+                    pending_updates.append(task)
+
+            if not pending_updates:
+                return
+
+            # Batch write: single transaction for all module updates
+            with self.db:
+                for task in pending_updates:
+                    row = self._task_to_row(task)
+                    row["updated_at"] = datetime.now().isoformat()
+                    columns = list(row.keys())
+                    placeholders = ", ".join("?" for _ in columns)
+                    col_names = ", ".join(columns)
+                    values = [row[c] for c in columns]
+                    self.db.execute(
+                        f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
+                        values,
+                    )
+            # FTS5 re-index in a separate batch (non-critical)
+            try:
+                with self.db:
+                    for task in pending_updates:
+                        task_id = task.get("id", "")
+                        if not task_id:
+                            continue
+                        old = self.db.execute(
+                            "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+                        ).fetchone()
+                        if old:
+                            self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+                        tags = task.get("tags", [])
+                        tags_text = " ".join(tags) if isinstance(tags, list) else str(tags or "")
+                        self.db.execute(
+                            "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
+                            "VALUES(?, ?, ?, ?, ?)",
+                            (task_id, task.get("title", ""), task.get("description", ""),
+                             task.get("commit_message", ""), tags_text),
+                        )
+            except Exception as e:
+                logger.debug(f"[TaskBoard] FTS5 re-index during module backfill skipped: {e}")
+
+            logger.info(f"[TaskBoard] Backfilled module for {len(pending_updates)} tasks (batched)")
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
                 logger.debug("[TaskBoard] Module backfill skipped — database locked")
