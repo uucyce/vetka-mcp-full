@@ -1376,14 +1376,14 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 3.398267807946847e-09,
-    "trust": 7.585508843783113e-07,
+    "curiosity": 1.2501528648238605e-09,
+    "trust": 3.2048774864983655e-07,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 44,
+    "usage_count": 46,
     "success_count": 6,
-    "failure_count": 38,
-    "last_updated": 1774437809.416173
+    "failure_count": 40,
+    "last_updated": 1774515854.754245
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -2377,36 +2377,36 @@
   },
   "task_board": {
     "tool_id": "task_board",
-    "curiosity": 4.248354255291589e-18,
-    "trust": 0.16641237065136957,
+    "curiosity": 2.1151310375910807e-19,
+    "trust": 0.1664123706518188,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 85,
-    "success_count": 14,
-    "failure_count": 71,
-    "last_updated": 1774437809.433704
+    "usage_count": 91,
+    "success_count": 15,
+    "failure_count": 76,
+    "last_updated": 1774515854.771652
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 3.398267807946847e-09,
-    "trust": 0.999607894679087,
+    "curiosity": 7.582560422162385e-10,
+    "trust": 0.9997591983197942,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 44,
-    "success_count": 44,
+    "usage_count": 47,
+    "success_count": 47,
     "failure_count": 0,
-    "last_updated": 1774437809.42657
+    "last_updated": 1774515854.765075
   },
   "Read": {
     "tool_id": "Read",
-    "curiosity": 0.0009110511944006454,
-    "trust": 0.3621246995909567,
+    "curiosity": 0.0005527786369235996,
+    "trust": 0.23538105473412188,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 19,
+    "usage_count": 20,
     "success_count": 5,
-    "failure_count": 14,
-    "last_updated": 1774437809.415285
+    "failure_count": 15,
+    "last_updated": 1774515854.755022
   },
   "Edit": {
     "tool_id": "Edit",
