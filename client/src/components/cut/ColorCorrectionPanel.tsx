@@ -14,6 +14,7 @@ import { useState, useCallback, useEffect, useRef, type CSSProperties } from 're
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
 import ColorWheel from './ColorWheel';
+import CurveEditor, { createDefaultCurveData, curveDataToFFmpegStrings, type CurveData } from './CurveEditor';
 
 // ─── Types ───
 
@@ -32,6 +33,7 @@ interface ColorState {
   gainR: number; gainG: number; gainB: number;
   // Curves
   curvesPreset: string;
+  curveData: CurveData;
 }
 
 const DEFAULT_COLOR: ColorState = {
@@ -40,6 +42,7 @@ const DEFAULT_COLOR: ColorState = {
   midR: 0, midG: 0, midB: 0,
   gainR: 0, gainG: 0, gainB: 0,
   curvesPreset: 'none',
+  curveData: createDefaultCurveData(),
 };
 
 const CURVE_PRESETS = [
@@ -185,7 +188,7 @@ export default function ColorCorrectionPanel() {
     if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
     previewTimerRef.current = window.setTimeout(async () => {
       try {
-        const effects: Array<{ type: string; params: Record<string, number>; enabled: boolean }> = [];
+        const effects: Array<{ type: string; params: Record<string, number | string>; enabled: boolean }> = [];
         if (color.exposure !== 0) effects.push({ type: 'exposure', params: { stops: color.exposure }, enabled: true });
         if (color.contrast !== 1) effects.push({ type: 'contrast', params: { value: color.contrast }, enabled: true });
         if (color.saturation !== 1) effects.push({ type: 'saturation', params: { value: color.saturation }, enabled: true });
@@ -202,6 +205,16 @@ export default function ColorCorrectionPanel() {
         }
         if (color.gainR !== 0 || color.gainG !== 0 || color.gainB !== 0) {
           effects.push({ type: 'gain', params: { r: color.gainR, g: color.gainG, b: color.gainB }, enabled: true });
+        }
+
+        // MARKER_B93: Custom curves → point strings for preview
+        if (color.curveData) {
+          const cs = curveDataToFFmpegStrings(color.curveData);
+          if (cs.master || cs.red || cs.green || cs.blue) {
+            effects.push({ type: 'curves', params: { master: cs.master, red: cs.red, green: cs.green, blue: cs.blue }, enabled: true });
+          }
+        } else if (color.curvesPreset !== 'none') {
+          effects.push({ type: 'curves', params: { preset: color.curvesPreset }, enabled: true });
         }
 
         const resp = await fetch(`${API_BASE}/cut/preview/frame`, {
@@ -340,18 +353,32 @@ export default function ColorCorrectionPanel() {
         </div>
       </div>
 
-      {/* Curves */}
+      {/* Curves — MARKER_B93: Interactive curve editor + preset fallback */}
       <div style={SECTION}>
         <div style={SECTION_TITLE}><span>Curves</span></div>
-        <select
-          style={SELECT}
-          value={color.curvesPreset}
-          onChange={(e) => updateField('curvesPreset', e.target.value)}
-        >
-          {CURVE_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>{p.label}</option>
-          ))}
-        </select>
+        <CurveEditor
+          curves={color.curveData || createDefaultCurveData()}
+          onChange={(newCurves) => setColor((prev) => ({ ...prev, curveData: newCurves, curvesPreset: 'none' }))}
+          size={Math.min(200, 200)}
+        />
+        <div style={{ marginTop: 6 }}>
+          <select
+            style={SELECT}
+            value={color.curvesPreset}
+            onChange={(e) => {
+              const preset = e.target.value;
+              updateField('curvesPreset', preset);
+              // Reset custom curves when preset selected
+              if (preset !== 'none') {
+                setColor((prev) => ({ ...prev, curvesPreset: preset, curveData: createDefaultCurveData() }));
+              }
+            }}
+          >
+            {CURVE_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>{p.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
     </div>
   );
