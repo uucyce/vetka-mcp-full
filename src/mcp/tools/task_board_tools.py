@@ -1973,6 +1973,13 @@ def _try_auto_commit(
     import subprocess
     from pathlib import Path
 
+    # MARKER_199.ALREADY_CLOSED: Skip auto-commit if task was already closed
+    # (e.g., by vetka_git_commit post-hook). Prevents dirty-files error on re-complete.
+    task_status = task.get("status", "")
+    if task_status.startswith("done") or task_status in ("verified", "cancelled"):
+        return {"attempted": False, "success": True, "hash": task.get("commit_hash"),
+                "note": f"task already {task_status}, skip auto-commit"}
+
     PROJECT_ROOT = Path(cwd) if cwd else Path(__file__).resolve().parents[3]
 
     # MARKER_178.FIX_INDEXLOCK: Clean stale index.lock before git operations
