@@ -40,6 +40,11 @@ import json as _json  # MARKER_181.5.4: Prevent shadowing in async call chain
 from pathlib import Path
 from .base_tool import BaseMCPTool
 
+
+class _JepaCacheHit(Exception):
+    """MARKER_199.JEPA_TTL: Sentinel to skip JEPA computation when cache is warm."""
+    pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -279,91 +284,138 @@ class SessionInitTool(BaseMCPTool):
             if agent_focus_all:
                 context["_all_agent_focus"] = agent_focus_all  # full map for debug
 
-        # MARKER_191.5: Get user preferences from AURA with auto-bootstrap
-        try:
-            from src.memory.aura_store import get_aura_store
-            from src.memory.user_memory import create_user_preferences
-            aura = get_aura_store()
-            prefs = aura.get_user_preferences(user_id)
-            if not prefs:
-                # Auto-bootstrap: create default profile for new user
-                prefs = create_user_preferences(user_id)
-                aura.set_preference(
-                    agent_type="default", user_id=user_id,
-                    category="communication_style", key="preferred_language",
-                    value="ru"
-                )
-                prefs = aura.get_user_preferences(user_id)
-                logger.info(f"[session_init] Auto-bootstrapped AURA profile for user_id={user_id}")
-            # Convert UserPreferences dataclass to dict safely
-            context["user_preferences"] = {
-                "user_id": prefs.user_id,
-                "has_preferences": True
-            }
-            # Add key preference categories if available
-            if hasattr(prefs, 'communication_style'):
-                context["communication_style"] = getattr(prefs.communication_style, '__dict__', {})
-            if hasattr(prefs, 'viewport_patterns'):
-                context["viewport_patterns"] = getattr(prefs.viewport_patterns, '__dict__', {})
-        except Exception as e:
-            context["user_preferences"] = {"user_id": user_id, "has_preferences": False}
-            context["user_preferences_error"] = str(e)
+        # MARKER_199.PARALLEL_IO: Run independent I/O tasks concurrently
+        # Previously these were 4 sequential awaits (~400-1500ms total).
+        # Now they run in parallel — total time = max(individual times).
 
-        # Get recent MCP states
-        try:
-            from src.mcp.state import get_mcp_state_manager
-            mcp = get_mcp_state_manager()
-            recent = await mcp.get_all_states(limit=10)
-            context["recent_states_count"] = len(recent)
-            context["recent_state_ids"] = list(recent.keys())[:5]
-        except Exception as e:
-            context["recent_states_error"] = str(e)
-
-        # MARKER_109_1_VIEWPORT_INJECT: Build viewport context if requested
-        if include_viewport:
+        async def _load_aura_prefs():
+            """MARKER_191.5: Get user preferences from AURA with auto-bootstrap."""
             try:
-                # Try to get viewport data from CAM engine or state
+                from src.memory.aura_store import get_aura_store
+                from src.memory.user_memory import create_user_preferences
+                aura = get_aura_store()
+                prefs = aura.get_user_preferences(user_id)
+                if not prefs:
+                    prefs = create_user_preferences(user_id)
+                    aura.set_preference(
+                        agent_type="default", user_id=user_id,
+                        category="communication_style", key="preferred_language",
+                        value="ru"
+                    )
+                    prefs = aura.get_user_preferences(user_id)
+                    logger.info(f"[session_init] Auto-bootstrapped AURA profile for user_id={user_id}")
+                result = {"user_id": prefs.user_id, "has_preferences": True}
+                if hasattr(prefs, 'communication_style'):
+                    result["communication_style"] = getattr(prefs.communication_style, '__dict__', {})
+                if hasattr(prefs, 'viewport_patterns'):
+                    result["viewport_patterns"] = getattr(prefs.viewport_patterns, '__dict__', {})
+                return result
+            except Exception as e:
+                return {"user_id": user_id, "has_preferences": False, "_error": str(e)}
+
+        async def _load_mcp_states():
+            try:
+                from src.mcp.state import get_mcp_state_manager
+                mcp_mgr = get_mcp_state_manager()
+                recent = await mcp_mgr.get_all_states(limit=10)
+                return {"count": len(recent), "ids": list(recent.keys())[:5]}
+            except Exception as e:
+                return {"_error": str(e)}
+
+        async def _load_viewport():
+            if not include_viewport:
+                return None
+            try:
                 viewport_context = await self._get_viewport_context(session_id)
                 if viewport_context:
                     from src.api.handlers.message_utils import build_viewport_summary
                     viewport_summary = build_viewport_summary(viewport_context)
                     if viewport_summary:
-                        context["viewport_summary"] = viewport_summary
-                        context["viewport"] = {
-                            "zoom": viewport_context.get("zoom_level", 1),
-                            "visible_count": len(viewport_context.get("viewport_nodes", [])),
-                            "pinned_count": len(viewport_context.get("pinned_nodes", [])),
-                            "hyperlink": "[→ viewport] vetka_get_viewport_detail"
+                        return {
+                            "summary": viewport_summary,
+                            "viewport": {
+                                "zoom": viewport_context.get("zoom_level", 1),
+                                "visible_count": len(viewport_context.get("viewport_nodes", [])),
+                                "pinned_count": len(viewport_context.get("pinned_nodes", [])),
+                                "hyperlink": "[→ viewport] vetka_get_viewport_detail"
+                            }
                         }
             except Exception as e:
-                context["viewport_error"] = str(e)
+                return {"_error": str(e)}
+            return None
 
-        # MARKER_109_1_VIEWPORT_INJECT: Build pinned files context if requested
-        if include_pinned:
+        async def _load_pinned():
+            if not include_pinned:
+                return None
             try:
                 pinned_files = await self._get_pinned_files(session_id, chat_id)
                 if pinned_files:
                     from src.api.handlers.message_utils import build_pinned_context
                     pinned_context = build_pinned_context(pinned_files, max_files=5)
                     if pinned_context:
-                        context["pinned_context"] = pinned_context
-                        context["pinned"] = {
-                            "count": len(pinned_files),
-                            "files": [pf.get("name", pf.get("path", "")) for pf in pinned_files[:5]],
-                            "hyperlink": "[→ pins] vetka_get_pinned_files"
+                        return {
+                            "context": pinned_context,
+                            "pinned": {
+                                "count": len(pinned_files),
+                                "files": [pf.get("name", pf.get("path", "")) for pf in pinned_files[:5]],
+                                "hyperlink": "[→ pins] vetka_get_pinned_files"
+                            }
                         }
             except Exception as e:
-                context["pinned_error"] = str(e)
+                return {"_error": str(e)}
+            return None
+
+        aura_result, mcp_result, viewport_result, pinned_result = await asyncio.gather(
+            _load_aura_prefs(), _load_mcp_states(), _load_viewport(), _load_pinned(),
+            return_exceptions=True,
+        )
+
+        # Unpack AURA
+        if isinstance(aura_result, dict):
+            err = aura_result.pop("_error", None)
+            comm_style = aura_result.pop("communication_style", None)
+            vp_patterns = aura_result.pop("viewport_patterns", None)
+            context["user_preferences"] = aura_result
+            if comm_style:
+                context["communication_style"] = comm_style
+            if vp_patterns:
+                context["viewport_patterns"] = vp_patterns
+            if err:
+                context["user_preferences_error"] = err
+        else:
+            context["user_preferences"] = {"user_id": user_id, "has_preferences": False}
+
+        # Unpack MCP states
+        if isinstance(mcp_result, dict) and "_error" not in mcp_result:
+            context["recent_states_count"] = mcp_result["count"]
+            context["recent_state_ids"] = mcp_result["ids"]
+        elif isinstance(mcp_result, dict):
+            context["recent_states_error"] = mcp_result["_error"]
+
+        # Unpack viewport
+        if isinstance(viewport_result, dict) and "_error" not in viewport_result:
+            context["viewport_summary"] = viewport_result.get("summary")
+            context["viewport"] = viewport_result.get("viewport")
+        elif isinstance(viewport_result, dict):
+            context["viewport_error"] = viewport_result["_error"]
+
+        # Unpack pinned
+        if isinstance(pinned_result, dict) and "_error" not in pinned_result:
+            context["pinned_context"] = pinned_result.get("context")
+            context["pinned"] = pinned_result.get("pinned")
+        elif isinstance(pinned_result, dict):
+            context["pinned_error"] = pinned_result["_error"]
 
         # MARKER_197.ELISION: compression was computing compressed_str but never applying it.
         # Removed the misleading compression metadata block — it was reporting fake savings.
         # Real token reduction comes from stripping bloat keys below (MARKER_197.SLIM).
 
-        # Save session state for later retrieval
+        # Save session state — fire and forget (not needed for current session response)
+        # MARKER_199.PARALLEL_IO: moved from blocking await to background task
         try:
             from src.mcp.state import get_mcp_state_manager
             mcp = get_mcp_state_manager()
-            await mcp.save_state(session_id, context, ttl_seconds=3600)
+            asyncio.ensure_future(mcp.save_state(session_id, context, ttl_seconds=3600))
             context["persisted"] = True
         except Exception as e:
             context["persisted"] = False
@@ -453,12 +505,25 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_198.P3.JEPA_LENS: JEPA-driven relevance ranking for session context
         # Replaces naive top-N with cosine-ranked items from ENGRAM + tasks + lessons.
         # Feature-flag: VETKA_SESSION_JEPA_LENS_ENABLE (default: true)
+        # MARKER_199.JEPA_TTL: Cache JEPA lens results per role — embeddings for same
+        # agent don't change within a session. Saves ~1-3s per init.
         try:
             import os as _os
             if _os.environ.get("VETKA_SESSION_JEPA_LENS_ENABLE", "1") != "0":
                 import time as _time
                 _jepa_start = _time.monotonic()
                 _JEPA_TIMEOUT = 1.5  # seconds
+                _JEPA_TTL = 300  # 5 min cache
+
+                # Check TTL cache first (keyed by role callsign)
+                _jepa_cache_key = f"jepa_lens_{_role.callsign if _role else 'unknown'}"
+                if not hasattr(SessionInitTool, '_jepa_cache'):
+                    SessionInitTool._jepa_cache = {}
+                _cached = SessionInitTool._jepa_cache.get(_jepa_cache_key)
+                if _cached and (_time.monotonic() - _cached.get("_ts", 0)) < _JEPA_TTL:
+                    context["jepa_session_lens"] = _cached["data"]
+                    context["jepa_session_lens"]["cached"] = True
+                    raise _JepaCacheHit()  # skip to except
 
                 from src.services.mcc_jepa_adapter import embed_texts_for_overlay
 
@@ -539,7 +604,7 @@ class SessionInitTool(BaseMCPTool):
                         _scored.sort(key=lambda x: x["score"], reverse=True)
                         _elapsed = _time.monotonic() - _jepa_start
 
-                        context["jepa_session_lens"] = {
+                        _lens_data = {
                             "intent": _intent[:200],
                             "top_items": _scored[:15],
                             "corpus_size": len(_corpus),
@@ -547,6 +612,13 @@ class SessionInitTool(BaseMCPTool):
                             "elapsed_ms": round(_elapsed * 1000),
                             "marker": "MARKER_198.P3.JEPA_LENS",
                         }
+                        context["jepa_session_lens"] = _lens_data
+                        # MARKER_199.JEPA_TTL: Save to cache
+                        SessionInitTool._jepa_cache[_jepa_cache_key] = {
+                            "data": _lens_data, "_ts": _time.monotonic()
+                        }
+        except _JepaCacheHit:
+            pass  # Cache hit — context already populated
         except Exception:
             pass  # JEPA lens never blocks session init
 

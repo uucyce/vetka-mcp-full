@@ -1097,9 +1097,26 @@ BEGIN GENERATION:
                     'metadata': suggestion.metadata,
                     'timestamp': suggestion.timestamp
                 })
-                logger.info(f"💾 Stored few-shot example (score={suggestion.score:.2f})")
+                logger.info(f"Stored few-shot example (score={suggestion.score:.2f})")
             except Exception as e:
-                logger.warning(f"⚠️  Failed to store in MemoryManager: {e}")
+                logger.warning(f"Failed to store in MemoryManager: {e}")
+
+        # MARKER_199.ARC_ENGRAM: Promote high-confidence ARC results to ENGRAM L1
+        # This closes the gap where ARC ideas never reach cross-session memory.
+        if suggestion.score >= 0.7:
+            try:
+                from src.memory.engram_cache import get_engram_cache
+                _engram = get_engram_cache()
+                _key = f"arc::{suggestion.type.value}::{suggestion.timestamp[:10] if suggestion.timestamp else 'unknown'}"
+                _engram.put(
+                    key=_key,
+                    value=suggestion.explanation[:200],
+                    category="pattern",
+                    match_count=1,
+                )
+                logger.info(f"[ARC→ENGRAM] Promoted to L1 (score={suggestion.score:.2f}): {_key}")
+            except Exception:
+                pass  # ENGRAM promotion is best-effort
 
     def load_few_shot_examples(self, limit: int = 20) -> int:
         """Загрузить few-shot примеры из MemoryManager"""
