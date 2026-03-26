@@ -502,6 +502,49 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # ENGRAM errors never block session init
 
+        # MARKER_199.DIGEST: Hot ideas + new tools surface in session_init
+        # Sources: ENGRAM debrief::idea entries ranked by hit_count,
+        # tool_catalog.json tools with 0 CORTEX records = undiscovered.
+        try:
+            _digest = {}
+
+            # 1. HOT IDEAS — debrief ideas from ENGRAM, ranked by hit_count
+            _engram_for_digest = _engram if "_engram" in dir() else None
+            if _engram_for_digest is None:
+                from src.memory.engram_cache import get_engram_cache
+                _engram_for_digest = get_engram_cache()
+            _all_patterns = _engram_for_digest.get_all_by_category("pattern")
+            _ideas = [e for e in _all_patterns if "::debrief::idea::" in e.key]
+            if _ideas:
+                _ideas.sort(key=lambda x: x.hit_count, reverse=True)
+                _digest["hot_ideas"] = [
+                    {"key": e.key[:80], "value": e.value[:120], "hits": e.hit_count}
+                    for e in _ideas[:5]
+                ]
+
+            # 2. NEW TOOLS — tools in catalog but never seen by CORTEX
+            try:
+                from src.services.reflex_feedback import get_reflex_feedback as _get_fb
+                _fb_digest = _get_fb()
+                _fb_summary = _fb_digest.get_feedback_summary()
+                _known_tools = set((_fb_summary.get("per_tool") or {}).keys())
+
+                _catalog_path = Path(__file__).parent.parent.parent.parent / "data" / "reflex" / "tool_catalog.json"
+                if _catalog_path.exists():
+                    import json as _json_digest
+                    _catalog = _json_digest.loads(_catalog_path.read_text())
+                    _catalog_tools = [t["tool_id"] for t in _catalog.get("tools", [])]
+                    _new_tools = [t for t in _catalog_tools if t not in _known_tools]
+                    if _new_tools:
+                        _digest["new_tools"] = _new_tools[:10]
+            except Exception:
+                pass  # New tools discovery is best-effort
+
+            if _digest:
+                context["digest"] = _digest
+        except Exception:
+            pass  # Digest never blocks session init
+
         # MARKER_198.P3.JEPA_LENS: JEPA-driven relevance ranking for session context
         # Replaces naive top-N with cosine-ranked items from ENGRAM + tasks + lessons.
         # Feature-flag: VETKA_SESSION_JEPA_LENS_ENABLE (default: true)
