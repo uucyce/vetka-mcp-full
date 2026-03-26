@@ -111,6 +111,8 @@ from src.mcp.tools.web_search_tool import register_web_search_tool
 from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
 # MARKER_119.8: Context7 library docs for @coder
 from src.mcp.tools.library_docs_tool import register_library_docs_tool
+# MARKER_198.SCREENSHOT: Screen capture + Vision OCR for all agents
+from src.mcp.tools.screenshot_tool import ScreenshotTool
 
 # MARKER_198.P2.4: Register failure workaround hook at import time
 try:
@@ -1027,6 +1029,43 @@ async def list_tools() -> list[Tool]:
                 }
             }
         ),
+        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
+        Tool(
+            name="vetka_screenshot",
+            description=(
+                "Capture screen and/or OCR text from display. "
+                "Non-interactive — for agent use. "
+                "Returns OCR text and/or JPEG path."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["ocr", "jpeg", "both"],
+                        "default": "both",
+                        "description": "ocr=text only, jpeg=image only, both=text+image"
+                    },
+                    "region": {
+                        "type": "string",
+                        "enum": ["full", "active"],
+                        "default": "full",
+                        "description": "full=all screens, active=frontmost window"
+                    },
+                    "monitor": {
+                        "type": "integer",
+                        "description": "Specific display number (1, 2, ...) — screencapture -D flag"
+                    },
+                    "quality": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "JPEG compression quality (1-100)"
+                    }
+                }
+            }
+        ),
     ]
 
     # Phase 55.1: Register new MCP tools
@@ -1356,6 +1395,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
             result = tool.execute(arguments)
             return [TextContent(type="text", text=format_llm_result(result))]
+
+        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
+        elif name == "vetka_screenshot":
+            tool = ScreenshotTool()
+            result = tool.execute(arguments)
+
+            if not result.get("success"):
+                err = result.get("error", "unknown error")
+                return [TextContent(type="text", text=f"Error: {err}")]
+
+            data = result.get("result", {})
+            parts = []
+
+            ocr_text = data.get("text")
+            if ocr_text is not None:
+                char_count = data.get("char_count", len(ocr_text))
+                parts.append(f"=== OCR TEXT ({char_count} chars) ===\n{ocr_text}")
+
+            image_path = data.get("image_path")
+            if image_path:
+                size_kb = data.get("image_size_kb", 0)
+                parts.append(f"IMAGE: {image_path} ({size_kb} KB)")
+
+            output = "\n\n".join(parts) if parts else "No output produced."
+            return [TextContent(type="text", text=output)]
 
         elif name == "vetka_read_group_messages":
             # Read group messages via REST API
