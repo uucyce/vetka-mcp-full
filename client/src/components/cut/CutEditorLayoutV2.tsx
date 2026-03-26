@@ -583,15 +583,16 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       });
       s.setLanes(newLanes);
       s.seek(seqIn + seqDur);
-      // Also try backend
+      // Also try backend — include speed for fit-to-fill
       void s.applyTimelineOps([{
         op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn,
-        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId,
-      }]);
+        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId, speed,
+      }], { skipRefresh: true });
     },
 
     // MARKER_TL2: Superimpose — add clip on V2 above current clip (F12)
     // FCP7 Ch.11 p.167: places source clip on next higher video track at playhead
+    // MARKER_TDD-GREEN: Verified — fixed V2 auto-creation when only V1 exists
     superimpose: () => {
       const s = useCutEditorStore.getState();
       const srcIn = s.sourceMarkIn ?? 0;
@@ -600,21 +601,37 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (dur <= 0) return;
       let srcPath = s.sourceMediaPath;
       if (!srcPath) return;
-      // Find V2 (or next video lane above V1)
-      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
-      const targetLane = videoLanes.length > 1 ? videoLanes[1] : videoLanes[0];
-      if (!targetLane) return;
       const seqIn = s.currentTime;
       const newClipId = `clip_super_${Date.now()}`;
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== targetLane.lane_id) return lane;
-        const clips = [...lane.clips, {
-          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
-          duration_sec: dur, source_in: srcIn,
-        } as any];
-        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
-        return { ...lane, clips };
-      });
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
+      if (videoLanes.length === 0) return;
+      let newLanes = [...s.lanes];
+      if (videoLanes.length < 2) {
+        // FCP7: auto-create V2 lane when superimposing with only V1
+        const v2Lane = {
+          lane_id: `video_${Date.now()}`,
+          lane_type: 'video',
+          clips: [{
+            clip_id: newClipId, source_path: srcPath, start_sec: seqIn,
+            duration_sec: dur, source_in: srcIn,
+          }],
+        };
+        // Insert V2 after V1
+        const v1Idx = newLanes.findIndex((l) => l.lane_id === videoLanes[0].lane_id);
+        newLanes.splice(v1Idx + 1, 0, v2Lane as any);
+      } else {
+        // Place on existing V2
+        const targetLaneId = videoLanes[1].lane_id;
+        newLanes = newLanes.map((lane) => {
+          if (lane.lane_id !== targetLaneId) return lane;
+          const clips = [...lane.clips, {
+            clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+            duration_sec: dur, source_in: srcIn,
+          } as any];
+          clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+          return { ...lane, clips };
+        });
+      }
       s.setLanes(newLanes);
     },
 
