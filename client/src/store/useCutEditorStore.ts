@@ -313,6 +313,13 @@ interface CutEditorState {
   showExportDialog: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   showMatchSequencePopup: boolean;  // MARKER_GAMMA-MATCH: Match Sequence Settings on first clip drop
+  // MARKER_GAMMA-P1: New UI dialogs
+  showEditMarkerDialog: boolean;
+  editingMarkerId: string | null;
+  showTimecodeEntry: boolean;
+  timelineDisplayMode: 'name' | 'filmstrip' | 'nameFilmstrip';
+  showPublishDialog: boolean;
+  projectTitle: string;
   pendingMatchClipPath: string | null; // First clip path for probe
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
@@ -452,6 +459,13 @@ interface CutEditorState {
   setShowExportDialog: (show: boolean) => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setShowMatchSequencePopup: (show: boolean, clipPath?: string) => void;
+  // MARKER_GAMMA-P1: New UI setters
+  setShowEditMarkerDialog: (show: boolean, markerId?: string | null) => void;
+  setShowTimecodeEntry: (show: boolean) => void;
+  setTimelineDisplayMode: (mode: 'name' | 'filmstrip' | 'nameFilmstrip') => void;
+  cycleTimelineDisplayMode: () => void;
+  setShowPublishDialog: (show: boolean) => void;
+  setProjectTitle: (title: string) => void;
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -648,6 +662,13 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showExportDialog: false,
   showSpeedControl: false,          // MARKER_B11
   showMatchSequencePopup: false,    // MARKER_GAMMA-MATCH
+  // MARKER_GAMMA-P1: New UI dialogs
+  showEditMarkerDialog: false,
+  editingMarkerId: null as string | null,
+  showTimecodeEntry: false,
+  timelineDisplayMode: 'nameFilmstrip' as 'name' | 'filmstrip' | 'nameFilmstrip',
+  showPublishDialog: false,
+  projectTitle: '',
   pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
@@ -1130,6 +1151,20 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     showMatchSequencePopup: show,
     pendingMatchClipPath: clipPath ?? null,
   }),
+  // MARKER_GAMMA-P1: New UI setters
+  setShowEditMarkerDialog: (show, markerId) => set({
+    showEditMarkerDialog: show,
+    editingMarkerId: markerId ?? null,
+  }),
+  setShowTimecodeEntry: (show) => set({ showTimecodeEntry: show }),
+  setTimelineDisplayMode: (mode) => set({ timelineDisplayMode: mode }),
+  cycleTimelineDisplayMode: () => set((s) => {
+    const modes: Array<'name' | 'filmstrip' | 'nameFilmstrip'> = ['name', 'filmstrip', 'nameFilmstrip'];
+    const idx = modes.indexOf(s.timelineDisplayMode);
+    return { timelineDisplayMode: modes[(idx + 1) % 3] };
+  }),
+  setShowPublishDialog: (show) => set({ showPublishDialog: show }),
+  setProjectTitle: (title) => set({ projectTitle: title }),
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),

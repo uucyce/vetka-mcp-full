@@ -123,8 +123,10 @@ export type CutHotkeyAction =
   | 'timecodeEntry'
   | 'revealMasterClip'
   | 'collapseExpandTrack'
+  | 'expandTrack'
   | 'renameClipInline'
   | 'toggleTimelineDisplayMode'
+  | 'publishDialog'
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
@@ -244,8 +246,10 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   timecodeEntry:       'global',
   revealMasterClip:    ['timeline', 'program'],
   collapseExpandTrack: ['timeline'],
+  expandTrack:         ['timeline'],
   renameClipInline:    ['timeline'],
   toggleTimelineDisplayMode: 'global',
+  publishDialog:       'global',
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
@@ -366,8 +370,10 @@ export const PREMIERE_PRESET: HotkeyMap = {
   timecodeEntry:     'F2',
   revealMasterClip:  'Shift+f',
   collapseExpandTrack: 'Ctrl+ArrowUp',
+  expandTrack:       'Ctrl+ArrowDown',
   renameClipInline:  'Alt+Enter',
   toggleTimelineDisplayMode: 'Cmd+Alt+w',
+  publishDialog:     'Cmd+Shift+p',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
@@ -473,8 +479,10 @@ export const FCP7_PRESET: HotkeyMap = {
   timecodeEntry:     'F2',
   revealMasterClip:  'Shift+f',
   collapseExpandTrack: 'Ctrl+ArrowUp',
+  expandTrack:       'Ctrl+ArrowDown',
   renameClipInline:  'Alt+Enter',
   toggleTimelineDisplayMode: 'Cmd+Alt+w',
+  publishDialog:     'Cmd+Shift+p',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
