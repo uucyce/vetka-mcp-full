@@ -109,3 +109,42 @@ Every store method called by handlers exists and is implemented in `useCutEditor
 `setFocusedPanel`, `setMarkers`, `clearSelection`, `setSourceMedia`, `setMarkIn`,
 `setMarkOut`, `setSourceMarkIn`, `setSourceMarkOut`, `setSequenceMarkIn`,
 `setSequenceMarkOut`, `setPlaybackRate`, `setShuttleSpeed`, `setZoom`, `setLanes`
+
+---
+
+## Branch Verification Backlog
+
+### claude/cut-media (2 merges, 11 commits total)
+- Merge `91c0452dc`: 9 commits — scipy guard, tint axis, chunked audio, mixer wiring, dead code cleanup, white balance, clipping indicator, scene graph fix, transcode-on-the-fly
+- Merge `682e2b480`: 2 commits — multicam video previews, interactive curve editor
+- **All 11 commits have task IDs.** Spot-checked 2 tasks: commit hashes match, status=done_main.
+
+### claude/cut-qa-2 (1 merge, 14 commits)
+- Merge `529a971df`: 14 commits — Playwright globalSetup, test tiers, monochrome enforcement, undo-bypass recon, FCP7 timeline display recon, playback QA, multiple Delta QA verifications, 327 contract tests
+- **All 14 commits have task IDs.** Spot-checked 1 task: commit hash matches, status=done_main.
+
+**Verdict: PASS** — No orphan commits, no task-commit mismatches.
+
+---
+
+## Performance Baseline (2026-03-26)
+
+| Metric | Value | Target | Status |
+|--------|-------|--------|--------|
+| tsc --noEmit | **5.47s** | <30s | PASS |
+| TS error count | 205 | 0 | KNOWN (non-CUT files) |
+| Health endpoint | **0.6ms** | <100ms | PASS |
+| Project state | **1.4ms** | <500ms | PASS |
+| Timeline list | **0.6ms** | <200ms | PASS |
+| Undo stack | **0.6ms** | <100ms | PASS |
+| Render presets | **0.6ms** | <200ms | PASS |
+| Test count | **7052** | >4000 | PASS |
+| rAF loops | Present | Required | PASS |
+| cancelAnimationFrame | Present | Required | PASS |
+| performance.now() | Present | Required | PASS |
+| Async render path | Present | Required | PASS |
+| Zustand selectors | Present | Required | PASS |
+| No bare store subs | 0 violations | 0 | PASS |
+| WebSocket reconnect | Present | Required | PASS |
+| Inline styles (timeline) | **73** | <100 | PASS (baseline) |
+| Chunk size limit | OK | ≤1000KB | PASS |
