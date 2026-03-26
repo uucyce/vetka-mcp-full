@@ -1,4 +1,8 @@
 # FCP7 Compliance Matrix — Full Chapter Scan (Ch.1-52)
+
+> **SUPERSEDED:** Live compliance data is now in **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)** Appendix A.
+> This file remains as historical Epsilon audit from 2026-03-23.
+
 **Author:** Epsilon (QA-2) | **Date:** 2026-03-23 | **Method:** Source code grep + store analysis
 **Extends:** CUT_FCP7_COVERAGE_MATRIX.md (Delta, Ch.41-115)
 
