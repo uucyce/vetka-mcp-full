@@ -871,11 +871,27 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
-    focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
-    focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
-    focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
-    focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
-    focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
+    // Updates store state AND physically activates the dockview panel tab.
+    focusSource: () => {
+      useCutEditorStore.getState().setFocusedPanel('source');
+      try { useDockviewStore.getState().apiRef?.getPanel('source')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProgram: () => {
+      useCutEditorStore.getState().setFocusedPanel('program');
+      try { useDockviewStore.getState().apiRef?.getPanel('program')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusTimeline: () => {
+      useCutEditorStore.getState().setFocusedPanel('timeline');
+      try { useDockviewStore.getState().apiRef?.getPanel('timeline')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProject: () => {
+      useCutEditorStore.getState().setFocusedPanel('project');
+      try { useDockviewStore.getState().apiRef?.getPanel('project')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusEffects: () => {
+      useCutEditorStore.getState().setFocusedPanel('effects');
+      try { useDockviewStore.getState().apiRef?.getPanel('effects')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
 
     // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
     matchFrame: () => {

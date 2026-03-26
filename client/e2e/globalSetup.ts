@@ -11,8 +11,12 @@
  *   - Existing specs with their own server logic are unaffected (additive)
  */
 import { spawn, ChildProcess } from 'child_process';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import * as http from 'http';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 let viteProcess: ChildProcess | null = null;
 

@@ -4,7 +4,12 @@ MARKER_W6.WIRE: Tests for all hotkey handler wiring completeness.
 Verifies that every CutHotkeyAction has a corresponding handler.
 Also tests the logic of newly wired handlers.
 """
+import re
+from pathlib import Path
+
 import pytest
+
+HOTKEYS_FILE = Path(__file__).resolve().parent.parent / "client" / "src" / "hooks" / "useCutHotkeys.ts"
 
 
 # ── Handler registry (mirrors CutEditorLayoutV2 hotkeyHandlers) ──
@@ -16,16 +21,23 @@ WIRED_HANDLERS = {
     'goToStart', 'goToEnd', 'cyclePlaybackRate',
     # Marking
     'markIn', 'markOut', 'clearIn', 'clearOut', 'clearInOut', 'goToIn', 'goToOut',
+    'markClip', 'playInToOut',
     # Editing
     'undo', 'redo', 'deleteClip', 'splitClip', 'rippleDelete',
     'selectAll', 'copy', 'cut', 'paste', 'pasteInsert',
     'nudgeLeft', 'nudgeRight',
     # Tools
     'razorTool', 'selectTool', 'insertEdit', 'overwriteEdit',
+    'replaceEdit', 'fitToFill', 'superimpose',
     'slipTool', 'slideTool', 'rippleTool', 'rollTool',
-    # Markers
+    'handTool', 'zoomTool',
+    # Markers + Keyframes
     'addMarker', 'addComment', 'nextMarker', 'prevMarker',
-    'markClip', 'playInToOut',
+    'nextKeyframe', 'prevKeyframe', 'addKeyframe',
+    'toggleRecordMode', 'openSpeedControl',
+    # Sequence operations
+    'liftClip', 'extractClip', 'closeGap', 'extendEdit',
+    'splitEditLCut', 'splitEditJCut', 'addDefaultTransition',
     # Navigation
     'prevEditPoint', 'nextEditPoint', 'matchFrame', 'toggleSourceProgram',
     # View
@@ -35,26 +47,47 @@ WIRED_HANDLERS = {
     'toggleViewMode', 'escapeContext',
     # Panel focus
     'focusSource', 'focusProgram', 'focusTimeline', 'focusProject', 'focusEffects',
+    # Linked selection + Snap + Subclip
+    'toggleLinkedSelection', 'toggleSnap', 'makeSubclip',
 }
 
 # Full CutHotkeyAction list (from useCutHotkeys.ts)
 ALL_ACTIONS = {
+    # Playback (11)
     'playPause', 'stop', 'shuttleBack', 'shuttleForward',
     'frameStepBack', 'frameStepForward', 'fiveFrameStepBack', 'fiveFrameStepForward',
     'goToStart', 'goToEnd', 'cyclePlaybackRate',
+    # Marking (9)
     'markIn', 'markOut', 'clearIn', 'clearOut', 'clearInOut', 'goToIn', 'goToOut',
+    'markClip', 'playInToOut',
+    # Editing (12)
     'undo', 'redo', 'deleteClip', 'splitClip', 'rippleDelete',
     'selectAll', 'copy', 'cut', 'paste', 'pasteInsert',
     'nudgeLeft', 'nudgeRight',
+    # Tools (13)
     'razorTool', 'selectTool', 'insertEdit', 'overwriteEdit',
+    'replaceEdit', 'fitToFill', 'superimpose',
     'slipTool', 'slideTool', 'rippleTool', 'rollTool',
+    'handTool', 'zoomTool',
+    # Markers + Keyframes (8)
     'addMarker', 'addComment', 'nextMarker', 'prevMarker',
-    'markClip', 'playInToOut',
+    'nextKeyframe', 'prevKeyframe', 'addKeyframe',
+    'toggleRecordMode', 'openSpeedControl',
+    # Sequence (7)
+    'liftClip', 'extractClip', 'closeGap', 'extendEdit',
+    'splitEditLCut', 'splitEditJCut', 'addDefaultTransition',
+    # Navigation (4)
     'prevEditPoint', 'nextEditPoint', 'matchFrame', 'toggleSourceProgram',
+    # View (4)
     'zoomIn', 'zoomOut', 'zoomToFit', 'cycleTrackHeight',
-    'importMedia', 'saveProject', 'sceneDetect',
-    'toggleViewMode', 'escapeContext',
+    # Project (2)
+    'importMedia', 'saveProject',
+    # Panel focus (5)
     'focusSource', 'focusProgram', 'focusTimeline', 'focusProject', 'focusEffects',
+    # Linked selection + Snap + Subclip (3)
+    'toggleLinkedSelection', 'toggleSnap', 'makeSubclip',
+    # CUT-specific (3)
+    'sceneDetect', 'toggleViewMode', 'escapeContext',
 }
 
 
@@ -74,6 +107,23 @@ class TestWiringCompleteness:
     def test_count_matches(self):
         """Handler count = action count."""
         assert len(WIRED_HANDLERS) == len(ALL_ACTIONS)
+
+    def test_all_actions_match_typescript_source(self):
+        """ALL_ACTIONS must match CutHotkeyAction type in useCutHotkeys.ts.
+
+        Prevents drift between this test file and the actual TypeScript source.
+        """
+        if not HOTKEYS_FILE.exists():
+            pytest.skip(f"Hotkey file not found: {HOTKEYS_FILE}")
+        source = HOTKEYS_FILE.read_text()
+        # Parse the type union: | 'actionName'
+        match = re.search(r"export type CutHotkeyAction\s*=(.*?);", source, re.DOTALL)
+        assert match, "Could not find CutHotkeyAction type"
+        ts_actions = set(re.findall(r"'(\w+)'", match.group(1)))
+        missing_from_test = ts_actions - ALL_ACTIONS
+        extra_in_test = ALL_ACTIONS - ts_actions
+        assert not missing_from_test, f"Actions in TS but missing from ALL_ACTIONS: {missing_from_test}"
+        assert not extra_in_test, f"Actions in ALL_ACTIONS but not in TS: {extra_in_test}"
 
 
 # ── Logic tests for newly wired handlers ─────────────────────
