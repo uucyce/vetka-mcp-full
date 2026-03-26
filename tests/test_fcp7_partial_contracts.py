@@ -391,3 +391,78 @@ class TestCh42Multicam:
         content = viewer.read_text()
         assert "onClick" in content, "Must have onClick handler on angle tiles"
         assert "switchAngle" in content, "Must call switchAngle store action on click"
+
+
+# ═══════════════════════════════════════════════════════
+# PULSE Auto-Montage
+# ═══════════════════════════════════════════════════════
+
+
+class TestPulseAutoMontage:
+    """Contract tests for PULSE Auto-Montage feature."""
+
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+    def test_pulse_auto_montage_service_exists(self):
+        """pulse_auto_montage.py service must exist."""
+        service = self.PROJECT_ROOT / "src" / "services" / "pulse_auto_montage.py"
+        assert service.exists(), "src/services/pulse_auto_montage.py must exist"
+
+    def test_pulse_auto_montage_endpoint_exists(self):
+        """cut_routes.py must expose pulse/auto-montage POST endpoint."""
+        routes = self.PROJECT_ROOT / "src" / "api" / "routes" / "cut_routes.py"
+        assert routes.exists(), "src/api/routes/cut_routes.py must exist"
+        content = routes.read_text()
+        assert "pulse/auto-montage" in content, "Must define pulse/auto-montage route"
+        assert "CutPulseAutoMontageRequest" in content, "Must reference CutPulseAutoMontageRequest model"
+
+    def test_auto_montage_panel_exists(self):
+        """AutoMontagePanel.tsx must exist with correct header and mode buttons."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "PULSE Auto-Montage" in content, "Must contain 'PULSE Auto-Montage' header text"
+        assert "Favorites" in content, "Must contain 'Favorites' mode button"
+        assert "Script" in content, "Must contain 'Script' mode button"
+        assert "Music" in content, "Must contain 'Music' mode button"
+
+    def test_auto_montage_panel_store_wiring(self):
+        """AutoMontagePanel.tsx must be wired to the store and call the API endpoint."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "useCutEditorStore" in content, "Must import useCutEditorStore"
+        assert "montageRunning" in content or "setMontageRunning" in content, (
+            "Must reference montageRunning or setMontageRunning from store"
+        )
+        assert "pulse/auto-montage" in content, "Must reference pulse/auto-montage API endpoint"
+
+    def test_auto_montage_store_actions(self):
+        """useCutEditorStore.ts must contain all PULSE montage state fields and actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content:
+            pytest.skip("Store file not found")
+        assert "montageRunning" in content, "Store must have montageRunning field"
+        assert "montageMode" in content, "Store must have montageMode field"
+        assert "montageProgress" in content, "Store must have montageProgress field"
+        assert "montageError" in content, "Store must have montageError field"
+        assert "setMontageRunning" in content, "Store must have setMontageRunning action"
+        assert "setMontageMode" in content, "Store must have setMontageMode action"
+
+    def test_pulse_conductor_exists(self):
+        """pulse_conductor.py must exist and produce PulseScore for scenes."""
+        conductor = self.PROJECT_ROOT / "src" / "services" / "pulse_conductor.py"
+        assert conductor.exists(), "src/services/pulse_conductor.py must exist"
+        content = conductor.read_text()
+        assert "PulseConductor" in content, "Must define PulseConductor class"
+        assert "PulseScore" in content or "score" in content.lower(), (
+            "pulse_conductor.py must produce scores for scenes"
+        )
+
+    def test_auto_montage_creates_timeline(self):
+        """AutoMontagePanel.tsx must create a timeline and open a dockview tab."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "createTimeline" in content, "Must call createTimeline to create timeline instance"
+        assert "addTimelinePanel" in content, "Must call addTimelinePanel to open dockview tab"
