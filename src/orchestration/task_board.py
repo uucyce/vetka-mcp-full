@@ -17,6 +17,7 @@ Flow:
 @depends: src/orchestration/agent_pipeline.py, src/orchestration/mycelium_heartbeat.py
 """
 
+import atexit
 import json
 import sqlite3
 import time
@@ -208,9 +209,25 @@ class TaskBoard:
         # MARKER_199.PERF: Checkpoint WAL after init to prevent WAL bloat
         # across concurrent agent connections
         try:
-            self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
-        except Exception:
-            pass  # Non-critical — checkpoint will happen eventually
+            result = self.db.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+            if result:
+                busy, log_pages, checkpointed = result
+                if log_pages > 0:
+                    logger.info(f"[TaskBoard] WAL checkpoint: {checkpointed}/{log_pages} pages checkpointed, {busy} busy")
+        except Exception as e:
+            logger.debug(f"[TaskBoard] WAL checkpoint skipped: {e}")
+
+        atexit.register(self.close)
+
+    def close(self):
+        """Close SQLite connection and checkpoint WAL."""
+        if hasattr(self, 'db') and self.db:
+            try:
+                self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.db.close()
+            except Exception:
+                pass
+            self.db = None
 
     # ==========================================
     # PERSISTENCE
@@ -324,7 +341,18 @@ class TaskBoard:
         """Create tasks/settings/meta tables and indexes if they don't exist.
 
         MARKER_192.1: Idempotent schema creation.
+        MARKER_199.DDL_FAST: sqlite_master fast path — read-only check before DDL.
+        Only the very first process pays the exclusive-lock cost. All subsequent
+        processes see the tables in sqlite_master and skip DDL entirely.
         """
+        # Fast path: if 'tasks' table exists, schema is already created
+        row = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'"
+        ).fetchone()
+        if row:
+            return
+
+        # Slow path: first-time schema creation
         with self.db:
             self.db.executescript("""
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -394,26 +422,33 @@ class TaskBoard:
 
         if current < 1:
             # Migration 1: FTS5 full-text search (MARKER_199.FTS5)
-            try:
-                self.db.executescript("""
-                    CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
-                        task_id UNINDEXED,
-                        title,
-                        description,
-                        commit_message,
-                        tags_text,
-                        tokenize='unicode61'
-                    );
-                """)
+            # Fast path: check if FTS5 table already exists (MARKER_199.DDL_FAST)
+            fts_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks_fts'"
+            ).fetchone()
+            if fts_exists:
                 self._set_schema_version(1)
-                logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
-            except sqlite3.OperationalError as e:
-                if "locked" in str(e).lower():
-                    logger.warning("[TaskBoard] Migration 1 deferred — database locked")
-                    return  # Will retry on next init
-                logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
-            except Exception as e:
-                logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
+                            task_id UNINDEXED,
+                            title,
+                            description,
+                            commit_message,
+                            tags_text,
+                            tokenize='unicode61'
+                        );
+                    """)
+                    self._set_schema_version(1)
+                    logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning("[TaskBoard] Migration 1 deferred — database locked")
+                        return  # Will retry on next init
+                    logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
 
         # Backfill runs separately — even if migration already done, backfill retries if empty
         try:
@@ -1881,7 +1916,8 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
 
         # MARKER_191.1: Guard against double-close (done/done_main/done_worktree)
-        if task.get("status", "").startswith("done"):
+        # MARKER_199.DOUBLE_CLOSE: Guard against re-closing done OR verified tasks
+        if task.get("status", "").startswith("done") or task.get("status") == "verified":
             return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
 
         # MARKER_192.2: Allow execution_mode override at close time
@@ -2896,14 +2932,37 @@ class TaskBoard:
         - squash: Git merge --squash + commit
         """
         try:
-            # Ensure we're on main
+            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
+            # Stash any uncommitted changes first to prevent checkout failure
+            stash_proc = await asyncio.create_subprocess_exec(
+                "git", "stash", "--include-untracked",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stash_out, _ = await stash_proc.communicate()
+            did_stash = b"No local changes" not in stash_out
+
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await proc.communicate()
+            co_stdout, co_stderr = await proc.communicate()
+            if proc.returncode != 0:
+                # Restore stash if we stashed
+                if did_stash:
+                    await (await asyncio.create_subprocess_exec(
+                        "git", "stash", "pop",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )).communicate()
+                return {
+                    "success": False,
+                    "error": f"git checkout main failed (rc={proc.returncode}): {co_stderr.decode().strip()}",
+                }
 
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
             # Agent worktrees auto-generate CLAUDE.md with role-specific content.
@@ -2991,7 +3050,9 @@ class TaskBoard:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await proc.communicate()
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Squash commit failed: {stderr.decode().strip()}"}
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
@@ -3027,6 +3088,15 @@ class TaskBoard:
             )
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
+
+            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
+            if did_stash:
+                await (await asyncio.create_subprocess_exec(
+                    "git", "stash", "pop",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )).communicate()
 
             return {"success": True, "commit_hash": commit_hash}
 
