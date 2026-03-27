@@ -184,17 +184,17 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   goToIn:              'global',
   goToOut:             'global',
 
-  // Editing — timeline only
-  deleteClip:          'global',
-  splitClip:           'global',
-  rippleDelete:        'global',
-  nudgeLeft:           'global',
-  nudgeRight:          'global',
-  insertEdit:          'global',
-  overwriteEdit:       'global',
-  replaceEdit:         'global',
-  fitToFill:           'global',
-  superimpose:         'global',
+  // Editing — timeline only (FCP7/Premiere: these only fire when Timeline is focused)
+  deleteClip:          ['timeline'],
+  splitClip:           ['timeline'],
+  rippleDelete:        ['timeline'],
+  nudgeLeft:           ['timeline'],
+  nudgeRight:          ['timeline'],
+  insertEdit:          ['timeline', 'source'],
+  overwriteEdit:       ['timeline', 'source'],
+  replaceEdit:         ['timeline', 'source'],
+  fitToFill:           ['timeline', 'source'],
+  superimpose:         ['timeline', 'source'],
 
   // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
   razorTool:           'global',
@@ -207,36 +207,36 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   handTool:            'global',
   zoomTool:            'global',
 
-  // Navigation — timeline/program
-  prevEditPoint:       'global',
-  nextEditPoint:       'global',
+  // Navigation — timeline/program (FCP7: Up/Down navigate edit points only in Timeline/Program)
+  prevEditPoint:       ['timeline', 'program'],
+  nextEditPoint:       ['timeline', 'program'],
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:          'global',
   toggleSourceProgram: 'global',
 
-  // Markers — source, program, timeline
-  addMarker:           'global',
-  addComment:          'global',
-  nextMarker:          'global',
-  prevMarker:          'global',
-  nextKeyframe:        'global',
-  prevKeyframe:        'global',
-  addKeyframe:         'global',
+  // Markers — source, program, timeline (FCP7 Ch.37: markers fire in viewer/timeline context)
+  addMarker:           ['source', 'program', 'timeline'],
+  addComment:          ['source', 'program', 'timeline'],
+  nextMarker:          ['source', 'program', 'timeline'],
+  prevMarker:          ['source', 'program', 'timeline'],
+  nextKeyframe:        ['timeline'],
+  prevKeyframe:        ['timeline'],
+  addKeyframe:         ['timeline'],
   toggleRecordMode:    'global',  // MARKER_B3.2
   openSpeedControl:    'global',
 
-  // Mark operations
-  markClip:            'global',
-  playInToOut:         'global',
+  // Mark operations — timeline/program (FCP7 Ch.12: markClip requires clip in timeline)
+  markClip:            ['timeline'],
+  playInToOut:         ['source', 'program', 'timeline'],
 
-  // Sequence operations — timeline only
-  liftClip:            'global',
-  extractClip:         'global',
-  closeGap:            'global',
-  extendEdit:          'global',
-  splitEditLCut:       'global',
-  splitEditJCut:       'global',
-  addDefaultTransition:'global',
+  // Sequence operations — timeline only (FCP7 Ch.26/Ch.41: sequence ops require Timeline focus)
+  liftClip:            ['timeline'],
+  extractClip:         ['timeline'],
+  closeGap:            ['timeline'],
+  extendEdit:          ['timeline'],
+  splitEditLCut:       ['timeline'],
+  splitEditJCut:       ['timeline'],
+  addDefaultTransition:['timeline'],
 
   // Global — always fire
   undo:                'global',
@@ -276,17 +276,17 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   runPulseAnalysis:    'global',
   runAutoMontageFavorites: 'global',
   exportTimeline:         'global',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
-  rippleTrimToPlayhead:   'global',
-  swapClips:              'global',
-  deleteMarker:           'global',
-  pasteAttributes:        'global',
-  // MARKER_SEL6: Selection actions
-  selectClipAtPlayhead:   'global',
-  selectAllOnTrack:       'global',
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes — timeline context
+  rippleTrimToPlayhead:   ['timeline'],
+  swapClips:              ['timeline'],
+  deleteMarker:           ['source', 'program', 'timeline'],
+  pasteAttributes:        ['timeline'],
+  // MARKER_SEL6: Selection actions — timeline context
+  selectClipAtPlayhead:   ['timeline'],
+  selectAllOnTrack:       ['timeline'],
   deselectAll:            'global',
-  selectForward:          'global',
-  toggleAVSelection:      'global',
+  selectForward:          ['timeline'],
+  toggleAVSelection:      ['timeline'],
   linkUnlinkClips:        'global',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:     'global',
