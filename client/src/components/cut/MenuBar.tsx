@@ -20,6 +20,7 @@ import {
   type HotkeyPresetName,
   loadPresetName,
   savePresetName,
+  getShortcutLabel,
 } from '../../hooks/useCutHotkeys';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
@@ -197,6 +198,9 @@ export default function MenuBar() {
   // Store actions
   const store = useCutEditorStore;
   const dockStore = useDockviewStore;
+
+  // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (updates when preset changes)
+  const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, loadPresetName());
 
   // Close on Esc or outside click
   useEffect(() => {
@@ -416,7 +420,7 @@ export default function MenuBar() {
       label: 'View',
       items: [
         // MARKER_FIX-VIEW-MENU: Context-aware zoom (monitor vs timeline)
-        { label: 'Zoom In', shortcut: '=', action: () => {
+        { label: 'Zoom In', shortcut: sc('zoomIn'), action: () => {
           const s = store.getState();
           const fp = s.focusedPanel;
           if (fp === 'source' || fp === 'program') {
@@ -427,7 +431,7 @@ export default function MenuBar() {
             s.setZoom(Math.min(300, s.zoom + 20));
           }
         }},
-        { label: 'Zoom Out', shortcut: '-', action: () => {
+        { label: 'Zoom Out', shortcut: sc('zoomOut'), action: () => {
           const s = store.getState();
           const fp = s.focusedPanel;
           if (fp === 'source' || fp === 'program') {
@@ -438,7 +442,7 @@ export default function MenuBar() {
             s.setZoom(Math.max(10, s.zoom - 20));
           }
         }},
-        { label: 'Zoom to Fit', shortcut: '\\', action: () => {
+        { label: 'Zoom to Fit', shortcut: sc('zoomToFit'), action: () => {
           const s = store.getState();
           const fp = s.focusedPanel;
           if (fp === 'source' || fp === 'program') {
@@ -449,7 +453,7 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: 'N', action: () => {
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
@@ -627,7 +631,7 @@ export default function MenuBar() {
         { label: `${useSelectionStore.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
           // TODO: toggle clip enabled/disabled state
         }, disabled: true },
-        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: '⌘L', action: () => {
+        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
@@ -753,7 +757,7 @@ export default function MenuBar() {
           { label: 'End on Edit', action: () => setTransitionAlignment('end') },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'N', action: () => store.getState().toggleSnap() },
+        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
         { label: 'Insert Tracks...', disabled: true },
         { label: 'Delete Tracks...', disabled: true },
