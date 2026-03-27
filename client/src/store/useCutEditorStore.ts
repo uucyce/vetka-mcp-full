@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
+import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -225,10 +226,8 @@ interface CutEditorState {
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
-  // === Selection ===
-  selectedClipId: string | null;
-  selectedClipIds: Set<string>;       // MARKER_W3.7: multi-select
-  linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
+  // === Selection (MOVED to useSelectionStore.ts — MARKER_ARCH_4.1) ===
+  // selectedClipId, selectedClipIds, linkedSelection → useSelectionStore
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
 
@@ -403,12 +402,7 @@ interface CutEditorState {
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
-  setSelectedClip: (id: string | null) => void;
-  // MARKER_W3.7: Multi-select
-  toggleClipSelection: (id: string) => void;   // Cmd+Click toggle
-  selectAllClips: () => void;                   // Cmd+A
-  clearSelection: () => void;                   // Escape
-  toggleLinkedSelection: () => void;            // linked selection toggle
+  // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
   // MARKER_CLIPBOARD: Clipboard actions
   copyClips: () => void;                         // Copy selected clips to clipboard
   cutClips: () => void;                          // Cut selected clips (copy + remove)
@@ -598,10 +592,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lanePans: {},
   snapEnabled: true,
 
-  // Selection
-  selectedClipId: null,
-  selectedClipIds: new Set<string>(),
-  linkedSelection: true,
+  // Selection MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
   activeMediaPath: null,
   hoveredClipId: null,
 
@@ -812,28 +803,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
-  setSelectedClip: (id) => set({ selectedClipId: id, selectedClipIds: id ? new Set([id]) : new Set() }),
-  // MARKER_W3.7: Multi-select actions
-  toggleClipSelection: (id) =>
-    set((state) => {
-      const ids = new Set(state.selectedClipIds);
-      if (ids.has(id)) { ids.delete(id); } else { ids.add(id); }
-      return { selectedClipIds: ids, selectedClipId: ids.size === 1 ? [...ids][0] : state.selectedClipId };
-    }),
-  selectAllClips: () =>
-    set((state) => {
-      const allIds = new Set<string>();
-      for (const lane of state.lanes) {
-        for (const clip of lane.clips) { allIds.add(clip.clip_id); }
-      }
-      return { selectedClipIds: allIds };
-    }),
-  clearSelection: () => set({ selectedClipId: null, selectedClipIds: new Set() }),
-  toggleLinkedSelection: () => set((state) => ({ linkedSelection: !state.linkedSelection })),
+  // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
 
   // MARKER_CLIPBOARD: Clipboard implementations
   copyClips: () => {
-    const { lanes, selectedClipIds } = get();
+    const { lanes } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
     for (const lane of lanes) {
@@ -845,7 +820,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
   // MARKER_UNDO_CUT: Cut clips — copy to clipboard + remove via applyTimelineOps for undo support
   cutClips: () => {
-    const { lanes, selectedClipIds } = get();
+    const { lanes } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
     for (const lane of lanes) {
@@ -853,7 +829,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         if (selectedClipIds.has(clip.clip_id)) clips.push({ ...clip });
       }
     }
-    set({ clipboard: clips, selectedClipId: null, selectedClipIds: new Set() });
+    set({ clipboard: clips });
+    useSelectionStore.getState().clearSelection();
     // Route removal through backend undo stack
     const ops = clips.map((c) => ({ op: 'remove_clip', clip_id: c.clip_id }));
     void get().applyTimelineOps(ops);
@@ -880,7 +857,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
   // MARKER_UNDO_PASTE_ATTR: Route through applyTimelineOps
   pasteAttributes: () => {
-    const { clipboard, selectedClipIds } = get();
+    const { clipboard } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const sourceEffects = clipboard[0].effects;
     if (!sourceEffects) return;
@@ -893,11 +871,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps
   liftClip: () => {
     // Lift: remove selected clips, leave gap (like Delete but respects In/Out range)
-    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    const { lanes, sequenceMarkIn, sequenceMarkOut } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     const ops: Array<Record<string, unknown>> = [];
     if (selectedClipIds.size > 0) {
       for (const id of selectedClipIds) ops.push({ op: 'remove_clip', clip_id: id });
-      set({ selectedClipId: null, selectedClipIds: new Set() });
+      useSelectionStore.getState().clearSelection();
     } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
       // Lift range: remove clips in range, trim partials
       for (const lane of lanes) {
@@ -918,11 +897,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
   // MARKER_UNDO_EXTRACT: Extract clips — remove + ripple via applyTimelineOps
   extractClip: () => {
-    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    const { lanes, sequenceMarkIn, sequenceMarkOut } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     const ops: Array<Record<string, unknown>> = [];
     if (selectedClipIds.size > 0) {
       for (const id of selectedClipIds) ops.push({ op: 'ripple_delete', clip_id: id });
-      set({ selectedClipId: null, selectedClipIds: new Set() });
+      useSelectionStore.getState().clearSelection();
     } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
       for (const lane of lanes) {
         for (const c of lane.clips) {
@@ -997,7 +977,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Positive frames = extend, negative = shorten. Uses trim_clip op.
   // FCP7 Ch.20: type number while trim tool active → trim by exact frame count
   numericTrimSelected: (frames: number) => {
-    const { selectedClipId, lanes, projectFramerate } = get();
+    const { lanes, projectFramerate } = get();
+    const { selectedClipId } = useSelectionStore.getState();
     if (!selectedClipId) return;
     const deltaSec = frames / (projectFramerate || 25);
     for (const lane of lanes) {
