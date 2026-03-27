@@ -335,6 +335,10 @@ TASK_BOARD_SCHEMA = {
             "enum": ["pass", "fail"],
             "description": "QA verdict for action=verify: pass → verified, fail → needs_fix",
         },
+        "skip_qa": {
+            "type": "boolean",
+            "description": "Emergency bypass for QA gate in promote_to_main. Use only when QA is unavailable and merge is urgent. Logged as warning.",
+        },
         "verified_by": {
             "type": "string",
             "description": "Agent performing verification (default: Delta)",
@@ -1393,7 +1397,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
         merge_commit_hash = arguments.get("commit_hash")
         role = arguments.get("role", "")
-        return board.promote_to_main(task_id, merge_commit_hash, role=role)
+        skip_qa = arguments.get("skip_qa", False)
+        return board.promote_to_main(task_id, merge_commit_hash, role=role, skip_qa=skip_qa)
 
     # MARKER_196.QA: request_qa — move done_worktree → need_qa
     elif action == "request_qa":

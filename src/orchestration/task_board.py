@@ -2092,7 +2092,16 @@ class TaskBoard:
         if branch is None:
             branch = self._detect_current_branch(cwd=worktree_path)
         is_worktree = branch != "main"
-        final_status = "done_worktree" if is_worktree else "done_main"
+
+        # MARKER_200.QA_GATE_AUTO_CLOSE: When git_auto_close triggers complete_task
+        # on main (post-merge hook), route to need_qa instead of done_main.
+        # promote_to_main is the ONLY legitimate path to done_main.
+        _is_auto_close = (closure_proof or {}).get("auto_close_method") == "commit_match"
+        if not is_worktree and _is_auto_close:
+            final_status = "need_qa"
+            logger.info(f"[TaskBoard] QA_GATE: git_auto_close → need_qa (not done_main) for {task_id}")
+        else:
+            final_status = "done_worktree" if is_worktree else "done_main"
 
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
         if final_status == "done_worktree" and not commit_hash and not manual_override:
@@ -2307,7 +2316,7 @@ class TaskBoard:
         except Exception:
             return False
 
-    def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None, *, role: str = "") -> Dict[str, Any]:
+    def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None, *, role: str = "", skip_qa: bool = False) -> Dict[str, Any]:
         """MARKER_195.20c: Validate that merge happened, then set done_main.
 
         REQUIRES commit_hash proving the merge is on main.
@@ -2325,6 +2334,37 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
         if task.get("status") not in ("done_worktree", "done", "verified"):
             return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected verified or done_worktree"}
+
+        # MARKER_200.QA_GATE: Enforce QA flow for done_worktree tasks
+        # done_worktree should go through need_qa → verified before promote.
+        # Only "verified" and "done" (legacy) skip the check.
+        if task.get("status") == "done_worktree":
+            history = task.get("status_history", [])
+            was_verified = any(
+                h.get("status") == "verified" or h.get("event") == "verified"
+                for h in history
+            )
+            if not was_verified:
+                if not skip_qa:
+                    logger.warning(
+                        f"[TaskBoard] QA_GATE: Task {task_id} has never been through QA (no verified status in history). "
+                        f"Use action=request_qa first, or pass skip_qa=true for emergency bypass."
+                    )
+                    return {
+                        "success": False,
+                        "error": (
+                            f"QA_GATE: Task {task_id} status is 'done_worktree' but was never verified by QA. "
+                            f"Flow: done_worktree → request_qa → need_qa → verify → verified → promote_to_main. "
+                            f"To bypass in emergency: add skip_qa=true parameter."
+                        ),
+                        "qa_gate": True,
+                        "task_status": task.get("status"),
+                        "hint": f"Run: action=request_qa task_id={task_id}",
+                    }
+                else:
+                    logger.warning(
+                        f"[TaskBoard] QA_GATE BYPASSED: Task {task_id} promoted without QA (skip_qa=true by {role or 'unknown'})"
+                    )
 
         # Warn if not Commander (soft enforcement)
         if role and role != "Commander":
@@ -2912,6 +2952,22 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
+        # MARKER_200.QA_GATE: Warn (don't block) if task hasn't been through QA
+        # merge_request is the actual merge — after this, code is on main.
+        # We warn but don't block because Commander may need to merge urgently.
+        _task_status = task.get("status", "")
+        if _task_status == "done_worktree":
+            _history = task.get("status_history", [])
+            _was_verified = any(
+                h.get("status") == "verified" or h.get("event") == "verified"
+                for h in _history
+            )
+            if not _was_verified:
+                logger.warning(
+                    f"[MergeRequest] QA_GATE WARNING: Task {task_id} merging without QA verification. "
+                    f"Recommended flow: done_worktree → request_qa → verified → merge_request"
+                )
+
         branch = task.get("branch_name")
         # MARKER_195.21: Auto-infer branch from role via AgentRegistry
         if not branch:
@@ -3119,8 +3175,24 @@ class TaskBoard:
                 claude_md_backup = claude_md_path.read_text()
 
             if strategy == "cherry-pick":
-                # Cherry-pick commits in order (oldest first)
+                # MARKER_200.IS_ANCESTOR: Cherry-pick commits in order (oldest first),
+                # skipping any that are already on main (prevents replay conflicts)
+                skipped_ancestors = []
                 for commit_hash in reversed(commits):
+                    # Check if commit is already an ancestor of main
+                    ancestor_proc = await asyncio.create_subprocess_exec(
+                        "git", "merge-base", "--is-ancestor", commit_hash, "main",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await ancestor_proc.communicate()
+                    if ancestor_proc.returncode == 0:
+                        # Already on main — skip
+                        skipped_ancestors.append(commit_hash)
+                        logger.info(f"[MergeRequest] Skipped {commit_hash} — already ancestor of main")
+                        continue
+
                     proc = await asyncio.create_subprocess_exec(
                         "git", "cherry-pick", commit_hash,
                         cwd=str(PROJECT_ROOT),
@@ -3139,6 +3211,7 @@ class TaskBoard:
                                 stderr=asyncio.subprocess.PIPE,
                             )
                             await skip_proc.communicate()
+                            skipped_ancestors.append(commit_hash)
                             logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
                             continue
                         # Abort cherry-pick on real conflict
@@ -3153,6 +3226,7 @@ class TaskBoard:
                             "success": False,
                             "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
                             "conflicting_commit": commit_hash,
+                            "skipped_ancestors": skipped_ancestors,
                         }
 
             elif strategy == "merge":

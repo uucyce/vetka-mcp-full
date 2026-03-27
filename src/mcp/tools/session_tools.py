@@ -95,6 +95,193 @@ def load_project_digest() -> Optional[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_200.AUTO_PROVISION: Detect origin + auto-provision ephemeral roles
+# ---------------------------------------------------------------------------
+
+
+def _detect_origin() -> str:
+    """Detect where the agent came from based on environment signals.
+
+    Returns: terminal | mcc | vetka_chat | opencode | codex | subagent | unknown
+    """
+    import os
+
+    # Subagent detection (Claude Code worktree isolation)
+    if os.environ.get("CLAUDE_CODE_ENTRYPOINT") == "subagent":
+        return "subagent"
+
+    # Codex detection
+    if os.environ.get("CODEX_SESSION") or os.environ.get("OPENAI_API_KEY"):
+        return "codex"
+
+    # Opencode detection
+    if os.environ.get("OPENCODE_SESSION"):
+        return "opencode"
+
+    # MCC (multi-Claude coordinator) detection
+    if os.environ.get("MCC_SESSION_ID") or os.environ.get("VETKA_MCC_TAB"):
+        return "mcc"
+
+    # VETKA chat (web UI)
+    if os.environ.get("VETKA_CHAT_ID"):
+        return "vetka_chat"
+
+    # Default: terminal (Claude Code CLI or similar)
+    return "terminal"
+
+
+def _detect_model_class() -> str:
+    """Detect model class from environment.
+
+    Returns: titan | worker | scout
+    """
+    import os
+
+    # Check explicit override
+    override = os.environ.get("VETKA_MODEL_CLASS", "").lower()
+    if override in ("titan", "worker", "scout"):
+        return override
+
+    # Check model name hints
+    model = os.environ.get("ANTHROPIC_MODEL", "").lower()
+    if "opus" in model:
+        return "titan"
+    if "haiku" in model:
+        return "scout"
+
+    # Default: worker (Sonnet-class)
+    return "worker"
+
+
+def _auto_provision(
+    registry,
+    current_branch: str,
+    cwd: str,
+    origin: str,
+    model_class: str,
+) -> tuple:
+    """Auto-provision an ephemeral role for an unrecognized agent.
+
+    Called when session_init can't find a matching role via callsign or branch.
+    Creates an ephemeral role in-memory and optionally a git worktree.
+
+    Returns: (AgentRole or None, provision_info dict)
+    """
+    import os
+    import hashlib
+    import subprocess as sp
+    from src.services.agent_registry import AgentRole
+
+    provision_info = {
+        "origin": origin,
+        "model_class": model_class,
+        "branch": current_branch,
+        "provisioned": False,
+    }
+
+    # Generate instance name from origin + PID (deterministic per process)
+    pid_hash = hashlib.md5(f"{os.getpid()}{time.time()}".encode()).hexdigest()[:4]
+    instance_name = f"{origin}_{pid_hash}"
+
+    # Determine default domain based on model class
+    if model_class == "titan":
+        default_domain = "architect"
+        default_title = f"Auto-provisioned Architect ({origin})"
+    elif model_class == "scout":
+        default_domain = "qa"
+        default_title = f"Auto-provisioned Scout ({origin})"
+    else:
+        default_domain = "worker"
+        default_title = f"Auto-provisioned Worker ({origin})"
+
+    # Find a role template to inherit paths from
+    parent_template = registry.find_role_template(default_domain)
+
+    # Determine worktree path
+    project_root = Path(cwd)
+    # Walk up to find .claude/worktrees parent
+    for _p in [project_root] + list(project_root.parents):
+        wt_dir = _p / ".claude" / "worktrees"
+        if wt_dir.is_dir():
+            project_root = _p
+            break
+
+    worktree_dir = project_root / ".claude" / "worktrees" / instance_name
+    branch_name = f"claude/{instance_name}"
+
+    # Check if we're already on a worktree that's just not in registry
+    if current_branch and current_branch != "main":
+        # Agent has a branch but it's not registered — use it as-is
+        branch_name = current_branch
+        instance_name = current_branch.replace("claude/", "").replace("/", "-")
+        worktree_dir = Path(cwd)  # already in a worktree
+
+    # Create ephemeral role (in-memory only, not persisted to YAML)
+    inherited_owned = parent_template.owned_paths if parent_template else ()
+    inherited_blocked = parent_template.blocked_paths if parent_template else ()
+
+    role = AgentRole(
+        callsign=instance_name,
+        domain=default_domain,
+        pipeline_stage="coder" if model_class == "worker" else ("architect" if model_class == "titan" else "verifier"),
+        role_title=default_title,
+        worktree=instance_name,
+        branch=branch_name,
+        owned_paths=inherited_owned,
+        blocked_paths=inherited_blocked,
+        predecessor_docs="",
+        key_docs=(),
+        roadmap="",
+        ephemeral=True,
+        origin=origin,
+        model_class=model_class,
+        parent_role=parent_template.callsign if parent_template else "",
+    )
+
+    # Register in memory
+    registry.add_ephemeral_role(role)
+
+    # Try to create worktree if agent is on main (needs isolation)
+    if current_branch in ("main", "") and not worktree_dir.exists():
+        try:
+            sp.run(
+                ["git", "worktree", "add", str(worktree_dir), "-b", branch_name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                cwd=str(project_root),
+            )
+            provision_info["worktree_created"] = str(worktree_dir)
+            logger.info(
+                "[AutoProvision] Created worktree %s (branch=%s) for %s",
+                worktree_dir,
+                branch_name,
+                instance_name,
+            )
+        except Exception as e:
+            logger.warning("[AutoProvision] Failed to create worktree: %s", e)
+            provision_info["worktree_error"] = str(e)
+
+    provision_info["provisioned"] = True
+    provision_info["instance_name"] = instance_name
+    provision_info["branch_name"] = branch_name
+    provision_info["worktree_path"] = str(worktree_dir)
+    provision_info["parent_role"] = parent_template.callsign if parent_template else None
+    provision_info["inherited_domain"] = default_domain
+
+    logger.info(
+        "[AutoProvision] Provisioned %s: origin=%s, model=%s, domain=%s, parent=%s",
+        instance_name,
+        origin,
+        model_class,
+        default_domain,
+        provision_info["parent_role"],
+    )
+
+    return role, provision_info
+
+
+# ---------------------------------------------------------------------------
 # MARKER_195.2.4: Emotion display helpers
 # ---------------------------------------------------------------------------
 
@@ -1098,7 +1285,26 @@ class SessionInitTool(BaseMCPTool):
                 if _role:
                     _role_source = "branch_detection"
 
-            # Always expose available roles for discoverability
+            # MARKER_200.AUTO_PROVISION: Auto-provision if no role found
+            if not _role:
+                _origin = _detect_origin()
+                _model_class = _detect_model_class()
+                try:
+                    _role, _provision_info = _auto_provision(
+                        registry=_reg,
+                        current_branch=_current_branch if '_current_branch' in dir() else "",
+                        cwd=_detect_cwd if '_detect_cwd' in dir() else os.getcwd(),
+                        origin=_origin,
+                        model_class=_model_class,
+                    )
+                    if _role:
+                        _role_source = "auto_provision"
+                        context["auto_provision"] = _provision_info
+                except Exception as _ap_err:
+                    logger.warning("[SessionInit] Auto-provision failed: %s", _ap_err)
+                    context["available_roles"] = _reg.list_callsigns()
+
+            # Still no role after auto-provision attempt
             if not _role:
                 context["available_roles"] = _reg.list_callsigns()
 
