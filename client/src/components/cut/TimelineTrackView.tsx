@@ -19,6 +19,7 @@ import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
+import AudioCrossfadeHandle from './AudioCrossfadeHandle';
 import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
 import TimecodeField from './TimecodeField';
@@ -2462,6 +2463,41 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           </div>
                         );
                       })() : null}
+
+                      {/* MARKER_GAMMA-XFADE-WIRE: Audio crossfade handle on audio clips with transition_out */}
+                      {lane.lane_type === 'audio_sync' && clip.transition_out && width > 10 ? (
+                        <AudioCrossfadeHandle
+                          durationSec={clip.transition_out.duration_sec}
+                          zoom={effectiveZoom}
+                          clipWidthPx={width}
+                          trackHeightPx={laneH}
+                          curve={clip.transition_out.audio_curve ?? 'equal_power'}
+                          alignment={clip.transition_out.alignment}
+                          onDurationChange={(newDur) => {
+                            const s = useCutEditorStore.getState();
+                            const updated = s.lanes.map((l) => ({
+                              ...l,
+                              clips: l.clips.map((c) =>
+                                c.clip_id === clip.clip_id && c.transition_out
+                                  ? { ...c, transition_out: { ...c.transition_out, duration_sec: newDur } }
+                                  : c
+                              ),
+                            }));
+                            s.setLanes(updated);
+                          }}
+                          onCurveChange={(newCurve) => {
+                            void useCutEditorStore.getState().applyTimelineOps([{
+                              op: 'set_transition', clip_id: clip.clip_id,
+                              transition: { ...clip.transition_out!, audio_curve: newCurve },
+                            }]);
+                          }}
+                          onRemove={() => {
+                            void useCutEditorStore.getState().applyTimelineOps([{
+                              op: 'set_transition', clip_id: clip.clip_id, transition: null,
+                            }]);
+                          }}
+                        />
+                      ) : null}
 
                       {/* MARKER_SPEED: Speed indicator badge */}
                       {clip.speed != null && clip.speed !== 1 && width > 30 ? (
