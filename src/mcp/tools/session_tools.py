@@ -867,7 +867,20 @@ class SessionInitTool(BaseMCPTool):
                 if _corpus and len(_corpus) >= 3:
                     # Embed intent + corpus together, intent is index 0
                     _all_texts = [_intent] + _corpus
-                    _result = embed_texts_for_overlay(_all_texts, target_dim=128)
+                    # MARKER_200.JEPA_TIMEOUT: Wrap embed call with asyncio timeout (BUG-3 fix)
+                    try:
+                        _result = await asyncio.wait_for(
+                            asyncio.to_thread(embed_texts_for_overlay, _all_texts, 128),
+                            timeout=_JEPA_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        _elapsed = _time.monotonic() - _jepa_start
+                        context["jepa_session_lens"] = {
+                            "timeout": True,
+                            "elapsed_ms": round(_elapsed * 1000),
+                            "marker": "MARKER_200.JEPA_TIMEOUT",
+                        }
+                        raise _JepaCacheHit()  # skip to except — graceful exit
 
                     if _result.vectors and len(_result.vectors) == len(_all_texts):
                         _intent_vec = _result.vectors[0]
@@ -1592,35 +1605,37 @@ class SessionInitTool(BaseMCPTool):
         # MARKER_198.P0.5 + MARKER_199.ELISION_ADAPTIVE: Model-adaptive compression
         # Haiku (small context) → L3, Sonnet (medium) → L2, Opus (large) → L1
         # Auto-infer from max_context_tokens if compress_level not explicitly set.
-        try:
-            from src.memory.elision import get_elision_compressor
+        # MARKER_200.COMPRESS_GATE: Only run ELISION when compress=True (BUG-2 fix)
+        if compress:
+            try:
+                from src.memory.elision import get_elision_compressor
 
-            compressor = get_elision_compressor()
+                compressor = get_elision_compressor()
 
-            # MARKER_199.ELISION_ADAPTIVE: Select level by model capacity
-            _compress_level = arguments.get("compress_level")
-            if _compress_level is None:
-                if max_context_tokens <= 2000:
-                    _compress_level = 3  # Haiku-tier: aggressive compression
-                elif max_context_tokens <= 4000:
-                    _compress_level = 2  # Sonnet-tier: balanced
-                else:
-                    _compress_level = 1  # Opus-tier: minimal compression
-            _compress_level = max(1, min(5, int(_compress_level)))
+                # MARKER_199.ELISION_ADAPTIVE: Select level by model capacity
+                _compress_level = arguments.get("compress_level")
+                if _compress_level is None:
+                    if max_context_tokens <= 2000:
+                        _compress_level = 3  # Haiku-tier: aggressive compression
+                    elif max_context_tokens <= 4000:
+                        _compress_level = 2  # Sonnet-tier: balanced
+                    else:
+                        _compress_level = 1  # Opus-tier: minimal compression
+                _compress_level = max(1, min(5, int(_compress_level)))
 
-            context_str = _json.dumps(context, default=str)
-            compressed = compressor.compress(context_str, level=_compress_level)
-            if compressed and compressed.compressed:
-                compressed_context = _json.loads(compressed.compressed)
-                legend = compressed.legend
-                compressed_context["_elision"] = {
-                    "level": _compress_level,
-                    "ratio": compressed.compression_ratio,
-                    "legend": dict(list(legend.items())[:10]) if legend else {},
-                }
-                context = compressed_context
-        except Exception:
-            pass  # Compression is best-effort, never blocks session_init
+                context_str = _json.dumps(context, default=str)
+                compressed = compressor.compress(context_str, level=_compress_level)
+                if compressed and compressed.compressed:
+                    compressed_context = _json.loads(compressed.compressed)
+                    legend = compressed.legend
+                    compressed_context["_elision"] = {
+                        "level": _compress_level,
+                        "ratio": compressed.compression_ratio,
+                        "legend": dict(list(legend.items())[:10]) if legend else {},
+                    }
+                    context = compressed_context
+            except Exception:
+                pass  # Compression is best-effort, never blocks session_init
 
         # MARKER_198.P0.1: Persist STM snapshot so the next session can restore it.
         # Called here (end of session_init) to capture any entries added during
