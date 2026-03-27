@@ -364,7 +364,38 @@ export default function MenuBar() {
         { label: 'Paste Attributes', shortcut: '⌥V', action: () => store.getState().pasteAttributes() },
         { separator: true },
         { label: 'Select All', shortcut: '⌘A', action: () => useSelectionStore.getState().selectAllClips() },
-        { label: 'Deselect All', shortcut: 'Esc', action: () => useSelectionStore.getState().clearSelection() },
+        { label: 'Deselect All', shortcut: '⌘⇧A', action: () => useSelectionStore.getState().clearSelection() },
+        { label: 'Select All on Track', shortcut: '⌥A', action: () => {
+          // MARKER_GAMMA-MENU-SEL: Select all clips on the same track as currently selected clip
+          const sel = useSelectionStore.getState();
+          const s = store.getState();
+          if (!sel.selectedClipId) return;
+          let targetLaneId = '';
+          for (const lane of s.lanes) {
+            if (lane.clips.some((c) => c.clip_id === sel.selectedClipId)) { targetLaneId = lane.lane_id; break; }
+          }
+          if (!targetLaneId) return;
+          const ids = new Set<string>();
+          for (const lane of s.lanes) {
+            if (lane.lane_id === targetLaneId) {
+              for (const c of lane.clips) ids.add(c.clip_id);
+            }
+          }
+          useSelectionStore.setState({ selectedClipIds: ids });
+        }},
+        { label: 'Select Forward', shortcut: '⌥⇧→', action: () => {
+          // Select all clips from playhead forward on targeted/all tracks
+          const sel = useSelectionStore.getState();
+          const s = store.getState();
+          const t = s.currentTime;
+          const ids = new Set(sel.selectedClipIds);
+          for (const lane of s.lanes) {
+            for (const c of lane.clips) {
+              if (c.start_sec >= t) ids.add(c.clip_id);
+            }
+          }
+          useSelectionStore.setState({ selectedClipIds: ids });
+        }},
         { separator: true },
         { label: 'Find...', shortcut: '⌘F', disabled: true },
         { separator: true },
@@ -682,6 +713,20 @@ export default function MenuBar() {
         }},
         { label: 'Close Gap', action: () => store.getState().closeGap() },
         { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
+        { label: 'Ripple Trim to Playhead', shortcut: 'W', action: () => {
+          // MARKER_GAMMA-MENU-SEL: Trim selected clip's out-point to playhead, ripple subsequent
+          const sel = useSelectionStore.getState();
+          const s = store.getState();
+          if (!sel.selectedClipId) return;
+          void s.applyTimelineOps([{ op: 'ripple_trim_to_playhead', clip_id: sel.selectedClipId, playhead_sec: s.currentTime }]);
+        }},
+        { label: 'Swap Clips', shortcut: '⌘⇧S', action: () => {
+          // Swap positions of two selected clips
+          const sel = useSelectionStore.getState();
+          const ids = [...sel.selectedClipIds];
+          if (ids.length !== 2) return;
+          void store.getState().applyTimelineOps([{ op: 'swap_clips', clip_id_a: ids[0], clip_id_b: ids[1] }]);
+        }},
         { separator: true },
         { label: 'Trim Edit', shortcut: 'T', disabled: true },
         { separator: true },
