@@ -25,6 +25,28 @@ from typing import Any
 
 
 # ---------------------------------------------------------------------------
+# Motion type normalization (Alpha compat shim)
+# ---------------------------------------------------------------------------
+# Alpha/playground uses: "orbit", "portrait-base", "dolly-out + zoom-in", etc.
+# Engine uses: "orbit", "dolly_zoom_in", "dolly_zoom_out", "linear"
+
+_MOTION_TYPE_NORMALIZE: dict[str, str] = {
+    "orbit": "orbit",
+    "portrait-base": "orbit",       # portrait-base is orbit variant
+    "dolly-out + zoom-in": "dolly_zoom_in",
+    "dolly-in + zoom-out": "dolly_zoom_out",
+    "dolly_zoom_in": "dolly_zoom_in",
+    "dolly_zoom_out": "dolly_zoom_out",
+    "linear": "linear",
+}
+
+
+def normalize_motion_type(motion_type: str) -> str:
+    """Normalize motion type from any format to engine canonical form."""
+    return _MOTION_TYPE_NORMALIZE.get(motion_type, "orbit")
+
+
+# ---------------------------------------------------------------------------
 # Camera geometry
 # ---------------------------------------------------------------------------
 
@@ -69,6 +91,33 @@ class CameraGeometry:
         return -((self.travel_y * self.reference_z * motion_scale) / max(1e-6, zp))
 
     @staticmethod
+    def from_camera_contract(
+        contract: Any,
+        source_width: int,
+        source_height: int,
+    ) -> CameraGeometry:
+        """Create from a CameraContract (layer manifest camera).
+
+        Converts percentage-based travel to pixel-based travel.
+        Normalizes motion_type from Alpha kebab-case to engine underscore.
+        """
+        travel_x_px = source_width * float(contract.travel_x_pct) / 100.0
+        travel_y_px = source_height * float(contract.travel_y_pct) / 100.0
+
+        return CameraGeometry(
+            focal_length_mm=float(contract.focal_length_mm),
+            film_width_mm=float(contract.film_width_mm),
+            z_near=float(contract.z_near),
+            z_far=float(contract.z_far),
+            travel_x=travel_x_px,
+            travel_y=travel_y_px,
+            zoom=float(contract.zoom),
+            motion_type=normalize_motion_type(str(contract.motion_type)),
+            duration_sec=float(contract.duration_sec),
+            overscan_pct=float(contract.overscan_pct),
+        )
+
+    @staticmethod
     def from_effect_params(params: dict[str, Any]) -> CameraGeometry:
         """Create from parallax_motion effect params."""
         return CameraGeometry(
@@ -78,7 +127,7 @@ class CameraGeometry:
             zoom=float(params.get("zoom", 1.0)),
             z_near=float(params.get("z_near", 0.72)),
             z_far=float(params.get("z_far", 1.85)),
-            motion_type=str(params.get("motion_type", "orbit")),
+            motion_type=normalize_motion_type(str(params.get("motion_type", "orbit"))),
             duration_sec=float(params.get("duration_sec", 4.0)),
             overscan_pct=float(params.get("overscan_pct", 20.0)),
         )
