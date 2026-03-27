@@ -11,6 +11,7 @@
  */
 import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import MotionControls from './MotionControls';
 
 const PANEL: CSSProperties = {
@@ -195,7 +196,7 @@ function CategoryHeader({ name, open, onToggle }: { name: string; open: boolean;
 // ─── Main component ───────────────────────────────────────────────
 
 export default function EffectsPanel() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
@@ -521,7 +522,7 @@ function EffectTooltip({ effect, rect }: { effect: BrowserEffect; rect: DOMRect 
 }
 
 function EffectsBrowser() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());

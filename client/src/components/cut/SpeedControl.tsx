@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 
 // ─── Presets ───
 
@@ -136,7 +137,7 @@ interface SpeedControlProps {
 }
 
 export default function SpeedControl({ onClose }: SpeedControlProps) {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
   // Find selected clip

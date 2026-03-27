@@ -17,6 +17,7 @@
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE, getSocketUrl } from '../../config/api.config';
 
 type ScopeMode = 'waveform' | 'parade' | 'vectorscope' | 'histogram';
@@ -226,11 +227,12 @@ export default function VideoScopes() {
   const lastEmitRef = useRef<number>(0);
 
   // MARKER_B25: Read color_correction from selected clip for post-grade scopes
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const selectedClipCC = useCutEditorStore((s) => {
-    if (!s.selectedClipId) return null;
+    if (!selectedClipId) return null;
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
-        if (clip.clip_id === s.selectedClipId) {
+        if (clip.clip_id === selectedClipId) {
           return (clip as any).color_correction as { lutPath?: string; logProfile?: string } | null;
         }
       }

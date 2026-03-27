@@ -16,6 +16,7 @@
  */
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 
 interface LutEntry {
@@ -97,7 +98,7 @@ export default function LutBrowserPanel() {
 
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const projectId = useCutEditorStore((s) => s.projectId);
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const lanes = useCutEditorStore((s) => s.lanes);
 

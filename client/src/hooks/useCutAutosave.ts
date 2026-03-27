@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { API_BASE } from '../config/api.config';
 import { useCutEditorStore } from '../store/useCutEditorStore';
+import { useSelectionStore } from '../store/useSelectionStore';
 
 const AUTOSAVE_INTERVAL_MS = 2 * 60 * 1000; // 2 minutes
 
@@ -31,8 +32,9 @@ async function saveProjectToBackend(): Promise<void> {
     // MARKER_A15: Serialize timeline state in cut_timeline_state_v1 schema
     // so backend persists actual editing data. Without this, Cmd+S saved nothing useful.
     const { lanes, markers, currentTime, zoom, scrollLeft, timelineId,
-            selectedClipId, projectFramerate,
+            projectFramerate,
             sourceMarkIn, sourceMarkOut, sequenceMarkIn, sequenceMarkOut } = state;
+    const selectedClipId = useSelectionStore.getState().selectedClipId;
     const timeline_state = {
       schema_version: 'cut_timeline_state_v1',
       project_id: projectId || '',

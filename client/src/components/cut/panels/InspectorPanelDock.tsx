@@ -3,12 +3,12 @@
  * PulseInspector otherwise. Reactive to selectedClipId from store.
  */
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useCutEditorStore } from '../../../store/useCutEditorStore';
+import { useSelectionStore } from '../../../store/useSelectionStore';
 import PulseInspector from '../PulseInspector';
 import ClipInspector from '../ClipInspector';
 
 export default function InspectorPanelDock(_props: IDockviewPanelProps) {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: '#0d0d0d' }}>
