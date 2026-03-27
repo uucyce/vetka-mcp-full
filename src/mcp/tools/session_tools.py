@@ -50,6 +50,169 @@ class _JepaCacheHit(Exception):
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# MARKER_200.TOKEN_BUDGET: Section priority tiers for token budget enforcement
+# ---------------------------------------------------------------------------
+# T1 = always included (core identity + protocol)
+# T2 = important (tasks + learnings, filtered by JEPA)
+# T3 = enrichment (recommendations, capabilities)
+# T4 = specialist (newspaper digest, memory health, reflex report)
+_SECTION_TIERS: Dict[str, int] = {
+    # T1: Always present
+    "session_id": 1, "chat_id": 1, "linked": 1, "linked_to_existing": 1,
+    "user_id": 1, "group_id": 1, "initialized": 1, "initialized_at": 1,
+    "current_phase": 1, "role_context": 1, "protocol_status": 1,
+    "persisted": 1, "user_preferences": 1,
+    # T2: Important context
+    "task_board_summary": 2, "engram_learnings": 2, "next_steps": 2,
+    "my_focus": 2, "project_digest": 2,
+    # T3: Enrichment
+    "reflex_recommendations": 3, "reflex_warnings": 3, "blocked_tools": 3,
+    "semantic_lessons": 3, "jepa_session_lens": 3, "capabilities": 3,
+    "context_hints": 3,
+    # T4: Specialist / diagnostic
+    "digest": 4, "memory_health": 4, "reflex_report": 4,
+    "freshness_events": 4, "other_agents": 4,
+}
+
+# Approximate token estimation: ~4 chars per token for JSON
+_CHARS_PER_TOKEN = 4
+
+
+def _estimate_tokens(obj: Any) -> int:
+    """Fast token estimate from JSON serialization length."""
+    try:
+        return len(_json.dumps(obj, default=str, separators=(",", ":"))) // _CHARS_PER_TOKEN
+    except Exception:
+        return 0
+
+
+def _apply_token_budget(
+    context: Dict[str, Any],
+    max_tokens: int,
+    role_callsign: Optional[str] = None,
+) -> Dict[str, Any]:
+    """MARKER_200.TOKEN_BUDGET: Enforce hard token budget with tier-based progressive drop.
+
+    Two-layer approach:
+    1. JEPA-driven filtering: cap list sections using JEPA scores
+    2. Tier gate: progressively drop T4 → T3 sections if still over budget
+    """
+    # --- Layer 1: JEPA-driven list filtering ---
+    jsl = context.get("jepa_session_lens", {})
+    jsl_items = jsl.get("top_items", [])
+    jsl_labels = {item.get("label", ""): item.get("score", 0) for item in jsl_items}
+
+    # Filter engram_learnings: only entries with JSL cosine > 0.1
+    el = context.get("engram_learnings", {})
+    if el and jsl_labels:
+        for cat in ("dangers", "architecture", "patterns"):
+            entries = el.get(cat)
+            if entries and isinstance(entries, list):
+                filtered = []
+                for e in entries:
+                    ekey = e.get("key", "")
+                    # Check if any JSL label matches this engram entry
+                    matched_score = 0.0
+                    for label, score in jsl_labels.items():
+                        if ekey and ekey in label:
+                            matched_score = max(matched_score, score)
+                            break
+                    # Keep if matched with score > 0.1, or if no JSL data at all
+                    if matched_score > 0.1 or not jsl_labels:
+                        filtered.append(e)
+                # Always keep at least 2 per category
+                if len(filtered) < 2 and entries:
+                    filtered = entries[:2]
+                el[cat] = filtered
+        context["engram_learnings"] = el
+
+    # Cap reflex_warnings at 5 entries (completion contract)
+    rw = context.get("reflex_warnings")
+    if rw and isinstance(rw, list) and len(rw) > 5:
+        # If JEPA available, keep only warnings matching role's owned_paths or JSL top-15
+        if jsl_labels and role_callsign:
+            role_ctx = context.get("role_context", {})
+            owned = set(role_ctx.get("owned_paths", []))
+            scored_rw = []
+            for w in rw:
+                tp = w.get("tool_pattern", "")
+                # Keep if matches owned paths or JSL
+                in_owned = any(p in tp for p in owned)
+                in_jsl = any(tp in label for label in jsl_labels)
+                score = 1.0 if in_owned else (0.5 if in_jsl else 0.0)
+                scored_rw.append((score, w))
+            scored_rw.sort(key=lambda x: x[0], reverse=True)
+            context["reflex_warnings"] = [w for _, w in scored_rw[:5]]
+        else:
+            context["reflex_warnings"] = rw[:5]
+
+    # Cap blocked_tools to match filtered warnings
+    bt = context.get("blocked_tools")
+    if bt and isinstance(bt, list):
+        remaining_patterns = {
+            w.get("tool_pattern") for w in context.get("reflex_warnings", [])
+        }
+        context["blocked_tools"] = [b for b in bt if b in remaining_patterns]
+
+    # Filter context_hints by JSL score > 0.15
+    hints = context.get("context_hints")
+    if hints and isinstance(hints, list) and jsl_labels:
+        filtered_hints = []
+        for h in hints:
+            # Check if hint text matches any high-scoring JSL item
+            for label, score in jsl_labels.items():
+                if score > 0.15 and (label in str(h) or str(h)[:30] in label):
+                    filtered_hints.append(h)
+                    break
+        context["context_hints"] = filtered_hints if filtered_hints else hints[:2]
+
+    # Cap top_pending tasks to 5
+    tbs = context.get("task_board_summary", {})
+    if tbs.get("top_pending") and len(tbs["top_pending"]) > 5:
+        tbs["top_pending"] = tbs["top_pending"][:5]
+
+    # freshness_events only for Zeta (completion contract)
+    if role_callsign and role_callsign != "Zeta":
+        context.pop("freshness_events", None)
+
+    # --- Layer 2: Tier gate — progressive section drop ---
+    current_tokens = _estimate_tokens(context)
+    if current_tokens <= max_tokens:
+        return context
+
+    # Drop tiers from T4 down until within budget
+    for tier_to_drop in (4, 3):
+        if current_tokens <= max_tokens:
+            break
+        keys_to_drop = [
+            k for k, t in _SECTION_TIERS.items()
+            if t == tier_to_drop and k in context
+        ]
+        for key in keys_to_drop:
+            context.pop(key, None)
+        current_tokens = _estimate_tokens(context)
+
+    # If still over budget after dropping T3+T4, truncate T2 list sections
+    if current_tokens > max_tokens:
+        # Truncate task_board_summary lists
+        tbs = context.get("task_board_summary", {})
+        for list_key in ("top_pending", "in_progress", "awaiting_merge", "qa_queue"):
+            if tbs.get(list_key):
+                tbs[list_key] = tbs[list_key][:3]
+        # Truncate engram to 1 per category
+        el = context.get("engram_learnings", {})
+        for cat in ("dangers", "architecture", "patterns"):
+            if el.get(cat) and isinstance(el[cat], list):
+                el[cat] = el[cat][:1]
+        # Truncate next_steps
+        ns = context.get("next_steps")
+        if ns and isinstance(ns, list):
+            context["next_steps"] = ns[:3]
+
+    return context
+
+
 # Project digest path (relative to project root)
 PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
 DIGEST_PATH = PROJECT_ROOT / "data" / "project_digest.json"
@@ -428,8 +591,26 @@ class SessionInitTool(BaseMCPTool):
         include_viewport = arguments.get("include_viewport", True)
         include_pinned = arguments.get("include_pinned", True)
         compress = arguments.get("compress", True)
-        max_context_tokens = arguments.get("max_context_tokens", 4000)
         role_name = arguments.get("role")  # MARKER_196.1.3: explicit role declaration
+
+        # MARKER_200.MODEL_ADAPTIVE: Auto-detect model tier and set token budget.
+        # Priority: explicit max_context_tokens > env VETKA_MODEL_TIER > env detection > default.
+        # Model tier detection: check env vars set by Claude Code, Codex, etc.
+        _explicit_budget = "max_context_tokens" in arguments
+        max_context_tokens = arguments.get("max_context_tokens", 4000)
+        if not _explicit_budget:
+            _model_tier = (
+                os.environ.get("VETKA_MODEL_TIER")  # explicit override
+                or os.environ.get("CLAUDE_MODEL")   # Claude Code sets this
+                or os.environ.get("ANTHROPIC_MODEL") # some integrations
+                or ""
+            ).lower()
+            # Map model identifiers to budget tiers
+            if any(k in _model_tier for k in ("haiku", "scout", "small", "fast")):
+                max_context_tokens = 2000
+            elif any(k in _model_tier for k in ("opus", "titan", "1m")):
+                max_context_tokens = 8000
+            # else: keep default 4000 (Sonnet/worker tier)
 
         # MARKER_108_1: Unified MCP-Chat ID
         # If chat_id provided, use it as session_id
@@ -916,7 +1097,20 @@ class SessionInitTool(BaseMCPTool):
                 if _corpus and len(_corpus) >= 3:
                     # Embed intent + corpus together, intent is index 0
                     _all_texts = [_intent] + _corpus
-                    _result = embed_texts_for_overlay(_all_texts, target_dim=128)
+                    # MARKER_200.JEPA_TIMEOUT: Wrap embed call with asyncio timeout (BUG-3 fix)
+                    try:
+                        _result = await asyncio.wait_for(
+                            asyncio.to_thread(embed_texts_for_overlay, _all_texts, 128),
+                            timeout=_JEPA_TIMEOUT,
+                        )
+                    except asyncio.TimeoutError:
+                        _elapsed = _time.monotonic() - _jepa_start
+                        context["jepa_session_lens"] = {
+                            "timeout": True,
+                            "elapsed_ms": round(_elapsed * 1000),
+                            "marker": "MARKER_200.JEPA_TIMEOUT",
+                        }
+                        raise _JepaCacheHit()  # skip to except — graceful exit
 
                     if _result.vectors and len(_result.vectors) == len(_all_texts):
                         _intent_vec = _result.vectors[0]
@@ -1649,38 +1843,48 @@ class SessionInitTool(BaseMCPTool):
         except Exception as _digest_err:
             context["digest"] = {"_error": str(_digest_err)[:100]}
 
+        # MARKER_200.TOKEN_BUDGET: Enforce hard token budget BEFORE ELISION compression.
+        # Two-layer: JEPA-driven filtering + tier-based progressive drop.
+        try:
+            _budget_role = _role.callsign if _role else role_name
+            context = _apply_token_budget(context, max_context_tokens, _budget_role)
+        except Exception:
+            pass  # Budget enforcement never blocks session_init
+
         # MARKER_198.P0.5 + MARKER_199.ELISION_ADAPTIVE: Model-adaptive compression
         # Haiku (small context) → L3, Sonnet (medium) → L2, Opus (large) → L1
         # Auto-infer from max_context_tokens if compress_level not explicitly set.
-        try:
-            from src.memory.elision import get_elision_compressor
+        # MARKER_200.COMPRESS_GATE: Only run ELISION when compress=True (BUG-2 fix)
+        if compress:
+            try:
+                from src.memory.elision import get_elision_compressor
 
-            compressor = get_elision_compressor()
+                compressor = get_elision_compressor()
 
-            # MARKER_199.ELISION_ADAPTIVE: Select level by model capacity
-            _compress_level = arguments.get("compress_level")
-            if _compress_level is None:
-                if max_context_tokens <= 2000:
-                    _compress_level = 3  # Haiku-tier: aggressive compression
-                elif max_context_tokens <= 4000:
-                    _compress_level = 2  # Sonnet-tier: balanced
-                else:
-                    _compress_level = 1  # Opus-tier: minimal compression
-            _compress_level = max(1, min(5, int(_compress_level)))
+                # MARKER_199.ELISION_ADAPTIVE: Select level by model capacity
+                _compress_level = arguments.get("compress_level")
+                if _compress_level is None:
+                    if max_context_tokens <= 2000:
+                        _compress_level = 3  # Haiku-tier: aggressive compression
+                    elif max_context_tokens <= 4000:
+                        _compress_level = 2  # Sonnet-tier: balanced
+                    else:
+                        _compress_level = 1  # Opus-tier: minimal compression
+                _compress_level = max(1, min(5, int(_compress_level)))
 
-            context_str = _json.dumps(context, default=str)
-            compressed = compressor.compress(context_str, level=_compress_level)
-            if compressed and compressed.compressed:
-                compressed_context = _json.loads(compressed.compressed)
-                legend = compressed.legend
-                compressed_context["_elision"] = {
-                    "level": _compress_level,
-                    "ratio": compressed.compression_ratio,
-                    "legend": dict(list(legend.items())[:10]) if legend else {},
-                }
-                context = compressed_context
-        except Exception:
-            pass  # Compression is best-effort, never blocks session_init
+                context_str = _json.dumps(context, default=str)
+                compressed = compressor.compress(context_str, level=_compress_level)
+                if compressed and compressed.compressed:
+                    compressed_context = _json.loads(compressed.compressed)
+                    legend = compressed.legend
+                    compressed_context["_elision"] = {
+                        "level": _compress_level,
+                        "ratio": compressed.compression_ratio,
+                        "legend": dict(list(legend.items())[:10]) if legend else {},
+                    }
+                    context = compressed_context
+            except Exception:
+                pass  # Compression is best-effort, never blocks session_init
 
         # MARKER_198.P0.1: Persist STM snapshot so the next session can restore it.
         # Called here (end of session_init) to capture any entries added during

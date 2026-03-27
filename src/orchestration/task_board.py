@@ -84,16 +84,26 @@ VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 
 # Counter for generating IDs
+# MARKER_200.DEDUPE_FIX: Use PID + monotonic counter to prevent cross-process ID collisions.
+# Previous bug: each MCP process reset _task_counter to 0, causing tb_TIMESTAMP_1 collisions
+# when multiple agents add tasks within the same second. INSERT OR REPLACE then silently
+# overwrites the first task with the second.
 _task_counter = 0
+_task_counter_pid = os.getpid()  # Bind counter to process for uniqueness
 DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
 DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
 
 
 def _generate_task_id() -> str:
-    """Generate unique task ID."""
+    """Generate unique task ID.
+
+    Format: tb_{timestamp}_{pid}_{counter}
+    The PID component prevents collisions between concurrent MCP processes
+    that would otherwise generate identical IDs within the same second.
+    """
     global _task_counter
     _task_counter += 1
-    return f"tb_{int(time.time())}_{_task_counter}"
+    return f"tb_{int(time.time())}_{_task_counter_pid}_{_task_counter}"
 
 
 class TaskBoard:
@@ -1365,6 +1375,14 @@ class TaskBoard:
             Generated task ID
         """
         task_id = _generate_task_id()
+        # MARKER_200.DEDUPE_FIX: Collision guard — if ID already exists, regenerate
+        _collision_attempts = 0
+        while task_id in self.tasks and _collision_attempts < 10:
+            logger.warning(
+                "[TaskBoard] ID collision detected: %s already exists, regenerating", task_id
+            )
+            task_id = _generate_task_id()
+            _collision_attempts += 1
         priority = max(1, min(5, priority))  # Clamp 1-5
         phase_type = self._normalize_phase_type(phase_type)
         protocol_fields = self._normalize_protocol_fields(
@@ -2536,6 +2554,7 @@ class TaskBoard:
             self._auto_notify(task, self.NOTIF_TASK_VERIFIED, source_role=verifier)
         elif verdict == "fail":
             self._auto_notify(task, self.NOTIF_TASK_NEEDS_FIX, source_role=verifier, extra_msg=notes[:200])
+
 
             # MARKER_200.QA_FEEDBACK_LOOP: Auto-create fix task + ENGRAM danger entry
             fix_task_id = None

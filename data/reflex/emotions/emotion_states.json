@@ -1376,14 +1376,14 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 1.2501528648238605e-09,
-    "trust": 3.2048774864983655e-07,
+    "curiosity": 7.582560422162385e-10,
+    "trust": 2.0831703662239377e-07,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 46,
+    "usage_count": 47,
     "success_count": 6,
-    "failure_count": 40,
-    "last_updated": 1774515854.754245
+    "failure_count": 41,
+    "last_updated": 1774561997.4114392
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -2025,7 +2025,7 @@
   },
   "vetka_get_metrics": {
     "tool_id": "vetka_get_metrics",
-    "curiosity": 0.9241418199787566,
+    "curiosity": 1.0,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2036,7 +2036,7 @@
   },
   "vetka_get_knowledge_graph": {
     "tool_id": "vetka_get_knowledge_graph",
-    "curiosity": 0.9241418199787566,
+    "curiosity": 1.0,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2047,14 +2047,14 @@
   },
   "vetka_git_commit": {
     "tool_id": "vetka_git_commit",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.0,
-    "mood_label": "neutral",
-    "usage_count": 0,
+    "curiosity": 0.8807970779778823,
+    "trust": 0.325,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 1,
     "success_count": 0,
-    "failure_count": 0,
-    "last_updated": 1773908511.542939
+    "failure_count": 1,
+    "last_updated": 1774565931.892399
   },
   "vetka_run_tests": {
     "tool_id": "vetka_run_tests",
@@ -2377,25 +2377,25 @@
   },
   "task_board": {
     "tool_id": "task_board",
-    "curiosity": 2.1151310375910807e-19,
-    "trust": 0.1664123706518188,
+    "curiosity": 1.282891823608785e-19,
+    "trust": 0.29145051505404596,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 91,
-    "success_count": 15,
+    "usage_count": 92,
+    "success_count": 16,
     "failure_count": 76,
-    "last_updated": 1774515854.771652
+    "last_updated": 1774584310.153195
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 7.582560422162385e-10,
-    "trust": 0.9997591983197942,
+    "curiosity": 1.1850648642339812e-27,
+    "trust": 0.9999999996073448,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 47,
-    "success_count": 47,
+    "usage_count": 129,
+    "success_count": 129,
     "failure_count": 0,
-    "last_updated": 1774515854.765075
+    "last_updated": 1774614122.4349911
   },
   "Read": {
     "tool_id": "Read",
@@ -2418,5 +2418,38 @@
     "success_count": 5,
     "failure_count": 0,
     "last_updated": 1774405101.1700149
+  },
+  "vetka_screenshot": {
+    "tool_id": "vetka_screenshot",
+    "curiosity": 0.6,
+    "trust": 0.5,
+    "caution": 0.3,
+    "mood_label": "neutral",
+    "usage_count": 0,
+    "success_count": 0,
+    "failure_count": 0,
+    "last_updated": 1774518724.122154
+  },
+  "__debrief_bug__": {
+    "tool_id": "__debrief_bug__",
+    "curiosity": 4.1399375473943306e-08,
+    "trust": 2.526916629026219e-08,
+    "caution": 0.1,
+    "mood_label": "neutral",
+    "usage_count": 39,
+    "success_count": 0,
+    "failure_count": 39,
+    "last_updated": 1774614122.746228
+  },
+  "session_init": {
+    "tool_id": "session_init",
+    "curiosity": 0.8175744761936437,
+    "trust": 0.42625,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 2,
+    "success_count": 1,
+    "failure_count": 1,
+    "last_updated": 1774582903.048536
   }
 }
