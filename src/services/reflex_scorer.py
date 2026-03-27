@@ -66,15 +66,16 @@ _MEDIUM_MODEL_CONTEXT = 32768    # ≤32k → standard palette
 
 
 def _infer_context_from_git() -> tuple:
-    """MARKER_186.3: Scan recent git changes to build task_text and mgc_stats.
+    """MARKER_186.3: Scan recent git changes to build task_text.
 
     Returns (task_text, mgc_stats) where task_text is a synthetic description
     built from recently changed file extensions and directories.
+    mgc_stats is always empty — real MGC stats come from get_mgc_cache().get_stats()
+    (MARKER_200.MGC_REAL).
     """
     import subprocess
 
     task_keywords: list = []
-    mgc_stats: Dict[str, Any] = {}
 
     try:
         result = subprocess.run(
@@ -89,7 +90,7 @@ def _infer_context_from_git() -> tuple:
         if not files:
             return "", {}
 
-        # Count file types for MGC stats
+        # Count file types for keyword inference
         ext_counts: Dict[str, int] = {}
         for f in files:
             ext = os.path.splitext(f)[1].lower()
@@ -128,18 +129,12 @@ def _infer_context_from_git() -> tuple:
         # Deduplicate
         task_keywords = list(dict.fromkeys(task_keywords))
 
-        # MGC stats: treat recently changed files as "hot" gen0
-        ui_file_count = ext_counts.get(".tsx", 0) + ext_counts.get(".ts", 0) + ext_counts.get(".css", 0)
-        mgc_stats = {
-            "gen0_size": len(files),
-            "gen0_max": 100,
-            "hit_rate": min(1.0, ui_file_count / max(1, len(files))),
-        }
-
     except Exception:
         pass
 
-    return " ".join(task_keywords), mgc_stats
+    # MARKER_200.MGC_REAL: No fake mgc_stats from git diff.
+    # Real MGC stats are read from get_mgc_cache().get_stats() in from_session().
+    return " ".join(task_keywords), {}
 
 
 def _agent_type_to_role(agent_type: str) -> str:
