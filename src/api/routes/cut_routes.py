@@ -1079,11 +1079,14 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             if transition is None:
                 clip.pop("transition_out", None)
             else:
-                clip["transition_out"] = {
-                    "type": str(transition.get("type", "cross_dissolve")),
-                    "duration_sec": float(transition.get("duration_sec", 1.0)),
-                    "alignment": str(transition.get("alignment", "center")),
-                }
+                # Preserve all transition fields (type, duration_sec, alignment,
+                # audio_curve, and any future additions) with sane defaults
+                trans = dict(transition)
+                trans.setdefault("type", "cross_dissolve")
+                trans.setdefault("duration_sec", 1.0)
+                trans.setdefault("alignment", "center")
+                trans["duration_sec"] = float(trans["duration_sec"])
+                clip["transition_out"] = trans
             applied_ops.append({
                 "op": op_type, "clip_id": clip_id,
                 "transition": transition,
