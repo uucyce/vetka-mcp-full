@@ -12,6 +12,7 @@
  */
 import { useState, useCallback, useEffect, useRef, lazy, Suspense, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { PRESET_BUILDERS } from './presetBuilders';
 import { API_BASE } from '../../config/api.config';
@@ -341,8 +342,8 @@ export default function MenuBar() {
         { label: 'Paste Insert', shortcut: '⌘⇧V', action: () => store.getState().pasteClips('insert') },
         { label: 'Paste Attributes', shortcut: '⌥V', action: () => store.getState().pasteAttributes() },
         { separator: true },
-        { label: 'Select All', shortcut: '⌘A', action: () => store.getState().selectAllClips() },
-        { label: 'Deselect All', shortcut: 'Esc', action: () => store.getState().clearSelection() },
+        { label: 'Select All', shortcut: '⌘A', action: () => useSelectionStore.getState().selectAllClips() },
+        { label: 'Deselect All', shortcut: 'Esc', action: () => useSelectionStore.getState().clearSelection() },
         { separator: true },
         { label: 'Find...', shortcut: '⌘F', disabled: true },
         { separator: true },
@@ -455,9 +456,10 @@ export default function MenuBar() {
         }},
         { label: 'Mark Clip', shortcut: 'X', action: () => {
           const s = store.getState();
-          if (!s.selectedClipId) return;
+          const selectedClipId = useSelectionStore.getState().selectedClipId;
+          if (!selectedClipId) return;
           for (const lane of s.lanes) {
-            const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+            const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
             if (clip) {
               s.setMarkIn(clip.start_sec);
               s.setMarkOut(clip.start_sec + clip.duration_sec);
@@ -568,11 +570,11 @@ export default function MenuBar() {
           // TODO: requires per-clip transform state
         }, disabled: true },
         { separator: true },
-        { label: `${store.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
+        { label: `${useSelectionStore.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
           // TODO: toggle clip enabled/disabled state
         }, disabled: true },
-        { label: `${store.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: '⌘L', action: () => {
-          store.getState().toggleLinkedSelection();
+        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: '⌘L', action: () => {
+          useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
         { separator: true },
@@ -654,9 +656,10 @@ export default function MenuBar() {
         { label: 'Nest Item(s)', disabled: true },
         { label: 'Solo Selected Item(s)', action: () => {
           const s = store.getState();
-          if (!s.selectedClipId) return;
+          const selectedClipId = useSelectionStore.getState().selectedClipId;
+          if (!selectedClipId) return;
           for (const lane of s.lanes) {
-            if (lane.clips.some((c) => c.clip_id === s.selectedClipId)) {
+            if (lane.clips.some((c) => c.clip_id === selectedClipId)) {
               s.toggleSolo(lane.lane_id);
               break;
             }
@@ -790,6 +793,31 @@ export default function MenuBar() {
             },
           }));
         })() },
+        { separator: true },
+        // MARKER_GAMMA-POPOUT: Float / Popout active panel
+        { label: 'Float Active Panel', action: () => {
+          const api = dockStore.getState().apiRef;
+          if (!api) return;
+          const active = api.activePanel;
+          if (!active) return;
+          try { api.addFloatingGroup(active, { x: 100, y: 100, width: 500, height: 400 }); } catch {}
+        }},
+        { label: 'Popout to New Window', action: () => {
+          const api = dockStore.getState().apiRef;
+          if (!api) return;
+          const active = api.activePanel;
+          if (!active) return;
+          try {
+            void api.addPopoutGroup(active, {
+              onDidOpen: (e) => {
+                const popoutDoc = e.window.document;
+                document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
+                  popoutDoc.head.appendChild(node.cloneNode(true));
+                });
+              },
+            });
+          } catch {}
+        }},
         { separator: true },
         { label: 'Maximize Panel', shortcut: '`', action: () => dockStore.getState().toggleMaximize() },
       ],
