@@ -807,6 +807,7 @@ export default function MenuBar() {
         { label: 'Video Scopes', action: () => togglePanel('scopes', 'scopes', 'Scopes') },
         { label: 'Color Corrector', action: () => togglePanel('colorcorrector', 'colorcorrector', 'Color') },
         { label: 'LUT Browser', action: () => togglePanel('lutbrowser', 'lutbrowser', 'LUTs') },
+        { label: 'Layer Stack', action: () => togglePanel('layers', 'layers', 'Layers') },
         { separator: true },
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
         // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)

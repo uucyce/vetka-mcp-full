@@ -38,3 +38,6 @@ export { default as PublishPanel } from './PublishPanel';
 
 // MARKER_GAMMA-MULTICAM-PANEL: Multicam angle grid panel (FCP7 Ch.42)
 export { default as MulticamPanel } from './MulticamPanel';
+
+// MARKER_GAMMA-LAYERUI: Layer Stack & Depth Inspector panel
+export { default as LayerStackPanel } from './LayerStackPanel';

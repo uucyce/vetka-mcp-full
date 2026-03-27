@@ -52,6 +52,7 @@ import {
   TimelineInstancePanel,
   PublishPanel,
   MulticamPanel,
+  LayerStackPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -121,6 +122,7 @@ const PANEL_COMPONENTS = {
   markers: MarkerListPanel,
   timelines: TimelineInstancePanel,
   publish: withErrorBoundary('Publish', PublishPanel),
+  layers: LayerStackPanel,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
