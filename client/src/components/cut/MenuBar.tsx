@@ -656,6 +656,27 @@ export default function MenuBar() {
           const s = store.getState();
           if (!s.selectedClipId) return;
           void store.getState().applyTimelineOps([{ op: 'ripple_delete', clip_id: s.selectedClipId }]);
+          const selectedClipId = useSelectionStore.getState().selectedClipId;
+          if (!selectedClipId) return;
+          let clipStart = 0;
+          let clipDur = 0;
+          let clipLaneId = '';
+          for (const lane of s.lanes) {
+            const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+            if (clip) { clipStart = clip.start_sec; clipDur = clip.duration_sec; clipLaneId = lane.lane_id; break; }
+          }
+          if (!clipLaneId) return;
+          const newLanes = s.lanes.map((lane) => {
+            if (lane.lane_id !== clipLaneId) return lane;
+            return {
+              ...lane,
+              clips: lane.clips
+                .filter((c) => c.clip_id !== selectedClipId)
+                .map((c) => c.start_sec > clipStart ? { ...c, start_sec: Math.max(0, c.start_sec - clipDur) } : c),
+            };
+          });
+          s.setLanes(newLanes);
+          useSelectionStore.getState().setSelectedClip(null);
         }},
         { label: 'Close Gap', action: () => store.getState().closeGap() },
         { label: 'Extend Edit', shortcut: 'E', action: () => store.getState().extendEdit() },
