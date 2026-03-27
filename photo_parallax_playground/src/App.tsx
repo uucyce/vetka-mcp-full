@@ -1053,7 +1053,12 @@ function buildPlateCompositeMaps(
         } else if (plate.role === "secondary-subject") {
           roleAlpha = Math.max(selection * 0.82, remapped * 0.68);
         } else if (plate.role === "environment-mid") {
-          roleAlpha = Math.max(midground, (1 - Math.abs(remapped - 0.5) * 1.6) * 0.55);
+          // Keep atmospheric plates driven by actual midground/depth signal,
+          // not by a broad soft box that turns the whole region into a proxy slab.
+          const midSignal = clamp((midground - 0.18) / 0.55, 0, 1);
+          const depthBand = clamp(1 - Math.abs(remapped - 0.42) * 3.6, 0, 1);
+          const atmospheric = Math.max(midSignal, depthBand * 0.45);
+          roleAlpha = atmospheric * atmospheric;
         }
 
         const alpha = clamp(roleAlpha * boxMask, 0, 1);
