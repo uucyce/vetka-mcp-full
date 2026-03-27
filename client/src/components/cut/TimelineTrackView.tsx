@@ -464,7 +464,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const trackHeights = useCutEditorStore((state) => state.trackHeights);
   const setTrackHeightForLane = useCutEditorStore((state) => state.setTrackHeightForLane);
   const currentTime = useCutEditorStore((state) => state.currentTime);
-  const duration = useCutEditorStore((state) => state.duration);
+  // duration — removed, was only consumed by effectiveDuration (Phase 2 scaffold)
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useSelectionStore((state) => state.selectedClipId);
   const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
@@ -547,7 +547,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // READS come from instance store. WRITES still go to singleton (Phase 2).
   // This enables multiple independent TimelineTrackView instances.
   const inst = instanceStoreTimeline;
-  const updateInstance = useTimelineInstanceStore((s) => s.updateTimeline);
+  // updateInstance = useTimelineInstanceStore((s) => s.updateTimeline) — Phase 2 writes
 
   // MARKER_W6.STORE: Override read data from instance store when available
   // Phase 1: redirect reads only — singleton writes untouched
@@ -557,12 +557,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const effectiveScrollLeft = isMultiInstance && inst ? inst.scrollX : scrollLeft;
   const effectiveTrackHeight = isMultiInstance && inst ? inst.trackHeight : trackHeight;
   const effectiveCurrentTime = isMultiInstance && inst ? inst.playheadPosition : currentTime;
-  const effectiveDuration = isMultiInstance && inst ? inst.duration : duration;
+  // effectiveDuration / effectiveSelectedClipIds — Phase 2 (unused, see git history)
   const effectiveMarkIn = isMultiInstance && inst ? inst.markIn : markIn;
   const effectiveMarkOut = isMultiInstance && inst ? inst.markOut : markOut;
-  const effectiveSelectedClipIds = isMultiInstance && inst
-    ? new Set(inst.selectedClipIds)
-    : selectedClipIds;
 
   // Click handler: activate this timeline if not active
   const handleTimelineActivate = useCallback(() => {
