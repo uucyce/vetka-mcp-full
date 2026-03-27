@@ -1754,6 +1754,141 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
 
 
 # ---------------------------------------------------------------------------
+# MARKER_HLS_STREAM: HLS adaptive streaming for non-browser codecs
+# ---------------------------------------------------------------------------
+
+from src.services.cut_hls_streamer import HLSStreamer
+
+
+@media_router.get("/stream/hls")
+async def cut_stream_hls_start(source_path: str):
+    """
+    Start or resume HLS transcode for a non-browser-native media file.
+    Returns job status + playlist URL. Browser polls this until status=transcoding,
+    then fetches the .m3u8 playlist which grows as segments are encoded.
+
+    For browser-native files, returns redirect hint to use /cut/stream directly.
+    """
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    # Check if transcode is needed at all
+    decision = _needs_browser_transcode(file_path)
+    if decision is None:
+        return {
+            "success": True,
+            "hls_needed": False,
+            "message": "File is browser-native, use /cut/stream directly",
+            "stream_url": f"/api/cut/stream?source_path={source_path}",
+        }
+
+    # Start or resume HLS job
+    streamer = HLSStreamer.get_instance()
+    job = streamer.start_or_get(
+        source_path=file_path,
+        v_args=decision.get("v_args", ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]),
+        a_args=decision.get("a_args", ["-c:a", "aac", "-b:a", "256k"]),
+    )
+
+    return {
+        "success": True,
+        "hls_needed": True,
+        **job.to_dict(),
+    }
+
+
+@media_router.get("/stream/hls/playlist/{job_id}")
+async def cut_stream_hls_playlist(job_id: str):
+    """
+    Serve the .m3u8 playlist for an active HLS transcode job.
+    Returns 404 if job not found, 202 if playlist not ready yet.
+    """
+    streamer = HLSStreamer.get_instance()
+    job = streamer.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="HLS job not found")
+
+    if not job.playlist_path.exists() or job.playlist_path.stat().st_size == 0:
+        # Playlist not written yet — client should retry
+        return Response(
+            content="",
+            status_code=202,
+            headers={"Retry-After": "1"},
+        )
+
+    # Serve playlist — rewrite segment filenames to API URLs
+    raw = job.playlist_path.read_text(encoding="utf-8")
+    lines = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#"):
+            # Rewrite bare segment filename → API endpoint
+            lines.append(f"/api/cut/stream/hls/segment/{job_id}/{stripped}")
+        else:
+            lines.append(line)
+    content = "\n".join(lines) + "\n"
+
+    return Response(
+        content=content,
+        media_type="application/vnd.apple.mpegurl",
+        headers={
+            "Cache-Control": "no-cache, no-store",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
+
+
+@media_router.get("/stream/hls/segment/{job_id}/{segment_name}")
+async def cut_stream_hls_segment(request: Request, job_id: str, segment_name: str):
+    """
+    Serve a .ts segment from an HLS transcode job.
+    Supports HTTP Range for seeking.
+    """
+    streamer = HLSStreamer.get_instance()
+    seg_path = streamer.get_segment_path(job_id, segment_name)
+    if not seg_path:
+        raise HTTPException(status_code=404, detail="Segment not found")
+
+    return _serve_file_range(seg_path, "video/mp2t", request.headers.get("range"))
+
+
+@media_router.get("/stream/hls/status/{job_id}")
+async def cut_stream_hls_status(job_id: str):
+    """Get HLS transcode job status."""
+    streamer = HLSStreamer.get_instance()
+    job = streamer.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="HLS job not found")
+    return {"success": True, **job.to_dict()}
+
+
+@media_router.get("/stream/hls/jobs")
+async def cut_stream_hls_jobs():
+    """List all HLS transcode jobs."""
+    streamer = HLSStreamer.get_instance()
+    return {"success": True, "jobs": streamer.list_jobs()}
+
+
+@media_router.delete("/stream/hls/{job_id}")
+async def cut_stream_hls_cancel(job_id: str):
+    """Cancel an active HLS transcode job."""
+    streamer = HLSStreamer.get_instance()
+    cancelled = streamer.cancel(job_id)
+    if not cancelled:
+        raise HTTPException(status_code=404, detail="Job not found or not active")
+    return {"success": True, "job_id": job_id, "status": "cancelled"}
+
+
+# ---------------------------------------------------------------------------
 # Routes: Motion Analysis (MARKER_B74)
 # ---------------------------------------------------------------------------
 
