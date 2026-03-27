@@ -97,14 +97,9 @@ class TestSetClipEffects:
         assert re.search(r"Partial<ClipEffects>", source)
 
     def test_merges_with_existing(self, source):
-        """Must spread existing effects before applying new ones."""
-        # Original: inline { ...c.effects, ...effects } spread
-        # Post-A4.11: ops-based via applyTimelineOps with set_effects op (merge on backend)
-        assert re.search(
-            r"\.\.\..*effects.*\.\.\.effects|\{.*c\.effects.*effects\}|op:\s*['\"]set_effects['\"]",
-            source,
-            re.DOTALL,
-        )
+        """Must route effects through applyTimelineOps (undo-safe merge)."""
+        # After refactor: setClipEffects delegates to applyTimelineOps with op: 'set_effects'
+        assert re.search(r"op:\s*'set_effects'.*effects", source, re.DOTALL)
 
     def test_defaults_when_no_existing(self, source):
         """Must use DEFAULT_CLIP_EFFECTS when clip has no effects."""
@@ -122,13 +117,9 @@ class TestResetClipEffects:
         assert re.search(r"resetClipEffects:\s*\(clipId", source)
 
     def test_sets_undefined_or_default(self, source):
-        """Reset should set effects to undefined/DEFAULT or dispatch reset_effects op."""
-        # Original: inline effects: undefined / DEFAULT_CLIP_EFFECTS
-        # Post-A4.11: ops-based via applyTimelineOps with reset_effects op
-        assert re.search(
-            r"effects:\s*undefined|effects:\s*DEFAULT_CLIP_EFFECTS|op:\s*['\"]reset_effects['\"]",
-            source,
-        )
+        """Reset should route through applyTimelineOps with op: 'reset_effects'."""
+        # After refactor: resetClipEffects delegates to applyTimelineOps
+        assert re.search(r"op:\s*'reset_effects'", source)
 
 
 class TestClipHasEffectsField:
