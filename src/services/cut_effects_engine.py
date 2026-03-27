@@ -306,6 +306,47 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         },
     ),
 
+    # === MARKER_DEPTH_MAP: Depth effects (DaVinci Resolve Depth Map reference) ===
+    "depth_map": EffectDef(
+        type="depth_map", label="Depth Map", category="depth",
+        params_schema={
+            "near": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.9, "step": 0.01},
+            "far": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.1, "step": 0.01},
+            "gamma": {"type": "float", "min": 0.1, "max": 5.0, "default": 1.0, "step": 0.05},
+            "invert": {"type": "bool", "default": False},
+        },
+    ),
+    "depth_blur": EffectDef(
+        type="depth_blur", label="Depth Blur", category="depth",
+        params_schema={
+            "focus_depth": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.7, "step": 0.01},
+            "focus_range": {"type": "float", "min": 0.0, "max": 0.5, "default": 0.1, "step": 0.01},
+            "max_blur": {"type": "float", "min": 0.0, "max": 30.0, "default": 8.0, "step": 0.5},
+        },
+    ),
+    "depth_fog": EffectDef(
+        type="depth_fog", label="Depth Fog", category="depth",
+        params_schema={
+            "density": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.3, "step": 0.01},
+            "near_start": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.3, "step": 0.01},
+            "far_end": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.8, "step": 0.01},
+            "fog_r": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.85, "step": 0.01},
+            "fog_g": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.85, "step": 0.01},
+            "fog_b": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.9, "step": 0.01},
+        },
+    ),
+    "depth_grade": EffectDef(
+        type="depth_grade", label="Depth Grade", category="depth",
+        params_schema={
+            "depth_target": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.8, "step": 0.01},
+            "depth_range": {"type": "float", "min": 0.0, "max": 0.5, "default": 0.2, "step": 0.01},
+            "softness": {"type": "float", "min": 0.0, "max": 0.3, "default": 0.05, "step": 0.01},
+            "brightness": {"type": "float", "min": -1.0, "max": 1.0, "default": 0.0, "step": 0.01},
+            "contrast": {"type": "float", "min": 0.0, "max": 3.0, "default": 1.0, "step": 0.01},
+            "saturation": {"type": "float", "min": 0.0, "max": 2.0, "default": 1.0, "step": 0.01},
+        },
+    ),
+
     # === Time ===
     "fade_in": EffectDef(
         type="fade_in", label="Fade In", category="time",
@@ -580,6 +621,135 @@ def compile_keyframed_sendcmd(
     return ";\n".join(commands)
 
 
+# ---------------------------------------------------------------------------
+# MARKER_DEPTH_MAP: Depth effect filter compilers
+# ---------------------------------------------------------------------------
+# Convention: depth = luma value, white (255) = near, black (0) = far.
+# These use luma as depth proxy. Full pipeline will use sidecar depth input.
+
+def _compile_depth_map_filter(
+    near: float, far: float, gamma: float, invert: bool,
+) -> str:
+    """
+    Compile depth_map effect to FFmpeg geq filter.
+
+    Generates a greyscale matte from the luma channel:
+    - Pixels with luma in [far..near] range → white (in matte)
+    - Pixels outside → black
+    - Gamma controls the falloff curve
+
+    Uses geq (generic equation) filter on luma channel.
+    Convention: white=near, black=far (DaVinci Resolve standard).
+    """
+    # Normalize: matte = clip((lum/255 - far) / (near - far), 0, 1) ^ gamma
+    # Scale denominator to avoid division by zero
+    denom = max(near - far, 0.001)
+    # geq operates on 0-255 luma values
+    far_scaled = far * 255
+    range_scaled = denom * 255
+
+    if invert:
+        expr = f"clip((1-pow(clip((lum(X,Y)-{far_scaled:.1f})/{range_scaled:.1f},0,1),{gamma:.2f}))*255,0,255)"
+    else:
+        expr = f"clip(pow(clip((lum(X,Y)-{far_scaled:.1f})/{range_scaled:.1f},0,1),{gamma:.2f})*255,0,255)"
+
+    return f"geq=lum='{expr}':cb=128:cr=128"
+
+
+def _compile_depth_blur_filter(
+    focus_depth: float, focus_range: float, max_blur: float,
+) -> str:
+    """
+    Compile depth_blur effect.
+
+    Applies variable blur based on distance from focus_depth.
+    Uses split + two blur passes (near-field and far-field) blended by luma mask.
+
+    Simplified approach: blur entire frame, then blend with original using
+    a luma-range mask. Pixels at focus_depth ± focus_range stay sharp.
+    """
+    # Create a depth-based mask: pixels AT focus depth → no blur, away → blur
+    near_edge = (focus_depth + focus_range) * 255
+    far_edge = (focus_depth - focus_range) * 255
+    sigma = max(0.1, max_blur)
+
+    # Split → blur copy → blend using luma-based alpha
+    # Mask: 1 where OUT of focus (should be blurry), 0 where IN focus (sharp)
+    return (
+        f"split[dof_sharp][dof_blur];"
+        f"[dof_blur]gblur=sigma={sigma:.1f}[dof_blurred];"
+        f"[dof_sharp]geq=lum='clip(abs(lum(X,Y)-{focus_depth*255:.0f})-{focus_range*255:.0f},0,255)/"
+        f"clip(255-{focus_range*255:.0f},1,255)*255':cb=128:cr=128,format=gray[dof_mask];"
+        f"[dof_blurred][dof_sharp][dof_mask]maskedmerge"
+    )
+
+
+def _compile_depth_fog_filter(
+    density: float, near_start: float, far_end: float,
+    fog_r: float, fog_g: float, fog_b: float,
+) -> str:
+    """
+    Compile depth_fog effect.
+
+    Blends a solid fog color over the frame, weighted by depth distance.
+    Far regions get more fog, near regions stay clear.
+    """
+    # Fog intensity: 0 at near_start, density at far_end
+    near_val = near_start * 255
+    range_val = max((far_end - near_start) * 255, 1)
+    r_int = int(fog_r * 255)
+    g_int = int(fog_g * 255)
+    b_int = int(fog_b * 255)
+
+    # Generate fog mask from luma (inverted: low luma = far = more fog)
+    fog_expr = f"clip((1-lum(X,Y)/255)*{density:.2f}*clip(({near_val:.0f}-lum(X,Y)+{range_val:.0f})/{range_val:.0f},0,1)*255,0,255)"
+
+    return (
+        f"split[fog_orig][fog_base];"
+        f"[fog_base]geq=r={r_int}:g={g_int}:b={b_int}[fog_color];"
+        f"[fog_orig]geq=lum='{fog_expr}':cb=128:cr=128,format=gray[fog_mask];"
+        f"[fog_orig][fog_color][fog_mask]maskedmerge"
+    )
+
+
+def _compile_depth_grade_filter(
+    target: float, drange: float, softness: float,
+    brightness: float, contrast: float, saturation: float,
+) -> str:
+    """
+    Compile depth_grade effect.
+
+    Applies eq adjustments only to pixels within a depth zone.
+    Uses maskedmerge: grade the full frame, then blend via depth mask.
+    """
+    # Depth mask: 1 where within target ± range, 0 outside
+    center_val = target * 255
+    half_range = drange * 255
+    soft_val = max(softness * 255, 1)
+
+    mask_expr = (
+        f"clip((1-clip(abs(lum(X,Y)-{center_val:.0f})-{half_range:.0f},0,{soft_val:.0f})"
+        f"/{soft_val:.0f})*255,0,255)"
+    )
+
+    # Build eq params for the graded version
+    eq_parts = []
+    if brightness != 0:
+        eq_parts.append(f"brightness={brightness:.3f}")
+    if contrast != 1.0:
+        eq_parts.append(f"contrast={contrast:.3f}")
+    if saturation != 1.0:
+        eq_parts.append(f"saturation={saturation:.3f}")
+    eq_str = ":".join(eq_parts) if eq_parts else "brightness=0"
+
+    return (
+        f"split[dg_orig][dg_grade];"
+        f"[dg_grade]eq={eq_str}[dg_graded];"
+        f"[dg_orig]geq=lum='{mask_expr}':cb=128:cr=128,format=gray[dg_mask];"
+        f"[dg_orig][dg_graded][dg_mask]maskedmerge"
+    )
+
+
 def compile_video_filters(effects: list[EffectParam]) -> list[str]:
     """
     Compile a list of video EffectParams into FFmpeg filter strings.
@@ -845,6 +1015,46 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
                 # Higher samples = smoother but slower
                 radius = max(1, int(amount * samples / 10))
                 filters.append(f"avgblur=sizeX={radius}:sizeY=0:planes=7")
+
+        # MARKER_DEPTH_MAP: Depth effects — use luma channel as depth proxy
+        # In full pipeline, depth sidecar replaces luma. For now, luma-based.
+        elif t == "depth_map":
+            near = float(p.get("near", 0.9))
+            far = float(p.get("far", 0.1))
+            gamma = float(p.get("gamma", 1.0))
+            invert = bool(p.get("invert", False))
+            filters.append(_compile_depth_map_filter(near, far, gamma, invert))
+
+        elif t == "depth_blur":
+            focus = float(p.get("focus_depth", 0.7))
+            frange = float(p.get("focus_range", 0.1))
+            max_blur = float(p.get("max_blur", 8.0))
+            if max_blur > 0:
+                filters.append(_compile_depth_blur_filter(focus, frange, max_blur))
+
+        elif t == "depth_fog":
+            density = float(p.get("density", 0.3))
+            near_s = float(p.get("near_start", 0.3))
+            far_e = float(p.get("far_end", 0.8))
+            fog_r = float(p.get("fog_r", 0.85))
+            fog_g = float(p.get("fog_g", 0.85))
+            fog_b = float(p.get("fog_b", 0.9))
+            if density > 0:
+                filters.append(_compile_depth_fog_filter(
+                    density, near_s, far_e, fog_r, fog_g, fog_b,
+                ))
+
+        elif t == "depth_grade":
+            target = float(p.get("depth_target", 0.8))
+            drange = float(p.get("depth_range", 0.2))
+            soft = float(p.get("softness", 0.05))
+            bri = float(p.get("brightness", 0.0))
+            con = float(p.get("contrast", 1.0))
+            sat = float(p.get("saturation", 1.0))
+            if bri != 0 or con != 1.0 or sat != 1.0:
+                filters.append(_compile_depth_grade_filter(
+                    target, drange, soft, bri, con, sat,
+                ))
 
     # Build merged eq filter
     if eq_parts:
