@@ -54,6 +54,11 @@ class AgentRole:
     predecessor_docs: str  # glob pattern
     key_docs: tuple[str, ...]
     roadmap: str
+    # MARKER_200.AUTO_PROVISION: Ephemeral roles created at runtime
+    ephemeral: bool = False
+    origin: str = ""  # terminal | mcc | vetka_chat | opencode | codex | subagent
+    model_class: str = ""  # titan | worker | scout
+    parent_role: str = ""  # callsign of the role template this was forked from
 
 
 @dataclass(frozen=True)
@@ -252,6 +257,59 @@ class AgentRegistry:
             f"Domain mismatch: {callsign} owns '{role.domain}' "
             f"but task domain is '{task_domain}'"
         )
+
+    # ── Auto-Provision (MARKER_200.AUTO_PROVISION) ──────────
+
+    def add_ephemeral_role(self, role: AgentRole) -> None:
+        """Add an ephemeral role at runtime (not persisted to YAML)."""
+        # Check for name collision
+        existing = self.get_by_callsign(role.callsign)
+        if existing:
+            logger.warning(
+                "[AgentRegistry] Callsign '%s' already exists, skipping add",
+                role.callsign,
+            )
+            return
+        self._roles.append(role)
+        logger.info(
+            "[AgentRegistry] Added ephemeral role: %s (origin=%s, domain=%s, parent=%s)",
+            role.callsign,
+            role.origin,
+            role.domain,
+            role.parent_role,
+        )
+
+    def find_role_template(self, domain: str) -> Optional[AgentRole]:
+        """Find a persistent (non-ephemeral) role template for a domain.
+
+        Used to inherit owned_paths/blocked_paths when auto-provisioning.
+        Prefers roles that are not ephemeral themselves.
+        """
+        for r in self._roles:
+            if r.domain.lower() == domain.lower() and not r.ephemeral:
+                return r
+        return None
+
+    @staticmethod
+    def is_worktree_occupied(worktree_path: Path) -> tuple[bool, Optional[int]]:
+        """Check if a worktree has an active agent (PID-based, no timeouts).
+
+        Returns (occupied: bool, pid: Optional[int]).
+        """
+        import os
+
+        lock = worktree_path / ".agent_lock"
+        if not lock.exists():
+            return False, None
+        try:
+            lines = lock.read_text().strip().split("\n")
+            pid = int(lines[0])
+            os.kill(pid, 0)  # signal 0 = check without killing
+            return True, pid
+        except (ProcessLookupError, PermissionError):
+            return False, None  # process dead, worktree free
+        except (ValueError, IndexError, OSError):
+            return False, None
 
     # ── Helpers ─────────────────────────────────────────────
 
