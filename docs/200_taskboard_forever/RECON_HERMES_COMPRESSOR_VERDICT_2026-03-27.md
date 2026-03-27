@@ -1,136 +1,200 @@
-# RECON: HERMES Structured Compressor — Adopt / Defer / Kill?
+# RECON: HERMES Structured Compressor vs VETKA Memory Stack
 
-**Date:** 2026-03-27
-**Author:** Eta (Harness Engineer 2) + 3 Sonnet recon agents
+**Date:** 2026-03-27 (v2 — переисследование по Commander rejection)
+**Author:** Eta (Harness Engineer 2) + 6 Sonnet recon agents
 **Task:** tb_1774499127_1
-**Verdict:** DEFER — не пятое колесо, но не наш приоритет сейчас
+
+## Referenced Architecture Documents
+
+| # | Document | Path |
+|---|----------|------|
+| A1 | Cognitive Stack Architecture | `docs/186_memory/VETKA_COGNITIVE_STACK_ARCHITECTURE.md` |
+| A2 | Memory DAG Abbreviations (canonical glossary) | `docs/besedii_google_drive_docs/VETKA_MEMORY_DAG_ABBREVIATIONS_2026-02-22.md` |
+| A3 | Memory Closure Architecture | `docs/198ph_ZETA_memory_update/ARCHITECTURE_198_MEMORY_CLOSURE.md` |
+| A4 | Role-First Init Architecture | `docs/196ph_init_role_vetka/ARCHITECTURE_196_ROLE_FIRST_INIT.md` |
+| A5 | HERMES Adoption Roadmap | `docs/199_ph_HERMES_ADOPTION/ROADMAP_HERMES_ADOPTION.md` |
+| A6 | Adaptive Context & JEPA Recon (Phase 157) | `docs/157_ph/MARKER_157_ADAPTIVE_CONTEXT_AND_JEPA_RECON_2026-03-01.md` |
+| A7 | STM/MGC Original Design (Phase 99) | `docs/unpluged_search/PH99_STM_MGC_Memory_Architecture.md` |
+| A8 | REFLEX Architecture Blueprint | `docs/172_vetka_tools/REFLEX_ARCHITECTURE_BLUEPRINT_2026-03-10.md` |
+| A9 | Memory Closure Roadmap | `docs/198ph_ZETA_memory_update/ROADMAP_198_MEMORY_CLOSURE.md` |
+| A10 | Feedback Memory Matrix | `docs/192_task_SQLite/RECON_FEEDBACK_MEMORY_MATRIX.md` |
 
 ---
 
-## 1. Что делает HERMES Compressor
+## 1. Принцип VETKA: память принадлежит платформе, не агенту
 
-**Сжимает conversation turns** (историю чата), а не JSON payload.
+Из A4 (Architecture 196, §5):
+> **VETKA Memory (persistent, role-scoped):**
+> - ENGRAM (per-role learnings) → survives session, survives agent replacement
+> - MGC (compressed, garbage-collected) → "only MGC discards the chaff"
+> - Experience Reports (per-role, per-session) → injected into next session_init(role=same)
 
-Алгоритм (5 фаз):
-1. Tool result pruning — заменяет старые tool outputs на placeholder (rule-based)
-2. Head protection — сохраняет первые N сообщений (system prompt)
-3. Tail protection — сохраняет последние N сообщений по token budget
-4. **LLM-based summarization** — средние сообщения → structured markdown через ВЫЗОВ LLM
-5. Tool-pair sanitization — чистит orphaned tool_call/tool_result пары
+Из A9 (Roadmap 198):
+> "No static .md as memory — data must be dynamic, cached, compressed."
+> "Memory that isn't triggered by context is just a filing cabinet nobody opens."
 
-**Шаблон (7 секций):**
-```
-## Goal
-## Constraints & Preferences
-## Progress (Done / In Progress / Blocked)
-## Key Decisions
-## Relevant Files
-## Next Steps
-## Critical Context
-```
-
-**Критично:** Требует LLM-вызов (auxiliary model). Iterative — хранит `_previous_summary`, обновляет при каждом сжатии.
+**Вывод:** Любое решение ДОЛЖНО хранить состояние в VETKA (SQLite/JSON/Qdrant), а не полагаться на внешние механизмы сжатия чата.
 
 ---
 
-## 2. Что уже есть в VETKA (8 подсистем)
+## 2. Что HERMES Compressor НА САМОМ ДЕЛЕ делает
 
-| Подсистема | Тип | Сжимает контекст окна? | Structured summary? |
-|------------|-----|----------------------|-------------------|
-| **ELISION** | JSON key/path abbreviation | DA — primary role | NET — сжимает структуру, не создаёт |
-| **HOPE** | LLM LOD (LOW/MID/HIGH) | Косвенно — выбирает detail level | Частично: Global/Detailed/Specifics |
-| **MGC** | 3-tier cache (RAM→SQLite→JSON) | NET | NET |
-| **ARC** | Graph transformation suggestions | NET | NET |
-| **CAM** | Saliency/surprise scoring | Косвенно — surprise_map для ELISION L3 | NET |
-| **JEPA** | Media embedding extraction | NET — работает с видео/аудио | NET |
-| **ENGRAM** | O(1) pattern cache | NET — recall layer | NET |
-| **REFLEX** | 8-signal tool ranker | Косвенно — выбирает HOPE LOD | NET |
+Source: `hermes-agent/agent/context_compressor.py` (MIT, NousResearch)
 
-**Вывод:** Ни одна подсистема не сжимает conversation history. ELISION сжимает injected context payload на старте промпта. Когда чат длинный — никто не помогает.
+**Это LLM-summarizer conversation history.** Алгоритм:
+1. Защищает первые N сообщений (system prompt)
+2. Защищает последние N сообщений (по token budget)
+3. Средние сообщения → **отправляет в auxiliary LLM** → получает structured summary
+4. Чистит orphaned tool_call/tool_result пары
 
----
+**Шаблон (7 секций):** Goal / Constraints / Progress (Done/InProgress/Blocked) / Key Decisions / Relevant Files / Next Steps / Critical Context
 
-## 3. Что делает Claude Code нативно
+**Итеративный:** хранит `_previous_summary`, при следующем сжатии обновляет (не пересоздаёт).
 
-Claude Code имеет встроенный **auto-compact**:
-- Триггер: ~83-95% контекстного окна (настраивается через `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`)
-- Сжатие: 60-90% token reduction
-- Формат: **freeform prose** — НЕ структурированный
-- Ручной: `/compact [focus]`
-
-**Известные потери при auto-compact:**
-- CLAUDE.md инструкции деградируют
-- Точные error messages теряются
-- Naming conventions и project-specific rules забываются
-- Task state (какой subtask в работе) теряется
-- Триггер по token count, а не по task boundary
-
-**Post-compaction hooks** существуют — можно re-inject структурированный контекст после compact.
+**Критичное:** Каждое сжатие = 1 LLM-вызов к вспомогательной модели (cost + latency).
 
 ---
 
-## 4. Gap Analysis
+## 3. Что у VETKA уже есть — ТОЧНАЯ карта подсистем
 
-```
-HERMES compressor закрывает gap?
+### Подсистемы, которые СЖИМАЮТ контекст
 
-                    VETKA ELISION    Claude Code     HERMES
-                    ────────────     auto-compact    compressor
-Target:             JSON payload     Chat turns      Chat turns
-Method:             Rule-based       LLM (native)    LLM (auxiliary)
-Structured:         NET              NET (prose)     DA (7 sections)
-Iterative:          NET              NET             DA
-LLM required:      NET              DA (built-in)   DA (extra call)
-Task-aware:         NET              NET             NET (generic)
-VETKA-aware:        DA               NET             NET
-```
+| Подсистема | Что сжимает | Метод | LLM? | Ref |
+|------------|-------------|-------|------|-----|
+| **ELISION** | JSON payload (session_init, task_board list) | Key renaming + path abbrev + vowel skip | Нет | A1, A3 |
+| **HOPE** | Любой контент → LOD (LOW/MID/HIGH) | LLM (Ollama llama3.1:8b) | Да | A2 |
+| **JEPA Overflow** | Pinned files при token pressure >80% | Cosine ranking → semantic core subset | Нет (embedding only) | A6 |
+| **JEPA Session Lens** | ENGRAM + Qdrant learnings + tasks | Cosine ranking → top-15 relevant items | Нет (embedding only) | A3, A6 |
+| **JEPA Task Lens** | Pending task list | Cosine re-rank by role intent | Нет (embedding only) | A3 |
 
-**Gap существует:** structured conversation compression с сохранением task state.
+### Подсистемы, которые ХРАНЯТ память (survive compaction)
 
-**Но Claude Code уже делает 80% работы** — auto-compact сжимает turns.
-Оставшиеся 20% — потеря структуры (task IDs, owned paths, decisions).
+| Подсистема | Storage | Persist | Ref |
+|------------|---------|---------|-----|
+| **ENGRAM L1** | `data/engram_cache.json` | TTL=0 для danger/architecture (permanent) | A3 |
+| **TaskBoard** | `data/task_board.db` (SQLite WAL) | Полностью | A3 |
+| **CORTEX** | `data/reflex/feedback_log.jsonl` | Полностью | A8, A10 |
+| **Qdrant L2** | Vector DB | Полностью | A3 |
+| **project_digest** | `data/project_digest.json` | Полностью | — |
 
----
+### Подсистемы, которые ТЕРЯЮТСЯ при compaction
 
-## 5. Вердикт: DEFER
+| Подсистема | Storage | Проблема | Ref |
+|------------|---------|----------|-----|
+| **SessionTracker** | RAM only | `claimed_task_id`, `files_edited`, `protocol_checkpoints` — всё теряется | A4 |
+| **STM Buffer** | RAM + `data/stm_snapshot.json` | `save_to_disk()` СУЩЕСТВУЕТ но НИКТО не вызывает автоматически | A7 |
+| **Role context** | Injected в chat при session_init | `owned_paths`, `blocked_paths`, `workflow_hints` — теряются | A4 |
+| **Mid-session decisions** | Только в chat window | Архитектурные решения, отвергнутые подходы — НИЧТО не пишет на диск | — |
+| **REFLEX state** | Constructed per-call | `ReflexContext` не кешируется между вызовами | A8 |
 
-### Почему НЕ kill:
-- Gap реальный: auto-compact теряет structured state
-- Post-compaction hook pattern позволяет re-inject VETKA state без LLM-вызова
+### JEPA — точное описание (из кода и A2/A6)
 
-### Почему НЕ adopt сейчас:
-- **Стоимость:** Каждое сжатие = LLM-вызов к auxiliary model (latency + cost)
-- **Risk:** Предыдущий Hermes adoption (FTS5) вызвал 3-дневный застой
-- **80/20:** Claude Code auto-compact закрывает 80% потребности бесплатно
-- **Alternatives:** Post-compaction hook + structured state file = 90% value за 10% effort
+**JEPA = Joint Embedding Predictive Architecture.** В VETKA это НЕ только медиа:
+- **Multi-provider embedding dispatcher** (HTTP runtime → Ollama → deterministic hash fallback)
+- **Session Lens** — ранжирует memory items по релевантности к текущей роли
+- **Task Lens** — ранжирует pending tasks по cosine к role intent
+- **Overflow compression** — при token pressure выбирает semantic core из pinned files
+- **Media path** — video/audio embedding через OpenCV + Whisper (оригинальная роль)
+- **Link prediction** — `predict_new_links()` по cosine threshold для knowledge graph
 
-### Рекомендуемый путь (если/когда понадобится):
-1. **Phase 1 (minimal):** Post-compaction hook → re-inject `session_init` context из файла
-2. **Phase 2 (medium):** Structured state snapshot при каждом `action=complete` → файл
-3. **Phase 3 (full):** HERMES-style LLM compressor только если Phase 1-2 недостаточно
-
-### Аббревиатура для glossary:
-```
-HERMES-SC  = Hermes Structured Compressor
-             Conversation-turn LLM summarizer (7-section template)
-             Status: DEFERRED — use Claude Code auto-compact + post-compaction hooks first
-             Gap: structured state preservation after compaction
-             Cost: 1 LLM call per compaction cycle
-```
+Из A2 (DAG Glossary): *"JEPA: Joint Embedding Predictive Architecture (predictive embedding layer). Status: dormant."* — "dormant" относится к Meta V-JEPA weights, НЕ к самому адаптеру.
 
 ---
 
-## 6. Subsystem Abbreviation Map (обновлённый)
+## 4. Gap Analysis: что HERMES закрывает, а что — нет
 
-| Abbr | Full Name | Layer | Context Compression? |
-|------|-----------|-------|---------------------|
-| ELISION | Efficient Language-Independent Symbolic Inversion of Names | L0: Token | DA — JSON payload |
-| HOPE | Hierarchical Orthogonal Predictive Embedding | L1: LOD | Косвенно — detail level |
-| MGC | Multi-Generation Cache | L2: Storage | NET |
-| ARC | Architecture Reasoning Cycle | L3: Reasoning | NET |
-| CAM | Constructivist Agentic Memory | L1: Signal | Косвенно — surprise для ELISION |
-| JEPA | Joint Embedding Predictive Architecture | L4: Media | NET |
-| ENGRAM | L1 O(1) Pattern Cache | L2: Recall | NET |
-| REFLEX | 8-Signal Tool Ranker | L1: Orchestration | Косвенно — выбирает LOD |
-| HERMES-SC | Structured Conversation Compressor | L0: Turns | DA — но requires LLM |
-| CC-COMPACT | Claude Code Auto-Compact | L0: Turns | DA — freeform prose |
+### Что HERMES закрывает:
+- Structured summary conversation history (7 секций)
+- Iterative update при повторном сжатии
+
+### Что HERMES НЕ закрывает:
+- **Не знает о VETKA state** — task IDs, owned_paths, role context
+- **Не пишет на диск** — summary живёт в chat window, теряется при restart
+- **Не интегрируется** с ENGRAM/STM/TaskBoard
+- **Стоимость** — 1 LLM вызов на каждое сжатие
+
+### Что VETKA на самом деле теряет (реальный gap):
+
+```
+При compaction ТЕРЯЕТСЯ:               HERMES поможет?
+─────────────────────────────          ──────────────────
+claimed_task_id                         НЕТ (TaskBoard на диске — нужен re-read)
+files_edited                            ЧАСТИЧНО (Relevant Files секция)
+mid-session decisions                   ДА (Key Decisions секция)
+STM buffer                              НЕТ (STM нужен save_to_disk)
+role_context / owned_paths              НЕТ (нужен re-inject из registry)
+protocol_checkpoints                    НЕТ (нужен SessionTracker persist)
+```
+
+**HERMES закрывает 1 из 6 потерь** (mid-session decisions). Остальные 5 решаются через persist to disk — то что VETKA УЖЕ умеет, но не вызывает автоматически.
+
+---
+
+## 5. Вердикт: HERMES template полезен как ФОРМАТ, бесполезен как МЕХАНИЗМ
+
+### Что взять от HERMES:
+- **Шаблон 7 секций** — хорошая структура для checkpoint-файла
+- **Iterative update** — идея обновлять, не пересоздавать
+
+### Что НЕ брать:
+- **LLM-вызов для сжатия** — дорого, медленно, не нужно когда данные уже structured
+- **Conversation-turn compression** — не наша проблема (наша = state persistence)
+
+### Что VETKA реально нужно (3 задачи):
+
+**T1: STM auto-save** (low effort, high impact)
+Вызывать `STMBuffer.save_to_disk()` при каждом `action=claim` / `action=complete` / periodic timer.
+→ STM entries переживают compaction.
+
+**T2: SessionTracker persist** (medium effort, high impact)
+Писать `data/session_checkpoint.json` при каждом значимом action. Содержимое:
+```json
+{
+  "claimed_task_id": "tb_xxx",
+  "files_edited": ["src/foo.py", "src/bar.py"],
+  "files_read": ["src/baz.py"],
+  "decisions": [],
+  "role": "Eta",
+  "checkpoint_at": "2026-03-27T12:00:00"
+}
+```
+`session_init` читает этот файл и восстанавливает состояние.
+
+**T3: Decision capture** (medium effort, medium impact)
+Единственный gap который HERMES реально закрывает.
+Варианты:
+- a) При `action=complete` добавить поле `decisions` (список строк) — пишется в TaskBoard
+- b) ENGRAM entry при каждом значимом архитектурном решении (category=architecture)
+- c) Structured checkpoint с секцией Decisions (формат HERMES, БЕЗ LLM)
+
+---
+
+## 6. Abbreviation Map (обновлённый, точный)
+
+| Abbr | Full Name | Role in Memory Stack |
+|------|-----------|---------------------|
+| ELISION | Efficient Language-Independent Symbolic Inversion of Names | L0: JSON token compression |
+| HOPE | Hierarchical Orthogonal Predictive Embedding | L1: LOD summarization (LLM) |
+| MGC | Multi-Generation Cache | L2: 3-tier storage (RAM→SQLite→JSON) |
+| ARC | Architecture Reasoning Cycle | L3: workflow transformation suggestions |
+| CAM | Constructivist Agentic Memory | L1: saliency/surprise signal for ELISION L3 |
+| JEPA | Joint Embedding Predictive Architecture | L1: multi-provider embedding + semantic ranking (Session Lens, Task Lens, Overflow, Media) |
+| ENGRAM | L1 O(1) Pattern Cache | L2: permanent learned patterns (danger/architecture) |
+| REFLEX | 8-Signal Tool Ranker | L1: orchestrates all signals → tool recs |
+| STM | Short-Term Memory Buffer | L0: session working context (RAM + disk snapshot) |
+| CORTEX | Feedback Cortex | L2: per-tool success/failure scoring |
+| AURA | User Profile Store | L2: user preferences (RAM + Qdrant) |
+| HERMES-SC | Hermes Structured Compressor | EXTERNAL: LLM-based conversation summary (7-section template) |
+
+---
+
+## 7. Рекомендация
+
+**НЕ adopt HERMES как механизм.** Adopt шаблон 7 секций как формат для checkpoint-файла.
+
+Реальные задачи (по приоритету):
+1. **T1: STM auto-save** — fix one line, massive impact
+2. **T2: SessionTracker persist** — new file, restores agent state after compaction
+3. **T3: Decision capture** — ENGRAM entries at action=complete
+
+Все три задачи — VETKA-native, zero LLM cost, survive any external compaction.
