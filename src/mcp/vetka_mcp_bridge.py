@@ -928,7 +928,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="vetka_task_board",
             description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete/active_agents/merge_request/promote_to_main). "
-                        "Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+                        "Uses local transport as fallback when MYCELIUM MCP is unavailable. "
+                        "AGENT_WAKE: action=notify/notifications/ack_notifications for cross-agent notification inbox.",
             inputSchema=TASK_BOARD_SCHEMA,
         ),
         Tool(
@@ -1112,6 +1113,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     # Generate request ID for logging
     request_id = f"req-{uuid.uuid4().hex[:8]}"
     start_time = time.time()
+
+    # MARKER_200.PID_LOCK: Passive agent lock — write PID on every MCP call
+    # Zero overhead, enables worktree occupancy detection
+    try:
+        _cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
+        _lock_path = os.path.join(_cwd, ".agent_lock")
+        with open(_lock_path, "w") as _lf:
+            _lf.write(f"{os.getpid()}\n{time.time()}\n{name}\n")
+    except Exception:
+        pass  # Lock never blocks the bridge
 
     # Log request to VETKA group chat
     await log_mcp_request(name, arguments, request_id)
