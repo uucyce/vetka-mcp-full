@@ -2092,7 +2092,16 @@ class TaskBoard:
         if branch is None:
             branch = self._detect_current_branch(cwd=worktree_path)
         is_worktree = branch != "main"
-        final_status = "done_worktree" if is_worktree else "done_main"
+
+        # MARKER_200.QA_GATE_AUTO_CLOSE: When git_auto_close triggers complete_task
+        # on main (post-merge hook), route to need_qa instead of done_main.
+        # promote_to_main is the ONLY legitimate path to done_main.
+        _is_auto_close = (closure_proof or {}).get("auto_close_method") == "commit_match"
+        if not is_worktree and _is_auto_close:
+            final_status = "need_qa"
+            logger.info(f"[TaskBoard] QA_GATE: git_auto_close → need_qa (not done_main) for {task_id}")
+        else:
+            final_status = "done_worktree" if is_worktree else "done_main"
 
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
         if final_status == "done_worktree" and not commit_hash and not manual_override:
