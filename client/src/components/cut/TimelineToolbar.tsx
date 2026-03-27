@@ -17,6 +17,7 @@
  */
 import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
 import {
   SelectionIcon, RazorIcon, RippleIcon, RollIcon,
@@ -109,8 +110,8 @@ const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string }[] = [
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
-  const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
-  const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
+  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
+  const toggleLinkedSelection = useSelectionStore((s) => s.toggleLinkedSelection);
   const activeTool = useCutEditorStore((s) => s.activeTool);
   const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
   // Zoom

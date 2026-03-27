@@ -145,7 +145,7 @@ export default function AutoMontagePanel() {
   const noProject = !sandboxRoot;
 
   return (
-    <div style={{
+    <div data-testid="auto-montage-panel" style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
@@ -164,6 +164,7 @@ export default function AutoMontagePanel() {
         {MODES.map(({ mode, label, desc }) => (
           <button
             key={mode}
+            data-testid={`montage-btn-${mode}`}
             style={btnStyle(false, running || noProject)}
             disabled={running || noProject}
             onClick={() => runMontage(mode)}
@@ -176,7 +177,7 @@ export default function AutoMontagePanel() {
 
       {/* MARKER_GAMMA-PW4: Progress bar + status text */}
       {running && progress && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div data-testid="montage-progress" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           <div style={{
             fontSize: 9,
             color: '#999',
@@ -224,7 +225,7 @@ export default function AutoMontagePanel() {
 
       {/* Error */}
       {error && (
-        <div style={{
+        <div data-testid="montage-error" style={{
           fontSize: 9,
           color: '#999',
           fontFamily: 'monospace',
@@ -239,7 +240,7 @@ export default function AutoMontagePanel() {
 
       {/* Result */}
       {lastResult && !running && (
-        <div style={{
+        <div data-testid="montage-result" style={{
           fontSize: 9,
           color: '#ccc',
           fontFamily: 'monospace',

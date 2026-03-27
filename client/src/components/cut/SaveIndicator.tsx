@@ -52,5 +52,5 @@ export default function SaveIndicator() {
     pointerEvents: 'none',
   };
 
-  return <div style={style}>{text}</div>;
+  return <div data-testid="save-indicator" style={style}>{text}</div>;
 }

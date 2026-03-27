@@ -88,7 +88,7 @@ export default function TimelineInstancePanel() {
           Timelines
         </span>
         <span style={{ flex: 1 }} />
-        <button style={BTN} onClick={handleNew} title="New Sequence (⌘N)">+ New</button>
+        <button data-testid="timeline-new-btn" style={BTN} onClick={handleNew} title="New Sequence (⌘N)">+ New</button>
       </div>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -97,6 +97,7 @@ export default function TimelineInstancePanel() {
           return (
             <div
               key={tab.id}
+              data-testid={`timeline-tab-${tab.id}`}
               onClick={() => setActiveTab(idx)}
               style={{
                 display: 'flex',
@@ -137,6 +138,7 @@ export default function TimelineInstancePanel() {
               {/* Actions */}
               <div style={{ display: 'flex', gap: 2, flexShrink: 0 }}>
                 <button
+                  data-testid={`timeline-tab-open-${tab.id}`}
                   onClick={(e) => { e.stopPropagation(); handleOpenSideBySide(tab.id, tab.label || tab.id); }}
                   style={{ ...BTN, padding: '1px 4px', fontSize: 8 }}
                   title="Open in side panel"
@@ -144,6 +146,7 @@ export default function TimelineInstancePanel() {
                   ⊞
                 </button>
                 <button
+                  data-testid={`timeline-tab-fork-${tab.id}`}
                   onClick={(e) => { e.stopPropagation(); handleFork(tab.id); }}
                   style={{ ...BTN, padding: '1px 4px', fontSize: 8 }}
                   title="Fork timeline"
@@ -152,6 +155,7 @@ export default function TimelineInstancePanel() {
                 </button>
                 {timelineTabs.length > 1 && (
                   <button
+                    data-testid={`timeline-tab-close-${tab.id}`}
                     onClick={(e) => { e.stopPropagation(); removeTab(idx); }}
                     style={{ ...BTN, padding: '1px 4px', fontSize: 8, color: '#555' }}
                     title="Close timeline"

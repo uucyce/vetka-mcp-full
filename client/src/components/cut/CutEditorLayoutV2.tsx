@@ -19,6 +19,7 @@
  */
 import { useMemo, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
@@ -119,7 +120,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   const { saveProject, saveProjectAs } = useCutAutosave();
 
   // ─── MARKER_INSPECTOR_SYNC: Auto-activate Clip tab when a clip is selected ───
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   useEffect(() => {
     if (!selectedClipId) return;
     const api = useDockviewStore.getState().apiRef;
@@ -475,7 +476,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // Editing
-    selectAll: () => useCutEditorStore.getState().selectAllClips(),
+    selectAll: () => useSelectionStore.getState().selectAllClips(),
 
     // MARKER_CLIPBOARD: Clipboard operations
     copy: () => useCutEditorStore.getState().copyClips(),
@@ -488,12 +489,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
     deleteClip: async () => {
       const s = useCutEditorStore.getState();
-      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      const sel = useSelectionStore.getState();
+      const ids = sel.selectedClipIds.size > 0 ? [...sel.selectedClipIds] : sel.selectedClipId ? [sel.selectedClipId] : [];
       if (ids.length === 0) return;
       const ops = ids.map((id) => ({ op: 'remove_clip', clip_id: id }));
       await s.applyTimelineOps(ops);
-      s.setSelectedClip(null);
-      s.clearSelection();
+      sel.setSelectedClip(null);
+      sel.clearSelection();
     },
     // MARKER_SPLIT_LOCAL_FIRST: Local-first split for instant visual feedback
     splitClip: () => {
@@ -529,22 +531,24 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_TL4: Ripple delete all selected clips (linked selection)
     rippleDelete: async () => {
       const s = useCutEditorStore.getState();
-      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      const sel = useSelectionStore.getState();
+      const ids = sel.selectedClipIds.size > 0 ? [...sel.selectedClipIds] : sel.selectedClipId ? [sel.selectedClipId] : [];
       if (ids.length === 0) return;
       const ops = ids.map((id) => ({ op: 'ripple_delete', clip_id: id }));
       await s.applyTimelineOps(ops);
-      s.setSelectedClip(null);
-      s.clearSelection();
+      sel.setSelectedClip(null);
+      sel.clearSelection();
     },
 
     // MARKER_W6.WIRE: Nudge clip ±1 frame
     nudgeLeft: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
       // Find clip to get its current position and lane
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           await s.applyTimelineOps([{
             op: 'move_clip', clip_id: clip.clip_id,
@@ -556,10 +560,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     nudgeRight: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           await s.applyTimelineOps([{
             op: 'move_clip', clip_id: clip.clip_id,
@@ -689,9 +694,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           s.setMarkIn(clip.start_sec);
           s.setMarkOut(clip.start_sec + clip.duration_sec);
@@ -816,10 +822,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     addKeyframe: () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       // Find selected clip to calculate relative time
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           const relTime = s.currentTime - clip.start_sec;
           if (relTime >= 0 && relTime <= clip.duration_sec) {
@@ -880,7 +887,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     zoomToFit: () => {
       const s = useCutEditorStore.getState();
       // If clips are selected, zoom to selection bounds (A2.5)
-      const ids = s.selectedClipIds;
+      const ids = useSelectionStore.getState().selectedClipIds;
       if (ids.size > 0) {
         let minT = Infinity, maxT = -Infinity;
         for (const lane of s.lanes) {
@@ -929,7 +936,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       });
       await s.refreshProjectState?.();
     },
-    toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
+    toggleLinkedSelection: () => useSelectionStore.getState().toggleLinkedSelection(),
     // MARKER_SNAP_N: Snap toggle (N key, FCP7 standard)
     toggleSnap: () => useCutEditorStore.getState().toggleSnap(),
     // MARKER_SUBCLIP: Make Subclip (Cmd+U, FCP7 Ch.12)
@@ -962,7 +969,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     escapeContext: () => {
       const s = useCutEditorStore.getState();
-      s.clearSelection();
+      useSelectionStore.getState().clearSelection();
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
@@ -1277,6 +1284,39 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     timecodeEntry: () => {
       useCutEditorStore.getState().setShowTimecodeEntry(true);
+    },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
+    },
+    renameClipInline: () => {
+      const selected = useSelectionStore.getState().selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
     },
     toggleTimelineDisplayMode: () => {
       useCutEditorStore.getState().cycleTimelineDisplayMode();

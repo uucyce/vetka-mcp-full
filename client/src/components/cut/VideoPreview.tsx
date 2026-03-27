@@ -8,6 +8,7 @@
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
 import FrameViewerSplit from './FrameViewerSplit';
@@ -181,11 +182,12 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const toggleZebra = useCutEditorStore((s) => s.toggleZebra);
 
   // MARKER_B22: Live grading — read color_correction from selected clip for CSS filter preview
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const ccForCssFilter = useCutEditorStore((s) => {
-    if (!s.selectedClipId) return null;
+    if (!selectedClipId) return null;
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
-        if (clip.clip_id === s.selectedClipId) {
+        if (clip.clip_id === selectedClipId) {
           return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
         }
       }

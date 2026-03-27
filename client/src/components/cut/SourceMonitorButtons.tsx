@@ -8,6 +8,7 @@
  */
 import { useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 
 const ROW_STYLE: CSSProperties = {
@@ -63,9 +64,10 @@ export default function SourceMonitorButtons() {
   // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
   const handleMarkClip = useCallback(() => {
     const s = useCutEditorStore.getState();
-    if (!s.selectedClipId) return;
+    const selectedClipId = useSelectionStore.getState().selectedClipId;
+    if (!selectedClipId) return;
     for (const lane of s.lanes) {
-      const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
       if (clip) {
         s.setMarkIn(clip.start_sec);
         s.setMarkOut(clip.start_sec + clip.duration_sec);

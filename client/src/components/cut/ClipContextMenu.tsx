@@ -16,6 +16,7 @@
  */
 import { useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 
 // ─── Types ───
 
@@ -127,6 +128,7 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
   }, [position]);
 
   const store = useCutEditorStore.getState;
+  const selectionStore = useSelectionStore.getState;
 
   const entries: MenuEntry[] = [
     {
@@ -150,7 +152,7 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
       shortcut: 'Del',
       action: async () => {
         await store().applyTimelineOps([{ op: 'remove_clip', clip_id: clipId }]);
-        store().setSelectedClip(null);
+        selectionStore().setSelectedClip(null);
         onClose();
       },
     },
@@ -159,7 +161,7 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
       shortcut: '\u21E7Del',
       action: async () => {
         await store().applyTimelineOps([{ op: 'ripple_delete', clip_id: clipId }]);
-        store().setSelectedClip(null);
+        selectionStore().setSelectedClip(null);
         onClose();
       },
     },
@@ -177,7 +179,7 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
     {
       label: 'Properties',
       action: () => {
-        store().setSelectedClip(clipId);
+        selectionStore().setSelectedClip(clipId);
         store().setFocusedPanel('effects');
         onClose();
       },

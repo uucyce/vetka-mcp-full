@@ -6,6 +6,7 @@
  * which is synced from CutStandalone.
  */
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import type { CSSProperties } from 'react';
 
 // ─── Styles ───
@@ -46,7 +47,7 @@ export default function DebugShellPanel() {
   const lanes = useCutEditorStore((s) => s.lanes);
   const markers = useCutEditorStore((s) => s.markers);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
 
   const project = (ps?.project || {}) as PS;
   const displayName = String(project.display_name || project.project_id || 'Unknown');
