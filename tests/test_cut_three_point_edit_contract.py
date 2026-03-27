@@ -50,7 +50,8 @@ class TestInsertEditContract:
 
     def test_insert_edit_handler_exists(self, layout_source):
         """insertEdit handler must be defined in hotkey handlers."""
-        assert re.search(r"insertEdit:\s*async\s*\(\)", layout_source)
+        # After MARKER_3PT_DEDUP refactor: insertEdit delegates to performInsert (useCallback)
+        assert re.search(r"insertEdit:\s*(async\s*\(\)|performInsert)", layout_source)
 
     def test_reads_source_marks(self, layout_source):
         """Must read sourceMarkIn/sourceMarkOut for clip duration."""
@@ -73,7 +74,8 @@ class TestInsertEditContract:
     def test_calls_apply_timeline_ops(self, layout_source):
         """Must route through applyTimelineOps for undo support."""
         # MARKER_3PT_LOCAL_FIRST: local-first + async backend
-        assert re.search(r"applyTimelineOps.*insert_at", layout_source)
+        # After dedup refactor, applyTimelineOps and insert_at may be on separate lines
+        assert "applyTimelineOps" in layout_source and "insert_at" in layout_source
 
     def test_seeks_after_insert(self, layout_source):
         """Must seek playhead to end of inserted clip."""
@@ -89,7 +91,8 @@ class TestOverwriteEditContract:
     """Period key: Overwrite edit — replace at sequence mark position."""
 
     def test_overwrite_edit_handler_exists(self, layout_source):
-        assert re.search(r"overwriteEdit:\s*async\s*\(\)", layout_source)
+        # After MARKER_3PT_DEDUP refactor: overwriteEdit delegates to performOverwrite (useCallback)
+        assert re.search(r"overwriteEdit:\s*(async\s*\(\)|performOverwrite)", layout_source)
 
     def test_overwrite_uses_source_marks(self, layout_source):
         """Overwrite also reads source marks for duration."""
