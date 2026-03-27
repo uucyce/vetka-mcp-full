@@ -488,17 +488,20 @@ def apply_numpy_effects(
             if amount > 0:
                 k = max(1, int(p.get("size", 5)) // 2)
                 h, w = frame_float32.shape[:2]
+                window = 2 * k + 1
                 # Unsharp mask: sharp = original + amount * (original - blurred)
                 blurred = frame_float32.copy()
-                # Horizontal box blur
+                # Horizontal box blur (prepend 0 for correct cumsum windowing)
                 padded = np.pad(blurred, ((0, 0), (k, k), (0, 0)), mode='edge')
                 cs = np.cumsum(padded, axis=1)
-                blurred = (cs[:, 2*k:, :] - cs[:, :padded.shape[1]-2*k, :]) / (2*k+1)
+                cs = np.concatenate([np.zeros((cs.shape[0], 1, cs.shape[2]), dtype=cs.dtype), cs], axis=1)
+                blurred = (cs[:, window:, :] - cs[:, :padded.shape[1] - window + 1, :]) / window
                 # Vertical box blur
                 padded = np.pad(blurred, ((k, k), (0, 0), (0, 0)), mode='edge')
                 cs = np.cumsum(padded, axis=0)
-                blurred = (cs[2*k:, :, :] - cs[:padded.shape[0]-2*k, :, :]) / (2*k+1)
-                # Trim to original size (cumsum can be off by 1)
+                cs = np.concatenate([np.zeros((1, cs.shape[1], cs.shape[2]), dtype=cs.dtype), cs], axis=0)
+                blurred = (cs[window:, :, :] - cs[:padded.shape[0] - window + 1, :, :]) / window
+                # Trim to original size
                 blurred = blurred[:h, :w, :]
                 frame_float32 = frame_float32 + amount * (frame_float32 - blurred)
 

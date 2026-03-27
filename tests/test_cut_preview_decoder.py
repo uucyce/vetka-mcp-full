@@ -329,12 +329,15 @@ class TestBlurEffect:
 
 
 class TestSharpenEffect:
-    def test_sharpen_increases_edges(self, gradient_frame):
-        result = apply_numpy_effects(gradient_frame, [
+    def test_sharpen_increases_edges(self):
+        # Mid-grey frame with a darker band — sharpen amplifies edges without clip saturation
+        frame = np.full((50, 100, 3), 0.5, dtype=np.float32)
+        frame[:, 40:60, :] = 0.3  # dark band in the middle — two soft edges
+        result = apply_numpy_effects(frame.copy(), [
             {"type": "sharpen", "params": {"amount": 2.0, "size": 5}, "enabled": True}
         ])
         # Sharpening increases local contrast (diff between adjacent pixels)
-        orig_diff = np.abs(np.diff(gradient_frame[:, :, 0], axis=1)).mean()
+        orig_diff = np.abs(np.diff(frame[:, :, 0], axis=1)).mean()
         sharp_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
         assert sharp_diff > orig_diff
 
