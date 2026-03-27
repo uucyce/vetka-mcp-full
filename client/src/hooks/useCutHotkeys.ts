@@ -418,8 +418,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusSourceAcquire:'Cmd+8',  // MARKER_SOURCE_ACQUIRE: FCP7 Log & Capture
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
-  // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
-  toggleSnap:        's',
+  toggleSnap:        's',   // Premiere default: S (N = rollTool)
   makeSubclip:       'Cmd+u',
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Enter',
