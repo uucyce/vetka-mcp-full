@@ -117,6 +117,15 @@ export type TimelineClip = {
     confidence?: number;
     reference_path?: string;
   };
+  // MARKER_LAYERFX: Layer manifest metadata (§6 of canonical spec)
+  layer_manifest?: {
+    manifest_path: string;
+    format: string; // "layer_space" | "plate_export"
+    layer_count: number;
+    has_foreground: boolean;
+    has_background: boolean;
+    sample_id: string;
+  };
 };
 
 export type TimelineLane = {
