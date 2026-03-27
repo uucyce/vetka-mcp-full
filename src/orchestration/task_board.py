@@ -451,6 +451,39 @@ class TaskBoard:
         # FTS5 index is now populated incrementally via _index_task_fts() on save/update.
         # To backfill old tasks manually: use action=backfill_fts via task_board tool.
 
+        if current < 2:
+            # Migration 2: Notifications table (MARKER_200.AGENT_WAKE)
+            notif_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notifications'"
+            ).fetchone()
+            if notif_exists:
+                self._set_schema_version(2)
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE TABLE IF NOT EXISTS notifications (
+                            id TEXT PRIMARY KEY,
+                            target_role TEXT NOT NULL,
+                            source_role TEXT DEFAULT '',
+                            task_id TEXT DEFAULT '',
+                            message TEXT NOT NULL,
+                            ntype TEXT NOT NULL DEFAULT 'custom',
+                            created_at TEXT NOT NULL,
+                            read_at TEXT DEFAULT NULL
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_notif_target ON notifications(target_role);
+                        CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(target_role, read_at);
+                    """)
+                    self._set_schema_version(2)
+                    logger.info("[TaskBoard] Migration 2: notifications table created (AGENT_WAKE)")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning("[TaskBoard] Migration 2 deferred — database locked")
+                        return
+                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+
     # ==========================================
     # MARKER_199.FTS5: Full-Text Search
     # ==========================================
@@ -2159,6 +2192,12 @@ class TaskBoard:
             "commit_message": commit_message[:50] if commit_message else None,
         })
 
+        # MARKER_200.AGENT_WAKE: Notify Commander about completed task
+        self._auto_notify(
+            task, self.NOTIF_TASK_COMPLETED,
+            source_role=str(task.get("assigned_to") or ""),
+        )
+
         # MARKER_ZETA.D4: Warn-mode allowed_paths validation on complete
         ownership_warnings = []
         try:
@@ -2243,6 +2282,177 @@ class TaskBoard:
         )
 
     # ==========================================
+    # MARKER_200.AGENT_WAKE: Notification Inbox
+    # ==========================================
+
+    # Notification types that trigger auto-creation
+    NOTIF_TASK_VERIFIED = "task_verified"
+    NOTIF_TASK_NEEDS_FIX = "task_needs_fix"
+    NOTIF_READY_TO_MERGE = "ready_to_merge"
+    NOTIF_TASK_COMPLETED = "task_completed"
+    NOTIF_CUSTOM = "custom"
+
+    def notify(
+        self,
+        target_role: str,
+        message: str,
+        *,
+        ntype: str = "custom",
+        source_role: str = "",
+        task_id: str = "",
+    ) -> Dict[str, Any]:
+        """Create a notification for a target agent role.
+
+        Args:
+            target_role: Callsign of the target agent (e.g. 'Alpha', 'Commander')
+            message: Human-readable notification text
+            ntype: Notification type (task_verified, task_needs_fix, ready_to_merge, custom)
+            source_role: Callsign of the sending agent
+            task_id: Related task ID (optional)
+
+        Returns:
+            {"success": True, "notification_id": "..."}
+        """
+        import uuid
+
+        notif_id = f"notif_{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        now = datetime.now().isoformat()
+        try:
+            with self.db:
+                self.db.execute(
+                    "INSERT INTO notifications (id, target_role, source_role, task_id, message, ntype, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (notif_id, target_role, source_role, task_id, message, ntype, now),
+                )
+            logger.info(
+                "[TaskBoard] NOTIFY: %s → %s [%s] %s",
+                source_role or "system", target_role, ntype, message[:80],
+            )
+            return {"success": True, "notification_id": notif_id}
+        except Exception as e:
+            logger.warning(f"[TaskBoard] notify failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def get_notifications(
+        self,
+        role: str,
+        *,
+        unread_only: bool = True,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Get notifications for a role.
+
+        Args:
+            role: Agent callsign
+            unread_only: If True, only return unread notifications
+            limit: Max notifications to return
+
+        Returns:
+            List of notification dicts
+        """
+        try:
+            if unread_only:
+                rows = self.db.execute(
+                    "SELECT id, target_role, source_role, task_id, message, ntype, created_at, read_at "
+                    "FROM notifications WHERE target_role = ? AND read_at IS NULL "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (role, limit),
+                ).fetchall()
+            else:
+                rows = self.db.execute(
+                    "SELECT id, target_role, source_role, task_id, message, ntype, created_at, read_at "
+                    "FROM notifications WHERE target_role = ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (role, limit),
+                ).fetchall()
+            return [
+                {
+                    "id": r[0], "target_role": r[1], "source_role": r[2],
+                    "task_id": r[3], "message": r[4], "ntype": r[5],
+                    "created_at": r[6], "read_at": r[7],
+                }
+                for r in rows
+            ]
+        except Exception as e:
+            logger.warning(f"[TaskBoard] get_notifications failed: {e}")
+            return []
+
+    def ack_notifications(self, role: str, notification_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Mark notifications as read.
+
+        Args:
+            role: Agent callsign (safety — can only ack own notifications)
+            notification_ids: Specific IDs to ack. If None, ack all unread for role.
+
+        Returns:
+            {"success": True, "acked": N}
+        """
+        now = datetime.now().isoformat()
+        try:
+            with self.db:
+                if notification_ids:
+                    placeholders = ",".join("?" for _ in notification_ids)
+                    cur = self.db.execute(
+                        f"UPDATE notifications SET read_at = ? "
+                        f"WHERE target_role = ? AND id IN ({placeholders}) AND read_at IS NULL",
+                        [now, role] + list(notification_ids),
+                    )
+                else:
+                    cur = self.db.execute(
+                        "UPDATE notifications SET read_at = ? WHERE target_role = ? AND read_at IS NULL",
+                        (now, role),
+                    )
+            return {"success": True, "acked": cur.rowcount}
+        except Exception as e:
+            logger.warning(f"[TaskBoard] ack_notifications failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _auto_notify(
+        self,
+        task: Dict[str, Any],
+        ntype: str,
+        *,
+        extra_msg: str = "",
+        source_role: str = "",
+    ):
+        """MARKER_200.AGENT_WAKE: Auto-create notifications on status transitions.
+
+        Routing logic:
+        - task_verified → task owner (ready to merge or continue)
+        - task_needs_fix → task owner (fix needed)
+        - ready_to_merge → Commander (task verified, needs merge)
+        - task_completed → Commander (new task done, may need QA dispatch)
+        """
+        task_id = task.get("id", "")
+        title = task.get("title", "")[:60]
+        owner = task.get("assigned_to", "") or task.get("role", "")
+
+        targets = []
+        if ntype == self.NOTIF_TASK_VERIFIED:
+            # Notify owner + Commander
+            if owner:
+                targets.append((owner, f"Task verified: {title}"))
+            targets.append(("Commander", f"Task verified, ready to merge: {title}"))
+        elif ntype == self.NOTIF_TASK_NEEDS_FIX:
+            # Notify owner
+            if owner:
+                targets.append((owner, f"QA FAIL — fix needed: {title}. {extra_msg}"))
+        elif ntype == self.NOTIF_READY_TO_MERGE:
+            targets.append(("Commander", f"Ready to merge: {title}"))
+        elif ntype == self.NOTIF_TASK_COMPLETED:
+            # Notify Commander about new completion
+            targets.append(("Commander", f"Task completed by {owner}: {title}"))
+        else:
+            return  # Unknown type, skip
+
+        for target, msg in targets:
+            if target:
+                self.notify(
+                    target, msg,
+                    ntype=ntype, source_role=source_role, task_id=task_id,
+                )
+
+    # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
     # ==========================================
 
@@ -2299,6 +2509,12 @@ class TaskBoard:
                 "title": task.get("title", ""),
                 "notes": notes[:200],
             })
+
+        # MARKER_200.AGENT_WAKE: Auto-notify on QA verdict
+        if verdict == "pass":
+            self._auto_notify(task, self.NOTIF_TASK_VERIFIED, source_role=verifier)
+        elif verdict == "fail":
+            self._auto_notify(task, self.NOTIF_TASK_NEEDS_FIX, source_role=verifier, extra_msg=notes[:200])
 
         logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
         return {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
