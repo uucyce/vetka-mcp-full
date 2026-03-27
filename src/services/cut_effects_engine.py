@@ -347,6 +347,23 @@ EFFECT_DEFS: dict[str, EffectDef] = {
         },
     ),
 
+    # === MARKER_PARALLAX_MOTION: Parallax motion (photo → video via depth) ===
+    "parallax_motion": EffectDef(
+        type="parallax_motion", label="Parallax Motion", category="parallax",
+        params_schema={
+            "travel_x": {"type": "float", "min": -20.0, "max": 20.0, "default": 5.0, "step": 0.5},
+            "travel_y": {"type": "float", "min": -10.0, "max": 10.0, "default": 0.0, "step": 0.5},
+            "zoom": {"type": "float", "min": 0.9, "max": 1.3, "default": 1.0, "step": 0.01},
+            "focal_length_mm": {"type": "float", "min": 18.0, "max": 200.0, "default": 50.0, "step": 1.0},
+            "z_near": {"type": "float", "min": 0.1, "max": 2.0, "default": 0.72, "step": 0.05},
+            "z_far": {"type": "float", "min": 0.5, "max": 5.0, "default": 1.85, "step": 0.05},
+            "motion_type": {"type": "str", "default": "orbit",
+                            "options": ["orbit", "dolly_zoom_in", "dolly_zoom_out", "linear"]},
+            "duration_sec": {"type": "float", "min": 1.0, "max": 30.0, "default": 4.0, "step": 0.5},
+            "overscan_pct": {"type": "float", "min": 0.0, "max": 40.0, "default": 20.0, "step": 1.0},
+        },
+    ),
+
     # === Time ===
     "fade_in": EffectDef(
         type="fade_in", label="Fade In", category="time",
@@ -750,6 +767,46 @@ def _compile_depth_grade_filter(
     )
 
 
+def _compile_parallax_motion_sentinel(params: dict[str, Any]) -> str:
+    """
+    Return a sentinel string that the render pipeline recognizes.
+
+    The parallax_motion effect cannot be expressed as a single FFmpeg filter —
+    it requires a multi-input filter_complex with source + depth map.
+    The sentinel carries the parameters so the render pipeline can invoke
+    cut_depth_engine.build_parallax_filter() at render time.
+
+    Format: __PARALLAX_MOTION__:json_params
+    """
+    import json
+    safe_params = {
+        "travel_x": float(params.get("travel_x", 5.0)),
+        "travel_y": float(params.get("travel_y", 0.0)),
+        "zoom": float(params.get("zoom", 1.0)),
+        "focal_length_mm": float(params.get("focal_length_mm", 50.0)),
+        "z_near": float(params.get("z_near", 0.72)),
+        "z_far": float(params.get("z_far", 1.85)),
+        "motion_type": str(params.get("motion_type", "orbit")),
+        "duration_sec": float(params.get("duration_sec", 4.0)),
+        "overscan_pct": float(params.get("overscan_pct", 20.0)),
+    }
+    return f"__PARALLAX_MOTION__:{json.dumps(safe_params)}"
+
+
+def is_parallax_motion_filter(filter_str: str) -> bool:
+    """Check if a filter string is a parallax_motion sentinel."""
+    return filter_str.startswith("__PARALLAX_MOTION__:")
+
+
+def parse_parallax_motion_params(filter_str: str) -> dict[str, Any]:
+    """Extract parallax_motion parameters from a sentinel string."""
+    import json
+    if not is_parallax_motion_filter(filter_str):
+        return {}
+    json_str = filter_str[len("__PARALLAX_MOTION__:"):]
+    return json.loads(json_str)
+
+
 def compile_video_filters(effects: list[EffectParam]) -> list[str]:
     """
     Compile a list of video EffectParams into FFmpeg filter strings.
@@ -1055,6 +1112,13 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
                 filters.append(_compile_depth_grade_filter(
                     target, drange, soft, bri, con, sat,
                 ))
+
+        # MARKER_PARALLAX_MOTION: parallax_motion — marks clip for parallax render
+        # This effect is handled at the render pipeline level, not as a simple filter.
+        # compile_video_filters returns a sentinel so the pipeline knows to invoke
+        # the parallax sub-pipeline instead of the normal filter chain.
+        elif t == "parallax_motion":
+            filters.append(_compile_parallax_motion_sentinel(p))
 
     # Build merged eq filter
     if eq_parts:
