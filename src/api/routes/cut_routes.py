@@ -150,6 +150,9 @@ from src.api.routes.cut_routes_workers import (  # noqa: E402
     _ACTIVE_JOB_STATES,
     _SANDBOX_BACKGROUND_LIMIT,
     _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
+    _build_sync_surface,         # used by /project-state runtime path
+    _build_music_cue_summary,    # used by /project-state runtime path
+    _build_rhythm_surface,       # used by /project-state runtime path
     _infer_cut_asset_kind,       # MARKER_B74: moved to workers
 )
 
