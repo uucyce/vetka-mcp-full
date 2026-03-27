@@ -48,6 +48,20 @@ LAYER_ROLES = [
     "special_clean",         # Clean plate (inpainted background, no subjects)
 ]
 
+# Bridge: JSON/TS kebab-case roles → Python canonical underscore roles
+_ROLE_NORMALIZE: dict[str, str] = {
+    "foreground-subject": "foreground_subject",
+    "secondary-subject": "secondary_subject",
+    "environment-mid": "mid_environment",
+    "background-far": "background",
+    "special-clean": "special_clean",
+}
+
+
+def normalize_role(role: str) -> str:
+    """Normalize a role string from any format to canonical underscore form."""
+    return _ROLE_NORMALIZE.get(role, role)
+
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -60,6 +74,7 @@ class SemanticLayer:
     role: str = ""                   # One of LAYER_ROLES
     label: str = ""                  # Human-readable label
     order: int = 0                   # Compositing order (0 = back, higher = front)
+    depth_priority: float = 0.0     # Depth priority 0-1 (from layout, NOT same as order)
     z: float = 1.0                   # Depth position in camera space
     visible: bool = True
     # Asset paths
@@ -77,18 +92,27 @@ class SemanticLayer:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> SemanticLayer:
+        # FIX-1: normalize role from kebab-case (JSON/TS) to underscore (Python)
+        raw_role = str(d.get("role", ""))
+        # FIX-2: depthPriority is float 0-1, order is int compositing index — separate fields
+        raw_order = d.get("order") or d.get("index", 0)
+        raw_depth_pri = float(d.get("depthPriority") or d.get("depth_priority", 0.0))
+        # FIX-3: coverage field — try both "coverage" (manifest) and "plateCoverage" (layout risk)
+        raw_coverage = d.get("coverage") or d.get("plateCoverage", 0.0)
+
         return SemanticLayer(
             layer_id=str(d.get("layer_id") or d.get("id", "")),
-            role=str(d.get("role", "")),
+            role=normalize_role(raw_role),
             label=str(d.get("label", "")),
-            order=int(d.get("order") or d.get("depthPriority", 0)),
+            order=int(raw_order),
+            depth_priority=raw_depth_pri,
             z=float(d.get("z", 1.0)),
             visible=bool(d.get("visible", True)),
             rgba_path=str(d.get("rgba_path") or d.get("rgba", "")),
             mask_path=str(d.get("mask_path") or d.get("mask", "")),
             depth_path=str(d.get("depth_path") or d.get("depth", "")),
             clean_path=str(d.get("clean_path") or d.get("clean_variant", "")),
-            coverage=float(d.get("coverage") or d.get("plateCoverage", 0.0)),
+            coverage=float(raw_coverage),
             parallax_strength=float(d.get("parallax_strength") or d.get("parallaxStrength", 1.0)),
             motion_damping=float(d.get("motion_damping") or d.get("motionDamping", 1.0)),
         )
@@ -139,7 +163,7 @@ class CameraContract:
 class LayerManifest:
     """Complete layer manifest for a parallax scene."""
     manifest_id: str = ""
-    contract_version: str = "1.0"
+    contract_version: str = "1.0.0"
     sample_id: str = ""
     source_path: str = ""               # Original source image
     source_width: int = 0
@@ -258,23 +282,24 @@ def ingest_plate_export(manifest_path: str | Path, layout_path: str | Path | Non
     layers = []
     for plate in manifest_data.get("exportedPlates", []):
         files = plate.get("files", {})
-        rgba_rel = str(files.get("rgba", ""))
-        depth_rel = str(files.get("depth", ""))
-        mask_rel = str(files.get("mask", ""))
+        # Merge files into plate dict for from_dict to pick up
+        flat = dict(plate)
+        flat["rgba"] = str(files.get("rgba", ""))
+        flat["mask"] = str(files.get("mask", ""))
+        flat["depth"] = str(files.get("depth", ""))
+        flat["clean_variant"] = str(files.get("clean", ""))
 
-        layer = SemanticLayer(
-            layer_id=str(plate.get("id", "")),
-            role=str(plate.get("role", "")),
-            label=str(plate.get("label") or plate.get("id", "")),
-            order=int(plate.get("order", 0)),
-            z=float(plate.get("z", 1.0)),
-            visible=bool(plate.get("visible", True)),
-            rgba_path=str(base_dir / rgba_rel) if rgba_rel else "",
-            mask_path=str(base_dir / mask_rel) if mask_rel else "",
-            depth_path=str(base_dir / depth_rel) if depth_rel else "",
-            coverage=float(plate.get("plateCoverage", 0.0)),
-            parallax_strength=float(plate.get("parallaxStrength", 1.0)),
-        )
+        layer = SemanticLayer.from_dict(flat)
+        # Resolve relative asset paths
+        if layer.rgba_path and not Path(layer.rgba_path).is_absolute():
+            layer.rgba_path = str(base_dir / layer.rgba_path) if layer.rgba_path else ""
+        if layer.mask_path and not Path(layer.mask_path).is_absolute():
+            layer.mask_path = str(base_dir / layer.mask_path) if layer.mask_path else ""
+        if layer.depth_path and not Path(layer.depth_path).is_absolute():
+            layer.depth_path = str(base_dir / layer.depth_path) if layer.depth_path else ""
+        # Use plate id as label fallback
+        if not layer.label:
+            layer.label = layer.layer_id
         layers.append(layer)
 
     # Camera from layout

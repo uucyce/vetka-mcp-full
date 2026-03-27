@@ -21,6 +21,7 @@ from src.services.cut_layer_manifest import (
     ingest_layer_space,
     ingest_manifest,
     ingest_plate_export,
+    normalize_role,
 )
 
 
@@ -40,11 +41,13 @@ class TestSemanticLayer:
     def test_from_dict_playground_format(self) -> None:
         """Handles parallax playground field names (camelCase)."""
         layer = SemanticLayer.from_dict({
-            "id": "plate_01", "role": "mid_environment",
-            "depthPriority": 3, "parallaxStrength": 1.2,
-            "plateCoverage": 0.45,
+            "id": "plate_01", "role": "environment-mid",
+            "order": 3, "depthPriority": 0.78,
+            "parallaxStrength": 1.2, "plateCoverage": 0.45,
         })
         assert layer.order == 3
+        assert layer.depth_priority == 0.78
+        assert layer.role == "mid_environment"  # normalized from kebab
         assert layer.parallax_strength == 1.2
         assert layer.coverage == 0.45
 
@@ -222,10 +225,10 @@ class TestIngestPlateExport:
     def _write_manifest(self, tmpdir: str) -> str:
         data = {
             "exportedPlates": [
-                {"id": "plate_00", "role": "foreground_subject", "visible": True,
+                {"id": "plate_00", "role": "foreground-subject", "visible": True,
                  "order": 2, "z": 0.5, "files": {"rgba": "plate_00_rgba.png"},
-                 "parallaxStrength": 1.3, "plateCoverage": 0.3},
-                {"id": "plate_01", "role": "background", "visible": True,
+                 "parallaxStrength": 1.3, "coverage": 0.3, "depthPriority": 0.78},
+                {"id": "plate_01", "role": "background-far", "visible": True,
                  "order": 0, "z": 1.8, "files": {"rgba": "plate_01_rgba.png"}},
             ],
         }
@@ -248,6 +251,26 @@ class TestIngestPlateExport:
             assert fg is not None
             assert fg.parallax_strength == 1.3
             assert fg.coverage == 0.3
+
+    def test_normalizes_kebab_roles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_manifest(tmpdir)
+            m = ingest_plate_export(path)
+            # foreground-subject → foreground_subject
+            assert m.get_layer_by_role("foreground_subject") is not None
+            # background-far → background
+            assert m.get_layer_by_role("background") is not None
+            assert m.has_foreground is True
+            assert m.has_background is True
+
+    def test_depth_priority_separate_from_order(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = self._write_manifest(tmpdir)
+            m = ingest_plate_export(path)
+            fg = m.get_layer_by_role("foreground_subject")
+            assert fg is not None
+            assert fg.order == 2           # int compositing index
+            assert fg.depth_priority == 0.78  # float 0-1 (NOT cast to int)
 
 
 # ── Auto-detection ──
@@ -313,3 +336,65 @@ class TestLayerManifestMeta:
         meta2 = LayerManifestMeta.from_dict(d)
         assert meta2.manifest_path == meta.manifest_path
         assert meta2.layer_count == 3
+
+
+# ── Role normalization (bug fix) ──
+
+
+class TestRoleNormalization:
+    def test_kebab_to_underscore(self) -> None:
+        assert normalize_role("foreground-subject") == "foreground_subject"
+        assert normalize_role("secondary-subject") == "secondary_subject"
+        assert normalize_role("special-clean") == "special_clean"
+
+    def test_environment_mid_reversal(self) -> None:
+        assert normalize_role("environment-mid") == "mid_environment"
+
+    def test_background_far_to_background(self) -> None:
+        assert normalize_role("background-far") == "background"
+
+    def test_already_canonical_passthrough(self) -> None:
+        assert normalize_role("foreground_subject") == "foreground_subject"
+        assert normalize_role("background") == "background"
+
+    def test_unknown_role_passthrough(self) -> None:
+        assert normalize_role("custom_role") == "custom_role"
+
+    def test_from_dict_normalizes_role(self) -> None:
+        layer = SemanticLayer.from_dict({"role": "foreground-subject", "id": "fg"})
+        assert layer.role == "foreground_subject"
+
+    def test_from_dict_environment_mid(self) -> None:
+        layer = SemanticLayer.from_dict({"role": "environment-mid"})
+        assert layer.role == "mid_environment"
+
+
+# ── Bug fixes verification ──
+
+
+class TestBugFixes:
+    def test_coverage_reads_coverage_field(self) -> None:
+        """FIX-3: coverage field was reading 'plateCoverage' but JSON uses 'coverage'."""
+        layer = SemanticLayer.from_dict({"coverage": 0.45})
+        assert layer.coverage == 0.45
+
+    def test_coverage_reads_plateCoverage_fallback(self) -> None:
+        """plateCoverage from layout risk block should also work."""
+        layer = SemanticLayer.from_dict({"plateCoverage": 0.3})
+        assert layer.coverage == 0.3
+
+    def test_depth_priority_is_float_not_int(self) -> None:
+        """FIX-2: depthPriority is float 0-1, must not be cast to int via order."""
+        layer = SemanticLayer.from_dict({"depthPriority": 0.78, "order": 2})
+        assert layer.depth_priority == 0.78
+        assert layer.order == 2  # separate fields
+
+    def test_depth_priority_without_order(self) -> None:
+        layer = SemanticLayer.from_dict({"depthPriority": 0.5})
+        assert layer.depth_priority == 0.5
+        assert layer.order == 0  # default, NOT int(0.5)
+
+    def test_index_field_maps_to_order(self) -> None:
+        """plate_export_manifest uses 'index', plate_layout uses 'order'."""
+        layer = SemanticLayer.from_dict({"index": 3})
+        assert layer.order == 3
