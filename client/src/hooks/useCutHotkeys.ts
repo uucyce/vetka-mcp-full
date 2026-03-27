@@ -130,7 +130,28 @@ export type CutHotkeyAction =
   // CUT-specific
   | 'sceneDetect'
   | 'toggleViewMode'
-  | 'escapeContext';
+  | 'escapeContext'
+  // MARKER_A4: PULSE integration
+  | 'runPulseAnalysis'
+  | 'runAutoMontageFavorites'
+  // MARKER_EXPORT: Timeline export
+  | 'exportTimeline'
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10 aliases
+  | 'rippleTrimToPlayhead'
+  | 'swapClips'
+  | 'deleteMarker'
+  | 'pasteAttributes'
+  | 'insertEditF9'
+  | 'overwriteEditF10'
+  // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
+  | 'selectClipAtPlayhead'
+  | 'selectAllOnTrack'
+  | 'deselectAll'
+  | 'selectForward'
+  | 'toggleAVSelection'
+  | 'linkUnlinkClips'
+  // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
+  | 'focusSourceAcquire';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -253,6 +274,26 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   sceneDetect:         'global',
   toggleViewMode:      'global',
   escapeContext:       'global',
+  // MARKER_A4: PULSE
+  runPulseAnalysis:    'global',
+  runAutoMontageFavorites: 'global',
+  exportTimeline:         'global',
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  rippleTrimToPlayhead:   'global',
+  swapClips:              'global',
+  deleteMarker:           'global',
+  pasteAttributes:        'global',
+  insertEditF9:           'global',
+  overwriteEditF10:       'global',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead:   'global',
+  selectAllOnTrack:       'global',
+  deselectAll:            'global',
+  selectForward:          'global',
+  toggleAVSelection:      'global',
+  linkUnlinkClips:        'global',
+  // MARKER_SOURCE_ACQUIRE
+  focusSourceAcquire:     'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -366,18 +407,39 @@ export const PREMIERE_PRESET: HotkeyMap = {
   toggleSnap:        's',   // Premiere default: S (N = rollTool)
   makeSubclip:       'Cmd+u',
   // MARKER_GAMMA-P1: New FCP7 UI actions
-  editMarkerDialog:  'Enter',
+  editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
   revealMasterClip:  'Shift+f',
-  collapseExpandTrack: 'Ctrl+ArrowUp',
-  expandTrack:       'Ctrl+ArrowDown',
-  renameClipInline:  'Alt+Enter',
+  collapseExpandTrack: 'Shift+minus',
+  expandTrack:       'Shift+equal',
+  renameClipInline:  'Enter',
   toggleTimelineDisplayMode: 'Cmd+Alt+w',
   publishDialog:     'Cmd+Shift+p',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+g',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  rippleTrimToPlayhead: 'w',
+  swapClips:         'Cmd+Shift+s',
+  deleteMarker:      'Cmd+`',
+  pasteAttributes:   'Alt+v',
+  insertEditF9:      'F9',
+  overwriteEditF10:  'F10',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead: 'F6',
+  selectAllOnTrack:  'Alt+a',
+  deselectAll:       'Cmd+Shift+a',
+  selectForward:     'Alt+Shift+ArrowRight',
+  toggleAVSelection: 't',
+  linkUnlinkClips:   'Alt+l',
+  // MARKER_SOURCE_ACQUIRE
+  focusSourceAcquire:'Cmd+8',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -475,18 +537,39 @@ export const FCP7_PRESET: HotkeyMap = {
   toggleSnap:        'n',
   makeSubclip:       'Cmd+u',
   // MARKER_GAMMA-P1: New FCP7 UI actions
-  editMarkerDialog:  'Enter',
+  editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
   revealMasterClip:  'Shift+f',
-  collapseExpandTrack: 'Ctrl+ArrowUp',
-  expandTrack:       'Ctrl+ArrowDown',
-  renameClipInline:  'Alt+Enter',
+  collapseExpandTrack: 'Shift+minus',
+  expandTrack:       'Shift+equal',
+  renameClipInline:  'Enter',
   toggleTimelineDisplayMode: 'Cmd+Alt+w',
   publishDialog:     'Cmd+Shift+p',
   // CUT-specific
   sceneDetect:       'Cmd+d',
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
+  // MARKER_A4: PULSE integration
+  runPulseAnalysis:  'Cmd+Shift+g',
+  runAutoMontageFavorites: 'Cmd+Shift+m',
+  // MARKER_EXPORT: Export timeline
+  exportTimeline:    'Cmd+e',
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  rippleTrimToPlayhead: 'w',
+  swapClips:         'Cmd+Shift+s',
+  deleteMarker:      'Cmd+`',
+  pasteAttributes:   'Alt+v',
+  insertEditF9:      'F9',
+  overwriteEditF10:  'F10',
+  // MARKER_SEL6: Selection actions
+  selectClipAtPlayhead: 'F6',
+  selectAllOnTrack:  'Alt+a',
+  deselectAll:       'Cmd+Shift+a',
+  selectForward:     'Alt+Shift+ArrowRight',
+  toggleAVSelection: 't',
+  linkUnlinkClips:   'Cmd+l',
+  // MARKER_SOURCE_ACQUIRE
+  focusSourceAcquire:'Cmd+8',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -713,10 +796,38 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'toggleLinkedSelection', label: 'Toggle Linked Selection', group: 'Timeline' },
   { action: 'toggleSnap', label: 'Toggle Snap (N)', group: 'Timeline' },
   { action: 'makeSubclip', label: 'Make Subclip (Cmd+U)', group: 'Editing' },
+  // MARKER_GAMMA-P1: UI actions
+  { action: 'editMarkerDialog', label: 'Edit Marker Dialog', group: 'Markers' },
+  { action: 'timecodeEntry', label: 'Timecode Entry', group: 'Navigation' },
+  { action: 'revealMasterClip', label: 'Reveal Master Clip', group: 'Project' },
+  { action: 'collapseExpandTrack', label: 'Collapse/Expand Track', group: 'Timeline' },
+  { action: 'expandTrack', label: 'Expand Track', group: 'Timeline' },
+  { action: 'renameClipInline', label: 'Rename Clip Inline', group: 'Timeline' },
+  { action: 'toggleTimelineDisplayMode', label: 'Toggle Timeline Display', group: 'Timeline' },
+  { action: 'publishDialog', label: 'Publish Dialog', group: 'CUT' },
   // CUT
   { action: 'sceneDetect', label: 'Detect Scenes', group: 'CUT' },
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
   { action: 'escapeContext', label: 'Cancel / Close', group: 'CUT' },
+  // MARKER_A4: PULSE
+  { action: 'runPulseAnalysis', label: 'Run PULSE Analysis', group: 'CUT' },
+  { action: 'runAutoMontageFavorites', label: 'Auto-Montage Favorites', group: 'CUT' },
+  { action: 'exportTimeline', label: 'Export Timeline', group: 'CUT' },
+  // MARKER_TRIM5
+  { action: 'rippleTrimToPlayhead', label: 'Ripple Trim to Playhead', group: 'Editing' },
+  { action: 'swapClips', label: 'Swap Clips', group: 'Editing' },
+  { action: 'deleteMarker', label: 'Delete Marker', group: 'Markers' },
+  { action: 'pasteAttributes', label: 'Paste Attributes', group: 'Editing' },
+  { action: 'insertEditF9', label: 'Insert Edit (F9)', group: 'Editing' },
+  { action: 'overwriteEditF10', label: 'Overwrite Edit (F10)', group: 'Editing' },
+  // MARKER_SEL6: Selection
+  { action: 'selectClipAtPlayhead', label: 'Select Clip at Playhead', group: 'Selection' },
+  { action: 'selectAllOnTrack', label: 'Select All on Track', group: 'Selection' },
+  { action: 'deselectAll', label: 'Deselect All', group: 'Selection' },
+  { action: 'selectForward', label: 'Select Forward', group: 'Selection' },
+  { action: 'toggleAVSelection', label: 'Toggle A/V Selection', group: 'Selection' },
+  { action: 'linkUnlinkClips', label: 'Link/Unlink Clips', group: 'Selection' },
+  { action: 'focusSourceAcquire', label: 'Focus Source Acquire', group: 'Window' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────
