@@ -2474,16 +2474,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           curve={clip.transition_out.audio_curve ?? 'equal_power'}
                           alignment={clip.transition_out.alignment}
                           onDurationChange={(newDur) => {
-                            const s = useCutEditorStore.getState();
-                            const updated = s.lanes.map((l) => ({
-                              ...l,
-                              clips: l.clips.map((c) =>
-                                c.clip_id === clip.clip_id && c.transition_out
-                                  ? { ...c, transition_out: { ...c.transition_out, duration_sec: newDur } }
-                                  : c
-                              ),
-                            }));
-                            s.setLanes(updated);
+                            void useCutEditorStore.getState().applyTimelineOps([{
+                              op: 'set_transition', clip_id: clip.clip_id,
+                              transition: { ...clip.transition_out!, duration_sec: newDur },
+                            }]);
                           }}
                           onCurveChange={(newCurve) => {
                             void useCutEditorStore.getState().applyTimelineOps([{
