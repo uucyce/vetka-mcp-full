@@ -250,9 +250,21 @@ class TaskBoard:
 
         MARKER_199.LOCK_SAFE: Non-blocking — skips on database lock.
         MARKER_199.PERF: Batched — single transaction instead of per-task commit.
+        MARKER_199.INIT_FAST: SQL fast-path check before any Python iteration.
         Module backfill is optional enrichment, not critical for operation.
         """
         try:
+            # MARKER_199.INIT_FAST: Quick SQL check — if all tasks have modules, skip entirely.
+            # Avoids iterating 450+ tasks in Python on every init (10+ concurrent processes).
+            try:
+                _count = self.db.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE module IS NULL OR module = ''"
+                ).fetchone()[0]
+                if _count == 0:
+                    return  # All tasks already have modules — fast exit
+            except Exception:
+                pass  # If check fails, fall through to Python iteration
+
             # Collect tasks needing module assignment (in-memory only)
             pending_updates = []
             for task in self.tasks.values():
@@ -266,6 +278,12 @@ class TaskBoard:
 
             if not pending_updates:
                 return
+
+            # MARKER_199.INIT_FAST: Cap batch to 50 tasks per init to avoid long locks.
+            # Remaining tasks get backfilled on next init (progressive convergence).
+            if len(pending_updates) > 50:
+                pending_updates = pending_updates[:50]
+                logger.info(f"[TaskBoard] Module backfill capped at 50 (remaining deferred)")
 
             # Batch write: single transaction for all module updates
             with self.db:
