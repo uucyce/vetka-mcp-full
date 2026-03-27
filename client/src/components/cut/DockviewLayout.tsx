@@ -544,6 +544,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
         // MARKER_GAMMA-POPOUT: Popout panel to separate OS window (multi-monitor)
         try {
           void api.addPopoutGroup(panel, {
+            popoutUrl: window.location.href,
             onDidOpen: (e) => {
               // Inject our monochrome theme CSS into the popout window
               const popoutDoc = e.window.document;
