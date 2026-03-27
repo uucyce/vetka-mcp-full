@@ -1150,6 +1150,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                 except Exception:
                     pass  # L2 learnings are best-effort
 
+            # MARKER_200.STM_AUTOSAVE: Persist STM on claim (session milestone)
+            try:
+                from src.memory.stm_buffer import get_stm_buffer
+                _stm = get_stm_buffer()
+                if len(_stm) > 0:
+                    _stm.save_to_disk()
+                    logger.debug(f"[TaskBoard] STM auto-saved on claim: {len(_stm)} entries")
+            except Exception:
+                pass  # STM save is best-effort
+
         return result
 
     # MARKER_181.4: complete action — unified pipeline
@@ -1784,6 +1794,16 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
 
     threading.Thread(target=_bg_passive_report, daemon=True, name="debrief-passive").start()
     result["passive_report"] = True  # optimistic — thread will log if it fails
+
+    # MARKER_200.STM_AUTOSAVE: Persist STM on complete (session milestone)
+    try:
+        from src.memory.stm_buffer import get_stm_buffer
+        _stm = get_stm_buffer()
+        if len(_stm) > 0:
+            _stm.save_to_disk()
+            logger.debug(f"[TaskBoard] STM auto-saved on complete: {len(_stm)} entries")
+    except Exception:
+        pass  # STM save is best-effort
 
 
 def _create_passive_experience_report(
