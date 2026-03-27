@@ -1630,6 +1630,29 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Role context never blocks session init
 
+        # MARKER_200.FEEDBACK_BRIDGE: Ingest Claude Code feedback memories into ENGRAM L1
+        # Scans ~/.claude/projects/.../memory/feedback_*.md → ENGRAM danger entries.
+        # Runs after role detection so feedback is available for role-filtered queries.
+        try:
+            from src.memory.engram_cache import ingest_feedback_memories
+
+            _fb_count = ingest_feedback_memories()
+            if _fb_count > 0:
+                logger.info(
+                    "[SessionInit] FEEDBACK_BRIDGE: Ingested %d new feedback memories",
+                    _fb_count,
+                )
+                # Reload FeedbackGuard so it sees the newly ingested danger entries
+                try:
+                    from src.services.reflex_guard import get_feedback_guard
+                    get_feedback_guard().reload_rules()
+                except Exception:
+                    pass
+        except Exception as _fb_err:
+            logger.debug(
+                "[SessionInit] FEEDBACK_BRIDGE failed (non-fatal): %s", _fb_err
+            )
+
         # MARKER_178.1.4: Build actionable next_steps from context
         try:
             next_steps = []
