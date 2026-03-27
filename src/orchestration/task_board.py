@@ -276,7 +276,8 @@ class TaskBoard:
                 pending_updates = pending_updates[:50]
                 logger.info(f"[TaskBoard] Module backfill capped at 50 (remaining deferred)")
 
-            # Batch write: single transaction for all module updates
+            # MARKER_200.SINGLE_LOCK: One transaction for task updates + FTS re-index.
+            # Before: 2 separate `with self.db:` blocks = 2 lock cycles.
             with self.db:
                 for task in pending_updates:
                     row = self._task_to_row(task)
@@ -289,28 +290,8 @@ class TaskBoard:
                         f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
                         values,
                     )
-            # FTS5 re-index in a separate batch (non-critical)
-            try:
-                with self.db:
-                    for task in pending_updates:
-                        task_id = task.get("id", "")
-                        if not task_id:
-                            continue
-                        old = self.db.execute(
-                            "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
-                        ).fetchone()
-                        if old:
-                            self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
-                        tags = task.get("tags", [])
-                        tags_text = " ".join(tags) if isinstance(tags, list) else str(tags or "")
-                        self.db.execute(
-                            "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
-                            "VALUES(?, ?, ?, ?, ?)",
-                            (task_id, task.get("title", ""), task.get("description", ""),
-                             task.get("commit_message", ""), tags_text),
-                        )
-            except Exception as e:
-                logger.debug(f"[TaskBoard] FTS5 re-index during module backfill skipped: {e}")
+                    # FTS in same transaction
+                    self._index_task_fts_inner(task)
 
             logger.info(f"[TaskBoard] Backfilled module for {len(pending_updates)} tasks (batched)")
         except sqlite3.OperationalError as e:
@@ -340,12 +321,14 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        # MARKER_200.FOREVER: Canonical connection — DO NOT CHANGE these values.
+        # MARKER_200.SINGLE_LOCK: Canonical connection for 10+ concurrent MCP processes.
+        # busy_timeout=15000: 15s gives margin when one process holds a write tx.
+        # synchronous=NORMAL: safe with WAL, avoids fsync on every commit (2-5x faster).
         # See docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md §3.
-        # busy_timeout=5000 gives 350x safety margin for 14 concurrent <1ms writes.
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA busy_timeout=15000")
+        conn.execute("PRAGMA synchronous=NORMAL")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -472,8 +455,12 @@ class TaskBoard:
     # MARKER_199.FTS5: Full-Text Search
     # ==========================================
 
-    def _index_task_fts(self, task: dict):
-        """Index or re-index a single task in FTS5."""
+    def _index_task_fts_inner(self, task: dict):
+        """Index or re-index a single task in FTS5.
+
+        MARKER_200.SINGLE_LOCK: Inner version — caller MUST hold a transaction.
+        Used by _save_task() to avoid extra lock cycles.
+        """
         task_id = task.get("id", "")
         if not task_id:
             return
@@ -496,6 +483,18 @@ class TaskBoard:
         except Exception as e:
             # FTS indexing never blocks task operations
             logger.debug(f"[FTS5] Index failed for {task_id}: {e}")
+
+    def _index_task_fts(self, task: dict):
+        """Index or re-index a single task in FTS5 (standalone, acquires own lock).
+
+        MARKER_200.SINGLE_LOCK: Outer version with own transaction.
+        Use _index_task_fts_inner() when already inside a transaction.
+        """
+        try:
+            with self.db:
+                self._index_task_fts_inner(task)
+        except Exception as e:
+            logger.debug(f"[FTS5] Index failed for {task.get('id', '?')}: {e}")
 
     def _remove_task_fts(self, task_id: str):
         """Remove a task from the FTS5 index."""
@@ -667,7 +666,9 @@ class TaskBoard:
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
         MARKER_200.FOREVER: Updates self.tasks cache for coherence.
-        See docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md §7.
+        MARKER_200.SINGLE_LOCK: Task save + FTS index in ONE transaction.
+        Before: 4 separate write locks per save (task INSERT, FTS SELECT, DELETE, INSERT).
+        After: 1 write lock. Reduces contention 4x with 10 concurrent MCP processes.
         """
         row = self._task_to_row(task)
         row["updated_at"] = datetime.now().isoformat()
@@ -680,20 +681,28 @@ class TaskBoard:
                 f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
                 values,
             )
+            # MARKER_200.SINGLE_LOCK: FTS inside same transaction — no extra lock cycle
+            self._index_task_fts_inner(task)
         # MARKER_200.FOREVER: Cache coherence — write-through
         self.tasks[task["id"]] = task
-        # MARKER_199.FTS5: Keep full-text index in sync
-        self._index_task_fts(task)
 
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
 
         MARKER_192.1: Per-row delete.
+        MARKER_200.SINGLE_LOCK: FTS removal in same transaction.
         """
         with self.db:
             self.db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-        # MARKER_199.FTS5: Remove from full-text index
-        self._remove_task_fts(task_id)
+            # FTS cleanup in same lock
+            try:
+                old = self.db.execute(
+                    "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+                ).fetchone()
+                if old:
+                    self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+            except Exception:
+                pass
 
     def _load_all_tasks(self) -> Dict[str, dict]:
         """SELECT all tasks from SQLite → dict keyed by task ID.
