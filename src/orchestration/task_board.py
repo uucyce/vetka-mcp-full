@@ -905,7 +905,7 @@ class TaskBoard:
         # Keep last 5 attempts to avoid bloat
         history = history[-5:]
 
-        self.update_task(
+        ok = self.update_task(
             task_id,
             status="pending",
             failure_history=history,
@@ -914,6 +914,8 @@ class TaskBoard:
             _history_source="eval_delta",
             _history_reason=f"attempt {attempt} failed, reset to pending for retry",
         )
+        if not ok:
+            return {"success": False, "error": f"update_task blocked for {task_id}"}
 
         logger.info(f"[TaskBoard] Task {task_id} failure #{attempt} recorded, reset to pending")
 
@@ -1692,8 +1694,10 @@ class TaskBoard:
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
         # action=update must not bypass the ownership check that action=claim enforces.
         # If task is claimed or running, only the current owner can change assigned_to/owner_agent.
+        # Exception: system-level resets (status→pending via record_failure) are allowed.
         OWNERSHIP_FIELDS = {"assigned_to", "owner_agent"}
-        if old_status in ("claimed", "running") and OWNERSHIP_FIELDS & set(updates.keys()):
+        is_system_reset = new_status in ("pending", "needs_fix", "cancelled")
+        if old_status in ("claimed", "running") and OWNERSHIP_FIELDS & set(updates.keys()) and not is_system_reset:
             current_owner = task.get("assigned_to") or task.get("owner_agent") or ""
             # Determine caller: explicit _history_agent_name, or the new assigned_to value
             caller = history_agent_name or ""
