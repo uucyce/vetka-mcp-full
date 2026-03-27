@@ -61,6 +61,11 @@ class CutSaveRequest(BaseModel):
     project_id: str = ""
     timeline_state: dict[str, Any] | None = None
     scene_graph: dict[str, Any] | None = None
+    autosave: bool = False
+
+
+class CutAutosaveRecoverRequest(BaseModel):
+    sandbox_root: str
 
 
 # ---------------------------------------------------------------------------
@@ -285,13 +290,23 @@ async def cut_render_batch(req: CutRenderBatchRequest) -> dict[str, Any]:
 
 @render_router.post("/save")
 async def cut_save_project(req: CutSaveRequest) -> dict[str, Any]:
-    """MARKER_W4.3: Flush current project state to disk."""
+    """MARKER_W4.3: Flush current project state to disk.
+    When autosave=True, timeline_state is written to .autosave/ instead of the main file.
+    """
     store = CutProjectStore(req.sandbox_root)
     project = store.load_project()
     if project is None:
         raise HTTPException(status_code=404, detail="Project not found")
 
     saved_at = datetime.now(timezone.utc).isoformat()
+
+    if req.autosave:
+        # MARKER_AUTOSAVE: periodic autosave — only persist timeline_state to .autosave/
+        if req.timeline_state is not None:
+            store.save_autosave_timeline_state(req.timeline_state)
+        return {"success": True, "saved_at": saved_at, "autosave": True,
+                "project_id": str(project.get("project_id", ""))}
+
     project["updated_at"] = saved_at
     if req.project_id:
         project["project_id"] = req.project_id
@@ -303,6 +318,49 @@ async def cut_save_project(req: CutSaveRequest) -> dict[str, Any]:
         store.save_scene_graph(req.scene_graph)
 
     return {"success": True, "saved_at": saved_at, "project_id": str(project.get("project_id", ""))}
+
+
+@render_router.get("/autosave/check")
+async def cut_autosave_check(sandbox_root: str) -> dict[str, Any]:
+    """MARKER_AUTOSAVE: Check if a newer autosave exists vs the main timeline_state.
+    Returns has_recovery=True when .autosave/timeline_state.json is newer than
+    timeline_state.latest.json (or the main file is absent).
+    """
+    store = CutProjectStore(sandbox_root)
+    main_path = store.paths.timeline_state_path
+    autosave_path = store.paths.autosave_timeline_state_path
+
+    if not os.path.exists(autosave_path):
+        return {"has_recovery": False, "autosave_at": None, "saved_at": None}
+
+    autosave_mtime = os.path.getmtime(autosave_path)
+    autosave_at = datetime.fromtimestamp(autosave_mtime, tz=timezone.utc).isoformat()
+
+    if not os.path.exists(main_path):
+        return {"has_recovery": True, "autosave_at": autosave_at, "saved_at": None}
+
+    main_mtime = os.path.getmtime(main_path)
+    saved_at = datetime.fromtimestamp(main_mtime, tz=timezone.utc).isoformat()
+
+    has_recovery = autosave_mtime > main_mtime
+    return {"has_recovery": has_recovery, "autosave_at": autosave_at, "saved_at": saved_at}
+
+
+@render_router.post("/autosave/recover")
+async def cut_autosave_recover(req: CutAutosaveRecoverRequest) -> dict[str, Any]:
+    """MARKER_AUTOSAVE: Promote .autosave/timeline_state.json to timeline_state.latest.json."""
+    import shutil
+    store = CutProjectStore(req.sandbox_root)
+    autosave_path = store.paths.autosave_timeline_state_path
+    main_path = store.paths.timeline_state_path
+
+    if not os.path.exists(autosave_path):
+        raise HTTPException(status_code=404, detail="No autosave found")
+
+    os.makedirs(os.path.dirname(main_path), exist_ok=True)
+    shutil.copy2(autosave_path, main_path)
+    recovered_at = datetime.now(timezone.utc).isoformat()
+    return {"success": True, "recovered_at": recovered_at}
 
 
 # ---------------------------------------------------------------------------
