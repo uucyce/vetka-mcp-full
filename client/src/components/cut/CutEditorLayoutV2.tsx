@@ -88,7 +88,7 @@ interface CutEditorLayoutV2Props {
 
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   // ─── MARKER_W4.3: Autosave + manual save ───
-  const { saveProject } = useCutAutosave();
+  const { saveProject, saveProjectAs } = useCutAutosave();
 
   // ─── MARKER_INSPECTOR_SYNC: Auto-activate Clip tab when a clip is selected ───
   const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
@@ -814,6 +814,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // Project
     saveProject: () => saveProject(),
+    saveProjectAs: () => saveProjectAs(),
     // MARKER_W6.WIRE: Import Media (Cmd+I) — trigger native file picker
     importMedia: () => {
       // Trigger the file input via dispatching a custom event
@@ -1092,7 +1093,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
-  }), [saveProject, threePointInsert, threePointOverwrite]);
+  }), [saveProject, saveProjectAs, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
