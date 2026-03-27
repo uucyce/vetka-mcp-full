@@ -479,6 +479,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
+  const toggleLaneWaveform = useCutEditorStore((state) => state.toggleLaneWaveform); // MARKER_A3.4
   const showThumbnails = useCutEditorStore((state) => state.showThumbnails);
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
@@ -2005,6 +2007,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     <IconMute size={12} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                 </div>
+                {/* MARKER_A3.4: Per-lane waveform toggle (audio lanes only) */}
+                {lane.lane_type.startsWith('audio') && (
+                  <div style={TRACK_BUTTON_ROW}>
+                    <button
+                      data-testid={`cut-lane-waveform-${lane.lane_id}`}
+                      title={waveformHiddenLanes.has(lane.lane_id) ? 'Show waveform' : 'Hide waveform'}
+                      onClick={() => toggleLaneWaveform(lane.lane_id)}
+                      style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: 'pointer' }}
+                    >
+                      {waveformHiddenLanes.has(lane.lane_id)
+                        ? <IconEyeOff size={11} color="#555" />
+                        : <IconEye size={11} color="#888" />
+                      }
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div
@@ -2157,7 +2175,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </div>
                       )}
 
-                      {width > 20 && showWaveforms ? (
+                      {width > 20 && showWaveforms && !waveformHiddenLanes.has(lane.lane_id) ? (
                         <div
                           data-clip="1"
                           style={{

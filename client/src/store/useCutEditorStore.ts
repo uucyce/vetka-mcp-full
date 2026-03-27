@@ -378,6 +378,7 @@ interface CutEditorState {
   showClipNames: boolean;
   showClipBorders: boolean;
   showWaveforms: boolean;
+  waveformHiddenLanes: Set<string>;  // MARKER_A3.4: per-lane waveform visibility
   showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
@@ -532,6 +533,7 @@ interface CutEditorState {
   toggleShowClipNames: () => void;
   toggleShowClipBorders: () => void;
   toggleShowWaveforms: () => void;
+  toggleLaneWaveform: (laneId: string) => void;  // MARKER_A3.4
   toggleShowThroughEdits: () => void;
   toggleShowClipLabels: () => void;
   toggleShowRubberBand: () => void;
@@ -764,6 +766,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipNames: true,
   showClipBorders: true,
   showWaveforms: true,
+  waveformHiddenLanes: new Set<string>(),  // MARKER_A3.4
   showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
@@ -1463,6 +1466,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
   toggleShowClipBorders: () => set((s) => ({ showClipBorders: !s.showClipBorders })),
   toggleShowWaveforms: () => set((s) => ({ showWaveforms: !s.showWaveforms })),
+  // MARKER_A3.4: Per-lane waveform toggle
+  toggleLaneWaveform: (laneId: string) => set((s) => {
+    const next = new Set(s.waveformHiddenLanes);
+    if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
+    return { waveformHiddenLanes: next };
+  }),
   toggleShowThumbnails: () => set((s) => ({ showThumbnails: !s.showThumbnails })),
   toggleShowThroughEdits: () => set((s) => ({ showThroughEdits: !s.showThroughEdits })),
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
