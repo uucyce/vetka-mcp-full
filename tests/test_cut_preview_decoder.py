@@ -330,18 +330,14 @@ class TestBlurEffect:
 
 class TestSharpenEffect:
     def test_sharpen_increases_edges(self):
-        # Use a soft edge (mid-range values) so clamping to [0,1] doesn't
-        # eat the overshoot that sharpening produces
-        h, w = 100, 256
-        soft_edge = np.zeros((h, w, 3), dtype=np.float32)
-        for c in range(w):
-            # Sigmoid-like soft edge centered at col 128, range [0.2, 0.8]
-            soft_edge[:, c, :] = 0.2 + 0.6 / (1 + np.exp(-(c - 128) / 5.0))
-        result = apply_numpy_effects(soft_edge, [
+        # Mid-grey frame with a darker band — sharpen amplifies edges without clip saturation
+        frame = np.full((50, 100, 3), 0.5, dtype=np.float32)
+        frame[:, 40:60, :] = 0.3  # dark band in the middle — two soft edges
+        result = apply_numpy_effects(frame.copy(), [
             {"type": "sharpen", "params": {"amount": 2.0, "size": 5}, "enabled": True}
         ])
-        # Sharpening increases local contrast around the edge
-        orig_diff = np.abs(np.diff(soft_edge[:, :, 0], axis=1)).mean()
+        # Sharpening increases local contrast (diff between adjacent pixels)
+        orig_diff = np.abs(np.diff(frame[:, :, 0], axis=1)).mean()
         sharp_diff = np.abs(np.diff(result[:, :, 0], axis=1)).mean()
         assert sharp_diff > orig_diff
 

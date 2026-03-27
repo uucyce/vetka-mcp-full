@@ -17,8 +17,8 @@ import {
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore'; // MARKER_ARCH_4.1
+import { useDockviewStore } from '../../store/useDockviewStore'; // MARKER_A3.2: marker filter
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
-import { useSelectionStore } from '../../store/useSelectionStore';
 import AudioCrossfadeHandle from './AudioCrossfadeHandle';
 import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
@@ -468,8 +468,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useSelectionStore((state) => state.selectedClipId); // MARKER_ARCH_4.1
   const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_ARCH_4.1: multi-select highlight
-  const selectedClipId = useSelectionStore((state) => state.selectedClipId);
-  const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
   const hoveredClipId = useCutEditorStore((state) => state.hoveredClipId);
   const sandboxRoot = useCutEditorStore((state) => state.sandboxRoot);
   const projectId = useCutEditorStore((state) => state.projectId);
@@ -505,7 +503,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes ?? new Set<string>());
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useSelectionStore((state) => state.setSelectedClip); // MARKER_ARCH_4.1
-  const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
@@ -516,6 +513,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_GAMMA-2: Marker CRUD actions
   const deleteMarker = useCutEditorStore((state) => state.deleteMarker);
+  // MARKER_A3.2: Marker visibility filter from MenuBar toggle
+  const visibleMarkerKinds = useDockviewStore((state) => state.visibleMarkerKinds);
   // MARKER_W6.TOOL-SM: Cursor maps per context
   // Lane background cursor (when hovering empty space)
   // MARKER_W6.HAND-ZOOM: hand shows 'grabbing' during active pan
@@ -1181,8 +1180,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
       // MARKER_TL4: Linked selection — also select synced audio/video on adjacent lane
       // Checks: linked_to field, sync.linked_clip_id, or matching scene_id
-      const state = useCutEditorStore.getState();
-      if (useSelectionStore.getState().linkedSelection) {
       const editorState = useCutEditorStore.getState();
       const selLinked = useSelectionStore.getState().linkedSelection;
       if (selLinked) {
@@ -2571,7 +2568,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           Moves WITH the clip. Shifts on slip (source_in changes).
                           Includes: BPM (audio/visual/script/sync), favorite, negative, comment, cam, insight */}
                       {width > 10 ? markers
-                        .filter((m) => m.media_path === clip.source_path)
+                        .filter((m) => m.media_path === clip.source_path && visibleMarkerKinds.has(m.kind))
                         .map((m) => {
                           const isBpm = BPM_MARKER_KINDS.has(m.kind);
                           if (isBpm && zoom < 30) return null; // hide BPM at low zoom
@@ -2716,7 +2713,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
                 {/* Timeline-level markers — only markers WITHOUT media_path (sequence markers).
                     Clip-bound markers (with media_path) render inside their clip above. */}
-                {markers.filter((m) => !m.media_path).map((marker) => {
+                {markers.filter((m) => !m.media_path && visibleMarkerKinds.has(m.kind)).map((marker) => {
                   const markerX = marker.start_sec * zoom - scrollLeft;
                   const markerWidth = Math.max(2, (marker.end_sec - marker.start_sec) * zoom);
                   if (markerX + markerWidth < 0 || markerX > containerWidth) return null;

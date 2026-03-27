@@ -31,9 +31,9 @@ export default function SaveIndicator() {
   let text = '';
   let color = '#888';
   if (saveStatus === 'saving') { text = 'Saving...'; color = '#ccc'; }
-  else if (saveStatus === 'saved') { text = '\u2713 Saved'; color = '#888'; }
-  else if (saveStatus === 'error') { text = '\u26A0 ' + (saveError || 'Save failed'); color = '#aaa'; }
-  else if (hasUnsavedChanges) { text = '\u25CF Unsaved'; color = '#888'; }
+  else if (saveStatus === 'saved') { text = 'Saved'; color = '#aaa'; }
+  else if (saveStatus === 'error') { text = saveError || 'Save failed'; color = '#777'; }
+  else if (hasUnsavedChanges) { text = 'Unsaved'; color = '#888'; }
 
   if (!text) return null;
 

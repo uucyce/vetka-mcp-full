@@ -511,8 +511,371 @@ def _montage_error(code: str, message: str, *, recoverable: bool = True) -> dict
 # Re-imported above for backward compat.
 
 
-# _build_initial_timeline_state — moved to cut_routes_bootstrap.py (MARKER_B65)
-# _build_initial_scene_graph — moved to cut_routes_workers.py (MARKER_B74)
+def _infer_cut_asset_kind(modality: str, lane_type: str) -> str:
+    if modality in {"video", "audio"}:
+        return modality
+    if lane_type.startswith("video"):
+        return "video"
+    if lane_type.startswith("audio"):
+        return "audio"
+    return "media"
+
+
+def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, store: CutProjectStore | None = None) -> dict[str, Any]:
+    source_path = str(project.get("source_path") or "").strip()
+    scan = quick_scan_cut_source(source_path, limit=5000)
+    source_root = source_path
+    lanes: list[dict[str, Any]] = []
+
+    # MARKER_189.2: Load media_index for real durations (from scan-matrix-async)
+    media_index_files: dict[str, dict[str, Any]] = {}
+    # MARKER_189.4: Load scan_matrix for scene segments + waveforms + thumbnails
+    scan_matrix_items: dict[str, dict[str, Any]] = {}  # keyed by source_path
+    if store is not None:
+        mi = store.load_media_index()
+        if mi and isinstance(mi.get("files"), dict):
+            media_index_files = mi["files"]
+        smr = store.load_scan_matrix_result()
+        if smr and isinstance(smr.get("items"), list):
+            for item in smr["items"]:
+                sp = str(item.get("source_path", ""))
+                if sp:
+                    scan_matrix_items[sp] = item
+
+    video_lane = {"lane_id": "video_main", "lane_type": "video_main", "clips": []}
+    audio_lane = {"lane_id": "audio_sync", "lane_type": "audio_sync", "clips": []}
+    # MARKER_B58: Sync with CUT_VIDEO_EXT / CUT_AUDIO_EXT from cut_project_store
+    video_ext = {".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".mxf", ".r3d", ".braw",
+                 ".mts", ".m2ts", ".dnxhd", ".dnxhr", ".hevc", ".h264", ".h265"}
+    audio_ext = {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".aiff", ".aif"}
+    clip_counter = 0
+    timeline_cursor = 0.0  # running position on timeline
+    global_scene_counter = 0
+    scene_ids_used: list[str] = []
+
+    # MARKER_B56-FIX: Recursive walk (was os.scandir — flat, missed subdirs)
+    _all_media: list[str] = []
+    if os.path.isdir(source_root):
+        for dirpath, _dirs, files in os.walk(source_root):
+            for fname in sorted(files, key=str.lower):
+                ext_check = os.path.splitext(fname)[1].lower()
+                if ext_check in video_ext or ext_check in audio_ext:
+                    _all_media.append(os.path.join(dirpath, fname))
+    elif os.path.isfile(source_root):
+        # Single file passed as source_path
+        ext_check = os.path.splitext(source_root)[1].lower()
+        if ext_check in video_ext or ext_check in audio_ext:
+            _all_media.append(source_root)
+
+    for file_path in _all_media:
+        path = SimpleNamespace(path=file_path, name=os.path.basename(file_path))
+        ext = os.path.splitext(path.name)[1].lower()
+
+        # MARKER_189.2: Resolve real duration from media_index → ffprobe fallback → 5.0
+        mi_entry = media_index_files.get(path.path) or {}
+        full_duration = float(mi_entry.get("duration_sec") or 0)
+        if full_duration <= 0:
+            full_duration = probe_duration(path.path)
+        if full_duration <= 0:
+            full_duration = 5.0  # ultimate fallback
+
+        # MARKER_189.4: Use scanner segments to create per-segment clips
+        sm_item = scan_matrix_items.get(path.path) or {}
+        video_scan = sm_item.get("video_scan") or {}
+        audio_scan = sm_item.get("audio_scan") or {}
+        segments = video_scan.get("segments") or []
+        thumbnail_paths = video_scan.get("thumbnail_paths") or []
+        waveform_bins = audio_scan.get("waveform_bins") or []
+
+        if ext in video_ext and len(segments) > 1:
+            # Multi-segment video: create one clip per detected scene segment
+            for seg_idx, seg in enumerate(segments):
+                clip_counter += 1
+                global_scene_counter += 1
+                seg_start = float(seg.get("start_sec", 0))
+                seg_end = float(seg.get("end_sec", 0))
+                seg_dur = float(seg.get("duration_sec", 0)) or (seg_end - seg_start)
+                if seg_dur <= 0:
+                    continue
+                scene_id = str(seg.get("segment_id", "")) or f"scene_{global_scene_counter:02d}"
+                if scene_id not in scene_ids_used:
+                    scene_ids_used.append(scene_id)
+                thumb = ""
+                if seg_idx < len(thumbnail_paths):
+                    thumb = thumbnail_paths[seg_idx]
+                clip = {
+                    "clip_id": f"clip_{clip_counter:04d}",
+                    "record_id": f"record_{clip_counter:04d}",
+                    "scene_id": scene_id,
+                    "take_id": f"take_{clip_counter:04d}",
+                    "start_sec": round(timeline_cursor, 3),
+                    "duration_sec": round(seg_dur, 3),
+                    "source_path": path.path,
+                    "source_in": round(seg_start, 3),
+                    "source_out": round(seg_end, 3),
+                    "sync": None,
+                    "thumbnail_path": thumb,
+                    "layer_manifest": None,  # MARKER_LAYERFX: populated by POST /layers/import
+                }
+                timeline_cursor += seg_dur
+                video_lane["clips"].append(clip)
+        else:
+            # Single-segment or audio-only: one clip per file
+            clip_counter += 1
+            global_scene_counter += 1
+            scene_id = f"scene_{global_scene_counter:02d}"
+            if scene_id not in scene_ids_used:
+                scene_ids_used.append(scene_id)
+            thumb = thumbnail_paths[0] if thumbnail_paths else ""
+            clip = {
+                "clip_id": f"clip_{clip_counter:04d}",
+                "record_id": f"record_{clip_counter:04d}",
+                "scene_id": scene_id,
+                "take_id": f"take_{clip_counter:04d}",
+                "start_sec": round(timeline_cursor, 3),
+                "duration_sec": round(full_duration, 3),
+                "source_path": path.path,
+                "sync": None,
+                "thumbnail_path": thumb,
+                "layer_manifest": None,  # MARKER_LAYERFX: populated by POST /layers/import
+            }
+            if waveform_bins:
+                clip["waveform_bins"] = waveform_bins
+            timeline_cursor += full_duration
+            if ext in video_ext:
+                video_lane["clips"].append(clip)
+            else:
+                audio_lane["clips"].append(clip)
+
+    if video_lane["clips"]:
+        lanes.append(video_lane)
+    if audio_lane["clips"]:
+        lanes.append(audio_lane)
+
+    # MARKER_B55: Auto-detect FPS from first video clip (like Premiere Pro)
+    detected_fps = 25.0  # default fallback
+    if video_lane["clips"]:
+        first_clip_path = video_lane["clips"][0].get("source_path", "")
+        if first_clip_path:
+            try:
+                probe_result = probe_file(first_clip_path)
+                if probe_result.ok and probe_result.video_streams:
+                    raw_fps = probe_result.video_streams[0].fps
+                    if raw_fps > 0:
+                        detected_fps = round(raw_fps, 3)
+            except Exception:
+                pass  # fallback to 25
+
+    first_scene = scene_ids_used[0] if scene_ids_used else ""
+    return {
+        "schema_version": "cut_timeline_state_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "timeline_id": str(timeline_id or "main"),
+        "revision": 1,
+        "fps": detected_fps,
+        "lanes": lanes,
+        "selection": {
+            "clip_ids": [video_lane["clips"][0]["clip_id"]] if video_lane["clips"] else [],
+            "scene_ids": [first_scene] if first_scene else [],
+        },
+        "view": {
+            "zoom": 1.0,
+            "scroll_sec": 0.0,
+            "active_lane_id": lanes[0]["lane_id"] if lanes else "",
+        },
+        "updated_at": _utc_now_iso(),
+        "stats": scan["stats"],
+        "sync_groups": [],
+    }
+
+
+def _build_initial_scene_graph(
+    project: dict[str, Any], timeline_state: dict[str, Any], graph_id: str,
+    *, store: CutProjectStore | None = None,
+) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    edges: list[dict[str, Any]] = []
+    scenes: dict[str, dict[str, Any]] = {}
+    scene_order: list[str] = []
+    take_node_ids: dict[tuple[str, str], str] = {}
+    take_index_by_scene: dict[str, int] = {}
+    asset_counter = 0
+    take_counter = 0
+
+    for lane in timeline_state.get("lanes", []):
+        lane_id = str(lane.get("lane_id") or "")
+        lane_type = str(lane.get("lane_type") or "")
+        for clip in lane.get("clips", []):
+            scene_id = str(clip.get("scene_id") or "").strip() or "scene_01"
+            take_id = str(clip.get("take_id") or "").strip() or "take_01"
+            record_id = str(clip.get("record_id") or "").strip() or take_id
+            source_path = str(clip.get("source_path") or "")
+            clip_id = str(clip.get("clip_id") or "")
+            duration_sec = float(clip.get("duration_sec") or 0.0)
+            modality = _infer_cut_media_modality(source_path)
+            if scene_id not in scenes:
+                scene_order.append(scene_id)
+                scene_label = scene_id.replace("_", " ").title()
+                scene_node = {
+                    "node_id": scene_id,
+                    "node_type": SCENE_GRAPH_NODE_SCENE,
+                    "label": scene_label,
+                    "record_ref": None,
+                    "metadata": {
+                        "timeline_id": str(timeline_state.get("timeline_id") or "main"),
+                        "timeline_lane": lane_id,
+                        "scene_index": len(scene_order),
+                        "summary": "",
+                        "lane_ids": [lane_id],
+                        "source_paths": [],
+                        "take_count": 0,
+                        "asset_count": 0,
+                        "clip_count": 0,
+                        "duration_sec": 0.0,
+                    },
+                }
+                scenes[scene_id] = scene_node
+                nodes.append(scene_node)
+            take_key = (scene_id, take_id)
+            if take_key not in take_node_ids:
+                take_counter += 1
+                take_index_by_scene[scene_id] = take_index_by_scene.get(scene_id, 0) + 1
+                take_node_id = f"take_node_{take_counter:04d}"
+                take_node_ids[take_key] = take_node_id
+                nodes.append(
+                    {
+                        "node_id": take_node_id,
+                        "node_type": SCENE_GRAPH_NODE_TAKE,
+                        "label": take_id.replace("_", " ").title(),
+                        "record_ref": record_id,
+                        "metadata": {
+                            "scene_id": scene_id,
+                            "take_id": take_id,
+                            "take_index": take_index_by_scene[scene_id],
+                            "lane_id": lane_id,
+                            "lane_type": lane_type,
+                            "clip_id": clip_id,
+                            "source_path": source_path,
+                            "duration_sec": duration_sec,
+                            "modality": modality,
+                        },
+                    }
+                )
+                edges.append(
+                    {
+                        "edge_id": f"edge_contains_{scene_id}_{take_counter:04d}",
+                        "edge_type": SCENE_GRAPH_EDGE_CONTAINS,
+                        "source": scene_id,
+                        "target": take_node_id,
+                        "weight": 1.0,
+                    }
+                )
+                scene_meta = scenes[scene_id]["metadata"]
+                scene_meta["take_count"] = int(scene_meta.get("take_count") or 0) + 1
+            asset_counter += 1
+            asset_node_id = f"asset_{asset_counter:04d}"
+            asset_label = os.path.basename(source_path) or asset_node_id
+            # MARKER_189.4: Enrich asset metadata with thumbnail + waveform refs
+            asset_meta: dict[str, Any] = {
+                        "scene_id": scene_id,
+                        "take_id": take_id,
+                        "clip_id": clip_id,
+                        "source_path": source_path,
+                        "start_sec": float(clip.get("start_sec") or 0.0),
+                        "duration_sec": duration_sec,
+                        "timeline_lane": lane_id,
+                        "lane_type": lane_type,
+                        "asset_kind": _infer_cut_asset_kind(modality, lane_type),
+                        "modality": modality,
+            }
+            if clip.get("thumbnail_path"):
+                asset_meta["thumbnail_path"] = clip["thumbnail_path"]
+            if clip.get("source_in") is not None:
+                asset_meta["source_in"] = clip["source_in"]
+                asset_meta["source_out"] = clip.get("source_out", 0.0)
+            nodes.append(
+                {
+                    "node_id": asset_node_id,
+                    "node_type": SCENE_GRAPH_NODE_ASSET,
+                    "label": asset_label,
+                    "record_ref": record_id,
+                    "metadata": asset_meta,
+                }
+            )
+            edges.append(
+                {
+                    "edge_id": f"edge_references_{asset_counter:04d}",
+                    "edge_type": SCENE_GRAPH_EDGE_REFERENCES,
+                    "source": take_node_ids[take_key],
+                    "target": asset_node_id,
+                    "weight": 1.0,
+                }
+            )
+            scene_meta = scenes[scene_id]["metadata"]
+            scene_meta["asset_count"] = int(scene_meta.get("asset_count") or 0) + 1
+            scene_meta["clip_count"] = int(scene_meta.get("clip_count") or 0) + 1
+            scene_meta["duration_sec"] = round(float(scene_meta.get("duration_sec") or 0.0) + duration_sec, 4)
+            if lane_id not in scene_meta["lane_ids"]:
+                scene_meta["lane_ids"].append(lane_id)
+            if source_path and source_path not in scene_meta["source_paths"]:
+                scene_meta["source_paths"].append(source_path)
+
+    for index in range(len(scene_order) - 1):
+        edges.append(
+            {
+                "edge_id": f"edge_follows_{index + 1:04d}",
+                "edge_type": SCENE_GRAPH_EDGE_FOLLOWS,
+                "source": scene_order[index],
+                "target": scene_order[index + 1],
+                "weight": 1.0,
+            }
+        )
+
+    # MARKER_189.4: Inject scanner SignalEdge[] as semantic_match edges
+    if store is not None:
+        smr = store.load_scan_matrix_result()
+        if smr and isinstance(smr.get("items"), list):
+            scanner_edge_counter = 0
+            for item in smr["items"]:
+                for scan_key in ("video_scan", "audio_scan"):
+                    scan_data = item.get(scan_key) or {}
+                    for edge in scan_data.get("edges") or []:
+                        scanner_edge_counter += 1
+                        edge_type = SCENE_GRAPH_EDGE_SEMANTIC_MATCH
+                        channel = str(edge.get("channel", ""))
+                        if channel == "temporal":
+                            edge_type = SCENE_GRAPH_EDGE_FOLLOWS
+                        edges.append({
+                            "edge_id": f"edge_scanner_{scanner_edge_counter:04d}",
+                            "edge_type": edge_type,
+                            "source": str(edge.get("source", "")),
+                            "target": str(edge.get("target", "")),
+                            "weight": float(edge.get("confidence", 0.5)),
+                            "metadata": {
+                                "channel": channel,
+                                "evidence": edge.get("evidence", []),
+                                "source_type": edge.get("source_type", ""),
+                                "target_type": edge.get("target_type", ""),
+                            },
+                        })
+
+    for scene_id, scene_node in scenes.items():
+        metadata = scene_node["metadata"]
+        take_count = int(metadata.get("take_count") or 0)
+        asset_count = int(metadata.get("asset_count") or 0)
+        duration_sec = float(metadata.get("duration_sec") or 0.0)
+        metadata["summary"] = f"{take_count} takes · {asset_count} assets · {duration_sec:.1f}s"
+        metadata["source_paths"] = sorted(metadata.get("source_paths", []))
+
+    return {
+        "schema_version": "cut_scene_graph_v1",
+        "project_id": str(project.get("project_id") or ""),
+        "graph_id": str(graph_id or "main"),
+        "revision": 1,
+        "nodes": nodes,
+        "edges": edges,
+        "updated_at": _utc_now_iso(),
+    }
 
 
 def _build_scene_graph_view(
@@ -1216,6 +1579,8 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 right_clip["in_point_sec"] = round(in_point + left_dur, 4)
             if "sync" in clip:
                 right_clip["sync"] = dict(clip["sync"])
+            if clip.get("layer_manifest"):
+                right_clip["layer_manifest"] = dict(clip["layer_manifest"])
 
             source_lane.setdefault("clips", []).append(right_clip)
             source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
@@ -1359,6 +1724,68 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             ]
             removed = original_len - len(clip["keyframes"])
             applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "removed": removed})
+            continue
+
+        # MARKER_SWAP: swap_clips — exchange positions of two selected clips
+        if op_type == "swap_clips":
+            clip_a_id = str(op.get("clip_a_id") or op.get("clip_id") or "")
+            clip_b_id = str(op.get("clip_b_id") or "")
+            if not clip_a_id or not clip_b_id:
+                raise ValueError("swap_clips requires clip_a_id and clip_b_id")
+            lane_a, clip_a = _find_clip(state, clip_a_id)
+            lane_b, clip_b = _find_clip(state, clip_b_id)
+            if clip_a is None or clip_b is None:
+                raise ValueError(f"swap_clips: clip(s) not found: {clip_a_id}, {clip_b_id}")
+            # Exchange start_sec positions, preserve durations
+            a_start = float(clip_a.get("start_sec") or 0.0)
+            b_start = float(clip_b.get("start_sec") or 0.0)
+            a_dur = float(clip_a.get("duration_sec") or 0.0)
+            b_dur = float(clip_b.get("duration_sec") or 0.0)
+            # Clip A moves to where B was, B moves to where A was (adjust for duration diff)
+            clip_a["start_sec"] = round(b_start + b_dur - a_dur, 4) if b_start + b_dur > a_start else round(b_start, 4)
+            clip_b["start_sec"] = round(a_start, 4)
+            # Re-sort both lanes
+            if lane_a is not None:
+                lane_a["clips"] = sorted(lane_a["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            if lane_b is not None and lane_b is not lane_a:
+                lane_b["clips"] = sorted(lane_b["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id})
+            continue
+
+        # MARKER_RTRIM: ripple_trim_to_playhead — trim clip boundary to playhead, ripple others
+        if op_type == "ripple_trim_to_playhead":
+            clip_id = str(op.get("clip_id") or "")
+            playhead = float(op.get("playhead") or op.get("time") or 0.0)
+            trim_end = str(op.get("edge", "end"))  # "start" or "end"
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            clip_end = clip_start + clip_dur
+            if trim_end == "end" and clip_start < playhead < clip_end:
+                delta = round(clip_end - playhead, 4)
+                clip["duration_sec"] = round(playhead - clip_start, 4)
+                # Ripple: shift all subsequent clips on this lane left by delta
+                for c in source_lane.get("clips", []):
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c_start >= clip_end - 0.001:
+                        c["start_sec"] = round(c_start - delta, 4)
+            elif trim_end == "start" and clip_start < playhead < clip_end:
+                delta = round(playhead - clip_start, 4)
+                clip["start_sec"] = round(playhead, 4)
+                clip["duration_sec"] = round(clip_end - playhead, 4)
+                if "source_in" in clip:
+                    clip["source_in"] = round(float(clip.get("source_in") or 0.0) + delta, 4)
+                # Ripple: shift all subsequent clips left by delta
+                for c in source_lane.get("clips", []):
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c is not clip and c_start >= clip_start - 0.001 and c_start < clip_end:
+                        pass  # clips within original range stay
+                    elif c is not clip and c_start >= clip_end - 0.001:
+                        c["start_sec"] = round(c_start - delta, 4)
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "playhead": playhead, "edge": trim_end})
             continue
 
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")

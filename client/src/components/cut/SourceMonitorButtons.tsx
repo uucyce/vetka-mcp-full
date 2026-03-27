@@ -56,9 +56,6 @@ function dispatchKey(key: string): void {
 }
 
 export default function SourceMonitorButtons() {
-  const handleMarkClip = useCallback(() => {
-    dispatchKey('x');
-export default function SourceMonitorButtons() {
   const { insertEdit, overwriteEdit } = useThreePointEdit();
 
   // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries

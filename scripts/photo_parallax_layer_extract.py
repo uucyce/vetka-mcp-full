@@ -23,7 +23,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageChops, ImageFilter
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -106,6 +106,184 @@ def bbox_mask(shape: tuple[int, int], bbox: dict, feather_px: int = 12) -> np.nd
     return mask
 
 
+def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None, None]:
+    """Return the best connected component from a boolean mask."""
+    h, w = mask.shape
+    visited = np.zeros((h, w), dtype=bool)
+    best_mask: np.ndarray | None = None
+    best_meta: dict | None = None
+
+    expected_cx = w * 0.45
+    expected_cy = h * 0.62
+
+    for yy in range(h):
+        for xx in range(w):
+            if not mask[yy, xx] or visited[yy, xx]:
+                continue
+            stack = [(yy, xx)]
+            visited[yy, xx] = True
+            points: list[tuple[int, int]] = []
+            while stack:
+                cy, cx = stack.pop()
+                points.append((cy, cx))
+                for ny, nx in ((cy - 1, cx), (cy + 1, cx), (cy, cx - 1), (cy, cx + 1)):
+                    if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not visited[ny, nx]:
+                        visited[ny, nx] = True
+                        stack.append((ny, nx))
+
+            ys = np.array([p[0] for p in points])
+            xs = np.array([p[1] for p in points])
+            area = len(points)
+            x0, y0 = int(xs.min()), int(ys.min())
+            x1, y1 = int(xs.max()), int(ys.max())
+            comp_h = y1 - y0 + 1
+            comp_w = x1 - x0 + 1
+            aspect = comp_h / max(1, comp_w)
+            fill = area / max(1, comp_h * comp_w)
+            cx = (x0 + x1) / 2
+            cy = (y0 + y1) / 2
+
+            score = 0.0
+            score += min(area / 3000, 1.5)
+            score += min(aspect / 3, 1.5)
+            score += 1.2 * (1 - min(abs(cx - expected_cx) / max(1, w * 0.5), 1))
+            score += 1.2 * (1 - min(abs(cy - expected_cy) / max(1, h * 0.5), 1))
+            if fill < 0.08 or fill > 0.9:
+                score -= 2.0
+
+            if best_meta is None or score > best_meta["score"]:
+                comp_mask = np.zeros((h, w), dtype=bool)
+                comp_mask[ys, xs] = True
+                best_mask = comp_mask
+                best_meta = {
+                    "score": float(score),
+                    "area": area,
+                    "bbox": (x0, y0, x1, y1),
+                    "aspect": float(aspect),
+                    "fill": float(fill),
+                }
+
+    return best_mask, best_meta
+
+
+def walker_mask_from_clean_diff(
+    source_img: Image.Image,
+    clean_img: Image.Image,
+    depth: np.ndarray,
+    bbox: dict,
+) -> tuple[np.ndarray | None, dict]:
+    """Build a walker silhouette from source-vs-clean diff inside the search window."""
+    w, h = source_img.size
+    x0 = max(0, int(bbox["x"] * w))
+    y0 = max(0, int(bbox["y"] * h))
+    x1 = min(w, int((bbox["x"] + bbox["width"]) * w))
+    y1 = min(h, int((bbox["y"] + bbox["height"]) * h))
+    if x1 <= x0 or y1 <= y0:
+        return None, {"reason": "empty_bbox"}
+
+    diff = np.array(ImageChops.difference(source_img, clean_img), dtype=np.float32).mean(axis=2)
+    lum = np.array(source_img.convert("L"), dtype=np.float32)
+    win = diff[y0:y1, x0:x1]
+    win_lum = lum[y0:y1, x0:x1]
+    win_depth = depth[y0:y1, x0:x1]
+
+    seed = (
+        (win > np.percentile(win, 92))
+        & (win_lum < np.percentile(win_lum, 55))
+        & (win_depth < np.percentile(win_depth, 45))
+    )
+    seed_img = (
+        Image.fromarray((seed.astype(np.uint8) * 255), "L")
+        .filter(ImageFilter.MaxFilter(3))
+        .filter(ImageFilter.GaussianBlur(1.5))
+    )
+    seed_mask = np.array(seed_img) > 140
+    component, meta = _largest_component(seed_mask)
+    if component is None or meta is None:
+        return None, {"reason": "no_component"}
+
+    area = meta["area"]
+    aspect = meta["aspect"]
+    fill = meta["fill"]
+    if area < 1200 or area > 12000 or aspect < 1.8 or fill < 0.08 or fill > 0.65:
+        return None, {
+            "reason": "component_rejected",
+            "area": area,
+            "aspect": round(aspect, 3),
+            "fill": round(fill, 3),
+            "score": round(meta["score"], 3),
+        }
+
+    comp_img = Image.fromarray((component.astype(np.uint8) * 255), "L")
+    comp_img = comp_img.filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.GaussianBlur(2.0))
+    alpha_local = np.array(comp_img, dtype=np.float32) / 255.0
+
+    out = np.zeros((h, w), dtype=np.float32)
+    out[y0:y1, x0:x1] = alpha_local
+    return out, {
+        "reason": "ok",
+        "area": area,
+        "aspect": round(aspect, 3),
+        "fill": round(fill, 3),
+        "score": round(meta["score"], 3),
+    }
+
+
+def vehicle_mask_from_clean_diff(
+    source_img: Image.Image,
+    clean_img: Image.Image,
+    depth: np.ndarray,
+    subject_alpha: np.ndarray,
+    bbox: dict,
+) -> tuple[np.ndarray | None, dict]:
+    """Refine the main subject mask by intersecting it with a clean-plate diff seed."""
+    w, h = source_img.size
+    x0 = max(0, int(bbox["x"] * w))
+    y0 = max(0, int(bbox["y"] * h))
+    x1 = min(w, int((bbox["x"] + bbox["width"]) * w))
+    y1 = min(h, int((bbox["y"] + bbox["height"]) * h))
+    if x1 <= x0 or y1 <= y0:
+        return None, {"reason": "empty_bbox"}
+
+    diff = np.array(ImageChops.difference(source_img, clean_img), dtype=np.float32).mean(axis=2)
+    win = diff[y0:y1, x0:x1]
+    win_depth = depth[y0:y1, x0:x1]
+    seed = (
+        (win > np.percentile(win, 88))
+        & (win_depth < np.percentile(win_depth, 70))
+    )
+    seed_img = (
+        Image.fromarray((seed.astype(np.uint8) * 255), "L")
+        .filter(ImageFilter.MaxFilter(7))
+        .filter(ImageFilter.GaussianBlur(4.0))
+    )
+    seed_full = np.zeros((h, w), dtype=np.float32)
+    seed_full[y0:y1, x0:x1] = np.array(seed_img, dtype=np.float32) / 255.0
+
+    combined = np.minimum(subject_alpha, np.clip(seed_full * 1.25, 0, 1))
+
+    core = combined[
+        max(0, y0 + int((y1 - y0) * 0.08)):min(h, y0 + int((y1 - y0) * 0.92)),
+        max(0, x0 + int((x1 - x0) * 0.12)):min(w, x0 + int((x1 - x0) * 0.92)),
+    ]
+    if core.size == 0:
+        return None, {"reason": "empty_core"}
+    core_cover = float(np.mean(core > 0.08))
+    total_cover = float(np.mean(combined > 0.08))
+    if core_cover < 0.35 or total_cover < 0.06:
+        return None, {
+            "reason": "coverage_rejected",
+            "coreCoverage": round(core_cover, 4),
+            "totalCoverage": round(total_cover, 4),
+        }
+
+    return combined, {
+        "reason": "ok",
+        "coreCoverage": round(core_cover, 4),
+        "totalCoverage": round(total_cover, 4),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Layer extraction
 # ---------------------------------------------------------------------------
@@ -149,6 +327,12 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
     w, h = source_img.size
     source = np.array(source_img)
     print(f"[load] source: {w}x{h}")
+    clean_no_vehicle_img = None
+    if paths["clean_no_vehicle"].exists():
+        clean_no_vehicle_img = Image.open(paths["clean_no_vehicle"]).convert("RGB").resize((w, h), Image.LANCZOS)
+    clean_no_people_img = None
+    if paths["clean_no_people"].exists():
+        clean_no_people_img = Image.open(paths["clean_no_people"]).convert("RGB").resize((w, h), Image.LANCZOS)
 
     # Load depth
     depth = load_depth_16(paths["depth_16"], (w, h))
@@ -213,13 +397,53 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             alpha = d_mask
 
         # Special handling per role
+        mask_method = "depth_band_only"
+        canonical_ready = False
         if role == "foreground-subject" and paths["subject_mask"].exists():
             # Use bakeoff subject mask as primary signal
             subj_mask = Image.open(paths["subject_mask"]).convert("L").resize((w, h), Image.LANCZOS)
             subj_arr = np.array(subj_mask, dtype=np.float32) / 255.0
             # Combine: subject mask OR depth-based, weighted toward subject
             alpha = np.clip(subj_arr * 0.85 + alpha * 0.35, 0, 1)
-            print(f"  [{pid}] {label}: subject_mask bakeoff + depth [{depth_lo:.4f}, {depth_hi:.4f}]")
+            if clean_no_vehicle_img is not None and bbox:
+                vehicle_alpha, vehicle_meta = vehicle_mask_from_clean_diff(
+                    source_img,
+                    clean_no_vehicle_img,
+                    depth,
+                    alpha,
+                    bbox,
+                )
+                if vehicle_alpha is not None:
+                    alpha = vehicle_alpha
+                    mask_method = "subject_mask_bakeoff+clean_no_vehicle_diff+depth"
+                    canonical_ready = True
+                    print(
+                        f"  [{pid}] {label}: subject_mask + clean_no_vehicle diff "
+                        f"(core={vehicle_meta['coreCoverage']}, total={vehicle_meta['totalCoverage']})"
+                    )
+                else:
+                    mask_method = "subject_mask_bakeoff+depth"
+                    canonical_ready = True
+                    print(f"  [{pid}] {label}: subject_mask fallback ({vehicle_meta.get('reason')})")
+            else:
+                mask_method = "subject_mask_bakeoff+depth"
+                canonical_ready = True
+                print(f"  [{pid}] {label}: subject_mask bakeoff + depth [{depth_lo:.4f}, {depth_hi:.4f}]")
+
+        elif role == "secondary-subject" and clean_no_people_img is not None and bbox:
+            walker_alpha, walker_meta = walker_mask_from_clean_diff(source_img, clean_no_people_img, depth, bbox)
+            if walker_alpha is not None:
+                alpha = np.clip(walker_alpha, 0, 1)
+                mask_method = "clean_no_people_diff+depth"
+                canonical_ready = True
+                print(
+                    f"  [{pid}] {label}: clean_no_people diff silhouette "
+                    f"(area={walker_meta['area']}, aspect={walker_meta['aspect']}, score={walker_meta['score']})"
+                )
+            else:
+                mask_method = "depth_band+bbox"
+                canonical_ready = False
+                print(f"  [{pid}] {label}: walker diff rejected ({walker_meta.get('reason')})")
 
         elif role == "background-far":
             # Background = complement of all foreground alphas
@@ -228,8 +452,12 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
                 alpha = np.clip(1.0 - union * 0.92, 0.08, 1.0)
             else:
                 alpha = np.ones((h, w), dtype=np.float32)
+            mask_method = "complement"
+            canonical_ready = False
             print(f"  [{pid}] {label}: complement alpha (hole-fill candidate)")
         else:
+            mask_method = "depth_band+bbox"
+            canonical_ready = False
             print(f"  [{pid}] {label}: depth band [{depth_lo:.4f}, {depth_hi:.4f}] + bbox, coverage={float(np.mean(alpha)):.4f}")
 
         layer_data = extract_layer(source, depth, alpha, (depth_lo, depth_hi))
@@ -248,12 +476,18 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
         depth_priority = plate.get("depthPriority", 0.5)
 
         # Compute order: 0=back (lowest z), N=front (highest z)
-        order_idx = len(visible_plates) - 1 - sorted(
-            [p.get("z", 0) for p in visible_plates], reverse=True
-        ).index(z)
+        # Use enumerate + plate id to handle duplicate z values with unique order
+        sorted_plates_by_z = sorted(
+            enumerate(visible_plates),
+            key=lambda ip: (-ip[1].get("z", 0), ip[0]),  # descending z, then original index
+        )
+        order_idx = next(
+            (rank for rank, (_, p) in enumerate(sorted_plates_by_z) if p["id"] == pid),
+            0,
+        )
 
         # Compute parallaxStrength from z normalised to [zNear, zFar]
-        z_norm = (z - z_min) / max(1, z_max - z_min)
+        z_norm = (z - z_min) / max(0.001, z_max - z_min)
         parallax_strength = round(0.4 + z_norm * 1.2, 3)
 
         # Canonical layer entry (camelCase per Beta spec)
@@ -264,7 +498,7 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             "order": order_idx,
             "depthPriority": round(depth_priority, 3),
             "z": z,
-            "visible": True,
+            "visible": canonical_ready,
             "rgba": rgba_path.name,
             "mask": mask_path.name,
             "depth": depth_path.name,
@@ -279,16 +513,18 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             "depthBand": [round(depth_lo, 4), round(depth_hi, 4)],
             "distanceHint": "near" if z > 10 else ("mid" if z > -10 else "far"),
             "holeFilled": False,
-            "maskMethod": "subject_mask_bakeoff+depth" if role == "foreground-subject" else (
-                "complement" if role == "background-far" else "depth_band+bbox"
-            ),
+            "maskMethod": mask_method,
+            "canonicalReady": canonical_ready,
         })
 
         # Track non-background alphas for complement computation
         if role != "background-far":
             layer_alphas.append(alpha)
 
-        print(f"  [{pid}] {label}: coverage={coverage:.4f}, z={z}, role={role}")
+        print(
+            f"  [{pid}] {label}: coverage={coverage:.4f}, z={z}, role={role}, "
+            f"canonical_ready={canonical_ready}, mask_method={mask_method}"
+        )
 
     # --- Hole-fill background ---
     bg_layer = next((l for l in layers_out if l["role"] == "background-far"), None)
@@ -363,10 +599,11 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
         },
         "layers": proto_layers,
         "qualityCaveats": [
-            "walker mask is bbox+depth only — needs SAM instance segmentation",
+            "walker silhouette uses clean_no_people diff when available; fallback bbox+depth still needs SAM-quality segmentation",
             "vehicle mask has building geometry spill on left side (subject_mask bakeoff, not pixel-perfect)",
             "hole-fill is LaMa-only, no generative inpaint for complex occlusions",
             "steam/vehicle depth bands overlap ([0.005,0.053] vs [0.005,0.056]) — potential double-compositing",
+            "layers with canonicalReady=false are provisional debug layers, not clean semantic cutouts",
         ],
     }
 
