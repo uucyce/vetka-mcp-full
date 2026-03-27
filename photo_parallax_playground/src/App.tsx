@@ -994,6 +994,7 @@ function buildPlateCompositeMaps(
   proxyMaps: ProxyMaps,
   sourceRaster: SourceRaster | null,
   plateStack: Plate[],
+  blurPx: number = 0,
 ): PlateCompositeMaps {
   const { width, height } = proxyMaps;
   const buildCanvas = () => {
@@ -1133,14 +1134,31 @@ function buildPlateCompositeMaps(
     const rgbaImage = plateRgbaImages.get(plate.id);
     const depthImage = plateDepthImages.get(plate.id);
     if (!ctx || !image || !rgbaImage || !depthImage) continue;
-    ctx.putImageData(image, 0, 0);
-    plateMaskUrls[plate.id] = plateCanvases.get(plate.id)?.toDataURL("image/png") || "";
-    ctx.clearRect(0, 0, width, height);
-    ctx.putImageData(rgbaImage, 0, 0);
-    plateRgbaUrls[plate.id] = plateCanvases.get(plate.id)?.toDataURL("image/png") || "";
-    ctx.clearRect(0, 0, width, height);
-    ctx.putImageData(depthImage, 0, 0);
-    plateDepthUrls[plate.id] = plateCanvases.get(plate.id)?.toDataURL("image/png") || "";
+    const canvas = plateCanvases.get(plate.id);
+    if (!canvas) continue;
+    // MARKER_P3_BLUR: Apply alpha-edge blur to exported plate PNGs
+    // Softens hard depth-boundary edges that appear as cutout artifacts
+    // when plates are parallax-displaced in the renderer.
+    const applyBlur = (imgData: ImageData): string => {
+      ctx.clearRect(0, 0, width, height);
+      ctx.putImageData(imgData, 0, 0);
+      if (blurPx > 0.05) {
+        const tmp = document.createElement("canvas");
+        tmp.width = width;
+        tmp.height = height;
+        const tmpCtx = tmp.getContext("2d");
+        if (tmpCtx) {
+          tmpCtx.filter = `blur(${blurPx}px)`;
+          tmpCtx.drawImage(canvas, 0, 0);
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(tmp, 0, 0);
+        }
+      }
+      return canvas.toDataURL("image/png");
+    };
+    plateMaskUrls[plate.id] = applyBlur(image);
+    plateRgbaUrls[plate.id] = applyBlur(rgbaImage);
+    plateDepthUrls[plate.id] = applyBlur(depthImage);
     plateCoverageOut[plate.id] = Number(((plateCoverage.get(plate.id) || 0) / (width * height)).toFixed(4));
   }
 
@@ -1670,8 +1688,8 @@ function App() {
     [sample, focus, manual, realDepth, hintStrokes, groupBoxes, matteSeeds, matteSettings],
   );
   const plateCompositeMaps = useMemo(
-    () => buildPlateCompositeMaps(proxyMaps, sourceRaster, plateStack),
-    [proxyMaps, sourceRaster, plateStack],
+    () => buildPlateCompositeMaps(proxyMaps, sourceRaster, plateStack, manual.blurPx),
+    [proxyMaps, sourceRaster, plateStack, manual.blurPx],
   );
 
   useEffect(() => {
