@@ -349,11 +349,17 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        # MARKER_199.LOCK_FIX: timeout=30 is Python-level busy wait (seconds).
-        # PRAGMA busy_timeout is SQLite-level (ms). Both must be set — Python's
-        # timeout defaults to 5s which overrides the PRAGMA in some drivers.
-        # With 12+ concurrent MCP processes, 30s gives ample retry window.
-        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
+        # MARKER_199.LOCK_FIX_V2: Autocommit mode + explicit transactions.
+        # Python's default isolation_level="" uses DEFERRED transactions:
+        #   SELECT → SHARED lock → INSERT needs RESERVED upgrade → FAILS if
+        #   another process already has RESERVED. busy_timeout doesn't help
+        #   with lock upgrades, only with initial lock acquisition.
+        # Fix: isolation_level=None = autocommit. Each statement auto-commits.
+        # For multi-statement writes, use explicit BEGIN IMMEDIATE via `with conn:`.
+        conn = sqlite3.connect(
+            str(db_path), timeout=30, check_same_thread=False,
+            isolation_level=None,  # autocommit — no implicit transactions
+        )
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
@@ -676,6 +682,7 @@ class TaskBoard:
         """INSERT OR REPLACE a single task into SQLite.
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
+        MARKER_199.LOCK_FIX_V2: Retry with exponential backoff on lock contention.
         """
         row = self._task_to_row(task)
         row["updated_at"] = datetime.now().isoformat()
@@ -683,13 +690,33 @@ class TaskBoard:
         placeholders = ", ".join("?" for _ in columns)
         col_names = ", ".join(columns)
         values = [row[c] for c in columns]
-        with self.db:
-            self.db.execute(
-                f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
-                values,
-            )
+        self._execute_with_retry(
+            f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
+            values,
+        )
         # MARKER_199.FTS5: Keep full-text index in sync
         self._index_task_fts(task)
+
+    def _execute_with_retry(self, sql: str, params=None, max_retries: int = 5):
+        """MARKER_199.LOCK_FIX_V2: Execute a write SQL with exponential backoff retry.
+
+        Handles 'database is locked' by retrying with 0.1s, 0.2s, 0.4s, 0.8s, 1.6s delays.
+        Total max wait: ~3s. Combined with busy_timeout=30s, this handles both
+        Python-level and SQLite-level contention.
+        """
+        import time as _t
+        for attempt in range(max_retries):
+            try:
+                with self.db:
+                    self.db.execute(sql, params or [])
+                return  # success
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < max_retries - 1:
+                    _delay = 0.1 * (2 ** attempt)  # 0.1, 0.2, 0.4, 0.8, 1.6
+                    logger.debug(f"[TaskBoard] Write retry {attempt+1}/{max_retries} after {_delay:.1f}s: {e}")
+                    _t.sleep(_delay)
+                    continue
+                raise  # re-raise on last attempt or non-lock error
 
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
