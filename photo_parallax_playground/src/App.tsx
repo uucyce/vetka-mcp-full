@@ -1004,6 +1004,8 @@ function buildPlateCompositeMaps(
   };
 
   const renderablePlates = plateStack.filter((plate) => plate.visible && plate.role !== "background-far" && plate.role !== "special-clean");
+  const backgroundFarPlates = plateStack.filter((plate) => plate.visible && plate.role === "background-far");
+  const allExportablePlates = [...renderablePlates, ...backgroundFarPlates];
   const plateCanvases = new Map<string, HTMLCanvasElement>();
   const plateContexts = new Map<string, CanvasRenderingContext2D>();
   const plateImages = new Map<string, ImageData>();
@@ -1011,7 +1013,7 @@ function buildPlateCompositeMaps(
   const plateDepthImages = new Map<string, ImageData>();
   const plateCoverage = new Map<string, number>();
 
-  for (const plate of renderablePlates) {
+  for (const plate of allExportablePlates) {
     const canvas = buildCanvas();
     const ctx = canvas.getContext("2d");
     if (!ctx) continue;
@@ -1079,6 +1081,30 @@ function buildPlateCompositeMaps(
         plateCoverage.set(plate.id, (plateCoverage.get(plate.id) || 0) + alpha);
       }
 
+      // MARKER_P2_BGFAR: Export background-far plates as real plates with complement alpha
+      for (const plate of backgroundFarPlates) {
+        const bgFarAlpha = clamp(1 - unionAlpha * 0.94, 0.06, 1);
+        const image = plateImages.get(plate.id);
+        const rgbaImage = plateRgbaImages.get(plate.id);
+        const depthImage = plateDepthImages.get(plate.id);
+        if (!image || !rgbaImage || !depthImage) continue;
+        const index = (y * width + x) * 4;
+        image.data[index] = 255;
+        image.data[index + 1] = 255;
+        image.data[index + 2] = 255;
+        image.data[index + 3] = Math.round(bgFarAlpha * 255);
+        rgbaImage.data[index] = sourceColor.r;
+        rgbaImage.data[index + 1] = sourceColor.g;
+        rgbaImage.data[index + 2] = sourceColor.b;
+        rgbaImage.data[index + 3] = Math.round(bgFarAlpha * sourceColor.a);
+        const gray = Math.round(remapped * 255);
+        depthImage.data[index] = gray;
+        depthImage.data[index + 1] = gray;
+        depthImage.data[index + 2] = gray;
+        depthImage.data[index + 3] = Math.round(bgFarAlpha * 255);
+        plateCoverage.set(plate.id, (plateCoverage.get(plate.id) || 0) + bgFarAlpha);
+      }
+
       const backgroundAlpha = clamp(1 - unionAlpha * 0.94, 0.06, 1);
       const bgIndex = (y * width + x) * 4;
       backgroundImage.data[bgIndex] = 255;
@@ -1096,7 +1122,7 @@ function buildPlateCompositeMaps(
   const plateRgbaUrls: Record<string, string> = {};
   const plateDepthUrls: Record<string, string> = {};
   const plateCoverageOut: Record<string, number> = {};
-  for (const plate of renderablePlates) {
+  for (const plate of allExportablePlates) {
     const ctx = plateContexts.get(plate.id);
     const image = plateImages.get(plate.id);
     const rgbaImage = plateRgbaImages.get(plate.id);
