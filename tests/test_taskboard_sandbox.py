@@ -427,6 +427,21 @@ class TestOwnershipGuard:
         assert ok is True
         board.close()
 
+    def test_record_failure_bypasses_guard(self, tmp_path):
+        """record_failure() must reset claimed task to pending (system-level bypass)."""
+        board = _board(tmp_path)
+        tid = board.add_task(title="Failure bypass test", priority=3)
+        board.claim_task(tid, "Alpha", "claude_code")
+        assert board.get_task(tid)["status"] == "claimed"
+
+        result = board.record_failure(tid, issues=["test failure"])
+        assert result.get("success") is not False, f"record_failure blocked: {result}"
+
+        task = board.get_task(tid)
+        assert task["status"] == "pending", f"Expected pending, got {task['status']}"
+        assert task.get("failure_history"), "failure_history should be populated"
+        board.close()
+
 
 # ---------------------------------------------------------------------------
 # 6. Connection contract (PRAGMA values)
