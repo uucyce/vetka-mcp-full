@@ -3500,6 +3500,126 @@ async def cut_depth_status(body: CutDepthStatusRequest) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_LAYERFX: Layer manifest import
+# ---------------------------------------------------------------------------
+
+class CutLayerImportRequest(BaseModel):
+    """Import a parallax layer manifest into a clip."""
+    sandbox_root: str
+    project_id: str
+    clip_id: str = Field(..., description="Target clip to attach layers to")
+    manifest_path: str = Field(..., description="Path to layer_space.json or plate_export_manifest.json")
+
+
+@router.post("/layers/import")
+async def cut_layers_import(body: CutLayerImportRequest) -> dict[str, Any]:
+    """
+    MARKER_LAYERFX — Import layer manifest into clip metadata.
+
+    Validates the manifest, stores LayerManifestMeta on clip["layer_manifest"],
+    returns summary with layer count, roles, and camera.
+    Accepts both layer_space.json (canonical) and plate_export_manifest.json (legacy).
+    """
+    from src.services.cut_layer_manifest import (
+        ingest_manifest,
+        LayerManifestMeta,
+    )
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Validate manifest
+    manifest_path = body.manifest_path
+    if not Path(manifest_path).is_absolute():
+        manifest_path = str(Path(body.sandbox_root) / manifest_path)
+
+    if not Path(manifest_path).exists():
+        return {"success": False, "error": "manifest_not_found", "path": manifest_path}
+
+    try:
+        manifest = ingest_manifest(manifest_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return {"success": False, "error": "invalid_manifest", "detail": str(e)}
+
+    # Find target clip in timeline state
+    timeline_state = store.load_timeline_state()
+    if not timeline_state:
+        return {"success": False, "error": "no_timeline"}
+
+    target_clip = None
+    for lane in timeline_state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if str(clip.get("clip_id")) == body.clip_id:
+                target_clip = clip
+                break
+        if target_clip:
+            break
+
+    if target_clip is None:
+        return {"success": False, "error": "clip_not_found", "clip_id": body.clip_id}
+
+    # Store layer manifest metadata on clip
+    meta = LayerManifestMeta.from_manifest(manifest, manifest_path)
+    target_clip["layer_manifest"] = meta.to_dict()
+
+    # If manifest has a global depth map, also set clip depth metadata
+    if manifest.depth_path and Path(manifest.depth_path).exists():
+        target_clip.setdefault("depth", {})
+        target_clip["depth"]["depth_path"] = manifest.depth_path
+        target_clip["depth"]["source"] = "layer_manifest"
+        target_clip["depth"]["polarity"] = "white_near"
+
+    # Save timeline state
+    store.save_timeline_state(timeline_state)
+
+    # Build response with layer summary
+    roles = [l.role for l in manifest.visible_layers]
+    return {
+        "success": True,
+        "clip_id": body.clip_id,
+        "manifest_format": manifest.format,
+        "layer_count": manifest.layer_count,
+        "visible_layers": len(manifest.visible_layers),
+        "roles": roles,
+        "has_foreground": manifest.has_foreground,
+        "has_background": manifest.has_background,
+        "camera": manifest.camera.to_dict(),
+        "sample_id": manifest.sample_id,
+    }
+
+
+class CutLayerStatusRequest(BaseModel):
+    """Check layer manifest status for a clip."""
+    sandbox_root: str
+    project_id: str
+    clip_id: str
+
+
+@router.post("/layers/status")
+async def cut_layers_status(body: CutLayerStatusRequest) -> dict[str, Any]:
+    """Check layer manifest status for a clip."""
+    store = CutProjectStore(body.sandbox_root)
+    timeline_state = store.load_timeline_state()
+    if not timeline_state:
+        return {"success": False, "error": "no_timeline"}
+
+    for lane in timeline_state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if str(clip.get("clip_id")) == body.clip_id:
+                layer_meta = clip.get("layer_manifest", {})
+                return {
+                    "success": True,
+                    "clip_id": body.clip_id,
+                    "has_layers": bool(layer_meta.get("manifest_path")),
+                    "layer_manifest": layer_meta,
+                }
+
+    return {"success": False, "error": "clip_not_found"}
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B41: Render routes moved to cut_routes_render.py
 # CutRenderMasterRequest, _emit_render_progress, _run_master_render_job,
 # cut_render_master, cut_render_presets, CutRenderBatchRequest,
