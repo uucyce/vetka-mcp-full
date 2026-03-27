@@ -17,7 +17,7 @@ fi
 
 source "$VENV/bin/activate"
 python -m pip install --upgrade pip wheel setuptools
-python -m pip install "numpy>=1.26" "pillow>=10.4" "huggingface_hub>=0.34" "transformers>=4.57" "safetensors>=0.6" "torch>=2.6"
+python -m pip install "numpy>=1.26" "pillow>=10.4" "huggingface_hub>=0.34" "transformers>=4.57,<5" "safetensors>=0.6" "torch>=2.6"
 
 echo "MARKER_180.PARALLAX.DEPTH.VENV=$VENV"
 python - <<'PY'
