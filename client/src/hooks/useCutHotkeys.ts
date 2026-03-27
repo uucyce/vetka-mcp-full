@@ -363,7 +363,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusEffects:      'Cmd+5',
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
-  toggleSnap:        'n',
+  toggleSnap:        's',   // Premiere default: S (N = rollTool)
   makeSubclip:       'Cmd+u',
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Enter',
