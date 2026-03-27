@@ -81,7 +81,8 @@ class SemanticLayer:
     rgba_path: str = ""              # RGBA PNG with alpha isolation
     mask_path: str = ""              # Greyscale mask PNG
     depth_path: str = ""             # Per-layer depth map (optional)
-    clean_path: str = ""             # Clean plate variant (optional)
+    clean_path: str = ""             # Clean plate file path (from files.clean)
+    clean_variant: str = ""          # Clean variant name (e.g. "no-vehicle") — semantic label
     # Layer properties
     coverage: float = 0.0           # Frame coverage fraction (0-1)
     parallax_strength: float = 1.0  # Motion amplitude multiplier
@@ -111,7 +112,8 @@ class SemanticLayer:
             rgba_path=str(d.get("rgba_path") or d.get("rgba", "")),
             mask_path=str(d.get("mask_path") or d.get("mask", "")),
             depth_path=str(d.get("depth_path") or d.get("depth", "")),
-            clean_path=str(d.get("clean_path") or d.get("clean_variant", "")),
+            clean_path=str(d.get("clean_path") or d.get("clean", "")),
+            clean_variant=str(d.get("clean_variant") or d.get("cleanVariant", "") or ""),
             coverage=float(raw_coverage),
             parallax_strength=float(d.get("parallax_strength") or d.get("parallaxStrength", 1.0)),
             motion_damping=float(d.get("motion_damping") or d.get("motionDamping", 1.0)),
@@ -287,7 +289,7 @@ def ingest_plate_export(manifest_path: str | Path, layout_path: str | Path | Non
         flat["rgba"] = str(files.get("rgba", ""))
         flat["mask"] = str(files.get("mask", ""))
         flat["depth"] = str(files.get("depth", ""))
-        flat["clean_variant"] = str(files.get("clean", ""))
+        flat["clean"] = str(files.get("clean", ""))  # file path → clean_path
 
         layer = SemanticLayer.from_dict(flat)
         # Resolve relative asset paths
@@ -297,6 +299,8 @@ def ingest_plate_export(manifest_path: str | Path, layout_path: str | Path | Non
             layer.mask_path = str(base_dir / layer.mask_path) if layer.mask_path else ""
         if layer.depth_path and not Path(layer.depth_path).is_absolute():
             layer.depth_path = str(base_dir / layer.depth_path) if layer.depth_path else ""
+        if layer.clean_path and not Path(layer.clean_path).is_absolute():
+            layer.clean_path = str(base_dir / layer.clean_path) if layer.clean_path else ""
         # Use plate id as label fallback
         if not layer.label:
             layer.label = layer.layer_id
