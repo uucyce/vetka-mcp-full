@@ -166,12 +166,183 @@ def decode_frame_ffmpeg(
         return None
 
 
+# ---------------------------------------------------------------------------
+# MARKER_DECODER_POOL — Persistent FFmpeg decoder pool
+# ---------------------------------------------------------------------------
+
+import threading
+
+
+class _DecoderEntry:
+    """A cached decoder state for one source file."""
+    __slots__ = ("source_path", "width", "height", "last_used")
+
+    def __init__(self, source_path: str, width: int, height: int):
+        self.source_path = source_path
+        self.width = width
+        self.height = height
+        self.last_used: float = time_module.monotonic()
+
+    def touch(self) -> None:
+        self.last_used = time_module.monotonic()
+
+
+class FFmpegDecoderPool:
+    """
+    Pool of cached FFmpeg decoder state for fast frame extraction.
+
+    Key optimizations over one-shot decode_frame_ffmpeg:
+    1. Caches ffprobe dimensions per file (avoids ~40ms probe per call)
+    2. LRU eviction at max_size (default 4 files)
+    3. Idle timeout reaping (default 30s)
+
+    FFmpeg subprocesses are still one-shot per frame because FFmpeg can't
+    re-seek on a pipe. The real latency win is dimension caching — ffprobe
+    is often 30-50% of total decode time.
+
+    Thread-safe via lock.
+    """
+
+    def __init__(self, max_size: int = 4, idle_timeout_sec: float = 30.0):
+        self._max_size = max_size
+        self._idle_timeout = idle_timeout_sec
+        self._entries: dict[str, _DecoderEntry] = {}
+        self._lock = threading.Lock()
+
+    def decode(
+        self,
+        source_path: str,
+        time_sec: float,
+        proxy_height: int = 540,
+    ) -> np.ndarray | None:
+        """Decode a frame using cached dimensions. Returns uint8 RGB or None."""
+        try:
+            entry = self._get_or_create(source_path)
+            if entry is None:
+                return None
+
+            pw, ph = _compute_proxy_dims(entry.width, entry.height, proxy_height)
+
+            cmd = [
+                "ffmpeg", "-v", "error",
+                "-ss", str(max(0.0, time_sec)),
+                "-i", str(source_path),
+                "-vframes", "1",
+                "-vf", f"scale={pw}:{ph}",
+                "-f", "rawvideo",
+                "-pix_fmt", "rgb24",
+                "pipe:1",
+            ]
+            result = subprocess.run(cmd, capture_output=True, timeout=10)
+            if result.returncode != 0 or len(result.stdout) == 0:
+                return None
+
+            expected = pw * ph * 3
+            raw = result.stdout[:expected]
+            if len(raw) < expected:
+                return None
+
+            entry.touch()
+            return np.frombuffer(raw, dtype=np.uint8).reshape(ph, pw, 3).copy()
+        except Exception as e:
+            logger.debug("DecoderPool decode failed: %s", e)
+            return None
+
+    def _get_or_create(self, source_path: str) -> _DecoderEntry | None:
+        """Get cached entry or probe and create one."""
+        with self._lock:
+            # Reap expired entries
+            self._reap_expired()
+
+            entry = self._entries.get(source_path)
+            if entry is not None:
+                return entry
+
+            # Evict LRU if at capacity
+            if len(self._entries) >= self._max_size:
+                oldest_key = min(self._entries, key=lambda k: self._entries[k].last_used)
+                del self._entries[oldest_key]
+
+        # Probe outside lock (I/O)
+        dims = _probe_dimensions(source_path)
+        if dims is None:
+            return None
+
+        entry = _DecoderEntry(source_path, dims[0], dims[1])
+        with self._lock:
+            self._entries[source_path] = entry
+        return entry
+
+    def _reap_expired(self) -> None:
+        """Remove entries idle longer than timeout. Called under lock."""
+        now = time_module.monotonic()
+        expired = [
+            k for k, e in self._entries.items()
+            if now - e.last_used > self._idle_timeout
+        ]
+        for k in expired:
+            del self._entries[k]
+
+    @property
+    def size(self) -> int:
+        with self._lock:
+            return len(self._entries)
+
+    @property
+    def cached_files(self) -> list[str]:
+        with self._lock:
+            return list(self._entries.keys())
+
+    def evict(self, source_path: str) -> bool:
+        """Manually evict a file from the cache."""
+        with self._lock:
+            return self._entries.pop(source_path, None) is not None
+
+    def clear(self) -> None:
+        """Clear all cached entries."""
+        with self._lock:
+            self._entries.clear()
+
+    def stats(self) -> dict[str, Any]:
+        """Return pool statistics."""
+        with self._lock:
+            now = time_module.monotonic()
+            return {
+                "size": len(self._entries),
+                "max_size": self._max_size,
+                "idle_timeout_sec": self._idle_timeout,
+                "entries": [
+                    {
+                        "source_path": e.source_path,
+                        "dimensions": f"{e.width}x{e.height}",
+                        "idle_sec": round(now - e.last_used, 1),
+                    }
+                    for e in self._entries.values()
+                ],
+            }
+
+
+# Singleton
+_decoder_pool: FFmpegDecoderPool | None = None
+_pool_lock = threading.Lock()
+
+
+def get_decoder_pool(max_size: int = 4, idle_timeout_sec: float = 30.0) -> FFmpegDecoderPool:
+    """Get or create the singleton decoder pool."""
+    global _decoder_pool
+    if _decoder_pool is None:
+        with _pool_lock:
+            if _decoder_pool is None:
+                _decoder_pool = FFmpegDecoderPool(max_size, idle_timeout_sec)
+    return _decoder_pool
+
+
 def decode_frame(
     source_path: str,
     time_sec: float = 0.0,
     proxy_height: int = 540,
 ) -> np.ndarray | None:
-    """Decode a single preview frame. Tries PyAV first, falls back to FFmpeg."""
+    """Decode a single preview frame. Tries PyAV first, falls back to FFmpeg pool."""
     if not Path(source_path).exists():
         return None
 
@@ -181,7 +352,13 @@ def decode_frame(
         if frame is not None:
             return frame
 
-    # Fallback to FFmpeg subprocess
+    # Try decoder pool (persistent processes, cached dimensions)
+    pool = get_decoder_pool()
+    frame = pool.decode(source_path, time_sec, proxy_height)
+    if frame is not None:
+        return frame
+
+    # Final fallback: one-shot FFmpeg subprocess
     return decode_frame_ffmpeg(source_path, time_sec, proxy_height)
 
 
