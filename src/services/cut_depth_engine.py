@@ -313,13 +313,11 @@ def build_parallax_filter(
             f"gblur=sigma=0.8[{mask_label}]"
         )
 
-        # Apply mask to source alpha
+        # Apply depth mask as alpha channel on source band
         masked_label = f"masked_{band_name}"
         lines.append(
-            f"[{sl}]format=rgba,alphaextract[{sl}_alpha];"
-            f"[{sl}_alpha][{mask_label}]blend=all_mode=multiply[{sl}_masked_alpha];"
             f"[{sl}]format=rgba[{sl}_rgba];"
-            f"[{sl}_rgba][{sl}_masked_alpha]alphamerge[{masked_label}]"
+            f"[{sl}_rgba][{mask_label}]alphamerge[{masked_label}]"
         )
 
         # Compute motion expressions
@@ -327,18 +325,18 @@ def build_parallax_filter(
         y_motion = build_band_motion_expr(camera, source_width, center_byte, "y", motion_scale)
         zoom_expr = build_band_zoom_expr(camera, motion_scale, zoom_scale)
 
-        # Scale with zoom
+        # Scale with zoom (eval=frame needed for t-dependent expressions)
         zoomed_label = f"zoomed_{band_name}"
         lines.append(
-            f"[{masked_label}]scale='iw*{zoom_expr}':'ih*{zoom_expr}':flags=lanczos[{zoomed_label}]"
+            f"[{masked_label}]scale='iw*{zoom_expr}':'ih*{zoom_expr}':flags=lanczos:eval=frame[{zoomed_label}]"
         )
 
-        # Overlay with motion
+        # Overlay with motion (eval=frame for t-dependent x/y)
         composite_label = f"comp_{band_name}"
         cx = f"(W-w)/2+{x_motion}"
         cy = f"(H-h)/2+{y_motion}"
         lines.append(
-            f"[{prev_composite}][{zoomed_label}]overlay=x='{cx}':y='{cy}':shortest=1[{composite_label}]"
+            f"[{prev_composite}][{zoomed_label}]overlay=x='{cx}':y='{cy}':shortest=1:eval=frame[{composite_label}]"
         )
         prev_composite = composite_label
 

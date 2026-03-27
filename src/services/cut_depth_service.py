@@ -125,9 +125,12 @@ def generate_depth_ffmpeg_luma(
 
     try:
         # Extract single frame, convert to greyscale (luma), output as PNG
-        cmd = [
-            "ffmpeg", "-v", "error",
-            "-ss", str(max(0.0, frame_time)),
+        # Skip -ss for images (causes silent failure)
+        is_image = Path(source_path).suffix.lower() in (".jpg", ".jpeg", ".png", ".tiff", ".tif", ".bmp", ".webp")
+        cmd = ["ffmpeg", "-v", "error"]
+        if not is_image and frame_time > 0:
+            cmd += ["-ss", str(frame_time)]
+        cmd += [
             "-i", str(source_path),
             "-vframes", "1",
             "-vf", "format=gray",
