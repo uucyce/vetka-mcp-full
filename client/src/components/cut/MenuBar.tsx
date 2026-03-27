@@ -217,6 +217,25 @@ export default function MenuBar() {
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
+  // MARKER_GAMMA-MENU-WIRE: Set transition alignment on selected clip
+  const setTransitionAlignment = (alignment: 'center' | 'start' | 'end') => {
+    const s = store.getState();
+    const selectedClipId = useSelectionStore.getState().selectedClipId;
+    if (!selectedClipId) return;
+    // Find existing transition on selected clip
+    for (const lane of s.lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+      if (clip?.transition) {
+        void s.applyTimelineOps([{
+          op: 'set_transition',
+          clip_id: selectedClipId,
+          transition: { ...clip.transition, alignment },
+        }]);
+        return;
+      }
+    }
+  };
+
   // ─── Menu definitions ────────────────────────────────────────────
 
   const menus: MenuDef[] = [
@@ -563,7 +582,9 @@ export default function MenuBar() {
         }},
         { separator: true },
         { label: 'Speed/Duration...', shortcut: '⌘J', action: () => store.getState().setShowSpeedControl(true) },
-        { label: 'Make Subclip', shortcut: '⌘U', disabled: true },
+        { label: 'Make Subclip', shortcut: '⌘U', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'u', metaKey: true }));
+        }},
         { label: 'Freeze Frame', shortcut: '⇧N', disabled: true },
         { label: 'Scale to Sequence', action: () => {
           // Scale selected clip resolution to match sequence resolution
@@ -643,9 +664,9 @@ export default function MenuBar() {
         { label: 'Add Video Transition', shortcut: '⌘T', action: () => store.getState().addDefaultTransition() },
         { label: 'Add Audio Transition', shortcut: '⌘⇧T', action: () => store.getState().addDefaultTransition() },
         { label: 'Transition Alignment', submenu: [
-          { label: 'Center on Edit', disabled: true },
-          { label: 'Start on Edit', disabled: true },
-          { label: 'End on Edit', disabled: true },
+          { label: 'Center on Edit', action: () => setTransitionAlignment('center') },
+          { label: 'Start on Edit', action: () => setTransitionAlignment('start') },
+          { label: 'End on Edit', action: () => setTransitionAlignment('end') },
         ]},
         { separator: true },
         { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: 'N', action: () => store.getState().toggleSnap() },
