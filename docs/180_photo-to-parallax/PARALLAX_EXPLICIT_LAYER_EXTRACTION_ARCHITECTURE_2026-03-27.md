@@ -4,6 +4,24 @@ Date: `2026-03-27`
 Owner: `Codex / Commander`
 Reference: `DaVinci Resolve Depth Map` as the mental model for depth-assisted isolation, but the output target is `explicit scene layers`, not a single graded depth matte.
 
+## Canonical Contract Note
+
+This document is the architecture pivot and product rationale.
+
+It is **not** the canonical wire-format spec.
+
+The canonical manifest contract is now:
+
+- `docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_LAYERFX_MANIFEST_CONTRACT_2026-03-27.md`
+
+Source-of-truth rules:
+
+- `layer_space.json` is canonical
+- `contract_version = "1.0.0"`
+- JSON/TS on disk uses `camelCase`
+- Python normalizes to `snake_case` on ingest
+- `plate_export_manifest.json` remains a legacy bridge only
+
 ## Executive Summary
 
 `hover-politsia` confirmed the current limit of the proxy-plate path:
@@ -115,32 +133,50 @@ Acceptable first strategies:
 
 The renderer and CUT integration should stop reading ad hoc proxy assumptions and read one explicit contract.
 
-Proposed manifest shape:
+Architecture-level example only:
 
 ```json
 {
-  "contract_version": "2.0.0",
-  "sample_id": "hover-politsia",
-  "depth_source": {
-    "kind": "real_depth_raster",
-    "polarity": "white_near_black_far"
+  "contract_version": "1.0.0",
+  "sampleId": "hover-politsia",
+  "source": {
+    "path": "/abs/path/source.jpg",
+    "width": 1920,
+    "height": 1080
   },
   "layers": [
     {
-      "id": "layer_01_vehicle",
-      "role": "foreground_subject",
-      "semantic_label": "vehicle",
-      "z": 26,
-      "depth_band": [0.74, 1.0],
-      "distance_hint": "near",
-      "rgba": "layer_01_vehicle_rgba.png",
-      "alpha": "layer_01_vehicle_alpha.png",
-      "depth": "layer_01_vehicle_depth.png",
-      "hole_filled": false
+      "id": "fg_01",
+      "role": "foreground-subject",
+      "label": "Vehicle",
+      "order": 2,
+      "depthPriority": 0.78,
+      "z": 0.5,
+      "visible": true,
+      "rgba": "fg_01_rgba.png",
+      "mask": "fg_01_mask.png",
+      "depth": "fg_01_depth.png",
+      "coverage": 0.3,
+      "parallaxStrength": 1.3,
+      "motionDamping": 1.0
     }
-  ]
+  ],
+  "space": {
+    "focalLengthMm": 50,
+    "filmWidthMm": 36,
+    "zNear": 0.72,
+    "zFar": 1.85,
+    "motionType": "orbit",
+    "durationSec": 4.0,
+    "travelXPct": 3.0,
+    "travelYPct": 0.0,
+    "zoom": 1.0,
+    "overscanPct": 20.0
+  }
 }
 ```
+
+For exact field semantics, normalization rules, and clip attachment model, use the canonical Beta spec above, not this architecture document.
 
 ### 4. Camera Render Stage
 

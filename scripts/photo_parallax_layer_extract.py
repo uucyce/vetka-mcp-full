@@ -7,7 +7,7 @@ Extracts semantic scene layers from:
   - plate stack metadata (z-values, bboxes, roles)
   - LaMa/clean plate for hole-filled background
 
-Outputs an explicit layer pack with manifest v2.0.0.
+Outputs canonical layer_space.json (Beta spec v1.0.0) + prototype.json sidecar.
 
 Usage:
     python3 scripts/photo_parallax_layer_extract.py --sample hover-politsia
@@ -161,9 +161,16 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
         plates = stack["plates"]
     print(f"[load] plate_stack: {len(plates)} plates")
 
+    # Load camera params from plate_layout.json for space{} block
+    layout = json.loads(paths["plate_layout"].read_text()) if paths["plate_layout"].exists() else {}
+    camera = layout.get("camera", {})
+
     # Build layer definitions from plate stack
     visible_plates = [p for p in plates if p.get("visible", True)]
+    z_values = [p.get("z", 0) for p in visible_plates]
+    z_min, z_max = min(z_values), max(z_values)
     layers_out = []
+    proto_layers = []
     layer_alphas = []
 
     for plate in sorted(visible_plates, key=lambda p: -p.get("z", 0)):
@@ -227,30 +234,54 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
 
         layer_data = extract_layer(source, depth, alpha, (depth_lo, depth_hi))
 
-        # Save layer files
+        # Save layer files (canonical: mask not alpha)
         layer_prefix = f"layer_{pid}_{label.replace(' ', '_').lower()}"
         rgba_path = outdir / f"{layer_prefix}_rgba.png"
-        alpha_path = outdir / f"{layer_prefix}_alpha.png"
+        mask_path = outdir / f"{layer_prefix}_mask.png"
         depth_path = outdir / f"{layer_prefix}_depth.png"
 
         Image.fromarray(layer_data["rgba"]).save(rgba_path)
-        Image.fromarray(layer_data["alpha"], "L").save(alpha_path)
+        Image.fromarray(layer_data["alpha"], "L").save(mask_path)
         Image.fromarray(layer_data["depth"]).save(depth_path)
 
         coverage = float(np.mean(alpha))
+        depth_priority = plate.get("depthPriority", 0.5)
 
+        # Compute order: 0=back (lowest z), N=front (highest z)
+        order_idx = len(visible_plates) - 1 - sorted(
+            [p.get("z", 0) for p in visible_plates], reverse=True
+        ).index(z)
+
+        # Compute parallaxStrength from z normalised to [zNear, zFar]
+        z_norm = (z - z_min) / max(1, z_max - z_min)
+        parallax_strength = round(0.4 + z_norm * 1.2, 3)
+
+        # Canonical layer entry (camelCase per Beta spec)
         layers_out.append({
             "id": layer_prefix,
             "role": role,
-            "semantic_label": label,
+            "label": label,
+            "order": order_idx,
+            "depthPriority": round(depth_priority, 3),
             "z": z,
-            "depth_band": [round(depth_lo, 3), round(depth_hi, 3)],
-            "distance_hint": "near" if z > 10 else ("mid" if z > -10 else "far"),
+            "visible": True,
             "rgba": rgba_path.name,
-            "alpha": alpha_path.name,
+            "mask": mask_path.name,
             "depth": depth_path.name,
-            "hole_filled": False,
             "coverage": round(coverage, 4),
+            "parallaxStrength": parallax_strength,
+            "motionDamping": 1.0,
+        })
+
+        # Prototype sidecar data
+        proto_layers.append({
+            "id": layer_prefix,
+            "depthBand": [round(depth_lo, 4), round(depth_hi, 4)],
+            "distanceHint": "near" if z > 10 else ("mid" if z > -10 else "far"),
+            "holeFilled": False,
+            "maskMethod": "subject_mask_bakeoff+depth" if role == "foreground-subject" else (
+                "complement" if role == "background-far" else "depth_band+bbox"
+            ),
         })
 
         # Track non-background alphas for complement computation
@@ -261,59 +292,94 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
 
     # --- Hole-fill background ---
     bg_layer = next((l for l in layers_out if l["role"] == "background-far"), None)
+    bg_proto = next((p for p in proto_layers if p["id"] == (bg_layer or {}).get("id")), None)
+    holefill_done = False
     if bg_layer and paths["lama_clean"].exists():
         print("[hole-fill] Using LaMa clean plate for background")
         lama = Image.open(paths["lama_clean"]).convert("RGB").resize((w, h), Image.LANCZOS)
         lama_arr = np.array(lama)
 
-        # Load the background alpha we computed
-        bg_alpha_path = outdir / bg_layer["alpha"]
-        bg_alpha = np.array(Image.open(bg_alpha_path), dtype=np.float32) / 255.0
+        bg_mask_path = outdir / bg_layer["mask"]
+        bg_alpha = np.array(Image.open(bg_mask_path), dtype=np.float32) / 255.0
 
-        # Build hole-filled RGBA: LaMa clean plate with background alpha
         bg_rgba = np.zeros((h, w, 4), dtype=np.uint8)
         bg_rgba[:, :, :3] = lama_arr
         bg_rgba[:, :, 3] = (bg_alpha * 255).astype(np.uint8)
 
         holefill_path = outdir / f"{bg_layer['id']}_holefill_rgba.png"
         Image.fromarray(bg_rgba).save(holefill_path)
-        bg_layer["hole_filled"] = True
-        bg_layer["holefill_rgba"] = holefill_path.name
+        holefill_done = True
+        if bg_proto:
+            bg_proto["holeFilled"] = True
+            bg_proto["holefillRgba"] = holefill_path.name
         print(f"  background hole-fill saved: {holefill_path.name}")
     elif bg_layer:
         print("[hole-fill] SKIP: no LaMa clean plate available")
 
-    # --- Write manifest ---
-    manifest = {
-        "contract_version": "2.0.0",
-        "sample_id": sample_id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+    # --- Write canonical layer_space.json (Beta spec v1.0.0) ---
+    canonical = {
+        "contract_version": "1.0.0",
+        "sampleId": sample_id,
         "source": {
             "path": str(paths["source"]),
             "width": w,
             "height": h,
         },
-        "depth_source": {
-            "kind": "real_depth_raster",
-            "model": "depth-pro",
-            "polarity": "white_near_black_far",
-            "path": str(paths["depth_16"]),
-        },
         "layers": layers_out,
-        "hole_fill": {
-            "method": "lama_inpaint" if (bg_layer and bg_layer.get("hole_filled")) else "none",
-            "source": str(paths["lama_clean"]) if paths["lama_clean"].exists() else None,
+        "space": {
+            "focalLengthMm": camera.get("focalLengthMm", 50),
+            "filmWidthMm": camera.get("filmWidthMm", 36),
+            "zNear": camera.get("zNear", 0.72),
+            "zFar": camera.get("zFar", 1.85),
+            "motionType": camera.get("motionType", "orbit"),
+            "durationSec": camera.get("durationSec", 4.0),
+            "travelXPct": camera.get("travelXPct", 3.0),
+            "travelYPct": camera.get("travelYPct", 0.0),
+            "zoom": camera.get("zoom", 1.0),
+            "overscanPct": camera.get("overscanPct", 20.0),
+        },
+        "provenance": {
+            "depth_backend": "depth-pro",
+            "grouping_backend": "qwen-vl",
         },
     }
 
-    manifest_path = outdir / "layer_manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2))
-    print(f"\n[done] Layer pack: {outdir}")
-    print(f"  manifest: {manifest_path}")
-    print(f"  layers: {len(layers_out)}")
-    print(f"  hole_filled: {bg_layer and bg_layer.get('hole_filled', False)}")
+    canonical_path = outdir / "layer_space.json"
+    canonical_path.write_text(json.dumps(canonical, indent=2))
 
-    return manifest
+    # --- Write prototype.json sidecar (non-canonical metadata) ---
+    prototype = {
+        "_note": "Prototype-only sidecar. NOT part of canonical layer_space.json spec.",
+        "createdAt": datetime.now(timezone.utc).isoformat(),
+        "depthSource": {
+            "kind": "real_depth_raster",
+            "model": "depth-pro",
+            "polarity": "low_near_high_far_in_16bit",
+            "path": str(paths["depth_16"]),
+        },
+        "holeFill": {
+            "method": "lama_inpaint" if holefill_done else "none",
+            "source": str(paths["lama_clean"]) if paths["lama_clean"].exists() else None,
+        },
+        "layers": proto_layers,
+        "qualityCaveats": [
+            "walker mask is bbox+depth only — needs SAM instance segmentation",
+            "vehicle mask has building geometry spill on left side (subject_mask bakeoff, not pixel-perfect)",
+            "hole-fill is LaMa-only, no generative inpaint for complex occlusions",
+            "steam/vehicle depth bands overlap ([0.005,0.053] vs [0.005,0.056]) — potential double-compositing",
+        ],
+    }
+
+    proto_path = outdir / "prototype.json"
+    proto_path.write_text(json.dumps(prototype, indent=2))
+
+    print(f"\n[done] Layer pack: {outdir}")
+    print(f"  canonical: {canonical_path.name}")
+    print(f"  sidecar:   {proto_path.name}")
+    print(f"  layers:    {len(layers_out)}")
+    print(f"  hole_fill: {holefill_done}")
+
+    return canonical
 
 
 # ---------------------------------------------------------------------------
