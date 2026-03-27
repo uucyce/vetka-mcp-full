@@ -1688,6 +1688,23 @@ class TaskBoard:
                           "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
                           "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
                           }
+
+        # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
+        # action=update must not bypass the ownership check that action=claim enforces.
+        # If task is claimed or running, only the current owner can change assigned_to/owner_agent.
+        OWNERSHIP_FIELDS = {"assigned_to", "owner_agent"}
+        if old_status in ("claimed", "running") and OWNERSHIP_FIELDS & set(updates.keys()):
+            current_owner = task.get("assigned_to") or task.get("owner_agent") or ""
+            # Determine caller: explicit _history_agent_name, or the new assigned_to value
+            caller = history_agent_name or ""
+            new_owner = updates.get("assigned_to") or updates.get("owner_agent") or ""
+            if current_owner and new_owner != current_owner and caller != current_owner:
+                logger.warning(
+                    f"[TaskBoard] OWNERSHIP_GUARD: blocked reassignment of {task_id} "
+                    f"from {current_owner} to {new_owner} (status={old_status})"
+                )
+                return False
+
         for key, value in updates.items():
             if key in task or key in ADDABLE_FIELDS:
                 task[key] = value
