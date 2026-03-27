@@ -35,50 +35,56 @@ export interface LayerManifestMeta {
   sample_id: string;
 }
 
-/** Full manifest loaded via API from manifest_path */
-export interface LayerSpaceManifest {
+/**
+ * Full manifest loaded via GET /cut/layers/manifest?path=...
+ * Response: { success: true, manifest: LayerManifestResponse }
+ *
+ * IMPORTANT: Beta to_dict() = asdict() → snake_case field names.
+ * These types match the ACTUAL API wire format, not the spec's camelCase suggestion.
+ */
+export interface LayerManifestResponse {
   contract_version: string;
-  sampleId: string;
-  source: {
-    path: string;
-    width: number;
-    height: number;
-  };
+  sample_id: string;
+  source_path: string;
+  source_width: number;
+  source_height: number;
   layers: LayerEntry[];
-  space: CameraSpace;
-  provenance: {
-    depth_backend: string;
-    grouping_backend: string;
-  };
+  camera: CameraContract;
+  depth_path: string;
+  background_rgba_path: string;
+  format: string;
+  provenance: Record<string, string>;
 }
 
 export interface LayerEntry {
-  id: string;
-  role: string;              // kebab-case on disk: "foreground-subject"
+  layer_id: string;
+  role: string;                // normalized to underscore by Beta: "foreground_subject"
   label: string;
-  order: number;             // compositing index (0 = back)
-  depthPriority: number;     // 0-1 float, SEPARATE from order
-  z: number;                 // depth position in camera space
+  order: number;               // compositing index (0 = back)
+  depth_priority: number;      // 0-1 float, SEPARATE from order
+  z: number;
   visible: boolean;
-  rgba: string;              // relative path to rgba asset
-  mask: string;              // relative path to mask asset
-  depth: string;             // relative path to per-layer depth
-  coverage: number;          // 0-1 how much of frame this layer covers
-  parallaxStrength: number;
-  motionDamping: number;
+  rgba_path: string;           // absolute path (resolved by Beta on ingest)
+  mask_path: string;
+  depth_path: string;
+  clean_path: string;
+  clean_variant: string;
+  coverage: number;
+  parallax_strength: number;
+  motion_damping: number;
 }
 
-export interface CameraSpace {
-  focalLengthMm: number;
-  filmWidthMm: number;
-  zNear: number;
-  zFar: number;
-  motionType: string;        // "orbit" | "dolly" | "pan" etc
-  durationSec: number;
-  travelXPct: number;
-  travelYPct: number;
+export interface CameraContract {
+  focal_length_mm: number;
+  film_width_mm: number;
+  z_near: number;
+  z_far: number;
+  motion_type: string;
+  duration_sec: number;
+  travel_x_pct: number;
+  travel_y_pct: number;
   zoom: number;
-  overscanPct: number;
+  overscan_pct: number;
 }
 
 // ─── Role normalization (kebab-case on disk → display labels) ────────
@@ -211,7 +217,8 @@ export default function LayerStackPanel() {
   }, [selectedClipId, lanes]);
 
   // Async-loaded full manifest (fetched when meta.manifest_path changes)
-  const [manifest, setManifest] = useState<LayerSpaceManifest | null>(null);
+  // Beta response: { success: true, manifest: LayerManifestResponse }
+  const [manifest, setManifest] = useState<LayerManifestResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -228,8 +235,15 @@ export default function LayerStackPanel() {
         if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
         return r.json();
       })
-      .then((data: LayerSpaceManifest) => {
-        if (!cancelled) { setManifest(data); setLoading(false); }
+      .then((resp: { success: boolean; manifest?: LayerManifestResponse; error?: string }) => {
+        if (cancelled) return;
+        if (!resp.success || !resp.manifest) {
+          setError(resp.error ?? 'Empty manifest response');
+          setLoading(false);
+          return;
+        }
+        setManifest(resp.manifest);
+        setLoading(false);
       })
       .catch((err) => {
         if (!cancelled) { setError(String(err)); setLoading(false); }
@@ -259,7 +273,7 @@ export default function LayerStackPanel() {
     setLayerState((prev) => ({ ...prev, [id]: { ...cur, locked: !cur.locked } }));
   };
 
-  const hasSolo = manifest?.layers.some((l) => getState(l.id).solo) ?? false;
+  const hasSolo = manifest?.layers.some((l) => getState(l.layer_id).solo) ?? false;
 
   // ─── No clip selected ──────────────────────────────────────────────
   if (!selectedClipId || !clip) {
@@ -358,48 +372,50 @@ export default function LayerStackPanel() {
   const layers = manifest.layers;
   // Sort by order descending (highest order = frontmost = top of stack)
   const sorted = [...layers].sort((a, b) => b.order - a.order);
-  const space = manifest.space;
+  const cam = manifest.camera;
 
   return (
     <div style={PANEL} data-testid="cut-layer-stack-panel">
       {/* Header */}
       <div style={HEADER}>
         <span>Layers ({layers.length})</span>
-        <span style={{ color: '#444' }}>{manifest.sampleId}</span>
+        <span style={{ color: '#444' }}>{manifest.sample_id}</span>
       </div>
 
-      {/* Camera / Space Inspector Section */}
+      {/* Camera Inspector Section */}
       <div style={INFO_SECTION}>
         <div style={{ ...STAT_ROW, color: '#888', marginBottom: 4 }}>
           <span>Camera</span>
-          <span>{space.motionType}</span>
+          <span>{cam.motion_type}</span>
         </div>
         <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Focal</span>
-          <span style={{ color: '#888' }}>{space.focalLengthMm}mm</span>
+          <span style={{ color: '#888' }}>{cam.focal_length_mm}mm</span>
         </div>
         <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Duration</span>
-          <span style={{ color: '#888' }}>{space.durationSec}s</span>
+          <span style={{ color: '#888' }}>{cam.duration_sec}s</span>
         </div>
         <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Travel</span>
-          <span style={{ color: '#888' }}>X {space.travelXPct}% Y {space.travelYPct}%</span>
+          <span style={{ color: '#888' }}>X {cam.travel_x_pct}% Y {cam.travel_y_pct}%</span>
         </div>
         <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Depth Range</span>
-          <span style={{ color: '#888' }}>{space.zNear.toFixed(2)} – {space.zFar.toFixed(2)}</span>
+          <span style={{ color: '#888' }}>{cam.z_near.toFixed(2)} – {cam.z_far.toFixed(2)}</span>
         </div>
         <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Contract</span>
           <span style={{ color: '#888' }}>v{manifest.contract_version}</span>
         </div>
-        <div style={STAT_ROW}>
-          <span style={{ color: '#666' }}>Provenance</span>
-          <span style={{ color: '#888' }}>{manifest.provenance.depth_backend}</span>
-        </div>
+        {manifest.provenance?.depth_backend && (
+          <div style={STAT_ROW}>
+            <span style={{ color: '#666' }}>Provenance</span>
+            <span style={{ color: '#888' }}>{manifest.provenance.depth_backend}</span>
+          </div>
+        )}
 
-        {/* Depth range bar — near (white) to far (dark), layers positioned by depthPriority */}
+        {/* Depth range bar — near (white) to far (dark), layers positioned by depth_priority */}
         <div style={{ marginTop: 6 }}>
           <div style={{
             width: '100%',
@@ -409,15 +425,14 @@ export default function LayerStackPanel() {
             position: 'relative',
           }}>
             {sorted.map((layer) => {
-              const st = getState(layer.id);
+              const st = getState(layer.layer_id);
               const isActive = !hasSolo || st.solo;
-              // Position by depthPriority (0 = far/right, 1 = near/left)
-              const pos = layer.depthPriority;
-              const barWidth = Math.max(4, (layer.coverage ?? 0.1) * 30); // coverage-based width hint
+              const pos = layer.depth_priority;
+              const barWidth = Math.max(4, (layer.coverage || 0.1) * 30);
               return (
                 <div
-                  key={layer.id}
-                  title={`${layer.label}: dp=${pos.toFixed(2)} z=${layer.z} coverage=${(layer.coverage * 100).toFixed(0)}%`}
+                  key={layer.layer_id}
+                  title={`${layer.label}: dp=${pos.toFixed(2)} z=${layer.z} coverage=${((layer.coverage || 0) * 100).toFixed(0)}%`}
                   style={{
                     position: 'absolute',
                     left: `${(1 - pos) * 100 - barWidth / 2}%`,
@@ -442,21 +457,38 @@ export default function LayerStackPanel() {
       {/* Layer Stack List */}
       <div>
         {sorted.map((layer, idx) => {
-          const st = getState(layer.id);
-          // Respect manifest-level visible + UI override
+          const st = getState(layer.layer_id);
           const isEffectivelyVisible = layer.visible && st.visible && (!hasSolo || st.solo);
           const dimmed = !isEffectivelyVisible;
 
           return (
             <div
-              key={layer.id}
+              key={layer.layer_id}
               style={{
                 ...LAYER_ROW,
                 opacity: dimmed ? 0.35 : 1,
                 background: idx % 2 === 0 ? '#0d0d0d' : '#0f0f0f',
               }}
-              data-testid={`cut-layer-row-${layer.id}`}
+              data-testid={`cut-layer-row-${layer.layer_id}`}
             >
+              {/* RGBA thumbnail */}
+              {layer.rgba_path && (
+                <img
+                  src={`${API_BASE}/cut/media/file?path=${encodeURIComponent(layer.rgba_path)}`}
+                  alt={layer.label}
+                  style={{
+                    width: 28,
+                    height: 28,
+                    objectFit: 'cover',
+                    borderRadius: 2,
+                    background: '#1a1a1a',
+                    flexShrink: 0,
+                    filter: 'grayscale(100%)',
+                  }}
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              )}
+
               {/* Visibility toggle */}
               <button
                 style={{
@@ -464,8 +496,8 @@ export default function LayerStackPanel() {
                   color: st.visible ? '#999' : '#333',
                 }}
                 title={st.visible ? 'Hide layer' : 'Show layer'}
-                onClick={() => toggleVisible(layer.id)}
-                data-testid={`cut-layer-visibility-${layer.id}`}
+                onClick={() => toggleVisible(layer.layer_id)}
+                data-testid={`cut-layer-visibility-${layer.layer_id}`}
               >
                 {st.visible ? '\u25C9' : '\u25CB'}
               </button>
@@ -478,7 +510,7 @@ export default function LayerStackPanel() {
                   fontWeight: st.solo ? 700 : 400,
                 }}
                 title={st.solo ? 'Unsolo' : 'Solo layer'}
-                onClick={() => toggleSolo(layer.id)}
+                onClick={() => toggleSolo(layer.layer_id)}
               >
                 S
               </button>
@@ -490,16 +522,16 @@ export default function LayerStackPanel() {
                   color: st.locked ? '#999' : '#333',
                 }}
                 title={st.locked ? 'Unlock' : 'Lock layer'}
-                onClick={() => toggleLock(layer.id)}
+                onClick={() => toggleLock(layer.layer_id)}
               >
                 L
               </button>
 
               {/* Depth priority mini bar */}
-              <div style={DEPTH_BAR_CONTAINER} title={`dp=${layer.depthPriority.toFixed(2)}`}>
+              <div style={DEPTH_BAR_CONTAINER} title={`dp=${layer.depth_priority.toFixed(2)}`}>
                 <div style={{
-                  marginLeft: `${(1 - layer.depthPriority) * 100}%`,
-                  width: `${Math.max(10, layer.coverage * 100)}%`,
+                  marginLeft: `${(1 - layer.depth_priority) * 100}%`,
+                  width: `${Math.max(10, (layer.coverage || 0.1) * 100)}%`,
                   height: '100%',
                   background: '#888',
                   borderRadius: 2,
@@ -519,11 +551,11 @@ export default function LayerStackPanel() {
                 </div>
                 <div style={ROLE_BADGE}>
                   {roleLabel(layer.role)}
-                  {layer.coverage > 0 && ` \u2022 ${(layer.coverage * 100).toFixed(0)}%`}
+                  {(layer.coverage || 0) > 0 && ` \u2022 ${((layer.coverage || 0) * 100).toFixed(0)}%`}
                 </div>
               </div>
 
-              {/* Order + parallax strength */}
+              {/* Order */}
               <span style={{ color: '#555', fontSize: 10, flexShrink: 0, width: 32, textAlign: 'right' }}>
                 #{layer.order}
               </span>
