@@ -571,14 +571,20 @@ def apply_numpy_effects(
                 frame_float32 = frame_float32 + offsets * highlight_weight
 
         elif t == "white_balance":
-            # Temperature shift: warm (high K) = more red/yellow, cool (low K) = more blue
+            # MARKER_B76: Tanner Helland Kelvin→RGB for accurate preview
             temp = float(p.get("temperature", 6500))
             if abs(temp - 6500) > 50:
-                # Simplified Kelvin to RGB shift
-                # Below 6500K: add blue, subtract red. Above 6500K: add red, subtract blue
-                shift = (temp - 6500) / 6500.0  # -1 to +1 range approx
-                frame_float32[:, :, 0] += shift * 0.15   # Red channel
-                frame_float32[:, :, 2] -= shift * 0.15   # Blue channel (inverse)
+                from src.services.cut_effects_engine import _kelvin_to_rgb_adjustment
+                r_adj, g_adj, b_adj = _kelvin_to_rgb_adjustment(temp)
+                frame_float32[:, :, 0] += r_adj * 0.6   # Red (scaled for preview visibility)
+                frame_float32[:, :, 1] += g_adj * 0.6   # Green
+                frame_float32[:, :, 2] += b_adj * 0.6   # Blue
+            tint = float(p.get("tint", 0))
+            if abs(tint) > 1:
+                tint_adj = tint / 200.0
+                frame_float32[:, :, 0] += tint_adj * 0.15   # Red: slight boost for magenta
+                frame_float32[:, :, 1] -= tint_adj * 0.5     # Green: main axis
+                frame_float32[:, :, 2] += tint_adj * 0.15   # Blue: slight boost for magenta
 
         elif t == "curves":
             # Curve presets applied as LUT transforms

@@ -14,11 +14,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import logging
 import os
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 from fastapi import APIRouter, HTTPException
@@ -39,6 +42,23 @@ media_router = APIRouter(tags=["CUT-Media"])
 class CutColorApplyRequest(BaseModel):
     source_path: str
     time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 540
+
+
+class CutZebraRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    log_profile: str | None = None
+    lut_path: str | None = None
+    max_width: int = 512
+
+
+class CutBroadcastSafeRequest(BaseModel):
+    source_path: str
+    time: float = 0.0
+    mode: str = "normal"  # "conservative" (100 IRE), "normal" (110 IRE), "relaxed" (115 IRE)
     log_profile: str | None = None
     lut_path: str | None = None
     max_width: int = 540
@@ -102,6 +122,185 @@ async def cut_scopes_analyze(
         source_path=source_path, time_sec=time, scopes=scope_list, scope_size=size,
         log_profile=log_profile, lut_path=lut_path,
     )
+
+
+# MARKER_B26: Zebra data endpoint
+@media_router.post("/scopes/zebra")
+async def cut_scopes_zebra(body: CutZebraRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Zebra detection: over-white, under-black, chroma-illegal.
+
+    Returns percentages + base64 PNG zebra mask with alpha channel.
+    Mask values: 0=safe (transparent), 1=over-white (light stripe), 2=under-black (dark stripe), 3=chroma-illegal.
+
+    Input: { source_path, time, log_profile?, lut_path?, max_width? }
+    Output: { over_white_pct, under_black_pct, chroma_illegal_pct, total_illegal_pct, zebra_mask_b64 }
+    """
+    import io as _io
+    from src.services.cut_scope_renderer import extract_frame_rgb, detect_out_of_range
+
+    try:
+        import numpy as np_local
+        HAS_NP = True
+    except ImportError:
+        HAS_NP = False
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    result = detect_out_of_range(frame)
+
+    # Build PNG zebra mask with alpha channel for frontend overlay
+    # mask values: 1=over-white, 2=under-black, 3=chroma-illegal, 0=safe
+    zebra_mask_b64 = ""
+    if HAS_NP:
+        try:
+            mask_data = result.get("zebra_mask", [])
+            if mask_data:
+                mask_arr = np_local.array(mask_data, dtype=np_local.uint8)
+                h_m, w_m = mask_arr.shape
+                # Build RGBA image: R=over-white indicator, A=opacity mask
+                rgba = np_local.zeros((h_m, w_m, 4), dtype=np_local.uint8)
+                # over-white: light grey stripe pattern (value=1)
+                ow = mask_arr == 1
+                # under-black: dark grey stripe pattern (value=2)
+                ub = mask_arr == 2
+                # chroma illegal: mid-grey (value=3)
+                ci = mask_arr == 3
+
+                # Encode class in R channel: 200=over, 100=under, 150=chroma
+                rgba[ow, 0] = 200  # R: over-white marker
+                rgba[ub, 0] = 100  # R: under-black marker
+                rgba[ci, 0] = 150  # R: chroma-illegal marker
+                # G channel: encode type (1/2/3)
+                rgba[ow, 1] = 1
+                rgba[ub, 1] = 2
+                rgba[ci, 1] = 3
+                # Alpha: 255 for all out-of-range pixels, 0 for safe
+                out_of_range = (mask_arr > 0)
+                rgba[out_of_range, 3] = 255
+
+                # Encode as PNG via ffmpeg (raw rgba → png)
+                raw_bytes = rgba.tobytes()
+                cmd = [
+                    "ffmpeg", "-v", "error",
+                    "-f", "rawvideo", "-pix_fmt", "rgba",
+                    "-s", f"{w_m}x{h_m}", "-i", "pipe:0",
+                    "-f", "image2", "-vcodec", "png", "pipe:1",
+                ]
+                import subprocess as _sp
+                proc = _sp.run(cmd, input=raw_bytes, capture_output=True, timeout=5)
+                if proc.returncode == 0 and proc.stdout:
+                    zebra_mask_b64 = base64.b64encode(proc.stdout).decode("ascii")
+        except Exception as e:
+            logger.warning("Zebra mask PNG encode failed: %s", e)
+
+    return {
+        "success": True,
+        "over_white_pct": result["over_white_pct"],
+        "under_black_pct": result["under_black_pct"],
+        "chroma_illegal_pct": result["chroma_illegal_pct"],
+        "total_illegal_pct": result["total_illegal_pct"],
+        "zebra_mask_b64": zebra_mask_b64,
+        "frame_w": frame.shape[1],
+        "frame_h": frame.shape[0],
+    }
+
+
+# MARKER_B26: Broadcast safe filter endpoint
+@media_router.post("/color/broadcast-safe")
+async def cut_color_broadcast_safe(body: CutBroadcastSafeRequest) -> dict[str, Any]:
+    """
+    MARKER_B26 — Apply broadcast-safe clamping to a preview frame.
+
+    Modes:
+      - "conservative": strict Rec.709 studio swing (Y: 16-235, Cb/Cr: 16-240)
+      - "normal": Y 16-240 (110 IRE headroom for EBU R68)
+      - "relaxed": Y 16-244 (115 IRE, common for digital delivery)
+
+    Returns base64 JPEG of the clamped frame.
+    """
+    from src.services.cut_scope_renderer import extract_frame_rgb, broadcast_safe_clamp
+    import numpy as np_local
+
+    frame = extract_frame_rgb(body.source_path, body.time, max_width=body.max_width)
+    if frame is None:
+        return {"success": False, "error": "frame_extraction_failed"}
+
+    if body.log_profile or body.lut_path:
+        try:
+            from src.services.cut_color_pipeline import apply_color_pipeline
+            frame = apply_color_pipeline(frame, log_profile=body.log_profile, lut_path=body.lut_path)
+        except ImportError:
+            pass
+
+    # Mode-specific luma ceiling override
+    mode = body.mode.lower()
+    if mode == "normal":
+        # Temporarily expand luma max to 240 (~110 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=240)
+    elif mode == "relaxed":
+        # Expand luma max to 244 (~115 IRE)
+        frame_clamped = _broadcast_safe_clamp_mode(frame, luma_max=244)
+    else:
+        # conservative (default): strict 16-235
+        frame_clamped = broadcast_safe_clamp(frame)
+
+    h, w, _ = frame_clamped.shape
+    try:
+        import subprocess as _sp
+        cmd = [
+            "ffmpeg", "-v", "error",
+            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-s", f"{w}x{h}", "-i", "pipe:0",
+            "-vframes", "1", "-f", "image2", "-vcodec", "mjpeg", "-q:v", "4", "pipe:1",
+        ]
+        proc = _sp.run(cmd, input=frame_clamped.tobytes(), capture_output=True, timeout=5)
+        if proc.returncode != 0:
+            return {"success": False, "error": "jpeg_encode_failed"}
+        jpeg_b64 = base64.b64encode(proc.stdout).decode("ascii")
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+    return {
+        "success": True, "width": w, "height": h, "format": "jpeg",
+        "data": jpeg_b64, "mode": mode,
+    }
+
+
+def _broadcast_safe_clamp_mode(frame_rgb: "np.ndarray", luma_max: int = 235) -> "np.ndarray":
+    """Broadcast safe clamp with configurable luma ceiling. Internal helper for B26."""
+    try:
+        import numpy as _np
+    except ImportError:
+        return frame_rgb
+
+    r = frame_rgb[:, :, 0].astype(_np.float32)
+    g = frame_rgb[:, :, 1].astype(_np.float32)
+    b = frame_rgb[:, :, 2].astype(_np.float32)
+
+    y = 16 + 65.481 * r / 255 + 128.553 * g / 255 + 24.966 * b / 255
+    cb = 128 - 37.797 * r / 255 - 74.203 * g / 255 + 112.0 * b / 255
+    cr = 128 + 112.0 * r / 255 - 93.786 * g / 255 - 18.214 * b / 255
+
+    y = _np.clip(y, 16, luma_max)
+    cb = _np.clip(cb, 16, 240)
+    cr = _np.clip(cr, 16, 240)
+
+    r_out = 1.164 * (y - 16) + 1.596 * (cr - 128)
+    g_out = 1.164 * (y - 16) - 0.392 * (cb - 128) - 0.813 * (cr - 128)
+    b_out = 1.164 * (y - 16) + 2.017 * (cb - 128)
+
+    result = _np.stack([r_out, g_out, b_out], axis=-1)
+    return _np.clip(result, 0, 255).astype(_np.uint8)
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +724,124 @@ async def cut_thumbnail(
                           headers={"Cache-Control": "public, max-age=86400"})
 
     return {"success": False, "error": "thumbnail_generation_failed"}
+
+
+@media_router.get("/thumbnail-strip")
+async def cut_thumbnail_strip(
+    source_path: str,
+    duration: float,
+    count: int = 5,
+    frame_height: int = 56,
+) -> Any:
+    """MARKER_B95 — Sprite sheet: N frames stitched horizontally into a single JPEG.
+
+    One HTTP request per clip instead of N. Frontend uses CSS background-position
+    to display individual frames.
+
+    Args:
+        source_path: Path to source media file.
+        duration: Clip duration in seconds.
+        count: Number of frames to extract (1-20).
+        frame_height: Height of each frame in px. Width auto-calculated from aspect ratio.
+
+    Returns:
+        Single JPEG image: frame_width*count × frame_height pixels.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return {"success": False, "error": "file_not_found"}
+
+    count = max(1, min(20, count))
+    frame_height = max(28, min(224, frame_height))
+
+    # Probe aspect ratio
+    try:
+        probe_cmd = [
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(p),
+        ]
+        probe = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=5)
+        if probe.returncode != 0:
+            return {"success": False, "error": "probe_failed"}
+        dims = probe.stdout.strip().split("x")
+        orig_w, orig_h = int(dims[0]), int(dims[1])
+    except Exception:
+        return {"success": False, "error": "probe_failed"}
+
+    aspect = orig_w / max(orig_h, 1)
+    frame_width = int(frame_height * aspect)
+    frame_width += frame_width % 2  # must be even for ffmpeg
+
+    # Cache key
+    cache_key = hashlib.md5(
+        f"strip|{source_path}|{duration}|{count}|{frame_height}".encode()
+    ).hexdigest()
+    cache_dir = os.path.join(tempfile.gettempdir(), "cut_thumb_cache")
+    os.makedirs(cache_dir, exist_ok=True)
+    cache_path = os.path.join(cache_dir, f"strip_{cache_key}.jpg")
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    # Compute seek times (avoid first/last 5%)
+    times = []
+    if count == 1:
+        times.append(min(1.0, duration * 0.1))
+    else:
+        for i in range(count):
+            t = duration * 0.05 + (i / (count - 1)) * duration * 0.9
+            times.append(round(t, 2))
+
+    # Extract frames and stitch with ffmpeg filter_complex
+    # Build: input per seek time → scale → hstack
+    inputs: list[str] = []
+    filter_parts: list[str] = []
+    for i, t in enumerate(times):
+        inputs.extend(["-ss", str(t), "-i", str(p)])
+        filter_parts.append(f"[{i}:v]scale={frame_width}:{frame_height},setsar=1[f{i}]")
+
+    if count == 1:
+        filter_complex = f"{filter_parts[0]}; [f0]null[out]"
+    else:
+        labels = "".join(f"[f{i}]" for i in range(count))
+        filter_complex = "; ".join(filter_parts) + f"; {labels}hstack=inputs={count}[out]"
+
+    cmd = [
+        "ffmpeg", "-v", "error",
+        *inputs,
+        "-filter_complex", filter_complex,
+        "-map", "[out]", "-vframes", "1",
+        "-q:v", "5", "-f", "image2", cache_path,
+    ]
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, timeout=30)
+        if result.returncode != 0:
+            logger.warning("Sprite sheet ffmpeg failed: %s", result.stderr[:500])
+            return {"success": False, "error": "ffmpeg_failed"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "timeout"}
+
+    if os.path.isfile(cache_path):
+        with open(cache_path, "rb") as f:
+            return Response(
+                content=f.read(), media_type="image/jpeg",
+                headers={
+                    "Cache-Control": "public, max-age=86400",
+                    "X-Frame-Width": str(frame_width),
+                    "X-Frame-Count": str(count),
+                },
+            )
+
+    return {"success": False, "error": "sprite_generation_failed"}
 
 
 # ---------------------------------------------------------------------------
@@ -1159,3 +1476,368 @@ async def cut_multicam_switch(body: CutMulticamSwitchRequest) -> dict[str, Any]:
         return {"success": False, "error": str(e)}
 
     return {"success": True, "clip": clip}
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B62 — Video/Audio Streaming for Browser Playback
+# MARKER_B73 — Transcode-on-the-fly for non-browser-native formats
+# ---------------------------------------------------------------------------
+
+import re as _re
+import threading
+
+from fastapi import Request
+from fastapi.responses import StreamingResponse
+
+_STREAM_ALLOWED_EXT = {
+    ".mp4", ".mov", ".m4v", ".webm", ".mkv", ".avi", ".mxf",
+    ".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".aiff", ".aif",
+}
+
+_MIME_MAP = {
+    ".mp4": "video/mp4",
+    ".mov": "video/quicktime",
+    ".m4v": "video/x-m4v",
+    ".webm": "video/webm",
+    ".mkv": "video/x-matroska",
+    ".avi": "video/x-msvideo",
+    ".mxf": "application/mxf",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".m4a": "audio/mp4",
+    ".aac": "audio/aac",
+    ".flac": "audio/flac",
+    ".ogg": "audio/ogg",
+    ".aiff": "audio/aiff",
+    ".aif": "audio/aiff",
+}
+
+_RANGE_RE = _re.compile(r"bytes=(\d+)-(\d*)")
+
+# ---------------------------------------------------------------------------
+# MARKER_B73: Browser-native codec detection + transcode cache
+# ---------------------------------------------------------------------------
+
+# Video codecs Chrome can decode natively
+_BROWSER_NATIVE_VIDEO = {"h264", "vp8", "vp9", "av1", "theora"}
+# Audio codecs Chrome can decode natively
+_BROWSER_NATIVE_AUDIO = {"aac", "mp3", "opus", "vorbis", "flac", "mp4a"}
+# Containers Chrome can demux natively
+_BROWSER_NATIVE_CONTAINERS = {"mp4", "mov", "webm", "ogg", "m4v", "m4a", "mp3", "flac"}
+
+# In-progress transcode lock per source path (prevents duplicate transcodes)
+_transcode_locks: dict[str, threading.Lock] = {}
+_transcode_locks_guard = threading.Lock()
+
+_TRANSCODE_CACHE_DIR_NAME = "cut_stream_cache"
+
+
+def _get_transcode_cache_dir() -> Path:
+    """Get or create the transcode cache directory."""
+    cache_dir = Path.home() / ".cut_cache" / _TRANSCODE_CACHE_DIR_NAME
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir
+
+
+def _cache_key(source_path: Path) -> str:
+    """Stable cache key from file path + mtime + size."""
+    stat = source_path.stat()
+    raw = f"{source_path}:{stat.st_mtime_ns}:{stat.st_size}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:16]
+
+
+def _needs_browser_transcode(source_path: Path) -> dict[str, Any] | None:
+    """
+    Probe file and decide if transcode is needed for browser playback.
+    Returns None if native playback is fine.
+    Returns dict with transcode instructions if needed.
+    """
+    try:
+        probe = probe_file(str(source_path), timeout=5.0)
+    except Exception:
+        return None
+
+    if not probe.ok:
+        return None
+
+    video_codec = (probe.video_codec or "").lower()
+    audio_codec = (probe.audio_codec or "").lower()
+    container = (probe.container or "").lower()
+    container_parts = {c.strip() for c in container.split(",") if c.strip()}
+
+    video_native = (not video_codec) or video_codec in _BROWSER_NATIVE_VIDEO
+    audio_native = (not audio_codec) or audio_codec in _BROWSER_NATIVE_AUDIO
+    container_native = bool(container_parts & _BROWSER_NATIVE_CONTAINERS)
+
+    if video_native and audio_native and container_native:
+        return None
+
+    # Build transcode command parts
+    result: dict[str, Any] = {"video_codec": video_codec, "audio_codec": audio_codec}
+
+    # Video: copy if browser-native, transcode otherwise
+    if video_native and video_codec:
+        result["v_args"] = ["-c:v", "copy"]
+    elif video_codec:
+        result["v_args"] = ["-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+    else:
+        result["v_args"] = ["-vn"]
+
+    # Audio: copy if browser-native, transcode to AAC otherwise
+    if audio_native and audio_codec:
+        result["a_args"] = ["-c:a", "copy"]
+    elif audio_codec:
+        result["a_args"] = ["-c:a", "aac", "-b:a", "256k"]
+    else:
+        result["a_args"] = ["-an"]
+
+    return result
+
+
+def _get_or_transcode(source_path: Path) -> Path | None:
+    """
+    Return path to browser-playable version of the file.
+    Returns None if no transcode needed (serve original).
+    Returns cached transcoded file path if transcode was done.
+    """
+    decision = _needs_browser_transcode(source_path)
+    if decision is None:
+        return None
+
+    cache_dir = _get_transcode_cache_dir()
+    key = _cache_key(source_path)
+    cached = cache_dir / f"{key}.mp4"
+
+    # Fast path: cache hit
+    if cached.exists() and cached.stat().st_size > 0:
+        return cached
+
+    # Get per-file lock to prevent duplicate transcodes
+    with _transcode_locks_guard:
+        if str(source_path) not in _transcode_locks:
+            _transcode_locks[str(source_path)] = threading.Lock()
+        lock = _transcode_locks[str(source_path)]
+
+    with lock:
+        # Double-check after acquiring lock
+        if cached.exists() and cached.stat().st_size > 0:
+            return cached
+
+        # Transcode to fragmented MP4
+        tmp_path = cached.with_suffix(".tmp.mp4")
+        cmd = [
+            "ffmpeg", "-y", "-i", str(source_path),
+            *decision["v_args"],
+            *decision["a_args"],
+            "-f", "mp4",
+            "-movflags", "+faststart",
+            str(tmp_path),
+        ]
+
+        try:
+            subprocess.run(
+                cmd, capture_output=True, timeout=600,
+                check=True,
+            )
+            tmp_path.rename(cached)
+            return cached
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+            tmp_path.unlink(missing_ok=True)
+            return None
+        finally:
+            # Clean up lock if no longer needed
+            with _transcode_locks_guard:
+                _transcode_locks.pop(str(source_path), None)
+
+
+def _serve_file_range(
+    file_path: Path,
+    content_type: str,
+    range_header: str | None,
+) -> StreamingResponse:
+    """Serve a file with optional HTTP Range support."""
+    file_size = file_path.stat().st_size
+
+    if range_header:
+        match = _RANGE_RE.match(range_header)
+        if not match:
+            raise HTTPException(status_code=416, detail="Invalid Range header")
+
+        start = int(match.group(1))
+        end_str = match.group(2)
+        end = int(end_str) if end_str else file_size - 1
+
+        if start >= file_size or end >= file_size or start > end:
+            raise HTTPException(
+                status_code=416,
+                detail="Range not satisfiable",
+                headers={"Content-Range": f"bytes */{file_size}"},
+            )
+
+        content_length = end - start + 1
+
+        def _range_iter():
+            chunk_size = 64 * 1024
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = content_length
+                while remaining > 0:
+                    read_size = min(chunk_size, remaining)
+                    data = f.read(read_size)
+                    if not data:
+                        break
+                    remaining -= len(data)
+                    yield data
+
+        return StreamingResponse(
+            _range_iter(),
+            status_code=206,
+            media_type=content_type,
+            headers={
+                "Content-Range": f"bytes {start}-{end}/{file_size}",
+                "Content-Length": str(content_length),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+    # Full file response
+    def _full_iter():
+        chunk_size = 64 * 1024
+        with open(file_path, "rb") as f:
+            while True:
+                data = f.read(chunk_size)
+                if not data:
+                    break
+                yield data
+
+    return StreamingResponse(
+        _full_iter(),
+        status_code=200,
+        media_type=content_type,
+        headers={
+            "Content-Length": str(file_size),
+            "Accept-Ranges": "bytes",
+            "Cache-Control": "public, max-age=3600",
+        },
+    )
+
+
+@media_router.get("/stream")
+async def cut_media_stream(request: Request, source_path: str) -> StreamingResponse:
+    """
+    MARKER_B62+B73: HTTP Range-aware video/audio streaming for browser playback.
+    Auto-detects non-browser-native codecs (ProRes, PCM, DNxHD, etc.) and serves
+    a transcoded MP4/H.264+AAC from disk cache. Native files pass through directly.
+    """
+    source_path = source_path.strip()
+    if not source_path or not os.path.isabs(source_path):
+        raise HTTPException(status_code=400, detail="source_path must be an absolute path")
+
+    file_path = Path(source_path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    ext = file_path.suffix.lower()
+    if ext not in _STREAM_ALLOWED_EXT:
+        raise HTTPException(status_code=415, detail=f"Unsupported media type: {ext}")
+
+    # MARKER_B73: Check if transcode needed for browser playback
+    transcoded = _get_or_transcode(file_path)
+    if transcoded is not None:
+        # Serve transcoded MP4 — always video/mp4 content type
+        return _serve_file_range(transcoded, "video/mp4", request.headers.get("range"))
+
+    # Native file — serve directly
+    content_type = _MIME_MAP.get(ext, "application/octet-stream")
+    return _serve_file_range(file_path, content_type, request.headers.get("range"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: Motion Analysis (MARKER_B74)
+# ---------------------------------------------------------------------------
+
+
+class CutMotionAnalyzeRequest(BaseModel):
+    """Request for optical flow motion intensity analysis."""
+    video_path: str | None = None
+    project_id: str | None = None
+    clip_id: str | None = None
+    sandbox_root: str | None = None
+    fps: float = 24.0
+    sample_every_n: int = 5
+    spike_threshold: float = 0.7
+
+
+@media_router.post("/analyze/motion")
+async def cut_analyze_motion(body: CutMotionAnalyzeRequest) -> dict[str, Any]:
+    """
+    MARKER_B74 — Optical flow motion intensity analysis for PULSE scene scoring.
+
+    Computes per-frame motion intensity (0.0=static, 1.0=max motion) using
+    OpenCV Farneback dense optical flow on sampled frames.
+
+    Accepts either:
+      - video_path: absolute path to video file (direct mode)
+      - project_id + clip_id + sandbox_root: look up clip from project store
+
+    Returns MotionProfile JSON including motion_samples, avg_motion, max_motion,
+    motion_variance, cut_density (estimated cuts/min), and spike timestamps.
+
+    Runs analysis in a background thread (non-blocking for long files).
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src.services.cut_motion_analyzer import get_motion_analyzer
+
+    # Resolve video path
+    video_path: str | None = body.video_path
+
+    if not video_path and body.project_id and body.clip_id and body.sandbox_root:
+        # Look up clip from project store
+        try:
+            store = CutProjectStore(body.sandbox_root)
+            media_index = store.load_media_index()
+            if media_index:
+                clips = media_index.get("clips") or media_index.get("files") or []
+                for clip in clips:
+                    if str(clip.get("clip_id") or clip.get("id") or "") == str(body.clip_id):
+                        video_path = clip.get("path") or clip.get("source_path")
+                        break
+        except Exception as exc:
+            logger.warning("Failed to load clip from store: %s", exc)
+
+    if not video_path:
+        raise HTTPException(
+            status_code=400,
+            detail="video_path required, or provide project_id + clip_id + sandbox_root",
+        )
+
+    if not os.path.isabs(video_path):
+        raise HTTPException(status_code=400, detail="video_path must be absolute")
+
+    analyzer = get_motion_analyzer()
+
+    # Run in thread pool — optical flow is CPU-heavy
+    loop = asyncio.get_event_loop()
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        profile = await loop.run_in_executor(
+            pool,
+            lambda: analyzer.analyze_clip(
+                video_path,
+                fps=body.fps,
+                sample_every_n=body.sample_every_n,
+            ),
+        )
+
+    # Compute spike timestamps
+    spikes = analyzer.detect_motion_spikes(profile, threshold=body.spike_threshold)
+
+    result = profile.to_dict()
+    result["spike_timestamps"] = spikes
+    result["spike_count"] = len(spikes)
+    result["success"] = not bool(profile.error)
+    result["video_path"] = video_path
+
+    return result

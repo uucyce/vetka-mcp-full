@@ -31,6 +31,9 @@ import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
+import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
+import { PublishDialog } from '../publish/PublishDialog';
 
 
 // ─── Styles ───
@@ -868,12 +871,79 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       s.setShuttleSpeed(0);
     },
 
+    // MARKER_SOURCE_ACQUIRE: Cmd+8 — open Source Acquire panel
+    focusSourceAcquire: () => {
+      window.dispatchEvent(new CustomEvent('cut:focus-panel', { detail: { panelId: 'acquire' } }));
+    },
+
+    // MARKER_FCP7FIX: 4 missing actions — revealMasterClip, collapse/expand, rename
+    // Shift+F — reveal master clip in project browser (fires CustomEvent for DAG panel to handle)
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === clipId);
+        if (clip?.source_path) {
+          window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', { detail: { sourcePath: clip.source_path } }));
+          return;
+        }
+      }
+    },
+    // Shift+- — toggle track collapse for the lane of the selected clip
+    collapseExpandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.toggleTrackCollapse(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Shift+= — expand track to max height for the lane of the selected clip
+    expandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.expandTrackMax(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Enter — start inline rename on selected clip
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      if (s.selectedClipId) {
+        s.setRenamingClip(s.selectedClipId);
+      }
+    },
+
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
-    focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
-    focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
-    focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
-    focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
-    focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
+    // Updates store state AND physically activates the dockview panel tab.
+    focusSource: () => {
+      useCutEditorStore.getState().setFocusedPanel('source');
+      try { useDockviewStore.getState().apiRef?.getPanel('source')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProgram: () => {
+      useCutEditorStore.getState().setFocusedPanel('program');
+      try { useDockviewStore.getState().apiRef?.getPanel('program')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusTimeline: () => {
+      useCutEditorStore.getState().setFocusedPanel('timeline');
+      try { useDockviewStore.getState().apiRef?.getPanel('timeline')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProject: () => {
+      useCutEditorStore.getState().setFocusedPanel('project');
+      try { useDockviewStore.getState().apiRef?.getPanel('project')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusEffects: () => {
+      useCutEditorStore.getState().setFocusedPanel('effects');
+      try { useDockviewStore.getState().apiRef?.getPanel('effects')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
 
     // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
     matchFrame: () => {
@@ -916,6 +986,61 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
+
+    // MARKER_GAMMA-P1: 6 new FCP7 UI actions
+    editMarkerDialog: () => {
+      const s = useCutEditorStore.getState();
+      // Find marker nearest to playhead (within 0.1s tolerance)
+      const marker = s.markers.find((m) =>
+        Math.abs(m.start_sec - s.currentTime) < 0.1
+      );
+      if (marker) {
+        s.setShowEditMarkerDialog(true, marker.marker_id);
+      }
+    },
+    timecodeEntry: () => {
+      useCutEditorStore.getState().setShowTimecodeEntry(true);
+    },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
+    },
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      const selected = s.selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
+    },
+    toggleTimelineDisplayMode: () => {
+      useCutEditorStore.getState().cycleTimelineDisplayMode();
+    },
+    publishDialog: () => {
+      useCutEditorStore.getState().setShowPublishDialog(true);
+    },
   }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
@@ -1007,6 +1132,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
+      <EditMarkerDialog />
+      <TimecodeEntryOverlay />
+      {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
+      <PublishDialog />
       <SaveIndicator />
     </div>
   );

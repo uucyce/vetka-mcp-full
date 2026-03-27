@@ -32,3 +32,12 @@ export { default as MarkerListPanel } from './MarkerListPanel';
 
 // MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
 export { default as TimelineInstancePanel } from './TimelineInstancePanel';
+
+// MARKER_GAMMA-W6.3: Social Crosspost / Publish panel
+export { default as PublishPanel } from './PublishPanel';
+
+// MARKER_GAMMA-MULTICAM-PANEL: Multicam angle grid panel (FCP7 Ch.42)
+export { default as MulticamPanel } from './MulticamPanel';
+
+// MARKER_SOURCE_ACQUIRE: Source Acquire panel (FCP7 Log & Capture)
+export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';

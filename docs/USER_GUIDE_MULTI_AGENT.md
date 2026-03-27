@@ -1,5 +1,5 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 1.0 | **Дата:** 2026-03-22
+**Версия:** 2.0 | **Дата:** 2026-03-24 (Phase 198 update)
 
 ---
 
@@ -24,7 +24,7 @@ vetka_task_board action=active_agents
 ## Worktrees и роли
 
 **Базовый путь:** `~/Documents/VETKA_Project/vetka_live_03` (далее `$VETKA`)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
+
 | Команда терминала | Роль | Домен | Что делает |
 |---|---|---|---|
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude` | **Alpha** | Engine | Store, timeline, hotkeys, playback, Tauri |
@@ -32,8 +32,8 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | Memory, pipeline, task_board, REFLEX |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
-| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | TaskBoard, MCP tools, CLAUDE.md gen, debrief pipeline, infra |
 
 Или одной строкой (копируй целиком):
 ```bash
@@ -52,15 +52,47 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude
 # Epsilon (QA2)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 
-# Commander
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
-
-# Zeta (Harness/Infrastructure)
+# Zeta (Harness)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
+
+# Commander (Architect)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
 ```
 
-Агент **автоматически** получает роль из `.claude/worktrees/<name>/CLAUDE.md`.
-Ничего передавать не нужно — он уже знает свои файлы, ограничения и predecessor advice.
+
+
+# Alpha (Engine)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions
+
+# Beta (Media)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions
+
+# Gamma (UX)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions
+
+# Delta (QA)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions
+
+# Epsilon (QA2)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions
+
+# Zeta (Harness / Memory / Infrastructure)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+
+# Commander (Architect / Coordinator)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
+
+
+
+
+
+
+Агент получает роль двумя путями (оба работают):
+1. **`role=` в session_init** (рекомендуется) — прямая привязка, без угадывания
+2. **Автодетекция по worktree** (fallback) — из `.claude/worktrees/<name>/` определяет branch → registry → role
+
+**CLAUDE.md теперь тонкий маршрутизатор** (~10 строк, Phase 197): только identity + ссылка на session_init.
+Все данные (owned_paths, predecessor advice, key docs) приходят динамически через `session_init → role_context`.
 
 ---
 
@@ -71,6 +103,30 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
 vetka session init
 ```
 Агент загрузит контекст проекта, task board, protocol status.
+
+**Session init по ролям** (Phase 198 — рекомендуемый способ):
+```
+# Агент сам передаёт role= при инициализации:
+mcp__vetka__vetka_session_init role=Alpha    # → Engine context
+mcp__vetka__vetka_session_init role=Beta     # → Media context
+mcp__vetka__vetka_session_init role=Gamma    # → UX context
+mcp__vetka__vetka_session_init role=Delta    # → QA context
+mcp__vetka__vetka_session_init role=Zeta     # → Harness context
+mcp__vetka__vetka_session_init role=Commander # → Architect context
+```
+
+`role=` даёт точную привязку к роли без branch detection fallback.
+Если `role=` не указан — система определит роль по worktree branch (старый путь, работает).
+
+**Что возвращает session_init:**
+- `role_context` — callsign, domain, branch, owned_paths, blocked_paths, workflow_hints
+- `task_board_summary` — pending/in_progress/done counts + top tasks
+- `predecessor_advice` — уроки от предыдущего агента этой роли
+- `engram_learnings` — hot patterns из ENGRAM L1 (danger, architecture)
+- `reflex_recommendations` — top-3 tool recommendations
+- `protocol_status` — checklist (session_init ✓, task_board ?, task claimed ?)
+
+Это **универсальный контракт** — работает одинаково для Claude Code, Codex, Gemini, Cursor, MCC.
 
 ### Дать задачу из борда
 ```
@@ -184,8 +240,7 @@ Commander запускает sous-chefs как background agents в изолир
 | Panels, menus, layout, dockview, workspace | Gamma | ux |
 | Тесты, E2E, Playwright, compliance | Delta | qa |
 | Docs, merge, координация, архитектура | Commander | architect |
-| TaskBoard, MCP, debrief, CLAUDE.md gen, инфра | Zeta | harness |
-| REFLEX, pipeline, memory (cross-cutting) | (пусто) | (пусто) |
+| REFLEX, pipeline, memory, инфра | (пусто) | (пусто) |
 
 ---
 
@@ -229,23 +284,29 @@ git diff main..claude/cut-engine     # что изменилось
 
 ```
 Утро:
-  1. .venv/bin/python -m src.tools.generate_claude_md --all
-  2. Запусти Commander → "vetka session init, покажи борд"
-  3. Commander создаёт план на день, dispatch задачи
+  1. Запусти Commander → "vetka session init" → покажи борд
+  2. Commander создаёт план на день, dispatch задачи с role=
 
 Работа:
-  4. Открой 4-5 терминалов → запусти агентов в worktrees
-  5. Каждый: "vetka session init" → берёт задачу → работает
-  6. Ты переключаешься между терминалами, отвечаешь на вопросы
+  3. Открой 4-5 терминалов → запусти агентов в worktrees
+  4. Каждый: "vetka session init" → берёт задачу → работает
+  5. Ты переключаешься между терминалами, отвечаешь на вопросы
+  6. Делегируй рутину Sonnet-агентам (98% лимита не используется!)
 
 Merge:
-  7. Commander → "замерджь Alpha" → merge ritual → promote
-  8. Повтори для Beta/Gamma/Delta
+  7. Commander → "замерджь Alpha через task_board merge_request"
+  8. Post-merge hook автоматически: digest + CLAUDE.md regen + task promote
 
 Вечер:
-  9. Protocol Guard напомнит агентам написать experience report
-  10. Перегенерируй CLAUDE.md → свежий predecessor advice на завтра
+  9. Debrief Q1-Q3 при закрытии тасков → автоматически в CORTEX + ENGRAM
+  10. STM snapshot сохраняется → следующая сессия начнёт с памятью
 ```
+
+**Phase 198 improvements:**
+- CLAUDE.md regen автоматический (post-merge hook), не надо вручную
+- Debrief → память: прямой pipeline, без .md файлов
+- Sonnet-агенты: 23 агента = 4% лимита. Используй их для рекона и простых фиксов
+- Token efficiency: session_init -55%, CLAUDE.md -93%, task claim -87%
 
 ---
 

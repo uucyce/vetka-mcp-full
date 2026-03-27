@@ -204,18 +204,9 @@ class TaskBoard:
 
         # Fill in-memory cache for backward compat
         self.tasks = self._load_all_tasks()
-        self._backfill_modules()
-
-        # MARKER_199.PERF: Checkpoint WAL after init to prevent WAL bloat
-        # across concurrent agent connections
-        try:
-            result = self.db.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
-            if result:
-                busy, log_pages, checkpointed = result
-                if log_pages > 0:
-                    logger.info(f"[TaskBoard] WAL checkpoint: {checkpointed}/{log_pages} pages checkpointed, {busy} busy")
-        except Exception as e:
-            logger.debug(f"[TaskBoard] WAL checkpoint skipped: {e}")
+        # MARKER_200.FOREVER: Module backfill removed from init path.
+        # Bulk writes in init cause lock storms with 14 concurrent MCP processes.
+        # Use action=backfill_modules for on-demand backfill (same pattern as FTS5).
 
         atexit.register(self.close)
 
@@ -223,7 +214,7 @@ class TaskBoard:
         """Close SQLite connection and checkpoint WAL."""
         if hasattr(self, 'db') and self.db:
             try:
-                self.db.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 self.db.close()
             except Exception:
                 pass
@@ -250,9 +241,21 @@ class TaskBoard:
 
         MARKER_199.LOCK_SAFE: Non-blocking — skips on database lock.
         MARKER_199.PERF: Batched — single transaction instead of per-task commit.
+        MARKER_199.INIT_FAST: SQL fast-path check before any Python iteration.
         Module backfill is optional enrichment, not critical for operation.
         """
         try:
+            # MARKER_199.INIT_FAST: Quick SQL check — if all tasks have modules, skip entirely.
+            # Avoids iterating 450+ tasks in Python on every init (10+ concurrent processes).
+            try:
+                _count = self.db.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE module IS NULL OR module = ''"
+                ).fetchone()[0]
+                if _count == 0:
+                    return  # All tasks already have modules — fast exit
+            except Exception:
+                pass  # If check fails, fall through to Python iteration
+
             # Collect tasks needing module assignment (in-memory only)
             pending_updates = []
             for task in self.tasks.values():
@@ -266,6 +269,12 @@ class TaskBoard:
 
             if not pending_updates:
                 return
+
+            # MARKER_199.INIT_FAST: Cap batch to 50 tasks per init to avoid long locks.
+            # Remaining tasks get backfilled on next init (progressive convergence).
+            if len(pending_updates) > 50:
+                pending_updates = pending_updates[:50]
+                logger.info(f"[TaskBoard] Module backfill capped at 50 (remaining deferred)")
 
             # Batch write: single transaction for all module updates
             with self.db:
@@ -331,9 +340,12 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        # MARKER_200.FOREVER: Canonical connection — DO NOT CHANGE these values.
+        # See docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md §3.
+        # busy_timeout=5000 gives 350x safety margin for 14 concurrent <1ms writes.
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA busy_timeout=5000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -654,6 +666,8 @@ class TaskBoard:
         """INSERT OR REPLACE a single task into SQLite.
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
+        MARKER_200.FOREVER: Updates self.tasks cache for coherence.
+        See docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md §7.
         """
         row = self._task_to_row(task)
         row["updated_at"] = datetime.now().isoformat()
@@ -666,6 +680,8 @@ class TaskBoard:
                 f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
                 values,
             )
+        # MARKER_200.FOREVER: Cache coherence — write-through
+        self.tasks[task["id"]] = task
         # MARKER_199.FTS5: Keep full-text index in sync
         self._index_task_fts(task)
 
@@ -2701,7 +2717,9 @@ class TaskBoard:
     def get_queue(self, status: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get tasks filtered by status, sorted by priority.
 
-        MARKER_192.3: Reads from SQLite with ORDER BY.
+        MARKER_200.FOREVER: Reads from self.tasks cache — zero SQL.
+        Cache is populated at init by _load_all_tasks() and kept coherent
+        by _save_task() write-through. See Bible §6.
 
         Args:
             status: Filter by status. None = all tasks.
@@ -2709,16 +2727,11 @@ class TaskBoard:
         Returns:
             List of task dicts sorted by priority
         """
+        tasks = list(self.tasks.values())
         if status:
-            cursor = self.db.execute(
-                "SELECT * FROM tasks WHERE status = ? ORDER BY priority, created_at",
-                (status,),
-            )
-        else:
-            cursor = self.db.execute(
-                "SELECT * FROM tasks ORDER BY priority, created_at"
-            )
-        return [self._row_to_task(row) for row in cursor]
+            tasks = [t for t in tasks if t.get("status") == status]
+        tasks.sort(key=lambda t: (t.get("priority", 3), t.get("created_at", "")))
+        return tasks
 
     # MARKER_181.5.6: Backwards-compatible alias (used by dag_aggregator, agent_pipeline, tests)
     def list_tasks(self, status: Optional[str] = None) -> List[Dict[str, Any]]:

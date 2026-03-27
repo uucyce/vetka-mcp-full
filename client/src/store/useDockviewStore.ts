@@ -7,7 +7,7 @@
 import { create } from 'zustand';
 import type { SerializedDockview } from 'dockview-react';
 
-export type WorkspacePresetName = 'editing' | 'color' | 'audio' | 'custom';
+export type WorkspacePresetName = 'editing' | 'color' | 'audio' | 'multicam' | 'custom';
 
 interface DockviewStoreState {
   /** Active workspace preset name */

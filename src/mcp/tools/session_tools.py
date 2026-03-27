@@ -1413,8 +1413,10 @@ class SessionInitTool(BaseMCPTool):
 
             if _digest:
                 context["digest"] = _digest
-        except Exception:
-            pass  # Digest never blocks session init
+            else:
+                context["digest"] = {"_empty": True, "_marker": "MARKER_199.DIGEST"}
+        except Exception as _digest_err:
+            context["digest"] = {"_error": str(_digest_err)[:100]}
 
         # MARKER_198.P0.5 + MARKER_199.ELISION_ADAPTIVE: Model-adaptive compression
         # Haiku (small context) → L3, Sonnet (medium) → L2, Opus (large) → L1

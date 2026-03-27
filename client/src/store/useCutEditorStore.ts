@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
+import { usePanelSyncStore } from './usePanelSyncStore';
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -52,6 +53,19 @@ export type ClipEffects = {
   saturation: number;   // 0..2, default 1
   blur: number;         // 0..20, default 0 (px radius)
   opacity: number;      // 0..1, default 1
+  // MARKER_EFX_EXT: Extended effect params (EffectsPanel categories)
+  gamma: number;        // 0.2..3, default 1 (gamma correction)
+  sharpen: number;      // 0..5, default 0 (unsharp mask)
+  denoise: number;      // 0..10, default 0 (noise reduction)
+  vignette: number;     // 0..1, default 0 (edge darkening)
+  crop_top: number;     // 0..0.5, default 0 (fraction)
+  crop_bottom: number;  // 0..0.5, default 0
+  crop_left: number;    // 0..0.5, default 0
+  crop_right: number;   // 0..0.5, default 0
+  hflip: number;        // 0 | 1, default 0 (horizontal flip)
+  vflip: number;        // 0 | 1, default 0 (vertical flip)
+  fade_in: number;      // 0..5, default 0 (seconds)
+  fade_out: number;     // 0..5, default 0 (seconds)
 };
 
 export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
@@ -60,6 +74,18 @@ export const DEFAULT_CLIP_EFFECTS: ClipEffects = {
   saturation: 1,
   blur: 0,
   opacity: 1,
+  gamma: 1,
+  sharpen: 0,
+  denoise: 0,
+  vignette: 0,
+  crop_top: 0,
+  crop_bottom: 0,
+  crop_left: 0,
+  crop_right: 0,
+  hflip: 0,
+  vflip: 0,
+  fade_in: 0,
+  fade_out: 0,
 };
 
 // MARKER_TRANSITION: Transition between clips (FCP7 Ch.47)
@@ -196,6 +222,7 @@ interface CutEditorState {
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
+  collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
@@ -206,6 +233,7 @@ interface CutEditorState {
   linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
+  renamingClipId: string | null; // MARKER_FCP7FIX: clip currently being inline-renamed
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
   focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null;
@@ -217,6 +245,9 @@ interface CutEditorState {
   // === MARKER_W1.3: Source/Program feed split ===
   sourceMediaPath: string | null;     // raw clip from DAG/Project click → Source Monitor
   programMediaPath: string | null;    // timeline playback → Program Monitor
+
+  // === MARKER_PW2: Panel Sync Bridge — scene selection from Script/DAG panels ===
+  selectedSceneId: string | null;     // active scene for PulseInspector/ClipInspector reactivity
 
   // === Data (set from CutStandalone projectState) ===
   lanes: TimelineLane[];
@@ -287,9 +318,17 @@ interface CutEditorState {
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
+  // === MARKER_TRIM_WINDOW: Trim Edit Window overlay (FCP7 Ch.45-46) ===
+  trimEditActive: boolean;          // is overlay open
+  trimEditClipId: string | null;    // outgoing clip at edit point
+  trimEditPoint: number;            // time of edit point (seconds)
+  setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
+
+  // === MARKER_B_P2_HOTKEYS: Audio playback features ===
+  audioScrubbing: boolean;          // Shift+S: audio plays during jog/scrub
 
   // === MARKER_W4.3: Save status ===
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
@@ -302,6 +341,8 @@ interface CutEditorState {
   showTitleSafe: boolean;           // 4:3 title safe zone overlay
   showActionSafe: boolean;          // 4:3 action safe zone overlay
   showMonitorOverlays: boolean;     // timecode + clip name on monitor
+  // === MARKER_B26: Zebra overlay ===
+  showZebra: boolean;               // zebra overlay for out-of-range pixels
 
   // === MARKER_CLIPBOARD: Clipboard for Cut/Copy/Paste ===
   clipboard: TimelineClip[];  // copied/cut clips
@@ -360,11 +401,16 @@ interface CutEditorState {
   setTrackHeight: (h: number) => void;
   setTrackHeightForLane: (laneId: string, h: number) => void;
   cycleTrackHeights: () => void; // Shift-T: S→M→L→S
+  // MARKER_FCP7FIX: collapse/expand/rename
+  toggleTrackCollapse: (laneId: string) => void;
+  expandTrackMax: (laneId: string) => void;
+  setRenamingClip: (clipId: string | null) => void;
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
   toggleLock: (laneId: string) => void;      // MARKER_W2.1
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
+  setExclusiveTarget: (laneId: string) => void; // MARKER_TL3: Exclusive lane target
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
@@ -427,6 +473,18 @@ interface CutEditorState {
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
+
+  // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
+  /** Cmd+R — render only the In/Out selection range. No-op if no marks set. */
+  renderSelection: () => Promise<void>;
+  /** Alt+R — render entire timeline (full export, no range restriction). */
+  renderAll: () => Promise<void>;
+
+  // MARKER_B_P2_HOTKEYS: Audio feature actions
+  /** Alt+Up/Down — adjust a lane's volume by ±deltaDb steps. */
+  adjustAudioLevel: (laneId: string, deltaDb: number) => void;
+  /** Shift+S — toggle audio playback during scrub/jog. */
+  toggleAudioScrubbing: () => void;
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running: boolean) => void;
   setMontageMode: (mode: 'favorites' | 'script' | 'music' | null) => void;
@@ -438,6 +496,8 @@ interface CutEditorState {
   toggleTitleSafe: () => void;
   toggleActionSafe: () => void;
   toggleMonitorOverlays: () => void;
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => void;
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -511,6 +571,17 @@ interface CutEditorState {
   renameTimelineTab: (index: number, label: string) => void;
   /** MARKER_180.14: Create versioned timeline — ALWAYS new, NEVER overwrite (§7.1) */
   createVersionedTimeline: (projectName: string, mode?: string) => string;
+  // MARKER_FCP7_SEQUENCE: Multi-sequence aliases (map to timeline tabs)
+  sequences: Array<{ id: string; label: string }>;
+  createSequence: (name?: string) => string;
+  deleteSequence: (index: number) => void;
+  switchSequence: (index: number) => void;
+  // MARKER_FCP7_CH42: Multicam angle switching (stub — backend multicam exists)
+  switchAngle: (angleIndex: number) => void;
+  // MARKER_FCP7_CH39: Subclip creation
+  createSubclip: (name?: string) => void;
+  // MARKER_FCP7_CH49: Sequence nesting
+  nestSequence: () => void;
   // MARKER_W5.2: Parallel Timelines
   setParallelTimeline: (tabIndex: number | null) => void;
   swapParallelTimeline: () => void;  // swap active ↔ parallel
@@ -518,6 +589,18 @@ interface CutEditorState {
   // MARKER_198: Snapshot cache for multi-instance timeline swap
   snapshotTimeline: (id: string) => void;
   restoreTimeline: (id: string) => void;
+
+  // MARKER_A4.5: PULSE Auto-Montage — call backend, create new timeline tab with result
+  runAutoMontage: (mode: 'favorites' | 'script' | 'music') => Promise<void>;
+  // MARKER_A4.8: PULSE Analysis — enrich all scenes with Camelot/McKee/energy metadata
+  runPulseAnalysis: () => Promise<void>;
+  // PULSE analysis results stored here
+  pulseScores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }>;
+  montageInProgress: boolean;
+  pulseAnalysisInProgress: boolean;
+  // MARKER_EXPORT: Timeline export to editorial formats
+  exportTimeline: (format: 'premiere-xml' | 'fcpxml' | 'otio' | 'edl') => Promise<void>;
+  exportInProgress: boolean;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -552,6 +635,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lockedLanes: new Set<string>(),
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
+  collapsedTracks: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
   snapEnabled: true,
@@ -562,10 +646,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   linkedSelection: true,
   activeMediaPath: null,
   hoveredClipId: null,
+  renamingClipId: null,
 
   // MARKER_W1.3: Source/Program feed split
   sourceMediaPath: null,
   programMediaPath: null,
+
+  // MARKER_PW2: Panel Sync Bridge
+  selectedSceneId: null,
 
   // MARKER_W1.2: Panel Focus
   // MARKER_GAMMA-29: Default to 'timeline' so hotkeys work on load (was null → silent failures)
@@ -615,13 +703,21 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   activeTimelineTabIndex: 0,
   nextTimelineVersion: 1,
   parallelTimelineTabIndex: null,
+  sequences: [] as Array<{ id: string; label: string }>,
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
   showSpeedControl: false,          // MARKER_B11
+  // MARKER_TRIM_WINDOW: Trim Edit Window defaults
+  trimEditActive: false,
+  trimEditClipId: null,
+  trimEditPoint: 0,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
+
+  // MARKER_B_P2_HOTKEYS: Audio features
+  audioScrubbing: true,             // Shift+S: default ON (FCP7 behavior)
 
   // MARKER_W5.1: Auto-Montage
   montageRunning: false,
@@ -643,6 +739,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showTitleSafe: false,
   showActionSafe: false,
   showMonitorOverlays: false,
+  // MARKER_B26: Zebra overlay
+  showZebra: false,
 
   // MARKER_DISPLAY-CTRL: Timeline Display Controls defaults (FCP7 Ch.9 §141-148)
   showClipNames: true,
@@ -707,6 +805,30 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const next = ((state.trackHeightPreset + 1) % 3) as 0 | 1 | 2;
       return { trackHeight: PRESETS[next][0], trackHeightPreset: next, trackHeights: {} };
     }),
+  // MARKER_FCP7FIX: collapse/expand track actions
+  toggleTrackCollapse: (laneId: string) =>
+    set((state) => {
+      const collapsed = new Set(state.collapsedTracks);
+      const heights = { ...state.trackHeights };
+      if (collapsed.has(laneId)) {
+        collapsed.delete(laneId);
+        delete heights[laneId]; // restore to global default
+      } else {
+        collapsed.add(laneId);
+        heights[laneId] = 16; // collapsed height
+      }
+      return { collapsedTracks: collapsed, trackHeights: heights };
+    }),
+  expandTrackMax: (laneId: string) =>
+    set((state) => {
+      const collapsed = new Set(state.collapsedTracks);
+      collapsed.delete(laneId);
+      return {
+        collapsedTracks: collapsed,
+        trackHeights: { ...state.trackHeights, [laneId]: 180 },
+      };
+    }),
+  setRenamingClip: (clipId: string | null) => set({ renamingClipId: clipId }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),
   toggleMute: (laneId) =>
     set((state) => {
@@ -737,6 +859,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       else targetedLanes.add(laneId);
       return { targetedLanes };
     }),
+  // MARKER_TL3: Exclusive target — click lane header (no Shift) selects only this lane
+  setExclusiveTarget: (laneId) =>
+    set(() => ({ targetedLanes: new Set([laneId]) })),
   // MARKER_FIX-TIMELINE-2: Track visibility toggle (eye icon)
   toggleVisibility: (laneId) =>
     set((state) => {
@@ -1096,9 +1221,151 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
+  // MARKER_TRIM_WINDOW: Trim Edit Window action
+  setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),
   setRenderProgress: (p) => set({ renderProgress: p }),
   setRenderStatus: (s) => set({ renderStatus: s }),
   setRenderError: (e) => set({ renderError: e }),
+
+  // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
+  renderSelection: async () => {
+    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] renderSelection: no project session');
+      return;
+    }
+    if (sequenceMarkIn == null || sequenceMarkOut == null) {
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'warn', message: 'Render Selection: no In/Out marks set. Use I/O to mark range.' },
+      }));
+      return;
+    }
+    // Build mixer state from store
+    const mixerLanes: Record<string, { volume: number; mute: boolean; solo: boolean; pan: number }> = {};
+    for (const [laneId, vol] of Object.entries(laneVolumes)) {
+      mixerLanes[laneId] = {
+        volume: vol,
+        mute: mutedLanes.has(laneId),
+        solo: soloLanes.has(laneId),
+        pan: 0,
+      };
+    }
+    try {
+      set({ renderProgress: 0.0, renderStatus: 'Starting selection render...', renderError: null });
+      const resp = await fetch(`${API_BASE}/cut/render/selection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          in_point: sequenceMarkIn,
+          out_point: sequenceMarkOut,
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'render_selection failed');
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'info', message: `Render Selection started (job ${data.job_id})` },
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ renderError: msg, renderProgress: null, renderStatus: null });
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Render Selection failed: ${msg}` },
+      }));
+    }
+  },
+
+  renderAll: async () => {
+    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] renderAll: no project session');
+      return;
+    }
+    // Build mixer state from store
+    const mixerLanes: Record<string, { volume: number; mute: boolean; solo: boolean; pan: number }> = {};
+    for (const [laneId, vol] of Object.entries(laneVolumes)) {
+      mixerLanes[laneId] = {
+        volume: vol,
+        mute: mutedLanes.has(laneId),
+        solo: soloLanes.has(laneId),
+        pan: 0,
+      };
+    }
+    try {
+      set({ renderProgress: 0.0, renderStatus: 'Starting full render...', renderError: null });
+      const resp = await fetch(`${API_BASE}/cut/render/all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+        }),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'render_all failed');
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'info', message: `Render All started (job ${data.job_id})` },
+      }));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      set({ renderError: msg, renderProgress: null, renderStatus: null });
+      window.dispatchEvent(new CustomEvent('pipeline-activity', {
+        detail: { status: 'error', message: `Render All failed: ${msg}` },
+      }));
+    }
+  },
+
+  // MARKER_B_P2_HOTKEYS: Audio feature actions
+  adjustAudioLevel: (laneId, deltaDb) => {
+    // Pure client-side: convert current linear volume → dB → adjust → clamp → back to linear.
+    // The backend /cut/audio/level/adjust endpoint is available for server-computed values,
+    // but we mirror the same math here to avoid an async round-trip for a hotkey.
+    set((state) => {
+      const currentLinear = laneId === '__master__'
+        ? state.masterVolume
+        : (state.laneVolumes[laneId] ?? 1.0);
+
+      // Convert to dB, adjust, clamp to [-96, +12] dB, back to linear
+      const MIN_DB = -96.0;
+      const MAX_DB = 12.0;
+      const currentDb = currentLinear <= 0 ? MIN_DB : 20 * Math.log10(currentLinear);
+      const newDb = Math.max(MIN_DB, Math.min(MAX_DB, currentDb + deltaDb));
+      const newLinear = newDb <= MIN_DB ? 0 : 10 ** (newDb / 20);
+      const clamped = Math.max(0, Math.min(1.5, newLinear));
+
+      if (laneId === '__master__') {
+        return { masterVolume: clamped };
+      }
+      return {
+        laneVolumes: { ...state.laneVolumes, [laneId]: clamped },
+      };
+    });
+  },
+
+  toggleAudioScrubbing: () => {
+    const { audioScrubbing, projectId } = get();
+    const newState = !audioScrubbing;
+    set({ audioScrubbing: newState });
+    // Notify backend (fire-and-forget — backend keeps in-memory state)
+    if (projectId) {
+      fetch(`${API_BASE}/cut/audio/scrubbing/toggle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId }),
+      }).catch(() => {/* non-critical */});
+    }
+    window.dispatchEvent(new CustomEvent('pipeline-activity', {
+      detail: { status: 'info', message: `Audio scrubbing ${newState ? 'ON' : 'OFF'}` },
+    }));
+  },
+
   // MARKER_W5.1: Auto-Montage
   setMontageRunning: (running) => set({ montageRunning: running }),
   setMontageMode: (mode) => set({ montageMode: mode }),
@@ -1110,6 +1377,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleTitleSafe: () => set((s) => ({ showTitleSafe: !s.showTitleSafe })),
   toggleActionSafe: () => set((s) => ({ showActionSafe: !s.showActionSafe })),
   toggleMonitorOverlays: () => set((s) => ({ showMonitorOverlays: !s.showMonitorOverlays })),
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => set((s) => ({ showZebra: !s.showZebra })),
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status) => set({ saveStatus: status }),
@@ -1132,10 +1401,31 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W10.6: Per-clip effects
   // MARKER_UNDO_EFFECTS: Effects + keyframes via applyTimelineOps
+  // Optimistic local update + backend undo stack
   setClipEffects: (clipId, effects) => {
+    // Local optimistic: merge partial effects onto clip
+    set((s) => ({
+      lanes: s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId
+            ? { ...c, effects: { ...(c.effects || DEFAULT_CLIP_EFFECTS), ...effects } }
+            : c
+        ),
+      })),
+    }));
     void get().applyTimelineOps([{ op: 'set_effects', clip_id: clipId, effects }]);
   },
   resetClipEffects: (clipId) => {
+    // Local optimistic: reset effects to undefined (neutral)
+    set((s) => ({
+      lanes: s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId ? { ...c, effects: undefined } : c
+        ),
+      })),
+    }));
     void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
   },
 
@@ -1454,7 +1744,209 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     });
     return newId;
   },
+
+  // MARKER_FCP7_SEQUENCE: Multi-sequence aliases (thin wrappers around timeline tabs)
+  createSequence: (name) => get().createVersionedTimeline(name || 'Untitled Sequence'),
+  deleteSequence: (index) => get().removeTimelineTab(index),
+  switchSequence: (index) => get().setActiveTimelineTab(index),
+  // MARKER_FCP7_CH42: Multicam angle switching (stub — needs MulticamViewer wiring)
+  switchAngle: (_angleIndex) => {
+    console.warn('[CUT] switchAngle: multicam angle switching not yet wired to UI');
+  },
+  // MARKER_FCP7_CH39: Subclip from In/Out marks
+  createSubclip: (_name) => {
+    console.warn('[CUT] createSubclip: subclip creation not yet implemented');
+  },
+  // MARKER_FCP7_CH49: Nest sequence inside another
+  nestSequence: () => {
+    console.warn('[CUT] nestSequence: sequence nesting not yet implemented');
+  },
+
+  // MARKER_A4.5: PULSE Auto-Montage — 3 modes (favorites/script/music)
+  pulseScores: {},
+  montageInProgress: false,
+  pulseAnalysisInProgress: false,
+  exportInProgress: false,
+
+  runAutoMontage: async (mode) => {
+    const { sandboxRoot, projectId, timelineId, montageInProgress } = get();
+    if (montageInProgress) return;
+    if (!sandboxRoot || !projectId) {
+      console.warn('[PULSE] runAutoMontage: no project session');
+      return;
+    }
+    set({ montageInProgress: true });
+    try {
+      const resp = await fetch(`${API_BASE}/api/cut/pulse/auto-montage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId,
+          mode,
+        }),
+      });
+      const data = await resp.json();
+      if (!data.success) {
+        console.error('[PULSE] auto-montage failed:', data.error || data);
+        return;
+      }
+      // Create new timeline tab with montage result
+      const label = data.timeline_label || `montage_${mode}`;
+      const newId = get().createVersionedTimeline(label, `pulse_${mode}`);
+      // Place montage clips on timeline
+      if (data.clips?.length) {
+        const lanes = get().lanes.map((l) => ({ ...l, clips: [] as typeof l.clips }));
+        const videoLane = lanes.find((l) => l.lane_type.startsWith('video')) || lanes[0];
+        const audioLane = lanes.find((l) => l.lane_type.startsWith('audio'));
+        if (videoLane) {
+          videoLane.clips = data.clips.map((c: Record<string, unknown>, i: number) => ({
+            clip_id: `montage_${i}`,
+            source_path: c.source_path as string,
+            source_in: (c.in_point as number) ?? 0,
+            start_sec: (c.timeline_position as number) ?? 0,
+            duration_sec: ((c.out_point as number) ?? 0) - ((c.in_point as number) ?? 0),
+            effects: {},
+          }));
+          if (audioLane) {
+            audioLane.clips = videoLane.clips.map((c) => ({ ...c, clip_id: `${c.clip_id}_a` }));
+          }
+        }
+        set({ lanes, timelineId: newId });
+      }
+      console.log(`[PULSE] Auto-montage complete: ${data.clips?.length ?? 0} clips, mode=${mode}`);
+    } catch (err) {
+      console.error('[PULSE] auto-montage error:', err);
+    } finally {
+      set({ montageInProgress: false });
+    }
+  },
+
+  // MARKER_A4.8: PULSE Analysis — enrich scenes with Camelot/McKee/energy
+  runPulseAnalysis: async () => {
+    const { sandboxRoot, projectId, pulseAnalysisInProgress } = get();
+    if (pulseAnalysisInProgress) return;
+    if (!sandboxRoot || !projectId) {
+      console.warn('[PULSE] runPulseAnalysis: no project session');
+      return;
+    }
+    set({ pulseAnalysisInProgress: true });
+    try {
+      const resp = await fetch(`${API_BASE}/api/cut/pulse/analyze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sandbox_root: sandboxRoot, project_id: projectId }),
+      });
+      const data = await resp.json();
+      if (data.success && data.scores) {
+        const scores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }> = {};
+        for (const score of data.scores) {
+          scores[score.scene_id || score.id] = {
+            camelot_key: score.camelot_key,
+            energy: score.energy,
+            pendulum: score.pendulum_position ?? score.pendulum,
+            dramatic_function: score.dramatic_function,
+          };
+        }
+        set({ pulseScores: scores });
+        console.log(`[PULSE] Analysis complete: ${Object.keys(scores).length} scenes scored`);
+      }
+    } catch (err) {
+      console.error('[PULSE] analysis error:', err);
+    } finally {
+      set({ pulseAnalysisInProgress: false });
+    }
+  },
+
+  // MARKER_EXPORT: Export timeline to editorial format (Premiere XML, FCPXML, OTIO, EDL)
+  exportTimeline: async (format) => {
+    const { sandboxRoot, projectId, timelineId, projectFramerate } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] exportTimeline: no project session');
+      return;
+    }
+    set({ exportInProgress: true });
+    try {
+      const response = await fetch(`${API_BASE}/cut/export/${format}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+          fps: projectFramerate || 25,
+        }),
+      });
+      if (!response.ok) throw new Error(`Export failed: HTTP ${response.status}`);
+      const data = await response.json();
+      if (!data.success) throw new Error(data.error?.message || 'Export failed');
+      // Determine content and file extension
+      const content = data.xml_content || data.otio_content || data.edl_content || '';
+      const ext = { 'premiere-xml': 'xml', 'fcpxml': 'fcpxml', 'otio': 'otio', 'edl': 'edl' }[format] || 'xml';
+      const mimeType = format === 'otio' ? 'application/json' : 'text/xml';
+      // Trigger file download
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${projectId}_${timelineId || 'main'}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      // Notify success
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'success', message: `Exported ${format}: ${data.export_path || 'download'}` },
+        }));
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Export failed';
+      console.error('[CUT] exportTimeline error:', msg);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('pipeline-activity', {
+          detail: { status: 'error', message: msg },
+        }));
+      }
+    } finally {
+      set({ exportInProgress: false });
+    }
+  },
 }));
+
+// MARKER_PW2: Panel Sync Bridge — propagate Script/DAG clicks to editor store
+// Script click → activeSceneId updates → selectedSceneId → PulseInspector/ClipInspector reactive
+// DAG click → selectedAssetPath updates → setSourceMedia → Source Monitor loads clip
+usePanelSyncStore.subscribe((state, prev) => {
+  // When selectedAssetPath changes → load in Source Monitor
+  if (state.selectedAssetPath && state.selectedAssetPath !== prev.selectedAssetPath) {
+    useCutEditorStore.getState().setSourceMedia(state.selectedAssetPath);
+  }
+  // When activeSceneId changes → store it for PulseInspector/ClipInspector
+  if (state.activeSceneId && state.activeSceneId !== prev.activeSceneId) {
+    useCutEditorStore.setState({ selectedSceneId: state.activeSceneId });
+  }
+});
+
+// MARKER_PW8: Timeline ID sync — keep CutEditorStore.timelineId in sync with TimelineInstanceStore
+// DAG, StorySpace, Inspector can read useCutEditorStore(s => s.timelineId) instead of hardcoding 'main'
+import { useTimelineInstanceStore } from './useTimelineInstanceStore';
+useTimelineInstanceStore.subscribe((state, prev) => {
+  if (state.activeTimelineId && state.activeTimelineId !== prev.activeTimelineId) {
+    const current = useCutEditorStore.getState().timelineId;
+    if (current !== state.activeTimelineId) {
+      useCutEditorStore.setState({ timelineId: state.activeTimelineId });
+    }
+  }
+});
+
+// MARKER_FCP7_SEQUENCE_SYNC: Keep sequences in sync with timelineTabs
+useCutEditorStore.subscribe((state, prev) => {
+  if (state.timelineTabs !== prev.timelineTabs) {
+    useCutEditorStore.setState({ sequences: state.timelineTabs });
+  }
+});
 
 // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E test access
 if (typeof window !== 'undefined') {
