@@ -408,17 +408,18 @@ class TestSaveTaskUpdatesCache:
 # ======================================================================
 
 class TestBusyTimeout:
-    """MARKER_200.TB_FOREVER.6: SQLite busy_timeout must be 30000ms (V3)."""
+    """MARKER_200.TB_FOREVER.6: SQLite busy_timeout must be 5000ms (Phase 192 canonical)."""
 
-    def test_busy_timeout_is_30000(self, tmp_path):
-        """PRAGMA busy_timeout must be 30000 (MARKER_199.LOCK_FIX_V3).
-        Lowering this causes lock storms under 14 concurrent MCP processes.
+    def test_busy_timeout_is_5000(self, tmp_path):
+        """PRAGMA busy_timeout must be 5000 (Phase 192 arch doc canonical).
+        Was 30000 in LOCK_FIX_V3 but reverted by MARKER_200.FOREVER (a662c64ff)
+        because the real fix was removing _backfill_modules from __init__.
         """
         board = _make_board(tmp_path)
         result = board.db.execute("PRAGMA busy_timeout").fetchone()[0]
-        assert result == 30000, (
-            f"busy_timeout={result}, expected 30000 — "
-            "MARKER_199.LOCK_FIX_V3 canonical value for 14 MCP processes"
+        assert result == 5000, (
+            f"busy_timeout={result}, expected 5000 — "
+            "MARKER_200.FOREVER canonical value (Phase 192 arch doc)"
         )
 
 
@@ -489,28 +490,27 @@ class TestUpdateCacheCoherence:
 # ======================================================================
 
 class TestConnectTimeout:
-    """MARKER_200.TB_FOREVER.9: sqlite3.connect must use timeout=30 (V3)."""
+    """MARKER_200.TB_FOREVER.9: sqlite3.connect must NOT use explicit timeout (default 5s)."""
 
-    def test_connect_uses_timeout_30(self, tmp_path):
-        """MARKER_199.LOCK_FIX_V3: sqlite3.connect(timeout=30) is the canonical
-        setting. Combined with PRAGMA busy_timeout=30000, this handles both
-        Python-level and SQLite-level contention for 14 MCP processes.
+    def test_connect_uses_default_timeout(self, tmp_path):
+        """MARKER_200.FOREVER (a662c64ff): sqlite3.connect() uses default timeout.
+        Explicit timeout=30 was removed because the real fix was removing
+        _backfill_modules from __init__ — no more lock storms, no need for
+        aggressive timeout. Default 5s is sufficient.
 
-        If someone removes timeout= or changes the value, this test catches it.
+        If someone re-adds timeout=, this test catches it.
         """
         import re
         from src.orchestration.task_board import TaskBoard
         source = inspect.getsource(TaskBoard._connect)
-        # Match timeout=N anywhere in the source (connect call may span lines)
-        match = re.search(r"\.connect\(.*?timeout\s*=\s*(\d+)", source, re.DOTALL)
-        assert match is not None, (
-            "_connect() must pass timeout= to sqlite3.connect — "
-            "required by MARKER_199.LOCK_FIX_V3 for 14 MCP processes"
-        )
-        timeout_val = int(match.group(1))
-        assert timeout_val == 30, (
-            f"sqlite3.connect timeout={timeout_val}, expected 30 — "
-            "MARKER_199.LOCK_FIX_V3 canonical value"
+        # Only check the sqlite3.connect(...) call line itself, not PRAGMA lines
+        connect_line = re.search(r"sqlite3\.connect\([^)]*\)", source)
+        assert connect_line is not None, "_connect() must call sqlite3.connect()"
+        call_text = connect_line.group(0)
+        assert "timeout" not in call_text, (
+            f"sqlite3.connect() must NOT pass explicit timeout= — "
+            f"MARKER_200.FOREVER removed it (default 5s sufficient). "
+            f"Found: {call_text}"
         )
 
 
