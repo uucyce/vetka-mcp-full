@@ -4,8 +4,9 @@
 
 Дата создания: 2026-03-27
 Последнее обновление: 2026-03-27
-Автор: Epsilon (QA Engineer 2)
+Автор: Epsilon (QA Engineer 2) — Claude Opus 4.6
 Источник: `src/orchestration/task_board.py` (3167 строк), `src/mcp/tools/task_board_tools.py` (1138 строк)
+Подпись: Agent Epsilon, claude/cut-qa-2, session 2026-03-27
 
 Любое изменение TaskBoard ОБЯЗАНО пройти QA через этот документ.
 
@@ -144,17 +145,17 @@ def __init__(self, board_file=None):
     3. self._migrate_json_to_sqlite()     # Одноразовая миграция из JSON (если DB пустая)
     4. self.settings = self._load_settings()  # SELECT * FROM settings
     5. self.tasks = self._load_all_tasks()    # SELECT * FROM tasks → dict cache
-    6. self._backfill_modules()           # Auto-assign module для задач без module
+    # _backfill_modules() УБРАН из init (Phase 200 fix) → action=backfill_modules
 ```
 
-**ПРАВИЛО: `__init__` НИКОГДА не делает bulk writes.** Backfill modules — единственное исключение, и оно пишет per-task (не batch INSERT). POSTMORTEM Phase 199: `_backfill_fts()` в `__init__` вызвал DB lock storm с 14 MCP процессами.
+**ПРАВИЛО: `__init__` НИКОГДА не делает bulk writes.** ТОЛЬКО reads. POSTMORTEM Phase 199: `_backfill_fts()` в `__init__` вызвал DB lock storm с 14 MCP процессами. `_backfill_modules()` вызывал ту же проблему — перенесен в `action=backfill_modules`.
 
 ### Cache coherence
 
 Каждая запись обновляет обе стороны:
-- `_save_task(task)` → INSERT OR REPLACE в SQLite + обновление `self.tasks[id]`
+- `_save_task(task)` → INSERT OR REPLACE в SQLite + обновление `self.tasks[id]` + FTS5 index
 - `get_task(id)` → SELECT из SQLite → обновляет `self.tasks[id]`
-- `get_queue()` → SELECT из SQLite (не из кэша, вопреки первоначальному дизайну)
+- `get_queue()` → читает из кэша `self.tasks` (Phase 200 fix Зеты), сортирует по `(priority, created_at)`
 
 ---
 
@@ -536,13 +537,57 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
 ### REST API (порт 5001)
 
-- Routes: `src/api/routes/debug_routes.py`
-- Endpoints: `/api/debug/task-board`, `/api/debug/task-board/notify`
-- Used by: MCC frontend (MiniTasks component)
+Полная карта REST endpoints, вызывающих TaskBoard:
+
+#### `task_routes.py` — основной CRUD API для MCC devpanel (17 вызовов)
+
+| Endpoint | Method | TaskBoard call |
+|----------|--------|---------------|
+| `/api/tasks` | GET | `get_queue()` |
+| `/api/tasks/{id}` | GET | `get_task()` |
+| `/api/tasks` | POST | `add_task()` |
+| `/api/tasks/{id}` | PUT | `update_task()` |
+| `/api/tasks/{id}` | DELETE | `remove_task()` |
+| `/api/tasks/{id}/claim` | POST | `claim_task()` |
+| `/api/tasks/{id}/complete` | POST | `complete_task()` |
+| `/api/tasks/{id}/merge` | POST | `merge_request()` |
+| `/api/tasks/summary` | GET | `get_board_summary()` |
+
+#### `mcc_routes.py` — MCC context overlay
+
+| Endpoint | Method | TaskBoard call |
+|----------|--------|---------------|
+| `/api/mcc/tasks/{id}/context-packet` | GET | `get_context_packet()` — read-only |
+
+#### `debug_routes.py` — debug/admin
+
+| Endpoint | Method | TaskBoard call |
+|----------|--------|---------------|
+| `/api/debug/task-board` | GET/POST | Various CRUD |
+| `/api/debug/task-board/notify` | POST | SocketIO emit (no DB write) |
+
+### Внешние callers (не REST)
+
+#### `group_message_handler.py` — Telegram doctor triage
+
+- Создает задачи через `add_task()`
+- Управляет через `update_task()`
+- **COUPLING CONCERN:** строка ~821 использует `board.tasks.get(task_id)` — прямой доступ к dict кэша, минуя `get_task()`. Это обходит SQL refresh и может читать stale данные из кэша другого процесса. Рекомендация: заменить на `board.get_task(task_id)`.
+
+#### `agent_pipeline.py` — pipeline lifecycle
+
+- `update_task()` для checkpoint saves во время pipeline execution
+- `record_pipeline_stats()` для финальных метрик
+- `list_tasks()` (alias `get_queue()`) для team performance summary — полный скан, идет из кэша
+
+#### `mycelium_heartbeat.py` — periodic task checks
+
+- `get_queue()` на каждый tick (30-60s) — ДОЛЖЕН идти из кэша (не SQL)
+- `add_task()` для heartbeat-detected tasks
 
 ### ПРАВИЛО: один `handle_task_board()`, три транспорта
 
-Все транспорты вызывают одну и ту же функцию. Нет дублирования логики.
+Все MCP транспорты вызывают одну и ту же функцию. REST API вызывает TaskBoard методы напрямую. Нет дублирования логики.
 
 ---
 
