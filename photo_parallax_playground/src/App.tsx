@@ -990,6 +990,71 @@ function smoothBoxMask(nx: number, ny: number, plate: Plate) {
   return clamp(left * right * top * bottom, 0, 1);
 }
 
+function computeEnvironmentMidAlpha(boxMask: number, ny: number, remapped: number, selection: number, midground: number) {
+  const shapedBox = Math.pow(boxMask, 1.35);
+  const midBand = 1 - smoothstep(0.07, 0.29, Math.abs(remapped - 0.42));
+  const farField = 1 - smoothstep(0.14, 0.56, remapped);
+  const lowerField = smoothstep(0.42, 0.9, ny);
+  const subjectSuppression = 1 - clamp(selection * 0.94, 0, 0.94);
+  const farSuppression = 1 - clamp(farField * 0.58, 0, 0.58);
+  const semanticAuthority = clamp(
+    (midground * 0.66 + midBand * 0.2 + lowerField * 0.14) * subjectSuppression * farSuppression,
+    0,
+    1,
+  );
+  return clamp(semanticAuthority * shapedBox, 0, 1);
+}
+
+function computeSubjectAlpha(role: PlateRole, remapped: number, selection: number) {
+  const selectionGate = smoothstep(0.14, 0.52, selection);
+  if (role === "foreground-subject") {
+    const depthAssist = remapped * (0.16 + selectionGate * 0.32);
+    return clamp(Math.max(selection, depthAssist), 0, 1);
+  }
+  if (role === "secondary-subject") {
+    const depthAssist = remapped * selectionGate * 0.22;
+    return clamp(Math.max(selection * 0.9, depthAssist), 0, 1);
+  }
+  return clamp(selection, 0, 1);
+}
+
+function computeEnvironmentMidDepth(remapped: number, selection: number, midground: number, alpha: number) {
+  const midTarget = clamp(0.28 + midground * 0.18, 0.24, 0.46);
+  const coherence = clamp(0.22 + alpha * 0.34, 0.22, 0.56);
+  const coherentDepth = midTarget * (1 - coherence) + remapped * coherence;
+  const subjectSuppression = 1 - clamp(selection * 0.7, 0, 0.7);
+  return clamp(coherentDepth * subjectSuppression, 0.16, 0.62);
+}
+
+function computeBackgroundFarAlpha(
+  boxMask: number,
+  ny: number,
+  unionAlpha: number,
+  remapped: number,
+  selection: number,
+  midground: number,
+) {
+  const complement = clamp(1 - unionAlpha, 0, 1);
+  const shapedBox = Math.pow(boxMask, 2.6);
+  const farField = 1 - smoothstep(0.1, 0.44, remapped);
+  const upperField = 1 - smoothstep(0.48, 0.82, ny);
+  const subjectSuppression = 1 - clamp(selection * 0.96, 0, 0.96);
+  const midSuppression = 1 - clamp(midground * 0.94, 0, 0.94);
+  const semanticAuthority = clamp(
+    (farField * 0.88 + complement * 0.12) * upperField * subjectSuppression * (0.24 + midSuppression * 0.76),
+    0,
+    1,
+  );
+  return clamp(semanticAuthority * shapedBox, 0, 1);
+}
+
+function computeBackgroundFarDepth(remapped: number, selection: number, midground: number, alpha: number) {
+  const subjectSuppression = 1 - clamp(selection * 0.9, 0, 0.9);
+  const midSuppression = 1 - clamp(midground * 0.62, 0, 0.62);
+  const coherentFarDepth = Math.min(remapped, 0.26) * (0.18 + alpha * 0.1) + 0.06;
+  return clamp(coherentFarDepth * subjectSuppression * midSuppression, 0.04, 0.3);
+}
+
 function buildPlateCompositeMaps(
   proxyMaps: ProxyMaps,
   sourceRaster: SourceRaster | null,
@@ -1052,14 +1117,14 @@ function buildPlateCompositeMaps(
 
         let roleAlpha = 0;
         if (plate.role === "foreground-subject") {
-          roleAlpha = Math.max(selection, remapped * 0.92);
+          roleAlpha = computeSubjectAlpha(plate.role, remapped, selection);
         } else if (plate.role === "secondary-subject") {
-          roleAlpha = Math.max(selection * 0.82, remapped * 0.68);
+          roleAlpha = computeSubjectAlpha(plate.role, remapped, selection);
         } else if (plate.role === "environment-mid") {
-          roleAlpha = Math.max(midground, (1 - Math.abs(remapped - 0.5) * 1.6) * 0.55);
+          roleAlpha = computeEnvironmentMidAlpha(boxMask, ny, remapped, selection, midground);
         }
 
-        const alpha = clamp(roleAlpha * boxMask, 0, 1);
+        const alpha = plate.role === "environment-mid" ? roleAlpha : clamp(roleAlpha * boxMask, 0, 1);
         unionAlpha = Math.max(unionAlpha, alpha);
         const image = plateImages.get(plate.id);
         const rgbaImage = plateRgbaImages.get(plate.id);
@@ -1074,7 +1139,11 @@ function buildPlateCompositeMaps(
         rgbaImage.data[index + 1] = sourceColor.g;
         rgbaImage.data[index + 2] = sourceColor.b;
         rgbaImage.data[index + 3] = Math.round(alpha * sourceColor.a);
-        const gray = Math.round(remapped * 255);
+        const gray = Math.round(
+          (plate.role === "environment-mid"
+            ? computeEnvironmentMidDepth(remapped, selection, midground, alpha)
+            : remapped) * 255,
+        );
         depthImage.data[index] = gray;
         depthImage.data[index + 1] = gray;
         depthImage.data[index + 2] = gray;
@@ -1084,7 +1153,10 @@ function buildPlateCompositeMaps(
 
       // MARKER_P2_BGFAR: Export background-far plates as real plates with complement alpha
       for (const plate of backgroundFarPlates) {
-        const bgFarAlpha = clamp(1 - unionAlpha * 0.94, 0.06, 1);
+        const boxMask = smoothBoxMask(nx, ny, plate);
+        if (boxMask <= 0.001) continue;
+        const bgFarAlpha = computeBackgroundFarAlpha(boxMask, ny, unionAlpha, remapped, selection, midground);
+        if (bgFarAlpha <= 0.001) continue;
         const image = plateImages.get(plate.id);
         const rgbaImage = plateRgbaImages.get(plate.id);
         const depthImage = plateDepthImages.get(plate.id);
@@ -1098,7 +1170,7 @@ function buildPlateCompositeMaps(
         rgbaImage.data[index + 1] = sourceColor.g;
         rgbaImage.data[index + 2] = sourceColor.b;
         rgbaImage.data[index + 3] = Math.round(bgFarAlpha * sourceColor.a);
-        const gray = Math.round(remapped * 255);
+        const gray = Math.round(computeBackgroundFarDepth(remapped, selection, midground, bgFarAlpha) * 255);
         depthImage.data[index] = gray;
         depthImage.data[index + 1] = gray;
         depthImage.data[index + 2] = gray;
@@ -1131,29 +1203,50 @@ function buildPlateCompositeMaps(
     if (!ctx || !image || !rgbaImage || !depthImage) continue;
     const canvas = plateCanvases.get(plate.id);
     if (!canvas) continue;
-    // MARKER_P3_BLUR: Apply alpha-edge blur to exported plate PNGs
-    // Softens hard depth-boundary edges that appear as cutout artifacts
-    // when plates are parallax-displaced in the renderer.
-    const applyBlur = (imgData: ImageData): string => {
-      ctx.clearRect(0, 0, width, height);
-      ctx.putImageData(imgData, 0, 0);
-      if (blurPx > 0.05) {
-        const tmp = document.createElement("canvas");
-        tmp.width = width;
-        tmp.height = height;
-        const tmpCtx = tmp.getContext("2d");
-        if (tmpCtx) {
-          tmpCtx.filter = `blur(${blurPx}px)`;
-          tmpCtx.drawImage(canvas, 0, 0);
-          ctx.clearRect(0, 0, width, height);
-          ctx.drawImage(tmp, 0, 0);
-        }
+    const extractAlpha = (imgData: ImageData) => {
+      const alpha = new Uint8ClampedArray(width * height);
+      for (let i = 0; i < width * height; i += 1) {
+        alpha[i] = imgData.data[i * 4 + 3];
       }
+      return alpha;
+    };
+    const extractBlurredAlpha = (maskData: ImageData) => {
+      const alphaSource = buildCanvas();
+      const alphaCtx = alphaSource.getContext("2d");
+      if (!alphaCtx) return extractAlpha(maskData);
+      alphaCtx.putImageData(maskData, 0, 0);
+      if (blurPx <= 0.05) return extractAlpha(maskData);
+      const blurredCanvas = buildCanvas();
+      const blurredCtx = blurredCanvas.getContext("2d");
+      if (!blurredCtx) return extractAlpha(maskData);
+      blurredCtx.filter = `blur(${blurPx}px)`;
+      blurredCtx.drawImage(alphaSource, 0, 0);
+      const alpha = extractAlpha(blurredCtx.getImageData(0, 0, width, height));
+      const haloFloor = Math.max(8, Math.round(blurPx * 18));
+      for (let i = 0; i < alpha.length; i += 1) {
+        const value = alpha[i];
+        if (value <= haloFloor) {
+          alpha[i] = 0;
+          continue;
+        }
+        alpha[i] = Math.round(((value - haloFloor) / Math.max(1, 255 - haloFloor)) * 255);
+      }
+      return alpha;
+    };
+    const composeWithAlpha = (imgData: ImageData, alpha: Uint8ClampedArray): string => {
+      const composed = ctx.createImageData(width, height);
+      composed.data.set(imgData.data);
+      for (let i = 0; i < width * height; i += 1) {
+        composed.data[i * 4 + 3] = alpha[i];
+      }
+      ctx.clearRect(0, 0, width, height);
+      ctx.putImageData(composed, 0, 0);
       return canvas.toDataURL("image/png");
     };
-    plateMaskUrls[plate.id] = applyBlur(image);
-    plateRgbaUrls[plate.id] = applyBlur(rgbaImage);
-    plateDepthUrls[plate.id] = applyBlur(depthImage);
+    const alpha = extractBlurredAlpha(image);
+    plateMaskUrls[plate.id] = composeWithAlpha(image, alpha);
+    plateRgbaUrls[plate.id] = composeWithAlpha(rgbaImage, alpha);
+    plateDepthUrls[plate.id] = composeWithAlpha(depthImage, alpha);
     plateCoverageOut[plate.id] = Number(((plateCoverage.get(plate.id) || 0) / (width * height)).toFixed(4));
   }
 
