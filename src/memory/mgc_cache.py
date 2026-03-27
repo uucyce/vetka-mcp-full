@@ -143,23 +143,31 @@ class MGCCache:
         logger.debug(f"MGCCache initialized: gen0_max={gen0_max}, threshold={promotion_threshold}")
 
     def _init_gen1_db(self):
-        """MARKER_198.P1.3: Initialize Gen1 SQLite database with WAL mode."""
+        """MARKER_198.P1.3: Initialize Gen1 SQLite database with WAL mode.
+
+        MARKER_199.DDL_FAST: sqlite_master fast path — skip DDL if table exists.
+        """
         try:
             self._gen1_db_path = _GEN1_DB_PATH
             self._gen1_db_path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(str(self._gen1_db_path))
             conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS mgc_gen1 (
-                    key_hash TEXT PRIMARY KEY,
-                    key TEXT NOT NULL,
-                    value_json TEXT NOT NULL,
-                    access_count INTEGER DEFAULT 0,
-                    created_at TEXT,
-                    last_accessed TEXT
-                )
-            """)
-            conn.commit()
+            # Fast path: skip DDL if table already exists
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mgc_gen1'"
+            ).fetchone()
+            if not exists:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS mgc_gen1 (
+                        key_hash TEXT PRIMARY KEY,
+                        key TEXT NOT NULL,
+                        value_json TEXT NOT NULL,
+                        access_count INTEGER DEFAULT 0,
+                        created_at TEXT,
+                        last_accessed TEXT
+                    )
+                """)
+                conn.commit()
             conn.close()
             self._gen1_enabled = True
             logger.info(f"[MGC] Gen1 SQLite initialized: {self._gen1_db_path}")

@@ -2471,8 +2471,8 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
         # MARKER_137.S1_1_EVENT_DISPATCH: Auto-dispatch on new task
         if action == "added":
             try:
-                from src.orchestration.task_board import TaskBoard
-                board = TaskBoard()
+                from src.orchestration.task_board import get_task_board
+                board = get_task_board()
                 if board.settings.get("auto_dispatch", False):
                     async def _auto_dispatch():
                         try:

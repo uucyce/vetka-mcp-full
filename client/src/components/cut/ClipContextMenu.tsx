@@ -148,12 +148,20 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
     {
       label: 'Delete',
       shortcut: 'Del',
-      action: () => { store().deleteClip(); onClose(); },
+      action: async () => {
+        await store().applyTimelineOps([{ op: 'remove_clip', clip_id: clipId }]);
+        store().setSelectedClip(null);
+        onClose();
+      },
     },
     {
       label: 'Ripple Delete',
       shortcut: '\u21E7Del',
-      action: () => { store().rippleDelete(); onClose(); },
+      action: async () => {
+        await store().applyTimelineOps([{ op: 'ripple_delete', clip_id: clipId }]);
+        store().setSelectedClip(null);
+        onClose();
+      },
     },
     { separator: true },
     {
@@ -169,7 +177,7 @@ export default function ClipContextMenu({ clipId, position, onClose }: ClipConte
     {
       label: 'Properties',
       action: () => {
-        store().setSelectedClipId(clipId);
+        store().setSelectedClip(clipId);
         store().setFocusedPanel('effects');
         onClose();
       },

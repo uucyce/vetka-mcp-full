@@ -149,7 +149,14 @@ export type CutHotkeyAction =
   | 'deselectAll'
   | 'selectForward'
   | 'toggleAVSelection'
-  | 'linkUnlinkClips';
+  | 'linkUnlinkClips'
+  // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
+  | 'focusSourceAcquire'
+  // MARKER_FCP7FIX: 4 missing actions from FCP7 recon
+  | 'revealMasterClip'
+  | 'collapseExpandTrack'
+  | 'expandTrack'
+  | 'renameClipInline';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -290,6 +297,13 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   selectForward:          'global',
   toggleAVSelection:      'global',
   linkUnlinkClips:        'global',
+  // MARKER_SOURCE_ACQUIRE
+  focusSourceAcquire:     'global',
+  // MARKER_FCP7FIX: 4 missing actions
+  revealMasterClip:       ['project', 'timeline'],  // FCP7 Shift+F — browser/timeline context
+  collapseExpandTrack:    ['timeline'],              // toggle track collapse — timeline only
+  expandTrack:            ['timeline'],              // expand track to max — timeline only
+  renameClipInline:       ['timeline'],              // inline rename — timeline only
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -398,6 +412,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  focusSourceAcquire:'Cmd+8',  // MARKER_SOURCE_ACQUIRE: FCP7 Log & Capture
   // Linked selection + Snap
   toggleLinkedSelection: 'Cmd+l',
   // MARKER_BUG4: Premiere snap = S (was N, collided with rollTool)
@@ -435,6 +450,11 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   // linkUnlinkClips: Premiere already has Cmd+L via toggleLinkedSelection — no separate alias needed
+  // MARKER_FCP7FIX: 4 missing actions
+  revealMasterClip:    'Shift+f',        // Premiere: Shift+F = Reveal Master Clip
+  collapseExpandTrack: 'Shift+minus',    // toggle track collapse
+  expandTrack:         'Shift+equal',    // expand track to max
+  renameClipInline:    'Enter',          // Premiere: Enter = rename selected
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -527,6 +547,7 @@ export const FCP7_PRESET: HotkeyMap = {
   focusTimeline:     'Cmd+3',
   focusProject:      'Cmd+4',
   focusEffects:      'Cmd+5',
+  focusSourceAcquire:'Cmd+8',  // MARKER_SOURCE_ACQUIRE: FCP7 Log & Capture
   // Linked selection (FCP7 standard: Shift+L) + Snap (N)
   toggleLinkedSelection: 'Shift+l',
   toggleSnap:        'n',
@@ -563,6 +584,11 @@ export const FCP7_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   linkUnlinkClips:   'Cmd+l',  // Premiere Cmd+L alias (FCP7 uses Shift+L via toggleLinkedSelection)
+  // MARKER_FCP7FIX: 4 missing actions
+  revealMasterClip:    'Shift+f',        // FCP7: Shift+F = Reveal Master Clip
+  collapseExpandTrack: 'Shift+minus',    // toggle track collapse
+  expandTrack:         'Shift+equal',    // expand track to max
+  renameClipInline:    'Enter',          // FCP7: Enter = rename selected item
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -812,6 +838,13 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'selectForward', label: 'Select Forward from Playhead', group: 'Selection' },
   { action: 'toggleAVSelection', label: 'Toggle A/V Selection Target (T)', group: 'Selection' },
   { action: 'linkUnlinkClips', label: 'Link/Unlink Clips (Cmd+L)', group: 'Selection' },
+  // MARKER_SOURCE_ACQUIRE
+  { action: 'focusSourceAcquire', label: 'Source Acquire (Cmd+8)', group: 'Navigation' },
+  // MARKER_FCP7FIX: 4 missing actions
+  { action: 'revealMasterClip', label: 'Reveal Master Clip (Shift+F)', group: 'Navigation' },
+  { action: 'collapseExpandTrack', label: 'Collapse/Expand Track (Shift+-)', group: 'View' },
+  { action: 'expandTrack', label: 'Expand Track to Max (Shift+=)', group: 'View' },
+  { action: 'renameClipInline', label: 'Rename Clip (Enter)', group: 'Editing' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────

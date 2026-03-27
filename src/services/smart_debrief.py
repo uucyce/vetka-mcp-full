@@ -71,6 +71,71 @@ def _is_bug_report(text: str) -> bool:
     return bool(_BUG_PATTERNS.search(text))
 
 
+def _dedup_or_create(
+    prefix: str,
+    summary: str,
+    full_text: str,
+    task_board,
+    *,
+    phase_type: str,
+    priority: int,
+    tags: list,
+    source: str,
+    description: str,
+) -> tuple[Optional[str], bool]:
+    """MARKER_199.DEBRIEF_DEDUP — dedup-aware task creation.
+
+    Returns (task_id, was_deduped).  If an existing task with the same prefix
+    and similar title is found via FTS5, bump its priority and append context
+    instead of creating a duplicate.  Falls through to normal creation on any
+    search error.
+    """
+    # ── 1. Try FTS5 dedup ────────────────────────────────────────────────────
+    try:
+        hits = task_board.search_fts(summary, limit=5)
+        for hit in hits:
+            hit_id = hit.get("task_id", "")
+            existing = task_board.get_task(hit_id)
+            if existing is None:
+                continue
+            existing_title: str = existing.get("title", "")
+            if not existing_title.startswith(prefix):
+                continue
+            # Found a matching task — bump priority and append context
+            existing_priority = int(existing.get("priority", priority))
+            new_priority = max(2, existing_priority - 1)
+            existing_desc: str = existing.get("description", "")
+            updated_desc = (
+                existing_desc.rstrip()
+                + f"\n\n---\n[dedup append] {full_text[:400]}"
+            )
+            task_board.update_task(
+                hit_id,
+                priority=new_priority,
+                description=updated_desc,
+            )
+            logger.info(
+                "[SmartDebrief] DEDUP hit — bumped %s P%d→P%d, appended context",
+                hit_id,
+                existing_priority,
+                new_priority,
+            )
+            return hit_id, True
+    except Exception as e:
+        logger.debug("[SmartDebrief] FTS5 dedup check failed (non-fatal): %s", e)
+
+    # ── 2. No duplicate found — create normally ──────────────────────────────
+    task_id = task_board.add_task(
+        title=f"{prefix} {summary}",
+        description=description,
+        phase_type=phase_type,
+        priority=priority,
+        tags=tags,
+        source=source,
+    )
+    return task_id, False
+
+
 def _create_auto_tasks(report, task_board) -> list[str]:
     """Create research tasks from debrief answers. Returns list of created task IDs."""
     created = []
@@ -79,19 +144,26 @@ def _create_auto_tasks(report, task_board) -> list[str]:
     for lesson in report.lessons_learned:
         if _is_bug_report(lesson):
             try:
-                task_id = task_board.add_task(
-                    title=f"[DEBRIEF-BUG] {_extract_summary(lesson)}",
-                    description=(
-                        f"Обнаружено агентом {report.agent_callsign or 'unknown'} "
-                        f"({report.domain or 'cross-cutting'}).\n\n{lesson}"
-                    ),
+                summary = _extract_summary(lesson)
+                task_id, deduped = _dedup_or_create(
+                    prefix="[DEBRIEF-BUG]",
+                    summary=summary,
+                    full_text=lesson,
+                    task_board=task_board,
                     phase_type="research",
                     priority=3,
                     tags=["debrief-auto", "architect-review"],
                     source="smart_debrief",
+                    description=(
+                        f"Обнаружено агентом {report.agent_callsign or 'unknown'} "
+                        f"({report.domain or 'cross-cutting'}).\n\n{lesson}"
+                    ),
                 )
                 created.append(task_id)
-                logger.info("[SmartDebrief] Created bug task: %s", task_id)
+                if deduped:
+                    logger.info("[SmartDebrief] Deduped bug task: %s", task_id)
+                else:
+                    logger.info("[SmartDebrief] Created bug task: %s", task_id)
             except Exception as e:
                 logger.debug("[SmartDebrief] Failed to create bug task: %s", e)
 
@@ -99,18 +171,25 @@ def _create_auto_tasks(report, task_board) -> list[str]:
     for rec in report.recommendations:
         if rec.strip():
             try:
-                task_id = task_board.add_task(
-                    title=f"[DEBRIEF-IDEA] {_extract_summary(rec)}",
-                    description=(
-                        f"Идея от агента {report.agent_callsign or 'unknown'}.\n\n{rec}"
-                    ),
+                summary = _extract_summary(rec)
+                task_id, deduped = _dedup_or_create(
+                    prefix="[DEBRIEF-IDEA]",
+                    summary=summary,
+                    full_text=rec,
+                    task_board=task_board,
                     phase_type="research",
                     priority=4,
                     tags=["debrief-auto", "architect-review", "idea"],
                     source="smart_debrief",
+                    description=(
+                        f"Идея от агента {report.agent_callsign or 'unknown'}.\n\n{rec}"
+                    ),
                 )
                 created.append(task_id)
-                logger.info("[SmartDebrief] Created idea task: %s", task_id)
+                if deduped:
+                    logger.info("[SmartDebrief] Deduped idea task: %s", task_id)
+                else:
+                    logger.info("[SmartDebrief] Created idea task: %s", task_id)
             except Exception as e:
                 logger.debug("[SmartDebrief] Failed to create idea task: %s", e)
 
@@ -246,8 +325,8 @@ def process_smart_debrief(report) -> dict:
 
     # 1. Auto-create tasks
     try:
-        from src.orchestration.task_board import TaskBoard
-        board = TaskBoard()
+        from src.orchestration.task_board import get_task_board
+        board = get_task_board()
         results["tasks_created"] = _create_auto_tasks(report, board)
     except Exception as e:
         logger.debug("[SmartDebrief] Task creation skipped: %s", e)

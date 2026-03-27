@@ -17,6 +17,7 @@ Flow:
 @depends: src/orchestration/agent_pipeline.py, src/orchestration/mycelium_heartbeat.py
 """
 
+import atexit
 import json
 import sqlite3
 import time
@@ -193,6 +194,7 @@ class TaskBoard:
         # MARKER_192.3: SQLite connection + schema + migration
         self.db = self._connect()
         self._ensure_schema()
+        self._run_migrations()
         self._migrate_json_to_sqlite()
 
         # Load settings from DB
@@ -203,6 +205,29 @@ class TaskBoard:
         # Fill in-memory cache for backward compat
         self.tasks = self._load_all_tasks()
         self._backfill_modules()
+
+        # MARKER_199.PERF: Checkpoint WAL after init to prevent WAL bloat
+        # across concurrent agent connections
+        try:
+            result = self.db.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone()
+            if result:
+                busy, log_pages, checkpointed = result
+                if log_pages > 0:
+                    logger.info(f"[TaskBoard] WAL checkpoint: {checkpointed}/{log_pages} pages checkpointed, {busy} busy")
+        except Exception as e:
+            logger.debug(f"[TaskBoard] WAL checkpoint skipped: {e}")
+
+        atexit.register(self.close)
+
+    def close(self):
+        """Close SQLite connection and checkpoint WAL."""
+        if hasattr(self, 'db') and self.db:
+            try:
+                self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                self.db.close()
+            except Exception:
+                pass
+            self.db = None
 
     # ==========================================
     # PERSISTENCE
@@ -221,19 +246,87 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Loaded {len(self.tasks)} tasks from SQLite")
 
     def _backfill_modules(self):
-        """MARKER_155.2A: Backfill 'module' field for existing tasks."""
-        updated = 0
-        for task in self.tasks.values():
-            if "module" not in task or not task.get("module"):
-                task["module"] = self._auto_assign_module(
-                    task.get("title", ""),
-                    task.get("description", ""),
-                    task.get("tags", []),
-                )
-                self._save_task(task)
-                updated += 1
-        if updated > 0:
-            logger.info(f"[TaskBoard] Backfilled module for {updated} tasks")
+        """MARKER_155.2A: Backfill 'module' field for existing tasks.
+
+        MARKER_199.LOCK_SAFE: Non-blocking — skips on database lock.
+        MARKER_199.PERF: Batched — single transaction instead of per-task commit.
+        MARKER_199.INIT_FAST: SQL fast-path check before any Python iteration.
+        Module backfill is optional enrichment, not critical for operation.
+        """
+        try:
+            # MARKER_199.INIT_FAST: Quick SQL check — if all tasks have modules, skip entirely.
+            # Avoids iterating 450+ tasks in Python on every init (10+ concurrent processes).
+            try:
+                _count = self.db.execute(
+                    "SELECT COUNT(*) FROM tasks WHERE module IS NULL OR module = ''"
+                ).fetchone()[0]
+                if _count == 0:
+                    return  # All tasks already have modules — fast exit
+            except Exception:
+                pass  # If check fails, fall through to Python iteration
+
+            # Collect tasks needing module assignment (in-memory only)
+            pending_updates = []
+            for task in self.tasks.values():
+                if "module" not in task or not task.get("module"):
+                    task["module"] = self._auto_assign_module(
+                        task.get("title", ""),
+                        task.get("description", ""),
+                        task.get("tags", []),
+                    )
+                    pending_updates.append(task)
+
+            if not pending_updates:
+                return
+
+            # MARKER_199.INIT_FAST: Cap batch to 50 tasks per init to avoid long locks.
+            # Remaining tasks get backfilled on next init (progressive convergence).
+            if len(pending_updates) > 50:
+                pending_updates = pending_updates[:50]
+                logger.info(f"[TaskBoard] Module backfill capped at 50 (remaining deferred)")
+
+            # Batch write: single transaction for all module updates
+            with self.db:
+                for task in pending_updates:
+                    row = self._task_to_row(task)
+                    row["updated_at"] = datetime.now().isoformat()
+                    columns = list(row.keys())
+                    placeholders = ", ".join("?" for _ in columns)
+                    col_names = ", ".join(columns)
+                    values = [row[c] for c in columns]
+                    self.db.execute(
+                        f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
+                        values,
+                    )
+            # FTS5 re-index in a separate batch (non-critical)
+            try:
+                with self.db:
+                    for task in pending_updates:
+                        task_id = task.get("id", "")
+                        if not task_id:
+                            continue
+                        old = self.db.execute(
+                            "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+                        ).fetchone()
+                        if old:
+                            self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+                        tags = task.get("tags", [])
+                        tags_text = " ".join(tags) if isinstance(tags, list) else str(tags or "")
+                        self.db.execute(
+                            "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
+                            "VALUES(?, ?, ?, ?, ?)",
+                            (task_id, task.get("title", ""), task.get("description", ""),
+                             task.get("commit_message", ""), tags_text),
+                        )
+            except Exception as e:
+                logger.debug(f"[TaskBoard] FTS5 re-index during module backfill skipped: {e}")
+
+            logger.info(f"[TaskBoard] Backfilled module for {len(pending_updates)} tasks (batched)")
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logger.debug("[TaskBoard] Module backfill skipped — database locked")
+            else:
+                raise
 
     def _save(self, action: str = "update"):
         """Persist settings and notify UI.
@@ -256,9 +349,12 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        # MARKER_199.LOCK_FIX_V3: Keep default isolation_level (deferred transactions)
+        # but with generous timeout + application-level retry in _execute_with_retry.
+        # isolation_level=None broke batch transactions (each INSERT auto-commits = 50x slower).
+        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         return conn
 
@@ -266,7 +362,18 @@ class TaskBoard:
         """Create tasks/settings/meta tables and indexes if they don't exist.
 
         MARKER_192.1: Idempotent schema creation.
+        MARKER_199.DDL_FAST: sqlite_master fast path — read-only check before DDL.
+        Only the very first process pays the exclusive-lock cost. All subsequent
+        processes see the tables in sqlite_master and skip DDL entirely.
         """
+        # Fast path: if 'tasks' table exists, schema is already created
+        row = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'"
+        ).fetchone()
+        if row:
+            return
+
+        # Slow path: first-time schema creation
         with self.db:
             self.db.executescript("""
                 CREATE TABLE IF NOT EXISTS tasks (
@@ -306,6 +413,211 @@ class TaskBoard:
                     value TEXT
                 );
             """)
+
+    # ==========================================
+    # MARKER_199.MIGRATION: Schema Versioning
+    # ==========================================
+
+    def _get_schema_version(self) -> int:
+        """Get current schema version from meta table."""
+        try:
+            row = self.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            return int(row[0]) if row else 0
+        except Exception:
+            return 0
+
+    def _set_schema_version(self, version: int):
+        """Set schema version in meta table."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
+            (str(version),)
+        )
+        self.db.commit()
+
+    def _run_migrations(self):
+        """MARKER_199.MIGRATION: Run pending schema migrations.
+
+        Each migration is idempotent and version-gated.
+        """
+        current = self._get_schema_version()
+
+        if current < 1:
+            # Migration 1: FTS5 full-text search (MARKER_199.FTS5)
+            # Fast path: check if FTS5 table already exists (MARKER_199.DDL_FAST)
+            fts_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks_fts'"
+            ).fetchone()
+            if fts_exists:
+                self._set_schema_version(1)
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE VIRTUAL TABLE IF NOT EXISTS tasks_fts USING fts5(
+                            task_id UNINDEXED,
+                            title,
+                            description,
+                            commit_message,
+                            tags_text,
+                            tokenize='unicode61'
+                        );
+                    """)
+                    self._set_schema_version(1)
+                    logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning("[TaskBoard] Migration 1 deferred — database locked")
+                        return  # Will retry on next init
+                    logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
+
+        # MARKER_199.DDL_FAST: _backfill_fts() removed from init path.
+        # It inserted 1648 rows on every init when schema_version failed to write,
+        # causing 14 MCP processes to deadlock on the same write lock.
+        # FTS5 index is now populated incrementally via _index_task_fts() on save/update.
+        # To backfill old tasks manually: use action=backfill_fts via task_board tool.
+
+    # ==========================================
+    # MARKER_199.FTS5: Full-Text Search
+    # ==========================================
+
+    def _index_task_fts(self, task: dict):
+        """Index or re-index a single task in FTS5."""
+        task_id = task.get("id", "")
+        if not task_id:
+            return
+        try:
+            # Remove old entry if exists
+            old = self.db.execute(
+                "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if old:
+                self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+            # Insert new entry
+            tags = task.get("tags", [])
+            tags_text = " ".join(tags) if isinstance(tags, list) else str(tags or "")
+            self.db.execute(
+                "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
+                "VALUES(?, ?, ?, ?, ?)",
+                (task_id, task.get("title", ""), task.get("description", ""),
+                 task.get("commit_message", ""), tags_text),
+            )
+        except Exception as e:
+            # FTS indexing never blocks task operations
+            logger.debug(f"[FTS5] Index failed for {task_id}: {e}")
+
+    def _remove_task_fts(self, task_id: str):
+        """Remove a task from the FTS5 index."""
+        try:
+            old = self.db.execute(
+                "SELECT rowid FROM tasks_fts WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            if old:
+                self.db.execute("DELETE FROM tasks_fts WHERE rowid = ?", (old[0],))
+        except Exception:
+            pass
+
+    def _backfill_fts(self) -> int:
+        """MARKER_199.FTS5: One-time backfill of all existing tasks into FTS5 index.
+
+        Uses batched commits (100 per batch) to avoid holding a write lock
+        for the entire backfill. If locked, skips gracefully — next init retries.
+
+        Returns:
+            Number of tasks indexed (0 if already populated, table missing, or locked).
+        """
+        try:
+            existing = self.db.execute("SELECT COUNT(*) FROM tasks_fts").fetchone()[0]
+            if existing > 0:
+                return 0  # Already populated
+        except Exception:
+            return 0  # Table doesn't exist yet
+
+        try:
+            cursor = self.db.execute("SELECT * FROM tasks")
+            count = 0
+            batch = 0
+            for row in cursor:
+                task = self._row_to_task(row)
+                self._index_task_fts(task)
+                count += 1
+                batch += 1
+                if batch >= 100:
+                    self.db.commit()
+                    batch = 0
+            if batch > 0:
+                self.db.commit()
+            logger.info(f"[FTS5] Backfilled {count} tasks into full-text index")
+            return count
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logger.warning("[FTS5] Backfill skipped — database locked. Will retry on next init.")
+            else:
+                logger.warning(f"[FTS5] Backfill failed: {e}")
+            return 0
+
+    def search_fts(self, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """MARKER_199.FTS5: Full-text search across tasks.
+
+        Supports FTS5 query syntax: AND, OR, phrase "...", prefix*.
+        Returns list of {task_id, snippet, rank} dicts.
+
+        Args:
+            query: FTS5 query string (e.g. 'WebSocket scope', '"dirty working tree"')
+            limit: Max results (default 20)
+        """
+        if not query or not query.strip():
+            return []
+        try:
+            # MARKER_199.FTS5_SANITIZE: Strip special chars that FTS5 interprets as operators
+            # (colons, dashes, arrows, etc.) to prevent "no such column" errors.
+            import re as _re_fts
+            _sanitized = _re_fts.sub(r'[^\w\s"*]', ' ', query).strip()
+            if not _sanitized:
+                return []
+            rows = self.db.execute(
+                "SELECT task_id, snippet(tasks_fts, 1, '[', ']', '...', 10) AS snippet, "
+                "rank FROM tasks_fts WHERE tasks_fts MATCH ? ORDER BY rank LIMIT ?",
+                (_sanitized, limit),
+            ).fetchall()
+            results = []
+            for row in rows:
+                results.append({
+                    "task_id": row[0],
+                    "snippet": row[1],
+                    "rank": round(float(row[2]), 4),
+                })
+            return results
+        except Exception as e:
+            logger.warning(f"[FTS5] Search failed for query '{query}': {e}")
+            return []
+
+    def get_debrief_skipped_tasks(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """MARKER_199.DEBRIEF: Find tasks auto-closed without debrief.
+
+        Tasks closed by git_auto_close skip the entire debrief→memory pipeline.
+        Returns recently closed tasks that need Commander attention for debrief.
+        """
+        try:
+            cursor = self.db.execute(
+                "SELECT id, title, assigned_to, completed_at, extra FROM tasks "
+                "WHERE status IN ('done_worktree', 'done_main') "
+                "AND extra LIKE '%git_auto_close%' "
+                "ORDER BY completed_at DESC LIMIT ?",
+                (limit,),
+            )
+            skipped = []
+            for row in cursor:
+                skipped.append({
+                    "task_id": row[0],
+                    "title": row[1],
+                    "assigned_to": row[2] or "unknown",
+                    "completed_at": row[3],
+                })
+            return skipped
+        except Exception as e:
+            logger.debug(f"[Debrief] Skipped query failed: {e}")
+            return []
 
     @staticmethod
     def _task_to_row(task: dict) -> dict:
@@ -363,6 +675,7 @@ class TaskBoard:
         """INSERT OR REPLACE a single task into SQLite.
 
         MARKER_192.1: Per-row atomic write — no full-board overwrite.
+        MARKER_199.LOCK_FIX_V2: Retry with exponential backoff on lock contention.
         """
         row = self._task_to_row(task)
         row["updated_at"] = datetime.now().isoformat()
@@ -370,11 +683,33 @@ class TaskBoard:
         placeholders = ", ".join("?" for _ in columns)
         col_names = ", ".join(columns)
         values = [row[c] for c in columns]
-        with self.db:
-            self.db.execute(
-                f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
-                values,
-            )
+        self._execute_with_retry(
+            f"INSERT OR REPLACE INTO tasks ({col_names}) VALUES ({placeholders})",
+            values,
+        )
+        # MARKER_199.FTS5: Keep full-text index in sync
+        self._index_task_fts(task)
+
+    def _execute_with_retry(self, sql: str, params=None, max_retries: int = 5):
+        """MARKER_199.LOCK_FIX_V2: Execute a write SQL with exponential backoff retry.
+
+        Handles 'database is locked' by retrying with 0.1s, 0.2s, 0.4s, 0.8s, 1.6s delays.
+        Total max wait: ~3s. Combined with busy_timeout=30s, this handles both
+        Python-level and SQLite-level contention.
+        """
+        import time as _t
+        for attempt in range(max_retries):
+            try:
+                with self.db:
+                    self.db.execute(sql, params or [])
+                return  # success
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < max_retries - 1:
+                    _delay = 0.1 * (2 ** attempt)  # 0.1, 0.2, 0.4, 0.8, 1.6
+                    logger.debug(f"[TaskBoard] Write retry {attempt+1}/{max_retries} after {_delay:.1f}s: {e}")
+                    _t.sleep(_delay)
+                    continue
+                raise  # re-raise on last attempt or non-lock error
 
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
@@ -383,6 +718,8 @@ class TaskBoard:
         """
         with self.db:
             self.db.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
+        # MARKER_199.FTS5: Remove from full-text index
+        self._remove_task_fts(task_id)
 
     def _load_all_tasks(self) -> Dict[str, dict]:
         """SELECT all tasks from SQLite → dict keyed by task ID.
@@ -1179,6 +1516,118 @@ class TaskBoard:
             self.tasks.pop(task_id, None)
         return task
 
+    def get_context_packet(
+        self, task_id: str, *, max_chars: int = 24000, doc_budget: int = 8192,
+    ) -> Optional[Dict[str, Any]]:
+        """MARKER_199.MCC: Build MCC-ready context packet for a task.
+
+        Resolves task into a self-contained packet that local models (Qwen, etc.)
+        can consume without additional lookups. Used by MCC dev panel.
+
+        Args:
+            task_id: Task identifier
+            max_chars: Total budget for the packet (default 24k for coder role)
+            doc_budget: Budget for attached docs (default 8192 chars)
+
+        Returns:
+            Context packet dict or None if task not found.
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return None
+
+        # Core task metadata (always included)
+        packet: Dict[str, Any] = {
+            "task_id": task_id,
+            "title": task.get("title", ""),
+            "description": task.get("description", ""),
+            "priority": task.get("priority", 3),
+            "status": task.get("status", "pending"),
+            "phase_type": task.get("phase_type", "build"),
+            "complexity": task.get("complexity", "medium"),
+            "domain": task.get("domain", ""),
+            "role": task.get("role", ""),
+            "project_id": task.get("project_id", ""),
+            "allowed_paths": task.get("allowed_paths") or [],
+            "blocked_paths": task.get("blocked_paths") or [],
+            "completion_contract": task.get("completion_contract") or [],
+            "implementation_hints": task.get("implementation_hints", ""),
+            "closure_tests": task.get("closure_tests") or [],
+            "dependencies": task.get("dependencies") or [],
+            "owner_agent": task.get("owner_agent", ""),
+            "assigned_to": task.get("assigned_to", ""),
+        }
+
+        # Attached docs (architecture + recon) — truncated to doc_budget
+        arch_docs = task.get("architecture_docs") or []
+        recon_docs = task.get("recon_docs") or []
+        all_doc_paths = arch_docs + recon_docs
+        if all_doc_paths:
+            docs_content = []
+            chars_used = 0
+            per_doc_limit = doc_budget // max(1, len(all_doc_paths))
+            for doc_path in all_doc_paths:
+                if chars_used >= doc_budget:
+                    break
+                try:
+                    from pathlib import Path as _P
+                    _project_root = _P(__file__).parent.parent.parent
+                    _full = _project_root / doc_path
+                    if _full.exists():
+                        _text = _full.read_text(errors="replace")
+                        _remaining = doc_budget - chars_used
+                        _chunk = _text[:min(per_doc_limit, _remaining)]
+                        docs_content.append({
+                            "path": doc_path,
+                            "content": _chunk,
+                        })
+                        chars_used += len(_chunk)
+                except Exception:
+                    pass
+            if docs_content:
+                packet["docs"] = docs_content
+
+        # Similar completed tasks (for learning) — top 3 by FTS5
+        try:
+            import re as _re_cp
+            _clean_title = _re_cp.sub(r'[^\w\s]', '', task.get("title", ""))
+            title_words = _clean_title.split()[:5]
+            if title_words:
+                similar = self.search_fts(" ".join(title_words), limit=5)
+                completed_similar = []
+                for s in similar:
+                    if s.get("task_id") == task_id:
+                        continue
+                    st = self.get_task(s["task_id"])
+                    if st and st.get("status") in ("done", "done_main", "done_worktree", "verified"):
+                        completed_similar.append({
+                            "task_id": s["task_id"],
+                            "title": st.get("title", "")[:80],
+                            "commit_message": st.get("commit_message", "")[:120],
+                        })
+                    if len(completed_similar) >= 3:
+                        break
+                if completed_similar:
+                    packet["similar_completed"] = completed_similar
+        except Exception:
+            pass
+
+        # Truncate total packet to max_chars
+        import json as _json_cp
+        _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
+        if len(_serialized) > max_chars:
+            # Trim docs first
+            if "docs" in packet:
+                while len(_serialized) > max_chars and packet["docs"]:
+                    packet["docs"][-1]["content"] = packet["docs"][-1]["content"][:len(packet["docs"][-1]["content"]) // 2]
+                    if len(packet["docs"][-1]["content"]) < 100:
+                        packet["docs"].pop()
+                    _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
+
+        packet["_chars"] = len(_serialized)
+        packet["_max_chars"] = max_chars
+        return packet
+
     def update_task(self, task_id: str, **updates) -> bool:
         """Update task fields.
 
@@ -1549,6 +1998,7 @@ class TaskBoard:
             "assigned_to": agent_name,
             "agent_type": agent_type,
             "assigned_at": datetime.now().isoformat(),
+            "owner_agent": agent_name,  # MARKER_199.MCC: populate for MCC dev panel
         }
         # Set execution_mode if: (a) not set at all, or (b) was default "pipeline" but no agent claimed yet
         if (not task.get("execution_mode")
@@ -1632,7 +2082,8 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
 
         # MARKER_191.1: Guard against double-close (done/done_main/done_worktree)
-        if task.get("status", "").startswith("done"):
+        # MARKER_199.DOUBLE_CLOSE: Guard against re-closing done OR verified tasks
+        if task.get("status", "").startswith("done") or task.get("status") == "verified":
             return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
 
         # MARKER_192.2: Allow execution_mode override at close time
@@ -2459,7 +2910,7 @@ class TaskBoard:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
-        MARKER_198.MERGE: Accept strategy param from task_board_tools.
+        MARKER_198.MERGE: Added strategy parameter (caller > task field > default).
 
         Flow:
         1. Validate task has branch_name
@@ -2468,6 +2919,11 @@ class TaskBoard:
         4. Execute merge (cherry-pick by default)
         5. Log to ActionRegistry
         6. Auto-close task with merge commit hash
+
+        Args:
+            task_id: Task to merge
+            strategy: Override merge strategy (cherry-pick/merge/squash).
+                      Priority: caller kwarg > task.merge_strategy > "cherry-pick"
 
         Returns:
             {success, merge_result, eval_delta, ...} or {error}
@@ -2494,8 +2950,8 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        if strategy is None:
-            strategy = task.get("merge_strategy", "cherry-pick")
+        # MARKER_198.MERGE: Strategy resolution — caller > task > default
+        strategy = strategy or task.get("merge_strategy", "cherry-pick")
         commits = task.get("merge_commits", [])
 
         # Step 1: Validate branch exists
@@ -2642,14 +3098,37 @@ class TaskBoard:
         - squash: Git merge --squash + commit
         """
         try:
-            # Ensure we're on main
+            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
+            # Stash any uncommitted changes first to prevent checkout failure
+            stash_proc = await asyncio.create_subprocess_exec(
+                "git", "stash", "--include-untracked",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stash_out, _ = await stash_proc.communicate()
+            did_stash = b"No local changes" not in stash_out
+
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await proc.communicate()
+            co_stdout, co_stderr = await proc.communicate()
+            if proc.returncode != 0:
+                # Restore stash if we stashed
+                if did_stash:
+                    await (await asyncio.create_subprocess_exec(
+                        "git", "stash", "pop",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )).communicate()
+                return {
+                    "success": False,
+                    "error": f"git checkout main failed (rc={proc.returncode}): {co_stderr.decode().strip()}",
+                }
 
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
             # Agent worktrees auto-generate CLAUDE.md with role-specific content.
@@ -2737,7 +3216,9 @@ class TaskBoard:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                await proc.communicate()
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Squash commit failed: {stderr.decode().strip()}"}
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
@@ -2773,6 +3254,15 @@ class TaskBoard:
             )
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
+
+            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
+            if did_stash:
+                await (await asyncio.create_subprocess_exec(
+                    "git", "stash", "pop",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )).communicate()
 
             return {"success": True, "commit_hash": commit_hash}
 

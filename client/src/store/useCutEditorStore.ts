@@ -222,6 +222,7 @@ interface CutEditorState {
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
+  collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
@@ -232,6 +233,7 @@ interface CutEditorState {
   linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
+  renamingClipId: string | null; // MARKER_FCP7FIX: clip currently being inline-renamed
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
   focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null;
@@ -339,6 +341,8 @@ interface CutEditorState {
   showTitleSafe: boolean;           // 4:3 title safe zone overlay
   showActionSafe: boolean;          // 4:3 action safe zone overlay
   showMonitorOverlays: boolean;     // timecode + clip name on monitor
+  // === MARKER_B26: Zebra overlay ===
+  showZebra: boolean;               // zebra overlay for out-of-range pixels
 
   // === MARKER_CLIPBOARD: Clipboard for Cut/Copy/Paste ===
   clipboard: TimelineClip[];  // copied/cut clips
@@ -397,6 +401,10 @@ interface CutEditorState {
   setTrackHeight: (h: number) => void;
   setTrackHeightForLane: (laneId: string, h: number) => void;
   cycleTrackHeights: () => void; // Shift-T: S→M→L→S
+  // MARKER_FCP7FIX: collapse/expand/rename
+  toggleTrackCollapse: (laneId: string) => void;
+  expandTrackMax: (laneId: string) => void;
+  setRenamingClip: (clipId: string | null) => void;
   setScrollLeft: (s: number) => void;
   toggleMute: (laneId: string) => void;
   toggleSolo: (laneId: string) => void;
@@ -488,6 +496,8 @@ interface CutEditorState {
   toggleTitleSafe: () => void;
   toggleActionSafe: () => void;
   toggleMonitorOverlays: () => void;
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => void;
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -625,6 +635,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lockedLanes: new Set<string>(),
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
+  collapsedTracks: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
   snapEnabled: true,
@@ -635,6 +646,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   linkedSelection: true,
   activeMediaPath: null,
   hoveredClipId: null,
+  renamingClipId: null,
 
   // MARKER_W1.3: Source/Program feed split
   sourceMediaPath: null,
@@ -727,6 +739,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showTitleSafe: false,
   showActionSafe: false,
   showMonitorOverlays: false,
+  // MARKER_B26: Zebra overlay
+  showZebra: false,
 
   // MARKER_DISPLAY-CTRL: Timeline Display Controls defaults (FCP7 Ch.9 §141-148)
   showClipNames: true,
@@ -791,6 +805,30 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       const next = ((state.trackHeightPreset + 1) % 3) as 0 | 1 | 2;
       return { trackHeight: PRESETS[next][0], trackHeightPreset: next, trackHeights: {} };
     }),
+  // MARKER_FCP7FIX: collapse/expand track actions
+  toggleTrackCollapse: (laneId: string) =>
+    set((state) => {
+      const collapsed = new Set(state.collapsedTracks);
+      const heights = { ...state.trackHeights };
+      if (collapsed.has(laneId)) {
+        collapsed.delete(laneId);
+        delete heights[laneId]; // restore to global default
+      } else {
+        collapsed.add(laneId);
+        heights[laneId] = 16; // collapsed height
+      }
+      return { collapsedTracks: collapsed, trackHeights: heights };
+    }),
+  expandTrackMax: (laneId: string) =>
+    set((state) => {
+      const collapsed = new Set(state.collapsedTracks);
+      collapsed.delete(laneId);
+      return {
+        collapsedTracks: collapsed,
+        trackHeights: { ...state.trackHeights, [laneId]: 180 },
+      };
+    }),
+  setRenamingClip: (clipId: string | null) => set({ renamingClipId: clipId }),
   setScrollLeft: (s) => set({ scrollLeft: Math.max(0, s) }),
   toggleMute: (laneId) =>
     set((state) => {
@@ -1339,6 +1377,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleTitleSafe: () => set((s) => ({ showTitleSafe: !s.showTitleSafe })),
   toggleActionSafe: () => set((s) => ({ showActionSafe: !s.showActionSafe })),
   toggleMonitorOverlays: () => set((s) => ({ showMonitorOverlays: !s.showMonitorOverlays })),
+  // MARKER_B26: Zebra toggle
+  toggleZebra: () => set((s) => ({ showZebra: !s.showZebra })),
 
   // MARKER_W4.3: Save actions
   setSaveStatus: (status) => set({ saveStatus: status }),

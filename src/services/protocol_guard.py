@@ -288,8 +288,8 @@ class ProtocolGuard:
             return None
 
         try:
-            from src.orchestration.task_board import TaskBoard
-            board = TaskBoard()
+            from src.orchestration.task_board import get_task_board
+            board = get_task_board()
             task = board.get_task(session.claimed_task_id)
             if not task:
                 return None
