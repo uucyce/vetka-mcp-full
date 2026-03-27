@@ -2537,8 +2537,57 @@ class TaskBoard:
         elif verdict == "fail":
             self._auto_notify(task, self.NOTIF_TASK_NEEDS_FIX, source_role=verifier, extra_msg=notes[:200])
 
+            # MARKER_200.QA_FEEDBACK_LOOP: Auto-create fix task + ENGRAM danger entry
+            fix_task_id = None
+            try:
+                original_agent = task.get("assigned_to") or task.get("owner_agent") or ""
+                original_role = task.get("role", "")
+                fix_title = f"QA-FIX: {task.get('title', task_id)[:80]}"
+                fix_desc = (
+                    f"QA verdict=FAIL by {verifier} on {task_id}.\n\n"
+                    f"QA Notes: {notes[:500]}\n\n"
+                    f"Original task: {task.get('title', '')}\n"
+                    f"Fix the issues found by QA and resubmit."
+                )
+                fix_result = self.add_task(
+                    title=fix_title,
+                    description=fix_desc,
+                    priority=task.get("priority", 2),
+                    phase_type="fix",
+                    complexity=task.get("complexity", "low"),
+                    source="qa_feedback_loop",
+                    assigned_to=original_agent or None,
+                    owner_agent=original_agent or None,
+                    project_id=task.get("project_id", ""),
+                    project_lane=task.get("project_lane", ""),
+                    parent_task_id=task_id,
+                    allowed_paths=task.get("allowed_paths") or [],
+                    architecture_docs=task.get("architecture_docs") or [],
+                    tags=["qa-fix", "auto-generated"],
+                )
+                fix_task_id = fix_result if isinstance(fix_result, str) else (fix_result.get("task_id") if isinstance(fix_result, dict) else None)
+                if fix_task_id:
+                    logger.info(f"[TaskBoard] QA feedback loop: created fix task {fix_task_id} for {original_agent}")
+            except Exception as e:
+                logger.warning(f"[TaskBoard] QA feedback loop: failed to create fix task: {e}")
+
+            # ENGRAM danger entry so original agent learns
+            try:
+                from src.memory.engram_cache import EngramCache
+                engram = EngramCache()
+                engram_key = f"{original_role or original_agent}::qa_fail::{task_id}"
+                engram_value = f"[QA-FAIL] {notes[:200]}" if notes else f"[QA-FAIL] Task {task_id} failed QA by {verifier}"
+                engram.put(engram_key, engram_value, category="danger")
+                logger.info(f"[TaskBoard] QA feedback loop: ENGRAM danger entry for {original_role or original_agent}")
+            except Exception as e:
+                logger.warning(f"[TaskBoard] QA feedback ENGRAM failed: {e}")
+
         logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
-        return {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
+        result = {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
+        if verdict == "fail" and fix_task_id:
+            result["fix_task_id"] = fix_task_id
+            result["fix_task_assigned_to"] = task.get("assigned_to", "")
+        return result
 
     @staticmethod
     def _is_commit_on_main(commit_hash: str) -> bool:
