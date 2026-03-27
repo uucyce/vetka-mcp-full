@@ -248,7 +248,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
       // MARKER_B52: Respect proxyMode from store
       const proxyMode = useCutEditorStore.getState().proxyMode || 'auto';
       const wantsProxy = proxyMode === 'proxy' || (proxyMode === 'auto' && (HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension)));
-      if (!sandboxRoot || !wantsProxy || proxyMode === 'full') {
+      if (!sandboxRoot || !wantsProxy) {
         setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
         setSourceHint(wantsProxy ? 'proxy unavailable, trying source' : '');
         return;

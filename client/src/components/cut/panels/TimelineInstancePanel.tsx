@@ -51,7 +51,6 @@ const MODE_BADGE: Record<string, string> = {
 
 export default function TimelineInstancePanel() {
   const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
-  const activeIndex = useCutEditorStore((s) => s.activeTimelineTabIndex);
   const timelineId = useCutEditorStore((s) => s.timelineId);
   const setActiveTab = useCutEditorStore((s) => s.setActiveTimelineTab);
   const removeTab = useCutEditorStore((s) => s.removeTimelineTab);
@@ -131,7 +130,7 @@ export default function TimelineInstancePanel() {
                   {tab.label || tab.id}
                 </div>
                 <div style={{ fontSize: 8, color: '#555', marginTop: 1 }}>
-                  <span style={{ color: MODE_BADGE[tab.mode] || '#666' }}>{tab.mode}</span>
+                  <span style={{ color: (tab.mode && MODE_BADGE[tab.mode]) || '#666' }}>{tab.mode}</span>
                   {' · '}v{tab.version}
                 </div>
               </div>
