@@ -206,6 +206,9 @@ TASK_BOARD_SCHEMA = {
                 "debrief_skipped",
                 "backfill_fts",
                 "context_packet",
+                "notify",
+                "notifications",
+                "ack_notifications",
             ],
             "description": "Operation to perform",
         },
@@ -428,6 +431,32 @@ TASK_BOARD_SCHEMA = {
         "query": {
             "type": "string",
             "description": 'FTS5 search query for action=search_fts. Supports: AND, OR, phrase "...", prefix*',
+        },
+        # MARKER_200.AGENT_WAKE: Notification parameters
+        "target_role": {
+            "type": "string",
+            "description": "Target agent callsign for action=notify (e.g. 'Alpha', 'Commander')",
+        },
+        "source_role": {
+            "type": "string",
+            "description": "Source agent callsign for action=notify",
+        },
+        "message": {
+            "type": "string",
+            "description": "Notification message text for action=notify",
+        },
+        "ntype": {
+            "type": "string",
+            "description": "Notification type: task_verified, task_needs_fix, ready_to_merge, task_completed, custom",
+        },
+        "unread_only": {
+            "type": "boolean",
+            "description": "For action=notifications: only return unread (default true)",
+        },
+        "notification_ids": {
+            "description": "For action=ack_notifications: specific notification IDs to mark as read",
+            "items": {"type": "string"},
+            "type": "array",
         },
     },
     "required": ["action"],
@@ -1590,6 +1619,41 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         limit = int(arguments.get("limit", 10))
         skipped = board.get_debrief_skipped_tasks(limit)
         return {"success": True, "skipped": skipped, "count": len(skipped)}
+
+    # ── MARKER_200.AGENT_WAKE: Notification inbox ──────────
+
+    elif action == "notify":
+        target_role = arguments.get("target_role") or arguments.get("role")
+        message = arguments.get("message", "")
+        if not target_role or not message:
+            return {"success": False, "error": "notify requires target_role and message"}
+        return board.notify(
+            target_role,
+            message,
+            ntype=arguments.get("ntype", "custom"),
+            source_role=arguments.get("source_role", arguments.get("assigned_to", "")),
+            task_id=arguments.get("task_id", ""),
+        )
+
+    elif action == "notifications":
+        role = arguments.get("role", "")
+        if not role:
+            return {"success": False, "error": "notifications requires role"}
+        unread_only = arguments.get("unread_only", True)
+        if isinstance(unread_only, str):
+            unread_only = unread_only.lower() not in ("false", "0", "no")
+        limit = int(arguments.get("limit", 20))
+        notifs = board.get_notifications(role, unread_only=unread_only, limit=limit)
+        return {"success": True, "notifications": notifs, "count": len(notifs), "role": role}
+
+    elif action == "ack_notifications":
+        role = arguments.get("role", "")
+        if not role:
+            return {"success": False, "error": "ack_notifications requires role"}
+        notif_ids = arguments.get("notification_ids")
+        if isinstance(notif_ids, str):
+            notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
+        return board.ack_notifications(role, notification_ids=notif_ids)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

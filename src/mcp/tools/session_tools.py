@@ -707,6 +707,31 @@ class SessionInitTool(BaseMCPTool):
 
             logging.getLogger(__name__).warning(f"TaskBoard load failed: {e}")
 
+        # MARKER_200.AGENT_WAKE: Inject unread notifications for current role
+        try:
+            _role = context.get("role_context", {}).get("callsign", "")
+            if _role and board:
+                _notifs = board.get_notifications(_role, unread_only=True, limit=10)
+                if _notifs:
+                    context["notifications"] = {
+                        "unread_count": len(_notifs),
+                        "items": [
+                            {
+                                "id": n["id"],
+                                "from": n["source_role"],
+                                "type": n["ntype"],
+                                "message": n["message"][:120],
+                                "task_id": n["task_id"],
+                                "at": n["created_at"],
+                            }
+                            for n in _notifs
+                        ],
+                    }
+                    # Auto-ack on read — agent saw them
+                    board.ack_notifications(_role, notification_ids=[n["id"] for n in _notifs])
+        except Exception:
+            pass  # Notifications optional — don't block session_init
+
         # MARKER_ZETA.DOC_SNIPPETS: Inject doc snippets for top pending tasks
         try:
             from src.mcp.tools.task_board_tools import _load_docs_content_sync
