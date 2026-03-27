@@ -27,7 +27,9 @@ from src.services.cut_depth_engine import (
     build_parallax_filter,
     compute_motion_pixels,
     depth_byte_to_z,
+    normalize_motion_type,
 )
+from src.services.cut_layer_manifest import CameraContract
 
 
 # ── CameraGeometry ──
@@ -265,3 +267,92 @@ class TestParallaxSentinel:
         assert len(result) == 2
         assert "eq=" in result[0]
         assert is_parallax_motion_filter(result[1])
+
+
+# ── CameraContract → CameraGeometry bridge ──
+
+
+class TestCameraContractBridge:
+    """LAYERFX-3: Verify CameraContract from manifest converts to CameraGeometry."""
+
+    def test_from_camera_contract_basic(self) -> None:
+        contract = CameraContract(
+            focal_length_mm=50.0, film_width_mm=36.0,
+            z_near=0.72, z_far=1.85,
+            travel_x_pct=3.0, travel_y_pct=1.0,
+            zoom=1.05, motion_type="orbit",
+            duration_sec=4.0, overscan_pct=20.0,
+        )
+        cam = CameraGeometry.from_camera_contract(contract, 1920, 1080)
+        assert cam.focal_length_mm == 50.0
+        assert cam.z_near == 0.72
+        assert cam.z_far == 1.85
+        assert cam.zoom == 1.05
+        assert cam.motion_type == "orbit"
+        assert cam.duration_sec == 4.0
+        assert cam.overscan_pct == 20.0
+
+    def test_travel_pct_to_pixels(self) -> None:
+        contract = CameraContract(travel_x_pct=5.0, travel_y_pct=2.0)
+        cam = CameraGeometry.from_camera_contract(contract, 1920, 1080)
+        assert cam.travel_x == 1920 * 5.0 / 100.0  # 96.0
+        assert cam.travel_y == 1080 * 2.0 / 100.0  # 21.6
+
+    def test_motion_type_normalization_portrait_base(self) -> None:
+        """Alpha uses 'portrait-base' which maps to 'orbit'."""
+        contract = CameraContract(motion_type="portrait-base")
+        cam = CameraGeometry.from_camera_contract(contract, 1920, 1080)
+        assert cam.motion_type == "orbit"
+
+    def test_motion_type_normalization_dolly(self) -> None:
+        contract = CameraContract(motion_type="dolly-out + zoom-in")
+        cam = CameraGeometry.from_camera_contract(contract, 1920, 1080)
+        assert cam.motion_type == "dolly_zoom_in"
+
+    def test_real_alpha_camera(self) -> None:
+        """Test with real hover-politsia camera contract values."""
+        contract = CameraContract.from_dict({
+            "focalLengthMm": 50, "filmWidthMm": 36,
+            "zNear": 0.72, "zFar": 1.85,
+            "motionType": "portrait-base",
+            "durationSec": 4.0, "travelXPct": 3.0, "travelYPct": 0.6,
+            "zoom": 1.06, "overscanPct": 26.07,
+        })
+        cam = CameraGeometry.from_camera_contract(contract, 2560, 1440)
+        assert cam.focal_length_mm == 50.0
+        assert cam.motion_type == "orbit"  # portrait-base → orbit
+        assert abs(cam.travel_x - 76.8) < 0.1  # 2560 * 3.0 / 100
+        assert abs(cam.travel_y - 8.64) < 0.1  # 1440 * 0.6 / 100
+        assert cam.overscan_pct == 26.07
+        # Verify it produces valid filter output
+        fc = build_parallax_filter(cam, 2560, 1440)
+        assert "overlay" in fc
+
+    def test_film_width_preserved(self) -> None:
+        contract = CameraContract(film_width_mm=24.0)  # Super 35
+        cam = CameraGeometry.from_camera_contract(contract, 1920, 1080)
+        assert cam.film_width_mm == 24.0
+
+
+# ── Motion type normalization ──
+
+
+class TestMotionTypeNormalization:
+    def test_orbit_passthrough(self) -> None:
+        assert normalize_motion_type("orbit") == "orbit"
+
+    def test_portrait_base_to_orbit(self) -> None:
+        assert normalize_motion_type("portrait-base") == "orbit"
+
+    def test_dolly_out_zoom_in(self) -> None:
+        assert normalize_motion_type("dolly-out + zoom-in") == "dolly_zoom_in"
+
+    def test_dolly_in_zoom_out(self) -> None:
+        assert normalize_motion_type("dolly-in + zoom-out") == "dolly_zoom_out"
+
+    def test_unknown_defaults_to_orbit(self) -> None:
+        assert normalize_motion_type("weird-type") == "orbit"
+
+    def test_already_canonical(self) -> None:
+        assert normalize_motion_type("dolly_zoom_in") == "dolly_zoom_in"
+        assert normalize_motion_type("linear") == "linear"
