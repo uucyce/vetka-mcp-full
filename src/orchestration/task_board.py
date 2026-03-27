@@ -349,9 +349,13 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlite3.connect(str(db_path), check_same_thread=False)
+        # MARKER_199.LOCK_FIX: timeout=30 is Python-level busy wait (seconds).
+        # PRAGMA busy_timeout is SQLite-level (ms). Both must be set — Python's
+        # timeout defaults to 5s which overrides the PRAGMA in some drivers.
+        # With 12+ concurrent MCP processes, 30s gives ample retry window.
+        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=10000")
+        conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
         return conn
 
