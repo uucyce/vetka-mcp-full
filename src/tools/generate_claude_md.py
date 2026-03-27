@@ -105,7 +105,19 @@ def generate_claude_md(
         "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
-    return template.render(**context)
+    rendered = template.render(**context)
+
+    # MARKER_200.TOKEN_BUDGET: Warn if generated CLAUDE.md exceeds token budget.
+    # Prevents template bloat creep. ~4 chars/token heuristic.
+    _TOKEN_BUDGET = 500
+    _estimated_tokens = len(rendered) // 4
+    if _estimated_tokens > _TOKEN_BUDGET:
+        logger.warning(
+            "[generate_claude_md] %s: ~%d tokens (budget: %d) — consider trimming template",
+            callsign, _estimated_tokens, _TOKEN_BUDGET,
+        )
+
+    return rendered
 
 
 def write_claude_md(
@@ -201,9 +213,14 @@ def main():
     parser.add_argument("--all", action="store_true", help="Generate for all roles")
     parser.add_argument("--dry-run", action="store_true", help="Print to stdout, don't write files")
     parser.add_argument("--output-dir", type=str, help="Override output directory")
+    parser.add_argument("--post-merge", action="store_true",
+                        help="MARKER_200.POST_MERGE: Generate all + run stale_check (for git hooks)")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+
+    if args.post_merge:
+        args.all = True  # --post-merge implies --all
 
     if not args.role and not args.all:
         parser.print_help()
@@ -222,6 +239,22 @@ def main():
             else:
                 print(f"Generated: {callsign}")
         print(f"\nTotal: {len(results)} files {'(dry-run)' if args.dry_run else 'written'}")
+
+        # MARKER_200.POST_MERGE: Run stale_check after generating all CLAUDE.md
+        if args.post_merge and not args.dry_run:
+            try:
+                from src.orchestration.task_board import get_task_board
+                board = get_task_board()
+                stale = board.stale_check(limit=30, auto_close=False)
+                _count = stale.get("candidates_count", 0)
+                if _count > 0:
+                    print(f"\n[post-merge] {_count} potentially stale tasks found:")
+                    for c in stale.get("candidates", [])[:5]:
+                        print(f"  - {c.get('task_id', '?')}: {c.get('title', '?')[:60]}")
+                else:
+                    print("\n[post-merge] No stale tasks detected.")
+            except Exception as e:
+                print(f"\n[post-merge] stale_check skipped: {e}")
     else:
         content = generate_claude_md(args.role)
         if content is None:
