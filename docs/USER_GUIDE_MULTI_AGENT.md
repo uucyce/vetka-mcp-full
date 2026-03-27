@@ -33,6 +33,7 @@ vetka_task_board action=active_agents
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | Memory, pipeline, task_board, REFLEX |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude` | **Eta** | Harness | Zeta's partner — infra, tests, recon |
 | `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
 
 Или одной строкой (копируй целиком):
@@ -54,6 +55,9 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 
 # Zeta (Harness)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
+
+# Eta (Harness 2 — Zeta's partner)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude
 
 # Commander (Architect)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
@@ -78,6 +82,9 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude 
 
 # Zeta (Harness / Memory / Infrastructure)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+
+# Eta (Harness 2 — Zeta's partner)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions
 
 # Commander (Architect / Coordinator)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
@@ -112,6 +119,7 @@ mcp__vetka__vetka_session_init role=Beta     # → Media context
 mcp__vetka__vetka_session_init role=Gamma    # → UX context
 mcp__vetka__vetka_session_init role=Delta    # → QA context
 mcp__vetka__vetka_session_init role=Zeta     # → Harness context
+mcp__vetka__vetka_session_init role=Eta      # → Harness2 context
 mcp__vetka__vetka_session_init role=Commander # → Architect context
 ```
 
@@ -240,7 +248,7 @@ Commander запускает sous-chefs как background agents в изолир
 | Panels, menus, layout, dockview, workspace | Gamma | ux |
 | Тесты, E2E, Playwright, compliance | Delta | qa |
 | Docs, merge, координация, архитектура | Commander | architect |
-| REFLEX, pipeline, memory, инфра | (пусто) | (пусто) |
+| REFLEX, pipeline, memory, инфра | Zeta / Eta | harness |
 
 ---
 

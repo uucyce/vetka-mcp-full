@@ -1575,6 +1575,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "message": f"FTS5 index rebuilt: {count} tasks indexed",
         }
 
+    elif action == "backfill_fts":
+        board = _get_board()
+        count = board._backfill_fts()
+        return {"success": True, "indexed": count, "message": f"FTS5 index rebuilt: {count} tasks indexed"}
+
     # MARKER_199.DEBRIEF: List tasks auto-closed without debrief
     elif action == "debrief_skipped":
         limit = int(arguments.get("limit", 10))
