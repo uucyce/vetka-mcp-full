@@ -7,7 +7,6 @@
  * Integration: SourceMonitorPanel.tsx adds <SourceMonitorButtons /> below MonitorTransport.
  */
 import { useCallback, type CSSProperties } from 'react';
-import { useCutEditorStore } from '../../store/useCutEditorStore';
 
 const ROW_STYLE: CSSProperties = {
   display: 'flex',
@@ -49,23 +48,25 @@ interface ButtonDef {
   action: () => void;
 }
 
-export default function SourceMonitorButtons() {
-  const store = useCutEditorStore;
+function dispatchKey(key: string): void {
+  document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+}
 
+export default function SourceMonitorButtons() {
   const handleMarkClip = useCallback(() => {
-    store.getState().markClip?.();
+    dispatchKey('x');
   }, []);
 
   const handleMatchFrame = useCallback(() => {
-    store.getState().matchFrame?.();
+    dispatchKey('f');
   }, []);
 
   const handleInsert = useCallback(() => {
-    store.getState().insertEdit?.();
+    dispatchKey(',');
   }, []);
 
   const handleOverwrite = useCallback(() => {
-    store.getState().overwriteEdit?.();
+    dispatchKey('.');
   }, []);
 
   const buttons: ButtonDef[] = [

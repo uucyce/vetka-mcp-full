@@ -1892,17 +1892,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const hasSolo = soloLanes.size > 0;
           const isSolo = soloLanes.has(lane.lane_id);
           const isHidden = hiddenLanes.has(lane.lane_id);
+          const isTargeted = targetedLanes.has(lane.lane_id);
           const laneDimmed = isHidden || isMuted || (hasSolo && !isSolo);
           const laneH = trackHeights[lane.lane_id] ?? trackHeight;
           return (
             <div key={lane.lane_id} data-testid={`cut-timeline-lane-${lane.lane_id}`} style={{ ...LANE_ROW, height: laneH, opacity: laneDimmed ? 0.3 : 1, position: 'relative' }}>
-              <div style={{ ...LANE_HEADER, cursor: 'pointer' }} onClick={(e) => {
+              <div style={{ ...LANE_HEADER, cursor: 'pointer', borderLeft: isTargeted ? '3px solid #ccc' : '3px solid transparent' }} onClick={(e) => {
                 if (e.shiftKey) { toggleTarget(lane.lane_id); } else { setExclusiveTarget(lane.lane_id); }
               }}>
                 {/* MARKER_COMPACT: Label row — icon + label + eye toggle inline */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', justifyContent: 'center' }}>
                   <span style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>{config.icon}</span>
-                  <span style={{ fontSize: 10, fontWeight: 600, color: config.color, flexShrink: 0 }}>{config.label}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: isTargeted ? '#ccc' : '#888', flexShrink: 0 }}>{config.label}</span>
                   <button
                     style={{
                       ...TRACK_BUTTON,

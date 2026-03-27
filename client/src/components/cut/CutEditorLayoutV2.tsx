@@ -101,8 +101,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     } catch { /* panel not found */ }
   }, [selectedClipId]);
 
-  // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
-  const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
+  // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) — hook kept for external use/testing ───
+  useThreePointEdit();
 
   // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
   const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
@@ -147,6 +147,106 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     window.addEventListener('keydown', onKey, { capture: true });
     return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [multicamMode]);
+
+  // ─── MARKER_3PT_DEDUP: Shared insert/overwrite helpers (dedup of insertEdit/insertEditF9/overwriteEdit/overwriteEditF10) ───
+  // Audio-only source detection: file extensions that carry no video track
+  const AUDIO_ONLY_EXTS = ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.opus', '.wma', '.aiff', '.aif'];
+  const isAudioOnlyPath = useCallback((path: string): boolean => {
+    const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+    return AUDIO_ONLY_EXTS.includes(ext);
+  }, []);
+
+  const performInsert = useCallback(async () => {
+    const s = useCutEditorStore.getState();
+    const srcIn = s.sourceMarkIn ?? 0;
+    const srcOut = s.sourceMarkOut ?? srcIn + 2;
+    const dur = srcOut - srcIn;
+    if (dur <= 0) return;
+    const { videoLaneId, audioLaneId } = s.getInsertTargets();
+    // MARKER_3PT_SRC_FIX: Find source media — sourceMediaPath → clip under playhead → any clip in timeline
+    let srcPath = s.sourceMediaPath;
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+        if (c) { srcPath = c.source_path; break; }
+      }
+    }
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
+      }
+    }
+    if (!srcPath) return;
+    const audioOnly = isAudioOnlyPath(srcPath);
+    if (audioOnly && !audioLaneId) return;
+    if (!audioOnly && !videoLaneId) return;
+    const seqIn = s.sequenceMarkIn ?? s.currentTime;
+    const newClipId = `clip_3pt_${Date.now()}`;
+    const newLanes = s.lanes.map((lane) => {
+      const isTargetVideo = !audioOnly && lane.lane_id === videoLaneId;
+      const isTargetAudio = audioLaneId && lane.lane_id === audioLaneId;
+      if (!isTargetVideo && !isTargetAudio) return lane;
+      // Ripple: push subsequent clips right
+      const shifted = lane.clips.map((c) =>
+        c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
+      );
+      const clipId = isTargetVideo ? newClipId : `clip_3pt_a_${Date.now()}`;
+      shifted.push({ clip_id: clipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
+      shifted.sort((a, b) => a.start_sec - b.start_sec);
+      return { ...lane, clips: shifted };
+    });
+    s.setLanes(newLanes);
+    s.seek(seqIn + dur);
+    // Async backend ops (skipRefresh: local state already updated)
+    const ops: Array<Record<string, unknown>> = [];
+    if (!audioOnly && videoLaneId) ops.push({ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (audioLaneId) ops.push({ op: 'insert_at', lane_id: audioLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (ops.length > 0) s.applyTimelineOps(ops, { skipRefresh: true }).catch(() => {});
+  }, [isAudioOnlyPath]);
+
+  const performOverwrite = useCallback(async () => {
+    const s = useCutEditorStore.getState();
+    const srcIn = s.sourceMarkIn ?? 0;
+    const srcOut = s.sourceMarkOut ?? srcIn + 2;
+    const dur = srcOut - srcIn;
+    if (dur <= 0) return;
+    const { videoLaneId, audioLaneId } = s.getInsertTargets();
+    // MARKER_3PT_SRC_FIX: Same source resolution as performInsert
+    let srcPath = s.sourceMediaPath;
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+        if (c) { srcPath = c.source_path; break; }
+      }
+    }
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
+      }
+    }
+    if (!srcPath) return;
+    const audioOnly = isAudioOnlyPath(srcPath);
+    if (audioOnly && !audioLaneId) return;
+    if (!audioOnly && !videoLaneId) return;
+    const seqIn = s.sequenceMarkIn ?? s.currentTime;
+    const newClipId = `clip_3pt_${Date.now()}`;
+    const newLanes = s.lanes.map((lane) => {
+      const isTargetVideo = !audioOnly && lane.lane_id === videoLaneId;
+      const isTargetAudio = audioLaneId && lane.lane_id === audioLaneId;
+      if (!isTargetVideo && !isTargetAudio) return lane;
+      const clipId = isTargetVideo ? newClipId : `clip_3pt_a_${Date.now()}`;
+      const clips = [...lane.clips, { clip_id: clipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
+      clips.sort((a, b) => a.start_sec - b.start_sec);
+      return { ...lane, clips };
+    });
+    s.setLanes(newLanes);
+    s.seek(seqIn + dur);
+    // Async backend ops (skipRefresh: local state already updated)
+    const ops: Array<Record<string, unknown>> = [];
+    if (!audioOnly && videoLaneId) ops.push({ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (audioLaneId) ops.push({ op: 'overwrite_at', lane_id: audioLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (ops.length > 0) s.applyTimelineOps(ops, { skipRefresh: true }).catch(() => {});
+  }, [isAudioOnlyPath]);
 
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
@@ -442,90 +542,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
     // Comma (,) = Insert (ripple). Period (.) = Overwrite (replace).
-    // Tries backend via useThreePointEdit; falls back to local-first insert.
-    // MARKER_3PT_LOCAL_FIRST: Always do local-first insert, then async backend with skipRefresh.
-    // Prevents mock-backend race where refreshProjectState reloads stale data.
-    insertEdit: async () => {
-      {
-        const s = useCutEditorStore.getState();
-        const srcIn = s.sourceMarkIn ?? 0;
-        const srcOut = s.sourceMarkOut ?? srcIn + 2;
-        const dur = srcOut - srcIn;
-        if (dur <= 0) return;
-        const { videoLaneId } = s.getInsertTargets();
-        if (!videoLaneId) return;
-        // MARKER_3PT_SRC_FIX: Find source media — sourceMediaPath → clip under playhead → any clip in timeline
-        let srcPath = s.sourceMediaPath;
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-            if (c) { srcPath = c.source_path; break; }
-          }
-        }
-        // Fallback: use first clip's source path from any lane (for tests/no-media scenarios)
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-          }
-        }
-        if (!srcPath) return;
-        const seqIn = s.sequenceMarkIn ?? s.currentTime;
-        const newClipId = `clip_3pt_${Date.now()}`;
-        const newLanes = s.lanes.map((lane) => {
-          if (lane.lane_id !== videoLaneId) return lane;
-          // Ripple: push subsequent clips right
-          const shifted = lane.clips.map((c) =>
-            c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
-          );
-          shifted.push({ clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
-          shifted.sort((a, b) => a.start_sec - b.start_sec);
-          return { ...lane, clips: shifted };
-        });
-        s.setLanes(newLanes);
-        s.seek(seqIn + dur);
-        // Async backend (skipRefresh: local state already updated)
-        s.applyTimelineOps([{ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-      }
-    },
+    // MARKER_3PT_LOCAL_FIRST: Always do local-first insert/overwrite, then async backend with skipRefresh.
+    // MARKER_3PT_DEDUP: Logic extracted into performInsert/performOverwrite above (audio lane support added).
+    insertEdit: performInsert,
     // MARKER_3PT_LOCAL_FIRST: Always local-first overwrite
-    overwriteEdit: async () => {
-      {
-        // MARKER_TDD-3PT2: Local-first overwrite
-        const s = useCutEditorStore.getState();
-        const srcIn = s.sourceMarkIn ?? 0;
-        const srcOut = s.sourceMarkOut ?? srcIn + 2;
-        const dur = srcOut - srcIn;
-        if (dur <= 0) return;
-        const { videoLaneId } = s.getInsertTargets();
-        if (!videoLaneId) return;
-        // MARKER_3PT_SRC_FIX: Same source resolution as insertEdit
-        let srcPath = s.sourceMediaPath;
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-            if (c) { srcPath = c.source_path; break; }
-          }
-        }
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-          }
-        }
-        if (!srcPath) return;
-        const seqIn = s.sequenceMarkIn ?? s.currentTime;
-        const newClipId = `clip_3pt_${Date.now()}`;
-        const newLanes = s.lanes.map((lane) => {
-          if (lane.lane_id !== videoLaneId) return lane;
-          const clips = [...lane.clips, { clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
-          clips.sort((a, b) => a.start_sec - b.start_sec);
-          return { ...lane, clips };
-        });
-        s.setLanes(newLanes);
-        s.seek(seqIn + dur);
-        // Async backend (skipRefresh: local state already updated)
-        s.applyTimelineOps([{ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-      }
-    },
+    overwriteEdit: performOverwrite,
     // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
     // FCP7 Ch.36: F11 replaces clip at playhead position, keeping same duration
     // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
@@ -1022,79 +1043,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }));
       s.setLanes(newLanes);
     },
-    // F9 → insert edit alias — delegates to same logic as insertEdit (comma key)
-    // Uses threePointInsert callback ref (same as insertEdit handler above)
-    insertEditF9: async () => {
-      // Re-use insertEdit logic inline — trigger the same local-first insert
-      const s = useCutEditorStore.getState();
-      const srcIn = s.sourceMarkIn ?? 0;
-      const srcOut = s.sourceMarkOut ?? srcIn + 2;
-      const dur = srcOut - srcIn;
-      if (dur <= 0) return;
-      const { videoLaneId } = s.getInsertTargets();
-      if (!videoLaneId) return;
-      let srcPath = s.sourceMediaPath;
-      if (!srcPath) {
-        for (const lane of s.lanes) {
-          const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-          if (c) { srcPath = c.source_path; break; }
-        }
-      }
-      if (!srcPath) {
-        for (const lane of s.lanes) {
-          if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-        }
-      }
-      if (!srcPath) return;
-      const seqIn = s.sequenceMarkIn ?? s.currentTime;
-      const newClipId = `clip_3pt_${Date.now()}`;
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== videoLaneId) return lane;
-        const shifted = lane.clips.map((c) =>
-          c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
-        );
-        shifted.push({ clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
-        shifted.sort((a, b) => a.start_sec - b.start_sec);
-        return { ...lane, clips: shifted };
-      });
-      s.setLanes(newLanes);
-      s.seek(seqIn + dur);
-      s.applyTimelineOps([{ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-    },
-    // F10 → overwrite edit alias — delegates to same logic as overwriteEdit (period key)
-    overwriteEditF10: async () => {
-      const s = useCutEditorStore.getState();
-      const srcIn = s.sourceMarkIn ?? 0;
-      const srcOut = s.sourceMarkOut ?? srcIn + 2;
-      const dur = srcOut - srcIn;
-      if (dur <= 0) return;
-      const { videoLaneId } = s.getInsertTargets();
-      if (!videoLaneId) return;
-      let srcPath = s.sourceMediaPath;
-      if (!srcPath) {
-        for (const lane of s.lanes) {
-          const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-          if (c) { srcPath = c.source_path; break; }
-        }
-      }
-      if (!srcPath) {
-        for (const lane of s.lanes) {
-          if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-        }
-      }
-      if (!srcPath) return;
-      const seqIn = s.sequenceMarkIn ?? s.currentTime;
-      const newClipId = `clip_3pt_${Date.now()}`;
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== videoLaneId) return lane;
-        const clips = [...lane.clips, { clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
-        clips.sort((a, b) => a.start_sec - b.start_sec);
-        return { ...lane, clips };
-      });
-      s.setLanes(newLanes);
-      s.seek(seqIn + dur);
-      s.applyTimelineOps([{ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-    },
+    // F9 → insert edit alias — delegates to performInsert (same logic as comma key, with audio lane support)
+    insertEditF9: performInsert,
+    // F10 → overwrite edit alias — delegates to performOverwrite (same logic as period key, with audio lane support)
+    overwriteEditF10: performOverwrite,
 
     // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
     // F6 — select clip at playhead position
@@ -1265,7 +1217,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
-  }), [saveProject, saveProjectAs, threePointInsert, threePointOverwrite]);
+  }), [saveProject, saveProjectAs, performInsert, performOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
