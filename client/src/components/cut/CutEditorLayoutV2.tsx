@@ -29,6 +29,7 @@ import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
+import PasteAttributesDialog from './PasteAttributesDialog';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 
@@ -75,6 +76,31 @@ function SpeedControlModal() {
         <SpeedControl onClose={close} />
       </div>
     </div>
+  );
+}
+
+// MARKER_PASTE_ATTR: Paste Attributes dialog overlay (Alt+V)
+function PasteAttributesModal() {
+  const show = useCutEditorStore((s) => s.showPasteAttributes);
+  if (!show) return null;
+  const close = () => useCutEditorStore.getState().setShowPasteAttributes(false);
+  const { clipboard, selectedClipIds, lanes, pasteAttributesSelective } = useCutEditorStore.getState();
+  const sourceClipName = clipboard[0]?.source_path?.split('/').pop() ?? 'Unknown';
+  const targetNames: string[] = [];
+  for (const lane of lanes) {
+    for (const c of lane.clips) {
+      if (selectedClipIds.has(c.clip_id)) {
+        targetNames.push((c as any).source_path?.split('/').pop() ?? c.clip_id);
+      }
+    }
+  }
+  return (
+    <PasteAttributesDialog
+      onClose={close}
+      onApply={(config) => pasteAttributesSelective(config)}
+      sourceClipName={sourceClipName}
+      targetClipNames={targetNames}
+    />
   );
 }
 
@@ -339,6 +365,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     cut: () => useCutEditorStore.getState().cutClips(),
     paste: () => useCutEditorStore.getState().pasteClips('overwrite'),
     pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
+    pasteAttributes: () => useCutEditorStore.getState().pasteAttributes(),
 
     // MARKER_UNDO-FIX: All editing ops route through applyTimelineOps for undo support
     // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
@@ -1007,6 +1034,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_PASTE_ATTR: Paste Attributes dialog (⌥V) */}
+      <PasteAttributesModal />
       <SaveIndicator />
     </div>
   );
