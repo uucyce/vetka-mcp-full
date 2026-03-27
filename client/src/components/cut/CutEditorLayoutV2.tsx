@@ -1393,25 +1393,29 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, prefetch]);
 
-  // MARKER_SCRUB_SYNC: Timeline scrub → Source Monitor shows clip under playhead (FCP7 Canvas→Viewer follows)
+  // MARKER_SCRUB_SYNC: Timeline scrub → if Source Monitor already shows a timeline clip,
+  // keep its playhead in sync (FCP7 Canvas→Viewer frame-follow after Match Frame).
+  // IMPORTANT: Do NOT auto-switch sourceMediaPath here — Source Monitor only changes
+  // via explicit user action (double-click from Browser, Match Frame, "Open in Source Monitor").
+  // Auto-switching caused the regression where both monitors showed the same content.
   const lastScrubSourceRef = useRef<{ path: string | null; time: number }>({ path: null, time: -1 });
   useEffect(() => {
     const s = useCutEditorStore.getState();
     // Only sync when timeline is focused (not source monitor)
     if (s.focusedPanel === 'source') return;
+    // Only follow if source monitor already has a clip loaded
+    if (!s.sourceMediaPath) return;
     // Find clip under playhead on first video lane
     const videoLane = s.lanes.find((l) => l.lane_type.startsWith('video') || l.lane_type.startsWith('take_alt'));
     if (!videoLane) return;
     for (const clip of videoLane.clips) {
       if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
+        // Only sync source playhead if the source monitor is showing THIS clip's source
+        if (clip.source_path !== s.sourceMediaPath) return;
         const sourceRelativeTime = (clip.source_in ?? 0) + (currentTime - clip.start_sec);
         const last = lastScrubSourceRef.current;
-        const pathChanged = clip.source_path !== last.path;
         const timeChanged = Math.abs(sourceRelativeTime - last.time) > 0.04;
-        if (!pathChanged && !timeChanged) return;
-        if (pathChanged && clip.source_path && clip.source_path !== s.sourceMediaPath) {
-          s.setSourceMedia(clip.source_path);
-        }
+        if (!timeChanged) return;
         s.seekSource(sourceRelativeTime);
         lastScrubSourceRef.current = { path: clip.source_path, time: sourceRelativeTime };
         return;
