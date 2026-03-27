@@ -136,13 +136,11 @@ export type CutHotkeyAction =
   | 'runAutoMontageFavorites'
   // MARKER_EXPORT: Timeline export
   | 'exportTimeline'
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10 aliases
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   | 'rippleTrimToPlayhead'
   | 'swapClips'
   | 'deleteMarker'
   | 'pasteAttributes'
-  | 'insertEditF9'
-  | 'overwriteEditF10'
   // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
   | 'selectClipAtPlayhead'
   | 'selectAllOnTrack'
@@ -278,13 +276,11 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   runPulseAnalysis:    'global',
   runAutoMontageFavorites: 'global',
   exportTimeline:         'global',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead:   'global',
   swapClips:              'global',
   deleteMarker:           'global',
   pasteAttributes:        'global',
-  insertEditF9:           'global',
-  overwriteEditF10:       'global',
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead:   'global',
   selectAllOnTrack:       'global',
@@ -853,8 +849,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'swapClips', label: 'Swap Clips', group: 'Editing' },
   { action: 'deleteMarker', label: 'Delete Marker', group: 'Markers' },
   { action: 'pasteAttributes', label: 'Paste Attributes', group: 'Editing' },
-  { action: 'insertEditF9', label: 'Insert Edit (F9)', group: 'Editing' },
-  { action: 'overwriteEditF10', label: 'Overwrite Edit (F10)', group: 'Editing' },
+  // insertEditF9/overwriteEditF10: REMOVED — F9/F10 handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection
   { action: 'selectClipAtPlayhead', label: 'Select Clip at Playhead', group: 'Selection' },
   { action: 'selectAllOnTrack', label: 'Select All on Track', group: 'Selection' },
