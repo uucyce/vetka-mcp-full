@@ -6,6 +6,32 @@ import asyncio
 import pytest
 
 
+# ── MARKER_IMPORT_GUARD: Skip test modules with missing optional deps ──
+# Without this, missing deps (fastapi, watchdog, httpx, numpy, etc.)
+# cause 137+ collection ERRORs that mask real failures.
+# Strategy: patch pytest.Module.collect to catch ModuleNotFoundError.
+import _pytest.python
+
+_original_module_collect = _pytest.python.Module.collect
+
+def _safe_module_collect(self):
+    """Wrap Module.collect to convert ModuleNotFoundError into skip."""
+    try:
+        yield from _original_module_collect(self)
+    except Exception as exc:
+        # Walk the exception chain looking for ModuleNotFoundError
+        cause = exc
+        while cause is not None:
+            if isinstance(cause, ModuleNotFoundError):
+                mod_name = getattr(cause, 'name', '?')
+                pytest.skip(f"missing optional dependency: {mod_name}")
+                return
+            cause = cause.__cause__ or (cause.__context__ if not isinstance(cause.__context__, type(cause)) else None)
+        raise
+
+_pytest.python.Module.collect = _safe_module_collect
+
+
 # ── MARKER_CASCADE: Cascade skip — skip downstream tests when gate fixture fails ──
 # Registry of failed gate fixtures. Keys = fixture/gate names, values = error message.
 _cascade_failures: dict[str, str] = {}
