@@ -220,6 +220,19 @@ async function playScrubSnippet(timelineSec: number): Promise<void> {
 let activeInstances = 0;
 
 /**
+ * Reset all module-level singletons.
+ * Exported for unit tests only — do NOT call in production code.
+ * @internal
+ */
+export function __resetScrubbingSingletonsForTests(): void {
+  activeInstances = 0;
+  scrubCtx = null;
+  scrubCache.clear();
+  pendingScrubFetches.clear();
+  activeScrubSource = null;
+}
+
+/**
  * Enable audio scrubbing for the program monitor.
  * Safe to call from multiple components — only the first instance activates.
  * The hook is fully self-contained — no props needed.
