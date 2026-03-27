@@ -16,6 +16,7 @@ import {
 
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore, interpolateKeyframes, type TimelineClip, type TimelineLane } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore'; // MARKER_ARCH_4.1
 import { useTimelineInstanceStore } from '../../store/useTimelineInstanceStore';
 import WaveformCanvas from './WaveformCanvas';
 import StereoWaveformCanvas from './StereoWaveformCanvas';
@@ -461,8 +462,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const currentTime = useCutEditorStore((state) => state.currentTime);
   const duration = useCutEditorStore((state) => state.duration);
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
-  const selectedClipId = useCutEditorStore((state) => state.selectedClipId);
-  const selectedClipIds = useCutEditorStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
+  const selectedClipId = useSelectionStore((state) => state.selectedClipId); // MARKER_ARCH_4.1
+  const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_ARCH_4.1: multi-select highlight
   const hoveredClipId = useCutEditorStore((state) => state.hoveredClipId);
   const sandboxRoot = useCutEditorStore((state) => state.sandboxRoot);
   const projectId = useCutEditorStore((state) => state.projectId);
@@ -497,7 +498,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const toggleVisibility = useCutEditorStore((state) => state.toggleVisibility);
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
-  const setSelectedClip = useCutEditorStore((state) => state.setSelectedClip);
+  const setSelectedClip = useSelectionStore((state) => state.setSelectedClip); // MARKER_ARCH_4.1
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
@@ -1131,18 +1132,19 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
       // W3.7: Multi-select with Cmd+click
       if (event.metaKey || event.ctrlKey) {
-        useCutEditorStore.getState().toggleClipSelection(clipId);
+        useSelectionStore.getState().toggleClipSelection(clipId);
         return;
       }
 
       // W3.7: Range select with Shift+click
       if (event.shiftKey) {
-        const state = useCutEditorStore.getState();
-        const lastSelected = state.selectedClipId;
+        const selState = useSelectionStore.getState();
+        const lastSelected = selState.selectedClipId;
         if (lastSelected) {
           // Collect all clips in timeline order
           const allClips: { clipId: string; time: number }[] = [];
-          for (const lane of state.lanes) {
+          const editorState = useCutEditorStore.getState();
+          for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
               allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
             }
@@ -1152,14 +1154,14 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const idxB = allClips.findIndex((c) => c.clipId === clipId);
           if (idxA >= 0 && idxB >= 0) {
             const [lo, hi] = idxA < idxB ? [idxA, idxB] : [idxB, idxA];
-            const newIds = new Set(state.selectedClipIds);
+            const newIds = new Set(selState.selectedClipIds);
             for (let i = lo; i <= hi; i++) newIds.add(allClips[i].clipId);
-            useCutEditorStore.setState({ selectedClipIds: newIds });
+            useSelectionStore.setState({ selectedClipIds: newIds });
             return;
           }
         }
         // Fallback: just add to selection
-        useCutEditorStore.getState().toggleClipSelection(clipId);
+        useSelectionStore.getState().toggleClipSelection(clipId);
         return;
       }
 
@@ -1170,7 +1172,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       // MARKER_TL4: Linked selection — also select synced audio/video on adjacent lane
       // Checks: linked_to field, sync.linked_clip_id, or matching scene_id
       const state = useCutEditorStore.getState();
-      if (state.linkedSelection) {
+      if (useSelectionStore.getState().linkedSelection) {
         const ids = new Set([clipId]);
         let clickedClip: TimelineClip | undefined;
         for (const lane of state.lanes) {
@@ -1191,7 +1193,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           }
         }
         if (ids.size > 1) {
-          useCutEditorStore.setState({ selectedClipIds: ids });
+          useSelectionStore.setState({ selectedClipIds: ids });
         }
       }
     },
@@ -1588,7 +1590,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         && (activeDrag.laneId !== activeDrag.originalLaneId || Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001)
       ) {
         // MARKER_A2.4: Multi-clip drag — move all selected clips with same delta
-        const multiIds = useCutEditorStore.getState().selectedClipIds;
+        const multiIds = useSelectionStore.getState().selectedClipIds;
         const delta = activeDrag.startSec - activeDrag.originalStartSec;
         const laneDelta = activeDrag.laneId !== activeDrag.originalLaneId;
 
