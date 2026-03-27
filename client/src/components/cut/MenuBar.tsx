@@ -35,6 +35,7 @@ interface MenuItem {
   separator?: boolean;
   disabled?: boolean;
   submenu?: MenuItem[];
+  'data-testid'?: string;
 }
 
 interface MenuDef {
@@ -166,6 +167,7 @@ function MenuItemRow({
   return (
     <div
       style={item.disabled ? ITEM_DISABLED : ITEM}
+      data-testid={item['data-testid']}
       title={item.shortcut ? `${item.label}  (${item.shortcut})` : item.label}
       onMouseEnter={(e) => {
         if (!item.disabled) (e.currentTarget as HTMLDivElement).style.background = '#333';
@@ -832,20 +834,21 @@ export default function MenuBar() {
         })() },
         { separator: true },
         // MARKER_GAMMA-POPOUT: Float / Popout active panel
-        { label: 'Float Active Panel', action: () => {
+        { label: 'Float Active Panel', 'data-testid': 'menu-float-active-panel', action: () => {
           const api = dockStore.getState().apiRef;
           if (!api) return;
           const active = api.activePanel;
           if (!active) return;
           try { api.addFloatingGroup(active, { x: 100, y: 100, width: 500, height: 400 }); } catch {}
         }},
-        { label: 'Popout to New Window', action: () => {
+        { label: 'Popout to New Window', 'data-testid': 'menu-popout-new-window', action: () => {
           const api = dockStore.getState().apiRef;
           if (!api) return;
           const active = api.activePanel;
           if (!active) return;
           try {
             void api.addPopoutGroup(active, {
+              popoutUrl: window.location.href,
               onDidOpen: (e) => {
                 const popoutDoc = e.window.document;
                 document.querySelectorAll('link[rel="stylesheet"], style').forEach((node) => {
