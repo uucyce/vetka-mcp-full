@@ -349,17 +349,10 @@ class TaskBoard:
         """
         db_path = self.db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
-        # MARKER_199.LOCK_FIX_V2: Autocommit mode + explicit transactions.
-        # Python's default isolation_level="" uses DEFERRED transactions:
-        #   SELECT → SHARED lock → INSERT needs RESERVED upgrade → FAILS if
-        #   another process already has RESERVED. busy_timeout doesn't help
-        #   with lock upgrades, only with initial lock acquisition.
-        # Fix: isolation_level=None = autocommit. Each statement auto-commits.
-        # For multi-statement writes, use explicit BEGIN IMMEDIATE via `with conn:`.
-        conn = sqlite3.connect(
-            str(db_path), timeout=30, check_same_thread=False,
-            isolation_level=None,  # autocommit — no implicit transactions
-        )
+        # MARKER_199.LOCK_FIX_V3: Keep default isolation_level (deferred transactions)
+        # but with generous timeout + application-level retry in _execute_with_retry.
+        # isolation_level=None broke batch transactions (each INSERT auto-commits = 50x slower).
+        conn = sqlite3.connect(str(db_path), timeout=30, check_same_thread=False)
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA busy_timeout=30000")
         conn.row_factory = sqlite3.Row
