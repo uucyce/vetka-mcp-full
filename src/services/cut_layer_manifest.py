@@ -208,6 +208,51 @@ class LayerManifest:
         return (self.get_layer_by_role("background") is not None
                 or bool(self.background_rgba_path))
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LayerManifest:
+        """
+        Parse a raw manifest dict into LayerManifest.
+
+        Auto-detects format:
+        - "layers" key → layer_space (canonical)
+        - "exportedPlates" or "plates" key → plate_export (legacy)
+
+        This is the dict-based counterpart to ingest_manifest(path).
+        """
+        source = data.get("source", {})
+        camera_data = data.get("space", data.get("camera", {}))
+        camera = CameraContract.from_dict(camera_data) if camera_data else CameraContract()
+
+        # Detect format and extract layers
+        if "layers" in data:
+            fmt = "layer_space"
+            raw_layers = data.get("layers", [])
+        elif "exportedPlates" in data:
+            fmt = "plate_export"
+            raw_layers = data.get("exportedPlates", [])
+        elif "plates" in data:
+            fmt = "plate_export"
+            raw_layers = data.get("plates", [])
+        else:
+            fmt = "unknown"
+            raw_layers = []
+
+        layers = [SemanticLayer.from_dict(ld) for ld in raw_layers]
+
+        return cls(
+            manifest_id=str(data.get("sampleId", "")),
+            contract_version=str(data.get("contract_version", "1.0.0")),
+            sample_id=str(data.get("sampleId", "")),
+            source_path=str(source.get("path", "")),
+            source_width=int(source.get("width", 0)),
+            source_height=int(source.get("height", 0)),
+            layers=layers,
+            camera=camera,
+            depth_path=str(data.get("depth_path", "")),
+            format=fmt,
+            provenance=data.get("provenance", {}),
+        )
+
 
 # ---------------------------------------------------------------------------
 # Manifest ingestion — reads various formats
