@@ -1248,6 +1248,33 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Protocol status never blocks session init
 
+        # MARKER_200.CHECKPOINT: Restore session state from disk checkpoint
+        # Survives context compaction — agent sees prior claimed_task_id, files, decisions.
+        try:
+            _ck_callsign = role_name  # explicit role param
+            if _ck_callsign:
+                from src.services.session_tracker import SessionActionTracker
+                _checkpoint = SessionActionTracker.load_checkpoint(_ck_callsign)
+                if _checkpoint:
+                    context["restored_checkpoint"] = {
+                        "goal": _checkpoint.get("goal"),
+                        "progress": _checkpoint.get("progress"),
+                        "decisions": _checkpoint.get("decisions", []),
+                        "files": _checkpoint.get("files"),
+                        "next_steps": _checkpoint.get("next_steps", []),
+                        "checkpoint_at": _checkpoint.get("checkpoint_at"),
+                    }
+                    # Restore claimed_task_id into protocol_status if not already set
+                    _ps = context.get("protocol_status", {})
+                    if not _ps.get("claimed_task_id"):
+                        _ck_goal = _checkpoint.get("goal", {})
+                        if _ck_goal and _ck_goal.get("claimed_task_id"):
+                            _ps["task_claimed"] = True
+                            _ps["claimed_task_id"] = _ck_goal["claimed_task_id"]
+                            context["protocol_status"] = _ps
+        except Exception:
+            pass  # Checkpoint restore never blocks session init
+
         # MARKER_ZETA.INT + MARKER_196.1.3: Role context from Agent Registry
         # Priority: explicit role= param > branch detection fallback
         try:
