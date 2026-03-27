@@ -705,6 +705,37 @@ export function getBindingLabel(
   return Array.isArray(binding) ? binding[0] || '' : binding;
 }
 
+// ─── MARKER_GAMMA-SHORTLABEL: Display formatter (Cmd→⌘, Shift→⇧, Alt→⌥, Ctrl→⌃) ──
+
+const MODIFIER_DISPLAY: Record<string, string> = {
+  'Cmd': '⌘', 'Meta': '⌘', 'Shift': '⇧', 'Alt': '⌥', 'Opt': '⌥', 'Option': '⌥', 'Ctrl': '⌃',
+};
+
+/** Format a binding string for display: "Cmd+Shift+z" → "⌘⇧Z" */
+export function formatShortcutDisplay(binding: string): string {
+  const parts = binding.split('+');
+  const mods: string[] = [];
+  let key = '';
+  for (const p of parts) {
+    const display = MODIFIER_DISPLAY[p];
+    if (display) { mods.push(display); }
+    else { key = p; }
+  }
+  // Capitalize single-char keys for display
+  const displayKey = key.length === 1 ? key.toUpperCase() : key;
+  return mods.join('') + displayKey;
+}
+
+/** Get display-formatted shortcut for an action from the active preset */
+export function getShortcutLabel(
+  action: CutHotkeyAction,
+  presetName: HotkeyPresetName = 'premiere',
+  customOverrides: HotkeyMap = {}
+): string {
+  const raw = getBindingLabel(action, presetName, customOverrides);
+  return raw ? formatShortcutDisplay(raw) : '';
+}
+
 // ─── All actions list (for settings UI) ─────────────────────────────
 
 export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: string }[] = [
