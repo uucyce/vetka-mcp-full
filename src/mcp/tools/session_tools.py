@@ -404,8 +404,26 @@ class SessionInitTool(BaseMCPTool):
         include_viewport = arguments.get("include_viewport", True)
         include_pinned = arguments.get("include_pinned", True)
         compress = arguments.get("compress", True)
-        max_context_tokens = arguments.get("max_context_tokens", 4000)
         role_name = arguments.get("role")  # MARKER_196.1.3: explicit role declaration
+
+        # MARKER_200.MODEL_ADAPTIVE: Auto-detect model tier and set token budget.
+        # Priority: explicit max_context_tokens > env VETKA_MODEL_TIER > env detection > default.
+        # Model tier detection: check env vars set by Claude Code, Codex, etc.
+        _explicit_budget = "max_context_tokens" in arguments
+        max_context_tokens = arguments.get("max_context_tokens", 4000)
+        if not _explicit_budget:
+            _model_tier = (
+                os.environ.get("VETKA_MODEL_TIER")  # explicit override
+                or os.environ.get("CLAUDE_MODEL")   # Claude Code sets this
+                or os.environ.get("ANTHROPIC_MODEL") # some integrations
+                or ""
+            ).lower()
+            # Map model identifiers to budget tiers
+            if any(k in _model_tier for k in ("haiku", "scout", "small", "fast")):
+                max_context_tokens = 2000
+            elif any(k in _model_tier for k in ("opus", "titan", "1m")):
+                max_context_tokens = 8000
+            # else: keep default 4000 (Sonnet/worker tier)
 
         # MARKER_108_1: Unified MCP-Chat ID
         # If chat_id provided, use it as session_id
