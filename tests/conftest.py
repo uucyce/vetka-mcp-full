@@ -6,6 +6,64 @@ import asyncio
 import pytest
 
 
+# ── MARKER_CASCADE: Cascade skip — skip downstream tests when gate fixture fails ──
+# Registry of failed gate fixtures. Keys = fixture/gate names, values = error message.
+_cascade_failures: dict[str, str] = {}
+
+
+def cascade_gate(name: str):
+    """Decorator for fixtures that act as cascade gates.
+
+    If the fixture raises, all tests marked @pytest.mark.depends_on("name")
+    will be skipped immediately instead of failing with the same error.
+
+    Usage in test files:
+        @pytest.fixture
+        @cascade_gate("bootstrap")
+        def bootstrap_project():
+            ...  # if this raises, dependents skip
+
+        @pytest.mark.depends_on("bootstrap")
+        def test_something(bootstrap_project):
+            ...
+    """
+    def decorator(fn):
+        import functools
+
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            try:
+                result = fn(*args, **kwargs)
+                # Handle generator fixtures
+                if hasattr(result, '__next__'):
+                    import types
+                    def gen_wrapper():
+                        try:
+                            value = next(result)
+                            yield value
+                            try:
+                                next(result)
+                            except StopIteration:
+                                pass
+                        except Exception as exc:
+                            _cascade_failures[name] = f"{type(exc).__name__}: {exc}"
+                            raise
+                    return gen_wrapper()
+                return result
+            except Exception as exc:
+                _cascade_failures[name] = f"{type(exc).__name__}: {exc}"
+                raise
+        return wrapper
+    return decorator
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "depends_on(gate): skip test if named gate fixture has failed (cascade skip)",
+    )
+
+
 # ── MARKER_D4: Stale test infrastructure ──────────────────────────
 def pytest_addoption(parser):
     parser.addoption(
@@ -92,7 +150,16 @@ def isolate_task_board(tmp_path, monkeypatch):
 def pytest_runtest_setup(item):
     """
     Safety net for unittest-style tests where autouse fixtures may not run.
+    Also enforces cascade skip for @pytest.mark.depends_on gates.
     """
+    # ── Cascade skip check ──
+    for marker in item.iter_markers("depends_on"):
+        for gate in marker.args:
+            if gate in _cascade_failures:
+                pytest.skip(
+                    f"cascade skip: gate '{gate}' failed — {_cascade_failures[gate]}"
+                )
+
     policy = asyncio.get_event_loop_policy()
     try:
         policy.get_event_loop()
