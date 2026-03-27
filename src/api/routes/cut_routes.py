@@ -599,6 +599,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
                     "source_out": round(seg_end, 3),
                     "sync": None,
                     "thumbnail_path": thumb,
+                    "layer_manifest": None,  # MARKER_LAYERFX: populated by POST /layers/import
                 }
                 timeline_cursor += seg_dur
                 video_lane["clips"].append(clip)
@@ -620,6 +621,7 @@ def _build_initial_timeline_state(project: dict[str, Any], timeline_id: str, *, 
                 "source_path": path.path,
                 "sync": None,
                 "thumbnail_path": thumb,
+                "layer_manifest": None,  # MARKER_LAYERFX: populated by POST /layers/import
             }
             if waveform_bins:
                 clip["waveform_bins"] = waveform_bins
@@ -1561,6 +1563,8 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 right_clip["in_point_sec"] = round(in_point + left_dur, 4)
             if "sync" in clip:
                 right_clip["sync"] = dict(clip["sync"])
+            if clip.get("layer_manifest"):
+                right_clip["layer_manifest"] = dict(clip["layer_manifest"])
 
             source_lane.setdefault("clips", []).append(right_clip)
             source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
@@ -1569,6 +1573,68 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 "left_id": clip_id, "right_id": right_id,
                 "left_duration": left_dur, "right_duration": right_dur,
             })
+            continue
+
+        # MARKER_SWAP: swap_clips — exchange positions of two selected clips
+        if op_type == "swap_clips":
+            clip_a_id = str(op.get("clip_a_id") or op.get("clip_id") or "")
+            clip_b_id = str(op.get("clip_b_id") or "")
+            if not clip_a_id or not clip_b_id:
+                raise ValueError("swap_clips requires clip_a_id and clip_b_id")
+            lane_a, clip_a = _find_clip(state, clip_a_id)
+            lane_b, clip_b = _find_clip(state, clip_b_id)
+            if clip_a is None or clip_b is None:
+                raise ValueError(f"swap_clips: clip(s) not found: {clip_a_id}, {clip_b_id}")
+            # Exchange start_sec positions, preserve durations
+            a_start = float(clip_a.get("start_sec") or 0.0)
+            b_start = float(clip_b.get("start_sec") or 0.0)
+            a_dur = float(clip_a.get("duration_sec") or 0.0)
+            b_dur = float(clip_b.get("duration_sec") or 0.0)
+            # Clip A moves to where B was, B moves to where A was (adjust for duration diff)
+            clip_a["start_sec"] = round(b_start + b_dur - a_dur, 4) if b_start + b_dur > a_start else round(b_start, 4)
+            clip_b["start_sec"] = round(a_start, 4)
+            # Re-sort both lanes
+            if lane_a is not None:
+                lane_a["clips"] = sorted(lane_a["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            if lane_b is not None and lane_b is not lane_a:
+                lane_b["clips"] = sorted(lane_b["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id})
+            continue
+
+        # MARKER_RTRIM: ripple_trim_to_playhead — trim clip boundary to playhead, ripple others
+        if op_type == "ripple_trim_to_playhead":
+            clip_id = str(op.get("clip_id") or "")
+            playhead = float(op.get("playhead") or op.get("time") or 0.0)
+            trim_end = str(op.get("edge", "end"))  # "start" or "end"
+            source_lane, clip = _find_clip(state, clip_id)
+            if source_lane is None or clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            clip_end = clip_start + clip_dur
+            if trim_end == "end" and clip_start < playhead < clip_end:
+                delta = round(clip_end - playhead, 4)
+                clip["duration_sec"] = round(playhead - clip_start, 4)
+                # Ripple: shift all subsequent clips on this lane left by delta
+                for c in source_lane.get("clips", []):
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c_start >= clip_end - 0.001:
+                        c["start_sec"] = round(c_start - delta, 4)
+            elif trim_end == "start" and clip_start < playhead < clip_end:
+                delta = round(playhead - clip_start, 4)
+                clip["start_sec"] = round(playhead, 4)
+                clip["duration_sec"] = round(clip_end - playhead, 4)
+                if "source_in" in clip:
+                    clip["source_in"] = round(float(clip.get("source_in") or 0.0) + delta, 4)
+                # Ripple: shift all subsequent clips left by delta
+                for c in source_lane.get("clips", []):
+                    c_start = float(c.get("start_sec") or 0.0)
+                    if c is not clip and c_start >= clip_start - 0.001 and c_start < clip_end:
+                        pass  # clips within original range stay
+                    elif c is not clip and c_start >= clip_end - 0.001:
+                        c["start_sec"] = round(c_start - delta, 4)
+            source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "playhead": playhead, "edge": trim_end})
             continue
 
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
