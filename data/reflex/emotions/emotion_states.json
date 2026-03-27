@@ -1376,14 +1376,14 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 1.2501528648238605e-09,
-    "trust": 3.2048774864983655e-07,
+    "curiosity": 4.599055376537186e-10,
+    "trust": 1.3540607380455595e-07,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 46,
+    "usage_count": 48,
     "success_count": 6,
-    "failure_count": 40,
-    "last_updated": 1774515854.754245
+    "failure_count": 42,
+    "last_updated": 1774613713.3922062
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -2377,36 +2377,36 @@
   },
   "task_board": {
     "tool_id": "task_board",
-    "curiosity": 2.1151310375910807e-19,
-    "trust": 0.1664123706518188,
+    "curiosity": 1.0530617357553813e-20,
+    "trust": 0.1664123706518631,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 91,
-    "success_count": 15,
-    "failure_count": 76,
-    "last_updated": 1774515854.771652
+    "usage_count": 97,
+    "success_count": 16,
+    "failure_count": 81,
+    "last_updated": 1774613713.41081
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 7.582560422162385e-10,
-    "trust": 0.9997591983197942,
+    "curiosity": 1.6918979223288784e-10,
+    "trust": 0.9998521176681436,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 47,
-    "success_count": 47,
+    "usage_count": 50,
+    "success_count": 50,
     "failure_count": 0,
-    "last_updated": 1774515854.765075
+    "last_updated": 1774613713.403241
   },
   "Read": {
     "tool_id": "Read",
-    "curiosity": 0.0005527786369235996,
-    "trust": 0.23538105473412188,
+    "curiosity": 0.0003353501304664781,
+    "trust": 0.15299768557717924,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 20,
+    "usage_count": 21,
     "success_count": 5,
-    "failure_count": 15,
-    "last_updated": 1774515854.755022
+    "failure_count": 16,
+    "last_updated": 1774613713.3936908
   },
   "Edit": {
     "tool_id": "Edit",

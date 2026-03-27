@@ -407,13 +407,25 @@ class SessionInitTool(BaseMCPTool):
         role_name = arguments.get("role")  # MARKER_196.1.3: explicit role declaration
 
         # MARKER_200.MODEL_ADAPTIVE: Auto-detect model tier and set token budget.
-        # Priority: explicit max_context_tokens > env VETKA_MODEL_TIER > env detection > default.
-        # Model tier detection: check env vars set by Claude Code, Codex, etc.
+        # Priority: explicit max_context_tokens > registry model_tier > env vars > default.
         _explicit_budget = "max_context_tokens" in arguments
         max_context_tokens = arguments.get("max_context_tokens", 4000)
         if not _explicit_budget:
+            # MARKER_200.MODEL_TIER: Check agent registry first (set by Commander)
+            _registry_tier = ""
+            if role_name:
+                try:
+                    from src.services.agent_registry import get_agent_registry
+                    _tier_reg = get_agent_registry()
+                    _tier_role = _tier_reg.get_by_callsign(role_name)
+                    if _tier_role and getattr(_tier_role, "model_tier", None):
+                        _registry_tier = _tier_role.model_tier
+                except Exception:
+                    pass
+
             _model_tier = (
-                os.environ.get("VETKA_MODEL_TIER")  # explicit override
+                _registry_tier                       # from agent_registry.yaml
+                or os.environ.get("VETKA_MODEL_TIER")  # explicit override
                 or os.environ.get("CLAUDE_MODEL")   # Claude Code sets this
                 or os.environ.get("ANTHROPIC_MODEL") # some integrations
                 or ""
@@ -514,6 +526,25 @@ class SessionInitTool(BaseMCPTool):
                     result["viewport_patterns"] = getattr(
                         prefs.viewport_patterns, "__dict__", {}
                     )
+
+                # MARKER_200.W0.4: Populate tool_usage_patterns from CORTEX per-tool stats.
+                # REFLEX signal 4 reads this as {tool_id: count} — was always {} before.
+                try:
+                    from src.services.reflex_feedback import get_feedback_store
+                    _fb = get_feedback_store()
+                    _summary = _fb.get_feedback_summary()
+                    _per_tool = _summary.get("per_tool", {})
+                    if _per_tool:
+                        result["tool_usage_patterns"] = {
+                            tid: stats["count"]
+                            for tid, stats in sorted(
+                                _per_tool.items(),
+                                key=lambda x: -x[1].get("count", 0),
+                            )[:10]
+                        }
+                except Exception:
+                    pass  # CORTEX read never blocks session_init
+
                 return result
             except Exception as e:
                 return {"user_id": user_id, "has_preferences": False, "_error": str(e)}
@@ -1308,6 +1339,9 @@ class SessionInitTool(BaseMCPTool):
                     "blocked_paths": list(_role.blocked_paths),
                     "role_source": _role_source,  # "explicit" or "branch_detection"
                 }
+                # MARKER_200.MODEL_TIER: Include model_tier from registry
+                if getattr(_role, "model_tier", None):
+                    _role_ctx["model_tier"] = _role.model_tier
 
                 # Workflow hints based on domain
                 if _role.domain == "architect":
