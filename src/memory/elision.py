@@ -117,6 +117,22 @@ ELISION_MAP = {
     "task_board_summary": "tbs",
     "predecessor_advice": "pa",
     "protocol_status": "ps",
+
+    # MARKER_200.ELISION_LIST: Task board list response abbreviations
+    "title": "t",
+    "status": "s",
+    "phase_type": "pt",
+    "complexity": "cx",
+    "project_id": "pid",
+    "assigned_tier": "tier",
+    "project_resolve": "pr",
+    "returned": "ret",
+    "truncated": "trunc",
+    "my_tasks": "mine",
+    "other_tasks": "others",
+    "my_count": "mc",
+    "other_count": "oc",
+    "my_role": "mr",
 }
 
 # Reverse map for expansion
