@@ -421,3 +421,105 @@ class TestTimingAccuracy:
         total_one = sum(c.duration_sec for c in one)
         total_two = sum(c.duration_sec for c in two)
         assert total_two > total_one
+
+
+# ---------------------------------------------------------------------------
+# Route auto-detect integration tests (_parse_script_auto)
+# ---------------------------------------------------------------------------
+
+
+try:
+    from src.api.routes.cut_routes import _parse_script_auto
+    _HAS_ROUTES = True
+except ImportError:
+    _HAS_ROUTES = False
+
+
+@pytest.mark.skipif(not _HAS_ROUTES, reason="fastapi not installed")
+class TestParseScriptAutoDetect:
+    """Test the _parse_script_auto function from cut_routes.py."""
+
+    def _auto(self, text, fmt_hint="auto"):
+        return _parse_script_auto(text, fmt_hint)
+
+    def test_fdx_auto_detected(self):
+        chunks, detected = self._auto(MINIMAL_FDX)
+        assert detected == "fdx"
+        assert len(chunks) >= 1
+        assert chunks[0].scene_heading == "INT. CAFE - DAY"
+
+    def test_fdx_explicit_hint(self):
+        chunks, detected = self._auto(MINIMAL_FDX, "fdx")
+        assert detected == "fdx"
+
+    def test_plain_text_fallback(self):
+        text = "Some random text\nwith no special formatting.\nJust paragraphs."
+        chunks, detected = self._auto(text)
+        assert detected == "plain"
+        assert len(chunks) >= 1
+
+    def test_plain_text_explicit_hint(self):
+        text = "INT. CAFE - DAY\nSome action."
+        chunks, detected = self._auto(text, "plain")
+        assert detected == "plain"
+
+    def test_fountain_auto_detected(self):
+        fountain = (
+            "INT. COFFEE SHOP - MORNING\n\n"
+            "SARAH enters, looking around nervously.\n\n"
+            "SARAH\n"
+            "Is anyone here?\n\n"
+            "EXT. PARKING LOT - NIGHT\n\n"
+            "Rain pours down.\n\n"
+            "CUT TO:\n"
+        )
+        chunks, detected = self._auto(fountain)
+        assert detected == "fountain"
+        assert len(chunks) >= 1
+
+    def test_fountain_explicit_hint(self):
+        fountain = (
+            "INT. OFFICE - DAY\n\n"
+            "Quiet.\n\n"
+            "EXT. STREET - NIGHT\n\n"
+            "Loud.\n"
+        )
+        chunks, detected = self._auto(fountain, "fountain")
+        assert detected == "fountain"
+
+    def test_empty_text(self):
+        """Empty text should not crash — handled by route before calling auto."""
+        from src.services.screenplay_timing import parse_screenplay
+        chunks = parse_screenplay("")
+        assert chunks == []
+
+    def test_fdx_without_xml_declaration(self):
+        """FDX starting with <FinalDraft (no <?xml> prolog)."""
+        fdx_no_prolog = (
+            '<FinalDraft DocumentType="Script" Template="No" Version="4">'
+            '<Content>'
+            '<Paragraph Type="Scene Heading"><Text>INT. LAB - NIGHT</Text></Paragraph>'
+            '<Paragraph Type="Action"><Text>Silence.</Text></Paragraph>'
+            '</Content>'
+            '</FinalDraft>'
+        )
+        chunks, detected = self._auto(fdx_no_prolog)
+        assert detected == "fdx"
+        assert chunks[0].scene_heading == "INT. LAB - NIGHT"
+
+    def test_detected_format_in_response(self):
+        """Chunks from all formats have the same SceneChunk structure."""
+        from dataclasses import fields
+        from src.services.screenplay_timing import SceneChunk
+
+        expected_fields = {f.name for f in fields(SceneChunk)}
+
+        # FDX
+        fdx_chunks, _ = self._auto(MINIMAL_FDX)
+        for c in fdx_chunks:
+            assert set(vars(c).keys()) == expected_fields
+
+        # Plain
+        plain_chunks, _ = self._auto("Some text.", "plain")
+        for c in plain_chunks:
+            assert set(vars(c).keys()) == expected_fields
