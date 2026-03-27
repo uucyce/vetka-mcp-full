@@ -20,7 +20,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import numpy as np
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
 from src.api.routes.artifact_routes import (
@@ -3617,6 +3617,40 @@ async def cut_layers_status(body: CutLayerStatusRequest) -> dict[str, Any]:
                 }
 
     return {"success": False, "error": "clip_not_found"}
+
+
+@router.get("/layers/manifest")
+async def cut_layers_manifest(
+    path: str = Query(..., description="Absolute path to layer_space.json or plate_export_manifest.json"),
+) -> dict[str, Any]:
+    """
+    MARKER_LAYERFX_READ — Load full canonical manifest from manifest_path.
+
+    This is the read half of the layer contract:
+      POST /layers/import → stores manifest_path on clip
+      GET  /layers/manifest?path=... → Gamma fetches full data for panel
+
+    Returns the canonical manifest shape via ingest_manifest().
+    No new format — uses the same ingest pipeline as import.
+    """
+    from src.services.cut_layer_manifest import ingest_manifest
+
+    manifest_path = path.strip()
+    if not manifest_path:
+        return {"success": False, "error": "empty_path"}
+
+    if not Path(manifest_path).exists():
+        return {"success": False, "error": "manifest_not_found", "path": manifest_path}
+
+    try:
+        manifest = ingest_manifest(manifest_path)
+    except (ValueError, json.JSONDecodeError) as e:
+        return {"success": False, "error": "invalid_manifest", "detail": str(e)}
+
+    return {
+        "success": True,
+        "manifest": manifest.to_dict(),
+    }
 
 
 # ---------------------------------------------------------------------------
