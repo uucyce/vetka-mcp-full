@@ -172,6 +172,77 @@ def _load_docs_content_sync(
     return header + docs_text + footer
 
 
+# MARKER_200.ELISION_LIST: Lightweight field renaming for list responses
+# Applied at dict level (no JSON serialization overhead)
+_LIST_FIELD_MAP = {
+    "title": "t",
+    "status": "s",
+    "priority": "pri",
+    "phase_type": "pt",
+    "complexity": "cx",
+    "project_id": "pid",
+    "assigned_tier": "tier",
+    "assigned_to": "at",
+    "source": "src",
+    "role": "rl",
+    "returned": "ret",
+    "truncated": "trunc",
+    "my_tasks": "mine",
+    "other_tasks": "others",
+    "my_count": "mc",
+    "other_count": "oc",
+    "my_role": "mr",
+    "project_resolve": "pr",
+}
+
+# Reverse legend for agent decoding
+_LIST_ELISION_LEGEND = {v: k for k, v in _LIST_FIELD_MAP.items()}
+
+
+def _elision_rename_task(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Rename task fields using ELISION map + strip empty values."""
+    out = {}
+    for k, v in task.items():
+        # Strip None, empty strings, empty lists
+        if v is None or v == "" or v == []:
+            continue
+        new_key = _LIST_FIELD_MAP.get(k, k)
+        out[new_key] = v
+    return out
+
+
+def _elision_compress_list(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply ELISION field renaming to task_board list response.
+
+    Compresses task entries by renaming verbose keys (title→t, status→s, etc.)
+    and stripping empty fields. Adds _elision legend (used keys only).
+    """
+    used_abbrevs = set()
+    out = {}
+    for k, v in result.items():
+        new_key = _LIST_FIELD_MAP.get(k, k)
+        if new_key != k:
+            used_abbrevs.add(new_key)
+        if k in ("tasks", "my_tasks", "other_tasks"):
+            compressed_tasks = []
+            for t in v:
+                ct = _elision_rename_task(t)
+                used_abbrevs.update(
+                    ak for ak in ct if ak in _LIST_ELISION_LEGEND
+                )
+                compressed_tasks.append(ct)
+            out[new_key] = compressed_tasks
+        elif isinstance(v, dict) and k == "project_resolve":
+            out[new_key] = v
+        elif v is None or v == "" or v == []:
+            continue
+        else:
+            out[new_key] = v
+    # Only include actually-used abbreviations in legend
+    out["_el"] = {a: _LIST_ELISION_LEGEND[a] for a in sorted(used_abbrevs)}
+    return out
+
+
 # ==========================================
 # Tool 1: vetka_task_board (CRUD + list)
 # ==========================================
@@ -895,6 +966,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         if project_resolve:
             result["project_resolve"] = project_resolve
+
+        # MARKER_200.ELISION_LIST: Compress list response to save tokens
+        result = _elision_compress_list(result)
         return result
 
     elif action == "get":
