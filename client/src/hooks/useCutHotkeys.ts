@@ -307,7 +307,8 @@ export type HotkeyBinding = string;
 
 export type HotkeyPresetName = 'premiere' | 'fcp7' | 'custom';
 
-export type HotkeyMap = Partial<Record<CutHotkeyAction, HotkeyBinding>>;
+// MARKER_MULTI-BIND: Support single binding or array of bindings per action
+export type HotkeyMap = Partial<Record<CutHotkeyAction, HotkeyBinding | HotkeyBinding[]>>;
 
 // ─── Built-in presets ───────────────────────────────────────────────
 // Populated with known defaults. Grok research will fill remaining gaps.
@@ -360,8 +361,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Tools
   razorTool:         'c',
   selectTool:        'v',
-  insertEdit:        ',',
-  overwriteEdit:     '.',
+  insertEdit:        [',', 'F9'],    // MARKER_MULTI-BIND: Premiere comma + F9 alias
+  overwriteEdit:     ['.', 'F10'],   // MARKER_MULTI-BIND: Premiere period + F10 alias
   replaceEdit:       'F11',
   fitToFill:         'Shift+F11',
   superimpose:       'F12',
@@ -424,13 +425,12 @@ export const PREMIERE_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
   pasteAttributes:   'Alt+v',
-  insertEditF9:      'F9',
-  overwriteEditF10:  'F10',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
@@ -490,8 +490,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // Tools
   razorTool:         'b',
   selectTool:        'a',
-  insertEdit:        ',',
-  overwriteEdit:     '.',
+  insertEdit:        [',', 'F9'],    // MARKER_MULTI-BIND: FCP7 F9 primary + comma alias
+  overwriteEdit:     ['.', 'F10'],   // MARKER_MULTI-BIND: FCP7 F10 primary + period alias
   replaceEdit:       'F11',
   fitToFill:         'Shift+F11',
   superimpose:       'F12',
@@ -554,13 +554,12 @@ export const FCP7_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
   pasteAttributes:   'Alt+v',
-  insertEditF9:      'F9',
-  overwriteEditF10:  'F10',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
@@ -669,7 +668,8 @@ function matchesEvent(parsed: ParsedBinding, e: KeyboardEvent): boolean {
 
 // ─── Resolved map builder ───────────────────────────────────────────
 
-export type ResolvedHotkeyMap = Map<CutHotkeyAction, ParsedBinding>;
+// MARKER_MULTI-BIND: Each action can have multiple ParsedBindings
+export type ResolvedHotkeyMap = Map<CutHotkeyAction, ParsedBinding[]>;
 
 export function resolveMap(presetName: HotkeyPresetName, customOverrides: HotkeyMap): ResolvedHotkeyMap {
   // Start with selected preset (or premiere as base for custom)
@@ -680,10 +680,11 @@ export function resolveMap(presetName: HotkeyPresetName, customOverrides: Hotkey
   // Apply custom overrides on top
   const merged = { ...base, ...customOverrides };
 
-  const map = new Map<CutHotkeyAction, ParsedBinding>();
+  const map = new Map<CutHotkeyAction, ParsedBinding[]>();
   for (const [action, binding] of Object.entries(merged)) {
     if (binding) {
-      map.set(action as CutHotkeyAction, parseBinding(binding));
+      const bindings = Array.isArray(binding) ? binding : [binding];
+      map.set(action as CutHotkeyAction, bindings.map(parseBinding));
     }
   }
   return map;
@@ -698,7 +699,10 @@ export function getBindingLabel(
 ): string {
   const base = presetName === 'custom' ? PREMIERE_PRESET : (PRESETS[presetName] || PREMIERE_PRESET);
   const merged = { ...base, ...customOverrides };
-  return merged[action] || '';
+  const binding = merged[action];
+  if (!binding) return '';
+  // MARKER_MULTI-BIND: Return first binding as label (primary shortcut)
+  return Array.isArray(binding) ? binding[0] || '' : binding;
 }
 
 // ─── All actions list (for settings UI) ─────────────────────────────
@@ -909,8 +913,9 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
       // MARKER_FOCUS: Read current focused panel for scope check
       const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
 
-      for (const [action, parsed] of resolved) {
-        if (matchesEvent(parsed, e)) {
+      for (const [action, parsedList] of resolved) {
+        // MARKER_MULTI-BIND: Check all bindings for this action
+        if (parsedList.some((parsed) => matchesEvent(parsed, e))) {
           // MARKER_FOCUS: Check panel scope before dispatching
           const scope = ACTION_SCOPE[action];
           if (scope !== 'global') {
