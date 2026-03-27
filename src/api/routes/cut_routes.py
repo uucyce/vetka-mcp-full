@@ -3372,6 +3372,134 @@ async def cut_apply_script_to_dag(body: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_DEPTH_SERVICE: Depth map generation
+# ---------------------------------------------------------------------------
+
+class CutDepthGenerateRequest(BaseModel):
+    """Request to generate depth maps for clips."""
+    sandbox_root: str
+    project_id: str
+    source_paths: list[str] = Field(default_factory=list,
+        description="Media files to generate depth for. If empty, uses all video clips.")
+    backend: str = Field(default="auto",
+        description="auto, depth-pro, depth-anything-v2-small, ffmpeg-luma")
+    force: bool = Field(default=False, description="Force regeneration even if cached")
+    frame_time: float = Field(default=0.0, description="Time offset for frame extraction")
+
+
+@router.post("/depth/generate")
+async def cut_depth_generate(body: CutDepthGenerateRequest) -> dict[str, Any]:
+    """
+    MARKER_DEPTH_SERVICE — Generate depth maps for timeline clips.
+
+    Creates depth map sidecar files (.cut_depth/) next to source media.
+    Uses AI models (depth-pro, depth-anything) or FFmpeg luma fallback.
+    Returns per-file results with depth_path for clip metadata.
+    """
+    from src.services.cut_depth_service import generate_depth, build_depth_metadata
+
+    store = CutProjectStore(body.sandbox_root)
+    project = store.load_project()
+    if project is None or str(project.get("project_id") or "") != str(body.project_id):
+        return {"success": False, "error": "project_not_found"}
+
+    # Discover source paths from timeline if not provided
+    source_paths = list(body.source_paths)
+    if not source_paths:
+        timeline_state = store.load_timeline_state()
+        if timeline_state:
+            seen: set[str] = set()
+            for lane in timeline_state.get("lanes", []):
+                for clip in lane.get("clips", []):
+                    sp = str(clip.get("source_path") or "").strip()
+                    if sp and sp not in seen:
+                        source_paths.append(sp)
+                        seen.add(sp)
+
+    if not source_paths:
+        return {"success": False, "error": "no_source_media"}
+
+    # Resolve relative paths
+    resolved: list[str] = []
+    for sp in source_paths:
+        p = Path(sp)
+        if not p.is_absolute():
+            p = Path(body.sandbox_root) / sp
+        resolved.append(str(p))
+
+    # Generate depth for each file
+    results = []
+    for sp in resolved:
+        result = generate_depth(
+            sp, backend=body.backend,
+            force=body.force, frame_time=body.frame_time,
+        )
+        results.append(result.to_dict())
+
+    # Update clip metadata in timeline state
+    timeline_state = store.load_timeline_state()
+    clips_updated = 0
+    if timeline_state:
+        result_map = {r["source_path"]: r for r in results if r.get("success")}
+        for lane in timeline_state.get("lanes", []):
+            for clip in lane.get("clips", []):
+                sp = str(clip.get("source_path") or "")
+                if sp in result_map:
+                    from src.services.cut_depth_service import DepthResult
+                    dr = DepthResult(**{k: v for k, v in result_map[sp].items()
+                                       if k in DepthResult.__dataclass_fields__})
+                    meta = build_depth_metadata(dr)
+                    clip["depth"] = meta.to_dict()
+                    clips_updated += 1
+        if clips_updated > 0:
+            store.save_timeline_state(timeline_state)
+
+    succeeded = sum(1 for r in results if r.get("success"))
+    skipped = sum(1 for r in results if r.get("skipped"))
+
+    return {
+        "success": True,
+        "total": len(results),
+        "succeeded": succeeded,
+        "skipped": skipped,
+        "failed": len(results) - succeeded,
+        "clips_updated": clips_updated,
+        "results": results,
+    }
+
+
+class CutDepthStatusRequest(BaseModel):
+    """Request to check depth status for a clip."""
+    sandbox_root: str
+    project_id: str
+    clip_id: str
+
+
+@router.post("/depth/status")
+async def cut_depth_status(body: CutDepthStatusRequest) -> dict[str, Any]:
+    """Check depth map status for a specific clip."""
+    clip_id = body.clip_id
+    store = CutProjectStore(body.sandbox_root)
+    timeline_state = store.load_timeline_state()
+    if not timeline_state:
+        return {"success": False, "error": "no_timeline"}
+
+    for lane in timeline_state.get("lanes", []):
+        for clip in lane.get("clips", []):
+            if str(clip.get("clip_id")) == clip_id:
+                depth = clip.get("depth", {})
+                has_depth = bool(depth.get("depth_path"))
+                return {
+                    "success": True,
+                    "clip_id": clip_id,
+                    "has_depth": has_depth,
+                    "depth": depth,
+                }
+
+    return {"success": False, "error": "clip_not_found"}
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B41: Render routes moved to cut_routes_render.py
 # CutRenderMasterRequest, _emit_render_progress, _run_master_render_job,
 # cut_render_master, cut_render_presets, CutRenderBatchRequest,
