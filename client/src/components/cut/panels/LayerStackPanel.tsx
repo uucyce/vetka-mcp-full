@@ -1,56 +1,103 @@
 /**
- * MARKER_GAMMA-LAYERUI: Layer Stack & Depth Inspector Panel
+ * MARKER_GAMMA-LAYERUI-ALIGN: Layer Stack & Depth Inspector Panel
  *
  * NLE-style layer compositor panel for explicit parallax layers.
  * Mental model: After Effects layer panel + DaVinci Resolve Depth Map inspector.
  *
- * Reads layer manifest from the selected clip's `layerManifest` property.
- * Manifest contract: docs/180_photo-to-parallax/PARALLAX_EXPLICIT_LAYER_EXTRACTION_ARCHITECTURE_2026-03-27.md §3
+ * CONTRACT SOURCE OF TRUTH:
+ *   docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_LAYERFX_MANIFEST_CONTRACT_2026-03-27.md
  *
- * Features:
- * - Layer list with visibility/solo/lock per layer
- * - Depth band visualization (gradient bar per layer)
- * - Layer thumbnail preview (rgba asset)
- * - Depth inspector: depth map thumbnail + near/far stats
- * - Reorder layers via drag (future: wired to render order)
- * - Empty state when no manifest attached
+ * Read path:
+ *   clip.layer_manifest?.manifest_path  → async fetch full manifest
+ *   clip.layer_manifest?.layer_count    → header badge (no fetch needed)
+ *   clip.layer_manifest?.sample_id      → header label (no fetch needed)
+ *
+ * JSON wire format: camelCase (sampleId, depthPriority, parallaxStrength)
+ * Layer roles on disk: kebab-case (foreground-subject, environment-mid)
  *
  * @phase 200
  * @owner Gamma
  */
-import { useState, useMemo, type CSSProperties } from 'react';
+import { useState, useMemo, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import { useSelectionStore } from '../../../store/useSelectionStore';
+import { API_BASE } from '../../../config/api.config';
 
-// ─── Layer Manifest Types (from architecture doc §3) ─────────────────
-export type LayerRole =
-  | 'foreground_subject'
-  | 'secondary_subject'
-  | 'mid_environment'
-  | 'background'
-  | 'special_clean';
+// ─── Types: Beta canonical contract (camelCase = JSON wire format) ────
+
+/** Stored on clip as clip.layer_manifest (lightweight meta, no async needed) */
+export interface LayerManifestMeta {
+  manifest_path: string;
+  format: string;           // "layer_space" | "plate_export"
+  layer_count: number;
+  has_foreground: boolean;
+  has_background: boolean;
+  sample_id: string;
+}
+
+/** Full manifest loaded via API from manifest_path */
+export interface LayerSpaceManifest {
+  contract_version: string;
+  sampleId: string;
+  source: {
+    path: string;
+    width: number;
+    height: number;
+  };
+  layers: LayerEntry[];
+  space: CameraSpace;
+  provenance: {
+    depth_backend: string;
+    grouping_backend: string;
+  };
+}
 
 export interface LayerEntry {
   id: string;
-  role: LayerRole;
-  semantic_label: string;
-  z: number;
-  depth_band: [number, number]; // [near, far] normalized 0-1
-  distance_hint?: 'near' | 'mid' | 'far';
-  rgba: string;   // path to rgba asset
-  alpha: string;  // path to alpha asset
-  depth?: string;  // path to per-layer depth
-  hole_filled?: boolean;
+  role: string;              // kebab-case on disk: "foreground-subject"
+  label: string;
+  order: number;             // compositing index (0 = back)
+  depthPriority: number;     // 0-1 float, SEPARATE from order
+  z: number;                 // depth position in camera space
+  visible: boolean;
+  rgba: string;              // relative path to rgba asset
+  mask: string;              // relative path to mask asset
+  depth: string;             // relative path to per-layer depth
+  coverage: number;          // 0-1 how much of frame this layer covers
+  parallaxStrength: number;
+  motionDamping: number;
 }
 
-export interface LayerManifest {
-  contract_version: string;
-  sample_id: string;
-  depth_source: {
-    kind: string;
-    polarity: string;
-  };
-  layers: LayerEntry[];
+export interface CameraSpace {
+  focalLengthMm: number;
+  filmWidthMm: number;
+  zNear: number;
+  zFar: number;
+  motionType: string;        // "orbit" | "dolly" | "pan" etc
+  durationSec: number;
+  travelXPct: number;
+  travelYPct: number;
+  zoom: number;
+  overscanPct: number;
+}
+
+// ─── Role normalization (kebab-case on disk → display labels) ────────
+const ROLE_DISPLAY: Record<string, string> = {
+  'foreground-subject': 'FG Subject',
+  'secondary-subject': 'FG Secondary',
+  'environment-mid': 'Mid Env',
+  'background-far': 'Background',
+  'special-clean': 'Clean Plate',
+  // Python-normalized forms (underscore) as fallback
+  'foreground_subject': 'FG Subject',
+  'secondary_subject': 'FG Secondary',
+  'mid_environment': 'Mid Env',
+  'background': 'Background',
+  'special_clean': 'Clean Plate',
+};
+
+function roleLabel(role: string): string {
+  return ROLE_DISPLAY[role] ?? role;
 }
 
 // ─── UI State ────────────────────────────────────────────────────────
@@ -132,26 +179,17 @@ const ROLE_BADGE: CSSProperties = {
   letterSpacing: '0.3px',
 };
 
-const DEPTH_SECTION: CSSProperties = {
+const INFO_SECTION: CSSProperties = {
   padding: '8px 10px',
   borderTop: '1px solid #1a1a1a',
   borderBottom: '1px solid #1a1a1a',
 };
 
-const DEPTH_STAT_ROW: CSSProperties = {
+const STAT_ROW: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   padding: '2px 0',
   fontSize: 10,
-};
-
-// ─── Role display labels ─────────────────────────────────────────────
-const ROLE_LABELS: Record<LayerRole, string> = {
-  foreground_subject: 'FG Subject',
-  secondary_subject: 'FG Secondary',
-  mid_environment: 'Mid Env',
-  background: 'Background',
-  special_clean: 'Clean Plate',
 };
 
 // ─── Component ───────────────────────────────────────────────────────
@@ -159,20 +197,48 @@ export default function LayerStackPanel() {
   const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
-  // Find selected clip and its layer manifest
-  const { clip, manifest } = useMemo(() => {
-    if (!selectedClipId) return { clip: null, manifest: null };
+  // Extract clip-level meta (lightweight, no fetch)
+  const { clip, meta } = useMemo(() => {
+    if (!selectedClipId) return { clip: null, meta: null };
     for (const lane of lanes) {
       const found = lane.clips.find((c) => c.clip_id === selectedClipId);
       if (found) {
-        const m = (found as any).layerManifest as LayerManifest | undefined;
-        return { clip: found, manifest: m ?? null };
+        const m = (found as any).layer_manifest as LayerManifestMeta | undefined;
+        return { clip: found, meta: m ?? null };
       }
     }
-    return { clip: null, manifest: null };
+    return { clip: null, meta: null };
   }, [selectedClipId, lanes]);
 
-  // Per-layer UI state (visibility, solo, lock)
+  // Async-loaded full manifest (fetched when meta.manifest_path changes)
+  const [manifest, setManifest] = useState<LayerSpaceManifest | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setManifest(null);
+    setError(null);
+    if (!meta?.manifest_path) return;
+
+    let cancelled = false;
+    setLoading(true);
+
+    fetch(`${API_BASE}/cut/layers/manifest?path=${encodeURIComponent(meta.manifest_path)}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+        return r.json();
+      })
+      .then((data: LayerSpaceManifest) => {
+        if (!cancelled) { setManifest(data); setLoading(false); }
+      })
+      .catch((err) => {
+        if (!cancelled) { setError(String(err)); setLoading(false); }
+      });
+
+    return () => { cancelled = true; };
+  }, [meta?.manifest_path]);
+
+  // Per-layer UI state (visibility override, solo, lock)
   const [layerState, setLayerState] = useState<Record<string, LayerUIState>>({});
 
   const getState = (id: string): LayerUIState =>
@@ -193,7 +259,6 @@ export default function LayerStackPanel() {
     setLayerState((prev) => ({ ...prev, [id]: { ...cur, locked: !cur.locked } }));
   };
 
-  // Check if any layer is soloed
   const hasSolo = manifest?.layers.some((l) => getState(l.id).solo) ?? false;
 
   // ─── No clip selected ──────────────────────────────────────────────
@@ -208,8 +273,8 @@ export default function LayerStackPanel() {
     );
   }
 
-  // ─── No manifest on clip ───────────────────────────────────────────
-  if (!manifest) {
+  // ─── No manifest meta on clip ──────────────────────────────────────
+  if (!meta) {
     return (
       <div style={PANEL}>
         <div style={HEADER}>
@@ -227,34 +292,114 @@ export default function LayerStackPanel() {
     );
   }
 
-  // ─── Manifest present — render layer stack ─────────────────────────
+  // ─── Meta present but manifest still loading ───────────────────────
+  if (loading) {
+    return (
+      <div style={PANEL}>
+        <div style={HEADER}>
+          <span>Layers ({meta.layer_count})</span>
+          <span style={{ color: '#444' }}>{meta.sample_id}</span>
+        </div>
+        <div style={EMPTY}>
+          <span>Loading manifest...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Fetch error ───────────────────────────────────────────────────
+  if (error) {
+    return (
+      <div style={PANEL}>
+        <div style={HEADER}>
+          <span>Layers ({meta.layer_count})</span>
+          <span style={{ color: '#444' }}>{meta.sample_id}</span>
+        </div>
+        <div style={EMPTY}>
+          <span>Failed to load manifest</span>
+          <span style={{ fontSize: 9, color: '#444', wordBreak: 'break-all' }}>{error}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── No full manifest (meta exists but endpoint not available yet) ─
+  if (!manifest) {
+    return (
+      <div style={PANEL}>
+        <div style={HEADER}>
+          <span>Layers ({meta.layer_count})</span>
+          <span style={{ color: '#444' }}>{meta.sample_id}</span>
+        </div>
+        <div style={{ ...INFO_SECTION, borderTop: 'none' }}>
+          <div style={STAT_ROW}>
+            <span style={{ color: '#666' }}>Format</span>
+            <span style={{ color: '#888' }}>{meta.format}</span>
+          </div>
+          <div style={STAT_ROW}>
+            <span style={{ color: '#666' }}>Foreground</span>
+            <span style={{ color: '#888' }}>{meta.has_foreground ? 'Yes' : 'No'}</span>
+          </div>
+          <div style={STAT_ROW}>
+            <span style={{ color: '#666' }}>Background</span>
+            <span style={{ color: '#888' }}>{meta.has_background ? 'Yes' : 'No'}</span>
+          </div>
+        </div>
+        <div style={EMPTY}>
+          <span style={{ fontSize: 10, color: '#444' }}>
+            Full manifest pending — endpoint /cut/layers/manifest not yet available.
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Full manifest loaded — render layer stack + camera info ───────
   const layers = manifest.layers;
-  // Sort by z (near first = top of stack, like AE/Nuke)
-  const sorted = [...layers].sort((a, b) => b.z - a.z);
+  // Sort by order descending (highest order = frontmost = top of stack)
+  const sorted = [...layers].sort((a, b) => b.order - a.order);
+  const space = manifest.space;
 
   return (
     <div style={PANEL} data-testid="cut-layer-stack-panel">
       {/* Header */}
       <div style={HEADER}>
         <span>Layers ({layers.length})</span>
-        <span style={{ color: '#444' }}>{manifest.sample_id}</span>
+        <span style={{ color: '#444' }}>{manifest.sampleId}</span>
       </div>
 
-      {/* Depth Inspector Section */}
-      <div style={DEPTH_SECTION}>
-        <div style={{ ...DEPTH_STAT_ROW, color: '#888', marginBottom: 4 }}>
-          <span>Depth Source</span>
-          <span>{manifest.depth_source.kind === 'real_depth_raster' ? 'Real Depth' : manifest.depth_source.kind}</span>
+      {/* Camera / Space Inspector Section */}
+      <div style={INFO_SECTION}>
+        <div style={{ ...STAT_ROW, color: '#888', marginBottom: 4 }}>
+          <span>Camera</span>
+          <span>{space.motionType}</span>
         </div>
-        <div style={DEPTH_STAT_ROW}>
-          <span style={{ color: '#666' }}>Polarity</span>
-          <span style={{ color: '#888' }}>{manifest.depth_source.polarity === 'white_near_black_far' ? 'White = Near' : manifest.depth_source.polarity}</span>
+        <div style={STAT_ROW}>
+          <span style={{ color: '#666' }}>Focal</span>
+          <span style={{ color: '#888' }}>{space.focalLengthMm}mm</span>
         </div>
-        <div style={DEPTH_STAT_ROW}>
+        <div style={STAT_ROW}>
+          <span style={{ color: '#666' }}>Duration</span>
+          <span style={{ color: '#888' }}>{space.durationSec}s</span>
+        </div>
+        <div style={STAT_ROW}>
+          <span style={{ color: '#666' }}>Travel</span>
+          <span style={{ color: '#888' }}>X {space.travelXPct}% Y {space.travelYPct}%</span>
+        </div>
+        <div style={STAT_ROW}>
+          <span style={{ color: '#666' }}>Depth Range</span>
+          <span style={{ color: '#888' }}>{space.zNear.toFixed(2)} – {space.zFar.toFixed(2)}</span>
+        </div>
+        <div style={STAT_ROW}>
           <span style={{ color: '#666' }}>Contract</span>
           <span style={{ color: '#888' }}>v{manifest.contract_version}</span>
         </div>
-        {/* Depth range bar — full gradient from near (white) to far (dark) */}
+        <div style={STAT_ROW}>
+          <span style={{ color: '#666' }}>Provenance</span>
+          <span style={{ color: '#888' }}>{manifest.provenance.depth_backend}</span>
+        </div>
+
+        {/* Depth range bar — near (white) to far (dark), layers positioned by depthPriority */}
         <div style={{ marginTop: 6 }}>
           <div style={{
             width: '100%',
@@ -263,21 +408,23 @@ export default function LayerStackPanel() {
             background: 'linear-gradient(to right, #ccc, #333)',
             position: 'relative',
           }}>
-            {/* Layer band markers overlaid on gradient */}
             {sorted.map((layer) => {
               const st = getState(layer.id);
               const isActive = !hasSolo || st.solo;
+              // Position by depthPriority (0 = far/right, 1 = near/left)
+              const pos = layer.depthPriority;
+              const barWidth = Math.max(4, (layer.coverage ?? 0.1) * 30); // coverage-based width hint
               return (
                 <div
                   key={layer.id}
-                  title={`${layer.semantic_label}: z=${layer.z} [${layer.depth_band[0].toFixed(2)}–${layer.depth_band[1].toFixed(2)}]`}
+                  title={`${layer.label}: dp=${pos.toFixed(2)} z=${layer.z} coverage=${(layer.coverage * 100).toFixed(0)}%`}
                   style={{
                     position: 'absolute',
-                    left: `${(1 - layer.depth_band[1]) * 100}%`,
-                    width: `${(layer.depth_band[1] - layer.depth_band[0]) * 100}%`,
+                    left: `${(1 - pos) * 100 - barWidth / 2}%`,
+                    width: `${barWidth}%`,
                     top: 0,
                     height: '100%',
-                    background: isActive ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.05)',
+                    background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.05)',
                     borderLeft: '1px solid rgba(255,255,255,0.3)',
                     borderRight: '1px solid rgba(255,255,255,0.3)',
                   }}
@@ -296,7 +443,8 @@ export default function LayerStackPanel() {
       <div>
         {sorted.map((layer, idx) => {
           const st = getState(layer.id);
-          const isEffectivelyVisible = st.visible && (!hasSolo || st.solo);
+          // Respect manifest-level visible + UI override
+          const isEffectivelyVisible = layer.visible && st.visible && (!hasSolo || st.solo);
           const dimmed = !isEffectivelyVisible;
 
           return (
@@ -344,14 +492,14 @@ export default function LayerStackPanel() {
                 title={st.locked ? 'Unlock' : 'Lock layer'}
                 onClick={() => toggleLock(layer.id)}
               >
-L
+                L
               </button>
 
-              {/* Depth band mini bar */}
-              <div style={DEPTH_BAR_CONTAINER} title={`z=${layer.z}`}>
+              {/* Depth priority mini bar */}
+              <div style={DEPTH_BAR_CONTAINER} title={`dp=${layer.depthPriority.toFixed(2)}`}>
                 <div style={{
-                  marginLeft: `${(1 - layer.depth_band[1]) * 100}%`,
-                  width: `${(layer.depth_band[1] - layer.depth_band[0]) * 100}%`,
+                  marginLeft: `${(1 - layer.depthPriority) * 100}%`,
+                  width: `${Math.max(10, layer.coverage * 100)}%`,
                   height: '100%',
                   background: '#888',
                   borderRadius: 2,
@@ -367,17 +515,17 @@ L
                   color: dimmed ? '#555' : '#ccc',
                   fontSize: 11,
                 }}>
-                  {layer.semantic_label}
+                  {layer.label}
                 </div>
                 <div style={ROLE_BADGE}>
-                  {ROLE_LABELS[layer.role] ?? layer.role}
-                  {layer.hole_filled && ' \u2022 filled'}
+                  {roleLabel(layer.role)}
+                  {layer.coverage > 0 && ` \u2022 ${(layer.coverage * 100).toFixed(0)}%`}
                 </div>
               </div>
 
-              {/* Z value */}
-              <span style={{ color: '#555', fontSize: 10, flexShrink: 0, width: 24, textAlign: 'right' }}>
-                z{layer.z}
+              {/* Order + parallax strength */}
+              <span style={{ color: '#555', fontSize: 10, flexShrink: 0, width: 32, textAlign: 'right' }}>
+                #{layer.order}
               </span>
             </div>
           );
