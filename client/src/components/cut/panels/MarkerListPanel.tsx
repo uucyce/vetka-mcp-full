@@ -146,6 +146,7 @@ export default function MarkerListPanel() {
       {/* Toolbar: filter + count */}
       <div style={TOOLBAR}>
         <select
+          data-testid="marker-list-filter-kind"
           value={filterKind}
           onChange={(e) => setFilterKind(e.target.value)}
           style={{
