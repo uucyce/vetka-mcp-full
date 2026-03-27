@@ -3009,9 +3009,11 @@ class TaskBoard:
         if not branch:
             return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
 
-        # MARKER_198.MERGE: Strategy resolution — caller > task > default
-        strategy = strategy or task.get("merge_strategy", "cherry-pick")
+        # MARKER_200.MERGE_AUTO: Strategy resolution — caller > task > auto-select > default
         commits = task.get("merge_commits", [])
+        explicit_strategy = strategy or task.get("merge_strategy")
+        # Auto-select will be applied after commit count is known (Step 2)
+        strategy = explicit_strategy or "cherry-pick"  # temporary default
 
         # Step 1: Validate branch exists
         try:
@@ -3044,6 +3046,40 @@ class TaskBoard:
 
         if not commits:
             return {"success": False, "error": f"No commits found on '{branch}' ahead of main"}
+
+        # MARKER_200.MERGE_AUTO: Auto-select strategy if not explicitly set
+        # 1-3 commits → cherry-pick (clean per-commit history)
+        # >3 commits → merge --no-ff (avoids sequential cherry-pick pain)
+        if not explicit_strategy:
+            if len(commits) > 3:
+                strategy = "merge"
+                logger.info(
+                    f"[MergeRequest] Auto-selected strategy=merge for {len(commits)} commits on {branch}"
+                )
+            else:
+                strategy = "cherry-pick"
+
+        # MARKER_200.MERGE_AUTO: Pre-filter cherry-pick commits — skip already on main
+        if strategy == "cherry-pick":
+            filtered_commits = []
+            for _ch in commits:
+                try:
+                    _anc = await asyncio.create_subprocess_exec(
+                        "git", "merge-base", "--is-ancestor", _ch, "main",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await _anc.communicate()
+                    if _anc.returncode == 0:
+                        logger.info(f"[MergeRequest] Pre-filter: skip {_ch} (already on main)")
+                        continue
+                except Exception:
+                    pass
+                filtered_commits.append(_ch)
+            if not filtered_commits:
+                return {"success": True, "note": "All commits already on main", "commits_merged": 0}
+            commits = filtered_commits
 
         # Step 3: Count tests before merge
         tests_before = await self._count_tests()
