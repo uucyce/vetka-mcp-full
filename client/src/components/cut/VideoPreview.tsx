@@ -11,6 +11,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
 import ZebraOverlay from './ZebraOverlay';
+import { useAudioScrubbing } from '../../hooks/useAudioScrubbing';
 
 const CONTAINER_STYLE: CSSProperties = {
   position: 'relative',
@@ -132,6 +133,10 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const prevMediaRef = useRef<string | null>(null);
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [sourceHint, setSourceHint] = useState<string>('');
+
+  // MARKER_B5.SCRUB: Audio scrubbing — hear audio during timeline drag (program monitor only).
+  // Safe to call from any feed — the hook only watches program currentTime from store.
+  useAudioScrubbing();
 
   // MARKER_W1.3: Select media path based on feed prop
   const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
