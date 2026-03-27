@@ -2601,6 +2601,7 @@ class TaskBoard:
             except Exception as e:
                 logger.warning(f"[TaskBoard] QA feedback ENGRAM failed: {e}")
 
+
         logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
         result = {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
         if verdict == "fail" and fix_task_id:

@@ -1160,6 +1160,18 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass  # STM save is best-effort
 
+                # MARKER_200.CHECKPOINT: Persist session state on claim
+                try:
+                    from src.services.session_tracker import get_session_tracker
+                    _ck_tracker = get_session_tracker()
+                    _ck_tracker.save_checkpoint(
+                        _tracker_sid,
+                        task_title=task.get("title"),
+                        completion_contract=task.get("completion_contract"),
+                    )
+                except Exception:
+                    pass  # Checkpoint is best-effort
+
         return result
 
     # MARKER_181.4: complete action — unified pipeline
@@ -1467,6 +1479,18 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
 
+        # MARKER_200.CHECKPOINT: Persist session state on complete
+        try:
+            from src.services.session_tracker import get_session_tracker
+            _ck_tracker = get_session_tracker()
+            _ck_tracker.save_checkpoint(
+                _tracker_sid,
+                task_title=task.get("title") if task else None,
+                decisions=arguments.get("decisions"),
+            )
+        except Exception:
+            pass  # Checkpoint is best-effort
+
         return result
 
     # MARKER_130.C16B: active_agents action
@@ -1766,6 +1790,37 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
             "What would you do with 2 more hours?"
         ),
     }
+
+    # MARKER_200.DECISIONS: Route explicit decisions to ENGRAM L1 (permanent, category=architecture)
+    # Replaces HERMES LLM-based "Key Decisions" extraction — zero LLM cost.
+    _decisions = arguments.get("decisions")
+    if _decisions and isinstance(_decisions, list):
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            from src.services.session_tracker import get_session_tracker
+
+            _engram = get_engram_cache()
+            _d_sid = arguments.get("session_id") or "default"
+            _d_role = get_session_tracker().get_role(_d_sid)
+            _d_callsign = (_d_role or {}).get("callsign", arguments.get("role", "unknown"))
+            _d_domain = (_d_role or {}).get("domain", arguments.get("domain", "unknown"))
+            _d_task_id = arguments.get("task_id") or result.get("task_id", "")
+
+            for i, decision in enumerate(_decisions):
+                if not isinstance(decision, str) or not decision.strip():
+                    continue
+                _d_key = f"{_d_callsign}::decision::{_d_domain}::{_d_task_id}"
+                if len(_decisions) > 1:
+                    _d_key += f"::{i}"
+                _engram.put(
+                    key=_d_key,
+                    value=decision.strip()[:300],
+                    category="architecture",
+                    match_count=0,
+                )
+            result["decisions_captured"] = len([d for d in _decisions if isinstance(d, str) and d.strip()])
+        except Exception:
+            pass  # Decision capture is best-effort
 
     # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
     # Collects: session role, tasks completed, files touched, CORTEX tool stats.
