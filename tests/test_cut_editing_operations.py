@@ -32,11 +32,16 @@ def hotkeys():
 
 
 def _find_impl(source: str, fn_name: str, window: int = 3000) -> str | None:
+    # Object method syntax: fnName: (args) => { or fnName: async (args) => {
     pattern = rf"{fn_name}:\s*(?:async\s*)?\([^)]*\)\s*(?:=>)?\s*\{{"
     m = re.search(pattern, source)
     if not m:
         pattern2 = rf"{fn_name}:\s*\([^)]*\)\s*=>\s*\n?\s*set"
         m = re.search(pattern2, source)
+    # useCallback syntax: const fnName = useCallback(async () => {
+    if not m:
+        pattern3 = rf"{fn_name}\s*=\s*useCallback\((?:async\s*)?\("
+        m = re.search(pattern3, source)
     if not m:
         return None
     return source[m.start():m.start() + window]
@@ -50,22 +55,23 @@ class TestInsertEdit:
     """Comma key: insert clip at playhead, push downstream clips right."""
 
     def test_handler_exists(self, layout):
-        assert re.search(r"insertEdit:\s*async", layout)
+        # After 3PT dedup refactor: insertEdit maps to performInsert
+        assert re.search(r"insertEdit:\s*performInsert", layout)
 
     def test_reads_source_marks(self, layout):
-        impl = _find_impl(layout, "insertEdit")
+        impl = _find_impl(layout, "performInsert")
         assert impl and "sourceMarkIn" in impl
 
     def test_creates_clip(self, layout):
-        impl = _find_impl(layout, "insertEdit")
+        impl = _find_impl(layout, "performInsert")
         assert impl and "clip_3pt_" in impl, "Must create new clip with unique ID"
 
     def test_routes_to_backend(self, layout):
-        impl = _find_impl(layout, "insertEdit")
+        impl = _find_impl(layout, "performInsert")
         assert impl and "applyTimelineOps" in impl, "Must route to backend for undo"
 
     def test_seeks_after_insert(self, layout):
-        impl = _find_impl(layout, "insertEdit")
+        impl = _find_impl(layout, "performInsert")
         assert impl and re.search(r"seek\(", impl), "Must seek after insert"
 
 
@@ -77,14 +83,15 @@ class TestOverwriteEdit:
     """Period key: replace clip at playhead position."""
 
     def test_handler_exists(self, layout):
-        assert re.search(r"overwriteEdit:\s*async", layout)
+        # After 3PT dedup refactor: overwriteEdit maps to performOverwrite
+        assert re.search(r"overwriteEdit:\s*performOverwrite", layout)
 
     def test_creates_clip(self, layout):
-        impl = _find_impl(layout, "overwriteEdit")
+        impl = _find_impl(layout, "performOverwrite")
         assert impl and "clip_3pt_" in impl
 
     def test_routes_to_backend(self, layout):
-        impl = _find_impl(layout, "overwriteEdit")
+        impl = _find_impl(layout, "performOverwrite")
         assert impl and "applyTimelineOps" in impl
 
 
