@@ -1100,6 +1100,80 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
+# MARKER_200.W0.1: STM recording for Claude Code agents
+# ============================================================================
+# Claude Code agents never write to STM — 15% of REFLEX scoring power is wasted.
+# This records significant tool calls so STM is populated at session_init.
+
+_STM_SIGNIFICANT_TOOLS = {
+    "vetka_search_semantic", "vetka_search_files", "vetka_read_file",
+    "vetka_edit_file", "vetka_git_commit", "vetka_git_status",
+    "vetka_task_board", "vetka_session_init", "vetka_call_model",
+    "vetka_implement", "vetka_review", "vetka_research",
+    "vetka_execute_workflow", "vetka_task_dispatch", "vetka_task_import",
+    "vetka_edit_artifact", "vetka_approve_artifact", "vetka_reject_artifact",
+    "vetka_run_tests", "vetka_mycelium_pipeline",
+}
+_stm_session_count = 0
+_STM_SESSION_CAP = 50
+
+
+def _stm_summarize(tool_name: str, arguments: dict) -> Optional[str]:
+    """Generate one-line STM summary for significant tool calls.
+    Returns None for non-significant tools (health, tree, metrics, etc.)."""
+    if tool_name not in _STM_SIGNIFICANT_TOOLS:
+        return None
+
+    if tool_name == "vetka_edit_file":
+        return f"edit {arguments.get('path', '?')}"
+    elif tool_name == "vetka_read_file":
+        return f"read {arguments.get('path', '?')}"
+    elif tool_name in ("vetka_search_semantic", "vetka_search_files"):
+        return f"search: {arguments.get('query', '?')[:80]}"
+    elif tool_name == "vetka_task_board":
+        action = arguments.get("action", "?")
+        task_id = arguments.get("task_id", "")
+        extra = f" {task_id}" if task_id else ""
+        title = arguments.get("title", "")
+        if title:
+            extra += f" — {title[:50]}"
+        return f"task_board {action}{extra}"
+    elif tool_name == "vetka_git_commit":
+        return f"commit: {arguments.get('message', '')[:60]}"
+    elif tool_name == "vetka_git_status":
+        return "git status"
+    elif tool_name == "vetka_session_init":
+        role = arguments.get("role", "")
+        return f"session_init{f' role={role}' if role else ''}"
+    elif tool_name == "vetka_call_model":
+        return f"call_model {arguments.get('model', '?')}"
+    elif tool_name == "vetka_run_tests":
+        return f"run_tests {arguments.get('test_path', '?')}"
+    else:
+        return tool_name.replace("vetka_", "")
+
+
+def _record_stm(tool_name: str, arguments: dict) -> None:
+    """Record tool call to STM buffer. Non-blocking, non-fatal.
+    Caps at _STM_SESSION_CAP writes per MCP session."""
+    global _stm_session_count
+    if _stm_session_count >= _STM_SESSION_CAP:
+        return
+
+    summary = _stm_summarize(tool_name, arguments)
+    if not summary:
+        return
+
+    try:
+        from src.memory.stm_buffer import get_stm_buffer
+        stm = get_stm_buffer()
+        stm.add_message(summary, source="mcp_bridge")
+        _stm_session_count += 1
+    except Exception:
+        pass  # STM never blocks the bridge
+
+
+# ============================================================================
 # TOOL IMPLEMENTATIONS
 # ============================================================================
 
@@ -1115,6 +1189,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
     # Log request to VETKA group chat
     await log_mcp_request(name, arguments, request_id)
+
+    # MARKER_200.W0.1: Record tool call to STM for Claude Code agents
+    _record_stm(name, arguments)
 
     # MARKER_198.P2.1: Pre-tool hooks (enrich args, block calls)
     try:
