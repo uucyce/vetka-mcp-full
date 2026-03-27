@@ -50,6 +50,7 @@ export type CutHotkeyAction =
   | 'cut'
   | 'paste'
   | 'pasteInsert'
+  | 'pasteAttributes'
   | 'nudgeLeft'
   | 'nudgeRight'
   // Tools
@@ -253,6 +254,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   cut:                 'global',
   paste:               'global',
   pasteInsert:         'global',
+  pasteAttributes:     'global',
   zoomIn:              'global',
   zoomOut:             'global',
   zoomToFit:           'global',
@@ -365,6 +367,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   cut:               'Cmd+x',
   paste:             'Cmd+v',
   pasteInsert:       'Cmd+Shift+v',
+  pasteAttributes:   'Alt+v',
   nudgeLeft:         'Alt+ArrowLeft',
   nudgeRight:        'Alt+ArrowRight',
   // Tools
@@ -500,6 +503,7 @@ export const FCP7_PRESET: HotkeyMap = {
   cut:               'Cmd+x',
   paste:             'Cmd+v',
   pasteInsert:       'Cmd+Shift+v',
+  pasteAttributes:   'Alt+v',
   nudgeLeft:         'Alt+ArrowLeft',
   nudgeRight:        'Alt+ArrowRight',
   // Tools
@@ -754,6 +758,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'cut', label: 'Cut', group: 'Editing' },
   { action: 'paste', label: 'Paste', group: 'Editing' },
   { action: 'pasteInsert', label: 'Paste Insert', group: 'Editing' },
+  { action: 'pasteAttributes', label: 'Paste Attributes', group: 'Editing' },
   { action: 'nudgeLeft', label: 'Nudge Left', group: 'Editing' },
   { action: 'nudgeRight', label: 'Nudge Right', group: 'Editing' },
   // Tools

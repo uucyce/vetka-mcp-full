@@ -47,6 +47,18 @@ export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): nu
   return kfA.value + (kfB.value - kfA.value) * eased;
 }
 
+// MARKER_PASTE_ATTR: Selective paste attributes config (DaVinci Resolve style)
+export type PasteAttributesConfig = {
+  effects: boolean;
+  colorCorrection: boolean;
+  motion: boolean;
+  speed: boolean;
+  transition: boolean;
+  volume: boolean;
+  keyframes: boolean;
+  keyframeMode: 'maintain' | 'stretch';
+};
+
 // MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
 export type ClipEffects = {
   brightness: number;   // -1..1, default 0
@@ -322,6 +334,7 @@ interface CutEditorState {
   trimEditClipId: string | null;    // outgoing clip at edit point
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
+  showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -420,6 +433,8 @@ interface CutEditorState {
   cutClips: () => void;                          // Cut selected clips (copy + remove)
   pasteClips: (mode: 'overwrite' | 'insert') => void;  // Paste at playhead
   pasteAttributes: () => void;                   // Paste effects from clipboard to selected
+  setShowPasteAttributes: (show: boolean) => void;
+  pasteAttributesSelective: (config: PasteAttributesConfig) => void;
   // MARKER_SEQ-MENU: Sequence editing operations
   liftClip: () => void;                          // Remove selected clips, leave gap
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
@@ -703,6 +718,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditActive: false,
   trimEditClipId: null,
   trimEditPoint: 0,
+  showPasteAttributes: false,       // MARKER_PASTE_ATTR
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -929,17 +945,82 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
     get().seek(currentTime + (maxEnd - minStart));
   },
-  // MARKER_UNDO_PASTE_ATTR: Route through applyTimelineOps
+  // MARKER_UNDO_PASTE_ATTR: Open dialog for selective paste (DaVinci Resolve style)
   pasteAttributes: () => {
     const { clipboard } = get();
     const { selectedClipIds } = useSelectionStore.getState();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
-    const sourceEffects = clipboard[0].effects;
-    if (!sourceEffects) return;
-    const ops = [...selectedClipIds].map((id) => ({
-      op: 'set_effects', clip_id: id, effects: sourceEffects,
-    }));
-    void get().applyTimelineOps(ops);
+    set({ showPasteAttributes: true });
+  },
+  setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
+  // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
+  pasteAttributesSelective: (config: PasteAttributesConfig) => {
+    const { clipboard, selectedClipIds, lanes } = get();
+    if (clipboard.length === 0 || selectedClipIds.size === 0) return;
+    const source = clipboard[0];
+    const ops: Array<Record<string, unknown>> = [];
+
+    for (const clipId of selectedClipIds) {
+      // Effects (brightness, contrast, saturation, blur, opacity)
+      if (config.effects && source.effects) {
+        ops.push({ op: 'set_effects', clip_id: clipId, effects: { ...source.effects } });
+      }
+
+      // Color Correction
+      if (config.colorCorrection && (source as any).color_correction) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify((source as any).color_correction)) });
+      }
+
+      // Motion (position, scale, rotation, anchor, crop)
+      if (config.motion && (source as any).motion) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'motion', value: JSON.parse(JSON.stringify((source as any).motion)) });
+      }
+
+      // Speed / Retime
+      if (config.speed && source.speed != null) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'speed', value: source.speed });
+        if ((source as any).reverse != null) {
+          ops.push({ op: 'set_prop', clip_id: clipId, key: 'reverse', value: (source as any).reverse });
+        }
+        if ((source as any).maintain_pitch != null) {
+          ops.push({ op: 'set_prop', clip_id: clipId, key: 'maintain_pitch', value: (source as any).maintain_pitch });
+        }
+      }
+
+      // Transition
+      if (config.transition && (source as any).transition) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'transition', value: JSON.parse(JSON.stringify((source as any).transition)) });
+      }
+      if (config.transition && source.transition_out) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'transition_out', value: JSON.parse(JSON.stringify(source.transition_out)) });
+      }
+
+      // Keyframes
+      if (config.keyframes && source.keyframes) {
+        let kfData = JSON.parse(JSON.stringify(source.keyframes));
+        if (config.keyframeMode === 'stretch') {
+          // Find target clip duration for stretch
+          for (const lane of lanes) {
+            const target = lane.clips.find((c: any) => c.clip_id === clipId);
+            if (target) {
+              const srcDur = source.duration_sec || 1;
+              const tgtDur = target.duration_sec || 1;
+              const ratio = tgtDur / srcDur;
+              for (const prop of Object.keys(kfData)) {
+                kfData[prop] = kfData[prop].map((kf: any) => ({ ...kf, time: kf.time * ratio }));
+              }
+              break;
+            }
+          }
+        }
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'keyframes', value: kfData });
+      }
+    }
+
+    if (ops.length > 0) {
+      void get().applyTimelineOps(ops);
+    }
+    set({ showPasteAttributes: false });
   },
 
   // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps

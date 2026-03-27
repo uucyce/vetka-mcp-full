@@ -1284,6 +1284,32 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
             continue
 
+        # MARKER_PASTE_ATTR: set_prop — set arbitrary clip property (for paste attributes)
+        if op_type == "set_prop":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for set_prop")
+            _lane, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            key = str(op.get("key") or "").strip()
+            if not key:
+                raise ValueError("key is required for set_prop")
+            # Whitelist pasteable properties — no structural fields (clip_id, start_sec, etc.)
+            _paste_safe_keys = {
+                "color_correction", "motion", "speed", "reverse", "maintain_pitch",
+                "transition", "transition_out", "keyframes", "effects",
+            }
+            if key not in _paste_safe_keys:
+                raise ValueError(f"set_prop: key '{key}' not in paste-safe whitelist")
+            value = op.get("value")
+            if value is None:
+                clip.pop(key, None)
+            else:
+                clip[key] = value
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "key": key})
+            continue
+
         # MARKER_B71: add_keyframe — append a keyframe to clip's keyframes list
         if op_type == "add_keyframe":
             clip_id = str(op.get("clip_id") or "").strip()
