@@ -593,7 +593,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"
-          components={components}
+          components={components as Record<string, React.FunctionComponent<any>>}
           onReady={onReady}
         />
         {/* MARKER_GAMMA-R4.3: Drop zone overlay for media drag */}
