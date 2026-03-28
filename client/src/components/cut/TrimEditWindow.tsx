@@ -3,7 +3,8 @@
 // Monochrome only. Position: fixed overlay.
 
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useState, useCallback, type CSSProperties } from 'react';
+import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 export default function TrimEditWindow() {
   const active = useCutEditorStore((s) => s.trimEditActive);
@@ -29,7 +30,10 @@ export default function TrimEditWindow() {
     }
   }
 
-  const close = () => useCutEditorStore.getState().setTrimEditActive(false);
+  const close = useCallback(() => useCutEditorStore.getState().setTrimEditActive(false), []);
+
+  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
 
   // Apply trim: shift edit point by trimFrames
   const applyTrim = () => {
@@ -42,10 +46,9 @@ export default function TrimEditWindow() {
     close();
   };
 
-  // Escape to close, Enter to apply
+  // Enter to apply (Escape handled by useOverlayEscapeClose above)
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
       if (e.key === 'Enter') applyTrim();
     };
     window.addEventListener('keydown', handler);
@@ -61,7 +64,7 @@ export default function TrimEditWindow() {
     : '--:--:--:--';
 
   return (
-    <div style={OVERLAY} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div style={WINDOW}>
         <div style={HEADER}>
           <span style={{ fontSize: 11, color: '#aaa' }}>TRIM EDIT</span>
