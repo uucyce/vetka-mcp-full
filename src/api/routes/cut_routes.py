@@ -1736,14 +1736,21 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             lane_b, clip_b = _find_clip(state, clip_b_id)
             if clip_a is None or clip_b is None:
                 raise ValueError(f"swap_clips: clip(s) not found: {clip_a_id}, {clip_b_id}")
-            # Exchange start_sec positions, preserve durations
+            # Exchange positions — NLE swap: earlier clip moves to later position and vice versa
             a_start = float(clip_a.get("start_sec") or 0.0)
             b_start = float(clip_b.get("start_sec") or 0.0)
             a_dur = float(clip_a.get("duration_sec") or 0.0)
             b_dur = float(clip_b.get("duration_sec") or 0.0)
-            # Clip A moves to where B was, B moves to where A was (adjust for duration diff)
-            clip_a["start_sec"] = round(b_start + b_dur - a_dur, 4) if b_start + b_dur > a_start else round(b_start, 4)
+            # Ensure left/right ordering
+            if a_start > b_start:
+                clip_a, clip_b = clip_b, clip_a
+                lane_a, lane_b = lane_b, lane_a
+                a_start, b_start = b_start, a_start
+                a_dur, b_dur = b_dur, a_dur
+            # Left clip (A) → B takes A's start, A shifts right by B's duration
+            # This keeps total occupied range identical
             clip_b["start_sec"] = round(a_start, 4)
+            clip_a["start_sec"] = round(a_start + b_dur, 4)
             # Re-sort both lanes
             if lane_a is not None:
                 lane_a["clips"] = sorted(lane_a["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
