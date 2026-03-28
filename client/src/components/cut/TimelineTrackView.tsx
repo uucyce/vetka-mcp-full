@@ -503,6 +503,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const setExclusiveTarget = useCutEditorStore((state) => state.setExclusiveTarget);
   const toggleVisibility = useCutEditorStore((state) => state.toggleVisibility);
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes ?? new Set<string>());
+  // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 disabled clips (ghosted on timeline, excluded from export)
+  const disabledClips = useCutEditorStore((state) => state.disabledClips ?? new Set<string>());
+  const toggleClipEnabled = useCutEditorStore((state) => state.toggleClipEnabled);
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
@@ -2049,6 +2052,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
                   const isSelected = selectedClipId === clip.clip_id || selectedClipIds.has(clip.clip_id);
                   const isHovered = hoveredClipId === clip.clip_id;
+                  // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — disabled clips are ghosted
+                  const isDisabled = disabledClips.has(clip.clip_id);
                   const waveformBins = waveformMap.get(clip.source_path);
                   const stereoData = stereoWaveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
@@ -2067,6 +2072,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         border: showClipBorders
                           ? `1px solid ${isSelected ? config.color : isHovered ? `${config.color}88` : `${config.color}44`}`
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
+                        // MARKER_GAMMA-CLIP-ENABLE: ghost disabled clips (FCP7 Ch.26)
+                        opacity: isDisabled ? 0.3 : 1,
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
                       onDoubleClick={() => {
@@ -2081,6 +2088,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       onMouseLeave={() => setHoveredClip(null)}
                       onContextMenu={(event) => handleClipContextMenu(clip, event)}
                     >
+                      {/* MARKER_GAMMA-CLIP-ENABLE: disabled clip indicator overlay */}
+                      {isDisabled && (
+                        <div
+                          data-testid={`cut-clip-disabled-${clip.clip_id}`}
+                          style={{
+                            position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
+                            background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.25) 4px, rgba(0,0,0,0.25) 5px)',
+                          }}
+                        />
+                      )}
                       <div
                         data-clip="1"
                         style={{
@@ -2937,7 +2954,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
-              { label: 'Enable / Disable Clip', action: () => { close(); /* future: toggle clip enabled state */ } },
+              // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
+              { label: `${disabledClips.has(clipId) ? '\u2713 ' : '  '}Clip Disabled`, action: () => { close(); toggleClipEnabled(clipId); } },
               'separator',
               // ── Transitions ──
               // MARKER_UNDO-FIX: Transition via backend op for undo support

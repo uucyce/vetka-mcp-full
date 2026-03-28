@@ -249,6 +249,7 @@ interface CutEditorState {
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
+  disabledClips: Set<string>;    // MARKER_GAMMA-CLIP-ENABLE: disabled clips (FCP7 Ch.26 — ghosted, excluded from export)
   collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
@@ -439,6 +440,7 @@ interface CutEditorState {
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   setExclusiveTarget: (laneId: string) => void; // MARKER_TL3: Exclusive lane target
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
+  toggleClipEnabled: (clipId: string) => void; // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
@@ -660,6 +662,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lockedLanes: new Set<string>(),
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
+  disabledClips: new Set<string>(),
   collapsedTracks: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
@@ -893,6 +896,14 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       if (hiddenLanes.has(laneId)) hiddenLanes.delete(laneId);
       else hiddenLanes.add(laneId);
       return { hiddenLanes };
+    }),
+  // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — disable/enable individual clips
+  toggleClipEnabled: (clipId) =>
+    set((state) => {
+      const disabledClips = new Set(state.disabledClips);
+      if (disabledClips.has(clipId)) disabledClips.delete(clipId);
+      else disabledClips.add(clipId);
+      return { disabledClips };
     }),
   setLaneVolume: (laneId, volume) =>
     set((state) => ({

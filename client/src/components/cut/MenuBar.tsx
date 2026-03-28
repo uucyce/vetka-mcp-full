@@ -641,9 +641,15 @@ export default function MenuBar() {
           // TODO: requires per-clip transform state
         }, disabled: true },
         { separator: true },
-        { label: `${useSelectionStore.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
-          // TODO: toggle clip enabled/disabled state
-        }, disabled: true },
+        { label: (() => {
+          // MARKER_GAMMA-CLIP-ENABLE: show checkmark when clip is enabled (not disabled)
+          const clipId = useSelectionStore.getState().selectedClipId;
+          const isDisabled = clipId ? store.getState().disabledClips?.has(clipId) : false;
+          return `${clipId && !isDisabled ? '\u2713 ' : '  '}Clip Enable`;
+        })(), action: () => {
+          const clipId = useSelectionStore.getState().selectedClipId;
+          if (clipId) store.getState().toggleClipEnabled(clipId);
+        }, disabled: !useSelectionStore.getState().selectedClipId },
         { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
