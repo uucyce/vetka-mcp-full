@@ -2,8 +2,9 @@
  * MARKER_170.NLE.INSPECTOR: Right-side inspector panel showing selected clip properties.
  * Displays: filename, timing, sync info, waveform mini, transcript excerpt, markers.
  */
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import WaveformCanvas from './WaveformCanvas';
 // MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (unified Effect Controls)
 
@@ -89,7 +90,7 @@ const MARKER_COLORS: Record<string, string> = {
 };
 
 export default function ClipInspector() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const activeMediaPath = useCutEditorStore((s) => s.activeMediaPath);
   const lanes = useCutEditorStore((s) => s.lanes);
   const waveforms = useCutEditorStore((s) => s.waveforms);
@@ -130,6 +131,36 @@ export default function ClipInspector() {
     if (!clip) return null;
     return thumbnails.find((t) => t.source_path === clip.source_path) || null;
   }, [clip, thumbnails]);
+
+  const handleLogProfileChange = useCallback((profile: string) => {
+    if (!clip) return;
+    const store = useCutEditorStore.getState();
+    const updatedLanes = store.lanes.map(lane => ({
+      ...lane,
+      clips: (lane.clips || []).map(c => {
+        if (c.clip_id !== clip.clip_id) return c;
+        const cc = (c as any).color_correction || {};
+        return { ...c, color_correction: { ...cc, logProfile: profile || undefined } };
+      }),
+    }));
+    store.setLanes(updatedLanes);
+  }, [clip]);
+
+  const handleLutClear = useCallback(() => {
+    if (!clip) return;
+    const store = useCutEditorStore.getState();
+    const updatedLanes = store.lanes.map(lane => ({
+      ...lane,
+      clips: (lane.clips || []).map(c => {
+        if (c.clip_id !== clip.clip_id) return c;
+        const cc = { ...(c as any).color_correction || {} };
+        delete cc.lutPath;
+        delete cc.lutName;
+        return { ...c, color_correction: cc };
+      }),
+    }));
+    store.setLanes(updatedLanes);
+  }, [clip]);
 
   if (!clip) {
     return (
@@ -199,6 +230,58 @@ export default function ClipInspector() {
       )}
 
       {/* MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (Effect Controls) */}
+
+      {/* Color Pipeline */}
+      <div style={SECTION}>
+        <div style={HEADER}>Color Pipeline</div>
+        <div style={ROW}>
+          <span style={LABEL}>Log Profile</span>
+          <select
+            value={(clip as any).color_correction?.logProfile || ''}
+            onChange={(e) => handleLogProfileChange(e.target.value)}
+            style={{
+              background: '#111',
+              color: '#ccc',
+              border: '1px solid #333',
+              borderRadius: 2,
+              fontSize: 11,
+              padding: '2px 4px',
+            }}
+          >
+            <option value="">None (bypass)</option>
+            {['V-Log', 'S-Log3', 'ARRI LogC3', 'Canon Log 3', 'sRGB'].map((p) => (
+              <option key={p} value={p}>{p}</option>
+            ))}
+          </select>
+        </div>
+        <div style={ROW}>
+          <span style={LABEL}>LUT</span>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <span style={VALUE}>
+              {(clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath
+                ? ((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath?.split('/').pop() || 'LUT')
+                : 'None'}
+            </span>
+            {((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath) && (
+              <button
+                onClick={handleLutClear}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#555',
+                  cursor: 'pointer',
+                  fontSize: 11,
+                  padding: '0 2px',
+                  lineHeight: 1,
+                }}
+                title="Clear LUT"
+              >
+                x
+              </button>
+            )}
+          </span>
+        </div>
+      </div>
 
       {/* Sync Info */}
       {(syncItem || clip.sync) && (

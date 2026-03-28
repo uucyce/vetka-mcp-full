@@ -2,6 +2,26 @@
 
 Дата: `2026-03-20`
 
+## Status Update (`2026-03-27`)
+
+Этот документ теперь надо читать как **historical problem statement**, а не как текущий final verdict.
+
+После fresh rerender + fresh inspection bundle, зафиксированных в:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_HOVER_POLITSIA_ARTIFACT_PROVENANCE_RECON_2026-03-27.md`
+
+выяснилось:
+
+- stale artifact ambiguity была реальной, а не гипотетической;
+- свежий `hover-politsia` bundle показывает motion не только в steam, но и в vehicle/walker;
+- exact old symptom “steam rides over the head” не воспроизводится на current export state в том виде, как он был описан здесь;
+- remaining risk is still semantic/compositing quality, but this doc should no longer be treated as proof of current-state fog/head behavior.
+
+Практическое правило:
+
+- use this document for historical context and hypothesis framing;
+- use the `2026-03-27` provenance recon plus fresh bundle as current truth.
+
 ## 1. Why This Recon Exists
 
 После ручного просмотра актуального `hover-politsia` render стало ясно, что проблема не выглядит как частичный visual drift.
@@ -123,3 +143,49 @@
 
 Иначе есть риск снова чинить код, не тот artifact или не тот слой.
 
+## 7. Current-State Audit Update (`2026-03-27`)
+
+После fresh bundle audit картина сузилась.
+
+### What no longer looks true
+
+На current export state больше нельзя считать доказанным старый симптом:
+
+- “движется только туман”
+- “steam rides over the head”
+
+Fresh bundle evidence:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/video_inspection/hover-politsia-camera-contract-fresh-20260327/motion_diff.jpg`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/video_inspection/hover-politsia-camera-contract-fresh-20260327/motion_energy.png`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/plate_exports_qwen_gated/hover-politsia/plate_03_rgba.png`
+
+These show:
+
+- motion reads in vehicle and walker too;
+- current `plate_03` (`street steam`) does not overlap the walker/head area.
+
+### What now looks like the main weakness
+
+Current main weakness looks less like simple wrong layer order and more like synthetic exporter semantics:
+
+- `environment-mid` alpha is still box-driven in exporter logic;
+- exported `plate_03_mask.png` is effectively a broad rounded rectangle participation zone;
+- `background-far` is still residual background rather than a truly independent semantic layer;
+- renderer then splits each plate into 3 depth bands, which can amplify proxy-like internal motion on already synthetic plates.
+
+Relevant files:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/App.tsx`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/scripts/photo_parallax_render_preview_multiplate.py`
+
+### Recommended next fix path
+
+Current recommendation:
+
+- do **not** spend the next cycle on camera tuning;
+- do **not** treat stale provenance as the main blocker anymore;
+- first reduce hard rectangular `environment-mid` authority in exporter semantics;
+- then reassess whether atmospheric plates should keep full 3-band split in renderer.
+
+This is the current best candidate for reducing the remaining proxy-like feel in `hover-politsia`.

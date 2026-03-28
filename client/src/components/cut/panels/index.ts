@@ -41,3 +41,6 @@ export { default as MulticamPanel } from './MulticamPanel';
 
 // MARKER_SOURCE_ACQUIRE: Source Acquire panel (FCP7 Log & Capture)
 export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';
+
+// MARKER_GAMMA-LAYERUI: Layer Stack & Depth Inspector panel
+export { default as LayerStackPanel } from './LayerStackPanel';

@@ -18,7 +18,7 @@ const MARKER_COLORS: Record<string, string> = {
   comment: '#3b82f6',
   cam: '#a855f7',
   insight: '#22c55e',
-  chat: '#888',
+  chat: '#94a3b8',
   bpm_audio: '#22c55e',
   bpm_visual: '#4a9eff',
   bpm_script: '#ffffff',
@@ -146,6 +146,7 @@ export default function MarkerListPanel() {
       {/* Toolbar: filter + count */}
       <div style={TOOLBAR}>
         <select
+          data-testid="marker-list-filter-kind"
           value={filterKind}
           onChange={(e) => setFilterKind(e.target.value)}
           style={{

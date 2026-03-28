@@ -195,6 +195,7 @@ export default function PublishPanel() {
                 onClick={() => toggle(id)}
               >
                 <input
+                  data-testid={`publish-platform-checkbox-${id}`}
                   type="checkbox"
                   checked={isOn}
                   readOnly
@@ -221,6 +222,7 @@ export default function PublishPanel() {
           </div>
 
           <button
+            data-testid="publish-export-btn"
             style={selected.size > 0 ? BTN_PRIMARY : BTN}
             onClick={handleExport}
             disabled={exporting || selected.size === 0}

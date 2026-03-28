@@ -5,6 +5,7 @@
  * Monochrome grey only. FCP7 reference.
  */
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { useDockviewStore } from '../../store/useDockviewStore';
 
 // MARKER_GAMMA-MRK4: Format seconds as HH:MM:SS:FF timecode
@@ -38,7 +39,7 @@ export default function StatusBar() {
   const markOut = useCutEditorStore((s) => s.sequenceMarkOut);
   const lanes = useCutEditorStore((s) => s.lanes);
   const duration = useCutEditorStore((s) => s.duration);
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const activePreset = useDockviewStore((s) => s.activePreset);
   const renderProgress = useCutEditorStore((s) => s.renderProgress);
   // MARKER_GAMMA-SB2: Sequence name from timelineId

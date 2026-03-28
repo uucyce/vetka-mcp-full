@@ -53,6 +53,7 @@ import {
   PublishPanel,
   MulticamPanel,
   SourceAcquirePanelDock,
+  LayerStackPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -122,6 +123,7 @@ const PANEL_COMPONENTS = {
   markers: MarkerListPanel,
   timelines: TimelineInstancePanel,
   publish: withErrorBoundary('Publish', PublishPanel),
+  layers: LayerStackPanel,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
@@ -465,7 +467,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       for (const p of api.panels) {
         if (p.title?.toUpperCase() === tabText || p.id.toUpperCase() === tabText) {
           try {
-            (api as any).addFloatingGroup?.(p, {
+            api.addFloatingGroup(p, {
               x: 100, y: 100, width: 500, height: 400,
             });
           } catch { /* floating API may not be available */ }
@@ -535,10 +537,26 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       case 'float':
         // MARKER_GAMMA-R9: Float panel into a floating group
         try {
-          (api as any).addFloatingGroup?.(panel, {
+          api.addFloatingGroup(panel, {
             x: tabMenu.x, y: tabMenu.y, width: 400, height: 300,
           });
         } catch { /* floating API may not be available */ }
+        break;
+      case 'popout':
+        // MARKER_GAMMA-POPOUT: Popout panel to separate OS window (multi-monitor)
+        try {
+          void api.addPopoutGroup(panel, {
+            popoutUrl: window.location.href,
+            onDidOpen: (e) => {
+              // Inject our monochrome theme CSS into the popout window
+              const popoutDoc = e.window.document;
+              const mainStyles = document.querySelectorAll('link[rel="stylesheet"], style');
+              mainStyles.forEach((node) => {
+                popoutDoc.head.appendChild(node.cloneNode(true));
+              });
+            },
+          });
+        } catch { /* popout API may not be available in all environments */ }
         break;
       case 'maximize':
         toggleMaximize();
@@ -578,7 +596,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"
-          components={components}
+          components={components as Record<string, React.FunctionComponent<any>>}
           onReady={onReady}
         />
         {/* MARKER_GAMMA-R4.3: Drop zone overlay for media drag */}
@@ -608,6 +626,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
               { label: 'Close All in Group', action: 'close-all' },
               { separator: true },
               { label: 'Float Panel', action: 'float' },
+              { label: 'Popout to New Window', action: 'popout' },
               { label: 'Maximize / Restore', action: 'maximize' },
             ].map((item, i) =>
               'separator' in item ? (

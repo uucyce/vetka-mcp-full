@@ -172,6 +172,77 @@ def _load_docs_content_sync(
     return header + docs_text + footer
 
 
+# MARKER_200.ELISION_LIST: Lightweight field renaming for list responses
+# Applied at dict level (no JSON serialization overhead)
+_LIST_FIELD_MAP = {
+    "title": "t",
+    "status": "s",
+    "priority": "pri",
+    "phase_type": "pt",
+    "complexity": "cx",
+    "project_id": "pid",
+    "assigned_tier": "tier",
+    "assigned_to": "at",
+    "source": "src",
+    "role": "rl",
+    "returned": "ret",
+    "truncated": "trunc",
+    "my_tasks": "mine",
+    "other_tasks": "others",
+    "my_count": "mc",
+    "other_count": "oc",
+    "my_role": "mr",
+    "project_resolve": "pr",
+}
+
+# Reverse legend for agent decoding
+_LIST_ELISION_LEGEND = {v: k for k, v in _LIST_FIELD_MAP.items()}
+
+
+def _elision_rename_task(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Rename task fields using ELISION map + strip empty values."""
+    out = {}
+    for k, v in task.items():
+        # Strip None, empty strings, empty lists
+        if v is None or v == "" or v == []:
+            continue
+        new_key = _LIST_FIELD_MAP.get(k, k)
+        out[new_key] = v
+    return out
+
+
+def _elision_compress_list(result: Dict[str, Any]) -> Dict[str, Any]:
+    """Apply ELISION field renaming to task_board list response.
+
+    Compresses task entries by renaming verbose keys (title→t, status→s, etc.)
+    and stripping empty fields. Adds _elision legend (used keys only).
+    """
+    used_abbrevs = set()
+    out = {}
+    for k, v in result.items():
+        new_key = _LIST_FIELD_MAP.get(k, k)
+        if new_key != k:
+            used_abbrevs.add(new_key)
+        if k in ("tasks", "my_tasks", "other_tasks"):
+            compressed_tasks = []
+            for t in v:
+                ct = _elision_rename_task(t)
+                used_abbrevs.update(
+                    ak for ak in ct if ak in _LIST_ELISION_LEGEND
+                )
+                compressed_tasks.append(ct)
+            out[new_key] = compressed_tasks
+        elif isinstance(v, dict) and k == "project_resolve":
+            out[new_key] = v
+        elif v is None or v == "" or v == []:
+            continue
+        else:
+            out[new_key] = v
+    # Only include actually-used abbreviations in legend
+    out["_el"] = {a: _LIST_ELISION_LEGEND[a] for a in sorted(used_abbrevs)}
+    return out
+
+
 # ==========================================
 # Tool 1: vetka_task_board (CRUD + list)
 # ==========================================
@@ -206,6 +277,9 @@ TASK_BOARD_SCHEMA = {
                 "debrief_skipped",
                 "backfill_fts",
                 "context_packet",
+                "notify",
+                "notifications",
+                "ack_notifications",
             ],
             "description": "Operation to perform",
         },
@@ -335,6 +409,10 @@ TASK_BOARD_SCHEMA = {
             "enum": ["pass", "fail"],
             "description": "QA verdict for action=verify: pass → verified, fail → needs_fix",
         },
+        "skip_qa": {
+            "type": "boolean",
+            "description": "Emergency bypass for QA gate in promote_to_main. Use only when QA is unavailable and merge is urgent. Logged as warning.",
+        },
         "verified_by": {
             "type": "string",
             "description": "Agent performing verification (default: Delta)",
@@ -424,6 +502,32 @@ TASK_BOARD_SCHEMA = {
         "query": {
             "type": "string",
             "description": 'FTS5 search query for action=search_fts. Supports: AND, OR, phrase "...", prefix*',
+        },
+        # MARKER_200.AGENT_WAKE: Notification parameters
+        "target_role": {
+            "type": "string",
+            "description": "Target agent callsign for action=notify (e.g. 'Alpha', 'Commander')",
+        },
+        "source_role": {
+            "type": "string",
+            "description": "Source agent callsign for action=notify",
+        },
+        "message": {
+            "type": "string",
+            "description": "Notification message text for action=notify",
+        },
+        "ntype": {
+            "type": "string",
+            "description": "Notification type: task_verified, task_needs_fix, ready_to_merge, task_completed, custom",
+        },
+        "unread_only": {
+            "type": "boolean",
+            "description": "For action=notifications: only return unread (default true)",
+        },
+        "notification_ids": {
+            "description": "For action=ack_notifications: specific notification IDs to mark as read",
+            "items": {"type": "string"},
+            "type": "array",
         },
     },
     "required": ["action"],
@@ -891,6 +995,9 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
         if project_resolve:
             result["project_resolve"] = project_resolve
+
+        # MARKER_200.ELISION_LIST: Compress list response to save tokens
+        result = _elision_compress_list(result)
         return result
 
     elif action == "get":
@@ -1042,6 +1149,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                         ]
                 except Exception:
                     pass  # L2 learnings are best-effort
+
+            # MARKER_200.STM_AUTOSAVE: Persist STM on claim (session milestone)
+            try:
+                from src.memory.stm_buffer import get_stm_buffer
+                _stm = get_stm_buffer()
+                if len(_stm) > 0:
+                    _stm.save_to_disk()
+                    logger.debug(f"[TaskBoard] STM auto-saved on claim: {len(_stm)} entries")
+            except Exception:
+                pass  # STM save is best-effort
 
         return result
 
@@ -1350,6 +1467,18 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_195.21: Debrief injection via extracted function (was inline, bypassed on 3 paths)
         _inject_debrief(result, arguments)
 
+        # MARKER_200.CHECKPOINT: Persist session state on complete
+        try:
+            from src.services.session_tracker import get_session_tracker
+            _ck_tracker = get_session_tracker()
+            _ck_tracker.save_checkpoint(
+                _tracker_sid,
+                task_title=task.get("title") if task else None,
+                decisions=arguments.get("decisions"),
+            )
+        except Exception:
+            pass  # Checkpoint is best-effort
+
         return result
 
     # MARKER_130.C16B: active_agents action
@@ -1393,7 +1522,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             }
         merge_commit_hash = arguments.get("commit_hash")
         role = arguments.get("role", "")
-        return board.promote_to_main(task_id, merge_commit_hash, role=role)
+        skip_qa = arguments.get("skip_qa", False)
+        return board.promote_to_main(task_id, merge_commit_hash, role=role, skip_qa=skip_qa)
 
     # MARKER_196.QA: request_qa — move done_worktree → need_qa
     elif action == "request_qa":
@@ -1575,11 +1705,51 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             "message": f"FTS5 index rebuilt: {count} tasks indexed",
         }
 
+    elif action == "backfill_fts":
+        board = _get_board()
+        count = board._backfill_fts()
+        return {"success": True, "indexed": count, "message": f"FTS5 index rebuilt: {count} tasks indexed"}
+
     # MARKER_199.DEBRIEF: List tasks auto-closed without debrief
     elif action == "debrief_skipped":
         limit = int(arguments.get("limit", 10))
         skipped = board.get_debrief_skipped_tasks(limit)
         return {"success": True, "skipped": skipped, "count": len(skipped)}
+
+    # ── MARKER_200.AGENT_WAKE: Notification inbox ──────────
+
+    elif action == "notify":
+        target_role = arguments.get("target_role") or arguments.get("role")
+        message = arguments.get("message", "")
+        if not target_role or not message:
+            return {"success": False, "error": "notify requires target_role and message"}
+        return board.notify(
+            target_role,
+            message,
+            ntype=arguments.get("ntype", "custom"),
+            source_role=arguments.get("source_role", arguments.get("assigned_to", "")),
+            task_id=arguments.get("task_id", ""),
+        )
+
+    elif action == "notifications":
+        role = arguments.get("role", "")
+        if not role:
+            return {"success": False, "error": "notifications requires role"}
+        unread_only = arguments.get("unread_only", True)
+        if isinstance(unread_only, str):
+            unread_only = unread_only.lower() not in ("false", "0", "no")
+        limit = int(arguments.get("limit", 20))
+        notifs = board.get_notifications(role, unread_only=unread_only, limit=limit)
+        return {"success": True, "notifications": notifs, "count": len(notifs), "role": role}
+
+    elif action == "ack_notifications":
+        role = arguments.get("role", "")
+        if not role:
+            return {"success": False, "error": "ack_notifications requires role"}
+        notif_ids = arguments.get("notification_ids")
+        if isinstance(notif_ids, str):
+            notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
+        return board.ack_notifications(role, notification_ids=notif_ids)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
@@ -1609,6 +1779,37 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
         ),
     }
 
+    # MARKER_200.DECISIONS: Route explicit decisions to ENGRAM L1 (permanent, category=architecture)
+    # Replaces HERMES LLM-based "Key Decisions" extraction — zero LLM cost.
+    _decisions = arguments.get("decisions")
+    if _decisions and isinstance(_decisions, list):
+        try:
+            from src.memory.engram_cache import get_engram_cache
+            from src.services.session_tracker import get_session_tracker
+
+            _engram = get_engram_cache()
+            _d_sid = arguments.get("session_id") or "default"
+            _d_role = get_session_tracker().get_role(_d_sid)
+            _d_callsign = (_d_role or {}).get("callsign", arguments.get("role", "unknown"))
+            _d_domain = (_d_role or {}).get("domain", arguments.get("domain", "unknown"))
+            _d_task_id = arguments.get("task_id") or result.get("task_id", "")
+
+            for i, decision in enumerate(_decisions):
+                if not isinstance(decision, str) or not decision.strip():
+                    continue
+                _d_key = f"{_d_callsign}::decision::{_d_domain}::{_d_task_id}"
+                if len(_decisions) > 1:
+                    _d_key += f"::{i}"
+                _engram.put(
+                    key=_d_key,
+                    value=decision.strip()[:300],
+                    category="architecture",
+                    match_count=0,
+                )
+            result["decisions_captured"] = len([d for d in _decisions if isinstance(d, str) and d.strip()])
+        except Exception:
+            pass  # Decision capture is best-effort
+
     # MARKER_196.6.3: Passive metrics — auto-create ExperienceReport without agent input
     # Collects: session role, tasks completed, files touched, CORTEX tool stats.
     # Even if agent never answers debrief Qs, we get a baseline report.
@@ -1636,6 +1837,44 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
 
     threading.Thread(target=_bg_passive_report, daemon=True, name="debrief-passive").start()
     result["passive_report"] = True  # optimistic — thread will log if it fails
+
+    # MARKER_200.STM_AUTOSAVE: Persist STM on complete (session milestone)
+    try:
+        from src.memory.stm_buffer import get_stm_buffer
+        _stm = get_stm_buffer()
+        if len(_stm) > 0:
+            _stm.save_to_disk()
+            logger.debug(f"[TaskBoard] STM auto-saved on complete: {len(_stm)} entries")
+    except Exception:
+        pass  # STM save is best-effort
+
+    # MARKER_200.W0.4: Write CORTEX top tools to AURA as tool_usage_patterns.
+    # REFLEX signal 4 (weight 0.07) reads user_preferences.tool_usage_patterns
+    # but nothing ever wrote to it — signal was always zero.
+    try:
+        from src.services.reflex_feedback import get_feedback_store
+        from src.memory.aura_store import get_aura_store
+        _fb = get_feedback_store()
+        _summary = _fb.get_feedback_summary()
+        _per_tool = _summary.get("per_tool", {})
+        if _per_tool:
+            _top_tools = sorted(
+                _per_tool.keys(),
+                key=lambda t: _per_tool[t].get("count", 0),
+                reverse=True,
+            )[:5]
+            _aura = get_aura_store()
+            _aura.set_preference(
+                agent_type="default",
+                user_id="default",
+                category="tool_usage_patterns",
+                key="frequent_tools",
+                value=_top_tools,
+                confidence=0.8,
+            )
+            logger.debug(f"[TaskBoard] AURA tool_usage_patterns updated: {_top_tools}")
+    except Exception:
+        pass  # AURA write is best-effort
 
 
 def _create_passive_experience_report(
@@ -2133,6 +2372,18 @@ def _try_auto_commit(
                 f"[TaskBoard] _try_auto_commit: no closure_files/allowed_paths for task {task_id}, "
                 f"staging ALL {len(all_changed)} dirty files. Consider setting allowed_paths on task."
             )
+
+    # MARKER_200.NEVER_STAGE: Filter out generated artifacts that must never be committed.
+    # CLAUDE.md is auto-regenerated by generate_claude_md.py on every session_init.
+    # Once tracked, .gitignore cannot protect it — this is the hard exclusion gate.
+    _NEVER_STAGE = {"CLAUDE.md", ".agent_lock"}
+    _before = len(closure_files)
+    closure_files = [f for f in closure_files if Path(f).name not in _NEVER_STAGE]
+    if len(closure_files) < _before:
+        logger.info(
+            "[TaskBoard] NEVER_STAGE: filtered %d artifact(s) from staging",
+            _before - len(closure_files),
+        )
 
     if not closure_files:
         return {

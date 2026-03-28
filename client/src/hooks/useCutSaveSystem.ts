@@ -11,6 +11,7 @@
  */
 import { useEffect, useRef, useCallback } from 'react';
 import { useCutEditorStore } from '../store/useCutEditorStore';
+import { useSelectionStore } from '../store/useSelectionStore';
 import { API_BASE } from '../config/api.config';
 
 export interface RecoveryInfo {
@@ -36,8 +37,9 @@ export function useCutSaveSystem() {
 
     try {
       const { lanes, markers, currentTime, zoom, scrollLeft, timelineId,
-              selectedClipId, projectFramerate, projectId,
+              projectFramerate, projectId,
               sourceMarkIn, sourceMarkOut, sequenceMarkIn, sequenceMarkOut } = state;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
       const timeline_state = {
         schema_version: 'cut_timeline_state_v1',
         project_id: projectId || '',

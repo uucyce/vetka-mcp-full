@@ -66,15 +66,16 @@ _MEDIUM_MODEL_CONTEXT = 32768    # ≤32k → standard palette
 
 
 def _infer_context_from_git() -> tuple:
-    """MARKER_186.3: Scan recent git changes to build task_text and mgc_stats.
+    """MARKER_186.3: Scan recent git changes to build task_text.
 
     Returns (task_text, mgc_stats) where task_text is a synthetic description
     built from recently changed file extensions and directories.
+    mgc_stats is always empty — real MGC stats come from get_mgc_cache().get_stats()
+    (MARKER_200.MGC_REAL).
     """
     import subprocess
 
     task_keywords: list = []
-    mgc_stats: Dict[str, Any] = {}
 
     try:
         result = subprocess.run(
@@ -89,7 +90,7 @@ def _infer_context_from_git() -> tuple:
         if not files:
             return "", {}
 
-        # Count file types for MGC stats
+        # Count file types for keyword inference
         ext_counts: Dict[str, int] = {}
         for f in files:
             ext = os.path.splitext(f)[1].lower()
@@ -128,18 +129,12 @@ def _infer_context_from_git() -> tuple:
         # Deduplicate
         task_keywords = list(dict.fromkeys(task_keywords))
 
-        # MGC stats: treat recently changed files as "hot" gen0
-        ui_file_count = ext_counts.get(".tsx", 0) + ext_counts.get(".ts", 0) + ext_counts.get(".css", 0)
-        mgc_stats = {
-            "gen0_size": len(files),
-            "gen0_max": 100,
-            "hit_rate": min(1.0, ui_file_count / max(1, len(files))),
-        }
-
     except Exception:
         pass
 
-    return " ".join(task_keywords), mgc_stats
+    # MARKER_200.MGC_REAL: No fake mgc_stats from git diff.
+    # Real MGC stats are read from get_mgc_cache().get_stats() in from_session().
+    return " ".join(task_keywords), {}
 
 
 def _agent_type_to_role(agent_type: str) -> str:
@@ -310,9 +305,10 @@ class ReflexContext:
         # MARKER_186.3: Map agent_type to agent_role for role-based filtering
         agent_role = _agent_type_to_role(agent_type)
 
-        # MARKER_198.P0.2: Compute CAM surprise from task embedding delta.
-        # Information novelty = how different the current task is from the previous one.
-        # NOT viewport camera — this measures context shift between sessions.
+        # MARKER_200.CAM_COSINE: Compute CAM surprise from embedding cosine distance.
+        # Replaces word-overlap Jaccard (Phase 198) with real semantic distance.
+        # Uses mcc_jepa_adapter fallback chain: HTTP → Ollama → deterministic hash.
+        # Falls back to Jaccard if embedding fails.
         cam_surprise = 0.0
         try:
             import json as _json_cam
@@ -336,7 +332,6 @@ class ReflexContext:
             # Determine current task text from session data
             _current_task_text = task_text.strip()
             if not _current_task_text:
-                # Fall back to top_pending title if task_text was not provided
                 _tbs = session_data.get("task_board_summary", {})
                 _top = _tbs.get("top_pending", [])
                 if _top and isinstance(_top[0], dict):
@@ -344,25 +339,67 @@ class ReflexContext:
 
             if _cam_path.exists() and _current_task_text:
                 _prev = _json_cam.loads(_cam_path.read_text())
+                _prev_embedding = _prev.get("embedding")
                 _prev_text = _prev.get("task_text", "")
-                if _prev_text and _prev_text != _current_task_text:
-                    # Word-overlap surprise: fewer shared words → higher surprise
+
+                if _prev_embedding and isinstance(_prev_embedding, list):
+                    # Cosine distance path: embed current, compare to stored embedding
+                    try:
+                        from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+                        _result = embed_texts_for_overlay(
+                            [_current_task_text], target_dim=128
+                        )
+                        if _result and _result.vectors and len(_result.vectors) > 0:
+                            _curr_emb = _result.vectors[0]
+                            _prev_emb = _prev_embedding
+                            # Cosine similarity: dot(a,b) / (|a| * |b|)
+                            _dot = sum(a * b for a, b in zip(_curr_emb, _prev_emb))
+                            _norm_a = sum(a * a for a in _curr_emb) ** 0.5
+                            _norm_b = sum(b * b for b in _prev_emb) ** 0.5
+                            if _norm_a > 0 and _norm_b > 0:
+                                _cosine_sim = _dot / (_norm_a * _norm_b)
+                                cam_surprise = round(
+                                    max(0.0, min(1.0, 1.0 - _cosine_sim)), 4
+                                )
+                    except Exception:
+                        pass  # Fall through to Jaccard below
+
+                # Jaccard fallback if embedding failed or no stored embedding
+                if cam_surprise == 0.0 and _prev_text and _prev_text != _current_task_text:
                     _prev_words = set(_prev_text.lower().split())
                     _curr_words = set(_current_task_text.lower().split())
                     _total = len(_prev_words | _curr_words)
                     if _total > 0:
                         _overlap = len(_prev_words & _curr_words)
-                        _similarity = _overlap / _total
-                        cam_surprise = round(1.0 - _similarity, 4)
+                        cam_surprise = round(1.0 - _overlap / _total, 4)
 
-            # Persist current task text for the next session's comparison
+            # Persist current task text + embedding for next session
             if _current_task_text:
+                _cam_data: Dict[str, Any] = {"task_text": _current_task_text}
+                try:
+                    from src.services.mcc_jepa_adapter import embed_texts_for_overlay
+                    _save_result = embed_texts_for_overlay(
+                        [_current_task_text], target_dim=128
+                    )
+                    if _save_result and _save_result.vectors and len(_save_result.vectors) > 0:
+                        _cam_data["embedding"] = _save_result.vectors[0]
+                except Exception:
+                    pass  # Save text-only if embedding fails
                 _cam_path.parent.mkdir(parents=True, exist_ok=True)
-                _cam_path.write_text(
-                    _json_cam.dumps({"task_text": _current_task_text})
-                )
+                _cam_path.write_text(_json_cam.dumps(_cam_data))
         except Exception:
             pass  # CAM surprise is best-effort — never blocks session init
+
+        # MARKER_200.MGC_REAL: Read actual MGC cache stats instead of git-diff heuristic
+        if not mgc_stats:
+            try:
+                from src.memory.mgc_cache import get_mgc_cache
+                _mgc = get_mgc_cache()
+                _mgc_s = _mgc.get_stats() if hasattr(_mgc, 'get_stats') else {}
+                if _mgc_s:
+                    mgc_stats = _mgc_s
+            except Exception:
+                pass  # MGC stats are best-effort
 
         return ReflexContext(
             task_text=task_text,

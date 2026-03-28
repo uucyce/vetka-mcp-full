@@ -6,6 +6,7 @@
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
 import { usePanelSyncStore } from './usePanelSyncStore';
+import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -45,6 +46,18 @@ export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): nu
 
   return kfA.value + (kfB.value - kfA.value) * eased;
 }
+
+// MARKER_PASTE_ATTR: Selective paste attributes config (DaVinci Resolve style)
+export type PasteAttributesConfig = {
+  effects: boolean;
+  colorCorrection: boolean;
+  motion: boolean;
+  speed: boolean;
+  transition: boolean;
+  volume: boolean;
+  keyframes: boolean;
+  keyframeMode: 'maintain' | 'stretch';
+};
 
 // MARKER_W10.6: Per-clip video effects (maps to FFmpeg filter_complex)
 export type ClipEffects = {
@@ -93,6 +106,8 @@ export type ClipTransition = {
   type: 'cross_dissolve' | 'dip_to_black' | 'wipe';
   duration_sec: number;    // typically 1.0s (30 frames at 30fps)
   alignment: 'center' | 'start' | 'end';  // relative to edit point
+  // MARKER_GAMMA-XFADE: Audio crossfade curve type (backend reads this at render time)
+  audio_curve?: 'equal_power' | 'linear';
 };
 
 export type TimelineClip = {
@@ -116,6 +131,15 @@ export type TimelineClip = {
     offset_sec?: number;
     confidence?: number;
     reference_path?: string;
+  };
+  // MARKER_LAYERFX: Layer manifest metadata (§6 of canonical spec)
+  layer_manifest?: {
+    manifest_path: string;
+    format: string; // "layer_space" | "plate_export"
+    layer_count: number;
+    has_foreground: boolean;
+    has_background: boolean;
+    sample_id: string;
   };
 };
 
@@ -227,10 +251,8 @@ interface CutEditorState {
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
-  // === Selection ===
-  selectedClipId: string | null;
-  selectedClipIds: Set<string>;       // MARKER_W3.7: multi-select
-  linkedSelection: boolean;           // MARKER_W3.7: click video → also select synced audio
+  // === Selection (MOVED to useSelectionStore.ts — MARKER_ARCH_4.1) ===
+  // selectedClipId, selectedClipIds, linkedSelection → useSelectionStore
   activeMediaPath: string | null;     // legacy — kept for backward compat, mirrors sourceMediaPath
   hoveredClipId: string | null;
   renamingClipId: string | null; // MARKER_FCP7FIX: clip currently being inline-renamed
@@ -323,6 +345,7 @@ interface CutEditorState {
   trimEditClipId: string | null;    // outgoing clip at edit point
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
+  showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -415,17 +438,14 @@ interface CutEditorState {
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
-  setSelectedClip: (id: string | null) => void;
-  // MARKER_W3.7: Multi-select
-  toggleClipSelection: (id: string) => void;   // Cmd+Click toggle
-  selectAllClips: () => void;                   // Cmd+A
-  clearSelection: () => void;                   // Escape
-  toggleLinkedSelection: () => void;            // linked selection toggle
+  // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
   // MARKER_CLIPBOARD: Clipboard actions
   copyClips: () => void;                         // Copy selected clips to clipboard
   cutClips: () => void;                          // Cut selected clips (copy + remove)
   pasteClips: (mode: 'overwrite' | 'insert') => void;  // Paste at playhead
   pasteAttributes: () => void;                   // Paste effects from clipboard to selected
+  setShowPasteAttributes: (show: boolean) => void;
+  pasteAttributesSelective: (config: PasteAttributesConfig) => void;
   // MARKER_SEQ-MENU: Sequence editing operations
   liftClip: () => void;                          // Remove selected clips, leave gap
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
@@ -640,10 +660,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lanePans: {},
   snapEnabled: true,
 
-  // Selection
-  selectedClipId: null,
-  selectedClipIds: new Set<string>(),
-  linkedSelection: true,
+  // Selection MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
   activeMediaPath: null,
   hoveredClipId: null,
   renamingClipId: null,
@@ -712,6 +729,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditActive: false,
   trimEditClipId: null,
   trimEditPoint: 0,
+  showPasteAttributes: false,       // MARKER_PASTE_ATTR
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -886,28 +904,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       },
     })),
   toggleSnap: () => set((state) => ({ snapEnabled: !state.snapEnabled })),
-  setSelectedClip: (id) => set({ selectedClipId: id, selectedClipIds: id ? new Set([id]) : new Set() }),
-  // MARKER_W3.7: Multi-select actions
-  toggleClipSelection: (id) =>
-    set((state) => {
-      const ids = new Set(state.selectedClipIds);
-      if (ids.has(id)) { ids.delete(id); } else { ids.add(id); }
-      return { selectedClipIds: ids, selectedClipId: ids.size === 1 ? [...ids][0] : state.selectedClipId };
-    }),
-  selectAllClips: () =>
-    set((state) => {
-      const allIds = new Set<string>();
-      for (const lane of state.lanes) {
-        for (const clip of lane.clips) { allIds.add(clip.clip_id); }
-      }
-      return { selectedClipIds: allIds };
-    }),
-  clearSelection: () => set({ selectedClipId: null, selectedClipIds: new Set() }),
-  toggleLinkedSelection: () => set((state) => ({ linkedSelection: !state.linkedSelection })),
+  // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
 
   // MARKER_CLIPBOARD: Clipboard implementations
   copyClips: () => {
-    const { lanes, selectedClipIds } = get();
+    const { lanes } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
     for (const lane of lanes) {
@@ -919,7 +921,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
   // MARKER_UNDO_CUT: Cut clips — copy to clipboard + remove via applyTimelineOps for undo support
   cutClips: () => {
-    const { lanes, selectedClipIds } = get();
+    const { lanes } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (selectedClipIds.size === 0) return;
     const clips: TimelineClip[] = [];
     for (const lane of lanes) {
@@ -927,7 +930,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         if (selectedClipIds.has(clip.clip_id)) clips.push({ ...clip });
       }
     }
-    set({ clipboard: clips, selectedClipId: null, selectedClipIds: new Set() });
+    set({ clipboard: clips });
+    useSelectionStore.getState().clearSelection();
     // Route removal through backend undo stack
     const ops = clips.map((c) => ({ op: 'remove_clip', clip_id: c.clip_id }));
     void get().applyTimelineOps(ops);
@@ -952,26 +956,93 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     const maxEnd = Math.max(...clipboard.map((c) => c.start_sec + c.duration_sec));
     get().seek(currentTime + (maxEnd - minStart));
   },
-  // MARKER_UNDO_PASTE_ATTR: Route through applyTimelineOps
+  // MARKER_UNDO_PASTE_ATTR: Open dialog for selective paste (DaVinci Resolve style)
   pasteAttributes: () => {
-    const { clipboard, selectedClipIds } = get();
+    const { clipboard } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
-    const sourceEffects = clipboard[0].effects;
-    if (!sourceEffects) return;
-    const ops = [...selectedClipIds].map((id) => ({
-      op: 'set_effects', clip_id: id, effects: sourceEffects,
-    }));
-    void get().applyTimelineOps(ops);
+    set({ showPasteAttributes: true });
+  },
+  setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
+  // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
+  pasteAttributesSelective: (config: PasteAttributesConfig) => {
+    const { clipboard, selectedClipIds, lanes } = get();
+    if (clipboard.length === 0 || selectedClipIds.size === 0) return;
+    const source = clipboard[0];
+    const ops: Array<Record<string, unknown>> = [];
+
+    for (const clipId of selectedClipIds) {
+      // Effects (brightness, contrast, saturation, blur, opacity)
+      if (config.effects && source.effects) {
+        ops.push({ op: 'set_effects', clip_id: clipId, effects: { ...source.effects } });
+      }
+
+      // Color Correction
+      if (config.colorCorrection && (source as any).color_correction) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify((source as any).color_correction)) });
+      }
+
+      // Motion (position, scale, rotation, anchor, crop)
+      if (config.motion && (source as any).motion) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'motion', value: JSON.parse(JSON.stringify((source as any).motion)) });
+      }
+
+      // Speed / Retime
+      if (config.speed && source.speed != null) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'speed', value: source.speed });
+        if ((source as any).reverse != null) {
+          ops.push({ op: 'set_prop', clip_id: clipId, key: 'reverse', value: (source as any).reverse });
+        }
+        if ((source as any).maintain_pitch != null) {
+          ops.push({ op: 'set_prop', clip_id: clipId, key: 'maintain_pitch', value: (source as any).maintain_pitch });
+        }
+      }
+
+      // Transition
+      if (config.transition && (source as any).transition) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'transition', value: JSON.parse(JSON.stringify((source as any).transition)) });
+      }
+      if (config.transition && source.transition_out) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'transition_out', value: JSON.parse(JSON.stringify(source.transition_out)) });
+      }
+
+      // Keyframes
+      if (config.keyframes && source.keyframes) {
+        let kfData = JSON.parse(JSON.stringify(source.keyframes));
+        if (config.keyframeMode === 'stretch') {
+          // Find target clip duration for stretch
+          for (const lane of lanes) {
+            const target = lane.clips.find((c: any) => c.clip_id === clipId);
+            if (target) {
+              const srcDur = source.duration_sec || 1;
+              const tgtDur = target.duration_sec || 1;
+              const ratio = tgtDur / srcDur;
+              for (const prop of Object.keys(kfData)) {
+                kfData[prop] = kfData[prop].map((kf: any) => ({ ...kf, time: kf.time * ratio }));
+              }
+              break;
+            }
+          }
+        }
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'keyframes', value: kfData });
+      }
+    }
+
+    if (ops.length > 0) {
+      void get().applyTimelineOps(ops);
+    }
+    set({ showPasteAttributes: false });
   },
 
   // MARKER_SEQ-MENU + MARKER_UNDO_LIFT: Sequence editing operations — routed through applyTimelineOps
   liftClip: () => {
     // Lift: remove selected clips, leave gap (like Delete but respects In/Out range)
-    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    const { lanes, sequenceMarkIn, sequenceMarkOut } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     const ops: Array<Record<string, unknown>> = [];
     if (selectedClipIds.size > 0) {
       for (const id of selectedClipIds) ops.push({ op: 'remove_clip', clip_id: id });
-      set({ selectedClipId: null, selectedClipIds: new Set() });
+      useSelectionStore.getState().clearSelection();
     } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
       // Lift range: remove clips in range, trim partials
       for (const lane of lanes) {
@@ -992,11 +1063,12 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
   // MARKER_UNDO_EXTRACT: Extract clips — remove + ripple via applyTimelineOps
   extractClip: () => {
-    const { lanes, selectedClipIds, sequenceMarkIn, sequenceMarkOut } = get();
+    const { lanes, sequenceMarkIn, sequenceMarkOut } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     const ops: Array<Record<string, unknown>> = [];
     if (selectedClipIds.size > 0) {
       for (const id of selectedClipIds) ops.push({ op: 'ripple_delete', clip_id: id });
-      set({ selectedClipId: null, selectedClipIds: new Set() });
+      useSelectionStore.getState().clearSelection();
     } else if (sequenceMarkIn != null && sequenceMarkOut != null) {
       for (const lane of lanes) {
         for (const c of lane.clips) {
@@ -1071,7 +1143,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // Positive frames = extend, negative = shorten. Uses trim_clip op.
   // FCP7 Ch.20: type number while trim tool active → trim by exact frame count
   numericTrimSelected: (frames: number) => {
-    const { selectedClipId, lanes, projectFramerate } = get();
+    const { lanes, projectFramerate } = get();
+    const { selectedClipId } = useSelectionStore.getState();
     if (!selectedClipId) return;
     const deltaSec = frames / (projectFramerate || 25);
     for (const lane of lanes) {

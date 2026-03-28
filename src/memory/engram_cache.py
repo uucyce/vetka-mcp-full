@@ -258,15 +258,43 @@ class EngramCache:
 
     # ============ MARKER_193.2: Category accessors ============
 
-    def get_danger_entries(self) -> List[EngramEntry]:
-        """Return all non-expired entries with category='danger'."""
-        return [e for e in self._cache.values()
-                if e.category == "danger" and not self._is_expired(e)]
+    def get_danger_entries(self, role: Optional[str] = None) -> List[EngramEntry]:
+        """Return all non-expired entries with category='danger'.
 
-    def get_all_by_category(self, category: str) -> List[EngramEntry]:
-        """Return all non-expired entries matching the given category."""
-        return [e for e in self._cache.values()
-                if e.category == category and not self._is_expired(e)]
+        Args:
+            role: Optional callsign filter. If provided, returns only entries
+                  whose key starts with the role prefix (e.g. 'Zeta::') or
+                  universal entries ('*::', 'feedback::', 'pair::').
+        """
+        entries = [e for e in self._cache.values()
+                   if e.category == "danger" and not self._is_expired(e)]
+        if role:
+            entries = [e for e in entries if self._matches_role(e.key, role)]
+        return entries
+
+    def get_all_by_category(self, category: str, role: Optional[str] = None) -> List[EngramEntry]:
+        """Return all non-expired entries matching the given category.
+
+        Args:
+            role: Optional callsign filter (same logic as get_danger_entries).
+        """
+        entries = [e for e in self._cache.values()
+                   if e.category == category and not self._is_expired(e)]
+        if role:
+            entries = [e for e in entries if self._matches_role(e.key, role)]
+        return entries
+
+    @staticmethod
+    def _matches_role(key: str, role: str) -> bool:
+        """Check if an engram key is relevant to a given role.
+
+        Universal prefixes (*, feedback::, pair::) match all roles.
+        Role-specific entries match only if key starts with the role callsign.
+        """
+        prefix = key.split("::")[0] if "::" in key else key
+        if prefix in ("*", "feedback", "pair"):
+            return True
+        return prefix.lower() == role.lower()
 
     def stats(self) -> Dict[str, Any]:
         """Cache statistics."""
@@ -296,7 +324,7 @@ def get_engram_cache() -> EngramCache:
     """Get singleton EngramCache instance."""
     global _instance
     if _instance is None:
-        _instance = EngramCache()
+        _instance = EngramCache(cache_path=CACHE_PATH)
     return _instance
 
 
@@ -304,3 +332,107 @@ def reset_engram_cache():
     """Reset singleton (for tests)."""
     global _instance
     _instance = None
+
+
+# ============ MARKER_200.FEEDBACK_BRIDGE ============
+
+def ingest_feedback_memories(memory_dir: Optional[Path] = None) -> int:
+    """Scan Claude Code feedback_*.md files and ingest into ENGRAM L1 as danger entries.
+
+    Parses YAML frontmatter (name, description) from each file and creates
+    permanent danger entries so REFLEX Guard can see user corrections.
+
+    Key format: feedback::{name}::rule
+    Category: danger (TTL=0, permanent, never demoted)
+
+    Args:
+        memory_dir: Path to Claude Code memory directory. If None, auto-detects
+                    from PROJECT_ROOT via the standard Claude Code projects path.
+
+    Returns:
+        Number of new entries ingested (skips already-existing keys).
+    """
+    if memory_dir is None:
+        memory_dir = _detect_claude_memory_dir()
+    if memory_dir is None or not memory_dir.is_dir():
+        return 0
+
+    cache = get_engram_cache()
+    ingested = 0
+
+    for md_file in sorted(memory_dir.glob("feedback_*.md")):
+        try:
+            name, description = _parse_feedback_frontmatter(md_file)
+            if not name or not description:
+                continue
+
+            key = f"feedback::{name}::rule"
+            # Skip if already present (idempotent)
+            if key in cache._cache:
+                continue
+
+            cache.put(
+                key=key,
+                value=description,
+                category="danger",
+                source_learning_id=f"feedback_bridge:{md_file.name}",
+                match_count=0,
+            )
+            ingested += 1
+        except Exception as e:
+            logger.debug("[FEEDBACK_BRIDGE] Failed to parse %s: %s", md_file.name, e)
+
+    if ingested > 0:
+        logger.info("[FEEDBACK_BRIDGE] Ingested %d feedback memories into ENGRAM L1", ingested)
+
+    return ingested
+
+
+def _detect_claude_memory_dir() -> Optional[Path]:
+    """Auto-detect Claude Code memory directory for this project.
+
+    Looks for ~/.claude/projects/<sanitized-project-path>/memory/
+    """
+    import re as _re
+
+    # Resolve the actual project root (not worktree)
+    project_root = PROJECT_ROOT
+    # If we're in a worktree, go up to the real project
+    if ".claude/worktrees" in str(project_root):
+        # .claude/worktrees/X is at PROJECT_ROOT, real root is 3 levels up
+        parts = str(project_root).split(".claude/worktrees")
+        if parts:
+            project_root = Path(parts[0].rstrip("/"))
+
+    sanitized = _re.sub(r"[/_.]", "-", str(project_root.resolve()))
+    memory_dir = Path.home() / ".claude" / "projects" / sanitized / "memory"
+    if memory_dir.is_dir():
+        return memory_dir
+    return None
+
+
+def _parse_feedback_frontmatter(filepath: Path) -> tuple:
+    """Parse YAML frontmatter from a feedback_*.md file.
+
+    Returns (name, description) tuple. Returns ('', '') on parse failure.
+    """
+    text = filepath.read_text(encoding="utf-8", errors="replace")
+    if not text.startswith("---"):
+        return ("", "")
+
+    # Find closing ---
+    end = text.find("---", 3)
+    if end < 0:
+        return ("", "")
+
+    frontmatter = text[3:end].strip()
+    name = ""
+    description = ""
+    for line in frontmatter.splitlines():
+        line = line.strip()
+        if line.startswith("name:"):
+            name = line[5:].strip().strip('"').strip("'")
+        elif line.startswith("description:"):
+            description = line[12:].strip().strip('"').strip("'")
+
+    return (name, description)
