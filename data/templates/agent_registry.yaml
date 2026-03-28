@@ -264,3 +264,23 @@ shared_zones:
     owners:
       Beta: "color/*, scopes/*, lut/*, probe/* endpoints"
     protocol: "Consider splitting per-domain route files"
+
+  # MARKER_201.SHARED_ZONES: High-cardinality files touched by many agents — suppress overlap warning
+  - file: "photo_parallax_playground/src/App.tsx"
+    owners:
+      Codex: "all sections"
+    protocol: "Declare scope in task description before touching"
+
+  - file: "src/orchestration/task_board.py"
+    owners:
+      Eta: "harness/infra sections (MARKER_201.*)"
+      Zeta: "harness/infra sections (MARKER_200.*)"
+    protocol: "Coordinate via task description; don't edit same function"
+
+  - file: "client/package.json"
+    owners: {}
+    protocol: "Any agent may add dependencies — declare in task"
+
+  - file: "package.json"
+    owners: {}
+    protocol: "Any agent may add dependencies — declare in task"

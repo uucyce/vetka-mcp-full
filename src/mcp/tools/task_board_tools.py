@@ -817,10 +817,30 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
         # When parallel tasks share allowed_paths, they risk API drift (different method names).
         # Surface a warning so Commander can provide a Protocol contract.
+        # MARKER_201.SHARED_ZONES: Suppress warning for naturally shared files (App.tsx,
+        # task_board.py, package.json etc.) registered in agent_registry.yaml shared_zones.
         new_paths = payload.get("allowed_paths") or []
         if new_paths:
             try:
-                overlapping = board.find_tasks_by_changed_files(new_paths)
+                # Load shared_zone file basenames to suppress false-positive overlap warnings
+                _shared_zone_files: set = set()
+                try:
+                    from src.services.agent_registry import get_agent_registry
+                    _reg = get_agent_registry()
+                    _shared_zone_files = {zone.file for zone in _reg.shared_zones}
+                except Exception:
+                    pass
+
+                # Only warn about exclusive paths (not registered shared_zones)
+                exclusive_paths = [
+                    p for p in new_paths
+                    if not any(
+                        p == sz or p.endswith("/" + sz) or sz.endswith("/" + p.split("/")[-1])
+                        for sz in _shared_zone_files
+                    )
+                ]
+
+                overlapping = board.find_tasks_by_changed_files(exclusive_paths) if exclusive_paths else []
                 # Exclude the task we just created
                 overlapping = [t for t in overlapping if t.get("id") != task_id]
                 if overlapping:
@@ -836,7 +856,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                         "overlapping_tasks": overlap_titles,
                         "shared_paths": [
                             p
-                            for p in new_paths
+                            for p in exclusive_paths
                             if any(
                                 any(
                                     p.startswith(ap) or ap.startswith(p)
