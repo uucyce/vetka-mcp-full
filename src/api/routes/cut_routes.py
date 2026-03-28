@@ -1872,6 +1872,31 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_id": clip_id, "playhead": playhead, "edge": trim_end})
             continue
 
+        # MARKER_DELTABUG-MARKERS: delete_marker — remove marker from state["markers"] list.
+        # Markers stored inline in timeline_state["markers"] for undo-stack support.
+        if op_type == "delete_marker":
+            marker_id = str(op.get("marker_id") or "").strip()
+            if not marker_id:
+                raise ValueError("delete_marker requires marker_id")
+            markers = state.get("markers")
+            if isinstance(markers, list):
+                original_len = len(markers)
+                state["markers"] = [m for m in markers if str(m.get("marker_id") or "") != marker_id]
+                removed = original_len - len(state["markers"])
+            else:
+                removed = 0
+            applied_ops.append({"op": op_type, "marker_id": marker_id, "removed": removed})
+            continue
+
+        # MARKER_DELTABUG-PULSE: run_pulse_analysis / run_automontage_favorites are no-ops here.
+        # These ops arrive via timeline op pipeline but the real work is done by dedicated
+        # endpoints (/api/cut/pulse/... and /api/cut/pulse/auto-montage).
+        # Accepting them here prevents the "unsupported timeline op" error when the frontend
+        # routes these through applyTimelineOps.
+        if op_type in ("run_pulse_analysis", "run_automontage_favorites"):
+            applied_ops.append({"op": op_type, "note": "routed_to_dedicated_endpoint"})
+            continue
+
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
