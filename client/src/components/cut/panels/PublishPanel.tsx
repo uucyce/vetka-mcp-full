@@ -169,12 +169,14 @@ export default function PublishPanel() {
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <span
+              data-testid="publish-select-all"
               style={{ color: '#666', cursor: 'pointer', fontSize: 10, textDecoration: 'underline' }}
               onClick={selectAll}
             >
               Select All
             </span>
             <span
+              data-testid="publish-select-none"
               style={{ color: '#666', cursor: 'pointer', fontSize: 10, textDecoration: 'underline' }}
               onClick={selectNone}
             >

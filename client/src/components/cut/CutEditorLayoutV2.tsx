@@ -987,7 +987,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const s = useCutEditorStore.getState();
       if (!sel.selectedClipId) return;
       void s.applyTimelineOps([{
-        op: 'ripple_trim_to_playhead', clip_id: sel.selectedClipId, playhead_sec: s.currentTime,
+        op: 'ripple_trim_to_playhead', clip_id: sel.selectedClipId, playhead: s.currentTime,
       }]);
     },
     swapClips: () => {

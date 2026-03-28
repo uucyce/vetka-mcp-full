@@ -171,10 +171,10 @@ export default function MarkerListPanel() {
           <thead>
             <tr>
               <th style={{ ...TH, width: 16 }} />
-              <th style={{ ...TH, width: 80 }} onClick={() => toggleSort('time')}>
+              <th style={{ ...TH, width: 80 }} data-testid="marker-list-sort-time" onClick={() => toggleSort('time')}>
                 Time {sortKey === 'time' ? (sortAsc ? '\u25B4' : '\u25BE') : ''}
               </th>
-              <th style={{ ...TH, width: 60 }} onClick={() => toggleSort('kind')}>
+              <th style={{ ...TH, width: 60 }} data-testid="marker-list-sort-kind" onClick={() => toggleSort('kind')}>
                 Type {sortKey === 'kind' ? (sortAsc ? '\u25B4' : '\u25BE') : ''}
               </th>
               <th style={TH}>Text</th>
@@ -186,6 +186,7 @@ export default function MarkerListPanel() {
               return (
                 <tr
                   key={m.marker_id}
+                  data-testid={`marker-list-row-${m.marker_id}`}
                   onClick={() => seek(m.start_sec)}
                   style={{
                     cursor: 'pointer',
