@@ -89,7 +89,7 @@ export function EditMarkerDialog() {
     const store = useCutEditorStore.getState();
     const updated = store.markers.map((m) => {
       if (m.marker_id !== editingMarkerId) return m;
-      return { ...m, name, notes };
+      return { ...m, text: name, notes };
     });
     store.setMarkers(updated);
     close();
