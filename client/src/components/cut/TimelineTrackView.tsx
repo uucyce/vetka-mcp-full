@@ -935,6 +935,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         neighborLeft: neighbors.left,
         neighborRight: neighbors.right,
       });
+
+      // MARKER_TRIM_ACTIVATE: Open TrimEditWindow for trim tool drags
+      const trimModes: ClipDragMode[] = ['ripple_left', 'ripple_right', 'roll', 'slip', 'slide'];
+      if (trimModes.includes(effectiveMode)) {
+        const editPt = effectiveMode === 'ripple_left' || effectiveMode === 'roll'
+          ? startSec
+          : startSec + durationSec;
+        useCutEditorStore.getState().setTrimEditActive(true, clip.clip_id, editPt);
+      }
     },
     [activeTool, applyTimelineOps, findNeighbors, setActiveMedia, setSelectedClip, timeFromTrackClientX]
   );
@@ -1655,29 +1664,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         });
       }
 
-      // MARKER_W5.TRIM: Slide — move clip, adjust neighbors
+      // MARKER_W5.TRIM: Slide — atomic slide_clip op (single undo step)
       if (activeDrag.mode === 'slide' && Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
-        const delta = activeDrag.startSec - activeDrag.originalStartSec;
-        ops.push({ op: 'move_clip', clip_id: activeDrag.clipId, lane_id: activeDrag.laneId, start_sec: activeDrag.startSec });
-        // Adjust left neighbor's duration (extend/shrink right edge)
-        if (activeDrag.neighborLeft) {
-          ops.push({
-            op: 'trim_clip',
-            clip_id: activeDrag.neighborLeft.clipId,
-            duration_sec: roundTimeline(activeDrag.neighborLeft.durationSec + delta),
-          });
-        }
-        // Adjust right neighbor's start and duration
-        if (activeDrag.neighborRight) {
-          const clipEnd = activeDrag.startSec + activeDrag.durationSec;
-          const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
-          ops.push({
-            op: 'trim_clip',
-            clip_id: activeDrag.neighborRight.clipId,
-            start_sec: clipEnd,
-            duration_sec: roundTimeline(rightOrigEnd - clipEnd),
-          });
-        }
+        ops.push({
+          op: 'slide_clip',
+          clip_id: activeDrag.clipId,
+          start_sec: activeDrag.startSec,
+          left_neighbor_id: activeDrag.neighborLeft?.clipId || '',
+          right_neighbor_id: activeDrag.neighborRight?.clipId || '',
+        });
       }
 
       // MARKER_W5.TRIM: Ripple — trim edge + shift everything after
@@ -1697,37 +1692,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         ops.push(rippleOp);
       }
 
-      // MARKER_W5.TRIM: Roll — adjust edit point between two clips
+      // MARKER_W5.TRIM: Roll — atomic roll_edit op (single undo step)
       if (activeDrag.mode === 'roll') {
         const editingLeftEdge = activeDrag.grabOffsetSec < activeDrag.originalDurationSec / 2;
         if (editingLeftEdge && activeDrag.neighborLeft) {
-          const newLeftDur = roundTimeline(activeDrag.startSec - activeDrag.neighborLeft.startSec);
-          if (Math.abs(newLeftDur - activeDrag.neighborLeft.durationSec) > 0.001) {
+          const delta = activeDrag.startSec - activeDrag.originalStartSec;
+          if (Math.abs(delta) > 0.001) {
             ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.neighborLeft.clipId,
-              duration_sec: newLeftDur,
-            });
-            ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.clipId,
-              start_sec: activeDrag.startSec,
-              duration_sec: activeDrag.durationSec,
+              op: 'roll_edit',
+              clip_a_id: activeDrag.neighborLeft.clipId,
+              clip_b_id: activeDrag.clipId,
+              delta_sec: delta,
             });
           }
         } else if (!editingLeftEdge && activeDrag.neighborRight) {
-          const newEnd = activeDrag.startSec + activeDrag.durationSec;
-          if (Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001) {
+          const delta = activeDrag.durationSec - activeDrag.originalDurationSec;
+          if (Math.abs(delta) > 0.001) {
             ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.clipId,
-              duration_sec: activeDrag.durationSec,
-            });
-            ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.neighborRight.clipId,
-              start_sec: newEnd,
-              duration_sec: roundTimeline(activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec - newEnd),
+              op: 'roll_edit',
+              clip_a_id: activeDrag.clipId,
+              clip_b_id: activeDrag.neighborRight.clipId,
+              delta_sec: delta,
             });
           }
         }
@@ -1735,6 +1720,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
       if (ops.length) {
         void applyTimelineOps(ops);
+      }
+
+      // MARKER_TRIM_DEACTIVATE: Close TrimEditWindow on drag end
+      if (useCutEditorStore.getState().trimEditActive) {
+        useCutEditorStore.getState().setTrimEditActive(false);
       }
     };
 

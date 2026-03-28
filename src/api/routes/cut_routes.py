@@ -1756,6 +1756,74 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id})
             continue
 
+        # MARKER_ROLL: roll_edit — atomic two-sided trim at edit point (FCP7 Ch.44)
+        # Adjusts outgoing clip's end and incoming clip's start in one undo step.
+        if op_type == "roll_edit":
+            clip_a_id = str(op.get("clip_a_id") or "")  # outgoing (left)
+            clip_b_id = str(op.get("clip_b_id") or "")  # incoming (right)
+            delta_sec = float(op.get("delta_sec") or 0.0)
+            if not clip_a_id or not clip_b_id:
+                raise ValueError("roll_edit requires clip_a_id and clip_b_id")
+            lane_a, clip_a = _find_clip(state, clip_a_id)
+            lane_b, clip_b = _find_clip(state, clip_b_id)
+            if clip_a is None or clip_b is None:
+                raise ValueError(f"roll_edit: clip(s) not found: {clip_a_id}, {clip_b_id}")
+            a_dur = float(clip_a.get("duration_sec") or 0.0)
+            b_start = float(clip_b.get("start_sec") or 0.0)
+            b_dur = float(clip_b.get("duration_sec") or 0.0)
+            min_dur = 1.0 / 24.0
+            new_a_dur = max(a_dur + delta_sec, min_dur)
+            actual_delta = new_a_dur - a_dur
+            new_b_start = round(b_start + actual_delta, 4)
+            new_b_dur = max(b_dur - actual_delta, min_dur)
+            clip_a["duration_sec"] = round(new_a_dur, 4)
+            if "source_out" in clip_a or "source_in" in clip_a:
+                clip_a["source_out"] = round(float(clip_a.get("source_in") or 0.0) + new_a_dur, 4)
+            clip_b["start_sec"] = new_b_start
+            clip_b["duration_sec"] = round(new_b_dur, 4)
+            if "source_in" in clip_b:
+                clip_b["source_in"] = round(float(clip_b.get("source_in") or 0.0) + actual_delta, 4)
+            for lane in [lane_a, lane_b]:
+                if lane is not None:
+                    lane["clips"] = sorted(lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id, "delta_sec": round(actual_delta, 4)})
+            continue
+
+        # MARKER_SLIDE: slide_clip — move clip between neighbors, adjust neighbors atomically (FCP7 Ch.44)
+        if op_type == "slide_clip":
+            clip_id = str(op.get("clip_id") or "")
+            new_start = float(op.get("start_sec") or 0.0)
+            left_id = str(op.get("left_neighbor_id") or "")
+            right_id = str(op.get("right_neighbor_id") or "")
+            source_lane, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"slide_clip: clip not found: {clip_id}")
+            old_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            delta = new_start - old_start
+            min_dur = 1.0 / 24.0
+            clip["start_sec"] = round(new_start, 4)
+            # Extend/shrink left neighbor's right edge
+            if left_id:
+                _, left_clip = _find_clip(state, left_id)
+                if left_clip is not None:
+                    left_dur = float(left_clip.get("duration_sec") or 0.0)
+                    left_clip["duration_sec"] = round(max(left_dur + delta, min_dur), 4)
+            # Adjust right neighbor's start and duration
+            if right_id:
+                _, right_clip = _find_clip(state, right_id)
+                if right_clip is not None:
+                    r_start = float(right_clip.get("start_sec") or 0.0)
+                    r_dur = float(right_clip.get("duration_sec") or 0.0)
+                    r_end = r_start + r_dur
+                    new_r_start = round(new_start + clip_dur, 4)
+                    right_clip["start_sec"] = new_r_start
+                    right_clip["duration_sec"] = round(max(r_end - new_r_start, min_dur), 4)
+            if source_lane is not None:
+                source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "start_sec": round(new_start, 4), "delta_sec": round(delta, 4)})
+            continue
+
         # MARKER_RTRIM: ripple_trim_to_playhead — trim clip boundary to playhead, ripple others
         if op_type == "ripple_trim_to_playhead":
             clip_id = str(op.get("clip_id") or "")
