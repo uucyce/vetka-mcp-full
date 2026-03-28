@@ -25,9 +25,14 @@ Origin: Two consecutive Eta agents independently proposed
 @marker: MARKER_201.EVENT_BUS
 """
 
+import asyncio
 import json
 import logging
+import os
+import socket
 import sqlite3
+import struct
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -292,6 +297,115 @@ class PiggybackCollector:
         return len(self._pending)
 
 
+class UDSPublisher:
+    """Pushes events to UDS Daemon for fan-out to MCP servers.
+
+    MARKER_201.UDS_PUB: Event Bus subscriber that sends events to the
+    standalone UDS daemon process. The daemon fans out to all connected
+    MCP servers, which store events for piggyback delivery.
+
+    Design:
+        - handle() queues the event (non-blocking, <0.01ms)
+        - A background thread drains the queue and sends via UDS socket
+        - If daemon is not running, events are silently dropped
+        - Reconnects automatically on socket failure
+
+    Wire protocol: 4-byte big-endian length prefix + JSON payload.
+    """
+
+    # Default socket path — matches scripts/uds_daemon.py
+    DEFAULT_SOCKET_PATH = "/tmp/vetka-events.uds"
+
+    def __init__(self, socket_path: str = DEFAULT_SOCKET_PATH):
+        self._socket_path = socket_path
+        self._queue: list = []  # simple list, protected by lock
+        self._lock = threading.Lock()
+        self._sock: Optional[socket.socket] = None
+        self._thread: Optional[threading.Thread] = None
+        self._running = False
+
+    def accepts(self, event: AgentEvent) -> bool:
+        return True  # all events get pushed to daemon
+
+    def handle(self, event: AgentEvent) -> None:
+        """Queue event for async send. Non-blocking, <0.01ms."""
+        frame = {
+            "event_id": event.event_id,
+            "event_type": event.event_type,
+            "source_agent": event.source_agent,
+            "source_tool": event.source_tool,
+            "timestamp": event.timestamp,
+            "payload": event.payload,
+            "tags": event.tags,
+        }
+        with self._lock:
+            self._queue.append(frame)
+            # Start background sender if not running
+            if not self._running:
+                self._start_sender()
+
+    def _start_sender(self):
+        """Start background thread to drain queue via UDS."""
+        if self._thread is not None and self._thread.is_alive():
+            return
+        self._running = True
+        self._thread = threading.Thread(
+            target=self._sender_loop, daemon=True, name="uds-publisher"
+        )
+        self._thread.start()
+
+    def _sender_loop(self):
+        """Background thread: drain queue, send to daemon via UDS."""
+        while True:
+            # Drain queue
+            with self._lock:
+                batch = self._queue[:]
+                self._queue.clear()
+
+            if not batch:
+                self._running = False
+                return  # nothing to send, thread exits
+
+            # Connect if needed
+            if self._sock is None:
+                try:
+                    self._sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    self._sock.settimeout(2.0)
+                    self._sock.connect(self._socket_path)
+                    # Send registration frame
+                    reg = json.dumps({"type": "publisher", "pid": os.getpid()}).encode()
+                    self._sock.sendall(struct.pack(">I", len(reg)) + reg)
+                except Exception:
+                    self._sock = None
+                    self._running = False
+                    return  # daemon not available, drop events
+
+            # Send batch
+            for frame in batch:
+                try:
+                    data = json.dumps(frame, default=str).encode()
+                    self._sock.sendall(struct.pack(">I", len(data)) + data)
+                except Exception:
+                    # Socket broken — close and stop
+                    try:
+                        self._sock.close()
+                    except Exception:
+                        pass
+                    self._sock = None
+                    self._running = False
+                    return
+
+    def close(self):
+        """Cleanup socket."""
+        self._running = False
+        if self._sock:
+            try:
+                self._sock.close()
+            except Exception:
+                pass
+            self._sock = None
+
+
 # ---------------------------------------------------------------------------
 # Module-level singleton
 # ---------------------------------------------------------------------------
@@ -316,7 +430,7 @@ def get_piggyback_collector() -> PiggybackCollector:
     return _piggyback
 
 
-def init_event_bus(db_path: Optional[Path] = None) -> EventBus:
+def init_event_bus(db_path: Optional[Path] = None, enable_uds: bool = True) -> EventBus:
     """Initialize the event bus with default subscribers.
 
     Called once from TaskBoard.__init__. Safe to call multiple times
@@ -324,6 +438,7 @@ def init_event_bus(db_path: Optional[Path] = None) -> EventBus:
 
     Args:
         db_path: Path to SQLite DB for audit log. If None, uses task_board.db location.
+        enable_uds: If True and UDS daemon socket exists, wire UDSPublisher.
     """
     bus = get_event_bus()
 
@@ -343,6 +458,13 @@ def init_event_bus(db_path: Optional[Path] = None) -> EventBus:
     # 3. Piggyback collector — for MCP response injection
     piggyback = get_piggyback_collector()
     bus.subscribe(piggyback)
+
+    # 4. UDS Publisher — push to daemon for fan-out to MCP servers
+    #    Only if daemon socket exists (daemon must be started separately)
+    if enable_uds and os.path.exists(UDSPublisher.DEFAULT_SOCKET_PATH):
+        uds_pub = UDSPublisher()
+        bus.subscribe(uds_pub)
+        logger.info("EventBus: UDS publisher wired (daemon at %s)", UDSPublisher.DEFAULT_SOCKET_PATH)
 
     logger.info(
         "EventBus initialized with %d subscribers", bus.subscriber_count
