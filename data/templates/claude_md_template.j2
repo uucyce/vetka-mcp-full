@@ -12,6 +12,8 @@
 ```
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
+If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
 
 ## Notifications
 Check for Commander messages: `vetka_task_board action=notifications role={{ role.callsign }}`
