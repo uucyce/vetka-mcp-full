@@ -2188,6 +2188,23 @@ class TaskBoard:
                     except Exception:
                         pass
 
+            # Check 4 (MARKER_201.CHERRY_PICK_STALE): branch_name with no commits ahead of main.
+            # When cherry-pick lands all branch commits on main without closing the task,
+            # branch becomes empty ahead of main → strong stale signal.
+            branch_name = task.get("branch_name")
+            if branch_name and score < 0.9:
+                try:
+                    branch_check = subprocess.run(
+                        ["git", "log", "--oneline", f"main..{branch_name}", "-1"],
+                        cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                    )
+                    # returncode 0 + empty stdout = branch exists but has nothing ahead of main
+                    if branch_check.returncode == 0 and not branch_check.stdout.strip():
+                        evidence.append(f"branch_empty_ahead_of_main: {branch_name} (all commits already on main)")
+                        score += 0.9
+                except Exception:
+                    pass
+
             # Check 3: allowed_paths have commits newer than task creation
             if score < 0.5:
                 allowed = task.get("allowed_paths") or []
