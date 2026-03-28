@@ -22,6 +22,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
+import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 import { useAudioPlayback, type AudioClipInfo } from '../../hooks/useAudioPlayback';
@@ -75,8 +76,10 @@ function SpeedControlModal() {
   const show = useCutEditorStore((s) => s.showSpeedControl);
   if (!show) return null;
   const close = () => useCutEditorStore.getState().setShowSpeedControl(false);
+  // MARKER_GAMMA-ESC-HOOK: Escape closes modal + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
   return (
-    <div data-testid="speed-control-overlay" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+    <div data-testid="speed-control-overlay" data-overlay="1" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
          onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div data-testid="speed-control">
         <SpeedControl onClose={close} />
@@ -1449,7 +1452,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const newTime = curTime + dt * shuttleSpeed;
-      doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
+      // MARKER_GAMMA-LOOP: If loop playback is on and we've reached the end, wrap back
+      if (!isSourceFocused && s.loopPlayback && maxDur > 0 && newTime >= maxDur) {
+        const loopStart = s.sequenceMarkIn ?? 0;
+        doSeek(loopStart);
+      } else {
+        doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
+      }
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };

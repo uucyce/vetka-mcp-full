@@ -188,6 +188,7 @@ export default function MarkerListPanel() {
                   key={m.marker_id}
                   data-testid={`marker-list-row-${m.marker_id}`}
                   onClick={() => seek(m.start_sec)}
+                  onDoubleClick={() => useCutEditorStore.getState().setShowEditMarkerDialog(true, m.marker_id)}
                   style={{
                     cursor: 'pointer',
                     background: isNear ? '#1a1a1a' : 'transparent',

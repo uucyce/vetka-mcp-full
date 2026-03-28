@@ -22,6 +22,7 @@ import {
   savePresetName,
   getShortcutLabel,
 } from '../../hooks/useCutHotkeys';
+import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
@@ -198,6 +199,8 @@ export default function MenuBar() {
   // Store actions
   const store = useCutEditorStore;
   const dockStore = useDockviewStore;
+  // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
+  const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -206,6 +209,20 @@ export default function MenuBar() {
       if (e.key === 'cut_hotkey_preset' && e.newValue) {
         setPresetName(e.newValue as HotkeyPresetName);
       }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // MARKER_GAMMA-RECENT-PROJECTS: Reactive recent projects list from localStorage
+  // Refresh on StorageEvent (other tab) and on File menu open (same tab)
+  const [recentProjects, setRecentProjects] = useState(loadRecent);
+  useEffect(() => {
+    if (openMenu === 'File') setRecentProjects(loadRecent());
+  }, [openMenu]);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cut_recent_projects') setRecentProjects(loadRecent());
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -285,9 +302,18 @@ export default function MenuBar() {
         { label: 'Open Project...', shortcut: '⌘O', action: () => {
           window.dispatchEvent(new CustomEvent('cut:import-media'));
         }},
-        { label: 'Recent Projects', submenu: [
-          { label: '(no recent projects)', disabled: true },
-        ]},
+        { label: 'Recent Projects', submenu: recentProjects.length === 0
+          ? [{ label: '(no recent projects)', disabled: true }]
+          : recentProjects.map((proj) => ({
+              label: proj.name || proj.id,
+              action: () => {
+                const params = new URLSearchParams();
+                params.set('sandbox_root', proj.path);
+                params.set('project_id', proj.id);
+                window.location.search = params.toString();
+              },
+            })),
+        },
         { separator: true },
         { label: 'Close Tab', shortcut: '⌘W', action: () => {
           const s = store.getState();
@@ -684,8 +710,10 @@ export default function MenuBar() {
     {
       label: 'Sequence',
       items: [
-        { label: 'Render In to Out', shortcut: '⌥R', disabled: true },
+        { label: 'Render In to Out', shortcut: '⌥R', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Render All', disabled: true },
+        { separator: true },
+        { label: loopPlayback ? '✓ Loop' : 'Loop', action: () => store.getState().setLoopPlayback(!store.getState().loopPlayback) },
         { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
