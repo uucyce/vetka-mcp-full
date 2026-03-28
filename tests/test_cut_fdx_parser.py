@@ -440,7 +440,8 @@ class TestParseScriptAutoDetect:
     """Test the _parse_script_auto function from cut_routes.py."""
 
     def _auto(self, text, fmt_hint="auto"):
-        return _parse_script_auto(text, fmt_hint)
+        chunks, detected, _warning = _parse_script_auto(text, fmt_hint)
+        return chunks, detected
 
     def test_fdx_auto_detected(self):
         chunks, detected = self._auto(MINIMAL_FDX)
