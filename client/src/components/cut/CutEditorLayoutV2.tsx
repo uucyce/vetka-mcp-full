@@ -703,8 +703,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       for (const lane of s.lanes) {
         const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
-          s.setMarkIn(clip.start_sec);
-          s.setMarkOut(clip.start_sec + clip.duration_sec);
+          s.setSequenceMarkIn(clip.start_sec);
+          s.setSequenceMarkOut(clip.start_sec + clip.duration_sec);
           return;
         }
       }
