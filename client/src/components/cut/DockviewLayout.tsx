@@ -54,6 +54,7 @@ import {
   MulticamPanel,
   SourceAcquirePanelDock,
   LayerStackPanel,
+  GenerationControlPanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -129,6 +130,8 @@ const PANEL_COMPONENTS = {
   timeline: TimelinePanel,
   multicam: MulticamPanel,
   acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
+  // MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
+  generation: GenerationControlPanelDock,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
