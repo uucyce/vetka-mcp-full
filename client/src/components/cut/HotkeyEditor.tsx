@@ -12,6 +12,7 @@
  * Mount: as modal overlay or dockview panel.
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 import {
   type CutHotkeyAction,
   type HotkeyPresetName,
@@ -218,14 +219,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   }, [getBinding]);
 
   // MARKER_GAMMA-ESC-OVERLAY: Escape closes editor when not in capture mode (standard modal UX)
-  useEffect(() => {
-    if (capturing) return; // capture mode handles Escape itself (cancel capture only)
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [capturing, onClose]);
+  useOverlayEscapeClose(onClose, !capturing);
 
   // Key capture handler
   useEffect(() => {
