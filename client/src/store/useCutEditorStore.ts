@@ -110,6 +110,16 @@ export type ClipTransition = {
   audio_curve?: 'equal_power' | 'linear';
 };
 
+// MARKER_GAMMA-LAYERUI-P1: Layer manifest meta (lightweight pointer stored on clip by Beta)
+export interface LayerManifestMeta {
+  manifest_path: string;
+  format: string;
+  layer_count: number;
+  has_foreground: boolean;
+  has_background: boolean;
+  sample_id: string;
+}
+
 export type TimelineClip = {
   clip_id: string;
   scene_id?: string;
@@ -132,15 +142,8 @@ export type TimelineClip = {
     confidence?: number;
     reference_path?: string;
   };
-  // MARKER_LAYERFX: Layer manifest metadata (§6 of canonical spec)
-  layer_manifest?: {
-    manifest_path: string;
-    format: string; // "layer_space" | "plate_export"
-    layer_count: number;
-    has_foreground: boolean;
-    has_background: boolean;
-    sample_id: string;
-  };
+  // MARKER_GAMMA-LAYERUI-P1: Layer manifest reference (populated by Beta on depth map generation)
+  layer_manifest?: LayerManifestMeta;
 };
 
 export type TimelineLane = {
