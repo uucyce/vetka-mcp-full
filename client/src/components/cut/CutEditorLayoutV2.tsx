@@ -994,7 +994,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const ids = [...useSelectionStore.getState().selectedClipIds];
       if (ids.length !== 2) return;
       void useCutEditorStore.getState().applyTimelineOps([{
-        op: 'swap_clips', clip_id_a: ids[0], clip_id_b: ids[1],
+        op: 'swap_clips', clip_a_id: ids[0], clip_b_id: ids[1],
       }]);
     },
     deleteMarker: () => {
