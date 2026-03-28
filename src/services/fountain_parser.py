@@ -152,6 +152,8 @@ class TimedScene:
     start_sec: float
     duration_sec: float
     page_number: float      # fractional page position at scene start
+    line_start: int = 0     # 0-based start line in source
+    line_end: int = 0       # 0-based end line in source
     is_title_page: bool = False
 
 
@@ -647,6 +649,8 @@ def compute_scene_timing(scenes: List[FountainScene]) -> List[TimedScene]:
                 start_sec=0.0,
                 duration_sec=0.0,
                 page_number=0.0,
+                line_start=sc.line_start,
+                line_end=sc.line_end,
                 is_title_page=True,
             ))
             continue
@@ -663,6 +667,8 @@ def compute_scene_timing(scenes: List[FountainScene]) -> List[TimedScene]:
             start_sec=cumulative_sec,
             duration_sec=duration_sec,
             page_number=cumulative_pages,
+            line_start=sc.line_start,
+            line_end=sc.line_end,
             is_title_page=False,
         ))
 

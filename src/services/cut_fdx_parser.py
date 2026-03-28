@@ -89,15 +89,15 @@ class FDXScene:
             if el.element_type == "scene_heading":
                 parts.append(el.text.upper())
             elif el.element_type == "character":
-                parts.append(f"\n{el.text.upper()}")
+                parts.append(el.text.upper())
             elif el.element_type == "parenthetical":
                 parts.append(f"({el.text})")
             elif el.element_type == "dialogue":
                 parts.append(el.text)
             elif el.element_type == "transition":
-                parts.append(f"\n{el.text}")
+                parts.append(el.text)
             else:
-                parts.append(f"\n{el.text}")
+                parts.append(el.text)
         return "\n".join(parts).strip()
 
     @property
