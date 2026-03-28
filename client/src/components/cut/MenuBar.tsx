@@ -235,6 +235,13 @@ export default function MenuBar() {
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
+  // MARKER_GAMMA-ESC-GUARD: Sync open state to DOM attribute so useCutHotkeys can skip escapeContext
+  useEffect(() => {
+    if (barRef.current) {
+      barRef.current.dataset.menuOpen = openMenu ? '1' : '';
+    }
+  }, [openMenu]);
+
   // MARKER_GAMMA-MENU-WIRE: Set transition alignment on selected clip
   const setTransitionAlignment = (alignment: 'center' | 'start' | 'end') => {
     const s = store.getState();
@@ -641,17 +648,27 @@ export default function MenuBar() {
           // TODO: requires per-clip transform state
         }, disabled: true },
         { separator: true },
-        { label: `${useSelectionStore.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
-          // TODO: toggle clip enabled/disabled state
-        }, disabled: true },
+        { label: (() => {
+          // MARKER_GAMMA-CLIP-ENABLE: show checkmark when clip is enabled (not disabled)
+          const clipId = useSelectionStore.getState().selectedClipId;
+          const isDisabled = clipId ? store.getState().disabledClips?.has(clipId) : false;
+          return `${clipId && !isDisabled ? '\u2713 ' : '  '}Clip Enable`;
+        })(), action: () => {
+          const clipId = useSelectionStore.getState().selectedClipId;
+          if (clipId) store.getState().toggleClipEnabled(clipId);
+        }, disabled: !useSelectionStore.getState().selectedClipId },
         { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
         { separator: true },
-        { label: 'Copy Filters', disabled: true },
-        { label: 'Paste Filters', disabled: true },
-        { label: 'Remove Filters', disabled: true },
+        // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove clip effects
+        { label: 'Copy Filters', action: () => store.getState().copyFilters(),
+          disabled: !useSelectionStore.getState().selectedClipId },
+        { label: 'Paste Filters', action: () => store.getState().pasteFilters(),
+          disabled: !store.getState().filterClipboard || !useSelectionStore.getState().selectedClipId },
+        { label: 'Remove Filters', action: () => store.getState().removeFilters(),
+          disabled: !useSelectionStore.getState().selectedClipId },
         { separator: true },
         { label: 'Composite Mode', submenu: [
           { label: 'Normal', disabled: true },
