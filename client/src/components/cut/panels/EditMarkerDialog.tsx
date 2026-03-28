@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
+import { useOverlayEscapeClose } from '../../../hooks/useOverlayEscapeClose';
 
 const OVERLAY: CSSProperties = {
   position: 'fixed', inset: 0, zIndex: 9999,
@@ -80,6 +81,9 @@ export function EditMarkerDialog() {
     useCutEditorStore.getState().setShowEditMarkerDialog(false);
   }, []);
 
+  // MARKER_GAMMA-ESC-HOOK: Escape closes dialog + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
+
   const save = useCallback(() => {
     if (!editingMarkerId) return;
     const store = useCutEditorStore.getState();
@@ -97,6 +101,7 @@ export function EditMarkerDialog() {
     <div
       style={OVERLAY}
       data-testid="edit-marker-overlay"
+      data-overlay="1"
       role="dialog"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
