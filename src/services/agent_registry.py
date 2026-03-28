@@ -54,6 +54,7 @@ class AgentRole:
     predecessor_docs: str  # glob pattern
     key_docs: tuple[str, ...]
     roadmap: str
+    model_tier: Optional[str] = None  # MARKER_200.MODEL_TIER: opus | sonnet | haiku
     # MARKER_200.AUTO_PROVISION: Ephemeral roles created at runtime
     ephemeral: bool = False
     origin: str = ""  # terminal | mcc | vetka_chat | opencode | codex | subagent
@@ -109,6 +110,7 @@ class AgentRegistry:
                 predecessor_docs=entry.get("predecessor_docs", ""),
                 key_docs=tuple(entry.get("key_docs", [])),
                 roadmap=entry.get("roadmap", ""),
+                model_tier=entry.get("model_tier"),  # MARKER_200.MODEL_TIER
             )
             self._roles.append(role)
 

@@ -1160,18 +1160,6 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             except Exception:
                 pass  # STM save is best-effort
 
-                # MARKER_200.CHECKPOINT: Persist session state on claim
-                try:
-                    from src.services.session_tracker import get_session_tracker
-                    _ck_tracker = get_session_tracker()
-                    _ck_tracker.save_checkpoint(
-                        _tracker_sid,
-                        task_title=task.get("title"),
-                        completion_contract=task.get("completion_contract"),
-                    )
-                except Exception:
-                    pass  # Checkpoint is best-effort
-
         return result
 
     # MARKER_181.4: complete action — unified pipeline
@@ -1859,6 +1847,34 @@ def _inject_debrief(result: dict, arguments: dict) -> None:
             logger.debug(f"[TaskBoard] STM auto-saved on complete: {len(_stm)} entries")
     except Exception:
         pass  # STM save is best-effort
+
+    # MARKER_200.W0.4: Write CORTEX top tools to AURA as tool_usage_patterns.
+    # REFLEX signal 4 (weight 0.07) reads user_preferences.tool_usage_patterns
+    # but nothing ever wrote to it — signal was always zero.
+    try:
+        from src.services.reflex_feedback import get_feedback_store
+        from src.memory.aura_store import get_aura_store
+        _fb = get_feedback_store()
+        _summary = _fb.get_feedback_summary()
+        _per_tool = _summary.get("per_tool", {})
+        if _per_tool:
+            _top_tools = sorted(
+                _per_tool.keys(),
+                key=lambda t: _per_tool[t].get("count", 0),
+                reverse=True,
+            )[:5]
+            _aura = get_aura_store()
+            _aura.set_preference(
+                agent_type="default",
+                user_id="default",
+                category="tool_usage_patterns",
+                key="frequent_tools",
+                value=_top_tools,
+                confidence=0.8,
+            )
+            logger.debug(f"[TaskBoard] AURA tool_usage_patterns updated: {_top_tools}")
+    except Exception:
+        pass  # AURA write is best-effort
 
 
 def _create_passive_experience_report(

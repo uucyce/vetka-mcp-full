@@ -16,6 +16,7 @@ roles:
     role_title: "Engine Architect"
     worktree: "cut-engine"
     branch: "claude/cut-engine"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     owned_paths:
       - "client/src/store/useTimelineInstanceStore.ts"
       - "client/src/store/useCutEditorStore.ts"           # timeline fields ONLY
@@ -45,6 +46,7 @@ roles:
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
       - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
@@ -80,6 +82,7 @@ roles:
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
       - "client/src/components/cut/DockviewLayout.tsx"
@@ -105,6 +108,7 @@ roles:
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -129,6 +133,7 @@ roles:
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -153,6 +158,7 @@ roles:
     role_title: "Harness Engineer / Infrastructure"
     worktree: "harness"
     branch: "claude/harness"
+    model_tier: "opus"  # MARKER_200.MODEL_TIER — infra needs deep reasoning
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -217,6 +223,7 @@ roles:
     role_title: "Architect-Commander"
     worktree: "pedantic-bell"
     branch: "claude/pedantic-bell"
+    model_tier: "opus"  # MARKER_200.MODEL_TIER — Commander needs full reasoning
     owned_paths:
       - "docs/"
       - "CLAUDE.md"
