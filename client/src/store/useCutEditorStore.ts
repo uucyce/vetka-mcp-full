@@ -300,6 +300,8 @@ interface CutEditorState {
   // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
   showEditMarkerDialog: boolean;
   editingMarkerId: string | null;
+  // MARKER_GAMMA-LOOP: Loop playback (FCP7 Ch.8)
+  loopPlayback: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -493,6 +495,8 @@ interface CutEditorState {
   setShowProjectSettings: (show: boolean) => void;
   // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
+  // MARKER_GAMMA-LOOP: Loop playback
+  setLoopPlayback: (loop: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -707,6 +711,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
   showEditMarkerDialog: false,
   editingMarkerId: null,
+  // MARKER_GAMMA-LOOP: Loop playback
+  loopPlayback: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -1312,6 +1318,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
   // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
+  // MARKER_GAMMA-LOOP: Loop playback
+  setLoopPlayback: (loop) => set({ loopPlayback: loop }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {

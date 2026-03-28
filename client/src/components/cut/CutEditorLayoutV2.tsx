@@ -1452,7 +1452,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const newTime = curTime + dt * shuttleSpeed;
-      doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
+      // MARKER_GAMMA-LOOP: If loop playback is on and we've reached the end, wrap back
+      if (!isSourceFocused && s.loopPlayback && maxDur > 0 && newTime >= maxDur) {
+        const loopStart = s.sequenceMarkIn ?? 0;
+        doSeek(loopStart);
+      } else {
+        doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
+      }
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };
