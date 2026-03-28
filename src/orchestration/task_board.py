@@ -2124,6 +2124,24 @@ class TaskBoard:
         is_worktree = branch != "main"
         final_status = "done_worktree" if is_worktree else "done_main"
 
+        # MARKER_201.BRANCH_GUARD: Warn if detected branch doesn't match role's expected branch
+        # Phase 1: warn-mode only (log warning, do not reject)
+        # Phase 2 (after TB_201.E validation): upgrade to reject
+        task_role = task.get("role", "")
+        if task_role and branch and branch != "main":
+            try:
+                from src.services.agent_registry import get_agent_registry
+                registry = get_agent_registry()
+                role_entry = registry.get_by_callsign(task_role)
+                if role_entry and role_entry.branch and role_entry.branch != branch:
+                    logger.warning(
+                        f"[TaskBoard] BRANCH_GUARD: task {task_id} role={task_role} "
+                        f"expects branch={role_entry.branch} but completing on branch={branch}. "
+                        f"Warn-mode — allowing completion."
+                    )
+            except Exception as e:
+                logger.debug(f"[TaskBoard] BRANCH_GUARD check skipped (non-fatal): {e}")
+
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
         if final_status == "done_worktree" and not commit_hash and not manual_override:
             return {
