@@ -276,7 +276,7 @@ export default function PasteAttributesDialog({
   };
 
   return (
-    <div style={styles.overlay} onClick={onClose}>
+    <div style={styles.overlay} onClick={onClose} data-overlay="1">{/* MARKER_GAMMA-ESC-GUARD: guard escapeContext when dialog open */}
       <div
         data-testid="paste-attributes-dialog"
         style={styles.dialog}
