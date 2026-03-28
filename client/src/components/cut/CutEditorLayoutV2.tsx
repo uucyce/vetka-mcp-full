@@ -39,6 +39,7 @@ import TrimEditWindow from './TrimEditWindow';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
+import { useGenerationControlStore } from '../../store/useGenerationControlStore';
 
 
 // ─── Styles ───
@@ -1624,6 +1625,46 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime]);
+
+  // MARKER_GEN-HOTKEYS-GLOBAL: Cmd+J/K/L/R generation transport hotkeys.
+  // Scoped to focusedPanel==='generation'. Uses capture phase to override conflicting
+  // global bindings (Cmd+J=openSpeedControl, Cmd+K=splitClip, Cmd+L=toggleLinkedSelection).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const s = useCutEditorStore.getState();
+      if (s.focusedPanel !== 'generation') return;
+      if (!e.metaKey && !e.ctrlKey) return;
+      const store = useGenerationControlStore.getState();
+      const { machineState } = store;
+      if (e.key === 'r') {
+        if (['IDLE', 'CONFIGURING', 'REJECTED'].includes(machineState)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          store.submitJob();
+        }
+      } else if (e.key === 'j') {
+        if (machineState === 'PREVIEWING') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          store.acceptPreview();
+        }
+      } else if (e.key === 'k') {
+        if (machineState === 'PREVIEWING') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          store.rejectPreview();
+        }
+      } else if (e.key === 'l') {
+        if (machineState === 'QUEUED' || machineState === 'GENERATING') {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          store.cancelJob();
+        }
+      }
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
 
   // MARKER_SCRUB_SYNC: REMOVED — Source Monitor is fully independent from timeline.
   // It only changes via explicit user action: double-click, Match Frame, "Open in Source Monitor".
