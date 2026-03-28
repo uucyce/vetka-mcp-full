@@ -946,7 +946,7 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
           const scope = ACTION_SCOPE[action];
           if (scope !== 'global') {
             if (!scope.includes(focusedPanel as FocusPanelId)) {
-              return; // action not allowed in this panel — swallow silently
+              continue; // MARKER_GAMMA-SCOPE-FIX: was `return` — killed all subsequent actions in loop
             }
           }
 
