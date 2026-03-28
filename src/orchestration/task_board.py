@@ -3769,16 +3769,30 @@ class TaskBoard:
         - squash: Git merge --squash + commit
         """
         try:
-            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
-            # Stash any uncommitted changes first to prevent checkout failure
+            # MARKER_201.STASH_SAFE: Stash only TRACKED changes before checkout.
+            # --include-untracked was removed: untracked files (new docs, WIP code) never
+            # block `git checkout main` and were being silently lost when stash pop failed.
             stash_proc = await asyncio.create_subprocess_exec(
-                "git", "stash", "--include-untracked",
+                "git", "stash",
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stash_out, _ = await stash_proc.communicate()
             did_stash = b"No local changes" not in stash_out
+
+            # Save stash ref for recovery logging if pop fails later
+            stash_ref = None
+            if did_stash:
+                _sr_proc = await asyncio.create_subprocess_exec(
+                    "git", "rev-parse", "--short", "refs/stash",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _sr_out, _ = await _sr_proc.communicate()
+                if _sr_proc.returncode == 0:
+                    stash_ref = _sr_out.decode().strip()
 
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
@@ -3944,14 +3958,37 @@ class TaskBoard:
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
 
-            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
+            # MARKER_201.STASH_SAFE: Restore stash with error checking.
+            # If pop fails (conflict between merge result and stashed tracked changes),
+            # the stash is preserved — log recovery path so work is not lost.
             if did_stash:
-                await (await asyncio.create_subprocess_exec(
+                pop_proc = await asyncio.create_subprocess_exec(
                     "git", "stash", "pop",
                     cwd=str(PROJECT_ROOT),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )).communicate()
+                )
+                pop_out, pop_err = await pop_proc.communicate()
+                if pop_proc.returncode != 0:
+                    _ref = stash_ref or "stash@{0}"
+                    logger.error(
+                        "[MergeRequest] STASH_POP_FAILED: pre-merge working state not restored. "
+                        "Stash preserved at %s. "
+                        "Recovery: `git stash pop --index` or `git stash show -p %s | git apply`. "
+                        "Error: %s",
+                        _ref, _ref, pop_err.decode().strip()[:200],
+                    )
+                    return {
+                        "success": True,
+                        "commit_hash": commit_hash,
+                        "stash_pop_failed": True,
+                        "stash_ref": _ref,
+                        "stash_warning": (
+                            f"Merge succeeded but pre-merge working state could not be restored. "
+                            f"Your uncommitted changes are in stash {_ref}. "
+                            f"Run: git stash pop --index"
+                        ),
+                    }
 
             return {"success": True, "commit_hash": commit_hash}
 
