@@ -3078,6 +3078,32 @@ class TaskBoard:
                     pass
                 filtered_commits.append(_ch)
             if not filtered_commits:
+                # MARKER_200.MERGE_AUTO_FIX: Update task status + log before returning
+                # QA fix: early-return was skipping status update → task stuck in limbo
+                try:
+                    from src.orchestration.action_registry import ActionRegistry
+                    registry = ActionRegistry()
+                    registry.log_action(
+                        run_id=f"merge_{task_id}",
+                        agent="opus",
+                        action="merge_skip",
+                        file=f"{branch}→main",
+                        result="noop",
+                        session_id=task.get("session_id"),
+                        task_id=task_id,
+                        metadata={"reason": "all_commits_already_on_main", "strategy": strategy},
+                    )
+                    registry.flush()
+                except Exception as e:
+                    logger.debug(f"[MergeRequest] ActionRegistry log failed (non-fatal): {e}")
+                self.update_task(
+                    task_id,
+                    status="done_main",
+                    merge_result={"status": "noop", "note": "All commits already on main"},
+                    _history_event="merged_to_main",
+                    _history_source="merge_request",
+                    _history_reason=f"{branch} → main: all commits already present (noop)",
+                )
                 return {"success": True, "note": "All commits already on main", "commits_merged": 0}
             commits = filtered_commits
 
