@@ -9,7 +9,7 @@
  * Reads markers from useCutEditorStore. Marker colors match timeline rendering.
  */
 import { useState, useCallback, useMemo, type CSSProperties } from 'react';
-import { useCutEditorStore, type TimeMarker, type MarkerKind } from '../../../store/useCutEditorStore';
+import { useCutEditorStore } from '../../../store/useCutEditorStore';
 
 // Marker colors — matches TimelineTrackView MARKER_COLORS (exception to monochrome rule)
 const MARKER_COLORS: Record<string, string> = {
@@ -146,6 +146,7 @@ export default function MarkerListPanel() {
       {/* Toolbar: filter + count */}
       <div style={TOOLBAR}>
         <select
+          data-testid="marker-list-filter-kind"
           value={filterKind}
           onChange={(e) => setFilterKind(e.target.value)}
           style={{

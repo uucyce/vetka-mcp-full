@@ -8,6 +8,8 @@
  */
 import { useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
+import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 
 const ROW_STYLE: CSSProperties = {
   display: 'flex',
@@ -50,23 +52,49 @@ interface ButtonDef {
 }
 
 export default function SourceMonitorButtons() {
-  const store = useCutEditorStore;
+  const { insertEdit, overwriteEdit } = useThreePointEdit();
 
+  // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
   const handleMarkClip = useCallback(() => {
-    store.getState().markClip?.();
+    const s = useCutEditorStore.getState();
+    const selectedClipId = useSelectionStore.getState().selectedClipId;
+    if (!selectedClipId) return;
+    for (const lane of s.lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+      if (clip) {
+        s.setMarkIn(clip.start_sec);
+        s.setMarkOut(clip.start_sec + clip.duration_sec);
+        return;
+      }
+    }
   }, []);
 
+  // MARKER_W5.MF: Match Frame (F) — open source at playhead clip frame
   const handleMatchFrame = useCallback(() => {
-    store.getState().matchFrame?.();
+    const s = useCutEditorStore.getState();
+    for (const lane of s.lanes) {
+      if (s.lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+          const sourceOffset = clip.source_in ?? 0;
+          const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+          s.setSourceMedia(clip.source_path);
+          s.setSourceMarkIn(sourceTime);
+          s.seekSource(sourceTime);
+          s.setFocusedPanel('source');
+          return;
+        }
+      }
+    }
   }, []);
 
   const handleInsert = useCallback(() => {
-    store.getState().insertEdit?.();
-  }, []);
+    insertEdit();
+  }, [insertEdit]);
 
   const handleOverwrite = useCallback(() => {
-    store.getState().overwriteEdit?.();
-  }, []);
+    overwriteEdit();
+  }, [overwriteEdit]);
 
   const buttons: ButtonDef[] = [
     { label: 'X', title: 'Mark Clip (X)', action: handleMarkClip },

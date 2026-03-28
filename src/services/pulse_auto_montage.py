@@ -688,3 +688,23 @@ def get_auto_montage() -> PulseAutoMontage:
     if _instance is None:
         _instance = PulseAutoMontage()
     return _instance
+
+
+# MARKER_198.STUB: Assembly runner stubs — imported by cut_routes_pulse.py
+# TODO: Implement actual assembly logic (Alpha/Beta domain)
+async def run_favorites_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage from favorite-marked clips."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="favorites")
+
+
+async def run_script_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage following script/subtitle timing."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="script")
+
+
+async def run_music_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage synced to music beats."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="music")

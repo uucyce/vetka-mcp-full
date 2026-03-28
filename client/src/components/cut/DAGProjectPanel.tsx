@@ -114,7 +114,7 @@ function MediaAssetNode({ data }: NodeProps<Node<DAGNodeData>>) {
         {data.label}
       </div>
       {data.camelot_key && (
-        <div style={{ fontSize: 7, color: '#5DCAA5', fontFamily: 'monospace', marginTop: 1 }}>
+        <div style={{ fontSize: 7, color: '#999', fontFamily: 'monospace', marginTop: 1 }}>
           {data.camelot_key}
         </div>
       )}
@@ -409,6 +409,17 @@ export default function DAGProjectPanel({ timelineId: timelineIdProp }: DAGProje
             }, disabled: !dagCtx.path },
             { separator: true },
             { label: 'Focus in Project Panel', action: () => { syncFromDAG(dagCtx.nodeId, dagCtx.path); setDagCtx(null); } },
+            { separator: true },
+            { label: 'Reveal in Finder', action: () => {
+              if (dagCtx.path) {
+                fetch(`${API_BASE}/files/open-in-finder`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ path: dagCtx.path }),
+                }).catch(() => {});
+              }
+              setDagCtx(null);
+            }, disabled: !dagCtx.path },
           ].map((item, i) =>
             'separator' in item ? (
               <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />

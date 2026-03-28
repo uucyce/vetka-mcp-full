@@ -90,9 +90,9 @@ const BADGE: CSSProperties = {
   textAlign: 'center',
 };
 
-const VIDEO_BADGE: CSSProperties = { ...BADGE, background: '#1a2a1a', color: '#6a8a6a' };
-const AUDIO_BADGE: CSSProperties = { ...BADGE, background: '#1a1a2a', color: '#6a6a8a' };
-const SUB_BADGE: CSSProperties = { ...BADGE, background: '#2a2a1a', color: '#8a8a6a' };
+const VIDEO_BADGE: CSSProperties = { ...BADGE, background: '#1a1a1a', color: '#888' };
+const AUDIO_BADGE: CSSProperties = { ...BADGE, background: '#1a1a1a', color: '#888' };
+const SUB_BADGE: CSSProperties = { ...BADGE, background: '#1a1a1a', color: '#888' };
 
 // ─── Component ───
 

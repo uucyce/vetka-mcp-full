@@ -277,6 +277,18 @@ export default function ExportDialog() {
   const socketRef = useRef<Socket | null>(null);
   const useSocketProgress = useRef(false);
 
+  // MARKER_GAMMA-T1: Listen for MenuBar export sub-menu pre-selection
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.tab) setTab(detail.tab);
+      if (detail?.format) setEditorialFormat(detail.format);
+      if (detail?.codec) setCodec(detail.codec);
+    };
+    window.addEventListener('cut:open-export', handler);
+    return () => window.removeEventListener('cut:open-export', handler);
+  }, []);
+
   // MARKER_B4.2: SocketIO render_progress listener
   useEffect(() => {
     const jobId = activeJobIdRef.current;
@@ -853,7 +865,7 @@ export default function ExportDialog() {
                   key={fmt.id}
                   style={{
                     ...RADIO_ITEM,
-                    background: editorialFormat === fmt.id ? '#1f1f2a' : 'transparent',
+                    background: editorialFormat === fmt.id ? '#222' : 'transparent',
                   }}
                   onClick={() => setEditorialFormat(fmt.id)}
                 >
@@ -879,7 +891,7 @@ export default function ExportDialog() {
                   key={preset.id}
                   style={{ ...RADIO_ITEM, opacity: isRendering ? 0.5 : 1, pointerEvents: isRendering ? 'none' : 'auto' }}
                   onClick={() => startPublish(preset.id)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#1f1f2a'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#222'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
                 >
                   <div>

@@ -11,7 +11,6 @@ Tests:
 7. Pending tasks — injected into output
 """
 
-import json
 import time
 
 import pytest
@@ -23,7 +22,6 @@ from src.tools.generate_claude_md import (
     generate_all,
     write_claude_md,
     _load_template,
-    _extract_predecessor_advice_from_json,
 )
 
 
@@ -88,114 +86,51 @@ class TestRendering:
 
 
 class TestStructure:
+    """MARKER_197.SLIM: CLAUDE.md is now a thin bootstrap stub.
+    All dynamic context comes from session_init."""
+
     def test_has_role_header(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
         assert "**Role:**" in content
-        assert "**Callsign:** Alpha" in content
 
-    def test_has_first_task_section(self, registry, template):
+    def test_has_init_section(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Your First Task in 3 Steps" in content
+        assert "## Init" in content
         assert "mcp__vetka__vetka_session_init" in content
-
-    def test_has_identity_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "## Identity" in content
-
-    def test_has_owned_files_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Owned Files" in content
-        assert "useTimelineInstanceStore" in content
-
-    def test_has_do_not_touch_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "DO NOT Touch" in content
-        assert "MenuBar" in content
 
     def test_has_cardinal_rules(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
         assert "NEVER commit to main" in content
-        assert "branch=claude/cut-engine" in content
+        assert "claude/cut-engine" in content
 
-    def test_has_key_docs(self, registry, template):
+    def test_has_required_reading(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Key Docs" in content
-
-    def test_has_session_end_section(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "Before Session End" in content
-        assert "experience report" in content.lower()
+        assert "Required Reading" in content
 
     def test_has_auto_generated_header(self, registry, template):
         content = generate_claude_md("Alpha", registry=registry, template=template)
-        assert "AUTO-GENERATED" in content
+        assert "Auto-generated" in content
 
 
 # ── Predecessor Advice Tests ────────────────────────────────
-
-
-class TestPredecessorAdvice:
-    def test_advice_from_json_reports(self, tmp_path, registry, template):
-        """Create a fake JSON experience report and verify it's picked up."""
-        reports_dir = tmp_path / "reports"
-        reports_dir.mkdir()
-        report = {
-            "session_id": "test-001",
-            "agent_callsign": "Alpha",
-            "domain": "engine",
-            "branch": "claude/cut-engine",
-            "timestamp": "2026-03-22T00:00:00Z",
-            "lessons_learned": ["Always test the JKL shuttle at 4x speed"],
-            "recommendations": ["Read chapter 5 of the FCP7 manual"],
-        }
-        (reports_dir / "test-001.json").write_text(json.dumps(report))
-
-        # Monkey-patch the reports dir
-        import src.tools.generate_claude_md as gen_mod
-        original_dir = gen_mod._EXPERIENCE_REPORTS_DIR
-        gen_mod._EXPERIENCE_REPORTS_DIR = reports_dir
-        try:
-            content = generate_claude_md("Alpha", registry=registry, template=template)
-            assert "Always test the JKL shuttle at 4x speed" in content
-            assert "Read chapter 5 of the FCP7 manual" in content
-        finally:
-            gen_mod._EXPERIENCE_REPORTS_DIR = original_dir
-
-    def test_no_advice_still_renders(self, registry, template, tmp_path):
-        """Even with no experience reports, CLAUDE.md should render."""
-        import src.tools.generate_claude_md as gen_mod
-        original_dir = gen_mod._EXPERIENCE_REPORTS_DIR
-        gen_mod._EXPERIENCE_REPORTS_DIR = tmp_path / "empty_reports"
-        original_fb = gen_mod._FEEDBACK_DOCS_DIR
-        gen_mod._FEEDBACK_DOCS_DIR = tmp_path / "empty_feedback"
-        try:
-            content = generate_claude_md("Alpha", registry=registry, template=template)
-            assert content is not None
-            assert "Agent Alpha" in content
-        finally:
-            gen_mod._EXPERIENCE_REPORTS_DIR = original_dir
-            gen_mod._FEEDBACK_DOCS_DIR = original_fb
+# MARKER_197.SLIM: Predecessor advice now comes from session_init,
+# not from _EXPERIENCE_REPORTS_DIR. No internal APIs to test.
 
 
 # ── Pending Tasks Tests ─────────────────────────────────────
+# MARKER_197.SLIM: pending_tasks param is deprecated (ignored).
+# Tasks come from session_init. Verify param is accepted but harmless.
 
 
 class TestPendingTasks:
-    def test_pending_tasks_rendered(self, registry, template):
+    def test_pending_tasks_param_accepted(self, registry, template):
+        """pending_tasks param is deprecated but must not crash."""
         tasks = [
             {"id": "tb_001", "title": "Fix timeline playback", "priority": 2},
-            {"id": "tb_002", "title": "Add JKL shuttle", "priority": 1},
         ]
         content = generate_claude_md("Alpha", registry=registry, template=template, pending_tasks=tasks)
-        assert "tb_001" in content
-        assert "Fix timeline playback" in content
-        assert "P2" in content
-        assert "tb_002" in content
-
-    def test_no_pending_tasks_section_when_empty(self, registry, template):
-        content = generate_claude_md("Alpha", registry=registry, template=template, pending_tasks=[])
-        # Should not have the pending tasks header
-        assert "Current Pending Tasks" not in content
+        assert content is not None
+        assert "Agent Alpha" in content
 
 
 # ── File Write Tests ────────────────────────────────────────
@@ -203,9 +138,9 @@ class TestPendingTasks:
 
 class TestFileWrites:
     def test_dry_run_generates_all(self, registry):
-        """generate_all with dry_run=True returns content for all 5 roles."""
+        """generate_all with dry_run=True returns content for all roles."""
         results = generate_all(dry_run=True)
-        assert len(results) == 5
+        assert len(results) == 7  # Alpha, Beta, Gamma, Delta, Epsilon, Zeta, Commander
         assert "Alpha" in results
         assert "Beta" in results
         assert "Commander" in results
@@ -221,7 +156,7 @@ class TestFileWrites:
 
     def test_generate_all_writes_files(self, tmp_path):
         results = generate_all(dry_run=False, output_base=tmp_path)
-        assert len(results) == 5
+        assert len(results) == 7  # All 7 roles
         # Verify files on disk
         for role_name in ["cut-engine", "cut-media", "cut-ux", "cut-qa", "pedantic-bell"]:
             path = tmp_path / role_name / "CLAUDE.md"

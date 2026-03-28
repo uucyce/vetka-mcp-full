@@ -341,7 +341,7 @@ class TestCh47Transitions:
 # ═══════════════════════════════════════════════════════
 
 class TestCh42Multicam:
-    """FCP7 Ch.42: Multicam backend exists, no frontend."""
+    """FCP7 Ch.42: Multicam backend + MulticamViewer frontend (MARKER_MULTICAM_VIEWER)."""
 
     def test_multicam_backend_exists(self):
         """cut_multicam_sync.py must exist."""
@@ -356,10 +356,301 @@ class TestCh42Multicam:
         content = backend.read_text()
         assert "cross_correlat" in content.lower() or "correlate" in content.lower() or "sync" in content.lower()
 
-    def test_no_multicam_ui(self):
-        """GAP: No multicam angle switcher in frontend."""
-        # Search for multicam/multiclip component
-        cut_dir = CLIENT_SRC / "components" / "cut"
-        multicam_files = list(cut_dir.glob("*ulticam*")) + list(cut_dir.glob("*ulticlip*"))
-        if not multicam_files:
-            pytest.skip("GAP: No multicam UI component exists yet")
+    def test_multicam_viewer_exists(self):
+        """MulticamViewer.tsx must exist with required testids."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist in components/cut"
+        content = viewer.read_text()
+        assert 'data-testid="multicam-viewer-grid"' in content, "Must have static grid testid"
+        assert "data-testid={" in content, "Must have dynamic angle testids"
+
+    def test_multicam_viewer_store_contract(self):
+        """MulticamViewer.tsx must import and use store fields."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "useCutEditorStore" in content, "Must import useCutEditorStore"
+        assert "multicamMode" in content, "Must read multicamMode from store"
+        assert "multicamAngles" in content, "Must read multicamAngles from store"
+        assert "multicamActiveAngle" in content, "Must read multicamActiveAngle from store"
+        assert "multicamSwitchAngle" in content, "Must read multicamSwitchAngle from store"
+
+    def test_multicam_viewer_grid_logic(self):
+        """MulticamViewer.tsx must have grid layout and empty state guard."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "gridTemplateColumns" in content, "Must use CSS gridTemplateColumns for layout"
+        assert "repeat(" in content, "Must use repeat() for dynamic column count"
+        assert "No multicam clip loaded" in content, "Must have empty state guard message"
+
+    def test_multicam_angle_switching_wired(self):
+        """MulticamViewer.tsx must wire click events to store switchAngle action."""
+        viewer = CLIENT_SRC / "components" / "cut" / "MulticamViewer.tsx"
+        assert viewer.exists(), "MulticamViewer.tsx should exist"
+        content = viewer.read_text()
+        assert "onClick" in content, "Must have onClick handler on angle tiles"
+        assert "switchAngle" in content, "Must call switchAngle store action on click"
+
+
+# ═══════════════════════════════════════════════════════
+# PULSE Auto-Montage
+# ═══════════════════════════════════════════════════════
+
+
+class TestPulseAutoMontage:
+    """Contract tests for PULSE Auto-Montage feature."""
+
+    PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+    def test_pulse_auto_montage_service_exists(self):
+        """pulse_auto_montage.py service must exist."""
+        service = self.PROJECT_ROOT / "src" / "services" / "pulse_auto_montage.py"
+        assert service.exists(), "src/services/pulse_auto_montage.py must exist"
+
+    def test_pulse_auto_montage_endpoint_exists(self):
+        """cut_routes.py must expose pulse/auto-montage POST endpoint."""
+        routes = self.PROJECT_ROOT / "src" / "api" / "routes" / "cut_routes.py"
+        assert routes.exists(), "src/api/routes/cut_routes.py must exist"
+        content = routes.read_text()
+        assert "pulse/auto-montage" in content, "Must define pulse/auto-montage route"
+        assert "CutPulseAutoMontageRequest" in content, "Must reference CutPulseAutoMontageRequest model"
+
+    def test_auto_montage_panel_exists(self):
+        """AutoMontagePanel.tsx must exist with correct header and mode buttons."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "PULSE Auto-Montage" in content, "Must contain 'PULSE Auto-Montage' header text"
+        assert "Favorites" in content, "Must contain 'Favorites' mode button"
+        assert "Script" in content, "Must contain 'Script' mode button"
+        assert "Music" in content, "Must contain 'Music' mode button"
+
+    def test_auto_montage_panel_store_wiring(self):
+        """AutoMontagePanel.tsx must be wired to the store and call the API endpoint."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "useCutEditorStore" in content, "Must import useCutEditorStore"
+        assert "montageRunning" in content or "setMontageRunning" in content, (
+            "Must reference montageRunning or setMontageRunning from store"
+        )
+        assert "pulse/auto-montage" in content, "Must reference pulse/auto-montage API endpoint"
+
+    def test_auto_montage_store_actions(self):
+        """useCutEditorStore.ts must contain all PULSE montage state fields and actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content:
+            pytest.skip("Store file not found")
+        assert "montageRunning" in content, "Store must have montageRunning field"
+        assert "montageMode" in content, "Store must have montageMode field"
+        assert "montageProgress" in content, "Store must have montageProgress field"
+        assert "montageError" in content, "Store must have montageError field"
+        assert "setMontageRunning" in content, "Store must have setMontageRunning action"
+        assert "setMontageMode" in content, "Store must have setMontageMode action"
+
+    def test_pulse_conductor_exists(self):
+        """pulse_conductor.py must exist and produce PulseScore for scenes."""
+        conductor = self.PROJECT_ROOT / "src" / "services" / "pulse_conductor.py"
+        assert conductor.exists(), "src/services/pulse_conductor.py must exist"
+        content = conductor.read_text()
+        assert "PulseConductor" in content, "Must define PulseConductor class"
+        assert "PulseScore" in content or "score" in content.lower(), (
+            "pulse_conductor.py must produce scores for scenes"
+        )
+
+    def test_auto_montage_creates_timeline(self):
+        """AutoMontagePanel.tsx must create a timeline and open a dockview tab."""
+        panel = CLIENT_SRC / "components" / "cut" / "AutoMontagePanel.tsx"
+        assert panel.exists(), "AutoMontagePanel.tsx must exist"
+        content = panel.read_text()
+        assert "createTimeline" in content, "Must call createTimeline to create timeline instance"
+        assert "addTimelinePanel" in content, "Must call addTimelinePanel to open dockview tab"
+
+
+# ═══════════════════════════════════════════════════════
+# §2.2 Save / Autosave
+# ═══════════════════════════════════════════════════════
+
+class TestSaveAutosave:
+    """Contract tests for Save/Autosave feature (Manual §2.2)."""
+
+    def test_save_endpoint_exists(self):
+        """Backend must expose CutSaveRequest and cut_save_project."""
+        # Save endpoint moved to cut_routes_render.py (MARKER_B41)
+        render_routes = Path(__file__).resolve().parent.parent / "src" / "api" / "routes" / "cut_routes_render.py"
+        assert render_routes.exists(), "cut_routes_render.py must exist"
+        content = render_routes.read_text()
+        assert "CutSaveRequest" in content, "Must define CutSaveRequest model"
+        assert "cut_save_project" in content, "Must define cut_save_project endpoint"
+
+    def test_save_store_fields(self):
+        """Store must have save status FSM fields."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "saveStatus" in content
+        assert "lastSavedAt" in content
+        assert "saveError" in content
+        assert "hasUnsavedChanges" in content
+
+    def test_save_store_actions(self):
+        """Store must have save-related setters."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "setSaveStatus" in content
+        assert "setLastSavedAt" in content
+        assert "markUnsavedChanges" in content
+
+    def test_autosave_hook_exists(self):
+        """useCutAutosave.ts must exist and reference save interval."""
+        hook = CLIENT_SRC / "hooks" / "useCutAutosave.ts"
+        assert hook.exists(), "useCutAutosave.ts must exist"
+        content = hook.read_text()
+        assert "AUTOSAVE_INTERVAL" in content or "autosave" in content.lower()
+        assert "saveProject" in content or "save" in content.lower()
+
+    def test_save_indicator_exists(self):
+        """SaveIndicator.tsx must exist and show status text."""
+        indicator = CLIENT_SRC / "components" / "cut" / "SaveIndicator.tsx"
+        assert indicator.exists(), "SaveIndicator.tsx must exist"
+        content = indicator.read_text()
+        assert "saveStatus" in content
+        assert "Saving" in content or "Saved" in content
+        assert "Unsaved" in content or "hasUnsavedChanges" in content
+
+    def test_save_hotkey_wired(self):
+        """Cmd+S must be bound to saveProject action."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        assert hotkeys.exists()
+        content = hotkeys.read_text()
+        assert "saveProject" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §2.8 Multi-Timeline
+# ═══════════════════════════════════════════════════════
+
+class TestMultiTimeline:
+    """Contract tests for Multi-Timeline feature (Manual §2.8)."""
+
+    def test_timeline_tabs_state(self):
+        """Store must have timelineTabs array and activeTimelineTabIndex."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "timelineTabs" in content
+        assert "activeTimelineTabIndex" in content
+        assert "nextTimelineVersion" in content
+
+    def test_timeline_tab_actions(self):
+        """Store must have CRUD actions for timeline tabs."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "addTimelineTab" in content
+        assert "removeTimelineTab" in content
+        assert "setActiveTimelineTab" in content
+        assert "createVersionedTimeline" in content
+
+    def test_timeline_snapshot_actions(self):
+        """Store must have snapshot/restore for parallel timeline view."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "snapshotTimeline" in content
+        assert "restoreTimeline" in content
+
+    def test_timeline_instance_panel_exists(self):
+        """TimelineInstancePanel.tsx must exist with testid."""
+        panel = CLIENT_SRC / "components" / "cut" / "panels" / "TimelineInstancePanel.tsx"
+        assert panel.exists(), "TimelineInstancePanel.tsx must exist"
+        content = panel.read_text()
+        assert 'data-testid="timeline-instance-panel"' in content
+
+    def test_timeline_create_endpoint(self):
+        """Backend must expose POST /api/cut/timeline/create."""
+        routes = Path(__file__).resolve().parent.parent / "src" / "api" / "routes" / "cut_routes.py"
+        content = routes.read_text()
+        assert "timeline/create" in content or "timeline_create" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §3.9 Clipboard / Copy-Paste
+# ═══════════════════════════════════════════════════════
+
+class TestClipboard:
+    """Contract tests for Clipboard feature (Manual §3.9)."""
+
+    def test_clipboard_state(self):
+        """Store must have clipboard array."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "clipboard" in content
+
+    def test_clipboard_actions(self):
+        """Store must have copy/cut/paste actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "copyClips" in content
+        assert "cutClips" in content
+        assert "pasteClips" in content
+
+    def test_paste_modes(self):
+        """pasteClips must support overwrite and insert modes."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "overwrite" in content
+        assert "insert" in content
+
+    def test_paste_attributes_exists(self):
+        """Store must have pasteAttributes action."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "pasteAttributes" in content
+
+    def test_clipboard_hotkeys(self):
+        """Cmd+C/X/V/Shift+V must be bound."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        content = hotkeys.read_text()
+        assert "copyClips" in content or "copy" in content
+        assert "cutClips" in content or "cut:" in content
+        assert "pasteClips" in content or "paste" in content
+        assert "pasteInsert" in content or "pasteAttributes" in content
+
+
+# ═══════════════════════════════════════════════════════
+# §3.8 Lift / Extract
+# ═══════════════════════════════════════════════════════
+
+class TestLiftExtract:
+    """Contract tests for Lift/Extract feature (Manual §3.8)."""
+
+    def test_lift_extract_actions(self):
+        """Store must have liftClip and extractClip actions."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "liftClip" in content
+        assert "extractClip" in content
+
+    def test_lift_uses_remove_clip(self):
+        """liftClip must use remove_clip op (leaves gap)."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "remove_clip" in content
+
+    def test_extract_uses_ripple_delete(self):
+        """extractClip must use ripple_delete op (closes gap)."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "ripple_delete" in content
+
+    def test_lift_extract_hotkeys(self):
+        """Semicolon (;) and apostrophe (') must be bound."""
+        hotkeys = CLIENT_SRC / "hooks" / "useCutHotkeys.ts"
+        content = hotkeys.read_text()
+        assert "liftClip" in content
+        assert "extractClip" in content
+
+    def test_lift_extract_range_mode(self):
+        """liftClip/extractClip must support IN/OUT range mode."""
+        content = STORE_FILE.read_text() if STORE_FILE.exists() else ""
+        if not content: pytest.skip("Store file not found")
+        assert "sequenceMarkIn" in content
+        assert "sequenceMarkOut" in content

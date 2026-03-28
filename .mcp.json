@@ -15,7 +15,8 @@
       "env": {
         "VETKA_API_URL": "http://localhost:5001",
         "PYTHONPATH": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03",
-        "MYCELIUM_WS_PORT": "8082"
+        "MYCELIUM_WS_PORT": "8082",
+        "VETKA_MAIN_REPO": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
       }
     }
   }

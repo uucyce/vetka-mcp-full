@@ -11,6 +11,7 @@
  */
 import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import MotionControls from './MotionControls';
 
 const PANEL: CSSProperties = {
@@ -102,6 +103,7 @@ type SliderDef = {
 type ToggleDef = {
   key: string;
   label: string;
+  storeKey?: keyof ClipEffects;
 };
 
 type CategoryDef = {
@@ -121,36 +123,36 @@ const CATEGORIES: CategoryDef[] = [
       { key: 'brightness', label: 'Bright', min: -1, max: 1, step: 0.01, fmt: pctFmt, storeKey: 'brightness' },
       { key: 'contrast', label: 'Contrast', min: -1, max: 1, step: 0.01, fmt: pctFmt, storeKey: 'contrast' },
       { key: 'saturation', label: 'Satur.', min: 0, max: 2, step: 0.01, fmt: (v) => `${(v * 100).toFixed(0)}%`, storeKey: 'saturation' },
-      { key: 'gamma', label: 'Gamma', min: 0.2, max: 3, step: 0.05, fmt: (v) => v.toFixed(2) },
+      { key: 'gamma', label: 'Gamma', min: 0.2, max: 3, step: 0.05, fmt: (v) => v.toFixed(2), storeKey: 'gamma' },
     ],
   },
   {
     name: 'Blur / Sharpen',
     sliders: [
       { key: 'blur', label: 'Blur', min: 0, max: 20, step: 0.5, fmt: pxFmt, storeKey: 'blur' },
-      { key: 'sharpen', label: 'Sharpen', min: 0, max: 5, step: 0.1, fmt: (v) => v === 0 ? 'off' : v.toFixed(1) },
-      { key: 'denoise', label: 'Denoise', min: 0, max: 10, step: 0.5, fmt: (v) => v === 0 ? 'off' : v.toFixed(1) },
+      { key: 'sharpen', label: 'Sharpen', min: 0, max: 5, step: 0.1, fmt: (v) => v === 0 ? 'off' : v.toFixed(1), storeKey: 'sharpen' },
+      { key: 'denoise', label: 'Denoise', min: 0, max: 10, step: 0.5, fmt: (v) => v === 0 ? 'off' : v.toFixed(1), storeKey: 'denoise' },
     ],
   },
   {
     name: 'Transform',
     sliders: [
-      { key: 'vignette', label: 'Vignette', min: 0, max: 1, step: 0.05, fmt: (v) => v === 0 ? 'off' : `${(v * 100).toFixed(0)}%` },
-      { key: 'crop_top', label: 'Crop T', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%` },
-      { key: 'crop_bottom', label: 'Crop B', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%` },
-      { key: 'crop_left', label: 'Crop L', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%` },
-      { key: 'crop_right', label: 'Crop R', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%` },
+      { key: 'vignette', label: 'Vignette', min: 0, max: 1, step: 0.05, fmt: (v) => v === 0 ? 'off' : `${(v * 100).toFixed(0)}%`, storeKey: 'vignette' },
+      { key: 'crop_top', label: 'Crop T', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%`, storeKey: 'crop_top' },
+      { key: 'crop_bottom', label: 'Crop B', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%`, storeKey: 'crop_bottom' },
+      { key: 'crop_left', label: 'Crop L', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%`, storeKey: 'crop_left' },
+      { key: 'crop_right', label: 'Crop R', min: 0, max: 0.5, step: 0.01, fmt: (v) => v === 0 ? '0' : `${(v * 100).toFixed(0)}%`, storeKey: 'crop_right' },
     ],
     toggles: [
-      { key: 'hflip', label: 'Flip H' },
-      { key: 'vflip', label: 'Flip V' },
+      { key: 'hflip', label: 'Flip H', storeKey: 'hflip' },
+      { key: 'vflip', label: 'Flip V', storeKey: 'vflip' },
     ],
   },
   {
     name: 'Time',
     sliders: [
-      { key: 'fade_in', label: 'Fade In', min: 0, max: 5, step: 0.1, fmt: secFmt },
-      { key: 'fade_out', label: 'Fade Out', min: 0, max: 5, step: 0.1, fmt: secFmt },
+      { key: 'fade_in', label: 'Fade In', min: 0, max: 5, step: 0.1, fmt: secFmt, storeKey: 'fade_in' },
+      { key: 'fade_out', label: 'Fade Out', min: 0, max: 5, step: 0.1, fmt: secFmt, storeKey: 'fade_out' },
     ],
   },
   {
@@ -195,7 +197,7 @@ function CategoryHeader({ name, open, onToggle }: { name: string; open: boolean;
 // ─── Main component ───────────────────────────────────────────────
 
 export default function EffectsPanel() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
@@ -228,9 +230,13 @@ export default function EffectsPanel() {
     }
   }, [selectedClipId, setClipEffects]);
 
-  const handleToggle = useCallback((key: string) => {
-    setExtEffects((prev) => ({ ...prev, [key]: prev[key] ? 0 : 1 }));
-  }, []);
+  const handleToggle = useCallback((key: string, storeKey?: keyof ClipEffects) => {
+    const newVal = extEffects[key] ? 0 : 1;
+    setExtEffects((prev) => ({ ...prev, [key]: newVal }));
+    if (storeKey && selectedClipId) {
+      setClipEffects(selectedClipId, { [storeKey]: newVal });
+    }
+  }, [extEffects, selectedClipId, setClipEffects]);
 
   const handleReset = useCallback(() => {
     if (selectedClipId) resetClipEffects(selectedClipId);
@@ -305,7 +311,7 @@ export default function EffectsPanel() {
                       <button
                         key={t.key}
                         style={TOGGLE_BTN(!!extEffects[t.key])}
-                        onClick={() => handleToggle(t.key)}
+                        onClick={() => handleToggle(t.key, t.storeKey)}
                       >
                         {t.label}
                       </button>
@@ -471,7 +477,7 @@ function EffectTooltip({ effect, rect }: { effect: BrowserEffect; rect: DOMRect 
 }
 
 function EffectsBrowser() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const setClipEffects = useCutEditorStore((s) => s.setClipEffects);
   const [search, setSearch] = useState('');
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());

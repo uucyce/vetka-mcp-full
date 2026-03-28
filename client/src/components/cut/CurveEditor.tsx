@@ -137,9 +137,9 @@ function buildLUT(points: CurvePoint[]): number[] {
 
 const CHANNEL_COLORS: Record<CurveChannel, string> = {
   master: '#ccc',
-  red: '#ff4444',
-  green: '#44ff44',
-  blue: '#4488ff',
+  red: '#aa6666',
+  green: '#66aa66',
+  blue: '#6688aa',
 };
 
 const TAB_STYLE: CSSProperties = {

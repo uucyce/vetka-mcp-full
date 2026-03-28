@@ -111,6 +111,15 @@ from src.mcp.tools.web_search_tool import register_web_search_tool
 from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
 # MARKER_119.8: Context7 library docs for @coder
 from src.mcp.tools.library_docs_tool import register_library_docs_tool
+# MARKER_198.SCREENSHOT: Screen capture + Vision OCR for all agents
+from src.mcp.tools.screenshot_tool import ScreenshotTool
+
+# MARKER_198.P2.4: Register failure workaround hook at import time
+try:
+    from src.services.reflex_workaround_hook import register_workaround_hook
+    register_workaround_hook()
+except Exception:
+    pass  # Hook registration is optional
 
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
@@ -919,7 +928,8 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="vetka_task_board",
             description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete/active_agents/merge_request/promote_to_main). "
-                        "Uses local transport as fallback when MYCELIUM MCP is unavailable.",
+                        "Uses local transport as fallback when MYCELIUM MCP is unavailable. "
+                        "AGENT_WAKE: action=notify/notifications/ack_notifications for cross-agent notification inbox.",
             inputSchema=TASK_BOARD_SCHEMA,
         ),
         Tool(
@@ -1020,6 +1030,43 @@ async def list_tools() -> list[Tool]:
                 }
             }
         ),
+        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
+        Tool(
+            name="vetka_screenshot",
+            description=(
+                "Capture screen and/or OCR text from display. "
+                "Non-interactive — for agent use. "
+                "Returns OCR text and/or JPEG path."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "mode": {
+                        "type": "string",
+                        "enum": ["ocr", "jpeg", "both"],
+                        "default": "both",
+                        "description": "ocr=text only, jpeg=image only, both=text+image"
+                    },
+                    "region": {
+                        "type": "string",
+                        "enum": ["full", "active"],
+                        "default": "full",
+                        "description": "full=all screens, active=frontmost window"
+                    },
+                    "monitor": {
+                        "type": "integer",
+                        "description": "Specific display number (1, 2, ...) — screencapture -D flag"
+                    },
+                    "quality": {
+                        "type": "integer",
+                        "default": 50,
+                        "minimum": 1,
+                        "maximum": 100,
+                        "description": "JPEG compression quality (1-100)"
+                    }
+                }
+            }
+        ),
     ]
 
     # Phase 55.1: Register new MCP tools
@@ -1054,6 +1101,80 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
+# MARKER_200.W0.1: STM recording for Claude Code agents
+# ============================================================================
+# Claude Code agents never write to STM — 15% of REFLEX scoring power is wasted.
+# This records significant tool calls so STM is populated at session_init.
+
+_STM_SIGNIFICANT_TOOLS = {
+    "vetka_search_semantic", "vetka_search_files", "vetka_read_file",
+    "vetka_edit_file", "vetka_git_commit", "vetka_git_status",
+    "vetka_task_board", "vetka_session_init", "vetka_call_model",
+    "vetka_implement", "vetka_review", "vetka_research",
+    "vetka_execute_workflow", "vetka_task_dispatch", "vetka_task_import",
+    "vetka_edit_artifact", "vetka_approve_artifact", "vetka_reject_artifact",
+    "vetka_run_tests", "vetka_mycelium_pipeline",
+}
+_stm_session_count = 0
+_STM_SESSION_CAP = 50
+
+
+def _stm_summarize(tool_name: str, arguments: dict) -> Optional[str]:
+    """Generate one-line STM summary for significant tool calls.
+    Returns None for non-significant tools (health, tree, metrics, etc.)."""
+    if tool_name not in _STM_SIGNIFICANT_TOOLS:
+        return None
+
+    if tool_name == "vetka_edit_file":
+        return f"edit {arguments.get('path', '?')}"
+    elif tool_name == "vetka_read_file":
+        return f"read {arguments.get('path', '?')}"
+    elif tool_name in ("vetka_search_semantic", "vetka_search_files"):
+        return f"search: {arguments.get('query', '?')[:80]}"
+    elif tool_name == "vetka_task_board":
+        action = arguments.get("action", "?")
+        task_id = arguments.get("task_id", "")
+        extra = f" {task_id}" if task_id else ""
+        title = arguments.get("title", "")
+        if title:
+            extra += f" — {title[:50]}"
+        return f"task_board {action}{extra}"
+    elif tool_name == "vetka_git_commit":
+        return f"commit: {arguments.get('message', '')[:60]}"
+    elif tool_name == "vetka_git_status":
+        return "git status"
+    elif tool_name == "vetka_session_init":
+        role = arguments.get("role", "")
+        return f"session_init{f' role={role}' if role else ''}"
+    elif tool_name == "vetka_call_model":
+        return f"call_model {arguments.get('model', '?')}"
+    elif tool_name == "vetka_run_tests":
+        return f"run_tests {arguments.get('test_path', '?')}"
+    else:
+        return tool_name.replace("vetka_", "")
+
+
+def _record_stm(tool_name: str, arguments: dict) -> None:
+    """Record tool call to STM buffer. Non-blocking, non-fatal.
+    Caps at _STM_SESSION_CAP writes per MCP session."""
+    global _stm_session_count
+    if _stm_session_count >= _STM_SESSION_CAP:
+        return
+
+    summary = _stm_summarize(tool_name, arguments)
+    if not summary:
+        return
+
+    try:
+        from src.memory.stm_buffer import get_stm_buffer
+        stm = get_stm_buffer()
+        stm.add_message(summary, source="mcp_bridge")
+        _stm_session_count += 1
+    except Exception:
+        pass  # STM never blocks the bridge
+
+
+# ============================================================================
 # TOOL IMPLEMENTATIONS
 # ============================================================================
 
@@ -1067,8 +1188,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     request_id = f"req-{uuid.uuid4().hex[:8]}"
     start_time = time.time()
 
+    # MARKER_200.PID_LOCK: Passive agent lock — write PID on every MCP call
+    # Zero overhead, enables worktree occupancy detection
+    try:
+        _cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
+        _lock_path = os.path.join(_cwd, ".agent_lock")
+        with open(_lock_path, "w") as _lf:
+            _lf.write(f"{os.getpid()}\n{time.time()}\n{name}\n")
+    except Exception:
+        pass  # Lock never blocks the bridge
+
     # Log request to VETKA group chat
     await log_mcp_request(name, arguments, request_id)
+
+    # MARKER_200.W0.1: Record tool call to STM for Claude Code agents
+    _record_stm(name, arguments)
+
+    # MARKER_198.P2.1: Pre-tool hooks (enrich args, block calls)
+    try:
+        from src.mcp.bridge_hooks import run_pre_hooks
+        _hook_sid = session_context.get()
+        arguments, _early_return = await run_pre_hooks(name, arguments, _hook_sid)
+        if _early_return is not None:
+            return _early_return if isinstance(_early_return, list) else [TextContent(type="text", text=str(_early_return))]
+    except Exception:
+        pass  # Hooks never block the bridge
 
     if not http_client:
         error_msg = "Error: HTTP client not initialized. Please restart the MCP server."
@@ -1339,6 +1483,31 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
             result = tool.execute(arguments)
             return [TextContent(type="text", text=format_llm_result(result))]
+
+        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
+        elif name == "vetka_screenshot":
+            tool = ScreenshotTool()
+            result = tool.execute(arguments)
+
+            if not result.get("success"):
+                err = result.get("error", "unknown error")
+                return [TextContent(type="text", text=f"Error: {err}")]
+
+            data = result.get("result", {})
+            parts = []
+
+            ocr_text = data.get("text")
+            if ocr_text is not None:
+                char_count = data.get("char_count", len(ocr_text))
+                parts.append(f"=== OCR TEXT ({char_count} chars) ===\n{ocr_text}")
+
+            image_path = data.get("image_path")
+            if image_path:
+                size_kb = data.get("image_size_kb", 0)
+                parts.append(f"IMAGE: {image_path} ({size_kb} KB)")
+
+            output = "\n\n".join(parts) if parts else "No output produced."
+            return [TextContent(type="text", text=output)]
 
         elif name == "vetka_read_group_messages":
             # Read group messages via REST API
@@ -1920,9 +2089,21 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log successful response to group chat
             await log_mcp_response(name, data, request_id, duration_ms)
 
+            result_text = format_result(name, data)
+
+            # MARKER_198.P2.1: Post-tool hooks (record outcome, suggest workaround)
+            try:
+                from src.mcp.bridge_hooks import run_post_hooks
+                _hook_sid = session_context.get()
+                _suggestion = await run_post_hooks(name, arguments, result_text, _hook_sid)
+                if _suggestion:
+                    result_text += f"\n\n[MEMORY SUGGESTION]\n{_suggestion}"
+            except Exception:
+                pass
+
             return [TextContent(
                 type="text",
-                text=format_result(name, data)
+                text=result_text
             )]
         else:
             error_text = f"Error: HTTP {response.status_code}\n{response.text}"
@@ -1931,14 +2112,34 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log error response to group chat
             await log_mcp_response(name, None, request_id, duration_ms, error=error_text)
 
+            # MARKER_198.P2.5: Post-tool hooks on HTTP error (was missing for 4xx/5xx)
+            try:
+                from src.mcp.bridge_hooks import run_post_hooks
+                _hook_sid = session_context.get()
+                _suggestion = await run_post_hooks(name, arguments, error_text, _hook_sid, error=Exception(f"HTTP {response.status_code}"))
+                if _suggestion:
+                    error_text += f"\n\n[WORKAROUND]\n{_suggestion}"
+            except Exception:
+                pass
+
             return [TextContent(type="text", text=error_text)]
 
-    except httpx.ConnectError:
+    except httpx.ConnectError as e:
         duration_ms = (time.time() - start_time) * 1000
         error_msg = "Error: Cannot connect to VETKA server at localhost:5001.\nMake sure VETKA is running: python main.py"
 
         # Log connection error to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+
+        # MARKER_198.P2.1: Post-tool hooks on error
+        try:
+            from src.mcp.bridge_hooks import run_post_hooks
+            _hook_sid = session_context.get()
+            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
+            if _suggestion:
+                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
+        except Exception:
+            pass
 
         return [TextContent(type="text", text=error_msg)]
     except Exception as e:
@@ -1947,6 +2148,16 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # Log exception to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
+
+        # MARKER_198.P2.1: Post-tool hooks on error
+        try:
+            from src.mcp.bridge_hooks import run_post_hooks
+            _hook_sid = session_context.get()
+            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
+            if _suggestion:
+                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
+        except Exception:
+            pass
 
         return [TextContent(type="text", text=error_msg)]
 

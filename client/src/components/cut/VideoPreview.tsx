@@ -8,8 +8,10 @@
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
+import FrameViewerSplit from './FrameViewerSplit';
 import ZebraOverlay from './ZebraOverlay';
 import { useAudioScrubbing } from '../../hooks/useAudioScrubbing';
 
@@ -58,8 +60,8 @@ const ERROR_OVERLAY_STYLE: CSSProperties = {
   position: 'absolute',
   left: 12,
   top: 12,
-  background: 'rgba(180,40,40,0.85)',
-  border: '1px solid #c44',
+  background: 'rgba(80,80,80,0.9)',
+  border: '1px solid #666',
   color: '#fff',
   fontSize: 11,
   fontFamily: 'system-ui',
@@ -161,6 +163,14 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
 
+  // MARKER_FRAME_SPLIT: Frame viewer split toggle (local state, toggled via CustomEvent)
+  const [showFrameSplit, setShowFrameSplit] = useState(false);
+  useEffect(() => {
+    const handler = () => setShowFrameSplit((v) => !v);
+    document.addEventListener('cut:toggle-frame-split', handler);
+    return () => document.removeEventListener('cut:toggle-frame-split', handler);
+  }, []);
+
   // MARKER_W5.2: Monitor overlay state
   const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
   const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
@@ -170,11 +180,12 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const toggleZebra = useCutEditorStore((s) => s.toggleZebra);
 
   // MARKER_B22: Live grading — read color_correction from selected clip for CSS filter preview
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const ccForCssFilter = useCutEditorStore((s) => {
-    if (!s.selectedClipId) return null;
+    if (!selectedClipId) return null;
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
-        if (clip.clip_id === s.selectedClipId) {
+        if (clip.clip_id === selectedClipId) {
           return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
         }
       }
@@ -247,7 +258,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
       // MARKER_B52: Respect proxyMode from store
       const proxyMode = useCutEditorStore.getState().proxyMode || 'auto';
       const wantsProxy = proxyMode === 'proxy' || (proxyMode === 'auto' && (HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension)));
-      if (!sandboxRoot || !wantsProxy || proxyMode === 'full') {
+      if (!sandboxRoot || !wantsProxy) {
         setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
         setSourceHint(wantsProxy ? 'proxy unavailable, trying source' : '');
         return;
@@ -503,6 +514,14 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         barWidth={6}
         style={METER_STRIP_STYLE}
       />
+      {/* MARKER_FRAME_SPLIT: Split viewer overlay — original vs graded */}
+      {showFrameSplit && resolvedSrc && (
+        <FrameViewerSplit
+          videoSrc={resolvedSrc}
+          gradedFilter={videoCssFilter}
+          poster={activeThumbnail?.poster_url}
+        />
+      )}
       <div style={TIMECODE_STYLE}>{formatTimecode(currentTime)}</div>
     </div>
   );

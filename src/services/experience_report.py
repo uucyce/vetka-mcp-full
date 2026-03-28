@@ -21,7 +21,30 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+# MARKER_198.DEBRIEF: Fix 1/4 — worktree path resolution bug.
+# Path(__file__).resolve() returns worktree path when running from a git worktree,
+# e.g. .claude/worktrees/harness/src/... — the `data/` dir there doesn't exist.
+# Reports must go to the MAIN repo's data/experience_reports/ so other processes
+# (CLAUDE.md generator, session_init) can find them.
+# Strategy: walk up from __file__ until we find a path that is NOT inside
+# .claude/worktrees/, falling back to __file__-relative path for non-worktree runs.
+def _resolve_project_root() -> Path:
+    """Return main repo root, bypassing git worktree indirection."""
+    candidate = Path(__file__).resolve().parent.parent.parent
+    # Detect if we're inside a worktree directory: .claude/worktrees/<name>/
+    parts = candidate.parts
+    try:
+        wt_idx = parts.index(".claude")
+        # Found .claude — go up to the git repo root (parent of .claude)
+        main_root = Path(*parts[:wt_idx])
+        if main_root.exists():
+            return main_root
+    except ValueError:
+        pass
+    return candidate
+
+
+_PROJECT_ROOT = _resolve_project_root()
 _REPORTS_DIR = _PROJECT_ROOT / "data" / "experience_reports"
 
 
@@ -74,11 +97,13 @@ class ExperienceReportStore:
             path.name,
         )
 
-        # MARKER_ZETA.F2: Smart Debrief — auto-create tasks + route to memory
+        # MARKER_ZETA.F2 / MARKER_198.DEBRIEF: Fix 2/4 — guard was blocking smart debrief
+        # when lessons_learned=[] and recommendations=[] even though bugs_found may have
+        # content, or the CORTEX general fallback should still fire for passive reports.
+        # Always call process_smart_debrief — it handles empty gracefully via _route_to_memory.
         try:
-            if report.lessons_learned or report.recommendations:
-                from src.services.smart_debrief import process_smart_debrief
-                process_smart_debrief(report)
+            from src.services.smart_debrief import process_smart_debrief
+            process_smart_debrief(report)
         except Exception as e:
             logger.debug("[ExperienceReport] Smart debrief processing failed (non-fatal): %s", e)
 

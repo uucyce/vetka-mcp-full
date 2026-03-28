@@ -202,19 +202,19 @@ class TestThumbnailGeneration:
 
 
 class TestSocketIOProgress:
+    @pytest.fixture(autouse=True)
+    def _require_fastapi(self):
+        pytest.importorskip("fastapi", reason="fastapi not installed — skip SocketIO tests")
+
     def test_emit_function_exists(self) -> None:
         """_emit_render_progress should be importable and not crash on call."""
-        # Import from cut_routes — it's a module-level function
-        # We can't easily test SocketIO emit without a running server,
-        # but we verify the function exists and handles errors gracefully.
-        from src.api.routes.cut_routes import _emit_render_progress
-        # Should not raise — best-effort, swallows all errors
+        from src.api.routes.cut_routes_render import _emit_render_progress
         _emit_render_progress("test_job", 0.5, "encoding")
 
     def test_emit_done_no_crash(self) -> None:
-        from src.api.routes.cut_routes import _emit_render_progress
+        from src.api.routes.cut_routes_render import _emit_render_progress
         _emit_render_progress("test_job", 1.0, "done")
 
     def test_emit_error_no_crash(self) -> None:
-        from src.api.routes.cut_routes import _emit_render_progress
+        from src.api.routes.cut_routes_render import _emit_render_progress
         _emit_render_progress("test_job", 0.0, "error: something failed")

@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 
 // ─── Types ───
 
@@ -109,7 +110,7 @@ const RESET_BTN: CSSProperties = {
 // ─── Component ───
 
 export default function MotionControls() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
   const selectedClip = lanes

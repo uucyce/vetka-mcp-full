@@ -17,6 +17,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 import DAGProjectPanel from './DAGProjectPanel';
 import { setDragPreview } from './utils/dragPreview';
@@ -233,7 +234,7 @@ export default function ProjectPanel() {
   const activeMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   // MARKER_W1.3: Project click → Source Monitor (not program)
   const setActiveMedia = useCutEditorStore((s) => s.setSourceMedia);
-  const setSelectedClip = useCutEditorStore((s) => s.setSelectedClip);
+  const setSelectedClip = useSelectionStore((s) => s.setSelectedClip);
 
   // Local state
   const [importStatus, setImportStatus] = useState('');
@@ -1089,8 +1090,15 @@ export default function ProjectPanel() {
               setCtxMenu(null);
             }},
             { separator: true },
-            { label: 'Reveal in Finder', action: () => { setCtxMenu(null); }, disabled: true },
-          ].map((item, i) =>
+            { label: 'Reveal in Finder', action: () => {
+              fetch(`${API_BASE}/files/open-in-finder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: ctxMenu.path }),
+              }).catch(() => {});
+              setCtxMenu(null);
+            }},
+          ].map((item: { label?: string; action?: () => void; separator?: boolean; disabled?: boolean }, i) =>
             'separator' in item ? (
               <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
             ) : (

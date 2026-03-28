@@ -12,6 +12,8 @@
  */
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
+import { useColorPresetStore } from '../../store/useColorPresetStore';
 import { API_BASE } from '../../config/api.config';
 import ColorWheel from './ColorWheel';
 import CurveEditor, { createDefaultCurveData, curveDataToFFmpegStrings, type CurveData } from './CurveEditor';
@@ -131,7 +133,7 @@ const RESET_BTN: CSSProperties = {
 // ─── Component ───
 
 export default function ColorCorrectionPanel() {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
   const selectedClip = lanes
@@ -166,6 +168,41 @@ export default function ColorCorrectionPanel() {
   const resetColor = useCallback(() => {
     setColor({ ...DEFAULT_COLOR });
   }, []);
+
+  // ─── Preset bar state ───
+  const presets = useColorPresetStore((s) => s.presets);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>('');
+  const [savingPreset, setSavingPreset] = useState(false);
+  const [presetName, setPresetName] = useState('');
+
+  // Load presets on mount
+  useEffect(() => {
+    useColorPresetStore.getState().loadPresets();
+  }, []);
+
+  const handleLoadPreset = useCallback((id: string) => {
+    const preset = presets.find((p) => p.id === id);
+    if (!preset) return;
+    setSelectedPresetId(id);
+    setColor({ ...DEFAULT_COLOR, ...preset.color });
+  }, [presets]);
+
+  const handleSavePreset = useCallback(() => {
+    if (!presetName.trim()) return;
+    useColorPresetStore.getState().savePreset(presetName.trim(), color);
+    setPresetName('');
+    setSavingPreset(false);
+  }, [presetName, color]);
+
+  const handleDeletePreset = useCallback(() => {
+    const preset = presets.find((p) => p.id === selectedPresetId);
+    if (!preset || preset.builtIn) return;
+    useColorPresetStore.getState().deletePreset(selectedPresetId);
+    setSelectedPresetId('');
+  }, [selectedPresetId, presets]);
+
+  const selectedPreset = presets.find((p) => p.id === selectedPresetId);
+  const canDelete = !!selectedPreset && !selectedPreset.builtIn;
 
   // Auto-apply
   useEffect(() => {
@@ -264,6 +301,139 @@ export default function ColorCorrectionPanel() {
           <div style={{ fontSize: 12, fontWeight: 600, color: '#fff' }}>Color Correction</div>
           {isModified && <button style={RESET_BTN} onClick={resetColor}>Reset All</button>}
         </div>
+      </div>
+
+      {/* MARKER_CC_PRESETS: Preset bar */}
+      <div style={{ ...SECTION, padding: '5px 10px', borderBottom: '1px solid #1a1a1a' }}>
+        {!savingPreset ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <select
+              style={{
+                flex: 1,
+                background: '#1a1a1a',
+                color: '#ccc',
+                border: '1px solid #333',
+                borderRadius: 3,
+                padding: '3px 6px',
+                fontSize: 11,
+                fontFamily: 'system-ui',
+                cursor: 'pointer',
+                minWidth: 0,
+              }}
+              value={selectedPresetId}
+              onChange={(e) => handleLoadPreset(e.target.value)}
+            >
+              <option value="">— Presets —</option>
+              {presets.filter((p) => p.builtIn).length > 0 && (
+                <optgroup label="Built-in">
+                  {presets.filter((p) => p.builtIn).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </optgroup>
+              )}
+              {presets.filter((p) => !p.builtIn).length > 0 && (
+                <optgroup label="User">
+                  {presets.filter((p) => !p.builtIn).map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            <button
+              style={{
+                background: '#222',
+                border: '1px solid #333',
+                color: '#aaa',
+                borderRadius: 3,
+                padding: '3px 7px',
+                fontSize: 10,
+                fontFamily: 'system-ui',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              onClick={() => setSavingPreset(true)}
+              title="Save current color as preset"
+            >
+              Save
+            </button>
+            {canDelete && (
+              <button
+                style={{
+                  background: '#222',
+                  border: '1px solid #333',
+                  color: '#888',
+                  borderRadius: 3,
+                  padding: '3px 7px',
+                  fontSize: 10,
+                  fontFamily: 'system-ui',
+                  cursor: 'pointer',
+                  flexShrink: 0,
+                }}
+                onClick={handleDeletePreset}
+                title="Delete selected preset"
+              >
+                Del
+              </button>
+            )}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <input
+              autoFocus
+              type="text"
+              placeholder="Preset name..."
+              value={presetName}
+              style={{
+                flex: 1,
+                background: '#1a1a1a',
+                color: '#ccc',
+                border: '1px solid #444',
+                borderRadius: 3,
+                padding: '3px 6px',
+                fontSize: 11,
+                fontFamily: 'system-ui',
+                minWidth: 0,
+                outline: 'none',
+              }}
+              onChange={(e) => setPresetName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleSavePreset();
+                if (e.key === 'Escape') { setSavingPreset(false); setPresetName(''); }
+              }}
+            />
+            <button
+              style={{
+                background: '#222',
+                border: '1px solid #444',
+                color: '#ccc',
+                borderRadius: 3,
+                padding: '3px 7px',
+                fontSize: 10,
+                fontFamily: 'system-ui',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              onClick={handleSavePreset}
+            >
+              OK
+            </button>
+            <button
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#555',
+                cursor: 'pointer',
+                fontSize: 10,
+                fontFamily: 'system-ui',
+                padding: '3px 5px',
+                flexShrink: 0,
+              }}
+              onClick={() => { setSavingPreset(false); setPresetName(''); }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </div>
 
       {/* MARKER_B22: Graded preview thumbnail */}

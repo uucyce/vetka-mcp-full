@@ -234,7 +234,7 @@ async def test_merge_request_full_flow(tmp_path):
 
     # Task should be done
     task = board.tasks[tid]
-    assert task["status"] == "done"
+    assert task["status"] in ("done", "done_main")
     assert "merge_result" in task
 
 

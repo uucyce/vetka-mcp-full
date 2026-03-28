@@ -50,13 +50,17 @@ import {
   AudioMixerPanelDock,
   MarkerListPanel,
   TimelineInstancePanel,
+  PublishPanel,
+  MulticamPanel,
+  SourceAcquirePanelDock,
+  LayerStackPanel,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
 import ColorCorrectionPanel from './ColorCorrectionPanel';
 import LutBrowserPanel from './LutBrowserPanel';
 // SpeedControl removed — modal only (MenuBar handles it)
-import TransitionsPanel from './TransitionsPanel';
+// TransitionsPanel removed — Transitions is a category inside EffectsPanel (GAMMA-LAYOUT1)
 import ToolsPalette from './ToolsPalette';
 // MARKER_GAMMA-25: WorkspacePresets removed — switching via Window menu only
 import StatusBar from './StatusBar';
@@ -64,6 +68,7 @@ import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
 import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
+import MatchSequencePopup from './MatchSequencePopup';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -78,13 +83,24 @@ function withErrorBoundary(name: string, Comp: React.ComponentType<any>) {
   return Wrapped;
 }
 
+// MARKER_GAMMA-TESTID: Wrap panel with data-testid for E2E testing (Delta feedback)
+function withTestId(panelId: string, Comp: React.ComponentType<any>) {
+  const Wrapped = (props: any) => (
+    <div data-testid={`cut-panel-${panelId}`} style={{ width: '100%', height: '100%' }}>
+      <Comp {...props} />
+    </div>
+  );
+  Wrapped.displayName = `TID(${panelId})`;
+  return Wrapped;
+}
+
 const EffectsPanelDock = withErrorBoundary('Effects', EffectsPanel);
 const VideoScopesPanelDock = withErrorBoundary('Scopes', VideoScopes);
 const ColorCorrectorPanelDock = withErrorBoundary('Color', ColorCorrectionPanel);
 const LutBrowserPanelDock = withErrorBoundary('LUTs', LutBrowserPanel);
 // MARKER_GAMMA-AUDIT: SpeedControl removed from dockview — it's a modal dialog (Cmd+J/⌘R)
 // SpeedControl mounted as Suspense modal in MenuBar.tsx (line 800+)
-const TransitionsPanelDock = withErrorBoundary('Transitions', TransitionsPanel);
+// MARKER_GAMMA-LAYOUT1: TransitionsPanel removed — Transitions = category inside EffectsPanel
 const ToolsPaletteDock = withErrorBoundary('Tools', ToolsPalette);
 
 const PANEL_COMPONENTS = {
@@ -102,13 +118,17 @@ const PANEL_COMPONENTS = {
   colorcorrector: ColorCorrectorPanelDock,
   lutbrowser: LutBrowserPanelDock,
   // speed: removed — SpeedControl is a modal dialog, not a dockview panel
-  transitions: TransitionsPanelDock,
+  // transitions: removed — Transitions is a category inside EffectsPanel (GAMMA-LAYOUT1)
   tools: ToolsPaletteDock,
   markers: MarkerListPanel,
   timelines: TimelineInstancePanel,
+  publish: withErrorBoundary('Publish', PublishPanel),
+  layers: LayerStackPanel,
   source: SourceMonitorPanel,
   program: ProgramMonitorPanel,
   timeline: TimelinePanel,
+  multicam: MulticamPanel,
+  acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
@@ -142,7 +162,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
 
   // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
-    for (const preset of ['editing', 'color', 'audio', 'custom'] as const) {
+    for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom'] as const) {
       try {
         const raw = localStorage.getItem('cut_dockview_' + preset);
         if (!raw) continue;
@@ -424,7 +444,14 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   // handle all colored borders at the CSS level. No JS mutation watching needed.
 
   // Memoize components object to prevent re-renders
-  const components = useMemo(() => PANEL_COMPONENTS, []);
+  // MARKER_GAMMA-TESTID: Wrap all panels with data-testid='cut-panel-{name}'
+  const components = useMemo(() => {
+    const wrapped: Record<string, React.ComponentType<any>> = {};
+    for (const [id, Comp] of Object.entries(PANEL_COMPONENTS)) {
+      wrapped[id] = withTestId(id, Comp);
+    }
+    return wrapped;
+  }, []);
 
   // MARKER_GAMMA-15: Panel tab context menu
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; panelId: string } | null>(null);
@@ -440,7 +467,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       for (const p of api.panels) {
         if (p.title?.toUpperCase() === tabText || p.id.toUpperCase() === tabText) {
           try {
-            (api as any).addFloatingGroup?.(p, {
+            api.addFloatingGroup(p, {
               x: 100, y: 100, width: 500, height: 400,
             });
           } catch { /* floating API may not be available */ }
@@ -510,10 +537,26 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       case 'float':
         // MARKER_GAMMA-R9: Float panel into a floating group
         try {
-          (api as any).addFloatingGroup?.(panel, {
+          api.addFloatingGroup(panel, {
             x: tabMenu.x, y: tabMenu.y, width: 400, height: 300,
           });
         } catch { /* floating API may not be available */ }
+        break;
+      case 'popout':
+        // MARKER_GAMMA-POPOUT: Popout panel to separate OS window (multi-monitor)
+        try {
+          void api.addPopoutGroup(panel, {
+            popoutUrl: window.location.href,
+            onDidOpen: (e) => {
+              // Inject our monochrome theme CSS into the popout window
+              const popoutDoc = e.window.document;
+              const mainStyles = document.querySelectorAll('link[rel="stylesheet"], style');
+              mainStyles.forEach((node) => {
+                popoutDoc.head.appendChild(node.cloneNode(true));
+              });
+            },
+          });
+        } catch { /* popout API may not be available in all environments */ }
         break;
       case 'maximize':
         toggleMaximize();
@@ -553,7 +596,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
           className="dockview-theme-dark"
-          components={components}
+          components={components as Record<string, React.FunctionComponent<any>>}
           onReady={onReady}
         />
         {/* MARKER_GAMMA-R4.3: Drop zone overlay for media drag */}
@@ -583,6 +626,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
               { label: 'Close All in Group', action: 'close-all' },
               { separator: true },
               { label: 'Float Panel', action: 'float' },
+              { label: 'Popout to New Window', action: 'popout' },
               { label: 'Maximize / Restore', action: 'maximize' },
             ].map((item, i) =>
               'separator' in item ? (
@@ -610,6 +654,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       <TimelineMiniMap />
       {/* MARKER_GAMMA-27: StatusBar — bottom info strip */}
       <StatusBar />
+      {/* MARKER_GAMMA-MATCH: Match Sequence Settings popup on first clip drop */}
+      <MatchSequencePopup />
     </div>
   );
 }

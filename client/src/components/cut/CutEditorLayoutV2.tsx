@@ -19,10 +19,12 @@
  */
 import { useMemo, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
+import { useAudioPlayback, type AudioClipInfo } from '../../hooks/useAudioPlayback';
 import DockviewLayout from './DockviewLayout';
 import { useDockviewStore } from '../../store/useDockviewStore';
 import MenuBar from './MenuBar';
@@ -32,6 +34,10 @@ import SpeedControl from './SpeedControl';
 import PasteAttributesDialog from './PasteAttributesDialog';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
+import TrimEditWindow from './TrimEditWindow';
+import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
+import { PublishDialog } from '../publish/PublishDialog';
 
 
 // ─── Styles ───
@@ -111,10 +117,10 @@ interface CutEditorLayoutV2Props {
 
 export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2Props) {
   // ─── MARKER_W4.3: Autosave + manual save ───
-  const { saveProject } = useCutAutosave();
+  const { saveProject, saveProjectAs } = useCutAutosave();
 
   // ─── MARKER_INSPECTOR_SYNC: Auto-activate Clip tab when a clip is selected ───
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   useEffect(() => {
     if (!selectedClipId) return;
     const api = useDockviewStore.getState().apiRef;
@@ -125,8 +131,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     } catch { /* panel not found */ }
   }, [selectedClipId]);
 
-  // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) ───
-  const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
+  // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) — hook kept for external use/testing ───
+  useThreePointEdit();
 
   // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
   const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
@@ -172,6 +178,106 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     return () => window.removeEventListener('keydown', onKey, { capture: true });
   }, [multicamMode]);
 
+  // ─── MARKER_3PT_DEDUP: Shared insert/overwrite helpers (dedup of insertEdit/insertEditF9/overwriteEdit/overwriteEditF10) ───
+  // Audio-only source detection: file extensions that carry no video track
+  const AUDIO_ONLY_EXTS = ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.m4a', '.opus', '.wma', '.aiff', '.aif'];
+  const isAudioOnlyPath = useCallback((path: string): boolean => {
+    const ext = path.slice(path.lastIndexOf('.')).toLowerCase();
+    return AUDIO_ONLY_EXTS.includes(ext);
+  }, []);
+
+  const performInsert = useCallback(async () => {
+    const s = useCutEditorStore.getState();
+    const srcIn = s.sourceMarkIn ?? 0;
+    const srcOut = s.sourceMarkOut ?? srcIn + 2;
+    const dur = srcOut - srcIn;
+    if (dur <= 0) return;
+    const { videoLaneId, audioLaneId } = s.getInsertTargets();
+    // MARKER_3PT_SRC_FIX: Find source media — sourceMediaPath → clip under playhead → any clip in timeline
+    let srcPath = s.sourceMediaPath;
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+        if (c) { srcPath = c.source_path; break; }
+      }
+    }
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
+      }
+    }
+    if (!srcPath) return;
+    const audioOnly = isAudioOnlyPath(srcPath);
+    if (audioOnly && !audioLaneId) return;
+    if (!audioOnly && !videoLaneId) return;
+    const seqIn = s.sequenceMarkIn ?? s.currentTime;
+    const newClipId = `clip_3pt_${Date.now()}`;
+    const newLanes = s.lanes.map((lane) => {
+      const isTargetVideo = !audioOnly && lane.lane_id === videoLaneId;
+      const isTargetAudio = audioLaneId && lane.lane_id === audioLaneId;
+      if (!isTargetVideo && !isTargetAudio) return lane;
+      // Ripple: push subsequent clips right
+      const shifted = lane.clips.map((c) =>
+        c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
+      );
+      const clipId = isTargetVideo ? newClipId : `clip_3pt_a_${Date.now()}`;
+      shifted.push({ clip_id: clipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
+      shifted.sort((a, b) => a.start_sec - b.start_sec);
+      return { ...lane, clips: shifted };
+    });
+    s.setLanes(newLanes);
+    s.seek(seqIn + dur);
+    // Async backend ops (skipRefresh: local state already updated)
+    const ops: Array<Record<string, unknown>> = [];
+    if (!audioOnly && videoLaneId) ops.push({ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (audioLaneId) ops.push({ op: 'insert_at', lane_id: audioLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (ops.length > 0) s.applyTimelineOps(ops, { skipRefresh: true }).catch(() => {});
+  }, [isAudioOnlyPath]);
+
+  const performOverwrite = useCallback(async () => {
+    const s = useCutEditorStore.getState();
+    const srcIn = s.sourceMarkIn ?? 0;
+    const srcOut = s.sourceMarkOut ?? srcIn + 2;
+    const dur = srcOut - srcIn;
+    if (dur <= 0) return;
+    const { videoLaneId, audioLaneId } = s.getInsertTargets();
+    // MARKER_3PT_SRC_FIX: Same source resolution as performInsert
+    let srcPath = s.sourceMediaPath;
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
+        if (c) { srcPath = c.source_path; break; }
+      }
+    }
+    if (!srcPath) {
+      for (const lane of s.lanes) {
+        if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
+      }
+    }
+    if (!srcPath) return;
+    const audioOnly = isAudioOnlyPath(srcPath);
+    if (audioOnly && !audioLaneId) return;
+    if (!audioOnly && !videoLaneId) return;
+    const seqIn = s.sequenceMarkIn ?? s.currentTime;
+    const newClipId = `clip_3pt_${Date.now()}`;
+    const newLanes = s.lanes.map((lane) => {
+      const isTargetVideo = !audioOnly && lane.lane_id === videoLaneId;
+      const isTargetAudio = audioLaneId && lane.lane_id === audioLaneId;
+      if (!isTargetVideo && !isTargetAudio) return lane;
+      const clipId = isTargetVideo ? newClipId : `clip_3pt_a_${Date.now()}`;
+      const clips = [...lane.clips, { clip_id: clipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
+      clips.sort((a, b) => a.start_sec - b.start_sec);
+      return { ...lane, clips };
+    });
+    s.setLanes(newLanes);
+    s.seek(seqIn + dur);
+    // Async backend ops (skipRefresh: local state already updated)
+    const ops: Array<Record<string, unknown>> = [];
+    if (!audioOnly && videoLaneId) ops.push({ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (audioLaneId) ops.push({ op: 'overwrite_at', lane_id: audioLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath });
+    if (ops.length > 0) s.applyTimelineOps(ops, { skipRefresh: true }).catch(() => {});
+  }, [isAudioOnlyPath]);
+
   // ─── MARKER_196.1: Hotkey handlers ───
   const hotkeyHandlers = useMemo<CutHotkeyHandlers>(() => ({
     // Playback — MARKER_DUAL-VIDEO: source-aware play/pause/stop
@@ -191,6 +297,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // K+J: frame step backward. K+L: frame step forward.
     shuttleBack: () => {
       const s = useCutEditorStore.getState();
+      // MARKER_TD5: Dynamic Trim — J moves edit point backward when trim overlay is active
+      if (s.trimEditActive) {
+        const frameSec = 1 / s.projectFramerate;
+        s.setTrimEditActive(true, s.trimEditClipId, Math.max(0, s.trimEditPoint - frameSec));
+        return;
+      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
@@ -218,6 +330,12 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     shuttleForward: () => {
       const s = useCutEditorStore.getState();
+      // MARKER_TD5: Dynamic Trim — L moves edit point forward when trim overlay is active
+      if (s.trimEditActive) {
+        const frameSec = 1 / s.projectFramerate;
+        s.setTrimEditActive(true, s.trimEditClipId, s.trimEditPoint + frameSec);
+        return;
+      }
       const isSourceFocused = s.focusedPanel === 'source';
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
@@ -358,7 +476,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
 
     // Editing
-    selectAll: () => useCutEditorStore.getState().selectAllClips(),
+    selectAll: () => useSelectionStore.getState().selectAllClips(),
 
     // MARKER_CLIPBOARD: Clipboard operations
     copy: () => useCutEditorStore.getState().copyClips(),
@@ -371,21 +489,38 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
     deleteClip: async () => {
       const s = useCutEditorStore.getState();
-      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      const sel = useSelectionStore.getState();
+      const ids = sel.selectedClipIds.size > 0 ? [...sel.selectedClipIds] : sel.selectedClipId ? [sel.selectedClipId] : [];
       if (ids.length === 0) return;
       const ops = ids.map((id) => ({ op: 'remove_clip', clip_id: id }));
       await s.applyTimelineOps(ops);
-      s.setSelectedClip(null);
-      s.clearSelection();
+      sel.setSelectedClip(null);
+      sel.clearSelection();
     },
-    splitClip: async () => {
+    // MARKER_SPLIT_LOCAL_FIRST: Local-first split for instant visual feedback
+    splitClip: () => {
       const s = useCutEditorStore.getState();
       const t = s.currentTime;
-      // Find clip under playhead to get its clip_id
       for (const lane of s.lanes) {
         for (const c of lane.clips) {
-          if (t > c.start_sec && t < c.start_sec + c.duration_sec) {
-            await s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }]);
+          if (t > c.start_sec + 0.01 && t < c.start_sec + c.duration_sec - 0.01) {
+            // Local-first: split into two halves instantly
+            const leftDur = t - c.start_sec;
+            const rightDur = c.duration_sec - leftDur;
+            const newLanes = s.lanes.map((l) => ({
+              ...l,
+              clips: l.clips.flatMap((cl) => {
+                if (cl.clip_id !== c.clip_id) return [cl];
+                return [
+                  { ...cl, clip_id: `${cl.clip_id}_L`, duration_sec: leftDur },
+                  { ...cl, clip_id: `${cl.clip_id}_R`, start_sec: t, duration_sec: rightDur,
+                    source_in: (cl.source_in ?? 0) + leftDur },
+                ];
+              }),
+            }));
+            s.setLanes(newLanes);
+            // Async backend with skipRefresh (local state is truth)
+            s.applyTimelineOps([{ op: 'split_at', clip_id: c.clip_id, split_sec: t }], { skipRefresh: true }).catch(() => {});
             return;
           }
         }
@@ -396,22 +531,24 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_TL4: Ripple delete all selected clips (linked selection)
     rippleDelete: async () => {
       const s = useCutEditorStore.getState();
-      const ids = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      const sel = useSelectionStore.getState();
+      const ids = sel.selectedClipIds.size > 0 ? [...sel.selectedClipIds] : sel.selectedClipId ? [sel.selectedClipId] : [];
       if (ids.length === 0) return;
       const ops = ids.map((id) => ({ op: 'ripple_delete', clip_id: id }));
       await s.applyTimelineOps(ops);
-      s.setSelectedClip(null);
-      s.clearSelection();
+      sel.setSelectedClip(null);
+      sel.clearSelection();
     },
 
     // MARKER_W6.WIRE: Nudge clip ±1 frame
     nudgeLeft: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
       // Find clip to get its current position and lane
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           await s.applyTimelineOps([{
             op: 'move_clip', clip_id: clip.clip_id,
@@ -423,10 +560,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     nudgeRight: async () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           await s.applyTimelineOps([{
             op: 'move_clip', clip_id: clip.clip_id,
@@ -439,90 +577,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
     // Comma (,) = Insert (ripple). Period (.) = Overwrite (replace).
-    // Tries backend via useThreePointEdit; falls back to local-first insert.
-    // MARKER_3PT_LOCAL_FIRST: Always do local-first insert, then async backend with skipRefresh.
-    // Prevents mock-backend race where refreshProjectState reloads stale data.
-    insertEdit: async () => {
-      {
-        const s = useCutEditorStore.getState();
-        const srcIn = s.sourceMarkIn ?? 0;
-        const srcOut = s.sourceMarkOut ?? srcIn + 2;
-        const dur = srcOut - srcIn;
-        if (dur <= 0) return;
-        const { videoLaneId } = s.getInsertTargets();
-        if (!videoLaneId) return;
-        // MARKER_3PT_SRC_FIX: Find source media — sourceMediaPath → clip under playhead → any clip in timeline
-        let srcPath = s.sourceMediaPath;
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-            if (c) { srcPath = c.source_path; break; }
-          }
-        }
-        // Fallback: use first clip's source path from any lane (for tests/no-media scenarios)
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-          }
-        }
-        if (!srcPath) return;
-        const seqIn = s.sequenceMarkIn ?? s.currentTime;
-        const newClipId = `clip_3pt_${Date.now()}`;
-        const newLanes = s.lanes.map((lane) => {
-          if (lane.lane_id !== videoLaneId) return lane;
-          // Ripple: push subsequent clips right
-          const shifted = lane.clips.map((c) =>
-            c.start_sec >= seqIn ? { ...c, start_sec: c.start_sec + dur } : c
-          );
-          shifted.push({ clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any);
-          shifted.sort((a, b) => a.start_sec - b.start_sec);
-          return { ...lane, clips: shifted };
-        });
-        s.setLanes(newLanes);
-        s.seek(seqIn + dur);
-        // Async backend (skipRefresh: local state already updated)
-        s.applyTimelineOps([{ op: 'insert_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-      }
-    },
+    // MARKER_3PT_LOCAL_FIRST: Always do local-first insert/overwrite, then async backend with skipRefresh.
+    // MARKER_3PT_DEDUP: Logic extracted into performInsert/performOverwrite above (audio lane support added).
+    insertEdit: performInsert,
     // MARKER_3PT_LOCAL_FIRST: Always local-first overwrite
-    overwriteEdit: async () => {
-      {
-        // MARKER_TDD-3PT2: Local-first overwrite
-        const s = useCutEditorStore.getState();
-        const srcIn = s.sourceMarkIn ?? 0;
-        const srcOut = s.sourceMarkOut ?? srcIn + 2;
-        const dur = srcOut - srcIn;
-        if (dur <= 0) return;
-        const { videoLaneId } = s.getInsertTargets();
-        if (!videoLaneId) return;
-        // MARKER_3PT_SRC_FIX: Same source resolution as insertEdit
-        let srcPath = s.sourceMediaPath;
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            const c = lane.clips.find((cl) => s.currentTime >= cl.start_sec && s.currentTime < cl.start_sec + cl.duration_sec);
-            if (c) { srcPath = c.source_path; break; }
-          }
-        }
-        if (!srcPath) {
-          for (const lane of s.lanes) {
-            if (lane.clips.length > 0) { srcPath = lane.clips[0].source_path; break; }
-          }
-        }
-        if (!srcPath) return;
-        const seqIn = s.sequenceMarkIn ?? s.currentTime;
-        const newClipId = `clip_3pt_${Date.now()}`;
-        const newLanes = s.lanes.map((lane) => {
-          if (lane.lane_id !== videoLaneId) return lane;
-          const clips = [...lane.clips, { clip_id: newClipId, source_path: srcPath!, start_sec: seqIn, duration_sec: dur, source_in: srcIn } as any];
-          clips.sort((a, b) => a.start_sec - b.start_sec);
-          return { ...lane, clips };
-        });
-        s.setLanes(newLanes);
-        s.seek(seqIn + dur);
-        // Async backend (skipRefresh: local state already updated)
-        s.applyTimelineOps([{ op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn, duration_sec: dur, source_path: srcPath }], { skipRefresh: true }).catch(() => {});
-      }
-    },
+    overwriteEdit: performOverwrite,
     // MARKER_FCP7.F11: Replace Edit — replace clip at playhead with source content
     // FCP7 Ch.36: F11 replaces clip at playhead position, keeping same duration
     // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
@@ -580,15 +639,16 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       });
       s.setLanes(newLanes);
       s.seek(seqIn + seqDur);
-      // Also try backend
+      // Also try backend — include speed for fit-to-fill
       void s.applyTimelineOps([{
         op: 'overwrite_at', lane_id: videoLaneId, start_sec: seqIn,
-        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId,
-      }]);
+        duration_sec: seqDur, source_path: srcPath, clip_id: newClipId, speed,
+      }], { skipRefresh: true });
     },
 
     // MARKER_TL2: Superimpose — add clip on V2 above current clip (F12)
     // FCP7 Ch.11 p.167: places source clip on next higher video track at playhead
+    // MARKER_TDD-GREEN: Verified — fixed V2 auto-creation when only V1 exists
     superimpose: () => {
       const s = useCutEditorStore.getState();
       const srcIn = s.sourceMarkIn ?? 0;
@@ -597,30 +657,47 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       if (dur <= 0) return;
       let srcPath = s.sourceMediaPath;
       if (!srcPath) return;
-      // Find V2 (or next video lane above V1)
-      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
-      const targetLane = videoLanes.length > 1 ? videoLanes[1] : videoLanes[0];
-      if (!targetLane) return;
       const seqIn = s.currentTime;
       const newClipId = `clip_super_${Date.now()}`;
-      const newLanes = s.lanes.map((lane) => {
-        if (lane.lane_id !== targetLane.lane_id) return lane;
-        const clips = [...lane.clips, {
-          clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
-          duration_sec: dur, source_in: srcIn,
-        } as any];
-        clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
-        return { ...lane, clips };
-      });
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video'));
+      if (videoLanes.length === 0) return;
+      let newLanes = [...s.lanes];
+      if (videoLanes.length < 2) {
+        // FCP7: auto-create V2 lane when superimposing with only V1
+        const v2Lane = {
+          lane_id: `video_${Date.now()}`,
+          lane_type: 'video',
+          clips: [{
+            clip_id: newClipId, source_path: srcPath, start_sec: seqIn,
+            duration_sec: dur, source_in: srcIn,
+          }],
+        };
+        // Insert V2 after V1
+        const v1Idx = newLanes.findIndex((l) => l.lane_id === videoLanes[0].lane_id);
+        newLanes.splice(v1Idx + 1, 0, v2Lane as any);
+      } else {
+        // Place on existing V2
+        const targetLaneId = videoLanes[1].lane_id;
+        newLanes = newLanes.map((lane) => {
+          if (lane.lane_id !== targetLaneId) return lane;
+          const clips = [...lane.clips, {
+            clip_id: newClipId, source_path: srcPath!, start_sec: seqIn,
+            duration_sec: dur, source_in: srcIn,
+          } as any];
+          clips.sort((a: any, b: any) => a.start_sec - b.start_sec);
+          return { ...lane, clips };
+        });
+      }
       s.setLanes(newLanes);
     },
 
     // MARKER_MARK-MENU: Mark Clip (X) — set In/Out to selected clip boundaries
     markClip: () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           s.setMarkIn(clip.start_sec);
           s.setMarkOut(clip.start_sec + clip.duration_sec);
@@ -745,10 +822,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     addKeyframe: () => {
       const s = useCutEditorStore.getState();
-      if (!s.selectedClipId) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       // Find selected clip to calculate relative time
       for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === s.selectedClipId);
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
           const relTime = s.currentTime - clip.start_sec;
           if (relTime >= 0 && relTime <= clip.duration_sec) {
@@ -809,7 +887,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     zoomToFit: () => {
       const s = useCutEditorStore.getState();
       // If clips are selected, zoom to selection bounds (A2.5)
-      const ids = s.selectedClipIds;
+      const ids = useSelectionStore.getState().selectedClipIds;
       if (ids.size > 0) {
         let minT = Infinity, maxT = -Infinity;
         for (const lane of s.lanes) {
@@ -838,6 +916,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
     // Project
     saveProject: () => saveProject(),
+    saveProjectAs: () => saveProjectAs(),
     // MARKER_W6.WIRE: Import Media (Cmd+I) — trigger native file picker
     importMedia: () => {
       // Trigger the file input via dispatching a custom event
@@ -857,7 +936,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       });
       await s.refreshProjectState?.();
     },
-    toggleLinkedSelection: () => useCutEditorStore.getState().toggleLinkedSelection(),
+    toggleLinkedSelection: () => useSelectionStore.getState().toggleLinkedSelection(),
     // MARKER_SNAP_N: Snap toggle (N key, FCP7 standard)
     toggleSnap: () => useCutEditorStore.getState().toggleSnap(),
     // MARKER_SUBCLIP: Make Subclip (Cmd+U, FCP7 Ch.12)
@@ -890,17 +969,265 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     escapeContext: () => {
       const s = useCutEditorStore.getState();
-      s.clearSelection();
+      useSelectionStore.getState().clearSelection();
       s.setActiveTool('selection');
       s.setShuttleSpeed(0);
     },
+    // MARKER_A4: PULSE integration hotkeys
+    runPulseAnalysis: () => useCutEditorStore.getState().runPulseAnalysis(),
+    runAutoMontageFavorites: () => useCutEditorStore.getState().runAutoMontage('favorites'),
+    // MARKER_EXPORT: Export timeline (Cmd+E → default Premiere XML)
+    exportTimeline: () => useCutEditorStore.getState().exportTimeline('premiere-xml'),
+
+    // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10 aliases
+    // W — ripple trim: trim clip's Out point to playhead, close gap (FCP7 App A)
+    rippleTrimToPlayhead: async () => {
+      const s = useCutEditorStore.getState();
+      // Find clip whose body contains the playhead on any unlocked lane
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          const clipEnd = clip.start_sec + clip.duration_sec;
+          if (s.currentTime > clip.start_sec + 0.001 && s.currentTime < clipEnd - 0.001) {
+            // Trim this clip's Out to playhead, then ripple subsequent clips left
+            const trimAmount = clipEnd - s.currentTime;
+            const newDur = s.currentTime - clip.start_sec;
+            const newLanes = s.lanes.map((l) => {
+              if (l.lane_id !== lane.lane_id) return l;
+              return {
+                ...l,
+                clips: l.clips.map((c) => {
+                  if (c.clip_id === clip.clip_id) return { ...c, duration_sec: newDur };
+                  if (c.start_sec > clip.start_sec) return { ...c, start_sec: c.start_sec - trimAmount };
+                  return c;
+                }),
+              };
+            });
+            s.setLanes(newLanes);
+            // Async backend
+            s.applyTimelineOps([{
+              op: 'trim_clip', clip_id: clip.clip_id,
+              duration_sec: newDur, ripple: true,
+            }], { skipRefresh: true }).catch(() => {});
+            return;
+          }
+        }
+      }
+    },
+    // Cmd+Shift+S — swap two selected adjacent clips
+    swapClips: () => {
+      const s = useCutEditorStore.getState();
+      const ids = [...s.selectedClipIds];
+      if (ids.length !== 2) return;
+      // Find both clips — must be on the same lane
+      for (const lane of s.lanes) {
+        const clipA = lane.clips.find((c) => c.clip_id === ids[0]);
+        const clipB = lane.clips.find((c) => c.clip_id === ids[1]);
+        if (clipA && clipB) {
+          // Sort by position
+          const [first, second] = clipA.start_sec < clipB.start_sec ? [clipA, clipB] : [clipB, clipA];
+          // Swap positions: second takes first's start, first shifts right
+          const newLanes = s.lanes.map((l) => {
+            if (l.lane_id !== lane.lane_id) return l;
+            return {
+              ...l,
+              clips: l.clips.map((c) => {
+                if (c.clip_id === first.clip_id) return { ...c, start_sec: first.start_sec + second.duration_sec };
+                if (c.clip_id === second.clip_id) return { ...c, start_sec: first.start_sec };
+                return c;
+              }).sort((a, b) => a.start_sec - b.start_sec),
+            };
+          });
+          s.setLanes(newLanes);
+          return;
+        }
+      }
+    },
+    // Cmd+` — delete marker at or nearest to playhead
+    deleteMarker: () => {
+      const s = useCutEditorStore.getState();
+      if (s.markers.length === 0) return;
+      // Find marker closest to playhead (within 2 seconds)
+      let nearest: typeof s.markers[0] | null = null;
+      let nearestDist = Infinity;
+      for (const m of s.markers) {
+        const dist = Math.abs(m.start_sec - s.currentTime);
+        if (dist < nearestDist) { nearest = m; nearestDist = dist; }
+      }
+      if (nearest && nearestDist < 2.0) {
+        s.setMarkers(s.markers.filter((m) => m.marker_id !== nearest!.marker_id));
+      }
+    },
+    // Alt+V — paste attributes (effects) from clipboard clip to selected clip
+    pasteAttributes: () => {
+      const s = useCutEditorStore.getState();
+      const clipboard = (s as any).clipboard as Array<{ clip_id: string; effects?: any; keyframes?: any }> | undefined;
+      if (!clipboard || clipboard.length === 0) return;
+      const sourceClip = clipboard[0];
+      if (!sourceClip.effects && !sourceClip.keyframes) return;
+      const targetIds = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
+      if (targetIds.length === 0) return;
+      const newLanes = s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) => {
+          if (!targetIds.includes(c.clip_id)) return c;
+          return {
+            ...c,
+            effects: sourceClip.effects ? { ...sourceClip.effects } : c.effects,
+            keyframes: sourceClip.keyframes ? { ...sourceClip.keyframes } : c.keyframes,
+          };
+        }),
+      }));
+      s.setLanes(newLanes);
+    },
+    // F9 → insert edit alias — delegates to performInsert (same logic as comma key, with audio lane support)
+    insertEditF9: performInsert,
+    // F10 → overwrite edit alias — delegates to performOverwrite (same logic as period key, with audio lane support)
+    overwriteEditF10: performOverwrite,
+
+    // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
+    // F6 — select clip at playhead position
+    selectClipAtPlayhead: () => {
+      const s = useCutEditorStore.getState();
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            s.setSelectedClip(clip.clip_id);
+            return;
+          }
+        }
+      }
+    },
+    // Alt+A — select all clips on the same track as the currently selected clip
+    selectAllOnTrack: () => {
+      const s = useCutEditorStore.getState();
+      const selId = s.selectedClipId;
+      if (!selId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === selId)) {
+          const ids = new Set(lane.clips.map((c) => c.clip_id));
+          useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: selId });
+          return;
+        }
+      }
+    },
+    // Cmd+Shift+A — deselect all
+    deselectAll: () => {
+      useCutEditorStore.getState().clearSelection();
+    },
+    // Alt+Shift+Right — select all clips forward from playhead
+    selectForward: () => {
+      const s = useCutEditorStore.getState();
+      const ids = new Set<string>();
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (clip.start_sec >= s.currentTime - 0.001) {
+            ids.add(clip.clip_id);
+          }
+        }
+      }
+      if (ids.size > 0) {
+        useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: [...ids][0] });
+      }
+    },
+    // T — toggle A/V selection targeting (cycle: all → video-only → audio-only → all)
+    toggleAVSelection: () => {
+      const s = useCutEditorStore.getState();
+      const videoLanes = s.lanes.filter((l) => l.lane_type.startsWith('video')).map((l) => l.lane_id);
+      const audioLanes = s.lanes.filter((l) => l.lane_type.startsWith('audio')).map((l) => l.lane_id);
+      const targeted = s.targetedLanes;
+      const allTargeted = [...videoLanes, ...audioLanes].every((id) => targeted.has(id));
+      const onlyVideo = videoLanes.every((id) => targeted.has(id)) && audioLanes.every((id) => !targeted.has(id));
+      let next: Set<string>;
+      if (allTargeted || targeted.size === 0) {
+        next = new Set(videoLanes);       // → video only
+      } else if (onlyVideo) {
+        next = new Set(audioLanes);       // → audio only
+      } else {
+        next = new Set([...videoLanes, ...audioLanes]); // → all
+      }
+      useCutEditorStore.setState({ targetedLanes: next });
+    },
+    // Cmd+L — link/unlink clips (alias for toggleLinkedSelection)
+    linkUnlinkClips: () => {
+      useCutEditorStore.getState().toggleLinkedSelection();
+    },
+
+    // MARKER_SOURCE_ACQUIRE: Cmd+8 — open Source Acquire panel
+    focusSourceAcquire: () => {
+      window.dispatchEvent(new CustomEvent('cut:focus-panel', { detail: { panelId: 'acquire' } }));
+    },
+
+    // MARKER_FCP7FIX: 4 missing actions — revealMasterClip, collapse/expand, rename
+    // Shift+F — reveal master clip in project browser (fires CustomEvent for DAG panel to handle)
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === clipId);
+        if (clip?.source_path) {
+          window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', { detail: { sourcePath: clip.source_path } }));
+          return;
+        }
+      }
+    },
+    // Shift+- — toggle track collapse for the lane of the selected clip
+    collapseExpandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.toggleTrackCollapse(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Shift+= — expand track to max height for the lane of the selected clip
+    expandTrack: () => {
+      const s = useCutEditorStore.getState();
+      const clipId = s.selectedClipId;
+      if (!clipId) return;
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.expandTrackMax(lane.lane_id);
+          return;
+        }
+      }
+    },
+    // Enter — start inline rename on selected clip
+    renameClipInline: () => {
+      const s = useCutEditorStore.getState();
+      if (s.selectedClipId) {
+        s.setRenamingClip(s.selectedClipId);
+      }
+    },
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
-    focusSource:  () => useCutEditorStore.getState().setFocusedPanel('source'),
-    focusProgram: () => useCutEditorStore.getState().setFocusedPanel('program'),
-    focusTimeline:() => useCutEditorStore.getState().setFocusedPanel('timeline'),
-    focusProject: () => useCutEditorStore.getState().setFocusedPanel('project'),
-    focusEffects: () => useCutEditorStore.getState().setFocusedPanel('effects'),
+    // Updates store state AND physically activates the dockview panel tab.
+    focusSource: () => {
+      useCutEditorStore.getState().setFocusedPanel('source');
+      try { useDockviewStore.getState().apiRef?.getPanel('source')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProgram: () => {
+      useCutEditorStore.getState().setFocusedPanel('program');
+      try { useDockviewStore.getState().apiRef?.getPanel('program')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusTimeline: () => {
+      useCutEditorStore.getState().setFocusedPanel('timeline');
+      try { useDockviewStore.getState().apiRef?.getPanel('timeline')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusProject: () => {
+      useCutEditorStore.getState().setFocusedPanel('project');
+      try { useDockviewStore.getState().apiRef?.getPanel('project')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
+    focusEffects: () => {
+      useCutEditorStore.getState().setFocusedPanel('effects');
+      try { useDockviewStore.getState().apiRef?.getPanel('effects')?.api.setActive(); } catch { /* panel not mounted */ }
+    },
 
     // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
     matchFrame: () => {
@@ -943,7 +1270,61 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
-  }), [saveProject, threePointInsert, threePointOverwrite]);
+
+    // MARKER_GAMMA-P1: 6 new FCP7 UI actions
+    editMarkerDialog: () => {
+      const s = useCutEditorStore.getState();
+      // Find marker nearest to playhead (within 0.1s tolerance)
+      const marker = s.markers.find((m) =>
+        Math.abs(m.start_sec - s.currentTime) < 0.1
+      );
+      if (marker) {
+        s.setShowEditMarkerDialog(true, marker.marker_id);
+      }
+    },
+    timecodeEntry: () => {
+      useCutEditorStore.getState().setShowTimecodeEntry(true);
+    },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
+    },
+    renameClipInline: () => {
+      const selected = useSelectionStore.getState().selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
+    },
+    toggleTimelineDisplayMode: () => {
+      useCutEditorStore.getState().cycleTimelineDisplayMode();
+    },
+    publishDialog: () => {
+      useCutEditorStore.getState().setShowPublishDialog(true);
+    },
+  }), [saveProject, saveProjectAs, performInsert, performOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
@@ -1024,6 +1405,105 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     setProgramMedia(null);
   }, [currentTime, lanes, setProgramMedia]);
 
+  // ─── MARKER_B5.2: Audio playback wiring ───
+  // Hook provides playAt / stopAll synced to Web Audio API.
+  const { playAt, stopAll, prefetch } = useAudioPlayback();
+
+  // Subscribe to audio-relevant store slices
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  const laneVolumes = useCutEditorStore((s) => s.laneVolumes);
+  const mutedLanes = useCutEditorStore((s) => s.mutedLanes);
+  const soloLanes = useCutEditorStore((s) => s.soloLanes);
+
+  // Track current time via ref to avoid re-triggering play on every frame tick.
+  // The effect that starts playback reads this ref at play-start time.
+  const audioCurrentTimeRef = useRef<number>(currentTime);
+  useEffect(() => {
+    audioCurrentTimeRef.current = currentTime;
+  });
+
+  // Build AudioClipInfo[] from all audio lanes — memoised on lane/volume/mute/solo changes.
+  const audioClips = useMemo<AudioClipInfo[]>(() => {
+    const hasSolo = soloLanes.size > 0;
+    const result: AudioClipInfo[] = [];
+    for (const lane of lanes) {
+      // Only audio lanes contribute to audio playback
+      if (!lane.lane_type.startsWith('audio')) continue;
+      const laneId = lane.lane_id;
+      const isMuted = mutedLanes.has(laneId) || (hasSolo && !soloLanes.has(laneId));
+      const volume = laneVolumes[laneId] ?? 1.0;
+      for (const clip of lane.clips) {
+        result.push({
+          clip_id: clip.clip_id,
+          source_path: clip.source_path,
+          start_sec: clip.start_sec,
+          duration_sec: clip.duration_sec,
+          source_in: (clip as any).source_in ?? 0,
+          volume,
+          pan: 0,
+          muted: isMuted,
+        });
+      }
+    }
+    return result;
+  }, [lanes, laneVolumes, mutedLanes, soloLanes]);
+
+  // Start / stop audio when isPlaying changes.
+  useEffect(() => {
+    if (isPlaying) {
+      playAt(audioClips, audioCurrentTimeRef.current);
+    } else {
+      stopAll();
+    }
+    // Intentionally NOT listing audioClips in deps — rebuilding clips list should not
+    // restart audio mid-play. Clips are read at play-start via audioCurrentTimeRef pattern.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPlaying, playAt, stopAll]);
+
+  // Re-sync audio when user seeks while playback is active.
+  // Stable refs let us read latest values without adding them to the seek-effect deps.
+  const isPlayingRef = useRef(isPlaying);
+  useEffect(() => { isPlayingRef.current = isPlaying; });
+
+  const audioClipsRef = useRef(audioClips);
+  useEffect(() => { audioClipsRef.current = audioClips; });
+
+  const lastSyncedTimeRef = useRef(0);
+
+  useEffect(() => {
+    if (!isPlayingRef.current) return;
+    const delta = Math.abs(currentTime - lastSyncedTimeRef.current);
+    if (delta < 0.1) return; // Skip rAF ticks (~0.016s), only re-sync on real seeks
+    lastSyncedTimeRef.current = currentTime;
+    // currentTime changed while playing → re-sync audio to new position
+    stopAll();
+    playAt(audioClipsRef.current, currentTime);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, playAt, stopAll]);
+
+  // MARKER_AUDIO_PREFETCH: Prefetch next clip's audio when playhead approaches clip boundary (2s lookahead)
+  const lastPrefetchRef = useRef('');
+  useEffect(() => {
+    if (!isPlayingRef.current) return;
+    const s = useCutEditorStore.getState();
+    const audioLane = s.lanes.find((l) => l.lane_type.startsWith('audio'));
+    if (!audioLane) return;
+    for (const clip of audioLane.clips) {
+      const clipEnd = clip.start_sec + clip.duration_sec;
+      // If playhead is within 2s before clip start and we haven't prefetched this clip yet
+      if (currentTime >= clip.start_sec - 2 && currentTime < clip.start_sec && lastPrefetchRef.current !== clip.clip_id) {
+        lastPrefetchRef.current = clip.clip_id;
+        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id }]);
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime, prefetch]);
+
+  // MARKER_SCRUB_SYNC: REMOVED — Source Monitor is fully independent from timeline.
+  // It only changes via explicit user action: double-click, Match Frame, "Open in Source Monitor".
+  // Timeline scrub/playback does NOT affect Source Monitor playhead or content.
+
   const viewMode = useCutEditorStore((s) => s.viewMode);
 
   return (
@@ -1034,6 +1514,13 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_TRIM_WINDOW: Floating trim edit overlay (FCP7 Ch.45-46) */}
+      <TrimEditWindow />
+      {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
+      <EditMarkerDialog />
+      <TimecodeEntryOverlay />
+      {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
+      <PublishDialog />
       {/* MARKER_PASTE_ATTR: Paste Attributes dialog (⌥V) */}
       <PasteAttributesModal />
       <SaveIndicator />
