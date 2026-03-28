@@ -362,12 +362,12 @@ class TestLayerImportEndpoint:
                 combined += f.read_text()
         return combined
 
-    @pytest.mark.xfail(reason="POST /cut/layers/import not yet implemented (§5)")
+    @pytest.mark.xfail(reason="POST /cut/layers/import — xfail pending test verification")
     def test_import_endpoint_exists(self, routes_source):
         """Route for layer import must be defined."""
         assert "/layers/import" in routes_source or "layers_import" in routes_source
 
-    @pytest.mark.xfail(reason="POST /cut/layers/import not yet implemented (§5)")
+    @pytest.mark.xfail(reason="POST /cut/layers/import — xfail pending test verification")
     def test_endpoint_returns_manifest_id(self, routes_source):
         """Import endpoint must return manifest_id in response."""
         assert "manifest_id" in routes_source
