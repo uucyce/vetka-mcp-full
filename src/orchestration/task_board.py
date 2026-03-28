@@ -2427,7 +2427,9 @@ class TaskBoard:
                 logger.debug(f"[TaskBoard] BRANCH_GUARD check skipped (non-fatal): {e}")
 
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
-        if final_status == "done_worktree" and not commit_hash and not manual_override:
+        # Check both the standalone param and closure_proof.commit_hash (manual agents pass it there)
+        _effective_hash = commit_hash or proof.get("commit_hash")
+        if final_status == "done_worktree" and not _effective_hash and not manual_override:
             return {
                 "success": False,
                 "error": (
