@@ -231,11 +231,11 @@ export default function MenuBar() {
     // Find existing transition on selected clip
     for (const lane of s.lanes) {
       const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
-      if (clip?.transition) {
+      if (clip?.transition_out) {
         void s.applyTimelineOps([{
           op: 'set_transition',
           clip_id: selectedClipId,
-          transition: { ...clip.transition, alignment },
+          transition: { ...clip.transition_out, alignment },
         }]);
         return;
       }
@@ -744,7 +744,7 @@ export default function MenuBar() {
           const sel = useSelectionStore.getState();
           const ids = [...sel.selectedClipIds];
           if (ids.length !== 2) return;
-          void store.getState().applyTimelineOps([{ op: 'swap_clips', clip_id_a: ids[0], clip_id_b: ids[1] }]);
+          void store.getState().applyTimelineOps([{ op: 'swap_clips', clip_a_id: ids[0], clip_b_id: ids[1] }]);
         }},
         { separator: true },
         { label: 'Trim Edit', shortcut: 'T', disabled: true },
