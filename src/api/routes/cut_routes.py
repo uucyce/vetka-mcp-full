@@ -1215,6 +1215,29 @@ def _find_clip(timeline_state: dict[str, Any], clip_id: str) -> tuple[dict[str, 
     return None, None
 
 
+# MARKER_OP-REGISTRY: Canonical set of valid timeline op types.
+# Must stay in sync with client/src/config/timeline_ops.ts → TIMELINE_OP_TYPES.
+# Any new op added to _apply_timeline_ops MUST be added here too (and vice-versa).
+VALID_TIMELINE_OPS: frozenset[str] = frozenset({
+    # Selection / view
+    "set_selection", "set_view",
+    # Clip positioning
+    "move_clip", "trim_clip", "slip_clip", "ripple_trim", "ripple_trim_to_playhead",
+    "roll_edit", "slide_clip", "swap_clips",
+    # Clip lifecycle
+    "insert_at", "overwrite_at", "split_at", "remove_clip", "ripple_delete", "replace_media",
+    # Clip properties
+    "set_clip_color", "set_clip_meta", "set_transition",
+    "set_effects", "reset_effects", "set_prop", "add_keyframe", "remove_keyframe",
+    # Sync
+    "apply_sync_offset",
+    # Markers
+    "delete_marker",
+    # Async / dedicated-endpoint proxies
+    "run_pulse_analysis", "run_automontage_favorites",
+})
+
+
 def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     state = deepcopy(timeline_state)
     applied_ops: list[dict[str, Any]] = []
@@ -1660,6 +1683,18 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                     raise ValueError("effects must be a list")
                 clip["effects"] = effects
             applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
+            continue
+
+        # MARKER_OP-REGISTRY: reset_effects — remove all effects from a clip (complement of set_effects)
+        if op_type == "reset_effects":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for reset_effects")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip.pop("effects", None)
+            applied_ops.append({"op": op_type, "clip_id": clip_id})
             continue
 
         # MARKER_PASTE_ATTR: set_prop — set arbitrary clip property (for paste attributes)
