@@ -1563,6 +1563,7 @@ class TaskBoard:
         execution_mode: Optional[str] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
         role: Optional[str] = None,    # MARKER_ZETA.D4: Agent callsign (Alpha/Beta/Gamma/Delta/Commander)
         domain: Optional[str] = None,  # MARKER_ZETA.D4: Domain (engine/media/ux/qa/architect)
+        allowed_tools: Optional[List[str]] = None,  # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim
     ) -> str:
         """Add a new task to the board.
 
@@ -1695,6 +1696,9 @@ class TaskBoard:
             "closed_by": None,
             "closed_at": None,
             "closure_proof": None,
+            # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim this task
+            # Empty list = unrestricted (any tool_type can claim)
+            "allowed_tools": allowed_tools or [],
             "status_history": [],
         }
         self._append_history(
