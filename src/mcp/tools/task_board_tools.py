@@ -1665,6 +1665,38 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         skipped = board.get_debrief_skipped_tasks(limit)
         return {"success": True, "skipped": skipped, "count": len(skipped)}
 
+    # ── MARKER_201.NOTIFY: Agent-to-agent notifications ──────────
+    elif action == "notify":
+        source_role = arguments.get("source_role") or arguments.get("role", "")
+        target_role = arguments.get("target_role", "")
+        message = arguments.get("message", "")
+        ntype = arguments.get("ntype", "custom")
+        task_id = arguments.get("task_id", "")
+        if not target_role or not message:
+            return {"success": False, "error": "notify requires target_role and message"}
+        return board.send_notification(
+            source_role=source_role,
+            target_role=target_role,
+            message=message,
+            ntype=ntype,
+            task_id=task_id,
+        )
+
+    elif action == "notifications":
+        target_role = arguments.get("target_role") or arguments.get("role", "")
+        if not target_role:
+            return {"success": False, "error": "notifications requires target_role or role"}
+        unread_only = arguments.get("unread_only", True)
+        notifs = board.get_notifications(target_role, unread_only=unread_only)
+        return {"success": True, "notifications": notifs, "count": len(notifs)}
+
+    elif action == "ack_notifications":
+        target_role = arguments.get("target_role") or arguments.get("role", "")
+        if not target_role:
+            return {"success": False, "error": "ack_notifications requires target_role or role"}
+        notification_ids = arguments.get("notification_ids")
+        return board.ack_notifications(target_role, notification_ids=notification_ids)
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 

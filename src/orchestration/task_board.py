@@ -472,6 +472,39 @@ class TaskBoard:
                 except Exception as e:
                     logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
 
+        if current < 2:
+            # Migration 2: Agent notifications table (MARKER_201.NOTIFY)
+            notif_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notifications'"
+            ).fetchone()
+            if notif_exists:
+                self._set_schema_version(2)
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE TABLE IF NOT EXISTS notifications (
+                            id TEXT PRIMARY KEY,
+                            source_role TEXT NOT NULL,
+                            target_role TEXT NOT NULL,
+                            message TEXT NOT NULL,
+                            ntype TEXT DEFAULT 'custom',
+                            task_id TEXT DEFAULT '',
+                            created_at TEXT NOT NULL,
+                            read_at TEXT DEFAULT '',
+                            is_read INTEGER DEFAULT 0
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_notif_target ON notifications(target_role, is_read);
+                    """)
+                    self._set_schema_version(2)
+                    logger.info("[TaskBoard] Migration 2: notifications table created")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning("[TaskBoard] Migration 2 deferred — database locked")
+                        return
+                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+
         # MARKER_199.DDL_FAST: _backfill_fts() removed from init path.
         # It inserted 1648 rows on every init when schema_version failed to write,
         # causing 14 MCP processes to deadlock on the same write lock.
@@ -619,6 +652,138 @@ class TaskBoard:
         except Exception as e:
             logger.debug(f"[Debrief] Skipped query failed: {e}")
             return []
+
+    # ==========================================
+    # MARKER_201.NOTIFY: Agent-to-Agent Notifications
+    # ==========================================
+
+    def send_notification(
+        self,
+        source_role: str,
+        target_role: str,
+        message: str,
+        ntype: str = "custom",
+        task_id: str = "",
+    ) -> Dict[str, Any]:
+        """Send a notification from one agent to another.
+
+        Writes to SQLite (persistent) AND to file inbox (hook trigger).
+        """
+        import random
+        notif_id = f"notif_{int(time.time())}_{random.randint(10000, 99999)}"
+        now = datetime.now().isoformat()
+
+        try:
+            self.db.execute(
+                "INSERT INTO notifications (id, source_role, target_role, message, ntype, task_id, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (notif_id, source_role, target_role, message[:1000], ntype, task_id, now),
+            )
+            self.db.commit()
+        except Exception as e:
+            logger.warning(f"[Notify] DB write failed: {e}")
+            return {"success": False, "error": f"DB write failed: {e}"}
+
+        # Write to file inbox for hook-based real-time delivery
+        self._write_inbox(target_role, source_role, message, notif_id)
+
+        logger.info(f"[Notify] {source_role} → {target_role}: {message[:80]}")
+        return {"success": True, "notification_id": notif_id, "target_role": target_role}
+
+    def get_notifications(
+        self,
+        target_role: str,
+        unread_only: bool = True,
+        limit: int = 20,
+    ) -> List[Dict[str, Any]]:
+        """Get notifications for a specific agent role."""
+        try:
+            if unread_only:
+                cursor = self.db.execute(
+                    "SELECT id, source_role, target_role, message, ntype, task_id, created_at "
+                    "FROM notifications WHERE target_role = ? AND is_read = 0 "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (target_role, limit),
+                )
+            else:
+                cursor = self.db.execute(
+                    "SELECT id, source_role, target_role, message, ntype, task_id, created_at "
+                    "FROM notifications WHERE target_role = ? "
+                    "ORDER BY created_at DESC LIMIT ?",
+                    (target_role, limit),
+                )
+            return [
+                {
+                    "id": row[0], "from": row[1], "to": row[2],
+                    "message": row[3], "ntype": row[4],
+                    "task_id": row[5], "created_at": row[6],
+                }
+                for row in cursor
+            ]
+        except Exception as e:
+            logger.debug(f"[Notify] Read failed for {target_role}: {e}")
+            return []
+
+    def ack_notifications(
+        self,
+        target_role: str,
+        notification_ids: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Mark notifications as read. If no IDs given, marks all unread for role."""
+        now = datetime.now().isoformat()
+        try:
+            if notification_ids:
+                placeholders = ",".join("?" for _ in notification_ids)
+                self.db.execute(
+                    f"UPDATE notifications SET is_read = 1, read_at = ? "
+                    f"WHERE id IN ({placeholders}) AND target_role = ?",
+                    [now] + notification_ids + [target_role],
+                )
+            else:
+                self.db.execute(
+                    "UPDATE notifications SET is_read = 1, read_at = ? "
+                    "WHERE target_role = ? AND is_read = 0",
+                    (now, target_role),
+                )
+            self.db.commit()
+            return {"success": True, "acknowledged": True}
+        except Exception as e:
+            logger.warning(f"[Notify] Ack failed: {e}")
+            return {"success": False, "error": str(e)}
+
+    def _write_inbox(self, target_role: str, source_role: str, message: str, notif_id: str):
+        """Write notification to file inbox for hook-triggered delivery.
+
+        File: .claude/worktrees/<worktree>/.inbox
+        Format: one JSON line per notification (append mode).
+        """
+        try:
+            from src.services.agent_registry import get_agent_registry
+            registry = get_agent_registry()
+            role = registry.get_by_callsign(target_role)
+            if not role or not role.worktree:
+                logger.debug(f"[Notify] No worktree for role {target_role}, inbox skipped")
+                return
+
+            # Resolve inbox path: project_root/.claude/worktrees/<worktree>/.inbox
+            project_root = Path(self.board_file).parent.parent  # data/ → project root
+            inbox_path = project_root / ".claude" / "worktrees" / role.worktree / ".inbox"
+
+            if not inbox_path.parent.exists():
+                logger.debug(f"[Notify] Worktree dir missing: {inbox_path.parent}")
+                return
+
+            entry = json.dumps({
+                "id": notif_id,
+                "from": source_role,
+                "message": message[:500],
+                "at": datetime.now().strftime("%H:%M:%S"),
+            })
+            with open(inbox_path, "a") as f:
+                f.write(entry + "\n")
+
+        except Exception as e:
+            logger.debug(f"[Notify] Inbox write failed for {target_role}: {e}")
 
     @staticmethod
     def _task_to_row(task: dict) -> dict:
