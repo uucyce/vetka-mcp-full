@@ -1588,6 +1588,43 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, prefetch]);
 
+  // MARKER_VIDEO_PREFETCH: Prefetch next clip's video when playhead approaches clip boundary (2s lookahead).
+  // Mirror of MARKER_AUDIO_PREFETCH. Uses a hidden <video preload="auto"> to warm the browser HTTP cache
+  // so VideoPreview's <video> finds data cached → no blank-frame flash at edit points.
+  // No WebCodecs, no store changes, no VideoPreview changes needed — browser cache does the work.
+  const videoPrefetchElRef = useRef<HTMLVideoElement | null>(null);
+  const lastVideoPrefetchRef = useRef('');
+  useEffect(() => {
+    if (!isPlayingRef.current) return;
+    const s = useCutEditorStore.getState();
+    const videoLane = s.lanes.find((l) => l.lane_type.startsWith('video'));
+    if (!videoLane) return;
+    for (const clip of videoLane.clips) {
+      if (
+        currentTime >= clip.start_sec - 2 &&
+        currentTime < clip.start_sec &&
+        lastVideoPrefetchRef.current !== clip.clip_id
+      ) {
+        lastVideoPrefetchRef.current = clip.clip_id;
+        // Lazy-create hidden video element (reused across prefetch calls)
+        if (!videoPrefetchElRef.current) {
+          const vid = document.createElement('video');
+          vid.preload = 'auto';
+          vid.muted = true;
+          vid.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;';
+          document.body.appendChild(vid);
+          videoPrefetchElRef.current = vid;
+        }
+        const url = `${API_BASE}/files/raw?path=${encodeURIComponent(clip.source_path)}`;
+        videoPrefetchElRef.current.src = url;
+        // Seek to source_in so browser fetches the right segment
+        videoPrefetchElRef.current.currentTime = clip.source_in ?? 0;
+        break;
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTime]);
+
   // MARKER_SCRUB_SYNC: REMOVED — Source Monitor is fully independent from timeline.
   // It only changes via explicit user action: double-click, Match Frame, "Open in Source Monitor".
   // Timeline scrub/playback does NOT affect Source Monitor playhead or content.
