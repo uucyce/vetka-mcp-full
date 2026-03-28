@@ -464,7 +464,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const trackHeights = useCutEditorStore((state) => state.trackHeights);
   const setTrackHeightForLane = useCutEditorStore((state) => state.setTrackHeightForLane);
   const currentTime = useCutEditorStore((state) => state.currentTime);
-  const duration = useCutEditorStore((state) => state.duration);
+  // duration — removed, was only consumed by effectiveDuration (Phase 2 scaffold)
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
   const selectedClipId = useSelectionStore((state) => state.selectedClipId);
   const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
@@ -479,6 +479,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
+  const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
+  const toggleLaneWaveform = useCutEditorStore((state) => state.toggleLaneWaveform); // MARKER_A3.4
   const showThumbnails = useCutEditorStore((state) => state.showThumbnails);
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
@@ -545,7 +547,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // READS come from instance store. WRITES still go to singleton (Phase 2).
   // This enables multiple independent TimelineTrackView instances.
   const inst = instanceStoreTimeline;
-  const updateInstance = useTimelineInstanceStore((s) => s.updateTimeline);
+  // updateInstance = useTimelineInstanceStore((s) => s.updateTimeline) — Phase 2 writes
 
   // MARKER_W6.STORE: Override read data from instance store when available
   // Phase 1: redirect reads only — singleton writes untouched
@@ -555,12 +557,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const effectiveScrollLeft = isMultiInstance && inst ? inst.scrollX : scrollLeft;
   const effectiveTrackHeight = isMultiInstance && inst ? inst.trackHeight : trackHeight;
   const effectiveCurrentTime = isMultiInstance && inst ? inst.playheadPosition : currentTime;
-  const effectiveDuration = isMultiInstance && inst ? inst.duration : duration;
+  // effectiveDuration / effectiveSelectedClipIds — Phase 2 (unused, see git history)
   const effectiveMarkIn = isMultiInstance && inst ? inst.markIn : markIn;
   const effectiveMarkOut = isMultiInstance && inst ? inst.markOut : markOut;
-  const effectiveSelectedClipIds = isMultiInstance && inst
-    ? new Set(inst.selectedClipIds)
-    : selectedClipIds;
 
   // Click handler: activate this timeline if not active
   const handleTimelineActivate = useCallback(() => {
@@ -936,6 +935,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         neighborLeft: neighbors.left,
         neighborRight: neighbors.right,
       });
+
+      // MARKER_TRIM_ACTIVATE: Open TrimEditWindow for trim tool drags
+      const trimModes: ClipDragMode[] = ['ripple_left', 'ripple_right', 'roll', 'slip', 'slide'];
+      if (trimModes.includes(effectiveMode)) {
+        const editPt = effectiveMode === 'ripple_left' || effectiveMode === 'roll'
+          ? startSec
+          : startSec + durationSec;
+        useCutEditorStore.getState().setTrimEditActive(true, clip.clip_id, editPt);
+      }
     },
     [activeTool, applyTimelineOps, findNeighbors, setActiveMedia, setSelectedClip, timeFromTrackClientX]
   );
@@ -1656,29 +1664,15 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         });
       }
 
-      // MARKER_W5.TRIM: Slide — move clip, adjust neighbors
+      // MARKER_W5.TRIM: Slide — atomic slide_clip op (single undo step)
       if (activeDrag.mode === 'slide' && Math.abs(activeDrag.startSec - activeDrag.originalStartSec) > 0.001) {
-        const delta = activeDrag.startSec - activeDrag.originalStartSec;
-        ops.push({ op: 'move_clip', clip_id: activeDrag.clipId, lane_id: activeDrag.laneId, start_sec: activeDrag.startSec });
-        // Adjust left neighbor's duration (extend/shrink right edge)
-        if (activeDrag.neighborLeft) {
-          ops.push({
-            op: 'trim_clip',
-            clip_id: activeDrag.neighborLeft.clipId,
-            duration_sec: roundTimeline(activeDrag.neighborLeft.durationSec + delta),
-          });
-        }
-        // Adjust right neighbor's start and duration
-        if (activeDrag.neighborRight) {
-          const clipEnd = activeDrag.startSec + activeDrag.durationSec;
-          const rightOrigEnd = activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec;
-          ops.push({
-            op: 'trim_clip',
-            clip_id: activeDrag.neighborRight.clipId,
-            start_sec: clipEnd,
-            duration_sec: roundTimeline(rightOrigEnd - clipEnd),
-          });
-        }
+        ops.push({
+          op: 'slide_clip',
+          clip_id: activeDrag.clipId,
+          start_sec: activeDrag.startSec,
+          left_neighbor_id: activeDrag.neighborLeft?.clipId || '',
+          right_neighbor_id: activeDrag.neighborRight?.clipId || '',
+        });
       }
 
       // MARKER_W5.TRIM: Ripple — trim edge + shift everything after
@@ -1698,37 +1692,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         ops.push(rippleOp);
       }
 
-      // MARKER_W5.TRIM: Roll — adjust edit point between two clips
+      // MARKER_W5.TRIM: Roll — atomic roll_edit op (single undo step)
       if (activeDrag.mode === 'roll') {
         const editingLeftEdge = activeDrag.grabOffsetSec < activeDrag.originalDurationSec / 2;
         if (editingLeftEdge && activeDrag.neighborLeft) {
-          const newLeftDur = roundTimeline(activeDrag.startSec - activeDrag.neighborLeft.startSec);
-          if (Math.abs(newLeftDur - activeDrag.neighborLeft.durationSec) > 0.001) {
+          const delta = activeDrag.startSec - activeDrag.originalStartSec;
+          if (Math.abs(delta) > 0.001) {
             ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.neighborLeft.clipId,
-              duration_sec: newLeftDur,
-            });
-            ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.clipId,
-              start_sec: activeDrag.startSec,
-              duration_sec: activeDrag.durationSec,
+              op: 'roll_edit',
+              clip_a_id: activeDrag.neighborLeft.clipId,
+              clip_b_id: activeDrag.clipId,
+              delta_sec: delta,
             });
           }
         } else if (!editingLeftEdge && activeDrag.neighborRight) {
-          const newEnd = activeDrag.startSec + activeDrag.durationSec;
-          if (Math.abs(activeDrag.durationSec - activeDrag.originalDurationSec) > 0.001) {
+          const delta = activeDrag.durationSec - activeDrag.originalDurationSec;
+          if (Math.abs(delta) > 0.001) {
             ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.clipId,
-              duration_sec: activeDrag.durationSec,
-            });
-            ops.push({
-              op: 'trim_clip',
-              clip_id: activeDrag.neighborRight.clipId,
-              start_sec: newEnd,
-              duration_sec: roundTimeline(activeDrag.neighborRight.startSec + activeDrag.neighborRight.durationSec - newEnd),
+              op: 'roll_edit',
+              clip_a_id: activeDrag.clipId,
+              clip_b_id: activeDrag.neighborRight.clipId,
+              delta_sec: delta,
             });
           }
         }
@@ -1736,6 +1720,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
       if (ops.length) {
         void applyTimelineOps(ops);
+      }
+
+      // MARKER_TRIM_DEACTIVATE: Close TrimEditWindow on drag end
+      if (useCutEditorStore.getState().trimEditActive) {
+        useCutEditorStore.getState().setTrimEditActive(false);
       }
     };
 
@@ -2005,6 +1994,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     <IconMute size={12} color={mutedLanes.has(lane.lane_id) ? '#111' : '#888'} />
                   </button>
                 </div>
+                {/* MARKER_A3.4: Per-lane waveform toggle (audio lanes only) */}
+                {lane.lane_type.startsWith('audio') && (
+                  <div style={TRACK_BUTTON_ROW}>
+                    <button
+                      data-testid={`cut-lane-waveform-${lane.lane_id}`}
+                      title={waveformHiddenLanes.has(lane.lane_id) ? 'Show waveform' : 'Hide waveform'}
+                      onClick={() => toggleLaneWaveform(lane.lane_id)}
+                      style={{ background: 'none', border: 'none', padding: '1px 2px', cursor: 'pointer' }}
+                    >
+                      {waveformHiddenLanes.has(lane.lane_id)
+                        ? <IconEyeOff size={11} color="#555" />
+                        : <IconEye size={11} color="#888" />
+                      }
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div
@@ -2157,7 +2162,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                         </div>
                       )}
 
-                      {width > 20 && showWaveforms ? (
+                      {width > 20 && showWaveforms && !waveformHiddenLanes.has(lane.lane_id) ? (
                         <div
                           data-clip="1"
                           style={{

@@ -1318,6 +1318,9 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             new_dur = float(op.get("duration_sec", -1))
             if new_dur <= 0:
                 raise ValueError("duration_sec must be > 0")
+            # Min duration guard: 1 frame at 24fps ≈ 0.0417s
+            min_dur = 1.0 / 24.0
+            new_dur = max(new_dur, min_dur)
             source_lane, clip = _find_clip(state, clip_id)
             if source_lane is None or clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
@@ -1331,6 +1334,10 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 new_start = old_start
             clip["duration_sec"] = round(new_dur, 4)
             new_end = new_start + new_dur
+            # Update source_out when end changes (keeps source window in sync)
+            if "source_out" in clip or "source_in" in clip:
+                source_in = float(clip.get("source_in") or 0.0)
+                clip["source_out"] = round(source_in + new_dur, 4)
             # Delta = how much the clip's end moved
             delta = round(new_end - old_end, 4)
             # Shift all subsequent clips in same lane by delta
@@ -1736,13 +1743,10 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             lane_b, clip_b = _find_clip(state, clip_b_id)
             if clip_a is None or clip_b is None:
                 raise ValueError(f"swap_clips: clip(s) not found: {clip_a_id}, {clip_b_id}")
-            # Exchange start_sec positions, preserve durations
+            # True positional swap — each clip takes the other's start_sec
             a_start = float(clip_a.get("start_sec") or 0.0)
             b_start = float(clip_b.get("start_sec") or 0.0)
-            a_dur = float(clip_a.get("duration_sec") or 0.0)
-            b_dur = float(clip_b.get("duration_sec") or 0.0)
-            # Clip A moves to where B was, B moves to where A was (adjust for duration diff)
-            clip_a["start_sec"] = round(b_start + b_dur - a_dur, 4) if b_start + b_dur > a_start else round(b_start, 4)
+            clip_a["start_sec"] = round(b_start, 4)
             clip_b["start_sec"] = round(a_start, 4)
             # Re-sort both lanes
             if lane_a is not None:
@@ -1750,6 +1754,74 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             if lane_b is not None and lane_b is not lane_a:
                 lane_b["clips"] = sorted(lane_b["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
             applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id})
+            continue
+
+        # MARKER_ROLL: roll_edit — atomic two-sided trim at edit point (FCP7 Ch.44)
+        # Adjusts outgoing clip's end and incoming clip's start in one undo step.
+        if op_type == "roll_edit":
+            clip_a_id = str(op.get("clip_a_id") or "")  # outgoing (left)
+            clip_b_id = str(op.get("clip_b_id") or "")  # incoming (right)
+            delta_sec = float(op.get("delta_sec") or 0.0)
+            if not clip_a_id or not clip_b_id:
+                raise ValueError("roll_edit requires clip_a_id and clip_b_id")
+            lane_a, clip_a = _find_clip(state, clip_a_id)
+            lane_b, clip_b = _find_clip(state, clip_b_id)
+            if clip_a is None or clip_b is None:
+                raise ValueError(f"roll_edit: clip(s) not found: {clip_a_id}, {clip_b_id}")
+            a_dur = float(clip_a.get("duration_sec") or 0.0)
+            b_start = float(clip_b.get("start_sec") or 0.0)
+            b_dur = float(clip_b.get("duration_sec") or 0.0)
+            min_dur = 1.0 / 24.0
+            new_a_dur = max(a_dur + delta_sec, min_dur)
+            actual_delta = new_a_dur - a_dur
+            new_b_start = round(b_start + actual_delta, 4)
+            new_b_dur = max(b_dur - actual_delta, min_dur)
+            clip_a["duration_sec"] = round(new_a_dur, 4)
+            if "source_out" in clip_a or "source_in" in clip_a:
+                clip_a["source_out"] = round(float(clip_a.get("source_in") or 0.0) + new_a_dur, 4)
+            clip_b["start_sec"] = new_b_start
+            clip_b["duration_sec"] = round(new_b_dur, 4)
+            if "source_in" in clip_b:
+                clip_b["source_in"] = round(float(clip_b.get("source_in") or 0.0) + actual_delta, 4)
+            for lane in [lane_a, lane_b]:
+                if lane is not None:
+                    lane["clips"] = sorted(lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_a_id": clip_a_id, "clip_b_id": clip_b_id, "delta_sec": round(actual_delta, 4)})
+            continue
+
+        # MARKER_SLIDE: slide_clip — move clip between neighbors, adjust neighbors atomically (FCP7 Ch.44)
+        if op_type == "slide_clip":
+            clip_id = str(op.get("clip_id") or "")
+            new_start = float(op.get("start_sec") or 0.0)
+            left_id = str(op.get("left_neighbor_id") or "")
+            right_id = str(op.get("right_neighbor_id") or "")
+            source_lane, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"slide_clip: clip not found: {clip_id}")
+            old_start = float(clip.get("start_sec") or 0.0)
+            clip_dur = float(clip.get("duration_sec") or 0.0)
+            delta = new_start - old_start
+            min_dur = 1.0 / 24.0
+            clip["start_sec"] = round(new_start, 4)
+            # Extend/shrink left neighbor's right edge
+            if left_id:
+                _, left_clip = _find_clip(state, left_id)
+                if left_clip is not None:
+                    left_dur = float(left_clip.get("duration_sec") or 0.0)
+                    left_clip["duration_sec"] = round(max(left_dur + delta, min_dur), 4)
+            # Adjust right neighbor's start and duration
+            if right_id:
+                _, right_clip = _find_clip(state, right_id)
+                if right_clip is not None:
+                    r_start = float(right_clip.get("start_sec") or 0.0)
+                    r_dur = float(right_clip.get("duration_sec") or 0.0)
+                    r_end = r_start + r_dur
+                    new_r_start = round(new_start + clip_dur, 4)
+                    right_clip["start_sec"] = new_r_start
+                    right_clip["duration_sec"] = round(max(r_end - new_r_start, min_dur), 4)
+            if source_lane is not None:
+                source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
+            applied_ops.append({"op": op_type, "clip_id": clip_id, "start_sec": round(new_start, 4), "delta_sec": round(delta, 4)})
             continue
 
         # MARKER_RTRIM: ripple_trim_to_playhead — trim clip boundary to playhead, ripple others
@@ -1763,18 +1835,27 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             clip_start = float(clip.get("start_sec") or 0.0)
             clip_dur = float(clip.get("duration_sec") or 0.0)
             clip_end = clip_start + clip_dur
+            # Min duration guard: 1 frame at 24fps
+            min_dur = 1.0 / 24.0
             if trim_end == "end" and clip_start < playhead < clip_end:
-                delta = round(clip_end - playhead, 4)
-                clip["duration_sec"] = round(playhead - clip_start, 4)
+                new_dur = max(playhead - clip_start, min_dur)
+                delta = round(clip_end - (clip_start + new_dur), 4)
+                clip["duration_sec"] = round(new_dur, 4)
+                # Update source_out to stay in sync with new duration
+                if "source_out" in clip or "source_in" in clip:
+                    source_in = float(clip.get("source_in") or 0.0)
+                    clip["source_out"] = round(source_in + new_dur, 4)
                 # Ripple: shift all subsequent clips on this lane left by delta
                 for c in source_lane.get("clips", []):
                     c_start = float(c.get("start_sec") or 0.0)
                     if c_start >= clip_end - 0.001:
                         c["start_sec"] = round(c_start - delta, 4)
             elif trim_end == "start" and clip_start < playhead < clip_end:
-                delta = round(playhead - clip_start, 4)
-                clip["start_sec"] = round(playhead, 4)
-                clip["duration_sec"] = round(clip_end - playhead, 4)
+                new_dur = max(clip_end - playhead, min_dur)
+                actual_playhead = clip_end - new_dur  # clamp if min_dur kicks in
+                delta = round(actual_playhead - clip_start, 4)
+                clip["start_sec"] = round(actual_playhead, 4)
+                clip["duration_sec"] = round(new_dur, 4)
                 if "source_in" in clip:
                     clip["source_in"] = round(float(clip.get("source_in") or 0.0) + delta, 4)
                 # Ripple: shift all subsequent clips left by delta
