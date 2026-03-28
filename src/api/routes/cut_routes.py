@@ -158,6 +158,11 @@ from src.api.routes.cut_routes_workers import (  # noqa: E402
 
 router.include_router(worker_router)
 
+# MARKER_GEN-ROUTES: Generation Control sub-router (GenerationControlPanel backend)
+from src.api.routes.cut_routes_generation import generation_router  # noqa: E402
+
+router.include_router(generation_router)
+
 
 # CutBootstrapRequest — moved to cut_routes_bootstrap.py (MARKER_B65)
 
