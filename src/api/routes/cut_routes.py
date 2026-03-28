@@ -3336,61 +3336,75 @@ async def cut_script_parse(body: dict) -> dict:
             "detected_format": "empty",
         }
 
-    chunks, detected = _parse_script_auto(text, fmt_hint)
-    return {
+    chunks, detected, warning = _parse_script_auto(text, fmt_hint)
+    result = {
         "success": True,
         "chunks": [asdict(c) for c in chunks],
         "total_duration_sec": get_total_duration(chunks),
         "page_count": get_total_pages(chunks),
         "detected_format": detected,
     }
+    if warning:
+        result["detection_warning"] = warning
+    return result
 
 
 def _parse_script_auto(text: str, fmt_hint: str = "auto"):
     """
     Auto-detect screenplay format and parse into SceneChunks.
 
-    Returns (chunks, detected_format_name).
+    Returns (chunks, detected_format_name[, warning]).
+    Third element is a warning string if format detection fell through.
     """
+    import logging
+
     from src.services.screenplay_timing import parse_screenplay
 
-    # Explicit format override
+    log = logging.getLogger(__name__)
+
+    # Explicit format override — errors propagate (user chose the format)
     if fmt_hint == "fdx":
-        return _parse_as_fdx(text), "fdx"
+        return _parse_as_fdx(text), "fdx", None
     if fmt_hint == "fountain":
-        return _parse_as_fountain(text), "fountain"
+        return _parse_as_fountain(text), "fountain", None
     if fmt_hint == "plain":
-        return parse_screenplay(text), "plain"
+        return parse_screenplay(text), "plain", None
 
     # Auto-detect: FDX (XML)
     stripped = text.strip()
     if stripped.startswith("<?xml") or stripped.startswith("<FinalDraft"):
         try:
-            return _parse_as_fdx(text), "fdx"
-        except Exception:
-            pass  # Fall through to plain text
+            return _parse_as_fdx(text), "fdx", None
+        except Exception as exc:
+            log.warning("FDX auto-detect matched but parse failed: %s", exc)
+            return parse_screenplay(text), "plain", f"Input looks like FDX but parsing failed: {exc}. Fell back to plain text."
 
     # Auto-detect: Fountain (scene headings + character/dialogue patterns)
     if _looks_like_fountain(text):
         try:
-            return _parse_as_fountain(text), "fountain"
-        except Exception:
-            pass  # Fall through to plain text
+            return _parse_as_fountain(text), "fountain", None
+        except Exception as exc:
+            log.warning("Fountain auto-detect matched but parse failed: %s", exc)
+            return parse_screenplay(text), "plain", f"Input looks like Fountain but parsing failed: {exc}. Fell back to plain text."
 
     # Fallback: plain text
-    return parse_screenplay(text), "plain"
+    return parse_screenplay(text), "plain", None
 
 
 def _parse_as_fdx(text: str):
     """Parse FDX XML into SceneChunks."""
-    from src.services.cut_fdx_parser import parse_fdx
+    try:
+        from src.services.cut_fdx_parser import parse_fdx
+    except ImportError as exc:
+        raise ImportError(
+            "FDX parser module (cut_fdx_parser) is not available. "
+            "Ensure src/services/cut_fdx_parser.py is present."
+        ) from exc
     return parse_fdx(text)
 
 
 def _parse_as_fountain(text: str):
     """Parse Fountain text into SceneChunks via fountain_parser → SceneChunk conversion."""
-    from dataclasses import asdict
-
     from src.services.fountain_parser import parse_fountain_timed
     from src.services.screenplay_timing import SceneChunk
 
@@ -3405,8 +3419,8 @@ def _parse_as_fountain(text: str):
             text=ts.content,
             start_sec=ts.start_sec,
             duration_sec=ts.duration_sec,
-            line_start=ts.line_start if hasattr(ts, "line_start") else 0,
-            line_end=ts.line_end if hasattr(ts, "line_end") else 0,
+            line_start=ts.line_start,
+            line_end=ts.line_end,
             page_count=ts.line_count / 55.0 if ts.line_count else 0.01,
         ))
     return chunks
@@ -3416,15 +3430,15 @@ def _looks_like_fountain(text: str) -> bool:
     """
     Heuristic: does this text look like Fountain format?
 
-    Fountain conventions:
-      - Scene headings: lines starting with INT./EXT./INT/EXT.
+    Fountain spec conventions:
+      - Scene headings: INT./EXT./INT/EXT./I/E. or forced with leading '.'
       - Character cues: ALL CAPS lines followed by dialogue
       - Transitions: lines ending with TO: (e.g. CUT TO:, DISSOLVE TO:)
       - Title page: Title:/Author:/Draft date: at the start
+      - Forced scene headings: lines starting with '.' (not '..')
     """
     import re
     lines = text.split("\n")
-    # Count Fountain-specific markers
     scene_headings = 0
     transitions = 0
     title_page_keys = 0
@@ -3433,18 +3447,26 @@ def _looks_like_fountain(text: str) -> bool:
         stripped = line.strip()
         if not stripped:
             continue
-        # Scene headings
-        if re.match(r"^(INT\.|EXT\.|INT/EXT\.)\s", stripped, re.IGNORECASE):
+        # Scene headings — full Fountain spec: INT./EXT./INT/EXT./I/E./EST.
+        if re.match(
+            r"^(\.(?!\.)|\bINT[\./]|\bEXT[\./]|\bINT/EXT[\./]|\bI/E[\./]|\bEST[\./])",
+            stripped,
+            re.IGNORECASE,
+        ):
             scene_headings += 1
-        # Transitions (CUT TO:, DISSOLVE TO:, etc.)
+        # Transitions (CUT TO:, DISSOLVE TO:, SMASH CUT TO:, etc.)
         elif stripped.endswith("TO:") and stripped == stripped.upper():
             transitions += 1
         # Title page keys
-        elif re.match(r"^(Title|Author|Draft date|Contact|Copyright):", stripped, re.IGNORECASE):
+        elif re.match(r"^(Title|Author|Draft date|Contact|Copyright|Source|Credit):", stripped, re.IGNORECASE):
             title_page_keys += 1
 
-    # If we see at least 2 scene headings, or title page + 1 heading, it's Fountain
-    return scene_headings >= 2 or (title_page_keys >= 1 and scene_headings >= 1)
+    # 2+ headings, or title page + 1 heading, or 1 heading + transitions
+    return (
+        scene_headings >= 2
+        or (title_page_keys >= 1 and scene_headings >= 1)
+        or (scene_headings >= 1 and transitions >= 1)
+    )
 
 
 # ─── MARKER_CUT_2.1: Apply script to project DAG ───
