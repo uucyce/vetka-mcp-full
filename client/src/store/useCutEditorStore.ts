@@ -297,6 +297,9 @@ interface CutEditorState {
   audioSampleRate: 48000 | 44100 | 96000;
   audioBitDepth: 16 | 24 | 32;
   showProjectSettings: boolean;         // dialog visibility
+  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
+  showEditMarkerDialog: boolean;
+  editingMarkerId: string | null;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -488,6 +491,8 @@ interface CutEditorState {
   setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
   setAudioBitDepth: (bits: 16 | 24 | 32) => void;
   setShowProjectSettings: (show: boolean) => void;
+  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
+  setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -699,6 +704,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   audioSampleRate: 48000,
   audioBitDepth: 24,
   showProjectSettings: false,
+  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
+  showEditMarkerDialog: false,
+  editingMarkerId: null,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -1302,6 +1310,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
   setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
+  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
+  setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {
