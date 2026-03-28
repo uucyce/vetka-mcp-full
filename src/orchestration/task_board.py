@@ -916,6 +916,28 @@ class TaskBoard:
         self.tasks[task["id"]] = task
         self._index_task_fts(task)
 
+    def _insert_task(self, task: dict):
+        """Strict INSERT (no OR REPLACE) for new task creation.
+
+        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
+        _save_task keeps INSERT OR REPLACE for update paths.
+        Raises sqlite3.IntegrityError if task_id already exists in DB.
+        """
+        row = self._task_to_row(task)
+        row["updated_at"] = datetime.now().isoformat()
+        columns = list(row.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        values = [row[c] for c in columns]
+        with self.db:
+            self.db.execute(
+                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
+                values,
+            )
+        # Cache coherence — write-through
+        self.tasks[task["id"]] = task
+        self._index_task_fts(task)
+
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
 
@@ -2165,6 +2187,23 @@ class TaskBoard:
                             score += 0.4
                     except Exception:
                         pass
+
+            # Check 4 (MARKER_201.CHERRY_PICK_STALE): branch_name with no commits ahead of main.
+            # When cherry-pick lands all branch commits on main without closing the task,
+            # branch becomes empty ahead of main → strong stale signal.
+            branch_name = task.get("branch_name")
+            if branch_name and score < 0.9:
+                try:
+                    branch_check = subprocess.run(
+                        ["git", "log", "--oneline", f"main..{branch_name}", "-1"],
+                        cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                    )
+                    # returncode 0 + empty stdout = branch exists but has nothing ahead of main
+                    if branch_check.returncode == 0 and not branch_check.stdout.strip():
+                        evidence.append(f"branch_empty_ahead_of_main: {branch_name} (all commits already on main)")
+                        score += 0.9
+                except Exception:
+                    pass
 
             # Check 3: allowed_paths have commits newer than task creation
             if score < 0.5:
@@ -3469,21 +3508,25 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        # MARKER_200.QA_GATE: Warn (don't block) if task hasn't been through QA
-        # merge_request is the actual merge — after this, code is on main.
-        # We warn but don't block because Commander may need to merge urgently.
-        _task_status = task.get("status", "")
-        if _task_status == "done_worktree":
-            _history = task.get("status_history", [])
-            _was_verified = any(
-                h.get("status") == "verified" or h.get("event") == "verified"
-                for h in _history
+        # MARKER_201.QA_WARN: Warn (not block) if task was not verified by QA.
+        # Commander may legitimately skip QA — we log it and flag the result.
+        _qa_skipped = task.get("status") != "verified"
+        if _qa_skipped:
+            self._append_history(
+                task,
+                event="qa_skipped_warning",
+                status=task.get("status", ""),
+                agent_name="merge_request",
+                agent_type="system",
+                source="merge_request",
+                reason=f"merge_request called without QA verification (status={task.get('status')}). "
+                       "Commander override — proceeding.",
             )
-            if not _was_verified:
-                logger.warning(
-                    f"[MergeRequest] QA_GATE WARNING: Task {task_id} merging without QA verification. "
-                    f"Recommended flow: done_worktree → request_qa → verified → merge_request"
-                )
+            self._save_task(task)
+            logger.warning(
+                "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
+                task_id, task.get("status"),
+            )
 
         branch = task.get("branch_name")
         # MARKER_195.21: Auto-infer branch from role via AgentRegistry
@@ -3621,8 +3664,34 @@ class TaskBoard:
                     "closure_results": closure_results,
                 }
 
-        # Step 5: Execute merge
-        merge_result = await self._execute_merge(branch, strategy, commits)
+        # MARKER_201.DOC_GUARD: Block merge if branch deletes docs/ files vs main.
+        # Root cause: agents doing git add . or checkout --theirs during rebase mark
+        # new-on-main docs as deleted, destroying them on merge.
+        try:
+            doc_check_proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "--diff-filter=D", "--name-only", f"main..{branch}", "--", "docs/",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            doc_out, _ = await doc_check_proc.communicate()
+            deleted_docs = [f for f in doc_out.decode().strip().split("\n") if f.strip()]
+            if deleted_docs:
+                logger.error(
+                    "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) vs main — merge blocked.",
+                    branch, len(deleted_docs),
+                )
+                return {
+                    "success": False,
+                    "error": "DOC_GUARD: branch deletes docs/ files vs main — merge blocked",
+                    "deleted_docs": deleted_docs,
+                    "fix": "On the agent branch: git checkout main -- <file> for each deleted doc, then commit.",
+                }
+        except Exception as _doc_guard_err:
+            logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
+
+        # Step 5: Execute merge (pass allowed_paths for scoped stash)
+        merge_result = await self._execute_merge(branch, strategy, commits, task.get("allowed_paths") or [])
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
             return merge_result
@@ -3700,10 +3769,15 @@ class TaskBoard:
         result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
         if stale_hint:
             result["stale_hint"] = stale_hint
+        # MARKER_201.QA_WARN: Surface qa_skipped flag in result for Commander visibility
+        if _qa_skipped:
+            result["qa_skipped"] = True
+            result["qa_warning"] = "Task was not verified by QA before merge. Check merge carefully."
         return result
 
     async def _execute_merge(
-        self, branch: str, strategy: str, commits: List[str]
+        self, branch: str, strategy: str, commits: List[str],
+        allowed_paths: List[str] = None,
     ) -> Dict[str, Any]:
         """Execute the actual git merge operation.
 
@@ -3711,18 +3785,41 @@ class TaskBoard:
         - cherry-pick: Cherry-pick each commit (default, safest)
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
+
+        Args:
+            allowed_paths: Task's owned paths (from agent_registry / task.allowed_paths).
+                           If set, stash is scoped to these paths only — other projects'
+                           untracked work (e.g. Parallax files while merging CUT) is untouched.
         """
         try:
-            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
-            # Stash any uncommitted changes first to prevent checkout failure
+            # MARKER_201.STASH_SCOPE: Scoped stash using task's allowed_paths.
+            # If allowed_paths known → git stash push -- <paths> (only this project's files).
+            # Fallback → git stash (tracked files only, no --include-untracked).
+            # Untracked files never block `git checkout main` so they are never stashed.
+            _stash_cmd = ["git", "stash"]
+            if allowed_paths:
+                _stash_cmd = ["git", "stash", "push", "--"] + list(allowed_paths)
             stash_proc = await asyncio.create_subprocess_exec(
-                "git", "stash", "--include-untracked",
+                *_stash_cmd,
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stash_out, _ = await stash_proc.communicate()
             did_stash = b"No local changes" not in stash_out
+
+            # Save stash ref for recovery logging if pop fails later
+            stash_ref = None
+            if did_stash:
+                _sr_proc = await asyncio.create_subprocess_exec(
+                    "git", "rev-parse", "--short", "refs/stash",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _sr_out, _ = await _sr_proc.communicate()
+                if _sr_proc.returncode == 0:
+                    stash_ref = _sr_out.decode().strip()
 
             proc = await asyncio.create_subprocess_exec(
                 "git", "checkout", "main",
@@ -3888,14 +3985,37 @@ class TaskBoard:
             stdout, _ = await proc.communicate()
             commit_hash = stdout.decode().strip()[:12]
 
-            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
+            # MARKER_201.STASH_SAFE: Restore stash with error checking.
+            # If pop fails (conflict between merge result and stashed tracked changes),
+            # the stash is preserved — log recovery path so work is not lost.
             if did_stash:
-                await (await asyncio.create_subprocess_exec(
+                pop_proc = await asyncio.create_subprocess_exec(
                     "git", "stash", "pop",
                     cwd=str(PROJECT_ROOT),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
-                )).communicate()
+                )
+                pop_out, pop_err = await pop_proc.communicate()
+                if pop_proc.returncode != 0:
+                    _ref = stash_ref or "stash@{0}"
+                    logger.error(
+                        "[MergeRequest] STASH_POP_FAILED: pre-merge working state not restored. "
+                        "Stash preserved at %s. "
+                        "Recovery: `git stash pop --index` or `git stash show -p %s | git apply`. "
+                        "Error: %s",
+                        _ref, _ref, pop_err.decode().strip()[:200],
+                    )
+                    return {
+                        "success": True,
+                        "commit_hash": commit_hash,
+                        "stash_pop_failed": True,
+                        "stash_ref": _ref,
+                        "stash_warning": (
+                            f"Merge succeeded but pre-merge working state could not be restored. "
+                            f"Your uncommitted changes are in stash {_ref}. "
+                            f"Run: git stash pop --index"
+                        ),
+                    }
 
             return {"success": True, "commit_hash": commit_hash}
 
