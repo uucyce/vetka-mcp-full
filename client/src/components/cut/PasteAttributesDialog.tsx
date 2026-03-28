@@ -5,7 +5,7 @@
  * Allows pasting video/audio attributes from one clip to one or more target clips.
  * All state is local. Calls onApply(config) with selected attributes.
  */
-import { useState, useCallback, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
