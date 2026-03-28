@@ -7,6 +7,7 @@
  */
 import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
+import { useOverlayEscapeClose } from '../../../hooks/useOverlayEscapeClose';
 
 const OVERLAY: CSSProperties = {
   position: 'fixed', inset: 0, zIndex: 9999,
@@ -57,6 +58,9 @@ export function TimecodeEntryOverlay() {
     useCutEditorStore.getState().setShowTimecodeEntry(false);
   }, []);
 
+  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
+
   const submit = useCallback(() => {
     const seconds = parseTimecode(value);
     if (seconds !== null && seconds >= 0) {
@@ -71,6 +75,7 @@ export function TimecodeEntryOverlay() {
     <div
       style={OVERLAY}
       data-testid="timecode-entry-overlay"
+      data-overlay="1"
       role="dialog"
       onClick={(e) => { if (e.target === e.currentTarget) close(); }}
     >
