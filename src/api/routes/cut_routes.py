@@ -3736,30 +3736,139 @@ async def cut_script_parse(body: dict) -> dict:
     """
     Parse screenplay text into SceneChunks with chronological timing.
 
-    Input: {"text": "INT. CAFE - DAY\n..."}
-    Output: {"success": true, "chunks": [...], "total_duration_sec": N, "page_count": N}
+    Auto-detects format:
+      - XML starting with <?xml or <FinalDraft → FDX parser
+      - Fountain markers (.fountain conventions) → Fountain parser → SceneChunk
+      - Plain text fallback → screenplay_timing parser
 
-    MVP: plain text only. Fountain/FDX/PDF/DOCX = Phase 2.
+    Input: {"text": "...", "format": "auto"|"fdx"|"fountain"|"plain"} (format optional)
+    Output: {"success": true, "chunks": [...], "total_duration_sec": N, "page_count": N, "detected_format": "..."}
     """
-    from src.services.screenplay_timing import parse_screenplay, get_total_duration, get_total_pages
     from dataclasses import asdict
 
+    from src.services.screenplay_timing import get_total_duration, get_total_pages, parse_screenplay
+
     text = body.get("text", "")
+    fmt_hint = body.get("format", "auto")
+
     if not text or not text.strip():
         return {
             "success": True,
             "chunks": [],
             "total_duration_sec": 0.0,
             "page_count": 0.0,
+            "detected_format": "empty",
         }
 
-    chunks = parse_screenplay(text)
+    chunks, detected = _parse_script_auto(text, fmt_hint)
     return {
         "success": True,
         "chunks": [asdict(c) for c in chunks],
         "total_duration_sec": get_total_duration(chunks),
         "page_count": get_total_pages(chunks),
+        "detected_format": detected,
     }
+
+
+def _parse_script_auto(text: str, fmt_hint: str = "auto"):
+    """
+    Auto-detect screenplay format and parse into SceneChunks.
+
+    Returns (chunks, detected_format_name).
+    """
+    from src.services.screenplay_timing import parse_screenplay
+
+    # Explicit format override
+    if fmt_hint == "fdx":
+        return _parse_as_fdx(text), "fdx"
+    if fmt_hint == "fountain":
+        return _parse_as_fountain(text), "fountain"
+    if fmt_hint == "plain":
+        return parse_screenplay(text), "plain"
+
+    # Auto-detect: FDX (XML)
+    stripped = text.strip()
+    if stripped.startswith("<?xml") or stripped.startswith("<FinalDraft"):
+        try:
+            return _parse_as_fdx(text), "fdx"
+        except Exception:
+            pass  # Fall through to plain text
+
+    # Auto-detect: Fountain (scene headings + character/dialogue patterns)
+    if _looks_like_fountain(text):
+        try:
+            return _parse_as_fountain(text), "fountain"
+        except Exception:
+            pass  # Fall through to plain text
+
+    # Fallback: plain text
+    return parse_screenplay(text), "plain"
+
+
+def _parse_as_fdx(text: str):
+    """Parse FDX XML into SceneChunks."""
+    from src.services.cut_fdx_parser import parse_fdx
+    return parse_fdx(text)
+
+
+def _parse_as_fountain(text: str):
+    """Parse Fountain text into SceneChunks via fountain_parser → SceneChunk conversion."""
+    from dataclasses import asdict
+
+    from src.services.fountain_parser import parse_fountain_timed
+    from src.services.screenplay_timing import SceneChunk
+
+    timed_scenes = parse_fountain_timed(text)
+    # Convert TimedScene → SceneChunk for route compatibility
+    chunks = []
+    for ts in timed_scenes:
+        chunks.append(SceneChunk(
+            chunk_id=ts.scene_id,
+            scene_heading=ts.heading if ts.heading else None,
+            chunk_type="scene" if ts.heading else "paragraph",
+            text=ts.content,
+            start_sec=ts.start_sec,
+            duration_sec=ts.duration_sec,
+            line_start=ts.line_start if hasattr(ts, "line_start") else 0,
+            line_end=ts.line_end if hasattr(ts, "line_end") else 0,
+            page_count=ts.line_count / 55.0 if ts.line_count else 0.01,
+        ))
+    return chunks
+
+
+def _looks_like_fountain(text: str) -> bool:
+    """
+    Heuristic: does this text look like Fountain format?
+
+    Fountain conventions:
+      - Scene headings: lines starting with INT./EXT./INT/EXT.
+      - Character cues: ALL CAPS lines followed by dialogue
+      - Transitions: lines ending with TO: (e.g. CUT TO:, DISSOLVE TO:)
+      - Title page: Title:/Author:/Draft date: at the start
+    """
+    import re
+    lines = text.split("\n")
+    # Count Fountain-specific markers
+    scene_headings = 0
+    transitions = 0
+    title_page_keys = 0
+
+    for line in lines[:100]:  # Check first 100 lines only
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Scene headings
+        if re.match(r"^(INT\.|EXT\.|INT/EXT\.)\s", stripped, re.IGNORECASE):
+            scene_headings += 1
+        # Transitions (CUT TO:, DISSOLVE TO:, etc.)
+        elif stripped.endswith("TO:") and stripped == stripped.upper():
+            transitions += 1
+        # Title page keys
+        elif re.match(r"^(Title|Author|Draft date|Contact|Copyright):", stripped, re.IGNORECASE):
+            title_page_keys += 1
+
+    # If we see at least 2 scene headings, or title page + 1 heading, it's Fountain
+    return scene_headings >= 2 or (title_page_keys >= 1 and scene_headings >= 1)
 
 
 # ─── MARKER_CUT_2.1: Apply script to project DAG ───

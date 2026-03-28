@@ -14,8 +14,6 @@ import TranscriptOverlay from './TranscriptOverlay';
 import FrameViewerSplit from './FrameViewerSplit';
 import ZebraOverlay from './ZebraOverlay';
 import { useAudioScrubbing } from '../../hooks/useAudioScrubbing';
-import ZebraOverlay from './ZebraOverlay';
-import { useAudioScrubbing } from '../../hooks/useAudioScrubbing';
 
 const CONTAINER_STYLE: CSSProperties = {
   position: 'relative',
