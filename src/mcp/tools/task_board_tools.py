@@ -1732,7 +1732,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         )
 
     elif action == "notifications":
-        role = arguments.get("role", "")
+        role = arguments.get("role", "") or arguments.get("target_role", "")
         if not role:
             return {"success": False, "error": "notifications requires role"}
         unread_only = arguments.get("unread_only", True)
@@ -1743,7 +1743,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         return {"success": True, "notifications": notifs, "count": len(notifs), "role": role}
 
     elif action == "ack_notifications":
-        role = arguments.get("role", "")
+        role = arguments.get("role", "") or arguments.get("target_role", "")
         if not role:
             return {"success": False, "error": "ack_notifications requires role"}
         notif_ids = arguments.get("notification_ids")
