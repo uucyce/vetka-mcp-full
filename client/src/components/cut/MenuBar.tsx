@@ -22,6 +22,7 @@ import {
   savePresetName,
   getShortcutLabel,
 } from '../../hooks/useCutHotkeys';
+import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
@@ -211,6 +212,20 @@ export default function MenuBar() {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
+  // MARKER_GAMMA-RECENT-PROJECTS: Reactive recent projects list from localStorage
+  // Refresh on StorageEvent (other tab) and on File menu open (same tab)
+  const [recentProjects, setRecentProjects] = useState(loadRecent);
+  useEffect(() => {
+    if (openMenu === 'File') setRecentProjects(loadRecent());
+  }, [openMenu]);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cut_recent_projects') setRecentProjects(loadRecent());
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
   // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (reactive via presetName state)
   const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, presetName);
 
@@ -285,9 +300,18 @@ export default function MenuBar() {
         { label: 'Open Project...', shortcut: '⌘O', action: () => {
           window.dispatchEvent(new CustomEvent('cut:import-media'));
         }},
-        { label: 'Recent Projects', submenu: [
-          { label: '(no recent projects)', disabled: true },
-        ]},
+        { label: 'Recent Projects', submenu: recentProjects.length === 0
+          ? [{ label: '(no recent projects)', disabled: true }]
+          : recentProjects.map((proj) => ({
+              label: proj.name || proj.id,
+              action: () => {
+                const params = new URLSearchParams();
+                params.set('sandbox_root', proj.path);
+                params.set('project_id', proj.id);
+                window.location.search = params.toString();
+              },
+            })),
+        },
         { separator: true },
         { label: 'Close Tab', shortcut: '⌘W', action: () => {
           const s = store.getState();
