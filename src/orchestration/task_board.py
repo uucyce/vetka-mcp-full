@@ -916,6 +916,28 @@ class TaskBoard:
         self.tasks[task["id"]] = task
         self._index_task_fts(task)
 
+    def _insert_task(self, task: dict):
+        """Strict INSERT (no OR REPLACE) for new task creation.
+
+        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
+        _save_task keeps INSERT OR REPLACE for update paths.
+        Raises sqlite3.IntegrityError if task_id already exists in DB.
+        """
+        row = self._task_to_row(task)
+        row["updated_at"] = datetime.now().isoformat()
+        columns = list(row.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        values = [row[c] for c in columns]
+        with self.db:
+            self.db.execute(
+                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
+                values,
+            )
+        # Cache coherence — write-through
+        self.tasks[task["id"]] = task
+        self._index_task_fts(task)
+
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
 
