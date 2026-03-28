@@ -199,8 +199,20 @@ export default function MenuBar() {
   const store = useCutEditorStore;
   const dockStore = useDockviewStore;
 
-  // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (updates when preset changes)
-  const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, loadPresetName());
+  // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
+  const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
+  useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cut_hotkey_preset' && e.newValue) {
+        setPresetName(e.newValue as HotkeyPresetName);
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
+
+  // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (reactive via presetName state)
+  const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, presetName);
 
   // Close on Esc or outside click
   useEffect(() => {
@@ -407,9 +419,10 @@ export default function MenuBar() {
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
           { separator: true },
           ...(['premiere', 'fcp7', 'custom'] as HotkeyPresetName[]).map((p) => ({
-            label: `${loadPresetName() === p ? '\u2713 ' : '  '}${{ premiere: 'Premiere Pro', fcp7: 'Final Cut Pro 7', custom: 'Custom' }[p]}`,
+            label: `${presetName === p ? '\u2713 ' : '  '}${{ premiere: 'Premiere Pro', fcp7: 'Final Cut Pro 7', custom: 'Custom' }[p]}`,
             action: () => {
               savePresetName(p);
+              setPresetName(p);
               window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: p }));
             },
           })),
