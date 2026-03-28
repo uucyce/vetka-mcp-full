@@ -11,6 +11,7 @@
 import { useState, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
+import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 type SequenceSettingsDialogProps = {
   open: boolean;
@@ -89,6 +90,10 @@ export default function SequenceSettingsDialog({
   const [bitDepth, setBitDepth] = useState(store.audioBitDepth);
   const [saving, setSaving] = useState(false);
 
+  const close = useCallback(() => onClose(), [onClose]);
+  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
+
   const handleSave = useCallback(async () => {
     setSaving(true);
 
@@ -127,13 +132,13 @@ export default function SequenceSettingsDialog({
     }
 
     setSaving(false);
-    onClose();
-  }, [resolution, customW, customH, fps, dropFrame, colorSpace, sampleRate, bitDepth, sandboxRoot, projectId, onClose]);
+    close();
+  }, [resolution, customW, customH, fps, dropFrame, colorSpace, sampleRate, bitDepth, close]);
 
   if (!open) return null;
 
   return (
-    <div style={OVERLAY} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div style={DIALOG}>
         <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 16 }}>
           Sequence Settings
@@ -245,7 +250,7 @@ export default function SequenceSettingsDialog({
 
         {/* Actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 8 }}>
-          <button style={BTN} onClick={onClose}>Cancel</button>
+          <button style={BTN} onClick={close}>Cancel</button>
           <button style={BTN_PRIMARY} onClick={handleSave} disabled={saving}>
             {saving ? 'Saving...' : 'Save'}
           </button>
