@@ -223,9 +223,6 @@ interface CutEditorState {
   duration: number;
   // MARKER_B3.2: Keyframe Record Mode (FCP7 automation)
   isRecordMode: boolean;  // true = fader/pan changes auto-write keyframes
-  markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
-  markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
-
   // === MARKER_DUAL-VIDEO: Independent Source Monitor playback state ===
   // Source monitor has its own video element and playback, decoupled from timeline
   sourceCurrentTime: number;
@@ -422,8 +419,6 @@ interface CutEditorState {
   togglePlaySource: () => void;
   seekSource: (time: number) => void;
   setSourceDuration: (d: number) => void;
-  setMarkIn: (t: number | null) => void;
-  setMarkOut: (t: number | null) => void;
   // MARKER_W1.4: Separate marks
   setSourceMarkIn: (t: number | null) => void;
   setSourceMarkOut: (t: number | null) => void;
@@ -656,8 +651,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   shuttleSpeed: 0,
   duration: 0,
   isRecordMode: false,  // MARKER_B3.2
-  markIn: null,
-  markOut: null,
 
   // MARKER_W1.4: Separate marks
   sourceMarkIn: null,
@@ -829,15 +822,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   togglePlaySource: () => set((s) => ({ sourceIsPlaying: !s.sourceIsPlaying })),
   seekSource: (time) => set({ sourceCurrentTime: Math.max(0, time) }),
   setSourceDuration: (d) => set({ sourceDuration: d }),
-  setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
-  setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
   // MARKER_W1.4: Separate marks
-  setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
-  setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
-  // MARKER_MRK-FIX: Sync legacy markIn/markOut when setting sequence marks
-  // Tests and some components read markIn/markOut — keep them in sync
-  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t, markIn: t }),
-  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t, markOut: t }),
+  setSourceMarkIn: (t) => set({ sourceMarkIn: t }),
+  setSourceMarkOut: (t) => set({ sourceMarkOut: t }),
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),

@@ -485,8 +485,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
-  const markIn = useCutEditorStore((state) => state.markIn);
-  const markOut = useCutEditorStore((state) => state.markOut);
+  const markIn = useCutEditorStore((state) => state.sequenceMarkIn);
+  const markOut = useCutEditorStore((state) => state.sequenceMarkOut);
   const seek = useCutEditorStore((state) => state.seek);
   const setScrollLeft = useCutEditorStore((state) => state.setScrollLeft);
   const setTrackHeight = useCutEditorStore((state) => state.setTrackHeight);
