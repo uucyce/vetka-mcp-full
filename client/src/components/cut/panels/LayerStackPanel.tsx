@@ -504,6 +504,7 @@ export default function LayerStackPanel() {
 
               {/* Solo toggle */}
               <button
+                data-testid={`cut-layer-solo-${layer.layer_id}`}
                 style={{
                   ...ICON_BTN,
                   color: st.solo ? '#ccc' : '#333',
@@ -517,6 +518,7 @@ export default function LayerStackPanel() {
 
               {/* Lock toggle */}
               <button
+                data-testid={`cut-layer-lock-${layer.layer_id}`}
                 style={{
                   ...ICON_BTN,
                   color: st.locked ? '#999' : '#333',

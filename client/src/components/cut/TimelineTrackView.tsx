@@ -466,8 +466,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const currentTime = useCutEditorStore((state) => state.currentTime);
   const duration = useCutEditorStore((state) => state.duration);
   const isPlaying = useCutEditorStore((state) => state.isPlaying);
-  const selectedClipId = useSelectionStore((state) => state.selectedClipId); // MARKER_ARCH_4.1
-  const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_ARCH_4.1: multi-select highlight
+  const selectedClipId = useSelectionStore((state) => state.selectedClipId);
+  const selectedClipIds = useSelectionStore((state) => state.selectedClipIds); // MARKER_W3.7: multi-select highlight
   const hoveredClipId = useCutEditorStore((state) => state.hoveredClipId);
   const sandboxRoot = useCutEditorStore((state) => state.sandboxRoot);
   const projectId = useCutEditorStore((state) => state.projectId);
@@ -502,7 +502,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const toggleVisibility = useCutEditorStore((state) => state.toggleVisibility);
   const hiddenLanes = useCutEditorStore((state) => state.hiddenLanes ?? new Set<string>());
   const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
-  const setSelectedClip = useSelectionStore((state) => state.setSelectedClip); // MARKER_ARCH_4.1
+  const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
   const projectDropFrame = useCutEditorStore((state) => state.dropFrame);
@@ -1152,7 +1152,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           // Collect all clips in timeline order
           const editorState = useCutEditorStore.getState();
           const allClips: { clipId: string; time: number }[] = [];
-          const editorState = useCutEditorStore.getState();
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
               allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
@@ -2495,16 +2494,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           curve={clip.transition_out.audio_curve ?? 'equal_power'}
                           alignment={clip.transition_out.alignment}
                           onDurationChange={(newDur) => {
-                            const s = useCutEditorStore.getState();
-                            const updated = s.lanes.map((l) => ({
-                              ...l,
-                              clips: l.clips.map((c) =>
-                                c.clip_id === clip.clip_id && c.transition_out
-                                  ? { ...c, transition_out: { ...c.transition_out, duration_sec: newDur } }
-                                  : c
-                              ),
-                            }));
-                            s.setLanes(updated);
+                            void useCutEditorStore.getState().applyTimelineOps([{
+                              op: 'set_transition', clip_id: clip.clip_id,
+                              transition: { ...clip.transition_out!, duration_sec: newDur },
+                            }]);
                           }}
                           onCurveChange={(newCurve) => {
                             void useCutEditorStore.getState().applyTimelineOps([{

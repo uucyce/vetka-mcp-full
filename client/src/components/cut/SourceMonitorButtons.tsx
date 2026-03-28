@@ -51,10 +51,6 @@ interface ButtonDef {
   action: () => void;
 }
 
-function dispatchKey(key: string): void {
-  document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-}
-
 export default function SourceMonitorButtons() {
   const { insertEdit, overwriteEdit } = useThreePointEdit();
 
@@ -75,16 +71,6 @@ export default function SourceMonitorButtons() {
 
   // MARKER_W5.MF: Match Frame (F) — open source at playhead clip frame
   const handleMatchFrame = useCallback(() => {
-    dispatchKey('f');
-  }, []);
-
-  const handleInsert = useCallback(() => {
-    dispatchKey(',');
-  }, []);
-
-  const handleOverwrite = useCallback(() => {
-    dispatchKey('.');
-  }, []);
     const s = useCutEditorStore.getState();
     for (const lane of s.lanes) {
       if (s.lockedLanes.has(lane.lane_id)) continue;

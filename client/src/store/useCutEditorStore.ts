@@ -106,6 +106,8 @@ export type ClipTransition = {
   type: 'cross_dissolve' | 'dip_to_black' | 'wipe';
   duration_sec: number;    // typically 1.0s (30 frames at 30fps)
   alignment: 'center' | 'start' | 'end';  // relative to edit point
+  // MARKER_GAMMA-XFADE: Audio crossfade curve type (backend reads this at render time)
+  audio_curve?: 'equal_power' | 'linear';
 };
 
 export type TimelineClip = {

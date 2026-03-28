@@ -137,13 +137,10 @@ export type CutHotkeyAction =
   | 'runAutoMontageFavorites'
   // MARKER_EXPORT: Timeline export
   | 'exportTimeline'
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10 aliases
+  // MARKER_TRIM5: Ripple trim, swap, delete marker
   | 'rippleTrimToPlayhead'
   | 'swapClips'
   | 'deleteMarker'
-  | 'pasteAttributes'
-  | 'insertEditF9'
-  | 'overwriteEditF10'
   // MARKER_SEL6: 6 missing selection actions (FCP7 recon P1)
   | 'selectClipAtPlayhead'
   | 'selectAllOnTrack'
@@ -152,12 +149,6 @@ export type CutHotkeyAction =
   | 'toggleAVSelection'
   | 'linkUnlinkClips'
   // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
-  | 'focusSourceAcquire'
-  // MARKER_FCP7FIX: 4 missing actions from FCP7 recon
-  | 'revealMasterClip'
-  | 'collapseExpandTrack'
-  | 'expandTrack'
-  | 'renameClipInline';
   | 'focusSourceAcquire';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
@@ -193,17 +184,17 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   goToIn:              'global',
   goToOut:             'global',
 
-  // Editing — timeline only
-  deleteClip:          'global',
-  splitClip:           'global',
-  rippleDelete:        'global',
-  nudgeLeft:           'global',
-  nudgeRight:          'global',
-  insertEdit:          'global',
-  overwriteEdit:       'global',
-  replaceEdit:         'global',
-  fitToFill:           'global',
-  superimpose:         'global',
+  // Editing — timeline only (FCP7/Premiere: these only fire when Timeline is focused)
+  deleteClip:          ['timeline'],
+  splitClip:           ['timeline'],
+  rippleDelete:        ['timeline'],
+  nudgeLeft:           ['timeline'],
+  nudgeRight:          ['timeline'],
+  insertEdit:          ['timeline', 'source'],
+  overwriteEdit:       ['timeline', 'source'],
+  replaceEdit:         ['timeline', 'source'],
+  fitToFill:           ['timeline', 'source'],
+  superimpose:         ['timeline', 'source'],
 
   // Tools — global (tool switch applies to next timeline interaction regardless of focused panel)
   razorTool:           'global',
@@ -216,36 +207,36 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   handTool:            'global',
   zoomTool:            'global',
 
-  // Navigation — timeline/program
-  prevEditPoint:       'global',
-  nextEditPoint:       'global',
+  // Navigation — timeline/program (FCP7: Up/Down navigate edit points only in Timeline/Program)
+  prevEditPoint:       ['timeline', 'program'],
+  nextEditPoint:       ['timeline', 'program'],
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:          'global',
   toggleSourceProgram: 'global',
 
-  // Markers — source, program, timeline
-  addMarker:           'global',
-  addComment:          'global',
-  nextMarker:          'global',
-  prevMarker:          'global',
-  nextKeyframe:        'global',
-  prevKeyframe:        'global',
-  addKeyframe:         'global',
+  // Markers — source, program, timeline (FCP7 Ch.37: markers fire in viewer/timeline context)
+  addMarker:           ['source', 'program', 'timeline'],
+  addComment:          ['source', 'program', 'timeline'],
+  nextMarker:          ['source', 'program', 'timeline'],
+  prevMarker:          ['source', 'program', 'timeline'],
+  nextKeyframe:        ['timeline'],
+  prevKeyframe:        ['timeline'],
+  addKeyframe:         ['timeline'],
   toggleRecordMode:    'global',  // MARKER_B3.2
   openSpeedControl:    'global',
 
-  // Mark operations
-  markClip:            'global',
-  playInToOut:         'global',
+  // Mark operations — timeline/program (FCP7 Ch.12: markClip requires clip in timeline)
+  markClip:            ['timeline'],
+  playInToOut:         ['source', 'program', 'timeline'],
 
-  // Sequence operations — timeline only
-  liftClip:            'global',
-  extractClip:         'global',
-  closeGap:            'global',
-  extendEdit:          'global',
-  splitEditLCut:       'global',
-  splitEditJCut:       'global',
-  addDefaultTransition:'global',
+  // Sequence operations — timeline only (FCP7 Ch.26/Ch.41: sequence ops require Timeline focus)
+  liftClip:            ['timeline'],
+  extractClip:         ['timeline'],
+  closeGap:            ['timeline'],
+  extendEdit:          ['timeline'],
+  splitEditLCut:       ['timeline'],
+  splitEditJCut:       ['timeline'],
+  addDefaultTransition:['timeline'],
 
   // Global — always fire
   undo:                'global',
@@ -255,7 +246,6 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   cut:                 'global',
   paste:               'global',
   pasteInsert:         'global',
-  pasteAttributes:     'global',
   zoomIn:              'global',
   zoomOut:             'global',
   zoomToFit:           'global',
@@ -286,27 +276,20 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   runPulseAnalysis:    'global',
   runAutoMontageFavorites: 'global',
   exportTimeline:         'global',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
-  rippleTrimToPlayhead:   'global',
-  swapClips:              'global',
-  deleteMarker:           'global',
-  pasteAttributes:        'global',
-  insertEditF9:           'global',
-  overwriteEditF10:       'global',
-  // MARKER_SEL6: Selection actions
-  selectClipAtPlayhead:   'global',
-  selectAllOnTrack:       'global',
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes — timeline context
+  rippleTrimToPlayhead:   ['timeline'],
+  swapClips:              ['timeline'],
+  deleteMarker:           ['source', 'program', 'timeline'],
+  pasteAttributes:        ['timeline'],
+  // MARKER_SEL6: Selection actions — timeline context
+  selectClipAtPlayhead:   ['timeline'],
+  selectAllOnTrack:       ['timeline'],
   deselectAll:            'global',
-  selectForward:          'global',
-  toggleAVSelection:      'global',
+  selectForward:          ['timeline'],
+  toggleAVSelection:      ['timeline'],
   linkUnlinkClips:        'global',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:     'global',
-  // MARKER_FCP7FIX: 4 missing actions
-  revealMasterClip:       ['project', 'timeline'],  // FCP7 Shift+F — browser/timeline context
-  collapseExpandTrack:    ['timeline'],              // toggle track collapse — timeline only
-  expandTrack:            ['timeline'],              // expand track to max — timeline only
-  renameClipInline:       ['timeline'],              // inline rename — timeline only
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -320,7 +303,8 @@ export type HotkeyBinding = string;
 
 export type HotkeyPresetName = 'premiere' | 'fcp7' | 'custom';
 
-export type HotkeyMap = Partial<Record<CutHotkeyAction, HotkeyBinding>>;
+// MARKER_MULTI-BIND: Support single binding or array of bindings per action
+export type HotkeyMap = Partial<Record<CutHotkeyAction, HotkeyBinding | HotkeyBinding[]>>;
 
 // ─── Built-in presets ───────────────────────────────────────────────
 // Populated with known defaults. Grok research will fill remaining gaps.
@@ -374,8 +358,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // Tools
   razorTool:         'c',
   selectTool:        'v',
-  insertEdit:        ',',
-  overwriteEdit:     '.',
+  insertEdit:        [',', 'F9'],    // MARKER_MULTI-BIND: Premiere comma + F9 alias
+  overwriteEdit:     ['.', 'F10'],   // MARKER_MULTI-BIND: Premiere period + F10 alias
   replaceEdit:       'F11',
   fitToFill:         'Shift+F11',
   superimpose:       'F12',
@@ -435,31 +419,22 @@ export const PREMIERE_PRESET: HotkeyMap = {
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
   // MARKER_A4: PULSE integration
-  runPulseAnalysis:  'Cmd+Shift+p',
   runPulseAnalysis:  'Cmd+Shift+g',
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
-  swapClips:         'Cmd+Shift+s',  // keyboard swap (Premiere convention — distinct from Cmd+S save)
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
   pasteAttributes:   'Alt+v',
-  insertEditF9:      'F9',
-  overwriteEditF10:  'F10',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
   deselectAll:       'Cmd+Shift+a',
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
-  // linkUnlinkClips: Premiere already has Cmd+L via toggleLinkedSelection — no separate alias needed
-  // MARKER_FCP7FIX: 4 missing actions
-  revealMasterClip:    'Shift+f',        // Premiere: Shift+F = Reveal Master Clip
-  collapseExpandTrack: 'Shift+minus',    // toggle track collapse
-  expandTrack:         'Shift+equal',    // expand track to max
-  renameClipInline:    'Enter',          // Premiere: Enter = rename selected
   linkUnlinkClips:   'Alt+l',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:'Cmd+8',
@@ -514,8 +489,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // Tools
   razorTool:         'b',
   selectTool:        'a',
-  insertEdit:        ',',
-  overwriteEdit:     '.',
+  insertEdit:        [',', 'F9'],    // MARKER_MULTI-BIND: FCP7 F9 primary + comma alias
+  overwriteEdit:     ['.', 'F10'],   // MARKER_MULTI-BIND: FCP7 F10 primary + period alias
   replaceEdit:       'F11',
   fitToFill:         'Shift+F11',
   superimpose:       'F12',
@@ -575,30 +550,22 @@ export const FCP7_PRESET: HotkeyMap = {
   toggleViewMode:    'Cmd+\\',
   escapeContext:     'Escape',
   // MARKER_A4: PULSE integration
-  runPulseAnalysis:  'Cmd+Shift+p',
   runPulseAnalysis:  'Cmd+Shift+g',
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
   pasteAttributes:   'Alt+v',
-  insertEditF9:      'F9',
-  overwriteEditF10:  'F10',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
   deselectAll:       'Cmd+Shift+a',
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
-  linkUnlinkClips:   'Cmd+l',  // Premiere Cmd+L alias (FCP7 uses Shift+L via toggleLinkedSelection)
-  // MARKER_FCP7FIX: 4 missing actions
-  revealMasterClip:    'Shift+f',        // FCP7: Shift+F = Reveal Master Clip
-  collapseExpandTrack: 'Shift+minus',    // toggle track collapse
-  expandTrack:         'Shift+equal',    // expand track to max
-  renameClipInline:    'Enter',          // FCP7: Enter = rename selected item
   linkUnlinkClips:   'Cmd+l',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:'Cmd+8',
@@ -701,7 +668,8 @@ function matchesEvent(parsed: ParsedBinding, e: KeyboardEvent): boolean {
 
 // ─── Resolved map builder ───────────────────────────────────────────
 
-export type ResolvedHotkeyMap = Map<CutHotkeyAction, ParsedBinding>;
+// MARKER_MULTI-BIND: Each action can have multiple ParsedBindings
+export type ResolvedHotkeyMap = Map<CutHotkeyAction, ParsedBinding[]>;
 
 export function resolveMap(presetName: HotkeyPresetName, customOverrides: HotkeyMap): ResolvedHotkeyMap {
   // Start with selected preset (or premiere as base for custom)
@@ -712,10 +680,11 @@ export function resolveMap(presetName: HotkeyPresetName, customOverrides: Hotkey
   // Apply custom overrides on top
   const merged = { ...base, ...customOverrides };
 
-  const map = new Map<CutHotkeyAction, ParsedBinding>();
+  const map = new Map<CutHotkeyAction, ParsedBinding[]>();
   for (const [action, binding] of Object.entries(merged)) {
     if (binding) {
-      map.set(action as CutHotkeyAction, parseBinding(binding));
+      const bindings = Array.isArray(binding) ? binding : [binding];
+      map.set(action as CutHotkeyAction, bindings.map(parseBinding));
     }
   }
   return map;
@@ -730,7 +699,41 @@ export function getBindingLabel(
 ): string {
   const base = presetName === 'custom' ? PREMIERE_PRESET : (PRESETS[presetName] || PREMIERE_PRESET);
   const merged = { ...base, ...customOverrides };
-  return merged[action] || '';
+  const binding = merged[action];
+  if (!binding) return '';
+  // MARKER_MULTI-BIND: Return first binding as label (primary shortcut)
+  return Array.isArray(binding) ? binding[0] || '' : binding;
+}
+
+// ─── MARKER_GAMMA-SHORTLABEL: Display formatter (Cmd→⌘, Shift→⇧, Alt→⌥, Ctrl→⌃) ──
+
+const MODIFIER_DISPLAY: Record<string, string> = {
+  'Cmd': '⌘', 'Meta': '⌘', 'Shift': '⇧', 'Alt': '⌥', 'Opt': '⌥', 'Option': '⌥', 'Ctrl': '⌃',
+};
+
+/** Format a binding string for display: "Cmd+Shift+z" → "⌘⇧Z" */
+export function formatShortcutDisplay(binding: string): string {
+  const parts = binding.split('+');
+  const mods: string[] = [];
+  let key = '';
+  for (const p of parts) {
+    const display = MODIFIER_DISPLAY[p];
+    if (display) { mods.push(display); }
+    else { key = p; }
+  }
+  // Capitalize single-char keys for display
+  const displayKey = key.length === 1 ? key.toUpperCase() : key;
+  return mods.join('') + displayKey;
+}
+
+/** Get display-formatted shortcut for an action from the active preset */
+export function getShortcutLabel(
+  action: CutHotkeyAction,
+  presetName: HotkeyPresetName = 'premiere',
+  customOverrides: HotkeyMap = {}
+): string {
+  const raw = getBindingLabel(action, presetName, customOverrides);
+  return raw ? formatShortcutDisplay(raw) : '';
 }
 
 // ─── All actions list (for settings UI) ─────────────────────────────
@@ -843,31 +846,6 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'toggleViewMode', label: 'Toggle NLE / Debug', group: 'CUT' },
   { action: 'escapeContext', label: 'Cancel / Close', group: 'CUT' },
   // MARKER_A4: PULSE
-  { action: 'runPulseAnalysis', label: 'PULSE Analyze All Scenes', group: 'PULSE' },
-  { action: 'runAutoMontageFavorites', label: 'Auto-Montage: Favorites', group: 'PULSE' },
-  // MARKER_EXPORT
-  { action: 'exportTimeline', label: 'Export Timeline (Premiere XML)', group: 'File' },
-  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes, F9/F10
-  { action: 'rippleTrimToPlayhead', label: 'Ripple Trim to Playhead (W)', group: 'Editing' },
-  { action: 'swapClips', label: 'Swap Adjacent Clips', group: 'Editing' },
-  { action: 'deleteMarker', label: 'Delete Marker (Cmd+`)', group: 'Markers' },
-  { action: 'pasteAttributes', label: 'Paste Attributes (Alt+V)', group: 'Editing' },
-  { action: 'insertEditF9', label: 'Insert Edit (F9)', group: 'Tools' },
-  { action: 'overwriteEditF10', label: 'Overwrite Edit (F10)', group: 'Tools' },
-  // MARKER_SEL6: Selection actions
-  { action: 'selectClipAtPlayhead', label: 'Select Clip at Playhead (F6)', group: 'Selection' },
-  { action: 'selectAllOnTrack', label: 'Select All on Track (Alt+A)', group: 'Selection' },
-  { action: 'deselectAll', label: 'Deselect All (Cmd+Shift+A)', group: 'Selection' },
-  { action: 'selectForward', label: 'Select Forward from Playhead', group: 'Selection' },
-  { action: 'toggleAVSelection', label: 'Toggle A/V Selection Target (T)', group: 'Selection' },
-  { action: 'linkUnlinkClips', label: 'Link/Unlink Clips (Cmd+L)', group: 'Selection' },
-  // MARKER_SOURCE_ACQUIRE
-  { action: 'focusSourceAcquire', label: 'Source Acquire (Cmd+8)', group: 'Navigation' },
-  // MARKER_FCP7FIX: 4 missing actions
-  { action: 'revealMasterClip', label: 'Reveal Master Clip (Shift+F)', group: 'Navigation' },
-  { action: 'collapseExpandTrack', label: 'Collapse/Expand Track (Shift+-)', group: 'View' },
-  { action: 'expandTrack', label: 'Expand Track to Max (Shift+=)', group: 'View' },
-  { action: 'renameClipInline', label: 'Rename Clip (Enter)', group: 'Editing' },
   { action: 'runPulseAnalysis', label: 'Run PULSE Analysis', group: 'CUT' },
   { action: 'runAutoMontageFavorites', label: 'Auto-Montage Favorites', group: 'CUT' },
   { action: 'exportTimeline', label: 'Export Timeline', group: 'CUT' },
@@ -875,9 +853,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'rippleTrimToPlayhead', label: 'Ripple Trim to Playhead', group: 'Editing' },
   { action: 'swapClips', label: 'Swap Clips', group: 'Editing' },
   { action: 'deleteMarker', label: 'Delete Marker', group: 'Markers' },
-  { action: 'pasteAttributes', label: 'Paste Attributes', group: 'Editing' },
-  { action: 'insertEditF9', label: 'Insert Edit (F9)', group: 'Editing' },
-  { action: 'overwriteEditF10', label: 'Overwrite Edit (F10)', group: 'Editing' },
+  // insertEditF9/overwriteEditF10: REMOVED — F9/F10 handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection
   { action: 'selectClipAtPlayhead', label: 'Select Clip at Playhead', group: 'Selection' },
   { action: 'selectAllOnTrack', label: 'Select All on Track', group: 'Selection' },
@@ -967,8 +943,9 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
       // MARKER_FOCUS: Read current focused panel for scope check
       const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
 
-      for (const [action, parsed] of resolved) {
-        if (matchesEvent(parsed, e)) {
+      for (const [action, parsedList] of resolved) {
+        // MARKER_MULTI-BIND: Check all bindings for this action
+        if (parsedList.some((parsed) => matchesEvent(parsed, e))) {
           // MARKER_FOCUS: Check panel scope before dispatching
           const scope = ACTION_SCOPE[action];
           if (scope !== 'global') {
