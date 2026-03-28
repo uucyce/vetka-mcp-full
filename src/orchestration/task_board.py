@@ -1329,7 +1329,7 @@ class TaskBoard:
         return results
 
     # MARKER_192.2: Infer execution_mode from agent_type
-    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex"}
+    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex", "opencode", "local_ollama"}
     # MARKER_191.8: Also match by agent_name when agent_type is unknown
     _MANUAL_AGENT_NAMES = {"opus", "cursor", "codex", "grok", "claude-code", "opencode"}
 
@@ -2282,6 +2282,19 @@ class TaskBoard:
 
         if task["status"] not in ("pending", "queued", "needs_fix"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
+
+        # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
+        task_allowed = task.get("allowed_tools") or []
+        if task_allowed and agent_type not in task_allowed:
+            logger.warning(
+                "[TaskBoard] TOOL_GUARD rejected claim: %s (%s) not in allowed_tools %s for task %s",
+                agent_name, agent_type, task_allowed, task_id,
+            )
+            return {
+                "success": False,
+                "error": f"Tool isolation: agent_type '{agent_type}' not in allowed_tools {task_allowed}",
+                "tool_isolation_rejected": True,
+            }
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
         inferred_mode = self._infer_execution_mode(agent_type, agent_name)
