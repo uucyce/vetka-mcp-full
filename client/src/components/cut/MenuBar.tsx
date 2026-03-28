@@ -662,9 +662,13 @@ export default function MenuBar() {
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
         { separator: true },
-        { label: 'Copy Filters', disabled: true },
-        { label: 'Paste Filters', disabled: true },
-        { label: 'Remove Filters', disabled: true },
+        // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove clip effects
+        { label: 'Copy Filters', action: () => store.getState().copyFilters(),
+          disabled: !useSelectionStore.getState().selectedClipId },
+        { label: 'Paste Filters', action: () => store.getState().pasteFilters(),
+          disabled: !store.getState().filterClipboard || !useSelectionStore.getState().selectedClipId },
+        { label: 'Remove Filters', action: () => store.getState().removeFilters(),
+          disabled: !useSelectionStore.getState().selectedClipId },
         { separator: true },
         { label: 'Composite Mode', submenu: [
           { label: 'Normal', disabled: true },

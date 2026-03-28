@@ -250,6 +250,7 @@ interface CutEditorState {
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
   disabledClips: Set<string>;    // MARKER_GAMMA-CLIP-ENABLE: disabled clips (FCP7 Ch.26 — ghosted, excluded from export)
+  filterClipboard: ClipEffects | null;  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste Filters clipboard
   collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
@@ -550,6 +551,10 @@ interface CutEditorState {
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
   resetClipEffects: (clipId: string) => void;
+  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters
+  copyFilters: () => void;
+  pasteFilters: () => void;
+  removeFilters: () => void;
 
   // MARKER_KF67: Keyframe actions (FCP7 Ch.67)
   addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
@@ -663,6 +668,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
   disabledClips: new Set<string>(),
+  filterClipboard: null,
   collapsedTracks: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
@@ -1523,6 +1529,35 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       })),
     }));
     void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
+  },
+
+  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters
+  copyFilters: () => {
+    const { lanes } = get();
+    const { selectedClipId } = useSelectionStore.getState();
+    if (!selectedClipId) return;
+    for (const lane of lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+      if (clip) {
+        set({ filterClipboard: { ...(clip.effects ?? DEFAULT_CLIP_EFFECTS) } });
+        return;
+      }
+    }
+  },
+  pasteFilters: () => {
+    const { filterClipboard } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
+    if (!filterClipboard || selectedClipIds.size === 0) return;
+    for (const clipId of selectedClipIds) {
+      get().setClipEffects(clipId, filterClipboard);
+    }
+  },
+  removeFilters: () => {
+    const { selectedClipIds } = useSelectionStore.getState();
+    if (selectedClipIds.size === 0) return;
+    for (const clipId of selectedClipIds) {
+      get().resetClipEffects(clipId);
+    }
   },
 
   // MARKER_UNDO_KF: Keyframe actions via applyTimelineOps
