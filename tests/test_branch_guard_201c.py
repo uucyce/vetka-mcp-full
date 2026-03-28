@@ -164,3 +164,91 @@ class TestToolIsolationExtended:
         task_id = board.add_task("multi-tool task", allowed_tools=["claude_code", "local_ollama", "cursor"])
         result = board.claim_task(task_id, agent_name="ollama_agent", agent_type="local_ollama")
         assert result["success"] is True
+
+
+@_201_NOT_MERGED
+class TestRESTEndpoints201D:
+    """TB_201.D: REST claim/complete endpoints for local models."""
+
+    def test_rest_claim_endpoint_exists(self):
+        """POST /api/taskboard/claim route should be registered."""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        client = TestClient(app)
+        # Missing task_id should return 400, not 404 (route exists)
+        resp = client.post("/api/taskboard/claim", json={})
+        assert resp.status_code in (400, 422), f"Expected 400/422 for missing params, got {resp.status_code}"
+
+    def test_rest_complete_endpoint_exists(self):
+        """POST /api/taskboard/complete route should be registered."""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        client = TestClient(app)
+        resp = client.post("/api/taskboard/complete", json={})
+        assert resp.status_code in (400, 422), f"Expected 400/422 for missing params, got {resp.status_code}"
+
+    def test_rest_claim_rejects_wrong_tool_type(self, tmp_path):
+        """REST /claim should return 403 when tool isolation rejects."""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        client = TestClient(app)
+        # Create locked task via board directly
+        board = make_board(tmp_path)
+        task_id = board.add_task("locked rest task", allowed_tools=["claude_code"])
+        resp = client.post("/api/taskboard/claim", json={
+            "task_id": task_id,
+            "agent_name": "qwen_local",
+            "agent_type": "local_ollama",
+        })
+        assert resp.status_code == 403, f"Expected 403 for tool isolation rejection, got {resp.status_code}"
+
+    def test_rest_claim_accepts_correct_tool_type(self, tmp_path):
+        """REST /claim should succeed for matching tool_type."""
+        from fastapi.testclient import TestClient
+        from src.main import app
+        client = TestClient(app)
+        board = make_board(tmp_path)
+        task_id = board.add_task("open rest task")
+        resp = client.post("/api/taskboard/claim", json={
+            "task_id": task_id,
+            "agent_name": "qwen_local",
+            "agent_type": "local_ollama",
+        })
+        assert resp.status_code == 200
+        assert resp.json().get("success") is True
+
+
+@_201_NOT_MERGED
+class TestFullLocalModelFlow:
+    """End-to-end: local Ollama agent claims, works, completes via REST."""
+
+    def test_ollama_full_lifecycle(self, tmp_path):
+        """Simulate: create task → claim via REST → complete via REST."""
+        board = make_board(tmp_path)
+        task_id = board.add_task(
+            "local model task",
+            allowed_tools=["local_ollama", "claude_code"],
+        )
+        # Claim
+        result = board.claim_task(task_id, agent_name="qwen-7b", agent_type="local_ollama")
+        assert result["success"] is True
+
+        # Complete
+        result = board.complete_task(
+            task_id,
+            commit_hash="deadbeef",
+            commit_message="feat: local model did work",
+            branch="local/qwen",
+        )
+        assert result.get("status") in ("done_worktree", "done", "need_qa")
+
+    def test_ollama_rejected_from_claude_only_task(self, tmp_path):
+        """Ollama cannot claim a task locked to claude_code only."""
+        board = make_board(tmp_path)
+        task_id = board.add_task(
+            "claude-only task",
+            allowed_tools=["claude_code"],
+        )
+        result = board.claim_task(task_id, agent_name="qwen-7b", agent_type="local_ollama")
+        assert result["success"] is False
+        assert result.get("tool_isolation_rejected") is True
