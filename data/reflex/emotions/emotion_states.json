@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 1.1850648642339812e-27,
-    "trust": 0.9999999996073448,
+    "curiosity": 3.2632478610144014e-32,
+    "trust": 0.9999999999870637,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 129,
-    "success_count": 129,
+    "usage_count": 150,
+    "success_count": 150,
     "failure_count": 0,
-    "last_updated": 1774614122.4349911
+    "last_updated": 1774673801.8352818
   },
   "Read": {
     "tool_id": "Read",
@@ -2432,24 +2432,24 @@
   },
   "__debrief_bug__": {
     "tool_id": "__debrief_bug__",
-    "curiosity": 4.1399375473943306e-08,
-    "trust": 2.526916629026219e-08,
+    "curiosity": 2.7894680920908113e-10,
+    "trust": 3.401923002985485e-10,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 39,
+    "usage_count": 49,
     "success_count": 0,
-    "failure_count": 39,
-    "last_updated": 1774614122.746228
+    "failure_count": 49,
+    "last_updated": 1774673802.081738
   },
   "session_init": {
     "tool_id": "session_init",
-    "curiosity": 0.8175744761936437,
-    "trust": 0.42625,
+    "curiosity": 0.6224593312018546,
+    "trust": 0.385503125,
     "caution": 0.1,
-    "mood_label": "curious",
-    "usage_count": 2,
-    "success_count": 1,
-    "failure_count": 1,
-    "last_updated": 1774582903.048536
+    "mood_label": "neutral",
+    "usage_count": 4,
+    "success_count": 2,
+    "failure_count": 2,
+    "last_updated": 1774617315.7513118
   }
 }
