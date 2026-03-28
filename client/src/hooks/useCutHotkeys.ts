@@ -954,6 +954,12 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
             }
           }
 
+          // MARKER_GAMMA-ESC-GUARD: Don't fire escapeContext while MenuBar dropdown is open —
+          // let MenuBar's own Esc handler close the menu, preserving clip selection
+          if (action === 'escapeContext' && document.querySelector('[data-menu-open="1"]')) {
+            return;
+          }
+
           const handler = handlersRef.current[action];
           if (handler) {
             e.preventDefault();

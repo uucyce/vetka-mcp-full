@@ -235,6 +235,13 @@ export default function MenuBar() {
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
+  // MARKER_GAMMA-ESC-GUARD: Sync open state to DOM attribute so useCutHotkeys can skip escapeContext
+  useEffect(() => {
+    if (barRef.current) {
+      barRef.current.dataset.menuOpen = openMenu ? '1' : '';
+    }
+  }, [openMenu]);
+
   // MARKER_GAMMA-MENU-WIRE: Set transition alignment on selected clip
   const setTransitionAlignment = (alignment: 'center' | 'start' | 'end') => {
     const s = store.getState();
