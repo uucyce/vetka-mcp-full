@@ -218,6 +218,14 @@ class TaskBoard:
         # Bulk writes in init cause lock storms with 14 concurrent MCP processes.
         # Use action=backfill_modules for on-demand backfill (same pattern as FTS5).
 
+        # MARKER_201.EVENT_BUS: Initialize unified event bus with default subscribers.
+        # Audit log uses same DB path. init_event_bus is idempotent.
+        try:
+            from src.orchestration.event_bus import init_event_bus
+            self.event_bus = init_event_bus(db_path=self.db_path)
+        except Exception:
+            self.event_bus = None
+
         atexit.register(self.close)
 
     def close(self):
@@ -1453,21 +1461,56 @@ class TaskBoard:
         return None
 
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
-        """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
-        MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
+        """MARKER_124.3D / MARKER_201.EVENT_BUS: Emit event via unified Event Bus.
 
-        Uses fire-and-forget HTTP POST to our own REST endpoint which has sio access.
-        Falls back silently if server isn't running.
+        Routes through EventBus → subscribers (AuditSubscriber, HTTPNotifySubscriber,
+        PiggybackCollector). Replaces direct httpx POST with subscriber-based fan-out.
+
+        Backward compatible: all existing call sites continue to work unchanged.
 
         Args:
             action: Event action type (update, task_claimed, task_completed, etc.)
             event_data: Optional extra data to include in event (task_id, assigned_to, etc.)
         """
         try:
+            # Build payload from event_data + board summary
+            payload = {}
+            if event_data:
+                payload.update(event_data)
+
+            # Extract source_agent from event_data if available
+            source_agent = ""
+            if event_data:
+                source_agent = event_data.get("assigned_to", "")
+
+            # Build tags for routing
+            tags = []
+            if action in ("task_completed", "task_claimed", "task_needs_fix", "task_verified"):
+                tags.append("notify_commander")
+            if action in ("task_completed",):
+                tags.append("persist")
+
+            # Emit via Event Bus if available
+            if self.event_bus is not None:
+                from src.orchestration.event_bus import AgentEvent
+                event = AgentEvent(
+                    event_type=action,
+                    source_agent=source_agent,
+                    payload=payload,
+                    tags=tags,
+                )
+                self.event_bus.emit(event)
+            else:
+                # Fallback: direct HTTP POST (legacy path)
+                self._notify_board_update_legacy(action, event_data)
+        except Exception:
+            pass  # Never block save on notification failure
+
+    def _notify_board_update_legacy(self, action: str, event_data: Optional[Dict[str, Any]] = None):
+        """Legacy HTTP notification path — used only when Event Bus is not available."""
+        try:
             import asyncio
             summary = self.get_board_summary()
-
-            # MARKER_130.C18C: Build payload with optional event_data
             payload = {"action": action, "summary": summary}
             if event_data:
                 payload.update(event_data)
@@ -1487,9 +1530,9 @@ class TaskBoard:
                 loop = asyncio.get_running_loop()
                 loop.create_task(_emit())
             except RuntimeError:
-                pass  # No event loop (sync context)
+                pass
         except Exception:
-            pass  # Never block save on notification failure
+            pass
 
     # MARKER_137.S1_1_EVENT_DISPATCH: Update board settings (auto_dispatch, max_concurrent, etc.)
     def update_settings(self, **kwargs) -> Dict[str, Any]:
