@@ -1318,6 +1318,9 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             new_dur = float(op.get("duration_sec", -1))
             if new_dur <= 0:
                 raise ValueError("duration_sec must be > 0")
+            # Min duration guard: 1 frame at 24fps ≈ 0.0417s
+            min_dur = 1.0 / 24.0
+            new_dur = max(new_dur, min_dur)
             source_lane, clip = _find_clip(state, clip_id)
             if source_lane is None or clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
@@ -1331,6 +1334,10 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 new_start = old_start
             clip["duration_sec"] = round(new_dur, 4)
             new_end = new_start + new_dur
+            # Update source_out when end changes (keeps source window in sync)
+            if "source_out" in clip or "source_in" in clip:
+                source_in = float(clip.get("source_in") or 0.0)
+                clip["source_out"] = round(source_in + new_dur, 4)
             # Delta = how much the clip's end moved
             delta = round(new_end - old_end, 4)
             # Shift all subsequent clips in same lane by delta
@@ -1736,21 +1743,11 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             lane_b, clip_b = _find_clip(state, clip_b_id)
             if clip_a is None or clip_b is None:
                 raise ValueError(f"swap_clips: clip(s) not found: {clip_a_id}, {clip_b_id}")
-            # Exchange positions — NLE swap: earlier clip moves to later position and vice versa
+            # True positional swap — each clip takes the other's start_sec
             a_start = float(clip_a.get("start_sec") or 0.0)
             b_start = float(clip_b.get("start_sec") or 0.0)
-            a_dur = float(clip_a.get("duration_sec") or 0.0)
-            b_dur = float(clip_b.get("duration_sec") or 0.0)
-            # Ensure left/right ordering
-            if a_start > b_start:
-                clip_a, clip_b = clip_b, clip_a
-                lane_a, lane_b = lane_b, lane_a
-                a_start, b_start = b_start, a_start
-                a_dur, b_dur = b_dur, a_dur
-            # Left clip (A) → B takes A's start, A shifts right by B's duration
-            # This keeps total occupied range identical
+            clip_a["start_sec"] = round(b_start, 4)
             clip_b["start_sec"] = round(a_start, 4)
-            clip_a["start_sec"] = round(a_start + b_dur, 4)
             # Re-sort both lanes
             if lane_a is not None:
                 lane_a["clips"] = sorted(lane_a["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
@@ -1770,18 +1767,27 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             clip_start = float(clip.get("start_sec") or 0.0)
             clip_dur = float(clip.get("duration_sec") or 0.0)
             clip_end = clip_start + clip_dur
+            # Min duration guard: 1 frame at 24fps
+            min_dur = 1.0 / 24.0
             if trim_end == "end" and clip_start < playhead < clip_end:
-                delta = round(clip_end - playhead, 4)
-                clip["duration_sec"] = round(playhead - clip_start, 4)
+                new_dur = max(playhead - clip_start, min_dur)
+                delta = round(clip_end - (clip_start + new_dur), 4)
+                clip["duration_sec"] = round(new_dur, 4)
+                # Update source_out to stay in sync with new duration
+                if "source_out" in clip or "source_in" in clip:
+                    source_in = float(clip.get("source_in") or 0.0)
+                    clip["source_out"] = round(source_in + new_dur, 4)
                 # Ripple: shift all subsequent clips on this lane left by delta
                 for c in source_lane.get("clips", []):
                     c_start = float(c.get("start_sec") or 0.0)
                     if c_start >= clip_end - 0.001:
                         c["start_sec"] = round(c_start - delta, 4)
             elif trim_end == "start" and clip_start < playhead < clip_end:
-                delta = round(playhead - clip_start, 4)
-                clip["start_sec"] = round(playhead, 4)
-                clip["duration_sec"] = round(clip_end - playhead, 4)
+                new_dur = max(clip_end - playhead, min_dur)
+                actual_playhead = clip_end - new_dur  # clamp if min_dur kicks in
+                delta = round(actual_playhead - clip_start, 4)
+                clip["start_sec"] = round(actual_playhead, 4)
+                clip["duration_sec"] = round(new_dur, 4)
                 if "source_in" in clip:
                     clip["source_in"] = round(float(clip.get("source_in") or 0.0) + delta, 4)
                 # Ripple: shift all subsequent clips left by delta
