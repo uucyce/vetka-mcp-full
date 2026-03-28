@@ -3647,6 +3647,32 @@ class TaskBoard:
                     "closure_results": closure_results,
                 }
 
+        # MARKER_201.DOC_GUARD: Block merge if branch deletes docs/ files vs main.
+        # Root cause: agents doing git add . or checkout --theirs during rebase mark
+        # new-on-main docs as deleted, destroying them on merge.
+        try:
+            doc_check_proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "--diff-filter=D", "--name-only", f"main..{branch}", "--", "docs/",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            doc_out, _ = await doc_check_proc.communicate()
+            deleted_docs = [f for f in doc_out.decode().strip().split("\n") if f.strip()]
+            if deleted_docs:
+                logger.error(
+                    "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) vs main — merge blocked.",
+                    branch, len(deleted_docs),
+                )
+                return {
+                    "success": False,
+                    "error": "DOC_GUARD: branch deletes docs/ files vs main — merge blocked",
+                    "deleted_docs": deleted_docs,
+                    "fix": "On the agent branch: git checkout main -- <file> for each deleted doc, then commit.",
+                }
+        except Exception as _doc_guard_err:
+            logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
+
         # Step 5: Execute merge
         merge_result = await self._execute_merge(branch, strategy, commits)
         if not merge_result.get("success"):
