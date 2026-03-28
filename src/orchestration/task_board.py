@@ -3491,21 +3491,25 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        # MARKER_200.QA_GATE: Warn (don't block) if task hasn't been through QA
-        # merge_request is the actual merge — after this, code is on main.
-        # We warn but don't block because Commander may need to merge urgently.
-        _task_status = task.get("status", "")
-        if _task_status == "done_worktree":
-            _history = task.get("status_history", [])
-            _was_verified = any(
-                h.get("status") == "verified" or h.get("event") == "verified"
-                for h in _history
+        # MARKER_201.QA_WARN: Warn (not block) if task was not verified by QA.
+        # Commander may legitimately skip QA — we log it and flag the result.
+        _qa_skipped = task.get("status") != "verified"
+        if _qa_skipped:
+            self._append_history(
+                task,
+                event="qa_skipped_warning",
+                status=task.get("status", ""),
+                agent_name="merge_request",
+                agent_type="system",
+                source="merge_request",
+                reason=f"merge_request called without QA verification (status={task.get('status')}). "
+                       "Commander override — proceeding.",
             )
-            if not _was_verified:
-                logger.warning(
-                    f"[MergeRequest] QA_GATE WARNING: Task {task_id} merging without QA verification. "
-                    f"Recommended flow: done_worktree → request_qa → verified → merge_request"
-                )
+            self._save_task(task)
+            logger.warning(
+                "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
+                task_id, task.get("status"),
+            )
 
         branch = task.get("branch_name")
         # MARKER_195.21: Auto-infer branch from role via AgentRegistry
@@ -3722,6 +3726,10 @@ class TaskBoard:
         result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
         if stale_hint:
             result["stale_hint"] = stale_hint
+        # MARKER_201.QA_WARN: Surface qa_skipped flag in result for Commander visibility
+        if _qa_skipped:
+            result["qa_skipped"] = True
+            result["qa_warning"] = "Task was not verified by QA before merge. Check merge carefully."
         return result
 
     async def _execute_merge(
