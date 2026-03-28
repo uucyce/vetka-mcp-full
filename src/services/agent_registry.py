@@ -55,6 +55,8 @@ class AgentRole:
     key_docs: tuple[str, ...]
     roadmap: str
     model_tier: Optional[str] = None  # MARKER_200.MODEL_TIER: opus | sonnet | haiku
+    # MARKER_201.TOOL_TYPE: What tool runs this agent (claude_code|codex|opencode|local_ollama)
+    tool_type: str = "claude_code"
     # MARKER_200.AUTO_PROVISION: Ephemeral roles created at runtime
     ephemeral: bool = False
     origin: str = ""  # terminal | mcc | vetka_chat | opencode | codex | subagent
@@ -111,6 +113,7 @@ class AgentRegistry:
                 key_docs=tuple(entry.get("key_docs", [])),
                 roadmap=entry.get("roadmap", ""),
                 model_tier=entry.get("model_tier"),  # MARKER_200.MODEL_TIER
+                tool_type=entry.get("tool_type", "claude_code"),
             )
             self._roles.append(role)
 
