@@ -217,6 +217,16 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
     return null;
   }, [getBinding]);
 
+  // MARKER_GAMMA-ESC-OVERLAY: Escape closes editor when not in capture mode (standard modal UX)
+  useEffect(() => {
+    if (capturing) return; // capture mode handles Escape itself (cancel capture only)
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [capturing, onClose]);
+
   // Key capture handler
   useEffect(() => {
     if (!capturing) return;
@@ -320,7 +330,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   })).filter((g) => g.actions.length > 0);
 
   return (
-    <div style={OVERLAY} onClick={onClose}>
+    <div style={OVERLAY} onClick={onClose} data-overlay="1">
       <div style={PANEL} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={HEADER}>
