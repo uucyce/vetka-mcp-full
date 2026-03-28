@@ -199,6 +199,8 @@ export default function MenuBar() {
   // Store actions
   const store = useCutEditorStore;
   const dockStore = useDockviewStore;
+  // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
+  const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -708,8 +710,10 @@ export default function MenuBar() {
     {
       label: 'Sequence',
       items: [
-        { label: 'Render In to Out', shortcut: '⌥R', disabled: true },
+        { label: 'Render In to Out', shortcut: '⌥R', action: () => store.getState().setShowExportDialog(true) },
         { label: 'Render All', disabled: true },
+        { separator: true },
+        { label: loopPlayback ? '✓ Loop' : 'Loop', action: () => store.getState().setLoopPlayback(!store.getState().loopPlayback) },
         { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
