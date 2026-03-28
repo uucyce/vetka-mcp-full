@@ -3673,8 +3673,8 @@ class TaskBoard:
         except Exception as _doc_guard_err:
             logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
 
-        # Step 5: Execute merge
-        merge_result = await self._execute_merge(branch, strategy, commits)
+        # Step 5: Execute merge (pass allowed_paths for scoped stash)
+        merge_result = await self._execute_merge(branch, strategy, commits, task.get("allowed_paths") or [])
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
             return merge_result
@@ -3759,7 +3759,8 @@ class TaskBoard:
         return result
 
     async def _execute_merge(
-        self, branch: str, strategy: str, commits: List[str]
+        self, branch: str, strategy: str, commits: List[str],
+        allowed_paths: List[str] = None,
     ) -> Dict[str, Any]:
         """Execute the actual git merge operation.
 
@@ -3767,13 +3768,22 @@ class TaskBoard:
         - cherry-pick: Cherry-pick each commit (default, safest)
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
+
+        Args:
+            allowed_paths: Task's owned paths (from agent_registry / task.allowed_paths).
+                           If set, stash is scoped to these paths only — other projects'
+                           untracked work (e.g. Parallax files while merging CUT) is untouched.
         """
         try:
-            # MARKER_201.STASH_SAFE: Stash only TRACKED changes before checkout.
-            # --include-untracked was removed: untracked files (new docs, WIP code) never
-            # block `git checkout main` and were being silently lost when stash pop failed.
+            # MARKER_201.STASH_SCOPE: Scoped stash using task's allowed_paths.
+            # If allowed_paths known → git stash push -- <paths> (only this project's files).
+            # Fallback → git stash (tracked files only, no --include-untracked).
+            # Untracked files never block `git checkout main` so they are never stashed.
+            _stash_cmd = ["git", "stash"]
+            if allowed_paths:
+                _stash_cmd = ["git", "stash", "push", "--"] + list(allowed_paths)
             stash_proc = await asyncio.create_subprocess_exec(
-                "git", "stash",
+                *_stash_cmd,
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
