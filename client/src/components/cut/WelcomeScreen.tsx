@@ -12,14 +12,14 @@ import { useState, useCallback, type CSSProperties } from 'react';
 
 const LS_RECENT_PROJECTS = 'cut_recent_projects';
 
-interface RecentProject {
+export interface RecentProject {
   id: string;
   name: string;
   path: string;
   lastOpened: number;
 }
 
-function loadRecent(): RecentProject[] {
+export function loadRecent(): RecentProject[] {
   try {
     const raw = localStorage.getItem(LS_RECENT_PROJECTS);
     return raw ? JSON.parse(raw) : [];
