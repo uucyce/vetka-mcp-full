@@ -3037,6 +3037,189 @@ function App() {
     width: `min(100%, calc(min(78vh, 920px) * ${stageAspectRatio}))`,
     aspectRatio: `${sample.width} / ${sample.height}`,
   } as const;
+  const cleanupToolOptions = [
+    { id: "focus", label: "focus proxy" },
+    { id: "hints", label: "guided hints" },
+    { id: "stage", label: "stage tools" },
+    { id: "matte", label: "algorithmic matte" },
+    { id: "brushes", label: "hint brushes" },
+  ] as const;
+  const activeCleanupToolLabel =
+    cleanupToolOptions.find((tool) => tool.id === activeCleanupTool)?.label ?? null;
+  const closeCleanupContext = () => {
+    setActiveCleanupTool(null);
+    setCleanupOpen(false);
+  };
+
+  const renderCleanupContextPanel = () => {
+    if (!cleanupOpen || activeCleanupTool === null) return null;
+
+    switch (activeCleanupTool) {
+      case "focus":
+        return (
+          <section className="panel panel-compact cleanup-context-panel">
+            <div className="panel-header cleanup-context-header">
+              <div>
+                <h2>Focus Proxy</h2>
+                <div className="panel-subtitle">Rescue focus framing when depth fallback is still too loose</div>
+              </div>
+              <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                done
+              </button>
+            </div>
+            <RangeControl label="focus x" value={focus.x} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, x: value }))} />
+            <RangeControl label="focus y" value={focus.y} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, y: value }))} />
+            <RangeControl label="focus width" value={focus.width} min={0.15} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, width: value }))} />
+            <RangeControl label="focus height" value={focus.height} min={0.2} max={0.9} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, height: value }))} />
+            <RangeControl label="focus feather" value={focus.feather} min={0.02} max={0.35} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, feather: value }))} />
+            <div className="panel-copy">
+              Depth preview prefers real baked depth when available. Samples without baked depth still fall back to the focus-driven proxy map.
+            </div>
+          </section>
+        );
+      case "hints":
+        return (
+          <section className="panel panel-compact cleanup-context-panel">
+            <div className="panel-header cleanup-context-header">
+              <div>
+                <h2>Guided Hints</h2>
+                <div className="panel-subtitle">Show hint overlay only while rescue guidance is needed</div>
+              </div>
+              <div className="panel-header-actions">
+                <button className="ghost-button" type="button" onClick={() => setGuidedHintsVisible((value) => !value)}>
+                  {guidedHintsVisible ? "hide hints" : "show hints"}
+                </button>
+                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                  done
+                </button>
+              </div>
+            </div>
+            <p className="guided-note">
+              `mask_hint.png` contract for assisted mode. Red marks closer subject regions, blue pushes background, green protects ambiguous detail.
+            </p>
+            <div className="chip-row">
+              <span className="chip hint-chip hint-red">closer</span>
+              <span className="chip hint-chip hint-blue">farther</span>
+              <span className="chip hint-chip hint-green">protect</span>
+            </div>
+          </section>
+        );
+      case "stage":
+        return (
+          <section className="panel panel-compact cleanup-context-panel">
+            <div className="panel-header cleanup-context-header">
+              <div>
+                <h2>Stage Tools</h2>
+                <div className="panel-subtitle">Pick the stage interaction you want to use on the image</div>
+              </div>
+              <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                done
+              </button>
+            </div>
+            <SegmentedControl
+              label="tool"
+              value={stageTool}
+              options={[
+                { label: "brush", value: "brush" },
+                { label: "group", value: "group" },
+                { label: "matte", value: "matte" },
+              ]}
+              onChange={(value) => setStageTool(value as StageTool)}
+            />
+            <div className="panel-copy">
+              `brush` nudges local depth. `group` locks a whole region into foreground or midground. `matte` drops click seeds and grows a roto-style matte.
+            </div>
+          </section>
+        );
+      case "matte":
+        return (
+          <section className="panel panel-compact cleanup-context-panel">
+            <div className="panel-header cleanup-context-header">
+              <div>
+                <h2>Algorithmic Matte</h2>
+                <div className="panel-subtitle">Seed add/subtract/protect regions directly on the stage</div>
+              </div>
+              <div className="panel-header-actions">
+                <button className="ghost-button" type="button" onClick={() => setMatteSeeds([])}>
+                  clear
+                </button>
+                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                  done
+                </button>
+              </div>
+            </div>
+            <SegmentedControl
+              label="matte mode"
+              value={matteSeedMode}
+              options={[
+                { label: "add", value: "add" },
+                { label: "subtract", value: "subtract" },
+                { label: "protect", value: "protect" },
+              ]}
+              onChange={(value) => setMatteSeedMode(value as MatteSeedMode)}
+            />
+            <SegmentedControl
+              label="matte view"
+              value={matteSettings.view}
+              options={[
+                { label: "rgb", value: "rgb" },
+                { label: "depth", value: "depth" },
+              ]}
+              onChange={(value) => setMatteSettings((prev) => ({ ...prev, view: value as MatteView }))}
+            />
+            <ToggleButton active={matteSettings.visible} label="show matte overlay" onClick={() => setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }))} />
+            <RangeControl label="grow radius" value={matteSettings.growRadius} min={0.05} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, growRadius: value }))} />
+            <RangeControl label="edge snap" value={matteSettings.edgeSnap} min={0.04} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, edgeSnap: value }))} />
+            <RangeControl label="matte opacity" value={matteSettings.opacity} min={0.2} max={0.95} step={0.01} onChange={(value) => setMatteSettings((prev) => ({ ...prev, opacity: value }))} />
+            <div className="mini-stat-grid">
+              <MiniStat label="seeds" value={`${matteSeeds.length}`} />
+              <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
+              <MiniStat label="mode" value={matteSeedMode} />
+            </div>
+          </section>
+        );
+      case "brushes":
+        return (
+          <section className="panel panel-compact cleanup-context-panel">
+            <div className="panel-header cleanup-context-header">
+              <div>
+                <h2>Hint Brushes</h2>
+                <div className="panel-subtitle">Paint closer, farther, protect, or erase directly on the stage</div>
+              </div>
+              <div className="panel-header-actions">
+                <button className="ghost-button" type="button" onClick={() => setHintStrokes([])}>
+                  clear
+                </button>
+                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                  done
+                </button>
+              </div>
+            </div>
+            <SegmentedControl
+              label="brush"
+              value={brushMode}
+              options={[
+                { label: "closer", value: "closer" },
+                { label: "farther", value: "farther" },
+                { label: "protect", value: "protect" },
+                { label: "erase", value: "erase" },
+              ]}
+              onChange={(value) => setBrushMode(value as BrushMode)}
+            />
+            <RangeControl label="brush size" value={brushSize} min={0.01} max={0.12} step={0.005} onChange={(value) => setBrushSize(value)} />
+            <div className="mini-stat-grid">
+              <MiniStat label="strokes" value={`${hintStrokes.length}`} />
+              <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
+              <MiniStat label="farther" value={formatPct(proxyMaps.fartherCoverage * 100)} />
+              <MiniStat label="protect" value={formatPct(proxyMaps.protectCoverage * 100)} />
+            </div>
+          </section>
+        );
+      default:
+        return null;
+    }
+  };
+  const cleanupContextPanel = renderCleanupContextPanel();
 
   return (
     <div className="parallax-app">
@@ -3400,18 +3583,18 @@ function App() {
           </div>
           <div className="utility-summary">
             <span>Stage: post-extract rescue</span>
-            <span>{cleanupOpen ? "Pick one rescue tool to open its controls." : "Closed by default, so no settings are shown until you open it."}</span>
+            <span>
+              {cleanupOpen
+                ? activeCleanupToolLabel
+                  ? `Active tool: ${activeCleanupToolLabel}. Controls moved next to the viewer.`
+                  : "Pick one rescue tool. Controls appear next to the viewer, not as a left-rail sheet."
+                : "Closed by default, so no settings are shown until you open it."}
+            </span>
           </div>
           {cleanupOpen ? (
             <div className="accordion-body">
               <div className="cleanup-tool-picker">
-                {[
-                  { id: "focus", label: "focus proxy" },
-                  { id: "hints", label: "guided hints" },
-                  { id: "stage", label: "stage tools" },
-                  { id: "matte", label: "algorithmic matte" },
-                  { id: "brushes", label: "hint brushes" },
-                ].map((tool) => (
+                {cleanupToolOptions.map((tool) => (
                   <button
                     key={tool.id}
                     className={`ghost-button cleanup-tool-button ${activeCleanupTool === tool.id ? "active" : ""}`}
@@ -3424,144 +3607,22 @@ function App() {
                   </button>
                 ))}
               </div>
-
-              {activeCleanupTool === "focus" ? (
-                <section className="panel cleanup-active-panel">
-                  <div className="panel-header">
-                    <h2>Focus Proxy</h2>
-                  </div>
-                  <RangeControl label="focus x" value={focus.x} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, x: value }))} />
-                  <RangeControl label="focus y" value={focus.y} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, y: value }))} />
-                  <RangeControl label="focus width" value={focus.width} min={0.15} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, width: value }))} />
-                  <RangeControl label="focus height" value={focus.height} min={0.2} max={0.9} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, height: value }))} />
-                  <RangeControl label="focus feather" value={focus.feather} min={0.02} max={0.35} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, feather: value }))} />
-                  <div className="panel-copy">
-                    Depth preview prefers real baked depth when available. Samples without baked depth still fall back to the focus-driven proxy map.
-                  </div>
-                </section>
-              ) : null}
-
-              {activeCleanupTool === "hints" ? (
-                <section className="panel cleanup-active-panel">
-                  <div className="panel-header">
-                    <h2>Guided Hints</h2>
-                    <button className="ghost-button" type="button" onClick={() => setGuidedHintsVisible((value) => !value)}>
-                      {guidedHintsVisible ? "hide hints" : "show hints"}
-                    </button>
-                  </div>
-                  <p className="guided-note">
-                    `mask_hint.png` contract for assisted mode. Red marks closer subject regions, blue pushes background, green protects ambiguous detail.
-                  </p>
-                  <div className="chip-row">
-                    <span className="chip hint-chip hint-red">closer</span>
-                    <span className="chip hint-chip hint-blue">farther</span>
-                    <span className="chip hint-chip hint-green">protect</span>
-                  </div>
-                </section>
-              ) : null}
-
-              {activeCleanupTool === "stage" ? (
-                <section className="panel cleanup-active-panel">
-                  <div className="panel-header">
-                    <h2>Stage Tools</h2>
-                  </div>
-                  <SegmentedControl
-                    label="tool"
-                    value={stageTool}
-                    options={[
-                      { label: "brush", value: "brush" },
-                      { label: "group", value: "group" },
-                      { label: "matte", value: "matte" },
-                    ]}
-                    onChange={(value) => setStageTool(value as StageTool)}
-                  />
-                  <div className="panel-copy">
-                    `brush` nudges local depth. `group` locks a whole region into foreground or midground. `matte` drops click seeds and grows a roto-style matte.
-                  </div>
-                </section>
-              ) : null}
-
-              {activeCleanupTool === "matte" ? (
-                <section className="panel cleanup-active-panel">
-                  <div className="panel-header">
-                    <h2>Algorithmic Matte</h2>
-                    <button className="ghost-button" type="button" onClick={() => setMatteSeeds([])}>
-                      clear
-                    </button>
-                  </div>
-                  <SegmentedControl
-                    label="matte mode"
-                    value={matteSeedMode}
-                    options={[
-                      { label: "add", value: "add" },
-                      { label: "subtract", value: "subtract" },
-                      { label: "protect", value: "protect" },
-                    ]}
-                    onChange={(value) => setMatteSeedMode(value as MatteSeedMode)}
-                  />
-                  <SegmentedControl
-                    label="matte view"
-                    value={matteSettings.view}
-                    options={[
-                      { label: "rgb", value: "rgb" },
-                      { label: "depth", value: "depth" },
-                    ]}
-                    onChange={(value) => setMatteSettings((prev) => ({ ...prev, view: value as MatteView }))}
-                  />
-                  <ToggleButton active={matteSettings.visible} label="show matte overlay" onClick={() => setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }))} />
-                  <RangeControl label="grow radius" value={matteSettings.growRadius} min={0.05} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, growRadius: value }))} />
-                  <RangeControl label="edge snap" value={matteSettings.edgeSnap} min={0.04} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, edgeSnap: value }))} />
-                  <RangeControl label="matte opacity" value={matteSettings.opacity} min={0.2} max={0.95} step={0.01} onChange={(value) => setMatteSettings((prev) => ({ ...prev, opacity: value }))} />
-                  <div className="mini-stat-grid">
-                    <MiniStat label="seeds" value={`${matteSeeds.length}`} />
-                    <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
-                    <MiniStat label="mode" value={matteSeedMode} />
-                  </div>
-                </section>
-              ) : null}
-
-              {activeCleanupTool === "brushes" ? (
-                <section className="panel cleanup-active-panel">
-                  <div className="panel-header">
-                    <h2>Hint Brushes</h2>
-                    <button className="ghost-button" type="button" onClick={() => setHintStrokes([])}>
-                      clear
-                    </button>
-                  </div>
-                  <SegmentedControl
-                    label="brush"
-                    value={brushMode}
-                    options={[
-                      { label: "closer", value: "closer" },
-                      { label: "farther", value: "farther" },
-                      { label: "protect", value: "protect" },
-                      { label: "erase", value: "erase" },
-                    ]}
-                    onChange={(value) => setBrushMode(value as BrushMode)}
-                  />
-                  <RangeControl label="brush size" value={brushSize} min={0.01} max={0.12} step={0.005} onChange={(value) => setBrushSize(value)} />
-                  <div className="mini-stat-grid">
-                    <MiniStat label="strokes" value={`${hintStrokes.length}`} />
-                    <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
-                    <MiniStat label="farther" value={formatPct(proxyMaps.fartherCoverage * 100)} />
-                    <MiniStat label="protect" value={formatPct(proxyMaps.protectCoverage * 100)} />
-                  </div>
-                </section>
-              ) : null}
-
-              {activeCleanupTool === null ? (
-                <div className="panel-copy cleanup-empty-state">
-                  Select one rescue tool to open its controls. Nothing stays expanded by default.
-                </div>
-              ) : null}
-
               <div className="cleanup-tools-footer">
                 <div className="panel-copy">
-                  AI suggestions, guide boxes, and debug metrics stay hidden unless you explicitly open debug tools.
+                  {activeCleanupToolLabel
+                    ? `Only ${activeCleanupToolLabel} stays open. All rescue controls live next to the viewer while the tool is active.`
+                    : "Select a rescue tool only when cleanup actually starts failing."}
                 </div>
-                <button className="ghost-button" type="button" onClick={() => setDebugOpen((value) => !value)}>
-                  {debugOpen ? "hide debug tools" : "open debug tools"}
-                </button>
+                <div className="panel-header-actions">
+                  {activeCleanupTool !== null ? (
+                    <button className="ghost-button" type="button" onClick={closeCleanupContext}>
+                      close active tool
+                    </button>
+                  ) : null}
+                  <button className="ghost-button" type="button" onClick={() => setDebugOpen((value) => !value)}>
+                    {debugOpen ? "hide debug tools" : "open debug tools"}
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -3838,9 +3899,10 @@ function App() {
             <span>motion {formatPct(snapshot.travelXPct)} / {formatPct(snapshot.travelYPct)}</span>
             <span>overscan {formatPct(snapshot.overscanPct)}</span>
           </div>
+          </div>
         </div>
         </div>
-        </div>
+        {cleanupContextPanel ? <section className="cleanup-context-shell">{cleanupContextPanel}</section> : null}
 
         <section className="workflow-dock">
           <article className={`panel panel-compact workflow-card depth-card effect-panel ${activeEffectPanel === "depth" ? "is-open" : "is-collapsed"}`}>

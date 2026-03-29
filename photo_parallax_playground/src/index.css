@@ -1900,6 +1900,23 @@ ul {
   color: rgba(241, 241, 239, 0.5);
 }
 
+.cleanup-context-shell {
+  grid-column: 1 / -1;
+}
+
+.cleanup-context-panel {
+  gap: 10px;
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.024), rgba(255, 255, 255, 0.008)),
+    rgba(8, 9, 12, 0.92);
+}
+
+.cleanup-context-header {
+  align-items: flex-start;
+}
+
 .info-card p,
 .info-card li {
   color: #c0c8d4;
