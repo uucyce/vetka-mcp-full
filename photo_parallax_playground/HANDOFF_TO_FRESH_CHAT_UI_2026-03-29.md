@@ -1,127 +1,100 @@
 # HANDOFF TO FRESH CHAT — UI CONTINUATION — 2026-03-29
 
-Updated: `2026-03-29 11:40:48 MSK`
+Updated: `2026-03-29 14:35:00 MSK`
 
 ## Workspace
-- Worktree: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground_codex/photo_parallax_playground`
-- Branch: `codex/parallax`
+- Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground`
+- Branch: `main`
 - Main edited files:
-  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground_codex/photo_parallax_playground/src/App.tsx`
-  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground_codex/photo_parallax_playground/src/index.css`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/App.tsx`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/src/index.css`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/package.json`
+  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/scripts/dev-server-stop.sh`
+
+## Mainline State
+- Clean parallax UI reset snapshot was integrated into `main`.
+- Follow-up UI tasks already landed on `main`:
+  - `9b4d3db5f` — `PARALLAX-UIR11.2 compact Export into section-first operator panel`
+  - `3cbcfe2c7` — `PARALLAX-UIR11.5 reserve bottom camera key tray and verify wide/square UI`
 
 ## Live Check
-- Dev URL used for checks:
-  - `http://127.0.0.1:14350/?sample=hover-politsia&debug=1&fresh=1`
-- Playwright reload was used repeatedly during the session.
-- Latest verified snapshot:
-  - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/.playwright-cli/page-2026-03-29T08-40-04-502Z.yml`
-- Latest build status:
-  - `npm run build` passed
+- Fresh UI verification should use:
+  - `npm run dev:clean`
+  - then `http://127.0.0.1:14350/`
+- `14350` is now the standard fixed dev port for this playground.
+- `npm run dev:stop` should be called after QA to avoid runaway `vite` processes.
 
 ## What Was Changed
 
-### 1. Overall UI direction shifted closer to Resolve
-- `Debug Snapshot` removed from the default working layout.
-- `Export` moved to the right-side inspector column.
-- Main image monitor was given more visual priority.
-- Right-side `Depth / Extract / Camera` stopped behaving like three large always-open cards.
+### 1. Viewer-first layout remained the main direction
+- Main monitor stays centered and dominant.
+- `Depth / Extract / Camera` remain in the bottom working dock.
+- `Objects and Route Notes` stay folded by default.
+- `Manual Cleanup` remains collapsed by default.
 
-### 2. Right-side inspector now behaves more like compact effect sections
-- `Depth / Extract / Camera` are now collapsed by default.
-- Each shows a one-line summary when closed:
-  - `Depth`: `near / far / gamma`
-  - `Extract`: `mask / mid`
-  - `Camera`: `x / y / overscan`
-- Only one effect section opens at a time through `activeEffectPanel`.
-- Right inspector now has its own scroll:
-  - `workflow-dock { overflow: auto; max-height: min(78vh, 920px); }`
+### 2. Right-side inspector is now section-first
+- `Export` was converted to the same compact accordion logic as `Depth / Extract / Camera`.
+- `Export` now shows a compact summary when closed instead of an always-open readout wall.
+- Actions stay visible, but the bulk readout no longer floods the right rail by default.
 
-### 3. Left rail was heavily cleaned up
-- Removed `Stage` as a separate left panel.
-- Removed `AI Assist` from the working left column.
-- Removed `Layer Guides` from the working left column.
-- Top-left brand block was demoted to a compact project label instead of a second control panel.
-- `Objects and Route Notes` stayed folded by default and was compacted.
+### 3. Lower workspace now reserves room for camera keys
+- A dedicated `camera key tray` now exists under the monitor.
+- This is currently a layout reserve / readout strip, not a real keyframe editor yet.
+- The purpose is to remove dead space and establish the future CUT-like animation zone.
 
-### 4. `Manual Cleanup` no longer opens as a long scroll of all tools
-- `After Extract: Manual Cleanup` still exists, but now behaves as a tool picker.
-- It now opens into:
-  - a compact row of rescue tools
-  - one active tool panel only
-- Active cleanup tool is controlled by:
-  - `activeCleanupTool: "focus" | "hints" | "stage" | "matte" | "brushes" | null`
-- Current tool list:
-  - `focus proxy`
-  - `guided hints`
-  - `stage tools`
-  - `algorithmic matte`
-  - `hint brushes`
-- If no cleanup tool is selected, user sees only an empty helper state instead of a long settings sheet.
+### 4. Viewer shell is less card-like than before
+- Main stage shell no longer reads as a heavily rounded card.
+- It still has a softened shell treatment, but it is materially closer to a real image monitor.
 
-### 5. Context-sensitive cleanup tools
-- `protect region` now opens cleanup and selects `hint brushes`
-- `refine silhouette` now opens cleanup and selects `algorithmic matte`
-
-### 6. Support / object controls
-- `object role` was clarified as real functionality, not decorative UI.
-- It now reads as `layer role`.
-- UI note was added explaining it changes layer routing for preview / camera safety / export order.
-- Left-rail support typography was reduced significantly.
+### 5. Dev server discipline was added after repeated runaway CPU incidents
+- `package.json` now includes:
+  - `dev`
+  - `dev:stop`
+  - `dev:clean`
+- `scripts/dev-server-stop.sh` now kills stale `vite` processes across `photo_parallax_playground` workspaces.
+- This was added because multiple stray `vite` instances were repeatedly reaching ~`800%` total CPU.
 
 ## Important Current Behavior
-- The monitor remains in the center.
-- Left rail has its own scroll.
-- Right effect inspector has its own scroll.
-- `Depth / Extract / Camera` start collapsed.
-- `Manual Cleanup` starts collapsed, and when opened it does not dump all subtools at once anymore.
+- Fixed local dev port: `14350`
+- `npm run dev:clean` should be the only normal way to start live QA.
+- `npm run dev:stop` should be the normal way to finish it.
+- `Depth / Extract / Camera / Export` all start compact.
+- `Manual Cleanup` starts collapsed.
+- `camera key tray` is present under the monitor.
 
-## Remaining Gaps
+## Verified Checks
+- `npm run build` passed after `UIR11.2`
+- `npm run build` passed after `UIR11.5`
+- Live QA on fresh Vite port confirmed:
+  - wide sample: `hover-politsia`
+  - square sample: `drone-portrait`
 
-### 1. Manual Cleanup still needs one more Resolve/Airy pass
-Current state is much better, but it is still a rail section, not yet a truly minimal context-tool system.
+## Known Limits / Gaps
 
-Best next step:
-- demote the cleanup section even further
-- make its tool row feel more like contextual helper tools
-- open tool controls only when the corresponding stage mode or recommendation is activated
+### 1. True portrait QA is still not completed
+- `drone-portrait` is square (`1024 x 1024`), not true portrait.
+- Current `SAMPLE_LIBRARY` has no true portrait asset.
+- This means non-16:9 and portrait-safe framing still need another pass.
 
-### 2. `Export` is still more open than the other right-side sections
-Best next step:
-- make `Export` compact and accordion-like too
-- keep actions visible, but reduce always-open readout bulk
+### 2. Camera tray is only a reserve, not a full feature
+- There is still no real camera key editing, key selection, or animation curve flow.
+- The space is now prepared for that next stage.
 
-### 3. Non-16:9 / portrait behavior still needs a dedicated final pass
-Current layout improved monitor priority, but this still needs explicit QA across multiple samples.
-
-Best next step:
-- verify on portrait and square samples
-- ensure monitor always stays dominant
-- ensure effect inspector scrolling never displaces the image
-
-### 4. Some technical console noise still exists
-Known recurring issues observed during Playwright reloads:
-- duplicate React key warning:
-  - `rejected_fg_box`
-- repeated canvas warning:
-  - `getImageData` / `willReadFrequently`
-
-These were not the focus of this UI session and were not fully resolved here.
+### 3. Monitor fit for non-16:9 sources remains the next important UI risk
+- Wide and square were checked.
+- Portrait-safe fit and framing are still open.
 
 ## Recommended Next Move For Fresh Chat
-Continue from current workspace state and do this next:
+Continue from current `main` state and do this next:
 
-1. Keep the current compact right-side inspector pattern.
-2. Apply the same compact/collapsed treatment to `Export`.
-3. Push `Manual Cleanup` one step further toward contextual helper tools:
-   - show tools only when needed
-   - avoid a permanent left-column sheet
-4. Run explicit portrait / square QA after that.
+1. Take `PARALLAX-UIR12: fix portrait-safe stage fit and non-16:9 source framing`
+2. Keep the current compact inspector and tray structure
+3. Improve stage fit behavior without reintroducing card-heavy UI
+4. Re-run live QA on non-16:9 cases after that
 
 ## Quick State Summary
-- Large progress was made.
-- UI is materially cleaner than the starting point.
-- The biggest conceptual shift already happened:
-  - monitor-first center
-  - compact right-side inspector
-  - auxiliary tools no longer permanently flood the layout
-- The next chat should focus on polish and contextual cleanup behavior, not on returning to the old card-heavy layout.
+- The core UI reset is already on `main`.
+- `Export` compacting is done.
+- `camera key tray` reserve is done.
+- Dev server lifecycle is now controlled to stop repeated runaway CPU.
+- The next clean step is `UIR12`, not another broad visual reset.

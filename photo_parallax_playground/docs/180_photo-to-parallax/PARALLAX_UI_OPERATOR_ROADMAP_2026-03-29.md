@@ -1,8 +1,9 @@
 # PARALLAX UI Operator Roadmap
 
 Дата фиксации: `2026-03-29`
-Ветка: `codex/parallax`
-Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground_codex/photo_parallax_playground`
+Обновлено: `2026-03-29 14:35 MSK`
+Ветка: `main`
+Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground`
 
 ## Источники фактов
 
@@ -21,9 +22,15 @@ Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_paral
 - `Depth / Extract / Camera` перенесены в нижний рабочий dock.
 - `Manual Cleanup` уже перестал быть одной длинной простынёй и начал работать как picker/helper path.
 - `Export` уже переехал в правую рабочую зону, а не остаётся отдельным внешним блоком.
+- `Export` переведён в compact accordion pattern и больше не висит полностью раскрытым по умолчанию.
+- Под монитором добавлен отдельный `camera key tray`, который резервирует нижнюю рабочую зону под future camera animation workspace.
 - `Debug Snapshot` убран из default layout.
 
-Подтверждение: `HANDOFF_TO_FRESH_CHAT_UI_2026-03-29.md`
+Подтверждение:
+- `HANDOFF_TO_FRESH_CHAT_UI_2026-03-29.md`
+- TaskBoard commits:
+  - `9b4d3db5f` — `PARALLAX-UIR11.2`
+  - `3cbcfe2c7` — `PARALLAX-UIR11.5`
 
 ## Подтверждённые проблемы текущего UI
 
@@ -54,20 +61,20 @@ Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_paral
 
 ### 3. Монитор визуально оформлен как карточка, а не как изображение
 
-В `src/index.css` у `.stage-shell` есть `border-radius: 6px`.
+В `src/index.css` у `.stage-shell` сейчас `border-radius: 8px`.
 У `.focus-frame` есть `border-radius: 28px`.
 
-Это создаёт card-like ощущение и противоречит операторской модели, где viewer должен оставаться прямоугольным экраном без скруглений.
+Viewer уже заметно ближе к прямоугольному экрану, чем в раннем состоянии, но визуальное ощущение card-shell ещё не убрано до конца.
 
 ### 4. Нижняя рабочая зона не работает как timeline/keyframe tray
 
-Сейчас `workflow-dock` занят четырьмя карточками:
+Сейчас `workflow-dock` всё ещё занят четырьмя карточками:
 - `Depth`
 - `Isolate`
 - `Camera`
 - `Export`
 
-Но отдельной зоны для камерных ключей или timeline-like animation editing нет.
+Под монитором уже появился отдельный `camera key tray`, но это пока layout-reserve/readout, а не реальный keyframe editor.
 
 ### 5. Слишком много вторичных метрик и бейджей в главном viewer
 
@@ -150,15 +157,17 @@ Manual cleanup и layer refinement должны жить как contextual tools
 
 ### UI-R11.1 Viewer de-cardification
 
-- убрать скругление у основного viewer
-- ослабить визуальную “карточность” stage shell
-- сократить верхние/нижние служебные бейджи
+- статус: `частично выполнено`
+- основной viewer уже не выглядит как тяжёлая круглая карточка
+- stage shell остаётся слегка смягчённым (`8px`), но не полностью neutral-screen
+- служебный шум ещё можно сократить дальше
 
 ### UI-R11.2 Section-first inspector
 
-- привести `Export` к тому же collapsed pattern, что и `Depth / Extract / Camera`
-- стандартизировать section summary rows
-- убрать always-open bulk controls
+- статус: `выполнено`
+- `Export` приведён к collapsed pattern
+- section summary rows стандартизированы
+- always-open bulk controls убраны из default state
 
 ### UI-R11.3 Contextual cleanup tools
 
@@ -174,18 +183,33 @@ Manual cleanup и layer refinement должны жить как contextual tools
 
 ### UI-R11.5 Camera keyframe tray
 
-- использовать нижнее пространство как camera animation workspace
-- не внедрять весь CUT, но взять его пространственный принцип:
+- статус: `выполнено как layout reserve`
+- нижнее пространство теперь используется как `camera key tray`
+- не внедрён весь CUT, но взят его пространственный принцип:
   - горизонтальная рабочая полоса
   - keyframe-ready future layout
   - clear room under monitor
 
 ### UI-R11.6 Viewport QA
 
-- пройти portrait
-- пройти square
-- проверить, что inspector scroll не вытесняет monitor
-- проверить, что monitor остаётся главным элементом сцены
+- статус: `частично выполнено`
+- wide QA пройдена на `hover-politsia`
+- square QA пройдена на `drone-portrait`
+- monitor остался главным элементом сцены
+- в текущей `SAMPLE_LIBRARY` нет true portrait asset, поэтому отдельная portrait QA остаётся открытой
+
+## Dev Server Discipline
+
+После повторяющихся runaway `vite` процессов зафиксировано новое правило рабочего цикла:
+
+- использовать только `npm run dev:clean` для live checks
+- использовать только `npm run dev:stop` для гарантированной остановки
+- не плодить ручные порты `14347/14348/14349/14351`
+- стандартный dev port для playground: `14350`
+
+Подтверждение в коде:
+- `package.json`
+- `scripts/dev-server-stop.sh`
 
 ## Что не делать
 
@@ -202,3 +226,14 @@ Manual cleanup и layer refinement должны жить как contextual tools
 - cleanup tools появляются только при соответствующем действии
 - внизу есть ясное пространство под future camera keys
 - UI можно воспринимать как понятную оболочку, к которой остаётся прикручивать функции
+
+## Следующий логичный UI-шаг
+
+Следующий подтверждённый шаг из board и из текущего состояния:
+
+- `PARALLAX-UIR12: fix portrait-safe stage fit and non-16:9 source framing`
+
+Почему именно он:
+- square уже проверен и выявлен как важный layout case
+- true portrait asset ещё отсутствует, но сам fit/non-16:9 path остаётся открытым
+- после `UIR11.5` следующий главный риск — чтобы monitor оставался доминирующим не только на wide, но и на non-16:9 sources

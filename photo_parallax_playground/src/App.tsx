@@ -4152,7 +4152,7 @@ function App() {
               </div>
               </div>
               <div className="accordion-actions">
-                <span className="effect-summary-inline">travel + safe</span>
+                <span className="effect-summary-inline">one safe move</span>
                 <span className="accordion-chevron">{activeEffectPanel === "camera" ? "−" : "+"}</span>
               </div>
             </button>
@@ -4164,14 +4164,14 @@ function App() {
             {activeEffectPanel === "camera" ? (
               <>
             <div className="panel-copy camera-card-copy">
-              Key positions are the start and end camera poses for the shot. This build still uses one safe move for the whole shot, not editable keyframes.
+              This build uses one safe camera move for the whole shot. Use this card to tune travel and overscan; the tray below is only a keyframe reserve for a later pass.
             </div>
             <div className="panel-header-actions camera-header-actions">
               <button className="ghost-button" type="button" onClick={() => setCameraTuningOpen((value) => !value)}>
-                {cameraTuningOpen ? "hide tuning" : "tuning"}
+                {cameraTuningOpen ? "hide tuning" : "show tuning"}
               </button>
               <button className="ghost-button" type="button" onClick={applyRecommendedPreset}>
-                apply safe
+                apply safe move
               </button>
             </div>
             <div className="workflow-card-grid">
@@ -4237,12 +4237,12 @@ function App() {
             ) : null}
             <div className="workflow-card-grid">
               <div className="mini-stat-grid mini-stat-grid-compact">
-                <MiniStat label="travel" value={`${formatPct(snapshot.travelXPct)} / ${formatPct(snapshot.travelYPct)}`} />
-                <MiniStat label="render" value={renderPolicy} />
+                <MiniStat label="current move" value={`${formatPct(snapshot.travelXPct)} / ${formatPct(snapshot.travelYPct)}`} />
+                <MiniStat label="render mode" value={renderPolicy} />
               </div>
               <div className="mini-stat-grid mini-stat-grid-compact">
                 <MiniStat
-                  label="safe x / y"
+                  label="safe move"
                   value={`${formatPct(plateLayout.cameraSafe.suggestion.travelXPct)} / ${formatPct(plateLayout.cameraSafe.suggestion.travelYPct)}`}
                 />
                 <MiniStat label="safe overscan" value={formatPct(plateLayout.cameraSafe.suggestion.overscanPct)} />
@@ -4251,7 +4251,7 @@ function App() {
                 {plateLayout.cameraSafe.warning
                   ? `Camera warning: ${plateLayout.cameraSafe.warning}.`
                   : "Camera check: no warning."}
-                {plateLayout.cameraSafe.suggestion.reason ? ` Suggested move: ${plateLayout.cameraSafe.suggestion.reason}.` : ""}
+                {plateLayout.cameraSafe.suggestion.reason ? ` Safe move note: ${plateLayout.cameraSafe.suggestion.reason}.` : ""}
               </div>
             </div>
               </>
