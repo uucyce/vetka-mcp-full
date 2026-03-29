@@ -23,7 +23,6 @@ Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_paral
 - `Manual Cleanup` уже перестал быть одной длинной простынёй и начал работать как picker/helper path.
 - `Export` уже переехал в правую рабочую зону, а не остаётся отдельным внешним блоком.
 - `Export` переведён в compact accordion pattern и больше не висит полностью раскрытым по умолчанию.
-- Под монитором добавлен отдельный `camera key tray`, который резервирует нижнюю рабочую зону под future camera animation workspace.
 - `Debug Snapshot` убран из default layout.
 
 Подтверждение:
@@ -66,7 +65,7 @@ Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_paral
 
 Viewer уже заметно ближе к прямоугольному экрану, чем в раннем состоянии, но визуальное ощущение card-shell ещё не убрано до конца.
 
-### 4. Нижняя рабочая зона не работает как timeline/keyframe tray
+### 4. Нижняя рабочая зона пока не стала реальным timeline/keyframe workspace
 
 Сейчас `workflow-dock` всё ещё занят четырьмя карточками:
 - `Depth`
@@ -74,7 +73,7 @@ Viewer уже заметно ближе к прямоугольному экра
 - `Camera`
 - `Export`
 
-Под монитором уже появился отдельный `camera key tray`, но это пока layout-reserve/readout, а не реальный keyframe editor.
+После operator review fake tray был убран, потому что он не был ни CUT-derived, ни кликабельным. Реальный camera timeline/keyframe path остаётся отдельной будущей задачей.
 
 ### 5. Слишком много вторичных метрик и бейджей в главном viewer
 
@@ -183,12 +182,9 @@ Manual cleanup и layer refinement должны жить как contextual tools
 
 ### UI-R11.5 Camera keyframe tray
 
-- статус: `выполнено как layout reserve`
-- нижнее пространство теперь используется как `camera key tray`
-- не внедрён весь CUT, но взят его пространственный принцип:
-  - горизонтальная рабочая полоса
-  - keyframe-ready future layout
-  - clear room under monitor
+- статус: `отменено как fake placeholder`
+- временный tray был убран после operator review
+- следующий корректный шаг здесь: не рисовать reserve, а заводить реальный CUT-derived camera timeline/keyframe flow
 
 ### UI-R11.6 Viewport QA
 
@@ -224,7 +220,7 @@ Manual cleanup и layer refinement должны жить как contextual tools
 - viewer прямоугольный и доминирующий
 - `Export` и operator sections не висят полностью раскрытыми
 - cleanup tools появляются только при соответствующем действии
-- внизу есть ясное пространство под future camera keys
+- внизу не должно быть fake timeline UI без реальной функции
 - UI можно воспринимать как понятную оболочку, к которой остаётся прикручивать функции
 
 ## Следующий логичный UI-шаг

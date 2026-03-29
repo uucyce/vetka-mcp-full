@@ -38,9 +38,9 @@ Updated: `2026-03-29 14:35:00 MSK`
 - Actions stay visible, but the bulk readout no longer floods the right rail by default.
 
 ### 3. Lower workspace now reserves room for camera keys
-- A dedicated `camera key tray` now exists under the monitor.
-- This is currently a layout reserve / readout strip, not a real keyframe editor yet.
-- The purpose is to remove dead space and establish the future CUT-like animation zone.
+- A temporary fake `camera key tray` was tested and then removed.
+- It was not CUT-derived, not interactive, and created false expectations.
+- Future camera timeline work should only return when it is a real keyframe-capable flow.
 
 ### 4. Viewer shell is less card-like than before
 - Main stage shell no longer reads as a heavily rounded card.
@@ -60,7 +60,7 @@ Updated: `2026-03-29 14:35:00 MSK`
 - `npm run dev:stop` should be the normal way to finish it.
 - `Depth / Extract / Camera / Export` all start compact.
 - `Manual Cleanup` starts collapsed.
-- `camera key tray` is present under the monitor.
+- No fake timeline or camera tray is present under the monitor.
 
 ## Verified Checks
 - `npm run build` passed after `UIR11.2`
@@ -78,7 +78,7 @@ Updated: `2026-03-29 14:35:00 MSK`
 
 ### 2. Camera tray is only a reserve, not a full feature
 - There is still no real camera key editing, key selection, or animation curve flow.
-- The space is now prepared for that next stage.
+- A fake reserve tray was explicitly removed instead of being kept as decorative UI.
 
 ### 3. Monitor fit for non-16:9 sources remains the next important UI risk
 - Wide and square were checked.

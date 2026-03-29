@@ -3037,13 +3037,6 @@ function App() {
     width: `min(100%, calc(min(78vh, 920px) * ${stageAspectRatio}))`,
     aspectRatio: `${sample.width} / ${sample.height}`,
   } as const;
-  const cameraKeyStops = [
-    { id: "start", label: "start", detail: "frame in" },
-    { id: "travel-x", label: "travel x", detail: formatPct(snapshot.travelXPct) },
-    { id: "travel-y", label: "travel y", detail: formatPct(snapshot.travelYPct) },
-    { id: "overscan", label: "overscan", detail: formatPct(snapshot.overscanPct) },
-    { id: "settle", label: "settle", detail: `${visibleRenderablePlates.length} plates` },
-  ] as const;
 
   return (
     <div className="parallax-app">
@@ -3846,34 +3839,6 @@ function App() {
             <span>overscan {formatPct(snapshot.overscanPct)}</span>
           </div>
         </div>
-        <section className="camera-key-tray" aria-label="Camera key tray">
-          <div className="camera-key-header">
-            <div>
-              <span className="camera-key-eyebrow">Camera lane</span>
-              <strong>Reserve keys for motion</strong>
-            </div>
-            <div className="camera-key-meta">
-              <span>{sample.width} × {sample.height}</span>
-              <span>{manual.previewMode === "depth" ? "depth map view" : "composite view"}</span>
-            </div>
-          </div>
-          <div className="camera-key-line" aria-hidden="true">
-            {cameraKeyStops.map((stop) => (
-              <div key={stop.id} className="camera-key-stop">
-                <span className="camera-key-dot" />
-                <span className="camera-key-tick" />
-              </div>
-            ))}
-          </div>
-          <div className="camera-key-readout">
-            {cameraKeyStops.map((stop) => (
-              <article key={stop.id} className="camera-key-card">
-                <span className="camera-key-label">{stop.label}</span>
-                <strong>{stop.detail}</strong>
-              </article>
-            ))}
-          </div>
-        </section>
         </div>
         </div>
 
