@@ -1937,6 +1937,64 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "note": "routed_to_dedicated_endpoint"})
             continue
 
+        # MARKER_MIXER_STATE: Mixer ops — store in state["mixer"] for persistence/undo
+        if op_type in ("set_track_volume", "set_track_pan", "set_track_mute", "set_track_solo"):
+            lane_id = str(op.get("lane_id") or "").strip()
+            if not lane_id:
+                raise ValueError(f"{op_type} requires lane_id")
+            mixer = state.setdefault("mixer", {"lanes": {}, "master_volume": 1.0, "master_pan": 0.0})
+            lane = mixer.setdefault("lanes", {}).setdefault(lane_id, {
+                "volume": 1.0, "pan": 0.0, "muted": False, "solo": False,
+            })
+            applied: dict[str, Any] = {"op": op_type, "lane_id": lane_id}
+            if op_type == "set_track_volume":
+                v = max(0.0, min(1.5, float(op.get("volume", 1.0))))
+                lane["volume"] = round(v, 4)
+                applied["volume"] = lane["volume"]
+            elif op_type == "set_track_pan":
+                p = max(-1.0, min(1.0, float(op.get("pan", 0.0))))
+                lane["pan"] = round(p, 4)
+                applied["pan"] = lane["pan"]
+            elif op_type == "set_track_mute":
+                lane["muted"] = bool(op.get("muted", False))
+                applied["muted"] = lane["muted"]
+            elif op_type == "set_track_solo":
+                lane["solo"] = bool(op.get("solo", False))
+                applied["solo"] = lane["solo"]
+            # Sync to engine store for WebSocket metering
+            try:
+                from src.services.cut_audio_engine import update_lane_mixer as _ulm
+                _ulm(str(state.get("project_id") or "project"), lane_id, **{
+                    k: lane[k] for k in ("volume", "pan", "muted", "solo") if k in lane
+                })
+            except Exception:
+                pass
+            applied_ops.append(applied)
+            continue
+
+        if op_type in ("set_master_volume", "set_master_pan"):
+            mixer = state.setdefault("mixer", {"lanes": {}, "master_volume": 1.0, "master_pan": 0.0})
+            applied = {"op": op_type}
+            if op_type == "set_master_volume":
+                v = max(0.0, min(1.5, float(op.get("volume", 1.0))))
+                mixer["master_volume"] = round(v, 4)
+                applied["volume"] = mixer["master_volume"]
+            elif op_type == "set_master_pan":
+                p = max(-1.0, min(1.0, float(op.get("pan", 0.0))))
+                mixer["master_pan"] = round(p, 4)
+                applied["pan"] = mixer["master_pan"]
+            # Sync to engine store
+            try:
+                from src.services.cut_audio_engine import update_master_mixer as _umm
+                _umm(str(state.get("project_id") or "project"), **{
+                    "volume": mixer.get("master_volume", 1.0),
+                    "pan": mixer.get("master_pan", 0.0),
+                })
+            except Exception:
+                pass
+            applied_ops.append(applied)
+            continue
+
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
