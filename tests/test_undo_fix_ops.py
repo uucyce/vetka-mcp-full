@@ -313,3 +313,61 @@ class TestValidTimelineOpsRegistry:
         }
         missing = required - VALID_TIMELINE_OPS
         assert not missing, f"Missing from registry: {missing}"
+
+
+# ─── set_prop dotted path (KF-SETPROP-DOT) ───
+
+class TestSetPropDottedPath:
+    def test_set_prop_nested_key_creates_subdict(self):
+        """keyframes.opacity sets clip['keyframes']['opacity'] without ValueError."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        kf_list = [{"time_sec": 0.0, "value": 1.0, "easing": "linear"}]
+        new_state, applied = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": kf_list,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert isinstance(clip.get("keyframes"), dict)
+        assert clip["keyframes"]["opacity"] == kf_list
+        assert applied[0]["key"] == "keyframes.opacity"
+
+    def test_set_prop_nested_key_updates_existing_subdict(self):
+        """Dotted path merges into existing keyframes dict rather than replacing it."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"scale": [{"time_sec": 0, "value": 1.0, "easing": "linear"}]}},
+        ])
+        new_kfs = [{"time_sec": 0, "value": 0.5, "easing": "ease_in"}]
+        new_state, _ = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": new_kfs,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert "scale" in clip["keyframes"], "existing sub-key must survive"
+        assert clip["keyframes"]["opacity"] == new_kfs
+
+    def test_set_prop_nested_key_none_removes_subkey(self):
+        """set_prop with value=None on dotted path removes the sub-key."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"opacity": [{"time_sec": 0, "value": 1.0, "easing": "linear"}]}},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": None,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert "opacity" not in clip.get("keyframes", {})
+
+    def test_set_prop_dotted_disallowed_root_raises(self):
+        """Dotted path with non-whitelisted root key must still raise."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        with pytest.raises(ValueError, match="not in paste-safe whitelist"):
+            apply_ops(state, [{
+                "op": "set_prop", "clip_id": "A",
+                "key": "start_sec.foo", "value": 99,
+            }])

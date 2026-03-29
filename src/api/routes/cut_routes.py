@@ -1713,13 +1713,26 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 "color_correction", "motion", "speed", "reverse", "maintain_pitch",
                 "transition", "transition_out", "keyframes", "effects",
             }
-            if key not in _paste_safe_keys:
-                raise ValueError(f"set_prop: key '{key}' not in paste-safe whitelist")
             value = op.get("value")
-            if value is None:
-                clip.pop(key, None)
+            if "." in key:
+                # KF-SETPROP-DOT: dotted path support (e.g. "keyframes.opacity")
+                root_key, sub_key = key.split(".", 1)
+                if root_key not in _paste_safe_keys:
+                    raise ValueError(f"set_prop: root key '{root_key}' not in paste-safe whitelist")
+                if value is None:
+                    if root_key in clip and isinstance(clip[root_key], dict):
+                        clip[root_key].pop(sub_key, None)
+                else:
+                    if root_key not in clip or not isinstance(clip[root_key], dict):
+                        clip[root_key] = {}
+                    clip[root_key][sub_key] = value
             else:
-                clip[key] = value
+                if key not in _paste_safe_keys:
+                    raise ValueError(f"set_prop: key '{key}' not in paste-safe whitelist")
+                if value is None:
+                    clip.pop(key, None)
+                else:
+                    clip[key] = value
             applied_ops.append({"op": op_type, "clip_id": clip_id, "key": key})
             continue
 
