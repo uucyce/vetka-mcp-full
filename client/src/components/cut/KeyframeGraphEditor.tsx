@@ -60,12 +60,19 @@ export default function KeyframeGraphEditor() {
   const dragRef = useRef<DragTarget>(null);
   const dragStartRef = useRef<{ mx: number; my: number; kfs: Keyframe[] } | null>(null);
 
-  const addKeyframe        = useCutEditorStore((s) => s.addKeyframe);
-  const removeKeyframe     = useCutEditorStore((s) => s.removeKeyframe);
+  const addKeyframe          = useCutEditorStore((s) => s.addKeyframe);
+  const removeKeyframe       = useCutEditorStore((s) => s.removeKeyframe);
   const updateKeyframeBezier = useCutEditorStore((s) => s.updateKeyframeBezier);
-  const lanes              = useCutEditorStore((s) => s.lanes);
-  const currentTime        = useCutEditorStore((s) => s.currentTime);
-  const selectedClipId     = useSelectionStore((s) => s.selectedClipId);
+  const updateKeyframeEasing = useCutEditorStore((s) => s.updateKeyframeEasing);
+  const seek                 = useCutEditorStore((s) => s.seek);
+  const kfGap                = useCutEditorStore((s) => s.kfGap);
+  const lanes                = useCutEditorStore((s) => s.lanes);
+  const currentTime          = useCutEditorStore((s) => s.currentTime);
+  const selectedClipId       = useSelectionStore((s) => s.selectedClipId);
+
+  const [selectedKfIdx, setSelectedKfIdx] = useState<number | null>(null);
+  // Guard: did mouse actually drag (to suppress seek on drag-end click)
+  const didDragRef = useRef(false);
 
   // Resolve keyframes for selected clip + property
   const keyframes: Keyframe[] = (() => {
@@ -305,16 +312,28 @@ export default function KeyframeGraphEditor() {
     const my = e.clientY - rect.top;
 
     if (dragRef.current && dragStartRef.current) {
+      didDragRef.current = true;
       const canvas2 = canvasRef.current!;
-      const [vLo, vHi] = valueRange(dragStartRef.current.kfs);
+      // Fix: use live keyframes from store instead of stale closure snapshot
+      let liveKfs = dragStartRef.current.kfs;
+      const storeState = useCutEditorStore.getState();
+      for (const lane of storeState.lanes) {
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+        if (clip?.keyframes?.[property]) { liveKfs = clip.keyframes[property]; break; }
+      }
+      const [vLo, vHi] = valueRange(dragStartRef.current.kfs);  // keep snapshot range for stable Y-axis
       const { timeSec: newTime, value: newValue } = fromCanvas(mx, my, canvas2, vLo, vHi);
-      const kf = dragStartRef.current.kfs[dragRef.current.idx];
+      const kf = liveKfs[dragRef.current.idx] ?? dragStartRef.current.kfs[dragRef.current.idx];
       if (!kf) return;
 
       if (dragRef.current.kind === 'diamond') {
-        // Move diamond: remove old, add new
+        // Move diamond: remove old, add new (with kfGap enforcement)
+        const prevTime = dragRef.current.idx > 0 ? (liveKfs[dragRef.current.idx - 1]?.time_sec ?? 0) : 0;
+        const nextTime = dragRef.current.idx < liveKfs.length - 1 ? (liveKfs[dragRef.current.idx + 1]?.time_sec ?? clipDuration) : clipDuration;
+        const minT = prevTime + kfGap;
+        const maxT = nextTime - kfGap;
         removeKeyframe(selectedClipId!, property, kf.time_sec);
-        addKeyframe(selectedClipId!, property, clamp(newTime, 0, clipDuration), newValue);
+        addKeyframe(selectedClipId!, property, clamp(newTime, Math.max(0, minT), Math.min(clipDuration, maxT > minT ? maxT : clipDuration)), newValue);
       } else if (dragRef.current.kind === 'cp_out') {
         const dt = Math.max(0, newTime - kf.time_sec);
         const dv = newValue - kf.value;
@@ -331,7 +350,7 @@ export default function KeyframeGraphEditor() {
     const hit = hitTest(mx, my);
     setHoveredIdx(hit?.kind === 'diamond' ? hit.idx : null);
     canvas.style.cursor = hit ? 'grab' : 'crosshair';
-  }, [keyframes, clipDuration, selectedClipId, property, addKeyframe, removeKeyframe, updateKeyframeBezier]);
+  }, [keyframes, clipDuration, selectedClipId, property, kfGap, addKeyframe, removeKeyframe, updateKeyframeBezier]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
@@ -340,10 +359,12 @@ export default function KeyframeGraphEditor() {
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
     const hit = hitTest(mx, my);
+    didDragRef.current = false;
     if (hit) {
       dragRef.current = hit;
       dragStartRef.current = { mx, my, kfs: [...keyframes] };
       canvas.style.cursor = 'grabbing';
+      if (hit.kind === 'diamond') setSelectedKfIdx(hit.idx);
     }
   }, [keyframes]);
 
@@ -373,6 +394,18 @@ export default function KeyframeGraphEditor() {
     const { timeSec, value } = fromCanvas(mx, my, canvas, vLo, vHi);
     addKeyframe(selectedClipId, property, clamp(timeSec, 0, clipDuration), value);
   }, [selectedClipId, property, keyframes, clipDuration, addKeyframe, removeKeyframe]);
+
+  // ── Diamond click-to-seek ─────────────────────────────────────────────────
+  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (didDragRef.current) return;  // suppress after drag
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const hit = hitTest(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit?.kind === 'diamond') {
+      seek(keyframes[hit.idx].time_sec + clipStart);
+    }
+  }, [keyframes, clipStart, seek]);
 
   // ── Add at playhead ───────────────────────────────────────────────────────
   const handleAddAtPlayhead = useCallback(() => {
@@ -409,6 +442,35 @@ export default function KeyframeGraphEditor() {
         >
           + KF
         </button>
+        {/* Easing preset buttons — apply to selected keyframe */}
+        {(['linear', 'ease_in', 'ease_out', 'bezier'] as const).map((mode) => {
+          const labels: Record<string, string> = { linear: 'Lin', ease_in: 'EI', ease_out: 'EO', bezier: 'Bz' };
+          const titles: Record<string, string> = { linear: 'Linear', ease_in: 'Ease In', ease_out: 'Ease Out', bezier: 'Bezier' };
+          const active = selectedKfIdx !== null && keyframes[selectedKfIdx]?.easing === mode;
+          const canApply = selectedKfIdx !== null && selectedClipId;
+          return (
+            <button
+              key={mode}
+              title={titles[mode]}
+              disabled={!canApply}
+              onClick={() => {
+                if (!canApply) return;
+                updateKeyframeEasing(selectedClipId!, property, keyframes[selectedKfIdx!].time_sec, mode);
+              }}
+              style={{
+                background: active ? '#2a3a4a' : '#1a1a1a',
+                border: `1px solid ${active ? '#4488aa' : '#333'}`,
+                borderRadius: 2,
+                color: canApply ? (active ? '#88ccee' : '#888') : '#444',
+                fontSize: 9,
+                padding: '2px 5px',
+                cursor: canApply ? 'pointer' : 'default',
+              }}
+            >
+              {labels[mode]}
+            </button>
+          );
+        })}
         {!selectedClipId && (
           <span style={{ color: '#444', fontSize: 10, marginLeft: 6 }}>No clip selected</span>
         )}
@@ -424,6 +486,7 @@ export default function KeyframeGraphEditor() {
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
           onDoubleClick={handleDoubleClick}
+          onClick={handleClick}
         />
       </div>
 
