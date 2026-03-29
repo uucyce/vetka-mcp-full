@@ -894,6 +894,8 @@ export default function MenuBar() {
         { label: 'Program Monitor', shortcut: '⇧4', action: () => togglePanel('program', 'program', 'PROGRAM') },
         // MARKER_ACQUIRE-WINDOW: FCP7 Log & Capture equivalent (4-tab ingest panel)
         { label: 'Log & Capture', action: () => togglePanel('acquire', 'acquire', 'Acquire') },
+        // MARKER_GAMMA-MULTICAM-WINDOW: Multicam Viewer direct toggle (FCP7 Ch.42)
+        { label: 'Multicam Viewer', action: () => togglePanel('multicam', 'multicam', 'Multicam') },
         { separator: true },
         { label: 'Inspector', shortcut: '⇧5', action: () => togglePanel('inspector', 'inspector', 'Inspector') },
         { label: 'Clip Inspector', action: () => togglePanel('clip', 'clip', 'Clip') },
