@@ -1994,7 +1994,6 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                 pass
             applied_ops.append(applied)
             continue
-
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
