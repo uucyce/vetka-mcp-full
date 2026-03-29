@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
-# install_post_merge_hook.sh — Deploy post-merge regression hooks to all worktrees.
+# install_post_merge_hook.sh — Deploy post-merge and post-rewrite hooks to all worktrees.
 #
-# Installs .git/hooks/post-merge in the main repo AND all worktrees under
-# .claude/worktrees/. The hook runs two detectors after every `git merge`:
+# Installs two hooks in the main repo AND all worktrees under .claude/worktrees/:
 #
-#   1. detect_merge_regressions.py  — dropped lines + conflict markers (Delta)
-#   2. detect_xpass_drift.py        — stale @pytest.mark.xfail markers (Epsilon)
+#   .git/hooks/post-merge   — runs regression detectors after every `git merge`:
+#     1. detect_merge_regressions.py  — dropped lines + conflict markers (Delta)
+#     2. detect_xpass_drift.py        — stale @pytest.mark.xfail markers (Epsilon)
+#
+#   .git/hooks/post-rewrite — fires after `git rebase`, auto-restores docs/ files
+#     that exist on main but were lost during rebase. Zero manual intervention needed.
 #
 # Usage:
 #   bash scripts/install_post_merge_hook.sh [--repo-root PATH] [--dry-run]
@@ -83,23 +86,80 @@ HOOK
 }
 
 # ---------------------------------------------------------------------------
+# post-rewrite hook content (auto-restore docs/ after rebase)
+# ---------------------------------------------------------------------------
+post_rewrite_hook_content() {
+    cat <<'HOOK'
+#!/usr/bin/env bash
+# post-rewrite hook — installed by scripts/install_post_merge_hook.sh
+# Fires after `git rebase`. Auto-restores docs/ files that exist on main
+# but are missing on the current branch after rebase.
+# $1 = "rebase" | "amend"
+
+set -uo pipefail
+
+[[ "${1:-}" == "rebase" ]] || exit 0
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+
+echo ""
+echo "▶ post-rewrite: checking for docs/ files lost during rebase..."
+
+RESTORED=()
+while IFS= read -r f; do
+    [[ -n "$f" ]] || continue
+    if git checkout main -- "$f" 2>/dev/null; then
+        RESTORED+=("$f")
+        echo "  restored: $f"
+    else
+        echo "  [warn] failed to restore: $f"
+    fi
+done < <(git diff --diff-filter=D --name-only main -- docs/ 2>/dev/null)
+
+if [[ ${#RESTORED[@]} -gt 0 ]]; then
+    git add docs/
+    git commit --no-verify \
+        -m "fix: auto-restore ${#RESTORED[@]} docs/ file(s) after rebase [post-rewrite hook]" \
+        2>/dev/null || echo "  [warn] commit failed (possibly nothing staged)"
+    echo "  ✓ committed ${#RESTORED[@]} restored file(s)"
+else
+    echo "  nothing to restore."
+fi
+
+echo "▶ post-rewrite: done."
+echo ""
+HOOK
+}
+
+# ---------------------------------------------------------------------------
 # Install to a single git dir
 # ---------------------------------------------------------------------------
 install_to() {
     local git_dir="$1"
     local label="$2"
     local hooks_dir="$git_dir/hooks"
-    local hook_file="$hooks_dir/post-merge"
-
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "  [dry-run] would write $hook_file"
-        return
-    fi
 
     mkdir -p "$hooks_dir"
-    hook_content > "$hook_file"
-    chmod +x "$hook_file"
-    echo "  ✓ installed → $hook_file  ($label)"
+
+    # post-merge hook
+    local pm_file="$hooks_dir/post-merge"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "  [dry-run] would write $pm_file"
+    else
+        hook_content > "$pm_file"
+        chmod +x "$pm_file"
+        echo "  ✓ installed → $pm_file  ($label)"
+    fi
+
+    # post-rewrite hook (auto-restore docs after rebase)
+    local pr_file="$hooks_dir/post-rewrite"
+    if [[ "$DRY_RUN" == true ]]; then
+        echo "  [dry-run] would write $pr_file"
+    else
+        post_rewrite_hook_content > "$pr_file"
+        chmod +x "$pr_file"
+        echo "  ✓ installed → $pr_file  ($label)"
+    fi
 }
 
 # ---------------------------------------------------------------------------
@@ -151,6 +211,7 @@ echo ""
 if [[ "$DRY_RUN" == true ]]; then
     echo "Dry run complete — no files written."
 else
-    echo "Done. Hook fires after every \`git merge\` in all worktrees."
-    echo "To test: git merge --no-ff <branch> (or run the hook directly)"
+    echo "Done. Hooks installed in all worktrees:"
+    echo "  post-merge   — fires after \`git merge\`, runs regression detectors"
+    echo "  post-rewrite — fires after \`git rebase\`, auto-restores docs/ from main"
 fi
