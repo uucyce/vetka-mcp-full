@@ -145,6 +145,7 @@ roles:
       - "client/e2e/"
       - "tests/test_*.py"
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
+      - "scripts/detect_*.py"                           # detect_merge_regressions.py + detect_xpass_drift.py (session E6)
     blocked_paths:
       - "client/src/components/"
       - "client/src/store/"
