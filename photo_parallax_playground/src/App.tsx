@@ -1836,6 +1836,7 @@ function App() {
   const [depthAdvancedOpen, setDepthAdvancedOpen] = useState(false);
   const [cameraTuningOpen, setCameraTuningOpen] = useState(false);
   const [activeEffectPanel, setActiveEffectPanel] = useState<"depth" | "extract" | "camera" | null>(null);
+  const [exportPanelOpen, setExportPanelOpen] = useState(false);
   const [activeCleanupTool, setActiveCleanupTool] = useState<"focus" | "hints" | "stage" | "matte" | "brushes" | null>(null);
   const [inspectorQueuesOpen, setInspectorQueuesOpen] = useState(false);
   const [inspectorDetailsOpen, setInspectorDetailsOpen] = useState(false);
@@ -4226,17 +4227,30 @@ function App() {
       </main>
 
       <aside className="export-pane">
-        <article className="panel panel-compact export-card">
-          <div className="panel-header">
-            <div className="panel-title-wrap">
-              <Icon name="export" />
-              <div>
-                <h2>Export</h2>
-                <div className="panel-subtitle">Step 4 · save layers and preview</div>
+        <article className={`panel panel-compact export-card effect-panel ${exportPanelOpen ? "is-open" : "is-collapsed"}`}>
+          <button className="accordion-toggle effect-panel-toggle" type="button" onClick={() => setExportPanelOpen((value) => !value)}>
+            <div className="panel-header">
+              <div className="panel-title-wrap">
+                <Icon name="export" />
+                <div>
+                  <h2>Export</h2>
+                  <div className="panel-subtitle">Step 4 · save layers and preview</div>
+                </div>
               </div>
             </div>
+            <div className="accordion-actions">
+              <span className="effect-summary-inline">
+                {exportLayout.metrics.visiblePlateCount} plates · {exportLayout.routing.mode}
+              </span>
+              <span className="accordion-chevron">{exportPanelOpen ? "−" : "+"}</span>
+            </div>
+          </button>
+          <div className="effect-summary-strip">
+            <span>{exportTargets[0].label}</span>
+            <span>{exportTargets[1].label}</span>
+            <span>{exportTargets[2].label}</span>
           </div>
-          <div className="action-row export-actions">
+          <div className="action-row export-actions export-actions-compact">
             <button className="ghost-button" type="button" onClick={handleExportLayout}>
               download layout
             </button>
@@ -4248,22 +4262,32 @@ function App() {
             </button>
           </div>
           {exportStatus ? <div className="export-status">{exportStatus}</div> : null}
-          <div className="export-stack">
-            {exportTargets.map((target) => (
-              <div className="export-item" key={target.label}>
-                <strong>{target.label}</strong>
-                <span>{target.value}</span>
+          {exportPanelOpen ? (
+            <>
+              <div className="export-stack">
+                {exportTargets.map((target) => (
+                  <div className="export-item" key={target.label}>
+                    <strong>{target.label}</strong>
+                    <span>{target.value}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="panel-copy">
-            {exportLayout.cameraSafe.adjustment.applied
-              ? `Export auto-adjusts motion to ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelXPct)} / ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelYPct)} with ${formatPct(exportLayout.cameraSafe.adjustment.effective.overscanPct)} overscan.`
-              : "Export uses the current camera motion as-is."}
-          </div>
-          <div className="panel-copy">
-            Visible plates: {buildPlateExportAssetsContract().layout.metrics.visiblePlateCount}. Routing stays {buildPlateExportAssetsContract().layout.routing.mode}.
-          </div>
+              <div className="panel-copy">
+                {exportLayout.cameraSafe.adjustment.applied
+                  ? `Export auto-adjusts motion to ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelXPct)} / ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelYPct)} with ${formatPct(exportLayout.cameraSafe.adjustment.effective.overscanPct)} overscan.`
+                  : "Export uses the current camera motion as-is."}
+              </div>
+              <div className="panel-copy">
+                Visible plates: {exportLayout.metrics.visiblePlateCount}. Routing stays {exportLayout.routing.mode}.
+              </div>
+            </>
+          ) : (
+            <div className="panel-copy export-collapsed-note">
+              {exportLayout.cameraSafe.adjustment.applied
+                ? `Safe export will auto-adjust motion and overscan.`
+                : `Current camera move exports as-is.`}
+            </div>
+          )}
         </article>
       </aside>
     </div>

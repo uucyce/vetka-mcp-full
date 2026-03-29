@@ -1513,7 +1513,8 @@ ul {
 }
 
 .export-pane .export-card {
-  min-height: calc(100vh - 24px);
+  min-height: 0;
+  gap: 6px;
 }
 
 .export-pane .panel-icon {
@@ -1813,12 +1814,45 @@ ul {
   flex: 1 1 120px;
 }
 
+.export-actions-compact {
+  gap: 6px;
+}
+
+.export-actions-compact .ghost-button {
+  border-radius: 10px;
+  padding: 5px 7px;
+}
+
 .export-pane .ghost-button,
 .export-item strong,
 .export-item span,
 .export-status,
 .export-pane .panel-copy {
   font-size: 9px;
+}
+
+.export-card .accordion-toggle {
+  gap: 6px;
+}
+
+.export-card .accordion-actions {
+  align-items: center;
+}
+
+.export-card .effect-summary-strip {
+  margin-top: -2px;
+}
+
+.export-card .effect-summary-strip span {
+  color: rgba(241, 241, 239, 0.62);
+}
+
+.export-card.is-collapsed .export-actions-compact {
+  padding-top: 2px;
+}
+
+.export-collapsed-note {
+  color: rgba(241, 241, 239, 0.52);
 }
 
 .export-status {
