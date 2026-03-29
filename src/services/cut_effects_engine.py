@@ -450,6 +450,94 @@ def list_effect_types() -> list[dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_CLIP_EFFECTS_WIRE: ClipEffects flat dict → EffectParam list
+# ---------------------------------------------------------------------------
+
+def clip_effects_dict_to_effect_params(d: dict[str, Any]) -> "ClipEffects":
+    """
+    Convert a flat frontend ClipEffects dict to the backend ClipEffects structure.
+
+    Frontend format (useCutEditorStore.ts ClipEffects):
+      {brightness: 0.1, gamma: 1.5, sharpen: 0.3, ...}
+
+    Backend format:
+      ClipEffects(video_effects=[EffectParam(type="brightness", params={"value": 0.1}), ...])
+
+    Only non-default values are emitted (skips brightness=0, gamma=1, etc.).
+    """
+    import uuid
+    video: list[EffectParam] = []
+
+    def _ep(t: str, **params: Any) -> EffectParam:
+        return EffectParam(effect_id=str(uuid.uuid4())[:8], type=t, enabled=True, params=params)
+
+    brightness = float(d.get("brightness", 0))
+    if brightness != 0:
+        video.append(_ep("brightness", value=brightness))
+
+    contrast = float(d.get("contrast", 0))
+    if contrast != 0:
+        video.append(_ep("contrast", value=contrast))
+
+    saturation = float(d.get("saturation", 1))
+    if saturation != 1.0:
+        video.append(_ep("saturation", value=saturation))
+
+    gamma = float(d.get("gamma", 1))
+    if gamma != 1.0:
+        video.append(_ep("gamma", value=gamma))
+
+    blur = float(d.get("blur", 0))
+    if blur > 0:
+        video.append(_ep("blur", sigma=blur))
+
+    sharpen = float(d.get("sharpen", 0))
+    if sharpen > 0:
+        video.append(_ep("sharpen", amount=sharpen, size=5))
+
+    denoise = float(d.get("denoise", 0))
+    if denoise > 0:
+        video.append(_ep("denoise", strength=denoise))
+
+    vignette = float(d.get("vignette", 0))
+    if vignette > 0:
+        # frontend 0..1 → angle 0..1.5 (PI/4 ≈ 0.785 is default visible vignette)
+        video.append(_ep("vignette", angle=vignette * 1.5))
+
+    # Fractional crop: left/right/top/bottom as fraction of width/height
+    cl = float(d.get("crop_left", 0))
+    cr = float(d.get("crop_right", 0))
+    ct = float(d.get("crop_top", 0))
+    cb = float(d.get("crop_bottom", 0))
+    if cl > 0 or cr > 0 or ct > 0 or cb > 0:
+        video.append(_ep("crop_fraction", left=cl, right=cr, top=ct, bottom=cb))
+
+    if int(d.get("hflip", 0)):
+        video.append(_ep("hflip"))
+
+    if int(d.get("vflip", 0)):
+        video.append(_ep("vflip"))
+
+    opacity = float(d.get("opacity", 1))
+    if opacity != 1.0:
+        video.append(_ep("opacity", value=opacity))
+
+    fade_in = float(d.get("fade_in", 0))
+    if fade_in > 0:
+        video.append(_ep("fade_in", duration=fade_in))
+
+    fade_out = float(d.get("fade_out", 0))
+    if fade_out > 0:
+        video.append(_ep("fade_out", duration=fade_out))
+
+    return ClipEffects(
+        clip_id=str(d.get("clip_id", "")),
+        video_effects=video,
+        audio_effects=[],
+    )
+
+
+# ---------------------------------------------------------------------------
 # FFmpeg filter compilation
 # ---------------------------------------------------------------------------
 
@@ -955,6 +1043,19 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
             w, h = int(p.get("w", 0)), int(p.get("h", 0))
             if w > 0 and h > 0:
                 filters.append(f"crop={w}:{h}:{x}:{y}")
+
+        elif t == "crop_fraction":
+            # MARKER_CLIP_EFFECTS_WIRE: fractional crop from ClipEffects (0..0.5 each side)
+            cl = float(p.get("left", 0))
+            cr = float(p.get("right", 0))
+            ct = float(p.get("top", 0))
+            cb = float(p.get("bottom", 0))
+            if cl > 0 or cr > 0 or ct > 0 or cb > 0:
+                w_expr = f"iw*{max(0.0, 1.0 - cl - cr):.4f}"
+                h_expr = f"ih*{max(0.0, 1.0 - ct - cb):.4f}"
+                x_expr = f"iw*{cl:.4f}"
+                y_expr = f"ih*{ct:.4f}"
+                filters.append(f"crop={w_expr}:{h_expr}:{x_expr}:{y_expr}")
 
         elif t == "broadcast_safe":
             # MARKER_B26: Broadcast Safe — clamp luma 16-235, chroma 16-240

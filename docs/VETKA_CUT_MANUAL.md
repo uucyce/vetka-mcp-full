@@ -662,11 +662,11 @@ Single click sets `selectedClipId`. `Cmd+Click` toggles multi-select via `toggle
 
 ### 3.12 Match Frame
 **Status:** IMPLEMENTED
-**Hotkey:** `F` (both presets)
+**Hotkey:** `F` Match Frame / `Shift+F` Reverse Match Frame (both presets)
 
-Finds the clip under the playhead, calculates `sourceTime = (currentTime - clip.start_sec) + clip.source_in`, sets the Source Monitor to that frame and focuses the Source panel.
+Match Frame (`F`): finds the clip under the playhead, calculates `sourceTime = (currentTime - clip.start_sec) + clip.source_in`, sets the Source Monitor to that frame and focuses the Source panel. Implemented in `useCutEditorStore.matchFrame()`.
 
-**Differs from FCP7:** Only timeline → source direction. Reverse match frame is not implemented.
+Reverse Match Frame (`Shift+F`): from Source Monitor position + active source path, finds the matching clip on timeline and seeks the program monitor to `clip.start_sec + (sourceTime - clip.source_in)`. Implemented in `useCutEditorStore.reverseMatchFrame()`.
 
 ---
 
@@ -1054,7 +1054,7 @@ _FCP7 Reference: Ch.67-72_
 - **No selection:** Searchable effects browser. 4 categories: Video Filters (10 effects), Audio Filters (8 effects), Transitions, Generators (5 types). Drag or double-click to apply.
 - **Clip selected:** Effect Controls sliders — Color (brightness/contrast/saturation/gamma), Blur/Sharpen, Transform (vignette/crop/flip), Time (fade), Opacity.
 
-Core 5 effects (brightness, contrast, saturation, blur, opacity) persist to render pipeline. Extended effects (gamma, sharpen, denoise, vignette, fade, flip) are UI-only, not yet in render plan.
+All 17 ClipEffects fields persist to render pipeline via `set_effects` op → `clip_effects_dict_to_effect_params()` → `compile_video_filters()` → FFmpeg. Extended effects (gamma, sharpen, denoise, vignette, fade_in/out, hflip/vflip, crop) are fully rendered. Fractional crop (crop_top/bottom/left/right) compiles to `crop=iw*w:ih*h:iw*x:ih*y` FFmpeg expression.
 
 **Differs from FCP7:** FCP7 has separate Effect Controls window. CUT merges browser + controls into one panel.
 
