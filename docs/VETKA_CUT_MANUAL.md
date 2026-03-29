@@ -1024,9 +1024,13 @@ No voice-over recording, microphone input, or record-to-timeline feature.
 ---
 
 ### 6.10 Audio Analysis (BPM, Key Detection)
-**Status:** PARTIAL (backend only)
+**Status:** IMPLEMENTED
 
-`cut_audio_analyzer.py`: BPM (spectral flux + autocorrelation), musical key (Krumhansl-Kessler profiles), Camelot key, energy contour, onset times. No dedicated UI panel. Triggered via `Cmd+Shift+P` (Run PULSE Analysis).
+`cut_audio_analyzer.py`: BPM (spectral flux + autocorrelation), musical key (Krumhansl-Kessler profiles), Camelot key, energy contour (64 bins), onset times.
+
+**API:** `POST /api/cut/pulse/analyze-clip` — `{source_path}` → `{bpm, key, camelot_key, energy_contour[], onset_times[], duration_sec}`. Backed by librosa if available, else FFmpeg + scipy/numpy fallback.
+
+**UI:** "Audio Analysis" section in `ClipInspector.tsx` — on-demand per-clip (Analyze button). Displays BPM / Key / Camelot / onset count + SVG energy sparkline (64 bins). Resets when different clip is selected.
 
 **Differs from FCP7:** FCP7 has no BPM/key detection. VETKA CUT exclusive via PULSE system.
 
