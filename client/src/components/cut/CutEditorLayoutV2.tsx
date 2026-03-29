@@ -37,6 +37,7 @@ import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 import TrimEditWindow from './TrimEditWindow';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { InsertTracksDialog, DeleteTracksDialog } from './panels/InsertDeleteTracksDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
 
@@ -1606,6 +1607,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <TrimEditWindow />
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
       <EditMarkerDialog />
+      {/* MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs */}
+      <InsertTracksDialog />
+      <DeleteTracksDialog />
       <TimecodeEntryOverlay />
       {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
       <PublishDialog />

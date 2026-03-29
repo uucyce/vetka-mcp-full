@@ -799,8 +799,8 @@ export default function MenuBar() {
         { separator: true },
         { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
-        { label: 'Insert Tracks...', disabled: true },
-        { label: 'Delete Tracks...', disabled: true },
+        { label: 'Insert Tracks...', action: () => store.getState().setShowInsertTracksDialog(true) },
+        { label: 'Delete Tracks...', action: () => store.getState().setShowDeleteTracksDialog(true) },
         { separator: true },
         { label: 'Nest Item(s)', disabled: true },
         { label: 'Solo Selected Item(s)', action: () => {
