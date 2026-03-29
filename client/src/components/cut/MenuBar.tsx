@@ -446,7 +446,7 @@ export default function MenuBar() {
           useSelectionStore.setState({ selectedClipIds: ids });
         }},
         { separator: true },
-        { label: 'Find...', shortcut: '⌘F', disabled: true },
+        { label: 'Find...', shortcut: '⌘F', action: () => store.getState().setShowFindDialog(true) },
         { separator: true },
         { label: 'Keyboard Shortcuts', shortcut: '⌘⌥K', submenu: [
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
