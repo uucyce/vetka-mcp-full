@@ -165,12 +165,14 @@ type PlateRole =
   | "special-clean";
 
 type PlateSource = "auto" | "manual" | "special-clean" | "qwen-plan";
+type PlateAuthority = "system" | "draft" | "object";
 
 type Plate = {
   id: string;
   label: string;
   role: PlateRole;
   source: PlateSource;
+  authority?: PlateAuthority;
   x: number;
   y: number;
   width: number;
@@ -192,6 +194,7 @@ type PlateLayoutLayer = {
   label: string;
   role: PlateRole;
   source: PlateSource;
+  authority?: PlateAuthority;
   order: number;
   visible: boolean;
   z: number;
@@ -329,6 +332,7 @@ type PlateExportAsset = {
   label: string;
   role: PlateRole;
   source: PlateSource;
+  authority?: PlateAuthority;
   visible: boolean;
   z: number;
   depthPriority: number;
@@ -608,8 +612,39 @@ function getDraftPlateId(candidateId: string) {
   return `draft-${candidateId}`;
 }
 
+function getAuthoritativePlateId(candidateId: string) {
+  return `object-${candidateId}`;
+}
+
+function parseCandidateIdFromPlateId(plateId: string) {
+  if (plateId.startsWith("draft-")) return plateId.slice("draft-".length);
+  if (plateId.startsWith("object-")) return plateId.slice("object-".length);
+  return null;
+}
+
+function getPlateAuthority(plate: { id: string; authority?: PlateAuthority }) {
+  if (plate.authority === "draft" || plate.authority === "object" || plate.authority === "system") {
+    return plate.authority;
+  }
+  if (plate.id.startsWith("object-")) return "object";
+  if (plate.id.startsWith("draft-")) return "draft";
+  return "system";
+}
+
 function isDraftPlate(plate: { id: string }) {
-  return plate.id.startsWith("draft-");
+  return getPlateAuthority(plate) === "draft";
+}
+
+function formatPlateAuthorityLabel(authority: PlateAuthority) {
+  switch (authority) {
+    case "draft":
+      return "draft pick";
+    case "object":
+      return "object layer";
+    case "system":
+    default:
+      return "base layer";
+  }
 }
 
 function getDraftPlatePreset(candidate: MissingObjectCandidate): DraftPlatePreset {
@@ -656,6 +691,8 @@ function buildDraftPlate(candidate: MissingObjectCandidate, point: HintPoint): P
     { x, y, width, height },
     preset.z,
     preset.depthPriority,
+    undefined,
+    "draft",
   );
 }
 
@@ -1032,12 +1069,14 @@ function buildPlate(
   z: number,
   depthPriority: number,
   cleanVariant?: string,
+  authority: PlateAuthority = "system",
 ): Plate {
   return {
     id,
     label,
     role,
     source,
+    authority,
     x: box.x,
     y: box.y,
     width: box.width,
@@ -1119,11 +1158,13 @@ function normalizeImportedPlateStack(plates: Plate[] | undefined, fallback: Plat
       plate.role === "special-clean"
         ? plate.role
         : "environment-mid";
+    const authority = getPlateAuthority(plate);
     return {
       id: plate.id || `plate_${String(index + 1).padStart(2, "0")}`,
       label: plate.label || `plate ${index + 1}`,
       role,
       source,
+      authority,
       x: clamp(Number(plate.x) || 0.02, 0, 0.98),
       y: clamp(Number(plate.y) || 0.02, 0, 0.98),
       width: clamp(Number(plate.width) || 0.4, 0.02, 0.98),
@@ -2852,17 +2893,25 @@ function App() {
     (plate) => (plateCompositeMaps.plateCoverage[plate.id] || 0) > 0.002,
   );
   const inspectorPlates = plateLayout.plates.filter((plate) => plate.visible).sort((a, b) => a.order - b.order);
+  const plateStateById = useMemo(
+    () => new Map(plateStack.map((plate) => [plate.id, plate] as const)),
+    [plateStack],
+  );
   const missingObjectCandidates = useMemo(
     () => getMissingObjectCandidates(sampleId, inspectorPlates),
     [sampleId, inspectorPlates],
   );
   const draftInspectorPlates = useMemo(
-    () => inspectorPlates.filter((plate) => isDraftPlate(plate)),
-    [inspectorPlates],
+    () => inspectorPlates.filter((plate) => isDraftPlate(plateStateById.get(plate.id) ?? plate)),
+    [inspectorPlates, plateStateById],
   );
   const selectedInspectorPlate =
     inspectorPlates.find((plate) => plate.id === selectedInspectorPlateId) ?? inspectorPlates[0] ?? null;
-  const selectedDraftPlate = selectedInspectorPlate && isDraftPlate(selectedInspectorPlate) ? selectedInspectorPlate : null;
+  const selectedPlateState = selectedInspectorPlate ? plateStateById.get(selectedInspectorPlate.id) ?? null : null;
+  const selectedPlateAuthority = selectedInspectorPlate
+    ? getPlateAuthority(selectedPlateState ?? selectedInspectorPlate)
+    : "system";
+  const selectedDraftPlate = selectedInspectorPlate && selectedPlateAuthority === "draft" ? selectedInspectorPlate : null;
   const guidePlateSuggestion = useMemo<GuidePlateSuggestion | null>(() => {
     if (groupBoxes.length === 0 || inspectorPlates.length === 0) return null;
 
@@ -2966,6 +3015,31 @@ function App() {
     );
   };
 
+  const promoteSelectedDraftPlate = () => {
+    if (!selectedDraftPlate) return;
+    const nextId = getAuthoritativePlateId(parseCandidateIdFromPlateId(selectedDraftPlate.id) ?? selectedDraftPlate.id);
+    const nextLabel = selectedDraftPlate.label.replace(/^draft:\s*/i, "");
+    setPlateStack((current) =>
+      current.map((plate) =>
+        plate.id === selectedDraftPlate.id
+          ? {
+              ...plate,
+              id: nextId,
+              label: nextLabel,
+              source: "manual",
+              authority: "object",
+            }
+          : plate,
+      ),
+    );
+    const candidateId = parseCandidateIdFromPlateId(selectedDraftPlate.id);
+    if (candidateId) {
+      setProvisionalObjectCandidates((prev) => prev.filter((candidate) => candidate.id !== candidateId));
+    }
+    setSelectedInspectorPlateId(nextId);
+    setAssistStatus(`${nextLabel} promoted into an authoritative object layer.`);
+  };
+
   const openProtectRegionAssist = () => {
     setCleanupOpen(true);
     setActiveCleanupTool("brushes");
@@ -3064,11 +3138,19 @@ function App() {
   };
 
   const focusPlacedCandidate = (candidateId: string) => {
-    const draftPlateId = getDraftPlateId(candidateId);
-    const draftPlate = inspectorPlates.find((plate) => plate.id === draftPlateId);
-    setSelectedInspectorPlateId(draftPlateId);
-    if (draftPlate) {
-      setAssistStatus(`${draftPlate.label.replace(/^draft:\s*/i, "")} selected as a draft layer.`);
+    const nextPlateId = [getAuthoritativePlateId(candidateId), getDraftPlateId(candidateId)].find((plateId) =>
+      inspectorPlates.some((plate) => plate.id === plateId),
+    );
+    if (!nextPlateId) return;
+    const plate = inspectorPlates.find((item) => item.id === nextPlateId);
+    setSelectedInspectorPlateId(nextPlateId);
+    if (plate) {
+      const authority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
+      setAssistStatus(
+        authority === "object"
+          ? `${plate.label.replace(/^draft:\s*/i, "")} selected as an authoritative object layer.`
+          : `${plate.label.replace(/^draft:\s*/i, "")} selected as a draft layer.`,
+      );
     }
   };
 
@@ -3377,22 +3459,27 @@ function App() {
                   <div className="selected-plate-summary">
                     <strong>{selectedInspectorPlate.label}</strong>
                     <span>{formatRoleLabel(selectedInspectorPlate.role)}</span>
+                    <span className={`plate-authority-tag ${selectedPlateAuthority}`}>{formatPlateAuthorityLabel(selectedPlateAuthority)}</span>
                     <span>{selectedInspectorPlate.source}</span>
                   </div>
                 ) : null}
                 <div className="plate-chip-list">
-                  {inspectorPlates.map((plate) => (
+                  {inspectorPlates.map((plate) => {
+                    const plateAuthority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
+                    return (
                     <button
                       key={plate.id}
-                      className={`plate-chip-button ${selectedInspectorPlate?.id === plate.id ? "active" : ""} ${isDraftPlate(plate) ? "draft" : ""}`}
+                      className={`plate-chip-button ${selectedInspectorPlate?.id === plate.id ? "active" : ""} ${plateAuthority === "draft" ? "draft" : ""} ${plateAuthority === "object" ? "authoritative" : ""}`}
                       type="button"
                       onClick={() => setSelectedInspectorPlateId(plate.id)}
                     >
                       <strong>{plate.label}</strong>
                       <span>{formatRoleLabel(plate.role)}</span>
+                      <span>{formatPlateAuthorityLabel(plateAuthority)}</span>
                       <span>risk {plate.risk.disocclusionRisk}</span>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 {selectedInspectorPlate ? (
                   <>
@@ -3439,7 +3526,7 @@ function App() {
                       <div className="draft-refine-box">
                         <strong>Draft plate refine</strong>
                         <span>
-                          This plate came from a stage pick. Tighten if the draft box is too loose; widen if the object is still clipped.
+                          This stage pick is still a draft. Tighten if the box is too loose, widen if the object is clipped, then promote it into a real object layer.
                         </span>
                         <div className="action-row">
                           <button className="ghost-button" type="button" onClick={() => refineSelectedDraftPlate("tighten")}>
@@ -3447,6 +3534,9 @@ function App() {
                           </button>
                           <button className="ghost-button" type="button" onClick={() => refineSelectedDraftPlate("widen")}>
                             widen fit
+                          </button>
+                          <button className="ghost-button active" type="button" onClick={promoteSelectedDraftPlate}>
+                            promote to layer
                           </button>
                         </div>
                       </div>
@@ -3884,7 +3974,9 @@ function App() {
             <div className="stage-object-plane">
               {inspectorPlates.map((plate) => {
                 const isSelected = selectedInspectorPlate?.id === plate.id;
-                const isDraft = isDraftPlate(plate);
+                const plateAuthority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
+                const isDraft = plateAuthority === "draft";
+                const isAuthoritative = plateAuthority === "object";
                 const riskLevel =
                   plate.risk.disocclusionRisk >= 60
                     ? "high"
@@ -3894,7 +3986,7 @@ function App() {
                 return (
                   <div
                     key={plate.id}
-                    className={`stage-object-box ${isSelected ? "is-selected" : ""} ${isDraft ? "is-draft" : ""} ${riskLevel === "high" ? "is-risk-high" : riskLevel === "medium" ? "is-risk-medium" : "is-risk-low"}`}
+                    className={`stage-object-box ${isSelected ? "is-selected" : ""} ${isDraft ? "is-draft" : ""} ${isAuthoritative ? "is-authoritative" : ""} ${riskLevel === "high" ? "is-risk-high" : riskLevel === "medium" ? "is-risk-medium" : "is-risk-low"}`}
                     style={{
                       left: `${plate.box.x * 100}%`,
                       top: `${plate.box.y * 100}%`,
@@ -3906,10 +3998,16 @@ function App() {
                       <span className="stage-object-badge">
                         <strong>{plate.label.replace(/^draft:\s*/i, "")}</strong>
                         <span>{formatRoleLabel(plate.role)}</span>
+                        <span className={`plate-authority-chip ${plateAuthority}`}>{formatPlateAuthorityLabel(plateAuthority)}</span>
                       </span>
                     </button>
                     {isSelected ? (
                       <div className="stage-object-actions">
+                        {isDraft ? (
+                          <button className="ghost-button active" type="button" onClick={promoteSelectedDraftPlate}>
+                            make layer
+                          </button>
+                        ) : null}
                         <button className="ghost-button" type="button" onClick={() => focusStagePlate(plate.id)}>
                           inspect layer
                         </button>
