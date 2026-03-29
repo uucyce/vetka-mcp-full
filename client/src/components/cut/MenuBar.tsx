@@ -15,7 +15,6 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { PRESET_BUILDERS } from './presetBuilders';
-import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
   loadPresetName,
@@ -824,20 +823,7 @@ export default function MenuBar() {
         }},
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
-          // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
-          // TODO: Replace with store.getState().runSceneDetection() when Alpha adds store action
-          const s = store.getState();
-          if (!s.sandboxRoot || !s.projectId) return;
-          void (async () => {
-            await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-              }),
-            });
-            await s.refreshProjectState?.();
-          })();
+          void store.getState().runSceneDetection();
         }},
       ],
     },
