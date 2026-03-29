@@ -1235,26 +1235,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       try { useDockviewStore.getState().apiRef?.getPanel('effects')?.api.setActive(); } catch { /* panel not mounted */ }
     },
 
-    // MARKER_W5.MF: Match Frame (F) + Q toggle (FCP7 Ch.50)
-    matchFrame: () => {
-      const s = useCutEditorStore.getState();
-      // Find clip under playhead on any unlocked lane
-      for (const lane of s.lanes) {
-        if (s.lockedLanes.has(lane.lane_id)) continue;
-        for (const clip of lane.clips) {
-          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            const sourceOffset = clip.source_in ?? 0;
-            const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
-            s.setSourceMedia(clip.source_path);
-            s.setSourceMarkIn(sourceTime);
-            // MARKER_DUAL-VIDEO: Seek source monitor to matched frame
-            s.seekSource(sourceTime);
-            s.setFocusedPanel('source');
-            return;
-          }
-        }
-      }
-    },
+    // MARKER_W5.MF: Match Frame (F) + Reverse Match Frame (Shift+F) — FCP7 Ch.27
+    matchFrame: () => useCutEditorStore.getState().matchFrame(),
+    reverseMatchFrame: () => useCutEditorStore.getState().reverseMatchFrame(),
     toggleSourceProgram: () => {
       const s = useCutEditorStore.getState();
       const current = s.focusedPanel;
