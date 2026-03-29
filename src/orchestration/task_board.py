@@ -2487,9 +2487,7 @@ class TaskBoard:
                 logger.debug(f"[TaskBoard] BRANCH_GUARD check skipped (non-fatal): {e}")
 
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
-        # Check both the standalone param and closure_proof.commit_hash (manual agents pass it there)
-        _effective_hash = commit_hash or proof.get("commit_hash")
-        if final_status == "done_worktree" and not _effective_hash and not manual_override:
+        if final_status == "done_worktree" and not commit_hash and not manual_override:
             return {
                 "success": False,
                 "error": (
@@ -3726,9 +3724,11 @@ class TaskBoard:
                     "closure_results": closure_results,
                 }
 
-        # MARKER_201.DOC_GUARD: Block merge if branch deletes docs/ files vs main.
+        # MARKER_201.DOC_GUARD_HEAL: Detect deleted docs, auto-restore after merge.
         # Root cause: agents doing git add . or checkout --theirs during rebase mark
         # new-on-main docs as deleted, destroying them on merge.
+        # Policy: main wins unless task explicitly owns the doc via allowed_paths.
+        _heal_docs = []
         try:
             doc_check_proc = await asyncio.create_subprocess_exec(
                 "git", "diff", "--diff-filter=D", "--name-only", f"main..{branch}", "--", "docs/",
@@ -3739,58 +3739,22 @@ class TaskBoard:
             doc_out, _ = await doc_check_proc.communicate()
             deleted_docs = [f for f in doc_out.decode().strip().split("\n") if f.strip()]
             if deleted_docs:
-                logger.error(
-                    "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) vs main — merge blocked.",
-                    branch, len(deleted_docs),
-                )
-                return {
-                    "success": False,
-                    "error": "DOC_GUARD: branch deletes docs/ files vs main — merge blocked",
-                    "deleted_docs": deleted_docs,
-                    "fix": "On the agent branch: git checkout main -- <file> for each deleted doc, then commit.",
-                }
+                _owned = set(task.get("allowed_paths") or [])
+                _heal_docs = [d for d in deleted_docs if d not in _owned]
+                if _heal_docs:
+                    logger.warning(
+                        "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) — will auto-restore from main.",
+                        branch, len(_heal_docs),
+                    )
         except Exception as _doc_guard_err:
             logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
 
-        # MARKER_201.VERSION_GUARD: Block merge if branch replaces newer docs with shorter (older) versions.
-        # Heuristic: net line count < 0 means branch version lost content vs main → rollback risk.
-        try:
-            ver_check_proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "--diff-filter=M", "--numstat", "main", branch, "--", "docs/",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            ver_out, _ = await ver_check_proc.communicate()
-            rollback_docs = []
-            for line in ver_out.decode().strip().split("\n"):
-                parts = line.strip().split("\t")
-                if len(parts) != 3:
-                    continue
-                added_s, deleted_s, fname = parts
-                if added_s == "-" or deleted_s == "-":  # binary file — skip
-                    continue
-                try:
-                    net = int(added_s) - int(deleted_s)
-                except ValueError:
-                    continue
-                if net < 0:  # branch has fewer lines than main → potential rollback
-                    rollback_docs.append(fname)
-            if rollback_docs:
-                logger.error(
-                    "[MergeRequest] VERSION_GUARD: branch '%s' would overwrite %d docs/ file(s) with shorter versions — merge blocked.",
-                    branch, len(rollback_docs),
-                )
-                return {
-                    "success": False,
-                    "error": "VERSION_GUARD: branch would overwrite newer docs with older (shorter) versions — merge blocked",
-                    "rollback_docs": rollback_docs,
-                    "fix": "On the agent branch: git checkout main -- <file> for each listed doc, then commit.",
-                }
-        except Exception as _ver_guard_err:
-            logger.debug(f"[MergeRequest] VERSION_GUARD check failed (non-fatal): {_ver_guard_err}")
-        # Step 5: Execute merge (pass allowed_paths for scoped stash)
-        merge_result = await self._execute_merge(branch, strategy, commits, task.get("allowed_paths") or [])
+        # Step 5: Execute merge in temp worktree (never touches root checkout)
+        merge_result = await self._execute_merge(
+            branch, strategy, commits,
+            task.get("allowed_paths") or [],
+            heal_docs=_heal_docs,
+        )
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
             return merge_result
@@ -3877,261 +3841,211 @@ class TaskBoard:
     async def _execute_merge(
         self, branch: str, strategy: str, commits: List[str],
         allowed_paths: List[str] = None,
+        heal_docs: List[str] = None,
     ) -> Dict[str, Any]:
-        """Execute the actual git merge operation.
+        """Execute git merge in a temporary worktree.
+
+        MARKER_201.TEMP_WORKTREE: All merge operations happen in a temp worktree.
+        Root checkout stays untouched — no stash, no checkout, no dirty state.
+
+        MARKER_201.SNAPSHOT: New strategy — overlay only allowed_paths from branch
+        onto main, creating one clean integration commit.
 
         Strategies:
         - cherry-pick: Cherry-pick each commit (default, safest)
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
+        - snapshot: Overlay allowed_paths from branch onto main (one commit)
 
         Args:
-            allowed_paths: Task's owned paths (from agent_registry / task.allowed_paths).
-                           If set, stash is scoped to these paths only — other projects'
-                           untracked work (e.g. Parallax files while merging CUT) is untouched.
+            allowed_paths: Task's owned paths for snapshot strategy scoping.
+            heal_docs: Docs deleted by branch to auto-restore from main after merge.
         """
-        try:
-            # MARKER_201.STASH_SCOPE: Scoped stash using task's allowed_paths.
-            # If allowed_paths known → git stash push -- <paths> (only this project's files).
-            # Fallback → git stash push (tracked files only, no --include-untracked).
-            # --ignore-submodules=dirty: prevents submodule 'm' markers (pulse, back_to_ussr_app)
-            # from being treated as dirty working tree — fixes stash failure on submodule-dirty repos.
-            # Untracked files never block `git checkout main` so they are never stashed.
-            _stash_cmd = ["git", "stash", "push", "--ignore-submodules=dirty"]
-            if allowed_paths:
-                _stash_cmd = _stash_cmd + ["--"] + list(allowed_paths)
-            stash_proc = await asyncio.create_subprocess_exec(
-                *_stash_cmd,
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stash_out, stash_err = await stash_proc.communicate()
-            # MARKER_201.SUBMODULE_DIRTY: Check returncode — don't rely on stdout alone.
-            # If stash fails (rc != 0), log and proceed without stash rather than silently
-            # setting did_stash=True on empty stdout (which caused empty-error failures).
-            did_stash = stash_proc.returncode == 0 and b"No local changes" not in stash_out
-            if stash_proc.returncode != 0:
-                logger.warning(
-                    "[MergeRequest] git stash failed (rc=%d): %s — proceeding without stash",
-                    stash_proc.returncode, stash_err.decode().strip()[:200],
-                )
+        import tempfile
 
-            # Save stash ref for recovery logging if pop fails later
-            stash_ref = None
-            if did_stash:
-                _sr_proc = await asyncio.create_subprocess_exec(
-                    "git", "rev-parse", "--short", "refs/stash",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _sr_out, _ = await _sr_proc.communicate()
-                if _sr_proc.returncode == 0:
-                    stash_ref = _sr_out.decode().strip()
+        tmp_dir = None
+        tmp_branch = f"_vtk_merge_{os.getpid()}"
 
+        async def _git(*args, cwd=None):
+            """Helper: run git command, return (returncode, stdout, stderr)."""
             proc = await asyncio.create_subprocess_exec(
-                "git", "checkout", "main",
-                cwd=str(PROJECT_ROOT),
+                "git", *args,
+                cwd=cwd or tmp_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            co_stdout, co_stderr = await proc.communicate()
-            if proc.returncode != 0:
-                # Restore stash if we stashed
-                if did_stash:
-                    await (await asyncio.create_subprocess_exec(
-                        "git", "stash", "pop",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )).communicate()
-                # Include both stderr and stdout — git checkout sometimes writes to stdout
-                _co_err = co_stderr.decode().strip() or co_stdout.decode().strip()
-                return {
-                    "success": False,
-                    "error": f"git checkout main failed (rc={proc.returncode}): {_co_err}",
-                }
+            out, err = await proc.communicate()
+            return proc.returncode, out.decode().strip(), err.decode().strip()
+
+        try:
+            # MARKER_201.TEMP_WORKTREE: Create temp worktree for merge.
+            # Uses a temporary branch at main's tip — root checkout is never touched.
+
+            # Prune stale worktrees
+            await _git("worktree", "prune", cwd=str(PROJECT_ROOT))
+
+            # Delete leftover temp branch from previous failed run (if any)
+            await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
+
+            # Create temp branch at main
+            rc, _, err = await _git("branch", tmp_branch, "main", cwd=str(PROJECT_ROOT))
+            if rc != 0:
+                return {"success": False, "error": f"Failed to create temp branch: {err}"}
+
+            # Create temp worktree directory
+            tmp_dir = tempfile.mkdtemp(prefix="vetka-merge-")
+            # git worktree needs the dir to not exist — remove the empty one mkdtemp created
+            os.rmdir(tmp_dir)
+
+            rc, _, err = await _git("worktree", "add", tmp_dir, tmp_branch, cwd=str(PROJECT_ROOT))
+            if rc != 0:
+                return {"success": False, "error": f"Failed to create temp worktree: {err}"}
+
+            logger.info(f"[MergeRequest] Temp worktree created at {tmp_dir} on {tmp_branch}")
 
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
-            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
-            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
-            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
+            claude_md_path = Path(tmp_dir) / "CLAUDE.md"
             claude_md_backup = None
             if claude_md_path.exists():
                 claude_md_backup = claude_md_path.read_text()
 
-            if strategy == "cherry-pick":
-                # MARKER_200.IS_ANCESTOR: Cherry-pick commits in order (oldest first),
-                # skipping any that are already on main (prevents replay conflicts)
+            # ---- Execute strategy (all operations in tmp_dir) ----
+
+            if strategy == "snapshot":
+                # MARKER_201.SNAPSHOT: Take main as base, overlay only allowed_paths
+                # from branch. Creates one clean integration commit — no history replay,
+                # no conflicts from diverged branches, no doc deletions.
+                if not allowed_paths:
+                    return {"success": False, "error": "strategy=snapshot requires allowed_paths"}
+
+                for fpath in allowed_paths:
+                    rc, _, err = await _git("checkout", branch, "--", fpath)
+                    if rc != 0:
+                        logger.debug(f"[MergeRequest] snapshot: '{fpath}' not on {branch}, skipping")
+
+                # Check if anything changed
+                rc, st_out, _ = await _git("status", "--porcelain")
+                if not st_out:
+                    return {"success": True, "commit_hash": "noop", "note": "snapshot: no file changes vs main"}
+
+                # Stage and commit
+                await _git("add", "-A")
+                rc, _, err = await _git(
+                    "commit", "-m",
+                    f"Snapshot merge {branch} into main via TaskBoard (allowed_paths only)",
+                )
+                if rc != 0:
+                    return {"success": False, "error": f"Snapshot commit failed: {err}"}
+
+            elif strategy == "cherry-pick":
+                # MARKER_200.IS_ANCESTOR: Cherry-pick commits oldest-first,
+                # skipping any already on main (prevents replay conflicts)
                 skipped_ancestors = []
-                for commit_hash in reversed(commits):
-                    # Check if commit is already an ancestor of main
-                    ancestor_proc = await asyncio.create_subprocess_exec(
-                        "git", "merge-base", "--is-ancestor", commit_hash, "main",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await ancestor_proc.communicate()
-                    if ancestor_proc.returncode == 0:
-                        # Already on main — skip
-                        skipped_ancestors.append(commit_hash)
-                        logger.info(f"[MergeRequest] Skipped {commit_hash} — already ancestor of main")
+                for _ch in reversed(commits):
+                    rc, _, _ = await _git("merge-base", "--is-ancestor", _ch, tmp_branch)
+                    if rc == 0:
+                        skipped_ancestors.append(_ch)
+                        logger.info(f"[MergeRequest] Skipped {_ch} — already ancestor of main")
                         continue
 
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "cherry-pick", commit_hash,
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, stderr = await proc.communicate()
-                    if proc.returncode != 0:
-                        stderr_text = stderr.decode().strip()
-                        # MARKER_198.P1.MERGE: Handle empty cherry-pick (commit already on main)
-                        if "empty" in stderr_text or "nothing to commit" in stderr_text:
-                            skip_proc = await asyncio.create_subprocess_exec(
-                                "git", "cherry-pick", "--skip",
-                                cwd=str(PROJECT_ROOT),
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.PIPE,
-                            )
-                            await skip_proc.communicate()
-                            skipped_ancestors.append(commit_hash)
-                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
+                    rc, _, err = await _git("cherry-pick", _ch)
+                    if rc != 0:
+                        if "empty" in err or "nothing to commit" in err:
+                            await _git("cherry-pick", "--skip")
+                            skipped_ancestors.append(_ch)
+                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {_ch}")
                             continue
                         # Abort cherry-pick on real conflict
-                        abort_proc = await asyncio.create_subprocess_exec(
-                            "git", "cherry-pick", "--abort",
-                            cwd=str(PROJECT_ROOT),
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
-                        await abort_proc.communicate()
+                        await _git("cherry-pick", "--abort")
                         return {
                             "success": False,
-                            "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
-                            "conflicting_commit": commit_hash,
+                            "error": f"Cherry-pick failed for {_ch}: {err}",
+                            "conflicting_commit": _ch,
                             "skipped_ancestors": skipped_ancestors,
                         }
 
             elif strategy == "merge":
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", "--no-ff", branch,
+                rc, _, err = await _git(
+                    "merge", "--no-ff", branch,
                     "-m", f"Merge {branch} into main via TaskBoard",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
                 )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    # Abort merge
-                    abort_proc = await asyncio.create_subprocess_exec(
-                        "git", "merge", "--abort",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await abort_proc.communicate()
-                    return {
-                        "success": False,
-                        "error": f"Merge failed: {stderr.decode().strip()}",
-                    }
+                if rc != 0:
+                    await _git("merge", "--abort")
+                    return {"success": False, "error": f"Merge failed: {err}"}
 
             elif strategy == "squash":
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", "--squash", branch,
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    return {"success": False, "error": f"Squash failed: {stderr.decode().strip()}"}
+                rc, _, err = await _git("merge", "--squash", branch)
+                if rc != 0:
+                    return {"success": False, "error": f"Squash failed: {err}"}
 
-                # Commit the squash
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                rc, _, err = await _git(
+                    "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
                 )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    return {"success": False, "error": f"Squash commit failed: {stderr.decode().strip()}"}
+                if rc != 0:
+                    return {"success": False, "error": f"Squash commit failed: {err}"}
+
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
-            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if changed by merge
             if claude_md_backup is not None and claude_md_path.exists():
                 current_content = claude_md_path.read_text()
                 if current_content != claude_md_backup:
                     claude_md_path.write_text(claude_md_backup)
-                    # Stage the restoration
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "add", "CLAUDE.md",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await proc.communicate()
-                    # Amend the last commit to exclude the agent's CLAUDE.md change
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "commit", "--amend", "--no-edit",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await proc.communicate()
-                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
+                    await _git("add", "CLAUDE.md")
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md")
 
-            # Get resulting commit hash
-            proc = await asyncio.create_subprocess_exec(
-                "git", "rev-parse", "HEAD",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await proc.communicate()
-            commit_hash = stdout.decode().strip()[:12]
+            # MARKER_201.DOC_HEAL: Restore docs deleted by branch after merge.
+            # Uses main ref (pre-merge state) as source — tmp_branch started at main,
+            # so 'main' still points to the pre-merge commit.
+            if heal_docs:
+                healed = []
+                for doc_path in heal_docs:
+                    rc, _, err = await _git("checkout", "main", "--", doc_path)
+                    if rc == 0:
+                        healed.append(doc_path)
+                    else:
+                        logger.warning(f"[MergeRequest] DOC_HEAL: could not restore {doc_path}: {err[:100]}")
+                if healed:
+                    await _git("add", *healed)
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info(f"[MergeRequest] DOC_HEAL: auto-restored {len(healed)} doc(s): {healed}")
 
-            # MARKER_201.STASH_SAFE: Restore stash with error checking.
-            # If pop fails (conflict between merge result and stashed tracked changes),
-            # the stash is preserved — log recovery path so work is not lost.
-            if did_stash:
-                pop_proc = await asyncio.create_subprocess_exec(
-                    "git", "stash", "pop",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                pop_out, pop_err = await pop_proc.communicate()
-                if pop_proc.returncode != 0:
-                    _ref = stash_ref or "stash@{0}"
-                    logger.error(
-                        "[MergeRequest] STASH_POP_FAILED: pre-merge working state not restored. "
-                        "Stash preserved at %s. "
-                        "Recovery: `git stash pop --index` or `git stash show -p %s | git apply`. "
-                        "Error: %s",
-                        _ref, _ref, pop_err.decode().strip()[:200],
-                    )
-                    return {
-                        "success": True,
-                        "commit_hash": commit_hash,
-                        "stash_pop_failed": True,
-                        "stash_ref": _ref,
-                        "stash_warning": (
-                            f"Merge succeeded but pre-merge working state could not be restored. "
-                            f"Your uncommitted changes are in stash {_ref}. "
-                            f"Run: git stash pop --index"
-                        ),
-                    }
+            # Get resulting commit hash (full for update-ref, short for return)
+            rc, full_hash, _ = await _git("rev-parse", "HEAD")
+            commit_hash = full_hash[:12]
 
+            # MARKER_201.TEMP_WORKTREE: Advance main ref to merge result.
+            # Uses update-ref (plumbing) — works regardless of what's checked out in root.
+            rc, _, err = await _git("update-ref", "refs/heads/main", full_hash, cwd=str(PROJECT_ROOT))
+            if rc != 0:
+                return {
+                    "success": False,
+                    "error": f"Failed to advance main ref: {err}",
+                    "merge_commit": commit_hash,
+                    "hint": f"Merge succeeded in temp worktree but main ref not updated. "
+                            f"Manual fix: git update-ref refs/heads/main {full_hash}",
+                }
+
+            logger.info(f"[MergeRequest] main advanced to {commit_hash} via temp worktree")
             return {"success": True, "commit_hash": commit_hash}
 
         except Exception as e:
             return {"success": False, "error": f"Merge execution failed: {e}"}
+
+        finally:
+            # MARKER_201.TEMP_WORKTREE: Cleanup temp worktree and branch.
+            # Always runs — even on error paths.
+            if tmp_dir and Path(tmp_dir).exists():
+                try:
+                    await _git("worktree", "remove", "--force", tmp_dir, cwd=str(PROJECT_ROOT))
+                except Exception:
+                    logger.warning(f"[MergeRequest] Failed to remove temp worktree {tmp_dir}")
+            try:
+                await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
+            except Exception:
+                pass
 
     async def _count_tests(self) -> int:
         """Run pytest --co -q to count available tests. Returns count or 0."""

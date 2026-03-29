@@ -492,11 +492,11 @@ TASK_BOARD_SCHEMA = {
             "type": "boolean",
             "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
         },
-        # MARKER_198.MERGE: merge_request strategy
+        # MARKER_201.MERGE: merge_request strategy (snapshot added)
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
+            "enum": ["cherry-pick", "merge", "squash", "snapshot"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit. 'snapshot': overlay only allowed_paths from branch onto main (one clean commit, ignores diverged history).",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
@@ -624,12 +624,10 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
     if not keywords:
         return []
 
-    # MARKER_201.DOC_GATE_LAZY: Cap glob scan at 400 files — docs/ has 2000+ .md files.
-    # Removed stat().st_mtime sort (2000+ syscalls → MCP timeout -32001).
-    # Keyword match on filename is sufficient; semantic search (Strategy 1) handles recency.
-    import itertools
     suggestions = []
-    for md_file in itertools.islice(docs_dir.rglob("*.md"), 400):
+    for md_file in sorted(
+        docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
+    ):
         name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
         score = sum(1 for k in keywords if k in name_lower)
         if score > 0:
@@ -819,30 +817,10 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
         # When parallel tasks share allowed_paths, they risk API drift (different method names).
         # Surface a warning so Commander can provide a Protocol contract.
-        # MARKER_201.SHARED_ZONES: Suppress warning for naturally shared files (App.tsx,
-        # task_board.py, package.json etc.) registered in agent_registry.yaml shared_zones.
         new_paths = payload.get("allowed_paths") or []
         if new_paths:
             try:
-                # Load shared_zone file basenames to suppress false-positive overlap warnings
-                _shared_zone_files: set = set()
-                try:
-                    from src.services.agent_registry import get_agent_registry
-                    _reg = get_agent_registry()
-                    _shared_zone_files = {zone.file for zone in _reg.shared_zones}
-                except Exception:
-                    pass
-
-                # Only warn about exclusive paths (not registered shared_zones)
-                exclusive_paths = [
-                    p for p in new_paths
-                    if not any(
-                        p == sz or p.endswith("/" + sz) or sz.endswith("/" + p.split("/")[-1])
-                        for sz in _shared_zone_files
-                    )
-                ]
-
-                overlapping = board.find_tasks_by_changed_files(exclusive_paths) if exclusive_paths else []
+                overlapping = board.find_tasks_by_changed_files(new_paths)
                 # Exclude the task we just created
                 overlapping = [t for t in overlapping if t.get("id") != task_id]
                 if overlapping:
@@ -858,7 +836,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                         "overlapping_tasks": overlap_titles,
                         "shared_paths": [
                             p
-                            for p in exclusive_paths
+                            for p in new_paths
                             if any(
                                 any(
                                     p.startswith(ap) or ap.startswith(p)
