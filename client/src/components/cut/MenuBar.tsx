@@ -613,6 +613,14 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
+        // MARKER_GAMMA-MATCHFRAME: FCP7 Ch.50 — Match Frame / Reverse Match Frame
+        { label: 'Match Frame', shortcut: 'F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
+        }},
+        { label: 'Reveal Master Clip', shortcut: '⇧F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', shiftKey: true }));
+        }},
+        { separator: true },
         { label: 'Add Marker', shortcut: 'M', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
         }},
@@ -884,6 +892,10 @@ export default function MenuBar() {
         { label: 'Source Monitor', shortcut: '⇧2', action: () => togglePanel('source', 'source', 'SOURCE') },
         { label: 'Timeline', shortcut: '⇧3', action: () => togglePanel('timeline', 'timeline', 'Timeline') },
         { label: 'Program Monitor', shortcut: '⇧4', action: () => togglePanel('program', 'program', 'PROGRAM') },
+        // MARKER_ACQUIRE-WINDOW: FCP7 Log & Capture equivalent (4-tab ingest panel)
+        { label: 'Log & Capture', action: () => togglePanel('acquire', 'acquire', 'Acquire') },
+        // MARKER_GAMMA-MULTICAM-WINDOW: Multicam Viewer direct toggle (FCP7 Ch.42)
+        { label: 'Multicam Viewer', action: () => togglePanel('multicam', 'multicam', 'Multicam') },
         { separator: true },
         { label: 'Inspector', shortcut: '⇧5', action: () => togglePanel('inspector', 'inspector', 'Inspector') },
         { label: 'Clip Inspector', action: () => togglePanel('clip', 'clip', 'Clip') },
@@ -901,6 +913,8 @@ export default function MenuBar() {
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
         // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
+        // MARKER_GEN-WINDOW: AI Generation Control panel (Runway, Kling)
+        { label: 'Generation Control', action: () => togglePanel('generation', 'generation', 'Generation') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
         { label: 'Publish / Crosspost', action: () => togglePanel('publish', 'publish', 'Publish') },

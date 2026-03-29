@@ -541,6 +541,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
+  // MARKER_TRIM.HANDLE: Persistent handle tint when a trim tool is active
+  const isTrimTool = activeTool === 'ripple' || activeTool === 'roll' || activeTool === 'slip' || activeTool === 'slide';
+  const trimHandleBg = isTrimTool ? 'rgba(255,255,255,0.06)' : 'transparent';
+  const trimEdgeBorder = (activeTool === 'ripple' || activeTool === 'roll');
   // MARKER_DUAL-VIDEO: Timeline clip click → updates activeMedia (legacy) but NOT source monitor
   const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
   const setSourceMedia = useCutEditorStore((state) => state.setSourceMedia);
@@ -1921,7 +1925,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             zIndex: 130,
             pointerEvents: 'none',
           }}
-        />
+        >
+          {/* MARKER_TRIM.SNAP-DIAMOND: snap magnet indicator */}
+          <div style={{
+            position: 'absolute', top: -4, left: -4,
+            width: 7, height: 7,
+            background: 'rgba(220,220,220,0.85)',
+            transform: 'rotate(45deg)',
+            pointerEvents: 'none',
+          }} />
+        </div>
       ) : null}
 
       <div ref={contentRef} style={TRACKS_CONTAINER}>
@@ -2129,17 +2142,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
-                          background: 'transparent',
+                          background: trimHandleBg,
+                          borderRight: trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : undefined,
                           transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_left', event)}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                          e.currentTarget.style.borderRight = '1px solid rgba(255, 255, 255, 0.5)';
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+                          e.currentTarget.style.borderRight = '1px solid rgba(255,255,255,0.5)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.borderRight = '';
+                          e.currentTarget.style.background = trimHandleBg;
+                          e.currentTarget.style.borderRight = trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : '';
                         }}
                       />
                       <div
@@ -2152,17 +2166,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
-                          background: 'transparent',
+                          background: trimHandleBg,
+                          borderLeft: trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : undefined,
                           transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
-                          e.currentTarget.style.borderLeft = '1px solid rgba(255, 255, 255, 0.5)';
+                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
+                          e.currentTarget.style.borderLeft = '1px solid rgba(255,255,255,0.5)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.borderLeft = '';
+                          e.currentTarget.style.background = trimHandleBg;
+                          e.currentTarget.style.borderLeft = trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : '';
                         }}
                       />
 
@@ -3089,6 +3104,23 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           <span style={{ position: 'relative', zIndex: 1, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
             {basename(dragState.sourcePath)}
           </span>
+          {/* MARKER_TRIM-SLIP-GHOST: Source content shift indicator during slip */}
+          {dragState.mode === 'slip' && (() => {
+            const shift = (dragState.sourceIn ?? 0) - (dragState.originalSourceIn ?? 0);
+            if (Math.abs(shift) < 0.001) return null;
+            const arrowPx = Math.min(Math.abs(shift * zoom), 50);
+            const goRight = shift > 0;
+            return (
+              <div style={{
+                position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)',
+                display: 'flex', alignItems: 'center', gap: 2, pointerEvents: 'none',
+              }}>
+                {!goRight && <span style={{ fontSize: 8, color: 'rgba(200,200,200,0.7)', lineHeight: 1 }}>{'‹'}</span>}
+                <div style={{ height: 2, width: Math.max(6, arrowPx), background: 'rgba(200,200,200,0.45)', borderRadius: 1 }} />
+                {goRight && <span style={{ fontSize: 8, color: 'rgba(200,200,200,0.7)', lineHeight: 1 }}>{'›'}</span>}
+              </div>
+            );
+          })()}
           {/* MARKER_W5.TRIM: Delta indicator for trim tools */}
           {(dragState.mode === 'slip' || dragState.mode === 'slide' || dragState.mode === 'ripple_left' || dragState.mode === 'ripple_right' || dragState.mode === 'roll') ? (() => {
             const fps = projectFramerate || 25;
@@ -3121,6 +3153,36 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             );
           })() : null}
         </div>
+      ) : null}
+
+      {/* MARKER_TRIM-SLIDE-GHOST: Neighbor ghost outlines during slide drag */}
+      {dragState?.mode === 'slide' && clipOverlayTop !== null && dragState.neighborLeft ? (
+        <div style={{
+          ...CLIP_STYLE,
+          left: dragState.neighborLeft.startSec * zoom - scrollLeft + LANE_HEADER_WIDTH,
+          top: clipOverlayTop,
+          width: Math.max(4, (dragState.startSec - dragState.neighborLeft.startSec) * zoom),
+          height: trackHeight - 6,
+          bottom: 'auto',
+          background: 'transparent',
+          border: '1px dashed rgba(160,160,160,0.35)',
+          pointerEvents: 'none',
+          zIndex: 119,
+        }} />
+      ) : null}
+      {dragState?.mode === 'slide' && clipOverlayTop !== null && dragState.neighborRight ? (
+        <div style={{
+          ...CLIP_STYLE,
+          left: (dragState.startSec + dragState.durationSec) * zoom - scrollLeft + LANE_HEADER_WIDTH,
+          top: clipOverlayTop,
+          width: Math.max(4, (dragState.neighborRight.startSec + dragState.neighborRight.durationSec - dragState.startSec - dragState.durationSec) * zoom),
+          height: trackHeight - 6,
+          bottom: 'auto',
+          background: 'transparent',
+          border: '1px dashed rgba(160,160,160,0.35)',
+          pointerEvents: 'none',
+          zIndex: 119,
+        }} />
       ) : null}
 
       {/* MARKER_C11: Playhead — active=bright white, inactive=dim grey */}
