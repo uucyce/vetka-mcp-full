@@ -492,11 +492,11 @@ TASK_BOARD_SCHEMA = {
             "type": "boolean",
             "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
         },
-        # MARKER_198.MERGE: merge_request strategy
+        # MARKER_201.MERGE: merge_request strategy (snapshot added)
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
+            "enum": ["cherry-pick", "merge", "squash", "snapshot"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit. 'snapshot': overlay only allowed_paths from branch onto main (one clean commit, ignores diverged history).",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
