@@ -624,10 +624,12 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
     if not keywords:
         return []
 
+    # MARKER_201.DOC_GATE_LAZY: Cap glob scan at 400 files — docs/ has 2000+ .md files.
+    # Removed stat().st_mtime sort (2000+ syscalls → MCP timeout -32001).
+    # Keyword match on filename is sufficient; semantic search (Strategy 1) handles recency.
+    import itertools
     suggestions = []
-    for md_file in sorted(
-        docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
-    ):
+    for md_file in itertools.islice(docs_dir.rglob("*.md"), 400):
         name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
         score = sum(1 for k in keywords if k in name_lower)
         if score > 0:
