@@ -665,6 +665,8 @@ interface CutEditorState {
   runAutoMontage: (mode: 'favorites' | 'script' | 'music') => Promise<void>;
   // MARKER_A4.8: PULSE Analysis — enrich all scenes with Camelot/McKee/energy metadata
   runPulseAnalysis: () => Promise<void>;
+  // MARKER_SCENEDET: Scene detection — split timeline at scene boundaries
+  runSceneDetection: () => Promise<void>;
   // PULSE analysis results stored here
   pulseScores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }>;
   montageInProgress: boolean;
@@ -2073,6 +2075,29 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       console.error('[PULSE] analysis error:', err);
     } finally {
       set({ pulseAnalysisInProgress: false });
+    }
+  },
+
+  // MARKER_SCENEDET: Scene detection — split at scene boundaries + refresh state
+  runSceneDetection: async () => {
+    const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
+    if (!sandboxRoot || !projectId) {
+      console.warn('[CUT] runSceneDetection: no project session');
+      return;
+    }
+    try {
+      await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sandbox_root: sandboxRoot,
+          project_id: projectId,
+          timeline_id: timelineId || 'main',
+        }),
+      });
+      await refreshProjectState?.();
+    } catch (err) {
+      console.error('[CUT] runSceneDetection error:', err);
     }
   },
 
