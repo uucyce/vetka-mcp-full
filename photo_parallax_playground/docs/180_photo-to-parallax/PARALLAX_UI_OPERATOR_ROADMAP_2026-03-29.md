@@ -1,7 +1,7 @@
 # PARALLAX UI Operator Roadmap
 
 Дата фиксации: `2026-03-29`
-Обновлено: `2026-03-29 14:35 MSK`
+Обновлено: `2026-03-29 15:35 MSK`
 Ветка: `main`
 Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground`
 
@@ -58,12 +58,14 @@ Workspace: `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_paral
 - `guidedHintsVisible`
 - `aiAssistVisible`
 
-### 3. Монитор визуально оформлен как карточка, а не как изображение
+### 3. Реальное объектное редактирование пока ещё bbox-first
 
-В `src/index.css` у `.stage-shell` сейчас `border-radius: 8px`.
-У `.focus-frame` есть `border-radius: 28px`.
+Теперь stage уже даёт прямой вход в object selection, но silhouette/depth-driven correction всё ещё открывается как следующий шаг после выбора объекта, а не как полноценный object-native editing model.
 
-Viewer уже заметно ближе к прямоугольному экрану, чем в раннем состоянии, но визуальное ощущение card-shell ещё не убрано до конца.
+Подтверждено:
+- stage object boxes теперь выбираются прямо на preview
+- action `silhouette` открывает `Algorithmic Matte`
+- но реальная object promotion и silhouette-first layer authoring ещё не доведены до backend authority
 
 ### 4. Нижняя рабочая зона пока не стала реальным timeline/keyframe workspace
 
@@ -170,21 +172,39 @@ Manual cleanup и layer refinement должны жить как contextual tools
 
 ### UI-R11.3 Contextual cleanup tools
 
-- оставить cleanup hidden until needed
-- показывать active tool only
-- не держать `Focus Proxy`, `Matte`, `Hint Brushes`, `Merge Groups` как независимые большие панели
+- статус: `выполнено`
+- cleanup hidden until needed
+- active tool показывается рядом с viewer
+- rail больше не держит `Focus Proxy`, `Matte`, `Hint Brushes`, `Merge Groups` как постоянные большие панели
+
+Подтверждение:
+- commit `a40aecd34`
+- task `tb_1774774661_74594_3`
 
 ### UI-R11.4 Object/layer entry clarity
 
-- сделать явный вход в object/layer mode
-- визуально связать object selection со stage
-- отделить object list от raw technical controls
+- статус: `выполнено`
+- visible plates показываются как stage object boxes прямо на preview
+- stage box стал явной точкой входа в selection
+- у выбранного объекта на сцене появляются прямые actions:
+  - `inspect layer`
+  - `silhouette`
+- guide boxes больше не purely decorative
+- object entry больше не спрятан за left-rail interpretation
+
+Подтверждение:
+- commit `3978f989e`
+- task `tb_1774774662_74594_1`
 
 ### UI-R11.5 Camera keyframe tray
 
 - статус: `отменено как fake placeholder`
 - временный tray был убран после operator review
 - следующий корректный шаг здесь: не рисовать reserve, а заводить реальный CUT-derived camera timeline/keyframe flow
+
+Подтверждение:
+- commit `8ceac771`
+- task `tb_1774785732_69159_1`
 
 ### UI-R11.6 Viewport QA
 
@@ -193,6 +213,14 @@ Manual cleanup и layer refinement должны жить как contextual tools
 - square QA пройдена на `drone-portrait`
 - monitor остался главным элементом сцены
 - в текущей `SAMPLE_LIBRARY` нет true portrait asset, поэтому отдельная portrait QA остаётся открытой
+
+Дополнение:
+- responsive non-16:9 fit path уже исправлен
+- narrow override `width: 100% !important` убран из `.stage-shell`
+
+Подтверждение:
+- commit `4a7fcae4`
+- task `tb_1774785131_69159_1`
 
 ## Dev Server Discipline
 
@@ -223,13 +251,15 @@ Manual cleanup и layer refinement должны жить как contextual tools
 - внизу не должно быть fake timeline UI без реальной функции
 - UI можно воспринимать как понятную оболочку, к которой остаётся прикручивать функции
 
-## Следующий логичный UI-шаг
+## Следующий логичный шаг
 
-Следующий подтверждённый шаг из board и из текущего состояния:
+Следующий подтверждённый шаг уже не про layout-polish, а про object/backend flow:
 
-- `PARALLAX-UIR12: fix portrait-safe stage fit and non-16:9 source framing`
+- selectable object on stage -> promote into real layer
+- silhouette/depth-driven correction should attach to the selected object, not to a generic rescue sheet
+- candidate placement and draft plates should evolve from bbox-first drafting toward silhouette-first object handling
 
 Почему именно он:
-- square уже проверен и выявлен как важный layout case
-- true portrait asset ещё отсутствует, но сам fit/non-16:9 path остаётся открытым
-- после `UIR11.5` следующий главный риск — чтобы monitor оставался доминирующим не только на wide, но и на non-16:9 sources
+- UI shell уже достаточно расчищен
+- stage selection уже появился
+- главный remaining gap теперь между stage selection и реальным отдельным слоем
