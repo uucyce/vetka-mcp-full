@@ -443,8 +443,8 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
     proto_layers = []
     layer_alphas = []
 
-    for plate in sorted(visible_plates, key=lambda p: -p.get("z", 0)):
-        pid = plate["id"]
+    for i_plate, plate in enumerate(sorted(visible_plates, key=lambda p: -p.get("z", 0))):
+        pid = plate.get("id") or f"plate_{i_plate}"
         label = plate.get("label", pid)
         role = plate.get("role", "unknown")
         z = plate.get("z", 0)
