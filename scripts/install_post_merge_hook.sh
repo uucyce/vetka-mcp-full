@@ -92,8 +92,9 @@ post_rewrite_hook_content() {
     cat <<'HOOK'
 #!/usr/bin/env bash
 # post-rewrite hook — installed by scripts/install_post_merge_hook.sh
-# Fires after `git rebase`. Auto-restores docs/ files that exist on main
-# but are missing on the current branch after rebase.
+# Fires after `git rebase`. Syncs ALL docs/ files with main:
+#   - deleted files → restored from main
+#   - modified files → replaced with main version (prevents version rollback)
 # $1 = "rebase" | "amend"
 
 set -uo pipefail
@@ -103,27 +104,27 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
 echo ""
-echo "▶ post-rewrite: checking for docs/ files lost during rebase..."
+echo "▶ post-rewrite: syncing docs/ with main (deleted + stale versions)..."
 
-RESTORED=()
+SYNCED=()
 while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     if git checkout main -- "$f" 2>/dev/null; then
-        RESTORED+=("$f")
-        echo "  restored: $f"
+        SYNCED+=("$f")
+        echo "  synced: $f"
     else
-        echo "  [warn] failed to restore: $f"
+        echo "  [warn] failed to sync: $f (may not exist on main)"
     fi
-done < <(git diff --diff-filter=D --name-only main -- docs/ 2>/dev/null)
+done < <(git diff --name-only main -- docs/ 2>/dev/null)
 
-if [[ ${#RESTORED[@]} -gt 0 ]]; then
+if [[ ${#SYNCED[@]} -gt 0 ]]; then
     git add docs/
     git commit --no-verify \
-        -m "fix: auto-restore ${#RESTORED[@]} docs/ file(s) after rebase [post-rewrite hook]" \
+        -m "fix: sync ${#SYNCED[@]} docs/ file(s) from main after rebase [post-rewrite hook]" \
         2>/dev/null || echo "  [warn] commit failed (possibly nothing staged)"
-    echo "  ✓ committed ${#RESTORED[@]} restored file(s)"
+    echo "  ✓ committed ${#SYNCED[@]} synced file(s)"
 else
-    echo "  nothing to restore."
+    echo "  docs/ already in sync with main."
 fi
 
 echo "▶ post-rewrite: done."

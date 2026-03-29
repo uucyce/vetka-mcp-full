@@ -3692,6 +3692,44 @@ class TaskBoard:
         except Exception as _doc_guard_err:
             logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
 
+        # MARKER_201.VERSION_GUARD: Block merge if branch replaces newer docs with shorter (older) versions.
+        # Heuristic: net line count < 0 means branch version lost content vs main → rollback risk.
+        try:
+            ver_check_proc = await asyncio.create_subprocess_exec(
+                "git", "diff", "--diff-filter=M", "--numstat", "main", branch, "--", "docs/",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            ver_out, _ = await ver_check_proc.communicate()
+            rollback_docs = []
+            for line in ver_out.decode().strip().split("\n"):
+                parts = line.strip().split("\t")
+                if len(parts) != 3:
+                    continue
+                added_s, deleted_s, fname = parts
+                if added_s == "-" or deleted_s == "-":  # binary file — skip
+                    continue
+                try:
+                    net = int(added_s) - int(deleted_s)
+                except ValueError:
+                    continue
+                if net < 0:  # branch has fewer lines than main → potential rollback
+                    rollback_docs.append(fname)
+            if rollback_docs:
+                logger.error(
+                    "[MergeRequest] VERSION_GUARD: branch '%s' would overwrite %d docs/ file(s) with shorter versions — merge blocked.",
+                    branch, len(rollback_docs),
+                )
+                return {
+                    "success": False,
+                    "error": "VERSION_GUARD: branch would overwrite newer docs with older (shorter) versions — merge blocked",
+                    "rollback_docs": rollback_docs,
+                    "fix": "On the agent branch: git checkout main -- <file> for each listed doc, then commit.",
+                }
+        except Exception as _ver_guard_err:
+            logger.debug(f"[MergeRequest] VERSION_GUARD check failed (non-fatal): {_ver_guard_err}")
+
         # Step 5: Execute merge (pass allowed_paths for scoped stash)
         merge_result = await self._execute_merge(branch, strategy, commits, task.get("allowed_paths") or [])
         if not merge_result.get("success"):

@@ -17,28 +17,29 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
 
 echo ""
-echo "▶ post-rewrite: checking for docs/ files lost during rebase..."
+echo "▶ post-rewrite: syncing docs/ with main (deleted + stale versions)..."
 
-# Files that exist on main but are missing in current HEAD after rebase
-RESTORED=()
+# Sync ALL docs/ files that differ from main: deleted ones get restored,
+# modified ones get main's version (prevents version rollback on merge).
+SYNCED=()
 while IFS= read -r f; do
     [[ -n "$f" ]] || continue
     if git checkout main -- "$f" 2>/dev/null; then
-        RESTORED+=("$f")
-        echo "  restored: $f"
+        SYNCED+=("$f")
+        echo "  synced: $f"
     else
-        echo "  [warn] failed to restore: $f (may not exist on main anymore)"
+        echo "  [warn] failed to sync: $f (may not exist on main)"
     fi
-done < <(git diff --diff-filter=D --name-only main -- docs/ 2>/dev/null)
+done < <(git diff --name-only main -- docs/ 2>/dev/null)
 
-if [[ ${#RESTORED[@]} -gt 0 ]]; then
+if [[ ${#SYNCED[@]} -gt 0 ]]; then
     git add docs/
     git commit --no-verify \
-        -m "fix: auto-restore ${#RESTORED[@]} docs/ file(s) after rebase [post-rewrite hook]" \
+        -m "fix: sync ${#SYNCED[@]} docs/ file(s) from main after rebase [post-rewrite hook]" \
         2>/dev/null || echo "  [warn] commit failed (possibly nothing staged)"
-    echo "  ✓ committed ${#RESTORED[@]} restored file(s)"
+    echo "  ✓ committed ${#SYNCED[@]} synced file(s)"
 else
-    echo "  nothing to restore."
+    echo "  docs/ already in sync with main."
 fi
 
 echo "▶ post-rewrite: done."
