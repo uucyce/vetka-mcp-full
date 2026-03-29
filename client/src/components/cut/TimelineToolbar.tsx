@@ -19,6 +19,7 @@ import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
+import { formatTimecode } from './TimecodeField';
 import {
   SelectionIcon, RazorIcon, RippleIcon, RollIcon,
   SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
@@ -114,6 +115,10 @@ export default function TimelineToolbar() {
   const toggleLinkedSelection = useSelectionStore((s) => s.toggleLinkedSelection);
   const activeTool = useCutEditorStore((s) => s.activeTool);
   const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
+  // MARKER_TRIM.STATUS: I/O timecodes for toolbar display
+  const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
+  const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
+  const fps = useCutEditorStore((s) => s.projectFramerate ?? 25);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
@@ -185,6 +190,33 @@ export default function TimelineToolbar() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* MARKER_TRIM.STATUS: I/O timecode display (FCP7 Ch.34) */}
+      {(sequenceMarkIn != null || sequenceMarkOut != null) && (
+        <span style={{
+          fontSize: 9, fontFamily: '"JetBrains Mono", monospace',
+          color: '#555', letterSpacing: 0.5, userSelect: 'none',
+          display: 'flex', gap: 6,
+        }}>
+          {sequenceMarkIn != null && (
+            <span title="Mark In">I: {formatTimecode(sequenceMarkIn, fps)}</span>
+          )}
+          {sequenceMarkOut != null && (
+            <span title="Mark Out">O: {formatTimecode(sequenceMarkOut, fps)}</span>
+          )}
+        </span>
+      )}
+
+      {/* MARKER_TRIM.STATUS: Active trim tool name */}
+      {(activeTool === 'ripple' || activeTool === 'roll' || activeTool === 'slip' || activeTool === 'slide') ? (
+        <span style={{
+          fontSize: 9, fontFamily: '"JetBrains Mono", monospace',
+          color: '#555', letterSpacing: 1, textTransform: 'uppercase',
+          userSelect: 'none',
+        }}>
+          {activeTool}
+        </span>
+      ) : null}
 
       {/* Zoom slider */}
       <input
