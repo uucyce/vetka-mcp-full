@@ -3834,19 +3834,29 @@ class TaskBoard:
         try:
             # MARKER_201.STASH_SCOPE: Scoped stash using task's allowed_paths.
             # If allowed_paths known → git stash push -- <paths> (only this project's files).
-            # Fallback → git stash (tracked files only, no --include-untracked).
+            # Fallback → git stash push (tracked files only, no --include-untracked).
+            # --ignore-submodules=dirty: prevents submodule 'm' markers (pulse, back_to_ussr_app)
+            # from being treated as dirty working tree — fixes stash failure on submodule-dirty repos.
             # Untracked files never block `git checkout main` so they are never stashed.
-            _stash_cmd = ["git", "stash"]
+            _stash_cmd = ["git", "stash", "push", "--ignore-submodules=dirty"]
             if allowed_paths:
-                _stash_cmd = ["git", "stash", "push", "--"] + list(allowed_paths)
+                _stash_cmd = _stash_cmd + ["--"] + list(allowed_paths)
             stash_proc = await asyncio.create_subprocess_exec(
                 *_stash_cmd,
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stash_out, _ = await stash_proc.communicate()
-            did_stash = b"No local changes" not in stash_out
+            stash_out, stash_err = await stash_proc.communicate()
+            # MARKER_201.SUBMODULE_DIRTY: Check returncode — don't rely on stdout alone.
+            # If stash fails (rc != 0), log and proceed without stash rather than silently
+            # setting did_stash=True on empty stdout (which caused empty-error failures).
+            did_stash = stash_proc.returncode == 0 and b"No local changes" not in stash_out
+            if stash_proc.returncode != 0:
+                logger.warning(
+                    "[MergeRequest] git stash failed (rc=%d): %s — proceeding without stash",
+                    stash_proc.returncode, stash_err.decode().strip()[:200],
+                )
 
             # Save stash ref for recovery logging if pop fails later
             stash_ref = None
@@ -3877,9 +3887,11 @@ class TaskBoard:
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )).communicate()
+                # Include both stderr and stdout — git checkout sometimes writes to stdout
+                _co_err = co_stderr.decode().strip() or co_stdout.decode().strip()
                 return {
                     "success": False,
-                    "error": f"git checkout main failed (rc={proc.returncode}): {co_stderr.decode().strip()}",
+                    "error": f"git checkout main failed (rc={proc.returncode}): {_co_err}",
                 }
 
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
