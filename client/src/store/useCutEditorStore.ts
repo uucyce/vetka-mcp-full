@@ -251,6 +251,8 @@ interface CutEditorState {
   duration: number;
   // MARKER_B3.2: Keyframe Record Mode (FCP7 automation)
   isRecordMode: boolean;  // true = fader/pan changes auto-write keyframes
+  // MARKER_KF-GAP: Minimum time gap (seconds) between keyframes during drag
+  kfGap: number;
   // === MARKER_DUAL-VIDEO: Independent Source Monitor playback state ===
   // Source monitor has its own video element and playback, decoupled from timeline
   sourceCurrentTime: number;
@@ -606,6 +608,9 @@ interface CutEditorState {
   removeKeyframe: (clipId: string, property: string, timeSec: number) => void;
   // MARKER_KF-BEZIER-CP: Update bezier control points on a keyframe (FCP7 Ch.58-59)
   updateKeyframeBezier: (clipId: string, property: string, timeSec: number, cpOut?: [number, number], cpIn?: [number, number]) => void;
+  // MARKER_KF-EASING: Set easing type on a keyframe (linear/ease_in/ease_out/bezier)
+  updateKeyframeEasing: (clipId: string, property: string, timeSec: number, easing: Keyframe['easing']) => void;
+  setKfGap: (gap: number) => void;
   getKeyframeTimes: () => number[];  // all keyframe times on timeline (for navigation)
   // MARKER_B3.2: Record mode actions
   toggleRecordMode: () => void;      // Cmd+Shift+K — toggle record mode
@@ -694,6 +699,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   shuttleSpeed: 0,
   duration: 0,
   isRecordMode: false,  // MARKER_B3.2
+  kfGap: 0,
 
   // MARKER_W1.4: Separate marks
   sourceMarkIn: null,
@@ -1689,6 +1695,23 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       return;
     }
   },
+  // MARKER_KF-EASING: Set easing type on a keyframe
+  updateKeyframeEasing: (clipId, property, timeSec, easing) => {
+    const { lanes } = get();
+    for (const lane of lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === clipId);
+      if (!clip || !clip.keyframes) continue;
+      const kfs = clip.keyframes[property];
+      if (!kfs) break;
+      const idx = kfs.findIndex((k) => Math.abs(k.time_sec - timeSec) < 1e-6);
+      if (idx < 0) break;
+      const updated = kfs.map((k, i) => i !== idx ? k : { ...k, easing });
+      void get().applyTimelineOps([{ op: 'set_prop', clip_id: clipId, key: `keyframes.${property}`, value: updated }]);
+      return;
+    }
+  },
+  setKfGap: (gap) => set({ kfGap: gap }),
+
   getKeyframeTimes: () => {
     const { lanes, lockedLanes } = get();
     const times = new Set<number>();
