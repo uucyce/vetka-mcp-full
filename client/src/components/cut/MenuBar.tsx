@@ -613,6 +613,14 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
+        // MARKER_GAMMA-MATCHFRAME: FCP7 Ch.50 — Match Frame / Reverse Match Frame
+        { label: 'Match Frame', shortcut: 'F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
+        }},
+        { label: 'Reveal Master Clip', shortcut: '⇧F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', shiftKey: true }));
+        }},
+        { separator: true },
         { label: 'Add Marker', shortcut: 'M', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
         }},
