@@ -33,6 +33,8 @@ const EFFECT_APPLY_MAP: Record<string, Record<string, number>> = {
 import ThumbnailStrip from './ThumbnailStrip';
 import TrackResizeHandle from './TrackResizeHandle';
 import TimelineRuler from './TimelineRuler';
+// MARKER_PERF_VSCROLL: react-window available for future lane-level virtualization
+import { VariableSizeList as _VariableSizeList } from 'react-window';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -693,6 +695,27 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (laneIndex < 0) return null;
     return RULER_HEIGHT + laneIndex * trackHeight + 3;
   }, [displayLanes, dragState, trackHeight]);
+
+  // MARKER_PERF_VSCROLL: Pre-filter visible clips per lane to avoid iterating all clips on every
+  // scroll/zoom render. Stores {clip, clipIdx} pairs so original indices remain available for
+  // through-edit detection (which needs lane.clips[clipIdx - 1]).
+  const visibleClipsByLane = useMemo(() => {
+    const visStart = scrollLeft / zoom;
+    const visEnd = (scrollLeft + Math.max(containerWidth - LANE_HEADER_WIDTH, 0)) / zoom;
+    const result = new Map<string, Array<{ clip: TimelineClip; clipIdx: number }>>();
+    for (const lane of displayLanes) {
+      result.set(
+        lane.lane_id,
+        lane.clips
+          .map((clip, clipIdx) => ({ clip, clipIdx }))
+          .filter(({ clip }) =>
+            clip.start_sec + clip.duration_sec > visStart &&
+            clip.start_sec < visEnd
+          )
+      );
+    }
+    return result;
+  }, [displayLanes, scrollLeft, zoom, containerWidth]);
 
   const playheadX = currentTime * zoom - scrollLeft + LANE_HEADER_WIDTH;
 
@@ -2028,16 +2051,14 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
                 <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
                 <div data-drop-zone="overwrite" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '67%', pointerEvents: 'none' }} />
-                {lane.clips.map((clip, clipIdx) => {
+                {/* MARKER_PERF_VSCROLL: Only render clips in the visible time window */}
+                {(visibleClipsByLane.get(lane.lane_id) ?? []).map(({ clip, clipIdx }) => {
                   if (dragState?.clipId === clip.clip_id) {
                     return null;
                   }
                   const { startSec, durationSec } = clipDisplayTime(clip, dragState);
                   const x = startSec * zoom - scrollLeft;
                   const width = durationSec * zoom;
-                  if (x + width < 0 || x > containerWidth) {
-                    return null;
-                  }
 
                   // MARKER_TL5: Through edit detection — continuous source media across adjacent clips
                   let isThroughEdit = false;
@@ -2696,7 +2717,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
                 {/* MARKER_FCP7.EDIT3: Through edit indicators — red triangles at edit points
                     between adjacent clips from the same source (FCP7 p.588) */}
-                {lane.clips.map((clip, ci) => {
+                {(visibleClipsByLane.get(lane.lane_id) ?? []).map(({ clip, clipIdx: ci }) => {
                   if (ci === 0) return null;
                   const prev = lane.clips[ci - 1];
                   // Through edit: adjacent clips from same source (razor split artifacts)
