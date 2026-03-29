@@ -111,26 +111,33 @@ ROLE_MODEL_MAP = {
 }
 
 STEP_ROLE_MAP = {
-    "recon":    "scout",
-    "research": "researcher",
-    "plan":     "architect",
-    "execute":  "coder",
-    "verify":   "verifier",
-    "review":   "verifier",
-    "approve":  "approval",
-    "finalize": "coder",
+    "recon":     "scout",
+    "research":  "researcher",
+    "plan":      "architect",
+    "decompose": "operator",   # no LLM — pure code step
+    "execute":   "coder",
+    "verify":    "verifier",
+    "review":    "verifier",
+    "approve":   "approval",
+    "finalize":  "coder",
 }
 
 STEP_ARTIFACT_MAP = {
-    "recon":    "facts.json",
-    "research": "research.json",
-    "plan":     "plan.json",
-    "execute":  "patch.diff",
-    "verify":   "test_output.txt",
-    "review":   "review.json",
-    "approve":  "approval.json",
-    "finalize": "final_report.json",
+    "recon":     "facts.json",
+    "research":  "research.json",
+    "plan":      "plan.json",
+    "decompose": "subtasks.json",
+    "execute":   "patch.diff",
+    "verify":    "test_output.txt",
+    "review":    "review.json",
+    "approve":   "approval.json",
+    "finalize":  "final_report.json",
 }
+
+# Steps for the decompose-only workflow
+DECOMPOSE_STEPS = ["recon", "plan", "decompose"]
+
+MAX_CHILD_TASKS = 7
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +233,32 @@ Previous artifacts summary: {prev_artifacts}
 Respond with ONLY valid JSON.""",
 }
 
+# Decomposition-optimized plan prompt (used when method == "decompose")
+DECOMPOSE_PLAN_PROMPT = """You are a task decomposer. Break this task into atomic sub-tasks.
+
+RULES — each sub-task MUST:
+- Touch exactly 1 file
+- Be completable in under 50 lines of code
+- Have a clear, testable outcome
+- Be independent (no ordering dependencies if possible)
+
+Produce a JSON object with:
+- "approach": 1-2 sentence strategy
+- "steps": list of objects, each with:
+  - "description": what to do (imperative verb, specific)
+  - "file": exact file path to modify
+  - "complexity": "low" or "medium"
+  - "test_hint": how to verify this sub-task works
+
+IMPORTANT: Maximum {max_steps} sub-tasks. If task is simple, 1-2 is fine.
+
+Task: {title}
+Description: {description}
+Known files: {allowed_paths}
+Recon facts: {prev_artifacts}
+
+Respond with ONLY valid JSON, no markdown fences."""
+
 
 # ---------------------------------------------------------------------------
 # Core executor
@@ -301,8 +334,83 @@ class StepExecutor:
     def select_model(self, role: str) -> str:
         return ROLE_MODEL_MAP.get(role, "qwen2.5:7b")
 
-    def build_prompt(self, step: str, task: dict, run_id: str) -> str:
-        template = STEP_PROMPTS.get(step, STEP_PROMPTS["recon"])
+    def create_child_tasks(self, plan_json: str, parent_task: dict) -> List[dict]:
+        """Parse plan.json and create child tasks on task board via REST.
+
+        Returns list of created task dicts.
+        """
+        # Parse plan
+        try:
+            plan = json.loads(plan_json)
+        except json.JSONDecodeError:
+            logger.error("Failed to parse plan.json — not valid JSON")
+            return []
+
+        steps = plan.get("steps", [])
+        if not steps:
+            logger.warning("Plan has no steps — nothing to decompose")
+            return []
+
+        # Cap at MAX_CHILD_TASKS
+        if len(steps) > MAX_CHILD_TASKS:
+            logger.info("Capping %d steps to %d", len(steps), MAX_CHILD_TASKS)
+            steps = steps[:MAX_CHILD_TASKS]
+
+        parent_id = parent_task.get("id", parent_task.get("task_id", ""))
+        parent_project = parent_task.get("project_id", "CUT")
+        parent_priority = parent_task.get("priority", 3)
+        parent_phase_type = parent_task.get("phase_type", "build")
+
+        # Task board REST URL (not MCC — direct task board)
+        tb_base = self.mcc_url.replace("/api/mcc", "/api/tasks")
+
+        created = []
+        for i, step in enumerate(steps):
+            # Handle both dict and string steps
+            if isinstance(step, str):
+                desc = step
+                file_path = ""
+                test_hint = ""
+                cx = "low"
+            else:
+                desc = step.get("description", f"Step {i+1}")
+                file_path = step.get("file", "")
+                test_hint = step.get("test_hint", "")
+                cx = step.get("complexity", "low")
+
+            child_body = {
+                "title": f"[AUTO] {desc}",
+                "description": f"Sub-task of {parent_id}. {desc}",
+                "phase_type": parent_phase_type,
+                "priority": parent_priority,
+                "complexity": cx,
+                "project_id": parent_project,
+                "allowed_tools": ["local_ollama"],
+                "parent_task_id": parent_id,
+                "implementation_hints": test_hint,
+                "tags": ["auto-decomposed", "local-ready"],
+            }
+            if file_path:
+                child_body["allowed_paths"] = [file_path]
+
+            result = _http_post(tb_base, child_body)
+            if result.get("error"):
+                logger.warning("Failed to create child task %d: %s", i+1, result["error"])
+            else:
+                child_id = result.get("task_id", result.get("id", "?"))
+                logger.info("  Created child [%d/%d]: %s — %s",
+                            i+1, len(steps), child_id, desc[:60])
+                created.append({"task_id": child_id, "description": desc, "file": file_path})
+
+        return created
+
+    def build_prompt(self, step: str, task: dict, run_id: str,
+                     method: str = "") -> str:
+        # Use decompose-optimized plan prompt when decomposing
+        if step == "plan" and method == "decompose":
+            template = DECOMPOSE_PLAN_PROMPT
+        else:
+            template = STEP_PROMPTS.get(step, STEP_PROMPTS["recon"])
 
         # Collect previous artifacts as context
         prev = ""
@@ -337,19 +445,24 @@ class StepExecutor:
             context=prev,
             task_id=task.get("id", "?"),
             run_id=run_id,
+            max_steps=MAX_CHILD_TASKS,
         )
 
-    def execute_run(self, run_id: str) -> dict:
+    def execute_run(self, run_id: str, method: str = "") -> dict:
         """Execute all remaining steps in a run."""
         run = self.get_run(run_id)
         if not run:
             return {"success": False, "error": f"Run {run_id} not found"}
 
         task = run.get("task_snapshot", {})
+        self._method = method or run.get("workflow_family", "").replace("_localguys", "")
+
         steps = run.get("contract", {}).get("steps", [])
         if not steps:
-            # Fallback: infer from workflow family
-            steps = ["recon", "plan", "execute", "verify", "review", "finalize"]
+            if self._method == "decompose":
+                steps = DECOMPOSE_STEPS
+            else:
+                steps = ["recon", "plan", "execute", "verify", "review", "finalize"]
 
         current_step = run.get("current_step", "recon")
         status = run.get("status", "queued")
@@ -376,19 +489,69 @@ class StepExecutor:
             logger.info("[%d/%d] Step: %s | Role: %s | Model: %s | Artifact: %s",
                         i + 1, len(steps), step, role, model, artifact_name)
 
-            # Build prompt
-            prompt = self.build_prompt(step, task, run_id)
+            # Build prompt (pass method for decompose-optimized plan prompt)
+            prompt = self.build_prompt(step, task, run_id, method=self._method)
 
             if self.dry_run:
-                logger.info("[DRY RUN] Prompt (%d chars):\n%s", len(prompt), prompt[:500])
+                if step == "decompose":
+                    logger.info("[DRY RUN] DECOMPOSE: would create child tasks from plan.json")
+                else:
+                    logger.info("[DRY RUN] Prompt (%d chars):\n%s", len(prompt), prompt[:500])
                 results.append({"step": step, "dry_run": True, "prompt_length": len(prompt)})
                 continue
+
+            # === DECOMPOSE STEP: no LLM, create child tasks ===
+            if step == "decompose":
+                plan_content = self._artifacts_cache.get("plan", "")
+                if not plan_content:
+                    logger.error("Cannot decompose: no plan.json artifact")
+                    results.append({"step": step, "error": "no plan artifact"})
+                    continue
+
+                # Anti-recursion: check if parent task is already auto-decomposed
+                parent_tags = task.get("tags", []) or []
+                if "auto-decomposed" in parent_tags:
+                    logger.info("  Skipping decompose — task is already auto-decomposed (anti-recursion)")
+                    subtasks_json = json.dumps({"skipped": True, "reason": "anti-recursion"})
+                else:
+                    children = self.create_child_tasks(plan_content, task)
+                    subtasks_json = json.dumps({
+                        "parent_task_id": task.get("id", ""),
+                        "children_created": len(children),
+                        "children": children,
+                    }, indent=2)
+                    logger.info("  Decomposed into %d child tasks", len(children))
+
+                self._artifacts_cache[step] = subtasks_json
+                self._models_used[step] = "none (code step)"
+
+                # Upload subtasks.json artifact
+                self.upload_artifact(run_id, artifact_name, subtasks_json)
+
+                results.append({
+                    "step": step,
+                    "model": "none",
+                    "duration_s": 0,
+                    "response_length": len(subtasks_json),
+                    "artifact": artifact_name,
+                    "children_created": len(children) if "children" in dir() else 0,
+                })
+                # Advance to next step or done
+                if next_step:
+                    next_role = STEP_ROLE_MAP.get(next_step, "coder")
+                    next_model = self.select_model(next_role)
+                    self.signal_advance(run_id, next_step, next_role, next_model, status="running")
+                else:
+                    self.signal_advance(run_id, step, role, model, status="done")
+                    logger.info("Decomposition complete!")
+                continue
+
+            # === NORMAL STEP: call Ollama ===
 
             # Signal: starting this step
             sig = self.signal_advance(run_id, step, role, model, status="running")
             if sig.get("error"):
                 logger.warning("Signal advance failed: %s", sig["error"])
-                # Don't stop — might be a turn budget issue, try anyway
 
             # Call Ollama
             gen_start = time.time()
@@ -457,7 +620,8 @@ def main():
     parser = argparse.ArgumentParser(description="Localguys Step Executor")
     parser.add_argument("--run-id", help="Execute existing run")
     parser.add_argument("--task", help="Task ID (creates run if --method given)")
-    parser.add_argument("--method", default="g3", help="Workflow method (default: g3)")
+    parser.add_argument("--method", default="g3",
+                        help="Workflow method: g3, research, quickfix, docs, decompose (default: g3)")
     parser.add_argument("--mcc-url", default=DEFAULT_MCC_URL, help="MCC API URL")
     parser.add_argument("--ollama-url", default=DEFAULT_OLLAMA_URL, help="Ollama API URL")
     parser.add_argument("--dry-run", action="store_true", help="Show prompts without calling Ollama")
@@ -480,9 +644,10 @@ def main():
             run_id = existing.get("run_id")
             logger.info("Found existing run %s (status: %s)", run_id, existing.get("status"))
         else:
-            # Create new run
-            logger.info("Creating run: method=%s, task=%s", args.method, args.task)
-            create_result = executor.create_run(args.task, args.method)
+            # Create new run. For decompose, create as g3 (registered family) but override steps
+            create_method = "g3" if args.method == "decompose" else args.method
+            logger.info("Creating run: method=%s (create_as=%s), task=%s", args.method, create_method, args.task)
+            create_result = executor.create_run(args.task, create_method)
             if not create_result:
                 print(json.dumps({"success": False, "error": "Failed to create run"}))
                 return
@@ -492,7 +657,7 @@ def main():
     if not run_id:
         parser.error("Either --run-id or --task is required")
 
-    result = executor.execute_run(run_id)
+    result = executor.execute_run(run_id, method=args.method)
     print(json.dumps(result, indent=2, default=str))
 
 
