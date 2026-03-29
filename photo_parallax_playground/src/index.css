@@ -850,7 +850,7 @@ ul {
   min-height: 0;
   height: auto;
   max-height: min(78vh, 920px);
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
   perspective: 1200px;
   perspective-origin: 50% 46%;
@@ -909,15 +909,24 @@ ul {
   z-index: 6;
 }
 
+.stage-object-plane {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+}
+
 .candidate-marker-plane {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 7;
+  z-index: 8;
 }
 
 .candidate-marker {
   position: absolute;
+  display: grid;
+  place-items: center;
   width: 18px;
   height: 18px;
   margin-left: -9px;
@@ -926,6 +935,8 @@ ul {
   border: 2px solid rgba(255, 203, 112, 0.96);
   background: rgba(255, 203, 112, 0.18);
   box-shadow: 0 0 0 6px rgba(255, 203, 112, 0.08);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .candidate-marker span {
@@ -942,6 +953,82 @@ ul {
   white-space: nowrap;
 }
 
+.stage-object-box {
+  position: absolute;
+  pointer-events: none;
+}
+
+.stage-object-hit {
+  position: absolute;
+  inset: 0;
+  border: 2px dashed rgba(255, 255, 255, 0.34);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.stage-object-box.is-selected .stage-object-hit {
+  border-style: solid;
+  border-color: rgba(255, 203, 112, 0.94);
+  background: rgba(255, 203, 112, 0.08);
+  box-shadow: inset 0 0 0 1px rgba(255, 203, 112, 0.16), 0 0 0 1px rgba(255, 203, 112, 0.16);
+}
+
+.stage-object-box.is-draft .stage-object-hit {
+  border-color: rgba(122, 168, 255, 0.82);
+  background: rgba(122, 168, 255, 0.06);
+}
+
+.stage-object-box.is-risk-high .stage-object-hit {
+  border-color: rgba(241, 88, 72, 0.84);
+}
+
+.stage-object-box.is-risk-medium .stage-object-hit {
+  border-color: rgba(255, 203, 112, 0.82);
+}
+
+.stage-object-box.is-risk-low .stage-object-hit {
+  border-color: rgba(72, 194, 96, 0.68);
+}
+
+.stage-object-badge {
+  position: absolute;
+  left: 0;
+  top: -28px;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  color: #f4f7fb;
+  background: rgba(6, 7, 9, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.stage-object-badge strong {
+  font-size: 11px;
+}
+
+.stage-object-actions {
+  position: absolute;
+  left: 0;
+  bottom: -44px;
+  display: flex;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.stage-object-actions .ghost-button {
+  min-height: 30px;
+  padding: 0 10px;
+  background: rgba(6, 7, 9, 0.88);
+}
+
 .group-box-plane img {
   width: 100%;
   height: 100%;
@@ -954,6 +1041,8 @@ ul {
   border: 2px dashed rgba(255, 255, 255, 0.74);
   background: rgba(255, 255, 255, 0.03);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .group-guide-box span,

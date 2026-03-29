@@ -3027,9 +3027,60 @@ function App() {
     );
   };
 
+  const focusStagePlate = (plateId: string) => {
+    const plate = inspectorPlates.find((item) => item.id === plateId);
+    setSelectedInspectorPlateId(plateId);
+    if (plate) {
+      setAssistStatus(`${plate.label.replace(/^draft:\s*/i, "")} selected on the stage.`);
+    }
+  };
+
+  const focusGuideBox = (guide: GroupBox) => {
+    let bestPlate: PlateLayoutLayer | null = null;
+    let bestOverlap = 0;
+    const guideArea = Math.max(0.0001, guide.width * guide.height);
+    for (const plate of inspectorPlates) {
+      const overlapArea = getBoxOverlapArea(guide, plate.box);
+      if (overlapArea <= 0) continue;
+      const overlapScore = overlapArea / guideArea;
+      if (!bestPlate || overlapScore > bestOverlap) {
+        bestPlate = plate;
+        bestOverlap = overlapScore;
+      }
+    }
+    if (!bestPlate) {
+      setAssistStatus(`${formatGroupModeLabel(guide.mode)} has no routed plate under this guide yet.`);
+      return;
+    }
+    setSelectedInspectorPlateId(bestPlate.id);
+    setAssistStatus(
+      `${formatGroupModeLabel(guide.mode)} focused on ${bestPlate.label} from the stage guide.`,
+    );
+  };
+
   const armMissingCandidate = (candidateId: string) => {
     setArmedMissingCandidateId(candidateId);
     setAssistStatus("Click the scene to place a provisional object candidate.");
+  };
+
+  const focusPlacedCandidate = (candidateId: string) => {
+    const draftPlateId = getDraftPlateId(candidateId);
+    const draftPlate = inspectorPlates.find((plate) => plate.id === draftPlateId);
+    setSelectedInspectorPlateId(draftPlateId);
+    if (draftPlate) {
+      setAssistStatus(`${draftPlate.label.replace(/^draft:\s*/i, "")} selected as a draft layer.`);
+    }
+  };
+
+  const openPlateSilhouetteAssist = (plateId: string) => {
+    const plate = inspectorPlates.find((item) => item.id === plateId);
+    setSelectedInspectorPlateId(plateId);
+    openSilhouetteAssist();
+    setAssistStatus(
+      plate
+        ? `Silhouette cleanup opened for ${plate.label.replace(/^draft:\s*/i, "")}.`
+        : "Silhouette cleanup opened for the selected layer.",
+    );
   };
 
   const stageAspectRatio = sample.width / sample.height;
@@ -3304,7 +3355,7 @@ function App() {
                     <Icon name="preview" />
                     <div>
                       <h2>Objects</h2>
-                      <div className="panel-subtitle">selected object and manual routing</div>
+                      <div className="panel-subtitle">click a frame on the image to inspect and route it</div>
                     </div>
                   </div>
                   <div className="panel-header-actions">
@@ -3363,7 +3414,7 @@ function App() {
                       onChange={(value) => updateSelectedPlateRole(value as PlateRole)}
                     />
                     <div className="panel-copy compact-note">
-                      Changes the selected object&apos;s layer routing for preview, camera safety, and export order.
+                      Click a frame on the image to pick an object. The stage box is only a handle; the actual cut follows the silhouette and depth mask.
                     </div>
                     {inspectorDetailsOpen ? (
                       <>
@@ -3808,35 +3859,82 @@ function App() {
               <img src={proxyMaps.hintOverlayUrl} alt={`${sample.title} manual hint overlay`} />
             </div>
           ) : null}
-          {groupBoxes.length > 0 && showSelectionOverlays ? (
+          {groupBoxes.length > 0 ? (
             <div className="group-box-plane">
               <img src={proxyMaps.groupOverlayUrl} alt={`${sample.title} group overlay`} />
               {groupBoxes.map((box) => (
-                <div
+                <button
                   key={box.id}
                   className={`group-guide-box ${box.mode}`}
+                  type="button"
                   style={{
                     left: `${box.x * 100}%`,
                     top: `${box.y * 100}%`,
                     width: `${box.width * 100}%`,
                     height: `${box.height * 100}%`,
                   }}
+                  onClick={() => focusGuideBox(box)}
                 >
                   <span>{formatGroupModeLabel(box.mode)}</span>
-                </div>
+                </button>
               ))}
+            </div>
+          ) : null}
+          {manual.previewMode !== "depth" && inspectorPlates.length > 0 ? (
+            <div className="stage-object-plane">
+              {inspectorPlates.map((plate) => {
+                const isSelected = selectedInspectorPlate?.id === plate.id;
+                const isDraft = isDraftPlate(plate);
+                const riskLevel =
+                  plate.risk.disocclusionRisk >= 60
+                    ? "high"
+                    : plate.risk.disocclusionRisk >= 35
+                      ? "medium"
+                      : "low";
+                return (
+                  <div
+                    key={plate.id}
+                    className={`stage-object-box ${isSelected ? "is-selected" : ""} ${isDraft ? "is-draft" : ""} ${riskLevel === "high" ? "is-risk-high" : riskLevel === "medium" ? "is-risk-medium" : "is-risk-low"}`}
+                    style={{
+                      left: `${plate.box.x * 100}%`,
+                      top: `${plate.box.y * 100}%`,
+                      width: `${plate.box.width * 100}%`,
+                      height: `${plate.box.height * 100}%`,
+                    }}
+                  >
+                    <button className="stage-object-hit" type="button" onClick={() => focusStagePlate(plate.id)}>
+                      <span className="stage-object-badge">
+                        <strong>{plate.label.replace(/^draft:\s*/i, "")}</strong>
+                        <span>{formatRoleLabel(plate.role)}</span>
+                      </span>
+                    </button>
+                    {isSelected ? (
+                      <div className="stage-object-actions">
+                        <button className="ghost-button" type="button" onClick={() => focusStagePlate(plate.id)}>
+                          inspect layer
+                        </button>
+                        <button className="ghost-button" type="button" onClick={() => openPlateSilhouetteAssist(plate.id)}>
+                          silhouette
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
             </div>
           ) : null}
           {provisionalObjectCandidates.length > 0 ? (
             <div className="candidate-marker-plane">
               {provisionalObjectCandidates.map((candidate) => (
-                <div
+                <button
                   key={candidate.id}
                   className="candidate-marker"
+                  type="button"
                   style={{ left: `${candidate.x * 100}%`, top: `${candidate.y * 100}%` }}
+                  onClick={() => focusPlacedCandidate(candidate.id)}
                 >
                   <span>{candidate.label}</span>
-                </div>
+                </button>
               ))}
             </div>
           ) : null}
