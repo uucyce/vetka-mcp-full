@@ -24,10 +24,11 @@ import pytest
 # ---------------------------------------------------------------------------
 
 ROUTES_FILE = Path("src/api/routes/cut_routes_generation.py")
+# generation_router is a sub-router of cut_router — wired via
+# router.include_router(generation_router) inside cut_routes.py (not __init__.py)
 APP_MAIN_FILES = [
+    Path("src/api/routes/cut_routes.py"),
     Path("src/api/app.py"),
-    Path("src/main.py"),
-    Path("src/app.py"),
 ]
 
 
@@ -189,17 +190,16 @@ class TestBehaviourGuards:
 class TestRouterWiring:
     """generation_router must be included in the main FastAPI app."""
 
-    @pytest.mark.xfail(reason="generation_router not yet in routes/__init__.py — wiring is Beta's task")
+    @pytest.mark.xfail(reason="generation_router not yet wired via router.include_router() in cut_routes.py — Beta's task tb_1774689673_97753_1")
     def test_generation_router_imported_in_app(self, app_source):
-        """App must import generation_router."""
+        """generation_router must be imported in cut_routes.py as sub-router of cut_router."""
         assert "generation_router" in app_source or "cut_routes_generation" in app_source
 
-    @pytest.mark.xfail(reason="generation_router not yet in routes/__init__.py — wiring is Beta's task")
+    @pytest.mark.xfail(reason="generation_router not yet wired via router.include_router() in cut_routes.py — Beta's task tb_1774689673_97753_1")
     def test_generation_router_included(self, app_source):
-        """App must include generation_router via include_router()."""
+        """cut_routes.py must call router.include_router(generation_router)."""
         assert "include_router" in app_source
-        # generation_router must appear somewhere after include_router
-        assert "generation" in app_source
+        assert "generation_router" in app_source
 
 
 # ---------------------------------------------------------------------------
