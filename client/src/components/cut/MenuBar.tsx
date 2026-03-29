@@ -25,6 +25,8 @@ import {
 import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
+const SequenceSettingsDialog = lazy(() => import('./SequenceSettingsDialog'));
+const ReconnectMediaDialog = lazy(() => import('./ReconnectMediaDialog'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
 // MARKER_GAMMA-25: WorkspacePresets removed from menubar — switching via Window menu only
 
@@ -194,6 +196,10 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
+  const [showSeqSettings, setShowSeqSettings] = useState(false);
+  const [showReconnectMedia, setShowReconnectMedia] = useState(false);
+  const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
+  const projectId = useCutEditorStore((s) => s.projectId);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -394,6 +400,9 @@ export default function MenuBar() {
         { label: 'Publish...', shortcut: '⌘⇧P', action: () => store.getState().setShowPublishDialog(true) },
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
+        { separator: true },
+        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.25 — relink offline clips
+        { label: 'Reconnect Media...', action: () => setShowReconnectMedia(true) },
       ],
     },
     {
@@ -839,6 +848,9 @@ export default function MenuBar() {
             await s.refreshProjectState?.();
           })();
         }},
+        { separator: true },
+        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.115 — sequence resolution/fps/audio settings
+        { label: 'Sequence Settings...', shortcut: '⌘0', action: () => setShowSeqSettings(true) },
       ],
     },
     {
@@ -1075,6 +1087,27 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
+        </Suspense>
+      )}
+      {/* MARKER_GAMMA-WIRE-DIALOGS: Orphaned dialogs now mounted via local state */}
+      {showSeqSettings && sandboxRoot && projectId && (
+        <Suspense fallback={null}>
+          <SequenceSettingsDialog
+            open={showSeqSettings}
+            onClose={() => setShowSeqSettings(false)}
+            sandboxRoot={sandboxRoot}
+            projectId={projectId}
+          />
+        </Suspense>
+      )}
+      {showReconnectMedia && sandboxRoot && projectId && (
+        <Suspense fallback={null}>
+          <ReconnectMediaDialog
+            open={showReconnectMedia}
+            onClose={() => setShowReconnectMedia(false)}
+            sandboxRoot={sandboxRoot}
+            projectId={projectId}
+          />
         </Suspense>
       )}
     </>
