@@ -1221,6 +1221,22 @@ def compile_video_filters(effects: list[EffectParam]) -> list[str]:
         elif t == "parallax_motion":
             filters.append(_compile_parallax_motion_sentinel(p))
 
+        # MARKER_SEC_COLOR: HSL-qualified secondary correction via generated 3D LUT
+        elif t == "secondary_color":
+            try:
+                from src.services.cut_color_pipeline import write_secondary_lut_cube
+                qualifier = {k: p[k] for k in (
+                    "hue_center", "hue_width", "sat_min", "sat_max",
+                    "luma_min", "luma_max", "softness",
+                ) if k in p}
+                correction = {k: p[k] for k in ("hue_shift", "saturation", "exposure") if k in p}
+                lut_path = write_secondary_lut_cube(qualifier, correction, size=17)
+                if lut_path:
+                    safe = lut_path.replace("'", "'\\''")
+                    filters.append(f"lut3d='{safe}'")
+            except Exception:
+                pass  # numpy/pipeline unavailable — skip silently
+
     # Build merged eq filter
     if eq_parts:
         eq_str = ":".join(f"{k}={v}" for k, v in eq_parts.items())

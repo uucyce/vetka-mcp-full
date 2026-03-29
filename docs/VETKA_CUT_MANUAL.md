@@ -1094,9 +1094,26 @@ All 17 ClipEffects fields persist to render pipeline via `set_effects` op → `c
 ### 7.5 Color Correction Panel
 **Status:** IMPLEMENTED
 
-`ColorCorrectionPanel.tsx`: Exposure (-4 to +4 stops), White Balance (2000–12000K), Contrast/Saturation (0–3), Hue (-180°–180°). Three-way corrector: `ColorWheel.tsx` (Shadows/Midtones/Highlights) with R/B correction, G derived. 9 curve presets (no interactive spline editor). Graded preview thumbnail via `POST /cut/preview/frame`.
+`ColorCorrectionPanel.tsx`: Exposure (-4 to +4 stops), White Balance (2000–12000K), Contrast/Saturation (0–3), Hue (-180°–180°). Three-way corrector: `ColorWheel.tsx` (Shadows/Midtones/Highlights) with R/B correction, G derived. 9 curve presets + interactive spline editor (`CurveEditor.tsx`). Graded preview thumbnail via `POST /cut/preview/frame`.
 
-**Differs from FCP7:** No master luminance sliders per wheel. No interactive spline curves editor.
+Color correction persisted to backend via `set_prop(key='color_correction')` — reaches render pipeline.
+
+#### 7.5.1 Secondary Color Correction (FCP7 Ch.28)
+**Status:** IMPLEMENTED
+
+HSL qualifier + masked secondary correction. Enable via "Secondary" section toggle in `ColorCorrectionPanel.tsx`.
+
+**Qualifier controls:**
+- Hue center (0°–360°) + Hue width (±degrees) — circular hue range
+- Sat Min / Sat Max (0–1)
+- Luma Min / Luma Max (0–1)
+- Softness (0–1) — feathered edges around selection
+
+**Correction controls:** Hue Shift (−180°–+180°), Saturation multiplier (0–3), Exposure (stops)
+
+**Implementation:** Backend `cut_color_pipeline.py` — `rgb_to_hsl()` + `hsl_to_rgb()` + `build_hsl_mask()` + `apply_secondary_correction()`. Render path: `write_secondary_lut_cube()` generates a 17³ .cube LUT, applied via FFmpeg `lut3d=` filter. Preview path: `secondary_color` EffectParam sent to `POST /cut/preview/frame`. Timeline persistence: stored in `clip.color_correction.secondary` via `set_prop`.
+
+**Differs from FCP7:** No eyedropper picker. No matte view (visualize mask overlay).
 
 ---
 
