@@ -4420,6 +4420,78 @@ async def cut_layers_manifest(
     }
 
 
+# MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame / Reverse Match Frame backend
+class MatchFrameRequest(BaseModel):
+    project_id: str
+    timeline_id: str = ""
+    sandbox_root: str = ""
+    # Forward match: timeline position → source clip + timecode
+    timeline_position: float | None = None
+    # Reverse match: source clip + source timecode → timeline position
+    source_path: str | None = None
+    source_timecode: float | None = None
+
+
+@router.post("/match-frame")
+async def cut_match_frame(body: MatchFrameRequest) -> dict[str, Any]:
+    """
+    MARKER_MATCH_FRAME — FCP7 Ch.27 Match Frame (F) + Reverse Match Frame (Shift+F).
+
+    Forward (timeline_position set):
+      Find the clip on the timeline whose range covers timeline_position.
+      Returns source_path + source_timecode (offset within the source file).
+
+    Reverse (source_path + source_timecode set):
+      Search all lanes for a clip from source_path whose source range covers source_timecode.
+      Returns timeline_position (where to seek the playhead).
+    """
+    store = CutProjectStore(body.sandbox_root)
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return {"success": False, "error": "timeline_not_ready"}
+
+    lanes: list[dict] = timeline_state.get("lanes", [])
+
+    # ── Forward: timeline → source ─────────────────────────────────────
+    if body.timeline_position is not None:
+        t = body.timeline_position
+        for lane in lanes:
+            for clip in lane.get("clips", []):
+                start = float(clip.get("start_sec", 0))
+                dur = float(clip.get("duration_sec", 0))
+                if start <= t < start + dur:
+                    source_in = float(clip.get("source_in", 0))
+                    return {
+                        "success": True,
+                        "match": "forward",
+                        "source_path": clip.get("source_path", ""),
+                        "source_timecode": round(source_in + (t - start), 4),
+                    }
+        return {"success": False, "error": "no_clip_at_position"}
+
+    # ── Reverse: source → timeline ─────────────────────────────────────
+    if body.source_path and body.source_timecode is not None:
+        st = body.source_timecode
+        for lane in lanes:
+            for clip in lane.get("clips", []):
+                if clip.get("source_path") != body.source_path:
+                    continue
+                source_in = float(clip.get("source_in", 0))
+                dur = float(clip.get("duration_sec", 0))
+                if source_in <= st < source_in + dur:
+                    timeline_pos = float(clip.get("start_sec", 0)) + (st - source_in)
+                    return {
+                        "success": True,
+                        "match": "reverse",
+                        "timeline_position": round(timeline_pos, 4),
+                        "lane_id": lane.get("lane_id", ""),
+                        "clip_id": clip.get("clip_id", ""),
+                    }
+        return {"success": False, "error": "no_clip_for_source_timecode"}
+
+    return {"success": False, "error": "invalid_request", "detail": "Provide timeline_position OR source_path+source_timecode"}
+
+
 # ---------------------------------------------------------------------------
 # MARKER_B41: Render routes moved to cut_routes_render.py
 # CutRenderMasterRequest, _emit_render_progress, _run_master_render_job,

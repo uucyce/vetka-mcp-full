@@ -99,6 +99,7 @@ export type CutHotkeyAction =
   | 'nextEditPoint'
   // MARKER_W5.MF: Match Frame + Q toggle (FCP7 Ch.50)
   | 'matchFrame'
+  | 'reverseMatchFrame'
   | 'toggleSourceProgram'
   // View
   | 'zoomIn'
@@ -214,6 +215,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nextEditPoint:       ['timeline', 'program'],
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:          'global',
+  reverseMatchFrame:   'global',
   toggleSourceProgram: 'global',
 
   // Markers — source, program, timeline (FCP7 Ch.37: markers fire in viewer/timeline context)
@@ -389,6 +391,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   nextEditPoint:     'ArrowDown',
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:        'f',
+  reverseMatchFrame: 'Shift+f',
   toggleSourceProgram: 'q',
   // View
   zoomIn:            '=',
@@ -412,7 +415,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
-  revealMasterClip:  'Shift+f',
+  revealMasterClip:  'Opt+f',
   collapseExpandTrack: 'Shift+minus',
   expandTrack:       'Shift+equal',
   renameClipInline:  'Enter',
@@ -522,6 +525,7 @@ export const FCP7_PRESET: HotkeyMap = {
   nextEditPoint:     'ArrowDown',
   // MARKER_W5.MF: Match Frame + Q toggle (FCP7)
   matchFrame:        'f',
+  reverseMatchFrame: 'Shift+f',
   toggleSourceProgram: 'q',
   // View
   zoomIn:            'Cmd+=',
@@ -545,7 +549,7 @@ export const FCP7_PRESET: HotkeyMap = {
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
-  revealMasterClip:  'Shift+f',
+  revealMasterClip:  'Opt+f',
   collapseExpandTrack: 'Shift+minus',
   expandTrack:       'Shift+equal',
   renameClipInline:  'Enter',
@@ -822,6 +826,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
   // MARKER_W5.MF
   { action: 'matchFrame', label: 'Match Frame (F)', group: 'Navigation' },
+  { action: 'reverseMatchFrame', label: 'Reverse Match Frame (Shift+F)', group: 'Navigation' },
   { action: 'toggleSourceProgram', label: 'Toggle Source/Program (Q)', group: 'Navigation' },
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },
