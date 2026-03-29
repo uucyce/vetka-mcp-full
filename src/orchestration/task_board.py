@@ -481,10 +481,11 @@ class TaskBoard:
                             ntype TEXT DEFAULT 'custom',
                             task_id TEXT DEFAULT '',
                             created_at TEXT NOT NULL,
-                            read_at TEXT DEFAULT '',
+                            read_at TEXT DEFAULT NULL,
                             is_read INTEGER DEFAULT 0
                         );
                         CREATE INDEX IF NOT EXISTS idx_notif_target ON notifications(target_role, is_read);
+                        CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(target_role, read_at);
                     """)
                     self._set_schema_version(2)
                     logger.info("[TaskBoard] Migration 2: notifications table created")
