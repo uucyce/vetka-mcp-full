@@ -1736,7 +1736,8 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_id": clip_id, "key": key})
             continue
 
-        # MARKER_B71: add_keyframe — append a keyframe to clip's keyframes list
+        # KF-DICTFORMAT: add_keyframe — store as dict {property: [{time_sec, value, easing}]}
+        # Frontend store reads clip.keyframes[property] (dict access), must match.
         if op_type == "add_keyframe":
             clip_id = str(op.get("clip_id") or "").strip()
             if not clip_id:
@@ -1751,16 +1752,29 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _, clip = _find_clip(state, clip_id)
             if clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
-            keyframes = clip.setdefault("keyframes", [])
-            kf = {"property": prop, "time_sec": round(time_sec, 4), "value": value}
+            # Migrate legacy flat-list format to dict on first access
+            if isinstance(clip.get("keyframes"), list):
+                old_flat = clip["keyframes"]
+                clip["keyframes"] = {}
+                for k in old_flat:
+                    p = str(k.get("property") or "")
+                    if p:
+                        clip["keyframes"].setdefault(p, []).append(
+                            {kk: vv for kk, vv in k.items() if kk != "property"}
+                        )
+            kf_dict = clip.setdefault("keyframes", {})
+            prop_list = kf_dict.setdefault(prop, [])
+            kf = {"time_sec": round(time_sec, 4), "value": value}
             if "easing" in op:
                 kf["easing"] = str(op["easing"])
-            keyframes.append(kf)
-            keyframes.sort(key=lambda k: (str(k.get("property") or ""), float(k.get("time_sec") or 0.0)))
+            # Replace any existing keyframe at same time
+            prop_list[:] = [k for k in prop_list if abs(float(k.get("time_sec") or 0.0) - time_sec) >= 0.001]
+            prop_list.append(kf)
+            prop_list.sort(key=lambda k: float(k.get("time_sec") or 0.0))
             applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "value": value})
             continue
 
-        # MARKER_B71: remove_keyframe — remove keyframe by property+time
+        # KF-DICTFORMAT: remove_keyframe — filter from dict[property] list
         if op_type == "remove_keyframe":
             clip_id = str(op.get("clip_id") or "").strip()
             if not clip_id:
@@ -1774,13 +1788,18 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _, clip = _find_clip(state, clip_id)
             if clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
-            keyframes = clip.get("keyframes", [])
-            original_len = len(keyframes)
-            clip["keyframes"] = [
-                k for k in keyframes
-                if not (str(k.get("property") or "") == prop and abs(float(k.get("time_sec") or 0.0) - time_sec) < 0.001)
-            ]
-            removed = original_len - len(clip["keyframes"])
+            kf_dict = clip.get("keyframes") or {}
+            if isinstance(kf_dict, list):
+                # Legacy flat list — treat as no match
+                removed = 0
+            else:
+                prop_list = kf_dict.get(prop, [])
+                original_len = len(prop_list)
+                kf_dict[prop] = [
+                    k for k in prop_list
+                    if abs(float(k.get("time_sec") or 0.0) - time_sec) >= 0.001
+                ]
+                removed = original_len - len(kf_dict[prop])
             applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "removed": removed})
             continue
 

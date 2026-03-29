@@ -371,3 +371,130 @@ class TestSetPropDottedPath:
                 "op": "set_prop", "clip_id": "A",
                 "key": "start_sec.foo", "value": 99,
             }])
+
+
+# ─── add_keyframe / remove_keyframe dict format (KF-DICTFORMAT) ───
+
+class TestKeyframeDictFormat:
+    def test_add_keyframe_stores_dict_format(self):
+        """add_keyframe must store clip['keyframes']['opacity'] (dict), not flat list."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, applied = apply_ops(state, [{
+            "op": "add_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 1.0, "value": 0.5,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert isinstance(clip["keyframes"], dict), "keyframes must be dict, not flat list"
+        assert "opacity" in clip["keyframes"]
+        kfs = clip["keyframes"]["opacity"]
+        assert len(kfs) == 1
+        assert kfs[0]["time_sec"] == 1.0
+        assert kfs[0]["value"] == 0.5
+        assert "property" not in kfs[0], "property key must not appear inside per-property list"
+
+    def test_add_keyframe_multiple_properties_separate_lists(self):
+        """Different properties store into separate sub-lists."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, _ = apply_ops(state, [
+            {"op": "add_keyframe", "clip_id": "A", "property": "opacity", "time_sec": 0.0, "value": 1.0},
+            {"op": "add_keyframe", "clip_id": "A", "property": "scale", "time_sec": 0.0, "value": 1.0},
+            {"op": "add_keyframe", "clip_id": "A", "property": "opacity", "time_sec": 2.0, "value": 0.0},
+        ])
+        clip = _get_clip(new_state, "A")
+        assert len(clip["keyframes"]["opacity"]) == 2
+        assert len(clip["keyframes"]["scale"]) == 1
+
+    def test_add_keyframe_preserves_easing(self):
+        """easing field must round-trip through add_keyframe."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "add_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 0.0, "value": 1.0, "easing": "ease_in",
+        }])
+        clip = _get_clip(new_state, "A")
+        assert clip["keyframes"]["opacity"][0]["easing"] == "ease_in"
+
+    def test_add_keyframe_replaces_at_same_time(self):
+        """Adding a keyframe at an existing time_sec replaces it (idempotent)."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, _ = apply_ops(state, [
+            {"op": "add_keyframe", "clip_id": "A", "property": "opacity", "time_sec": 1.0, "value": 0.5},
+            {"op": "add_keyframe", "clip_id": "A", "property": "opacity", "time_sec": 1.0, "value": 0.9},
+        ])
+        clip = _get_clip(new_state, "A")
+        assert len(clip["keyframes"]["opacity"]) == 1
+        assert clip["keyframes"]["opacity"][0]["value"] == 0.9
+
+    def test_remove_keyframe_from_dict(self):
+        """remove_keyframe removes from the correct property sub-list."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"opacity": [
+                 {"time_sec": 0.0, "value": 1.0},
+                 {"time_sec": 2.0, "value": 0.5},
+             ]}},
+        ])
+        new_state, applied = apply_ops(state, [{
+            "op": "remove_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 0.0,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert len(clip["keyframes"]["opacity"]) == 1
+        assert clip["keyframes"]["opacity"][0]["time_sec"] == 2.0
+        assert applied[0]["removed"] == 1
+
+    def test_remove_keyframe_nonexistent_time_is_noop(self):
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"opacity": [{"time_sec": 1.0, "value": 0.5}]}},
+        ])
+        new_state, applied = apply_ops(state, [{
+            "op": "remove_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 9.0,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert len(clip["keyframes"]["opacity"]) == 1
+        assert applied[0]["removed"] == 0
+
+    def test_add_keyframe_coexists_with_set_prop_dotted(self):
+        """add_keyframe and set_prop keyframes.opacity must use same schema."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        # First add via add_keyframe
+        state, _ = apply_ops(state, [{
+            "op": "add_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 0.0, "value": 1.0,
+        }])
+        # Then overwrite the whole list via set_prop dotted
+        new_kfs = [{"time_sec": 0.0, "value": 0.8, "easing": "linear"}]
+        new_state, _ = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": new_kfs,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert isinstance(clip["keyframes"], dict)
+        assert clip["keyframes"]["opacity"][0]["value"] == 0.8
+
+    def test_add_keyframe_migrates_legacy_flat_list(self):
+        """If clip already has flat-list keyframes (old format), add_keyframe migrates it."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             # Legacy flat list format
+             "keyframes": [{"property": "opacity", "time_sec": 0.5, "value": 1.0}]},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "add_keyframe", "clip_id": "A",
+            "property": "opacity", "time_sec": 1.0, "value": 0.0,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert isinstance(clip["keyframes"], dict), "legacy flat list must be migrated to dict"
+        assert len(clip["keyframes"]["opacity"]) == 2
