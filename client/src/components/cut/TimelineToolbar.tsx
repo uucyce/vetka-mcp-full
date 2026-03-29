@@ -22,7 +22,7 @@ import TimelineDisplayControls from './TimelineDisplayControls';
 import { formatTimecode } from './TimecodeField';
 import {
   SelectionIcon, RazorIcon, RippleIcon, RollIcon,
-  SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
+  SlipIcon, SlideIcon, HandIcon, ZoomIcon,
 } from './icons/ToolIcons';
 
 const ROOT: CSSProperties = {
