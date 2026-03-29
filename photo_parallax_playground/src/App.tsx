@@ -455,7 +455,7 @@ type AiAssistSuggestion = {
 
 type AiCompareMode = "manual" | "ai" | "blend";
 type SceneType = "portrait_close" | "single_subject" | "group_midshot" | "wide_scene" | "synthetic_ai_scene";
-type AssistAction = "protect" | "silhouette" | "widen-depth" | "narrow-depth" | "reassign-role";
+type AssistAction = "protect" | "silhouette" | "widen-depth" | "narrow-depth" | "reassign-role" | "promote-layer";
 
 type AssistRecommendation = {
   title: string;
@@ -741,6 +741,16 @@ function buildAssistPlan(params: {
 
   const recommendations: AssistRecommendation[] = [];
   let roleSuggestion: PlateRole | null = null;
+  const plateAuthority = plate.authority ?? "system";
+
+  if (plateAuthority === "draft") {
+    recommendations.push({
+      title: "Promote the draft into an object layer",
+      detail: "This stage pick is still a draft box. Promote it first so silhouette and depth cleanup attach to a real object layer.",
+      action: "promote-layer",
+      tone: "mid",
+    });
+  }
 
   if (plate.cleanVariant || plate.role === "special-clean" || plate.source === "special-clean") {
     recommendations.push({
@@ -753,7 +763,7 @@ function buildAssistPlan(params: {
     });
   }
 
-  if ((transitionRisk ?? 0) >= 45 || plate.risk.disocclusionRisk >= 45) {
+  if (plateAuthority === "object" && ((transitionRisk ?? 0) >= 45 || plate.risk.disocclusionRisk >= 45)) {
     recommendations.push({
       title: "Refine the plate silhouette",
       detail:
@@ -765,7 +775,7 @@ function buildAssistPlan(params: {
     });
   }
 
-  if (cameraSafe.riskyPlateIds.includes(plate.id) || !plate.risk.cameraSafe) {
+  if (plateAuthority === "object" && (cameraSafe.riskyPlateIds.includes(plate.id) || !plate.risk.cameraSafe)) {
     const shouldWiden = plate.role === "foreground-subject" || plate.role === "secondary-subject";
     recommendations.push({
       title: shouldWiden ? "Widen the active depth band" : "Narrow the depth band",
@@ -793,7 +803,7 @@ function buildAssistPlan(params: {
     roleSuggestion = "foreground-subject";
   }
 
-  if (roleSuggestion) {
+  if (plateAuthority === "object" && roleSuggestion) {
     recommendations.push({
       title: "Re-check the plate role",
       detail: `Current scene class suggests ${formatRoleLabel(roleSuggestion)} for this coverage and routing profile.`,
@@ -802,7 +812,11 @@ function buildAssistPlan(params: {
     });
   }
 
-  if (sceneType === "synthetic_ai_scene" && !recommendations.some((item) => item.action === "protect")) {
+  if (
+    plateAuthority === "object" &&
+    sceneType === "synthetic_ai_scene" &&
+    !recommendations.some((item) => item.action === "protect")
+  ) {
     recommendations.push({
       title: "Anchor the synthetic edge first",
       detail: "AI-generated scenes tend to drift at object boundaries, so protect the region before depth tuning.",
@@ -813,15 +827,21 @@ function buildAssistPlan(params: {
 
   if (recommendations.length === 0) {
     recommendations.push({
-      title: "Routing looks stable",
-      detail: `No extra cleanup trigger fired for this plate. Keep the current ${workflowRouting.mode} route and review camera-safe export.`,
-      action: "narrow-depth",
+      title: plateAuthority === "object" ? "Routing looks stable" : "Draft fit looks stable",
+      detail:
+        plateAuthority === "object"
+          ? `No extra cleanup trigger fired for this object layer. Keep the current ${workflowRouting.mode} route and review camera-safe export.`
+          : "The draft box is readable. Promote it into an object layer before you spend cleanup effort.",
+      action: plateAuthority === "object" ? "narrow-depth" : "promote-layer",
       tone: "good",
     });
   }
 
   return {
-    summary: `${plate.label} is currently treated as ${formatRoleLabel(plate.role)} in ${workflowRouting.mode} mode.`,
+    summary:
+      plateAuthority === "object"
+        ? `${plate.label} is now an authoritative ${formatRoleLabel(plate.role)} object layer in ${workflowRouting.mode} mode.`
+        : `${plate.label} is still a ${formatRoleLabel(plate.role)} draft in ${workflowRouting.mode} mode.`,
     focusAction: recommendations[0]?.action ?? "protect",
     recommendations: recommendations.slice(0, 3),
     roleSuggestion,
@@ -2912,6 +2932,8 @@ function App() {
     ? getPlateAuthority(selectedPlateState ?? selectedInspectorPlate)
     : "system";
   const selectedDraftPlate = selectedInspectorPlate && selectedPlateAuthority === "draft" ? selectedInspectorPlate : null;
+  const selectedAuthoritativeObjectPlate =
+    selectedInspectorPlate && selectedPlateAuthority === "object" ? selectedInspectorPlate : null;
   const guidePlateSuggestion = useMemo<GuidePlateSuggestion | null>(() => {
     if (groupBoxes.length === 0 || inspectorPlates.length === 0) return null;
 
@@ -3090,6 +3112,9 @@ function App() {
         }
         setAssistStatus("No role reassignment suggested for this plate.");
         return;
+      case "promote-layer":
+        promoteSelectedDraftPlate();
+        return;
     }
   };
 
@@ -3156,11 +3181,20 @@ function App() {
 
   const openPlateSilhouetteAssist = (plateId: string) => {
     const plate = inspectorPlates.find((item) => item.id === plateId);
+    const plateAuthority = plate ? getPlateAuthority(plateStateById.get(plate.id) ?? plate) : "system";
     setSelectedInspectorPlateId(plateId);
+    if (plateAuthority !== "object") {
+      setAssistStatus(
+        plate
+          ? `${plate.label.replace(/^draft:\s*/i, "")} is still a draft. Promote it into an object layer before silhouette cleanup.`
+          : "Promote the draft into an object layer before silhouette cleanup.",
+      );
+      return;
+    }
     openSilhouetteAssist();
     setAssistStatus(
       plate
-        ? `Silhouette cleanup opened for ${plate.label.replace(/^draft:\s*/i, "")}.`
+        ? `Silhouette cleanup opened for authoritative layer ${plate.label.replace(/^draft:\s*/i, "")}.`
         : "Silhouette cleanup opened for the selected layer.",
     );
   };
@@ -3304,6 +3338,15 @@ function App() {
             <RangeControl label="grow radius" value={matteSettings.growRadius} min={0.05} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, growRadius: value }))} />
             <RangeControl label="edge snap" value={matteSettings.edgeSnap} min={0.04} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, edgeSnap: value }))} />
             <RangeControl label="matte opacity" value={matteSettings.opacity} min={0.2} max={0.95} step={0.01} onChange={(value) => setMatteSettings((prev) => ({ ...prev, opacity: value }))} />
+            {selectedAuthoritativeObjectPlate ? (
+              <div className="panel-copy">
+                Cleanup target: authoritative object layer <strong>{selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")}</strong>.
+              </div>
+            ) : selectedDraftPlate ? (
+              <div className="panel-copy">
+                Drafts are placement-only. Promote <strong>{selectedDraftPlate.label.replace(/^draft:\s*/i, "")}</strong> into an object layer before matte cleanup.
+              </div>
+            ) : null}
             <div className="mini-stat-grid">
               <MiniStat label="seeds" value={`${matteSeeds.length}`} />
               <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
@@ -3340,6 +3383,15 @@ function App() {
               onChange={(value) => setBrushMode(value as BrushMode)}
             />
             <RangeControl label="brush size" value={brushSize} min={0.01} max={0.12} step={0.005} onChange={(value) => setBrushSize(value)} />
+            {selectedAuthoritativeObjectPlate ? (
+              <div className="panel-copy">
+                Cleanup target: authoritative object layer <strong>{selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")}</strong>.
+              </div>
+            ) : selectedDraftPlate ? (
+              <div className="panel-copy">
+                Keep draft edits to placement only. Promote <strong>{selectedDraftPlate.label.replace(/^draft:\s*/i, "")}</strong> before brush cleanup.
+              </div>
+            ) : null}
             <div className="mini-stat-grid">
               <MiniStat label="strokes" value={`${hintStrokes.length}`} />
               <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
@@ -3652,6 +3704,7 @@ function App() {
                         className={`ghost-button ${assistPlan.focusAction === "silhouette" ? "active" : ""}`}
                         type="button"
                         onClick={openSilhouetteAssist}
+                        disabled={selectedPlateAuthority !== "object"}
                       >
                         refine silhouette
                       </button>
@@ -3669,6 +3722,15 @@ function App() {
                       >
                         narrow depth band
                       </button>
+                      {selectedDraftPlate ? (
+                        <button
+                          className={`ghost-button ${assistPlan.focusAction === "promote-layer" ? "active" : ""}`}
+                          type="button"
+                          onClick={promoteSelectedDraftPlate}
+                        >
+                          promote to layer
+                        </button>
+                      ) : null}
                     </div>
                     {missingObjectCandidates.length > 0 ? (
                       <div className="panel-copy">
@@ -3678,6 +3740,15 @@ function App() {
                     {draftInspectorPlates.length > 0 ? (
                       <div className="panel-copy">
                         Draft plates: {draftInspectorPlates.map((plate) => plate.label.replace(/^draft:\s*/i, "")).join(", ")}.
+                      </div>
+                    ) : null}
+                    {selectedAuthoritativeObjectPlate ? (
+                      <div className="panel-copy">
+                        Active cleanup target: {selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")} as an authoritative object layer.
+                      </div>
+                    ) : selectedDraftPlate ? (
+                      <div className="panel-copy">
+                        Active selection is still a draft. Promote it before silhouette or depth cleanup.
                       </div>
                     ) : null}
                     <div className="panel-copy">
@@ -4011,9 +4082,11 @@ function App() {
                         <button className="ghost-button" type="button" onClick={() => focusStagePlate(plate.id)}>
                           inspect layer
                         </button>
-                        <button className="ghost-button" type="button" onClick={() => openPlateSilhouetteAssist(plate.id)}>
-                          silhouette
-                        </button>
+                        {isAuthoritative ? (
+                          <button className="ghost-button" type="button" onClick={() => openPlateSilhouetteAssist(plate.id)}>
+                            silhouette
+                          </button>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
