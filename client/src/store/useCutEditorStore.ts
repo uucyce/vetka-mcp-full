@@ -500,6 +500,9 @@ interface CutEditorState {
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
   // MARKER_TRANSITION: Default transition (FCP7 Ch.47 ⌘T)
   addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point
+  // MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame (F) + Reverse Match Frame (Shift+F)
+  matchFrame: () => void;       // playhead → find clip → open source at matching timecode
+  reverseMatchFrame: () => void; // source monitor position → seek timeline to matching clip
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -1325,6 +1328,40 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 
   // MARKER_DUAL-VIDEO: setActiveMedia is legacy — sets activeMediaPath only, does NOT bleed into source
+  // MARKER_MATCH_FRAME: FCP7 Ch.27 Match Frame (F) — find clip under playhead → open source at matching timecode
+  matchFrame: () => {
+    const s = get();
+    for (const lane of s.lanes) {
+      if (s.lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+          const sourceOffset = clip.source_in ?? 0;
+          const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+          set({ sourceMediaPath: clip.source_path, sourceCurrentTime: Math.max(0, sourceTime), focusedPanel: 'source' });
+          return;
+        }
+      }
+    }
+  },
+  // MARKER_MATCH_FRAME: Reverse Match Frame (Shift+F) — source monitor position → seek timeline to matching clip
+  reverseMatchFrame: () => {
+    const s = get();
+    const sourcePath = s.sourceMediaPath;
+    const sourceTime = s.sourceCurrentTime;
+    if (!sourcePath) return;
+    for (const lane of s.lanes) {
+      for (const clip of lane.clips) {
+        if (clip.source_path !== sourcePath) continue;
+        const clipSourceIn = clip.source_in ?? 0;
+        const clipSourceOut = clipSourceIn + clip.duration_sec;
+        if (sourceTime >= clipSourceIn && sourceTime < clipSourceOut) {
+          const timelineTime = clip.start_sec + (sourceTime - clipSourceIn);
+          set({ currentTime: timelineTime, focusedPanel: 'timeline' });
+          return;
+        }
+      }
+    }
+  },
   setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
   // MARKER_W1.3: Source/Program routing — fully decoupled
   setSourceMedia: (path) => set({ sourceMediaPath: path }),
