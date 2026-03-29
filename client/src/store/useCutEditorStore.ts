@@ -13,6 +13,11 @@ export type Keyframe = {
   time_sec: number;     // time relative to clip start (0 = clip beginning)
   value: number;        // parameter value at this keypoint
   easing: 'linear' | 'ease_in' | 'ease_out' | 'bezier';
+  // MARKER_KF-BEZIER-CP: Optional bezier control points (FCP7 Ch.58-59)
+  // cp_out: [time_delta_sec, value_delta] — exit tangent from this keyframe
+  // cp_in:  [time_delta_sec, value_delta] — entry tangent into this keyframe
+  cp_out?: [number, number];
+  cp_in?: [number, number];
 };
 
 // MARKER_KF-BEZIER: Keyframe interpolation with easing curves
@@ -38,10 +43,33 @@ export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): nu
   // Apply easing (use outgoing easing from kfA)
   let eased: number;
   switch (kfA.easing) {
-    case 'ease_in':    eased = t * t; break;
-    case 'ease_out':   eased = 1 - (1 - t) * (1 - t); break;
-    case 'bezier':     eased = t * t * (3 - 2 * t); break; // smooth step (cubic hermite)
-    default:           eased = t; // linear
+    case 'ease_in':  eased = t * t; break;
+    case 'ease_out': eased = 1 - (1 - t) * (1 - t); break;
+    case 'bezier': {
+      if (kfA.cp_out || kfB.cp_in) {
+        // Real cubic bezier: P0=kfA, P1=kfA+cp_out, P2=kfB-cp_in, P3=kfB
+        // Control point X coords (normalized 0..1 within segment)
+        const x1 = kfA.cp_out ? Math.min(1, Math.max(0, kfA.cp_out[0] / dt)) : 1 / 3;
+        const x2 = kfB.cp_in  ? Math.min(1, Math.max(0, 1 - kfB.cp_in[0]  / dt)) : 2 / 3;
+        // Control point Y coords (absolute values)
+        const y1 = kfA.cp_out ? kfA.value + kfA.cp_out[1] : kfA.value + (kfB.value - kfA.value) / 3;
+        const y2 = kfB.cp_in  ? kfB.value - kfB.cp_in[1]  : kfB.value - (kfB.value - kfA.value) / 3;
+        // Bisection: find parameter s such that B_x(s) ≈ t
+        let lo = 0, hi = 1;
+        for (let n = 0; n < 14; n++) {
+          const mid = (lo + hi) * 0.5;
+          const u = 1 - mid;
+          const bx = 3 * u * u * mid * x1 + 3 * u * mid * mid * x2 + mid * mid * mid;
+          if (bx < t) lo = mid; else hi = mid;
+        }
+        const s = (lo + hi) * 0.5;
+        const u = 1 - s;
+        return u*u*u*kfA.value + 3*u*u*s*y1 + 3*u*s*s*y2 + s*s*s*kfB.value;
+      }
+      eased = t * t * (3 - 2 * t); // smooth-step fallback (no cp data)
+      break;
+    }
+    default: eased = t; // linear
   }
 
   return kfA.value + (kfB.value - kfA.value) * eased;
@@ -573,6 +601,8 @@ interface CutEditorState {
   // MARKER_KF67: Keyframe actions (FCP7 Ch.67)
   addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
   removeKeyframe: (clipId: string, property: string, timeSec: number) => void;
+  // MARKER_KF-BEZIER-CP: Update bezier control points on a keyframe (FCP7 Ch.58-59)
+  updateKeyframeBezier: (clipId: string, property: string, timeSec: number, cpOut?: [number, number], cpIn?: [number, number]) => void;
   getKeyframeTimes: () => number[];  // all keyframe times on timeline (for navigation)
   // MARKER_B3.2: Record mode actions
   toggleRecordMode: () => void;      // Cmd+Shift+K — toggle record mode
@@ -1595,6 +1625,32 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     void get().applyTimelineOps([{
       op: 'remove_keyframe', clip_id: clipId, property, time_sec: timeSec,
     }]);
+  },
+  // MARKER_KF-BEZIER-CP: Update bezier handles via set_prop op
+  updateKeyframeBezier: (clipId, property, timeSec, cpOut, cpIn) => {
+    const { lanes } = get();
+    for (const lane of lanes) {
+      const clip = lane.clips.find((c) => c.clip_id === clipId);
+      if (!clip || !clip.keyframes) continue;
+      const kfs = clip.keyframes[property];
+      if (!kfs) break;
+      const idx = kfs.findIndex((k) => Math.abs(k.time_sec - timeSec) < 1e-6);
+      if (idx < 0) break;
+      // Build updated keyframes array with patched cp_in/cp_out
+      const updated = kfs.map((k, i) => {
+        if (i !== idx) return k;
+        return {
+          ...k,
+          ...(cpOut !== undefined ? { cp_out: cpOut } : {}),
+          ...(cpIn !== undefined ? { cp_in: cpIn } : {}),
+        };
+      });
+      void get().applyTimelineOps([{
+        op: 'set_prop', clip_id: clipId,
+        key: `keyframes.${property}`, value: updated,
+      }]);
+      return;
+    }
   },
   getKeyframeTimes: () => {
     const { lanes, lockedLanes } = get();
