@@ -207,3 +207,167 @@ class TestSetTransition:
         clip = _get_clip(new_state, "A")
         assert clip["transition_out"]["audio_curve"] == "linear"
         assert clip["transition_out"]["type"] == "wipe"
+
+
+# ─── delete_marker ───
+
+class TestDeleteMarker:
+    def test_removes_marker_from_state(self):
+        state = _make_state([])
+        state["markers"] = [
+            {"marker_id": "m1", "start_sec": 1.0, "kind": "favorite"},
+            {"marker_id": "m2", "start_sec": 3.0, "kind": "comment"},
+        ]
+        new_state, applied = apply_ops(state, [{"op": "delete_marker", "marker_id": "m1"}])
+        assert len(new_state["markers"]) == 1
+        assert new_state["markers"][0]["marker_id"] == "m2"
+        assert applied[0]["op"] == "delete_marker"
+        assert applied[0]["removed"] == 1
+
+    def test_delete_nonexistent_marker_noop(self):
+        state = _make_state([])
+        state["markers"] = [{"marker_id": "m1", "start_sec": 1.0}]
+        new_state, applied = apply_ops(state, [{"op": "delete_marker", "marker_id": "missing"}])
+        assert len(new_state["markers"]) == 1
+        assert applied[0]["removed"] == 0
+
+    def test_delete_marker_no_markers_key(self):
+        """State without markers list is handled gracefully."""
+        state = _make_state([])
+        new_state, applied = apply_ops(state, [{"op": "delete_marker", "marker_id": "m1"}])
+        assert applied[0]["removed"] == 0
+
+    def test_delete_marker_missing_id_raises(self):
+        state = _make_state([])
+        with pytest.raises(ValueError, match="marker_id"):
+            apply_ops(state, [{"op": "delete_marker", "marker_id": ""}])
+
+
+# ─── run_pulse_analysis / run_automontage_favorites (no-ops) ───
+
+class TestPulseNoOps:
+    def test_run_pulse_analysis_noop(self):
+        state = _make_state([])
+        new_state, applied = apply_ops(state, [{"op": "run_pulse_analysis"}])
+        assert applied[0]["op"] == "run_pulse_analysis"
+        assert applied[0]["note"] == "routed_to_dedicated_endpoint"
+        # Timeline state unchanged (except revision)
+        assert new_state["revision"] == state["revision"] + 1
+
+    def test_run_automontage_favorites_noop(self):
+        state = _make_state([])
+        new_state, applied = apply_ops(state, [{"op": "run_automontage_favorites"}])
+        assert applied[0]["op"] == "run_automontage_favorites"
+        assert applied[0]["note"] == "routed_to_dedicated_endpoint"
+
+
+# ─── reset_effects ───
+
+class TestResetEffects:
+    def test_removes_effects_list(self):
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "effects": [{"type": "blur", "amount": 2}]},
+        ])
+        new_state, applied = apply_ops(state, [{"op": "reset_effects", "clip_id": "A"}])
+        clip = _get_clip(new_state, "A")
+        assert "effects" not in clip
+        assert applied[0]["op"] == "reset_effects"
+        assert applied[0]["clip_id"] == "A"
+
+    def test_reset_effects_idempotent_when_no_effects(self):
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, applied = apply_ops(state, [{"op": "reset_effects", "clip_id": "A"}])
+        clip = _get_clip(new_state, "A")
+        assert "effects" not in clip
+
+    def test_reset_effects_nonexistent_raises(self):
+        state = _make_state([])
+        with pytest.raises(ValueError, match="clip not found"):
+            apply_ops(state, [{"op": "reset_effects", "clip_id": "Z"}])
+
+
+# ─── VALID_TIMELINE_OPS registry ───
+
+class TestValidTimelineOpsRegistry:
+    def test_registry_is_frozenset(self):
+        from src.api.routes.cut_routes import VALID_TIMELINE_OPS
+        assert isinstance(VALID_TIMELINE_OPS, frozenset)
+
+    def test_reset_effects_in_registry(self):
+        from src.api.routes.cut_routes import VALID_TIMELINE_OPS
+        assert "reset_effects" in VALID_TIMELINE_OPS
+
+    def test_all_core_ops_present(self):
+        from src.api.routes.cut_routes import VALID_TIMELINE_OPS
+        required = {
+            "set_selection", "set_view", "move_clip", "trim_clip", "slip_clip",
+            "ripple_trim", "ripple_trim_to_playhead", "roll_edit", "slide_clip",
+            "swap_clips", "insert_at", "overwrite_at", "split_at", "remove_clip",
+            "ripple_delete", "replace_media", "set_clip_color", "set_clip_meta",
+            "set_transition", "set_effects", "reset_effects", "set_prop",
+            "add_keyframe", "remove_keyframe", "apply_sync_offset", "delete_marker",
+            "run_pulse_analysis", "run_automontage_favorites",
+        }
+        missing = required - VALID_TIMELINE_OPS
+        assert not missing, f"Missing from registry: {missing}"
+
+
+# ─── set_prop dotted path (KF-SETPROP-DOT) ───
+
+class TestSetPropDottedPath:
+    def test_set_prop_nested_key_creates_subdict(self):
+        """keyframes.opacity sets clip['keyframes']['opacity'] without ValueError."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        kf_list = [{"time_sec": 0.0, "value": 1.0, "easing": "linear"}]
+        new_state, applied = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": kf_list,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert isinstance(clip.get("keyframes"), dict)
+        assert clip["keyframes"]["opacity"] == kf_list
+        assert applied[0]["key"] == "keyframes.opacity"
+
+    def test_set_prop_nested_key_updates_existing_subdict(self):
+        """Dotted path merges into existing keyframes dict rather than replacing it."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"scale": [{"time_sec": 0, "value": 1.0, "easing": "linear"}]}},
+        ])
+        new_kfs = [{"time_sec": 0, "value": 0.5, "easing": "ease_in"}]
+        new_state, _ = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": new_kfs,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert "scale" in clip["keyframes"], "existing sub-key must survive"
+        assert clip["keyframes"]["opacity"] == new_kfs
+
+    def test_set_prop_nested_key_none_removes_subkey(self):
+        """set_prop with value=None on dotted path removes the sub-key."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5,
+             "keyframes": {"opacity": [{"time_sec": 0, "value": 1.0, "easing": "linear"}]}},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "set_prop", "clip_id": "A",
+            "key": "keyframes.opacity", "value": None,
+        }])
+        clip = _get_clip(new_state, "A")
+        assert "opacity" not in clip.get("keyframes", {})
+
+    def test_set_prop_dotted_disallowed_root_raises(self):
+        """Dotted path with non-whitelisted root key must still raise."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        with pytest.raises(ValueError, match="not in paste-safe whitelist"):
+            apply_ops(state, [{
+                "op": "set_prop", "clip_id": "A",
+                "key": "start_sec.foo", "value": 99,
+            }])
