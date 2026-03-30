@@ -206,6 +206,20 @@ export default function MenuBar() {
   const dockStore = useDockviewStore;
   // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
   const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
+  // MARKER_GAMMA-WS-CHECKMARK: Reactive active workspace preset for Window > Workspaces checkmarks
+  const activeWorkspacePreset = useDockviewStore((s) => s.activePreset);
+  // MARKER_GAMMA-MENU-REACTIVE: Reactive selectors for menu checkmarks that toggle independently
+  const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
+  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
+  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
+  // MARKER_GAMMA-MENU-REACTIVE2: View menu overlay + monitor zoom reactive selectors
+  const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
+  const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
+  const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
+  const monitorZoom = useCutEditorStore((s) => s.monitorZoom);
+  // MARKER_GAMMA-MENU-REACTIVE3: Window menu reactive selectors
+  const activeTimelineId = useCutEditorStore((s) => s.timelineId);
+  const visibleMarkerKinds = useDockviewStore((s) => s.visibleMarkerKinds);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -507,21 +521,21 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
         { label: 'Monitor Zoom', submenu: [
           ...([0, 50, 75, 100, 150, 200] as const).map((z) => ({
-            label: `${store.getState().monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
+            label: `${monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
             action: () => store.getState().setMonitorZoom(z),
           })),
         ]},
         { label: 'Overlays', submenu: [
-          { label: `${store.getState().showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
-          { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
+          { label: `${showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
+          { label: `${showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
           { separator: true },
-          { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
+          { label: `${showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
           { label: 'Marker Overlay', submenu: [
             ...([
               ['favorite', 'Favorites'],
@@ -533,10 +547,16 @@ export default function MenuBar() {
               ['bpm_script', 'BPM Script'],
               ['sync_point', 'Sync Points'],
             ] as const).map(([kind, label]) => ({
-              label: `${dockStore.getState().isMarkerKindVisible(kind) ? '\u2713 ' : '  '}${label}`,
+              label: `${visibleMarkerKinds.has(kind) ? '\u2713 ' : '  '}${label}`,
               action: () => dockStore.getState().toggleMarkerKind(kind),
             })),
           ]},
+        ]},
+        // MARKER_GAMMA-CLIP-LABEL-MODE: FCP7 #45 — cycle clip display (Name/Filename/Color)
+        { label: 'Clip Label', submenu: [
+          { label: `${clipLabelMode === 'name' ? '\u2713 ' : '  '}Name`, action: () => store.getState().setClipLabelMode('name') },
+          { label: `${clipLabelMode === 'filename' ? '\u2713 ' : '  '}Filename`, action: () => store.getState().setClipLabelMode('filename') },
+          { label: `${clipLabelMode === 'color' ? '\u2713 ' : '  '}Color`, action: () => store.getState().setClipLabelMode('color') },
         ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
@@ -699,7 +719,7 @@ export default function MenuBar() {
           const clipId = useSelectionStore.getState().selectedClipId;
           if (clipId) store.getState().toggleClipEnabled(clipId);
         }, disabled: !useSelectionStore.getState().selectedClipId },
-        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
+        { label: `${linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
@@ -813,7 +833,7 @@ export default function MenuBar() {
           { label: 'End on Edit', action: () => setTransitionAlignment('end') },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
         { label: 'Insert Tracks...', action: () => store.getState().setShowInsertTracksDialog(true) },
         { label: 'Delete Tracks...', action: () => store.getState().setShowDeleteTracksDialog(true) },
@@ -843,11 +863,11 @@ export default function MenuBar() {
       label: 'Window',
       items: [
         { label: 'Workspaces', submenu: [
-          { label: 'Editing', shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
-          { label: 'Color', shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
-          { label: 'Audio', shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
-          { label: 'Multicam', shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
-          { label: 'Custom', shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
+          { label: `${activeWorkspacePreset === 'editing' ? '\u2713 ' : '  '}Editing`, shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
+          { label: `${activeWorkspacePreset === 'color' ? '\u2713 ' : '  '}Color`, shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
+          { label: `${activeWorkspacePreset === 'audio' ? '\u2713 ' : '  '}Audio`, shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
+          { label: `${activeWorkspacePreset === 'multicam' ? '\u2713 ' : '  '}Multicam`, shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
+          { label: `${activeWorkspacePreset === 'custom' ? '\u2713 ' : '  '}Custom`, shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
           { separator: true },
           { label: 'Save Workspace...', action: () => {
             const api = dockStore.getState().apiRef;
@@ -947,7 +967,7 @@ export default function MenuBar() {
         { label: 'Timelines', submenu: (() => {
           const tabs = store.getState().timelineTabs || [];
           return tabs.map((t: { id: string; label: string }) => ({
-            label: `${store.getState().timelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
+            label: `${activeTimelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
             action: () => {
               const s = store.getState();
               const idx = s.timelineTabs.findIndex((tab: { id: string }) => tab.id === t.id);
