@@ -52,6 +52,7 @@ export default function StatusBar() {
   const selectedClipCount = useSelectionStore((s) => s.selectedClipIds.size);
   const activePreset = useDockviewStore((s) => s.activePreset);
   const renderProgress = useCutEditorStore((s) => s.renderProgress);
+  const proxyMode = useCutEditorStore((s) => s.proxyMode);
   // MARKER_GAMMA-SB2: Sequence name from timelineId
   const timelineId = useCutEditorStore((s) => s.timelineId);
   const timelineTabs = useCutEditorStore((s) => s.timelineTabs);
@@ -99,6 +100,12 @@ export default function StatusBar() {
       <span>Zoom {zoomPct}</span>
       <span style={SEP}>|</span>
       <span>{fpsLabel}</span>
+      {/* MARKER_GAMMA-SB-PROXY: proxy mode badge — visible reminder when not at full res */}
+      {proxyMode !== 'full' && (
+        <span style={{ color: '#666', letterSpacing: 1, textTransform: 'uppercase', fontSize: 8 }}>
+          {proxyMode}
+        </span>
+      )}
       <span style={SEP}>|</span>
       <span style={{ textTransform: 'capitalize' }}>{activePreset}</span>
 
