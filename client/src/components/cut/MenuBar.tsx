@@ -218,6 +218,9 @@ export default function MenuBar() {
   const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
   const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
   const monitorZoom = useCutEditorStore((s) => s.monitorZoom);
+  // MARKER_GAMMA-MENU-REACTIVE3: Window menu reactive selectors
+  const activeTimelineId = useCutEditorStore((s) => s.timelineId);
+  const visibleMarkerKinds = useDockviewStore((s) => s.visibleMarkerKinds);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -545,7 +548,7 @@ export default function MenuBar() {
               ['bpm_script', 'BPM Script'],
               ['sync_point', 'Sync Points'],
             ] as const).map(([kind, label]) => ({
-              label: `${dockStore.getState().isMarkerKindVisible(kind) ? '\u2713 ' : '  '}${label}`,
+              label: `${visibleMarkerKinds.has(kind) ? '\u2713 ' : '  '}${label}`,
               action: () => dockStore.getState().toggleMarkerKind(kind),
             })),
           ]},
@@ -978,7 +981,7 @@ export default function MenuBar() {
         { label: 'Timelines', submenu: (() => {
           const tabs = store.getState().timelineTabs || [];
           return tabs.map((t: { id: string; label: string }) => ({
-            label: `${store.getState().timelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
+            label: `${activeTimelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
             action: () => {
               const s = store.getState();
               const idx = s.timelineTabs.findIndex((tab: { id: string }) => tab.id === t.id);
