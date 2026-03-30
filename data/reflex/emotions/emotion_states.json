@@ -1376,14 +1376,14 @@
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 4.599055376537186e-10,
-    "trust": 1.3540607380455595e-07,
+    "curiosity": 1.6918979223288784e-10,
+    "trust": 5.720906618242489e-08,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 48,
+    "usage_count": 50,
     "success_count": 6,
-    "failure_count": 42,
-    "last_updated": 1774613713.3922062
+    "failure_count": 44,
+    "last_updated": 1774763605.673069
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -2377,36 +2377,36 @@
   },
   "task_board": {
     "tool_id": "task_board",
-    "curiosity": 1.0530617357553813e-20,
-    "trust": 0.1664123706518631,
+    "curiosity": 5.242885663363464e-22,
+    "trust": 0.16641237065186745,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 97,
-    "success_count": 16,
-    "failure_count": 81,
-    "last_updated": 1774613713.41081
+    "usage_count": 103,
+    "success_count": 17,
+    "failure_count": 86,
+    "last_updated": 1774763605.694803
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 3.2632478610144014e-32,
-    "trust": 0.9999999999870637,
+    "curiosity": 7.281290178321645e-33,
+    "trust": 0.9999999999920555,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 150,
-    "success_count": 150,
+    "usage_count": 153,
+    "success_count": 153,
     "failure_count": 0,
-    "last_updated": 1774673801.8352818
+    "last_updated": 1774763605.685992
   },
   "Read": {
     "tool_id": "Read",
-    "curiosity": 0.0003353501304664781,
-    "trust": 0.15299768557717924,
+    "curiosity": 0.00020342697805520653,
+    "trust": 0.09944849562516651,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 21,
+    "usage_count": 22,
     "success_count": 5,
-    "failure_count": 16,
-    "last_updated": 1774613713.3936908
+    "failure_count": 17,
+    "last_updated": 1774763605.673955
   },
   "Edit": {
     "tool_id": "Edit",
