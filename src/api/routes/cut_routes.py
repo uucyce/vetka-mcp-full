@@ -1712,6 +1712,7 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _paste_safe_keys = {
                 "color_correction", "motion", "speed", "reverse", "maintain_pitch",
                 "transition", "transition_out", "keyframes", "effects",
+                "name",  # MARKER_INLINE-RENAME: user-editable clip label
             }
             value = op.get("value")
             if "." in key:
