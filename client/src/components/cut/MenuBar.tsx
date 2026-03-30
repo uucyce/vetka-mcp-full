@@ -207,6 +207,8 @@ export default function MenuBar() {
   const dockStore = useDockviewStore;
   // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
   const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
+  // MARKER_GAMMA-WS-CHECKMARK: Reactive active workspace preset for Window > Workspaces checkmarks
+  const activeWorkspacePreset = useDockviewStore((s) => s.activePreset);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -863,11 +865,11 @@ export default function MenuBar() {
       label: 'Window',
       items: [
         { label: 'Workspaces', submenu: [
-          { label: 'Editing', shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
-          { label: 'Color', shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
-          { label: 'Audio', shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
-          { label: 'Multicam', shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
-          { label: 'Custom', shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
+          { label: `${activeWorkspacePreset === 'editing' ? '\u2713 ' : '  '}Editing`, shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
+          { label: `${activeWorkspacePreset === 'color' ? '\u2713 ' : '  '}Color`, shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
+          { label: `${activeWorkspacePreset === 'audio' ? '\u2713 ' : '  '}Audio`, shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
+          { label: `${activeWorkspacePreset === 'multicam' ? '\u2713 ' : '  '}Multicam`, shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
+          { label: `${activeWorkspacePreset === 'custom' ? '\u2713 ' : '  '}Custom`, shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
           { separator: true },
           { label: 'Save Workspace...', action: () => {
             const api = dockStore.getState().apiRef;
