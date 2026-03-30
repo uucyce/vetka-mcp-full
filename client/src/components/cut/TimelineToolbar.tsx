@@ -72,6 +72,13 @@ function ChainIcon({ active }: { active: boolean }) {
   );
 }
 
+// MARKER_GAMMA-TOOLBAR-TC-MODE: respect timecodeDisplayMode for I/O timecode display
+function fmtTimeDisplay(sec: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
+  if (mode === 'frames') return `${Math.round(sec * fps)}f`;
+  if (mode === 'seconds') return `${sec.toFixed(2)}s`;
+  return formatTimecode(sec, fps);
+}
+
 const ZOOM_SLIDER: CSSProperties = {
   width: 80,
   height: 3,
@@ -119,6 +126,8 @@ export default function TimelineToolbar() {
   const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
   const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
   const fps = useCutEditorStore((s) => s.projectFramerate ?? 25);
+  // MARKER_GAMMA-TOOLBAR-TC-MODE: respect timecodeDisplayMode for I/O display
+  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
@@ -199,10 +208,10 @@ export default function TimelineToolbar() {
           display: 'flex', gap: 6,
         }}>
           {sequenceMarkIn != null && (
-            <span title="Mark In">I: {formatTimecode(sequenceMarkIn, fps)}</span>
+            <span title="Mark In">I: {fmtTimeDisplay(sequenceMarkIn, fps, timecodeDisplayMode)}</span>
           )}
           {sequenceMarkOut != null && (
-            <span title="Mark Out">O: {formatTimecode(sequenceMarkOut, fps)}</span>
+            <span title="Mark Out">O: {fmtTimeDisplay(sequenceMarkOut, fps, timecodeDisplayMode)}</span>
           )}
         </span>
       )}
