@@ -96,6 +96,8 @@ export type CutHotkeyAction =
   | 'addDefaultTransition'
   // MARKER_AUDIO_XFADE: Audio crossfade
   | 'addAudioTransition'
+  // MARKER_LOOP_HOTKEY: Loop playback toggle
+  | 'toggleLoopPlayback'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
@@ -248,6 +250,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   splitEditJCut:       ['timeline'],
   addDefaultTransition:['timeline'],
   addAudioTransition:  ['timeline'],
+  toggleLoopPlayback:  'global',
 
   // Global — always fire
   undo:                'global',
@@ -349,6 +352,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   goToOut:           'Shift+o',
   markClip:          'x',
   playInToOut:       'Shift+\\',
+  toggleLoopPlayback: 'Ctrl+l',
   // Sequence operations
   liftClip:          ';',
   extractClip:       "'",
@@ -488,6 +492,7 @@ export const FCP7_PRESET: HotkeyMap = {
   clearInOut:        'Alt+x',
   markClip:          'x',
   playInToOut:       'Ctrl+\\',
+  toggleLoopPlayback: 'Ctrl+l',
   // Sequence operations (FCP7 Ch.32)
   liftClip:          ';',
   extractClip:       "'",
@@ -835,6 +840,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
+  { action: 'toggleLoopPlayback', label: 'Toggle Loop Playback (Ctrl+L)', group: 'Playback' },
   // Sequence operations
   { action: 'liftClip', label: 'Lift (leave gap)', group: 'Sequence' },
   { action: 'extractClip', label: 'Extract (close gap)', group: 'Sequence' },
