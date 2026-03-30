@@ -213,6 +213,11 @@ export default function MenuBar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
   const linkedSelection = useSelectionStore((s) => s.linkedSelection);
+  // MARKER_GAMMA-MENU-REACTIVE2: View menu overlay + monitor zoom reactive selectors
+  const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
+  const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
+  const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
+  const monitorZoom = useCutEditorStore((s) => s.monitorZoom);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -514,21 +519,21 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
         { label: 'Monitor Zoom', submenu: [
           ...([0, 50, 75, 100, 150, 200] as const).map((z) => ({
-            label: `${store.getState().monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
+            label: `${monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
             action: () => store.getState().setMonitorZoom(z),
           })),
         ]},
         { label: 'Overlays', submenu: [
-          { label: `${store.getState().showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
-          { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
+          { label: `${showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
+          { label: `${showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
           { separator: true },
-          { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
+          { label: `${showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
           { label: 'Marker Overlay', submenu: [
             ...([
               ['favorite', 'Favorites'],
