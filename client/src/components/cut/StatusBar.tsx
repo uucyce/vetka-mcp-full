@@ -19,6 +19,13 @@ function fmtTC(sec: number, fps: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
 }
 
+// MARKER_GAMMA-SB-TC-MODE: Format seconds according to timecodeDisplayMode
+function fmtTime(sec: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
+  if (mode === 'frames') return `${Math.round(sec * fps)}f`;
+  if (mode === 'seconds') return `${sec.toFixed(2)}s`;
+  return fmtTC(sec, fps);
+}
+
 // Format duration as M:SS or H:MM:SS
 function fmtDur(sec: number): string {
   if (sec <= 0) return '0:00';
@@ -34,6 +41,8 @@ const SEP = { color: '#333' } as const;
 export default function StatusBar() {
   const zoom = useCutEditorStore((s) => s.zoom);
   const fps = useCutEditorStore((s) => s.projectFramerate);
+  // MARKER_GAMMA-SB-TC-MODE: respect user's display mode choice from TimelineDisplayControls
+  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const markIn = useCutEditorStore((s) => s.sequenceMarkIn);
   const markOut = useCutEditorStore((s) => s.sequenceMarkOut);
@@ -83,7 +92,7 @@ export default function StatusBar() {
 
       {/* MARKER_GAMMA-SB2: Current playhead timecode */}
       <span style={{ fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace', color: '#999', fontSize: 10 }}>
-        {fmtTC(currentTime, fpsVal)}
+        {fmtTime(currentTime, fpsVal, timecodeDisplayMode)}
       </span>
 
       <span style={SEP}>|</span>
@@ -142,9 +151,9 @@ export default function StatusBar() {
         <>
           <span style={SEP}>|</span>
           <span data-testid="mark-in-out" style={{ fontVariantNumeric: 'tabular-nums' }}>
-            IN {markIn != null ? fmtTC(markIn, fpsVal) : '—'}
+            IN {markIn != null ? fmtTime(markIn, fpsVal, timecodeDisplayMode) : '—'}
             {' '}
-            OUT {markOut != null ? fmtTC(markOut, fpsVal) : '—'}
+            OUT {markOut != null ? fmtTime(markOut, fpsVal, timecodeDisplayMode) : '—'}
           </span>
         </>
       )}
