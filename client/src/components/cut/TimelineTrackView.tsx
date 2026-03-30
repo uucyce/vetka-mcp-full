@@ -477,6 +477,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const syncSurface = useCutEditorStore((state) => state.syncSurface);
   // MARKER_DISPLAY-CTRL: display control flags
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
+  const clipLabelMode = useCutEditorStore((state) => state.clipLabelMode);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
   const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
@@ -2293,7 +2294,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                             textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
                           }}
                         >
-                          {basename(clip.source_path)}
+                          {/* MARKER_FCP7-CH45: clipLabelMode — name=no-ext, filename=full, color=hidden */}
+                          {clipLabelMode === 'color' ? '' : clipLabelMode === 'name'
+                            ? basename(clip.source_path).replace(/\.[^.]+$/, '')
+                            : basename(clip.source_path)}
                         </span>
                       ) : null}
 

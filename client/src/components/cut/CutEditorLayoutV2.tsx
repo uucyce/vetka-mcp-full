@@ -1325,6 +1325,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     toggleTimelineDisplayMode: () => {
       useCutEditorStore.getState().cycleTimelineDisplayMode();
     },
+    cycleClipLabelMode: () => {
+      useCutEditorStore.getState().cycleClipLabelMode();
+    },
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },

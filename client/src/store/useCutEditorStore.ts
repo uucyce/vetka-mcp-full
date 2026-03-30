@@ -582,6 +582,7 @@ interface CutEditorState {
   toggleShowClipLabels: () => void;
   toggleShowRubberBand: () => void;
   setClipLabelMode: (mode: 'name' | 'color' | 'filename') => void;
+  cycleClipLabelMode: () => void;  // MARKER_FCP7-CH45: cycles name→filename→color→name
   setTimecodeDisplayMode: (mode: 'timecode' | 'frames' | 'seconds') => void;
   toggleShowVideoTracks: () => void;
   toggleShowAudioTracks: () => void;
@@ -1552,6 +1553,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
   toggleShowRubberBand: () => set((s) => ({ showRubberBand: !s.showRubberBand })),
   setClipLabelMode: (mode) => set({ clipLabelMode: mode }),
+  cycleClipLabelMode: () => set((s) => {
+    const order: Array<'name' | 'filename' | 'color'> = ['name', 'filename', 'color'];
+    const next = order[(order.indexOf(s.clipLabelMode) + 1) % order.length];
+    return { clipLabelMode: next };
+  }),
   setTimecodeDisplayMode: (mode) => set({ timecodeDisplayMode: mode }),
   toggleShowVideoTracks: () => set((s) => ({ showVideoTracks: !s.showVideoTracks })),
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
