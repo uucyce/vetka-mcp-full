@@ -379,6 +379,8 @@ interface CutEditorState {
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
+  showFindDialog: boolean;          // MARKER_FCP7-FIND: Edit > Find overlay
+  findQuery: string;                // active search query for clip highlighting
   // === MARKER_TRIM_WINDOW: Trim Edit Window overlay (FCP7 Ch.45-46) ===
   trimEditActive: boolean;          // is overlay open
   trimEditClipId: string | null;    // outgoing clip at edit point
@@ -535,6 +537,8 @@ interface CutEditorState {
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
+  setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
+  setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -791,6 +795,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
   showSpeedControl: false,          // MARKER_B11
+  showFindDialog: false,            // MARKER_FCP7-FIND
+  findQuery: '',                    // MARKER_FCP7-FIND
   // MARKER_TRIM_WINDOW: Trim Edit Window defaults
   trimEditActive: false,
   trimEditClipId: null,
@@ -1373,6 +1379,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
+  setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
+  setFindQuery: (query) => set({ findQuery: query }),
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),
   setRenderProgress: (p) => set({ renderProgress: p }),

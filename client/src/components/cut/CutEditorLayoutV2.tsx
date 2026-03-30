@@ -32,6 +32,7 @@ import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
+import FindDialog from './FindDialog';
 import PasteAttributesDialog from './PasteAttributesDialog';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
@@ -1328,6 +1329,9 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     cycleClipLabelMode: () => {
       useCutEditorStore.getState().cycleClipLabelMode();
     },
+    findDialog: () => {
+      useCutEditorStore.getState().setShowFindDialog(true);
+    },
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
@@ -1683,6 +1687,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
+      {/* MARKER_FCP7-FIND: Find dialog (⌘F) */}
+      <FindDialog />
       {/* MARKER_TRIM_WINDOW: Floating trim edit overlay (FCP7 Ch.45-46) */}
       <TrimEditWindow />
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
