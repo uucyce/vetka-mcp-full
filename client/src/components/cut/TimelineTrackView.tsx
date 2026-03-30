@@ -478,6 +478,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_DISPLAY-CTRL: display control flags
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const clipLabelMode = useCutEditorStore((state) => state.clipLabelMode);
+  const timecodeDisplayMode = useCutEditorStore((state) => state.timecodeDisplayMode);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
   const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
@@ -1792,6 +1793,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             scrollLeft={scrollLeft}
             totalWidth={containerWidth - LANE_HEADER_WIDTH}
             fps={projectFramerate}
+            timecodeDisplayMode={timecodeDisplayMode}
             rulerRef={rulerRef}
             onSeek={seek}
             onScrubStart={handleRulerScrubStart}
