@@ -280,6 +280,8 @@ interface CutEditorState {
   filterClipboard: ClipEffects | null;  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste Filters clipboard
   collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
+  masterVolume: number;              // MARKER_AUDIO-MASTER: master fader 0.0–1.5 (1.0 = unity)
+  masterPan: number;                 // MARKER_AUDIO-MASTER: master pan -1.0–1.0 (0 = center)
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
@@ -478,6 +480,8 @@ interface CutEditorState {
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   toggleClipEnabled: (clipId: string) => void; // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26
   setLaneVolume: (laneId: string, volume: number) => void;
+  setMasterVolume: (volume: number) => void;       // MARKER_AUDIO-MASTER
+  setMasterPan: (pan: number) => void;             // MARKER_AUDIO-MASTER
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
   // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
@@ -724,6 +728,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   filterClipboard: null,
   collapsedTracks: new Set<string>(),
   laneVolumes: {},
+  masterVolume: 1.0,
+  masterPan: 0,
   lanePans: {},
   snapEnabled: true,
 
@@ -976,6 +982,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         [laneId]: Math.max(0, Math.min(1.5, volume)),
       },
     })),
+  setMasterVolume: (volume) =>
+    set({ masterVolume: Math.max(0, Math.min(1.5, volume)) }),
+  setMasterPan: (pan) =>
+    set({ masterPan: Math.max(-1, Math.min(1, pan)) }),
   // MARKER_RECON_21: Persist pan to store (was local useState in AudioMixer)
   setLanePan: (laneId, pan) =>
     set((state) => ({
