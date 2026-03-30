@@ -505,7 +505,8 @@ interface CutEditorState {
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
   // MARKER_TRANSITION: Default transition (FCP7 Ch.47 ⌘T)
-  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point
+  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point (any lane)
+  addAudioTransition: () => void;               // MARKER_AUDIO_XFADE: Add crossfade at nearest audio edit point
   // MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame (F) + Reverse Match Frame (Shift+F)
   matchFrame: () => void;       // playhead → find clip → open source at matching timecode
   reverseMatchFrame: () => void; // source monitor position → seek timeline to matching clip
@@ -1329,6 +1330,34 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       lane.clips.forEach((clip) => {
         const clipEnd = clip.start_sec + clip.duration_sec;
         const dist = Math.abs(clipEnd - currentTime);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestClipId = clip.clip_id;
+        }
+      });
+    });
+
+    if (!bestClipId || bestDist > 2.0) return;
+
+    void get().applyTimelineOps([{
+      op: 'set_transition',
+      clip_id: bestClipId,
+      transition: { type: 'cross_dissolve', duration_sec: defaultDuration, alignment: 'center' },
+    }]);
+  },
+
+  // MARKER_AUDIO_XFADE: Audio-specific crossfade — targets only audio lanes (acrossfade in render)
+  addAudioTransition: () => {
+    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
+    const defaultDuration = 30 / (projectFramerate || 25);
+    let bestDist = Infinity;
+    let bestClipId = '';
+
+    lanes.forEach((lane) => {
+      if (lockedLanes.has(lane.lane_id)) return;
+      if (!lane.lane_type.startsWith('audio')) return;
+      lane.clips.forEach((clip) => {
+        const dist = Math.abs((clip.start_sec + clip.duration_sec) - currentTime);
         if (dist < bestDist) {
           bestDist = dist;
           bestClipId = clip.clip_id;
