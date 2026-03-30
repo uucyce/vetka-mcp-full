@@ -1330,7 +1330,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       useCutEditorStore.getState().cycleClipLabelMode();
     },
     findDialog: () => {
-      useCutEditorStore.getState().setShowFindDialog(true);
+      const s = useCutEditorStore.getState();
+      s.setShowFindDialog(!s.showFindDialog);
     },
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
