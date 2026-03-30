@@ -539,6 +539,12 @@ export default function MenuBar() {
             })),
           ]},
         ]},
+        // MARKER_GAMMA-CLIP-LABEL-MODE: FCP7 #45 — cycle clip display (Name/Filename/Color)
+        { label: 'Clip Label', submenu: [
+          { label: `${store.getState().clipLabelMode === 'name' ? '\u2713 ' : '  '}Name`, action: () => store.getState().setClipLabelMode('name') },
+          { label: `${store.getState().clipLabelMode === 'filename' ? '\u2713 ' : '  '}Filename`, action: () => store.getState().setClipLabelMode('filename') },
+          { label: `${store.getState().clipLabelMode === 'color' ? '\u2713 ' : '  '}Color`, action: () => store.getState().setClipLabelMode('color') },
+        ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
         { label: 'Show Program Monitor', shortcut: '⌘2', action: () => focusPanel('program') },
