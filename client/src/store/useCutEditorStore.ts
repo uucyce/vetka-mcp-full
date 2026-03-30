@@ -496,6 +496,8 @@ interface CutEditorState {
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
   closeGap: () => void;                          // Find and remove gaps in targeted lanes
   extendEdit: () => void;                        // Extend nearest edit to playhead
+  // MARKER_FCP7-CH15: Insert Gap (FCP7 Sequence > Insert Gap, Cmd+Shift+G)
+  insertGap: () => void;                         // Push clips at/after playhead forward by In/Out duration or 2s
   // MARKER_TD4: Numeric trim — trim selected clip's nearest edge by N frames
   numericTrimSelected: (frames: number) => void;
   // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
@@ -1178,6 +1180,25 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: newStart });
         }
         cursor = (newStart < clip.start_sec ? newStart : clip.start_sec) + clip.duration_sec;
+      }
+    }
+    if (ops.length) void get().applyTimelineOps(ops);
+  },
+  // MARKER_FCP7-CH15: Insert Gap — push all clips at or after playhead forward
+  // Duration = sequenceMarkOut - sequenceMarkIn if both set, else 2 seconds
+  insertGap: () => {
+    const { lanes, currentTime, targetedLanes, lockedLanes, sequenceMarkIn, sequenceMarkOut } = get();
+    const gapDuration = (sequenceMarkIn != null && sequenceMarkOut != null && sequenceMarkOut > sequenceMarkIn)
+      ? sequenceMarkOut - sequenceMarkIn
+      : 2.0;
+    const ops: Array<Record<string, unknown>> = [];
+    for (const lane of lanes) {
+      if (lockedLanes.has(lane.lane_id)) continue;
+      if (targetedLanes.size > 0 && !targetedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        if (clip.start_sec >= currentTime) {
+          ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: clip.start_sec + gapDuration });
+        }
       }
     }
     if (ops.length) void get().applyTimelineOps(ops);

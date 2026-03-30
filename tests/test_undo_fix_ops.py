@@ -580,3 +580,74 @@ class TestMixerStateMasterPan:
         from src.services.cut_audio_engine import MixerState
         ms = MixerState()
         assert ms.master_pan == 0.0
+
+
+# ─── insert_gap (via move_clip) ───
+# MARKER_FCP7-CH15: Insert Gap pushes clips forward via move_clip ops.
+# The actual insertGap logic is frontend-only — these tests verify that the
+# resulting move_clip ops are accepted by the backend and produce correct positions.
+
+class TestInsertGapViaMoveCLip:
+    def test_clips_after_playhead_shift_forward(self):
+        state = _make_state([
+            {"clip_id": "c1", "start_sec": 0.0, "duration_sec": 3.0, "source_path": "/a.mp4"},
+            {"clip_id": "c2", "start_sec": 5.0, "duration_sec": 2.0, "source_path": "/b.mp4"},
+            {"clip_id": "c3", "start_sec": 8.0, "duration_sec": 2.0, "source_path": "/c.mp4"},
+        ])
+        # Simulate insertGap at t=5.0 with 2s gap: c2, c3 move forward
+        new_state, applied = apply_ops(state, [
+            {"op": "move_clip", "clip_id": "c2", "lane_id": "v1", "start_sec": 7.0},
+            {"op": "move_clip", "clip_id": "c3", "lane_id": "v1", "start_sec": 10.0},
+        ])
+        pos = {c["clip_id"]: c["start_sec"] for c in _get_clips(new_state)}
+        assert pos["c1"] == 0.0   # unchanged — before playhead
+        assert pos["c2"] == 7.0   # shifted +2
+        assert pos["c3"] == 10.0  # shifted +2
+        assert len(applied) == 2
+
+    def test_clip_at_playhead_shifts_forward(self):
+        state = _make_state([
+            {"clip_id": "c1", "start_sec": 0.0, "duration_sec": 3.0, "source_path": "/a.mp4"},
+            {"clip_id": "c2", "start_sec": 3.0, "duration_sec": 2.0, "source_path": "/b.mp4"},
+        ])
+        # Playhead at 3.0 — clip starting exactly at playhead should move
+        new_state, _ = apply_ops(state, [
+            {"op": "move_clip", "clip_id": "c2", "lane_id": "v1", "start_sec": 5.0},
+        ])
+        pos = {c["clip_id"]: c["start_sec"] for c in _get_clips(new_state)}
+        assert pos["c1"] == 0.0
+        assert pos["c2"] == 5.0
+
+    def test_empty_timeline_no_ops(self):
+        state = _make_state([])
+        # No move_clip ops needed — empty timeline should not error
+        new_state, applied = apply_ops(state, [])
+        assert _get_clips(new_state) == []
+        assert applied == []
+
+    def test_gap_with_in_out_range_duration(self):
+        # Gap duration = markOut - markIn = 4.0 seconds
+        state = _make_state([
+            {"clip_id": "c1", "start_sec": 0.0, "duration_sec": 2.0, "source_path": "/a.mp4"},
+            {"clip_id": "c2", "start_sec": 2.0, "duration_sec": 3.0, "source_path": "/b.mp4"},
+        ])
+        new_state, _ = apply_ops(state, [
+            {"op": "move_clip", "clip_id": "c2", "lane_id": "v1", "start_sec": 6.0},  # 2.0 + 4.0
+        ])
+        pos = {c["clip_id"]: c["start_sec"] for c in _get_clips(new_state)}
+        assert pos["c1"] == 0.0
+        assert pos["c2"] == 6.0
+
+    def test_no_clips_before_playhead_all_shift(self):
+        state = _make_state([
+            {"clip_id": "c1", "start_sec": 5.0, "duration_sec": 2.0, "source_path": "/a.mp4"},
+            {"clip_id": "c2", "start_sec": 8.0, "duration_sec": 2.0, "source_path": "/b.mp4"},
+        ])
+        # Playhead at 0 — all clips shift
+        new_state, _ = apply_ops(state, [
+            {"op": "move_clip", "clip_id": "c1", "lane_id": "v1", "start_sec": 7.0},
+            {"op": "move_clip", "clip_id": "c2", "lane_id": "v1", "start_sec": 10.0},
+        ])
+        pos = {c["clip_id"]: c["start_sec"] for c in _get_clips(new_state)}
+        assert pos["c1"] == 7.0
+        assert pos["c2"] == 10.0
