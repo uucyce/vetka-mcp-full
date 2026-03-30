@@ -480,6 +480,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_DISPLAY-CTRL: display control flags
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const clipLabelMode = useCutEditorStore((state) => state.clipLabelMode);
+  const renamingClipId = useCutEditorStore((state) => state.renamingClipId);
+  const setRenamingClip = useCutEditorStore((state) => state.setRenamingClip);
   const timecodeDisplayMode = useCutEditorStore((state) => state.timecodeDisplayMode);
   const findQuery = useCutEditorStore((state) => state.findQuery);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
@@ -754,6 +756,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_UNDO-FIX-23: Delegates to store applyTimelineOps for consistent error handling + toast
   const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
     await useCutEditorStore.getState().applyTimelineOps(ops, opts);
+  }, []);
+
+  // MARKER_INLINE-RENAME: listen for cut:rename-clip-inline dispatched by Enter hotkey in CutEditorLayoutV2
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { clipId } = (e as CustomEvent<{ clipId: string }>).detail;
+      if (clipId) useCutEditorStore.getState().setRenamingClip(clipId);
+    };
+    window.addEventListener('cut:rename-clip-inline', handler);
+    return () => window.removeEventListener('cut:rename-clip-inline', handler);
   }, []);
 
   const resolveMarkerMediaPath = useCallback(
@@ -2325,26 +2337,69 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       ) : null}
 
                       {width > 40 && showClipNames ? (
-                        <span
-                          style={{
-                            position: 'relative',
-                            zIndex: 2,
-                            fontSize: 10,
-                            fontWeight: 500,
-                            color: '#fff',
-                            textOverflow: 'ellipsis',
-                            overflow: 'hidden',
-                            whiteSpace: 'nowrap',
-                            textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                            // MARKER_FCP7.EDIT2: Underline linked clip names (FCP7 p.592)
-                            textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
-                          }}
-                        >
-                          {/* MARKER_FCP7-CH45: clipLabelMode — name=no-ext, filename=full, color=hidden */}
-                          {clipLabelMode === 'color' ? '' : clipLabelMode === 'name'
-                            ? basename(clip.source_path).replace(/\.[^.]+$/, '')
-                            : basename(clip.source_path)}
-                        </span>
+                        renamingClipId === clip.clip_id ? (
+                          // MARKER_INLINE-RENAME: inline rename input — Enter commits, Esc cancels
+                          <input
+                            autoFocus
+                            defaultValue={clip.name ?? basename(clip.source_path).replace(/\.[^.]+$/, '')}
+                            style={{
+                              position: 'relative',
+                              zIndex: 10,
+                              fontSize: 10,
+                              fontWeight: 500,
+                              color: '#fff',
+                              background: 'rgba(0,0,0,0.7)',
+                              border: '1px solid rgba(255,255,255,0.4)',
+                              borderRadius: 2,
+                              padding: '0 4px',
+                              width: '90%',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                setRenamingClip(null);
+                                if (val) {
+                                  void applyTimelineOps([{ op: 'set_prop', clip_id: clip.clip_id, key: 'name', value: val }]);
+                                }
+                              } else if (e.key === 'Escape') {
+                                setRenamingClip(null);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              setRenamingClip(null);
+                              if (val) {
+                                void applyTimelineOps([{ op: 'set_prop', clip_id: clip.clip_id, key: 'name', value: val }]);
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              position: 'relative',
+                              zIndex: 2,
+                              fontSize: 10,
+                              fontWeight: 500,
+                              color: '#fff',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                              // MARKER_FCP7.EDIT2: Underline linked clip names (FCP7 p.592)
+                              textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
+                            }}
+                          >
+                            {/* MARKER_FCP7-CH45: clipLabelMode — name=no-ext, filename=full, color=hidden */}
+                            {/* MARKER_INLINE-RENAME: name mode prefers clip.name if set */}
+                            {clipLabelMode === 'color' ? '' : clipLabelMode === 'name'
+                              ? (clip.name ?? basename(clip.source_path).replace(/\.[^.]+$/, ''))
+                              : basename(clip.source_path)}
+                          </span>
+                        )
                       ) : null}
 
                       {/* MARKER_CAMELOT: PULSE Camelot key badge */}
