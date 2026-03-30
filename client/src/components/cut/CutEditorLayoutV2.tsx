@@ -1254,6 +1254,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     extractClip: () => useCutEditorStore.getState().extractClip(),
     closeGap: () => useCutEditorStore.getState().closeGap(),
     extendEdit: () => useCutEditorStore.getState().extendEdit(),
+    // MARKER_FCP7-CH15: Insert Gap (FCP7 Sequence > Insert Gap)
+    insertGap: () => useCutEditorStore.getState().insertGap(),
     // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
     splitEditLCut: () => useCutEditorStore.getState().splitEditLCut(),
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
