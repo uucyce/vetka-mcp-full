@@ -132,6 +132,7 @@ type HintStroke = {
   id: string;
   mode: BrushMode;
   size: number;
+  targetPlateId?: string;
   points: HintPoint[];
 };
 
@@ -393,6 +394,7 @@ type MatteSettings = {
 type MatteSeed = {
   id: string;
   mode: MatteSeedMode;
+  targetPlateId?: string;
   x: number;
   y: number;
   depth: number;
@@ -2440,11 +2442,24 @@ function App() {
   };
 
   const beginStroke = (clientX: number, clientY: number) => {
+    if (!selectedAuthoritativeObjectPlate) {
+      setAssistStatus("Select an authoritative object layer before brush cleanup.");
+      return;
+    }
     const point = pointerToNormalized(clientX, clientY);
     if (!point) return;
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     drawingStrokeIdRef.current = id;
-    setHintStrokes((prev) => [...prev, { id, mode: brushMode, size: brushSize, points: [point] }]);
+    setHintStrokes((prev) => [
+      ...prev,
+      {
+        id,
+        mode: brushMode,
+        size: brushSize,
+        targetPlateId: selectedAuthoritativeObjectPlate.id,
+        points: [point],
+      },
+    ]);
   };
 
   const extendStroke = (clientX: number, clientY: number) => {
@@ -2467,16 +2482,35 @@ function App() {
     drawingStrokeIdRef.current = null;
   };
 
-  const appendMatteSeed = (point: HintPoint, mode: MatteSeedMode = matteSeedMode) => {
+  const appendMatteSeed = (
+    point: HintPoint,
+    mode: MatteSeedMode = matteSeedMode,
+    targetPlateId: string | null = selectedAuthoritativeObjectPlate?.id ?? null,
+  ) => {
+    if (!targetPlateId) {
+      setAssistStatus("Select an authoritative object layer before matte cleanup.");
+      return;
+    }
     const depth = computeResolvedDepth(sample, focus, manual, point.x, point.y, realDepth);
     setMatteSeeds((prev) => [
       ...prev,
-      { id: `matte-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, mode, x: point.x, y: point.y, depth },
+      {
+        id: `matte-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        mode,
+        targetPlateId,
+        x: point.x,
+        y: point.y,
+        depth,
+      },
     ]);
     setMatteSettings((prev) => ({ ...prev, visible: true }));
   };
 
   const addMatteSeed = (clientX: number, clientY: number) => {
+    if (!selectedAuthoritativeObjectPlate) {
+      setAssistStatus("Select an authoritative object layer before matte cleanup.");
+      return;
+    }
     const point = pointerToNormalized(clientX, clientY);
     if (!point) return;
     appendMatteSeed(point);
@@ -2650,8 +2684,16 @@ function App() {
         return mode;
       },
       clearManualHints: () => {
-        setHintStrokes([]);
-        return 0;
+        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
+        const nextCount = targetPlateId
+          ? hintStrokes.filter((stroke) => stroke.targetPlateId === targetPlateId).length
+          : 0;
+        setHintStrokes((prev) =>
+          targetPlateId
+            ? prev.filter((stroke) => stroke.targetPlateId !== targetPlateId)
+            : [],
+        );
+        return nextCount;
       },
       exportManualHints: () => buildManualHintsContract(),
       importManualHints: (payload: string | ManualHintsContract) => {
@@ -2722,16 +2764,43 @@ function App() {
       movePlate: (plateId: string, direction: -1 | 1) => movePlate(plateId, direction),
       nudgePlateZ: (plateId: string, delta: number) => nudgePlateZ(plateId, delta),
       clearMatteSeeds: () => {
-        setMatteSeeds([]);
-        return 0;
+        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
+        const nextCount = targetPlateId
+          ? matteSeeds.filter((seed) => seed.targetPlateId === targetPlateId).length
+          : 0;
+        setMatteSeeds((prev) =>
+          targetPlateId
+            ? prev.filter((seed) => seed.targetPlateId !== targetPlateId)
+            : [],
+        );
+        return nextCount;
       },
       appendMatteSeed: (x: number, y: number, mode = matteSeedMode) => {
-        appendMatteSeed({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) }, mode);
-        return matteSeeds.length + 1;
+        const beforeCount = matteSeeds.length;
+        appendMatteSeed({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) }, mode, selectedAuthoritativeObjectPlate?.id ?? null);
+        return selectedAuthoritativeObjectPlate ? beforeCount + 1 : beforeCount;
       },
       removeLastMatteSeed: () => {
-        setMatteSeeds((prev) => prev.slice(0, -1));
-        return Math.max(0, matteSeeds.length - 1);
+        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
+        let removed = false;
+        let nextCount = 0;
+        setMatteSeeds((prev) => {
+          const next: MatteSeed[] = [];
+          for (let index = prev.length - 1; index >= 0; index -= 1) {
+            const seed = prev[index];
+            if (removed || (targetPlateId && seed.targetPlateId !== targetPlateId)) {
+              next.push(seed);
+              continue;
+            }
+            removed = true;
+          }
+          const ordered = next.reverse();
+          nextCount = targetPlateId
+            ? ordered.filter((seed) => seed.targetPlateId === targetPlateId).length
+            : ordered.length;
+          return removed ? ordered : prev;
+        });
+        return nextCount;
       },
       toggleMatteOverlay: () => {
         setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }));
@@ -2934,6 +3003,21 @@ function App() {
   const selectedDraftPlate = selectedInspectorPlate && selectedPlateAuthority === "draft" ? selectedInspectorPlate : null;
   const selectedAuthoritativeObjectPlate =
     selectedInspectorPlate && selectedPlateAuthority === "object" ? selectedInspectorPlate : null;
+  const selectedCleanupTargetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
+  const selectedTargetHintStrokeCount = useMemo(
+    () =>
+      selectedCleanupTargetPlateId
+        ? hintStrokes.filter((stroke) => stroke.targetPlateId === selectedCleanupTargetPlateId).length
+        : 0,
+    [hintStrokes, selectedCleanupTargetPlateId],
+  );
+  const selectedTargetMatteSeedCount = useMemo(
+    () =>
+      selectedCleanupTargetPlateId
+        ? matteSeeds.filter((seed) => seed.targetPlateId === selectedCleanupTargetPlateId).length
+        : 0,
+    [matteSeeds, selectedCleanupTargetPlateId],
+  );
   const guidePlateSuggestion = useMemo<GuidePlateSuggestion | null>(() => {
     if (groupBoxes.length === 0 || inspectorPlates.length === 0) return null;
 
@@ -3307,8 +3391,18 @@ function App() {
                 <div className="panel-subtitle">Seed add/subtract/protect regions directly on the stage</div>
               </div>
               <div className="panel-header-actions">
-                <button className="ghost-button" type="button" onClick={() => setMatteSeeds([])}>
-                  clear
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() =>
+                    setMatteSeeds((prev) =>
+                      selectedCleanupTargetPlateId
+                        ? prev.filter((seed) => seed.targetPlateId !== selectedCleanupTargetPlateId)
+                        : [],
+                    )
+                  }
+                >
+                  {selectedCleanupTargetPlateId ? "clear target" : "clear"}
                 </button>
                 <button className="ghost-button" type="button" onClick={closeCleanupContext}>
                   done
@@ -3348,7 +3442,7 @@ function App() {
               </div>
             ) : null}
             <div className="mini-stat-grid">
-              <MiniStat label="seeds" value={`${matteSeeds.length}`} />
+              <MiniStat label="seeds" value={`${selectedCleanupTargetPlateId ? selectedTargetMatteSeedCount : matteSeeds.length}`} />
               <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
               <MiniStat label="mode" value={matteSeedMode} />
             </div>
@@ -3363,8 +3457,18 @@ function App() {
                 <div className="panel-subtitle">Paint closer, farther, protect, or erase directly on the stage</div>
               </div>
               <div className="panel-header-actions">
-                <button className="ghost-button" type="button" onClick={() => setHintStrokes([])}>
-                  clear
+                <button
+                  className="ghost-button"
+                  type="button"
+                  onClick={() =>
+                    setHintStrokes((prev) =>
+                      selectedCleanupTargetPlateId
+                        ? prev.filter((stroke) => stroke.targetPlateId !== selectedCleanupTargetPlateId)
+                        : [],
+                    )
+                  }
+                >
+                  {selectedCleanupTargetPlateId ? "clear target" : "clear"}
                 </button>
                 <button className="ghost-button" type="button" onClick={closeCleanupContext}>
                   done
@@ -3393,7 +3497,7 @@ function App() {
               </div>
             ) : null}
             <div className="mini-stat-grid">
-              <MiniStat label="strokes" value={`${hintStrokes.length}`} />
+              <MiniStat label="strokes" value={`${selectedCleanupTargetPlateId ? selectedTargetHintStrokeCount : hintStrokes.length}`} />
               <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
               <MiniStat label="farther" value={formatPct(proxyMaps.fartherCoverage * 100)} />
               <MiniStat label="protect" value={formatPct(proxyMaps.protectCoverage * 100)} />
