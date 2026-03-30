@@ -1257,6 +1257,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     splitEditLCut: () => useCutEditorStore.getState().splitEditLCut(),
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
+    addAudioTransition: () => useCutEditorStore.getState().addAudioTransition(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
 
