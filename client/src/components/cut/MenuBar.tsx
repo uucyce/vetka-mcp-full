@@ -209,6 +209,10 @@ export default function MenuBar() {
   const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
   // MARKER_GAMMA-WS-CHECKMARK: Reactive active workspace preset for Window > Workspaces checkmarks
   const activeWorkspacePreset = useDockviewStore((s) => s.activePreset);
+  // MARKER_GAMMA-MENU-REACTIVE: Reactive selectors for menu checkmarks that toggle independently
+  const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
+  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
+  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -543,9 +547,9 @@ export default function MenuBar() {
         ]},
         // MARKER_GAMMA-CLIP-LABEL-MODE: FCP7 #45 — cycle clip display (Name/Filename/Color)
         { label: 'Clip Label', submenu: [
-          { label: `${store.getState().clipLabelMode === 'name' ? '\u2713 ' : '  '}Name`, action: () => store.getState().setClipLabelMode('name') },
-          { label: `${store.getState().clipLabelMode === 'filename' ? '\u2713 ' : '  '}Filename`, action: () => store.getState().setClipLabelMode('filename') },
-          { label: `${store.getState().clipLabelMode === 'color' ? '\u2713 ' : '  '}Color`, action: () => store.getState().setClipLabelMode('color') },
+          { label: `${clipLabelMode === 'name' ? '\u2713 ' : '  '}Name`, action: () => store.getState().setClipLabelMode('name') },
+          { label: `${clipLabelMode === 'filename' ? '\u2713 ' : '  '}Filename`, action: () => store.getState().setClipLabelMode('filename') },
+          { label: `${clipLabelMode === 'color' ? '\u2713 ' : '  '}Color`, action: () => store.getState().setClipLabelMode('color') },
         ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
@@ -708,7 +712,7 @@ export default function MenuBar() {
           const clipId = useSelectionStore.getState().selectedClipId;
           if (clipId) store.getState().toggleClipEnabled(clipId);
         }, disabled: !useSelectionStore.getState().selectedClipId },
-        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
+        { label: `${linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
@@ -822,7 +826,7 @@ export default function MenuBar() {
           { label: 'End on Edit', action: () => setTransitionAlignment('end') },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
         { label: 'Insert Tracks...', action: () => store.getState().setShowInsertTracksDialog(true) },
         { label: 'Delete Tracks...', action: () => store.getState().setShowDeleteTracksDialog(true) },
