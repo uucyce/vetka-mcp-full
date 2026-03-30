@@ -529,6 +529,7 @@ interface CutEditorState {
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop: boolean) => void;
+  toggleLoopPlayback: () => void;               // MARKER_LOOP_HOTKEY: Ctrl+L
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show: boolean) => void;
   setShowDeleteTracksDialog: (show: boolean) => void;
@@ -1419,6 +1420,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop) => set({ loopPlayback: loop }),
+  toggleLoopPlayback: () => set((s) => ({ loopPlayback: !s.loopPlayback })),
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
   setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
