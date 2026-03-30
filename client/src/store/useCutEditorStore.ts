@@ -1435,7 +1435,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
   renderSelection: async () => {
-    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, masterPan, soloLanes, mutedLanes } = get();
     if (!sandboxRoot || !projectId) {
       console.warn('[CUT] renderSelection: no project session');
       return;
@@ -1453,7 +1453,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         volume: vol,
         mute: mutedLanes.has(laneId),
         solo: soloLanes.has(laneId),
-        pan: 0,
+        pan: get().lanePans[laneId] ?? 0,
       };
     }
     try {
@@ -1467,7 +1467,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           timeline_id: timelineId || 'main',
           in_point: sequenceMarkIn,
           out_point: sequenceMarkOut,
-          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+          mixer: { lanes: mixerLanes, master_volume: masterVolume, master_pan: masterPan },
         }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1486,7 +1486,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 
   renderAll: async () => {
-    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
+    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, masterPan, soloLanes, mutedLanes } = get();
     if (!sandboxRoot || !projectId) {
       console.warn('[CUT] renderAll: no project session');
       return;
@@ -1498,7 +1498,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         volume: vol,
         mute: mutedLanes.has(laneId),
         solo: soloLanes.has(laneId),
-        pan: 0,
+        pan: get().lanePans[laneId] ?? 0,
       };
     }
     try {
@@ -1510,7 +1510,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           sandbox_root: sandboxRoot,
           project_id: projectId,
           timeline_id: timelineId || 'main',
-          mixer: { lanes: mixerLanes, master_volume: masterVolume },
+          mixer: { lanes: mixerLanes, master_volume: masterVolume, master_pan: masterPan },
         }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
