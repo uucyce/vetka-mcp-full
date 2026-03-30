@@ -481,6 +481,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
   const clipLabelMode = useCutEditorStore((state) => state.clipLabelMode);
   const timecodeDisplayMode = useCutEditorStore((state) => state.timecodeDisplayMode);
+  const findQuery = useCutEditorStore((state) => state.findQuery);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
   const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
@@ -2091,6 +2092,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const isHovered = hoveredClipId === clip.clip_id;
                   // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — disabled clips are ghosted
                   const isDisabled = disabledClips.has(clip.clip_id);
+                  // MARKER_FCP7-FIND: highlight clips matching find query
+                  const isFound = findQuery.trim()
+                    ? (clip.source_path.split('/').pop() ?? '').toLowerCase().includes(findQuery.toLowerCase())
+                    : false;
                   const waveformBins = waveformMap.get(clip.source_path);
                   const stereoData = stereoWaveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
@@ -2111,6 +2116,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                         // MARKER_GAMMA-CLIP-ENABLE: ghost disabled clips (FCP7 Ch.26)
                         opacity: isDisabled ? 0.3 : 1,
+                        // MARKER_FCP7-FIND: white outline on find match
+                        outline: isFound ? '2px solid rgba(255,255,255,0.7)' : undefined,
+                        outlineOffset: isFound ? '-2px' : undefined,
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
                       onDoubleClick={() => {

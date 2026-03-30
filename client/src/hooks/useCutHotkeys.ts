@@ -156,7 +156,9 @@ export type CutHotkeyAction =
   // MARKER_GAMMA-FIND: Find dialog
   | 'findDialog'
   // MARKER_FCP7-CH45: Cycle clip label display mode
-  | 'cycleClipLabelMode';
+  | 'cycleClipLabelMode'
+  // MARKER_FCP7-FIND: Edit > Find dialog (FCP7 Ch.10)
+  | 'findDialog';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -303,6 +305,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   findDialog:             'global',
   // MARKER_FCP7-CH45
   cycleClipLabelMode:     'global',
+  // MARKER_FCP7-FIND
+  findDialog:             'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -457,6 +461,8 @@ export const PREMIERE_PRESET: HotkeyMap = {
   findDialog:        'Cmd+f',
   // MARKER_FCP7-CH45: Cycle clip label mode
   cycleClipLabelMode: 'Alt+w',
+  // MARKER_FCP7-FIND: Find dialog
+  findDialog: 'Cmd+f',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -595,6 +601,8 @@ export const FCP7_PRESET: HotkeyMap = {
   // MARKER_FCP7-CH45: Cycle clip label mode (FCP7 cycleClipDisplayMode)
   // Note: Cmd+Alt+w taken by toggleTimelineDisplayMode; use Alt+w here
   cycleClipLabelMode: 'Alt+w',
+  // MARKER_FCP7-FIND: Find dialog (FCP7 Ch.10)
+  findDialog: 'Cmd+f',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -892,6 +900,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'focusSourceAcquire', label: 'Focus Source Acquire', group: 'Window' },
   // MARKER_FCP7-CH45: Clip label display mode
   { action: 'cycleClipLabelMode', label: 'Cycle Clip Label Mode', group: 'Timeline' },
+  { action: 'findDialog', label: 'Find (Clip Search)', group: 'Editing' },
 ];
 
 // ─── Hook ───────────────────────────────────────────────────────────
