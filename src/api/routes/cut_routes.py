@@ -1683,10 +1683,16 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             effects = op.get("effects")
             if effects is None:
                 clip.pop("effects", None)
+            elif isinstance(effects, dict):
+                # MARKER_CLIP_EFFECTS_WIRE: frontend sends flat ClipEffects dict
+                # {brightness: 0.1, gamma: 1.5, ...} → convert to backend EffectParam structure
+                from src.services.cut_effects_engine import clip_effects_dict_to_effect_params
+                clip_effects_obj = clip_effects_dict_to_effect_params(effects)
+                clip["effects"] = clip_effects_obj.to_dict()
+            elif isinstance(effects, list):
+                clip["effects"] = {"video_effects": effects, "audio_effects": []}
             else:
-                if not isinstance(effects, list):
-                    raise ValueError("effects must be a list")
-                clip["effects"] = effects
+                raise ValueError("effects must be a dict (ClipEffects) or list (EffectParam[])")
             applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
             continue
 

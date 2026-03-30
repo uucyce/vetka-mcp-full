@@ -167,6 +167,31 @@ def build_render_plan(
                 continue
             # MARKER_B9: Extract effects from clip metadata
             effects_data = clip.get("effects") or {}
+            video_effects = list(effects_data.get("video_effects", []))
+
+            # MARKER_SEC_COLOR: Inject secondary_color EffectParam from color_correction
+            cc = clip.get("color_correction") or {}
+            sec = cc.get("secondary") if cc else None
+            if sec and sec.get("enabled"):
+                import uuid as _uuid
+                video_effects.append({
+                    "effect_id": str(_uuid.uuid4())[:8],
+                    "type": "secondary_color",
+                    "enabled": True,
+                    "params": {
+                        "hue_center": float(sec.get("hueCenter", 120.0)),
+                        "hue_width": float(sec.get("hueWidth", 30.0)),
+                        "sat_min": float(sec.get("satMin", 0.0)),
+                        "sat_max": float(sec.get("satMax", 1.0)),
+                        "luma_min": float(sec.get("lumaMin", 0.0)),
+                        "luma_max": float(sec.get("lumaMax", 1.0)),
+                        "softness": float(sec.get("softness", 0.1)),
+                        "hue_shift": float(sec.get("hueShift", 0.0)),
+                        "saturation": float(sec.get("saturation", 1.0)),
+                        "exposure": float(sec.get("exposure", 0.0)),
+                    },
+                })
+
             clips.append(RenderClip(
                 source_path=sp,
                 start_sec=float(clip.get("start_sec", 0)),
@@ -176,7 +201,7 @@ def build_render_plan(
                 speed=float(clip.get("speed", 1.0)),
                 lane_id=lane.get("lane_id", ""),
                 clip_id=clip.get("clip_id", ""),
-                video_effects=effects_data.get("video_effects", []),
+                video_effects=video_effects,
                 audio_effects=effects_data.get("audio_effects", []),
                 # MARKER_B11: Speed extensions
                 reverse=bool(clip.get("reverse", False)),
