@@ -47,6 +47,7 @@ class MixerState:
     """Complete mixer state for all lanes + master."""
     lanes: dict[str, LaneMixerState] = field(default_factory=dict)
     master_volume: float = 1.0  # 0.0 - 1.5
+    master_pan: float = 0.0    # -1.0 (L) to +1.0 (R), 0.0 = center
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> MixerState:
@@ -63,6 +64,7 @@ class MixerState:
         return MixerState(
             lanes=lanes,
             master_volume=float(d.get("master_volume", 1.0)),
+            master_pan=float(d.get("master_pan", 0.0)),
         )
 
 
@@ -166,7 +168,7 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
         plan: RenderPlan from cut_render_engine
         mixer_state: MixerState with per-lane settings
     """
-    if not mixer_state.lanes and mixer_state.master_volume == 1.0:
+    if not mixer_state.lanes and mixer_state.master_volume == 1.0 and mixer_state.master_pan == 0.0:
         return  # Nothing to apply
 
     # Check if any lane is soloed
@@ -194,6 +196,13 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
                     "enabled": True,
                     "params": {"db": -96.0},
                 })
+            elif mixer_state.master_pan != 0.0:
+                clip.audio_effects.append({
+                    "effect_id": "_mixer_master_pan",
+                    "type": "_pan",
+                    "enabled": True,
+                    "params": {"pan": mixer_state.master_pan},
+                })
             continue
 
         effects = build_lane_audio_filters(
@@ -202,6 +211,18 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
             any_solo=any_solo,
         )
         clip.audio_effects.extend(effects)
+
+        # Master pan — applied on top of per-lane pan for all non-muted clips
+        if mixer_state.master_pan != 0.0:
+            # Only apply if clip is not going to be silent
+            is_silent = lane_state.mute or (any_solo and not lane_state.solo)
+            if not is_silent:
+                clip.audio_effects.append({
+                    "effect_id": "_mixer_master_pan",
+                    "type": "_pan",
+                    "enabled": True,
+                    "params": {"pan": mixer_state.master_pan},
+                })
 
 
 # ---------------------------------------------------------------------------

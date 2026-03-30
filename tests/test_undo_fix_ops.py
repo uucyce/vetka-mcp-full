@@ -498,3 +498,85 @@ class TestKeyframeDictFormat:
         clip = _get_clip(new_state, "A")
         assert isinstance(clip["keyframes"], dict), "legacy flat list must be migrated to dict"
         assert len(clip["keyframes"]["opacity"]) == 2
+
+
+# ─── MixerState master_pan ───
+
+class TestMixerStateMasterPan:
+    """ALPHA-FIX: MixerState.master_pan — from_dict + apply_mixer_to_plan"""
+
+    def _make_plan(self, n_clips: int = 1):
+        """Create minimal mock RenderPlan with n clips."""
+        from types import SimpleNamespace
+        clips = [
+            SimpleNamespace(lane_id=f"v{i}", audio_effects=[])
+            for i in range(n_clips)
+        ]
+        return SimpleNamespace(clips=clips)
+
+    def test_from_dict_parses_master_pan(self):
+        from src.services.cut_audio_engine import MixerState
+        ms = MixerState.from_dict({"master_volume": 1.0, "master_pan": 0.5, "lanes": {}})
+        assert ms.master_pan == 0.5
+
+    def test_from_dict_defaults_master_pan_to_zero(self):
+        from src.services.cut_audio_engine import MixerState
+        ms = MixerState.from_dict({"master_volume": 1.0, "lanes": {}})
+        assert ms.master_pan == 0.0
+
+    def test_early_return_skipped_when_master_pan_nonzero(self):
+        """apply_mixer_to_plan must not skip when master_pan != 0 and no lanes."""
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        plan = self._make_plan(1)
+        ms = MixerState.from_dict({"master_volume": 1.0, "master_pan": 0.3, "lanes": {}})
+        apply_mixer_to_plan(plan, ms)
+        fx_ids = [e["effect_id"] for e in plan.clips[0].audio_effects]
+        assert "_mixer_master_pan" in fx_ids
+
+    def test_master_pan_effect_correct_value(self):
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        plan = self._make_plan(1)
+        ms = MixerState.from_dict({"master_volume": 1.0, "master_pan": -0.75, "lanes": {}})
+        apply_mixer_to_plan(plan, ms)
+        pan_fx = next(e for e in plan.clips[0].audio_effects if e["effect_id"] == "_mixer_master_pan")
+        assert pan_fx["params"]["pan"] == -0.75
+        assert pan_fx["type"] == "_pan"
+
+    def test_master_pan_zero_no_effect_emitted(self):
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        plan = self._make_plan(1)
+        ms = MixerState.from_dict({"master_volume": 1.0, "master_pan": 0.0, "lanes": {}})
+        apply_mixer_to_plan(plan, ms)
+        fx_ids = [e["effect_id"] for e in plan.clips[0].audio_effects]
+        assert "_mixer_master_pan" not in fx_ids
+
+    def test_master_pan_not_applied_to_muted_lane(self):
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        plan = self._make_plan(1)
+        plan.clips[0].lane_id = "a1"
+        ms = MixerState.from_dict({
+            "master_volume": 1.0,
+            "master_pan": 0.5,
+            "lanes": {"a1": {"volume": 1.0, "pan": 0.0, "mute": True, "solo": False}},
+        })
+        apply_mixer_to_plan(plan, ms)
+        fx_ids = [e["effect_id"] for e in plan.clips[0].audio_effects]
+        assert "_mixer_master_pan" not in fx_ids
+
+    def test_master_pan_applied_to_non_muted_lane(self):
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        plan = self._make_plan(1)
+        plan.clips[0].lane_id = "a1"
+        ms = MixerState.from_dict({
+            "master_volume": 1.0,
+            "master_pan": 0.5,
+            "lanes": {"a1": {"volume": 1.0, "pan": 0.0, "mute": False, "solo": False}},
+        })
+        apply_mixer_to_plan(plan, ms)
+        fx_ids = [e["effect_id"] for e in plan.clips[0].audio_effects]
+        assert "_mixer_master_pan" in fx_ids
+
+    def test_master_pan_field_default(self):
+        from src.services.cut_audio_engine import MixerState
+        ms = MixerState()
+        assert ms.master_pan == 0.0
