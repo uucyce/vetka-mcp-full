@@ -61,3 +61,24 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         return forwarded.split(",")[0].strip()
     return request.client.host if request.client else "unknown"
+
+
+def verify_admin_key(x_admin_key: Optional[str] = Header(None)) -> bool:
+    """FastAPI dependency: verify admin key for /api/gateway/admin/* endpoints.
+
+    Uses GATEWAY_ADMIN_KEY env var. If not set, admin endpoints are disabled.
+
+    Usage:
+        admin_ok = Depends(verify_admin_key)
+    """
+    import os
+
+    admin_key = os.environ.get("GATEWAY_ADMIN_KEY", "")
+    if not admin_key:
+        raise HTTPException(
+            status_code=503,
+            detail="Admin API disabled. Set GATEWAY_ADMIN_KEY env var.",
+        )
+    if not x_admin_key or x_admin_key != admin_key:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+    return True
