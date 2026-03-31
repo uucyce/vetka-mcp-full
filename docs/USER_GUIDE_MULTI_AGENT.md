@@ -10,6 +10,7 @@
 | Роль | Модель | Клиент | Почему |
 |------|--------|--------|--------|
 | **Commander** | **Opus** | Claude Code | Стратегические решения, merge conflicts, координация |
+| **Polaris** | Qwen3.6+ Free | **Opencode** | Капитан — координация opencode флота, WEATHER dispatch |
 | **Zeta** | **Opus** | Claude Code | Инфра/архитектура, сложный debugging |
 | **Alpha** | Sonnet | Claude Code | Endpoints, ops, паттерны — формульная работа |
 | **Beta** | Sonnet | Claude Code | FFmpeg pipelines, тесты — техничная но шаблонная |
@@ -83,6 +84,9 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && cl
 ### Opencode — Qwen3.6 Plus Free (WEATHER домен)
 
 ```bash
+# Polaris (Captain) — Qwen via Opencode
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/captain && opencode -m opencode/qwen3.6-plus-free
+
 # Theta (WEATHER Core) — Qwen
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core && opencode -m opencode/qwen3.6-plus-free
 
@@ -120,6 +124,7 @@ opencode
 | **Zeta** | `harness` | Harness | Claude Code | **Opus** | Memory, pipeline, task_board, REFLEX |
 | **Eta** | `harness-eta` | Harness | Claude Code | Sonnet | Zeta's partner — infra, tests, recon |
 | **Commander** | `pedantic-bell` | Architect | Claude Code | **Opus** | Координация, merge, dispatch |
+| **Polaris** | `captain` | Architect | **Opencode** | Qwen3.6+ Free | Капитан — координация, WEATHER dispatch |
 | **Theta** | `weather-core` | WEATHER | **Opencode** | Qwen3.6+ Free | Profile manager, universal prompt injection |
 | **Iota** | `weather-mediator` | WEATHER | **Opencode** | Qwen3.6+ Free | Local model mediator, context packing |
 | **Kappa** | `weather-terminal` | WEATHER | **Opencode** | Qwen3.6+ Free | Terminal integration, CLI agents |
@@ -149,6 +154,7 @@ mcp__vetka__vetka_session_init role=Lambda    # → QA3 context (Opencode)
 mcp__vetka__vetka_session_init role=Mu        # → QA4 context (Opencode)
 mcp__vetka__vetka_session_init role=Zeta      # → Harness context
 mcp__vetka__vetka_session_init role=Eta       # → Harness2 context
+mcp__vetka__vetka_session_init role=Polaris   # → Captain context (Opencode)
 mcp__vetka__vetka_session_init role=Theta     # → WEATHER Core context
 mcp__vetka__vetka_session_init role=Iota      # → WEATHER Mediator context
 mcp__vetka__vetka_session_init role=Kappa     # → WEATHER Terminal context

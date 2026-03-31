@@ -302,6 +302,37 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
     roadmap: ""
 
+  # ── Polaris: Captain / Architect (Opencode/Qwen) ──────────
+  - callsign: "Polaris"
+    domain: "architect"
+    pipeline_stage: null
+    tool_type: "opencode"
+    role_title: "Captain / Opencode Architect"
+    worktree: "captain"
+    branch: "agent/polaris-captain"
+    model_tier: "sonnet"
+    file: "data/templates/agent_registry.yaml"
+    owned_paths:
+      - "data/templates/agent_registry.yaml"
+      - "data/templates/model_presets.json"
+      - "docs/200_taskboard_forever/"
+      - "docs/201ph_WEATHERE/"
+      - "docs/198ph_ZETA_memory_update/"
+      - "src/orchestration/task_board.py"
+      - "src/services/agent_registry.py"
+      - "src/tools/generate_agents_md.py"
+      - "src/tools/generate_claude_md.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/"
+    key_docs:
+      - "docs/200_taskboard_forever/ARCHITECTURE_AGENT_ECOSYSTEM.md"
+      - "docs/198ph_ZETA_memory_update/"
+    roadmap: ""
+
   # ── Theta: WEATHER Core (Opencode/Qwen) ─────────────────
   - callsign: "Theta"
     domain: "weather"
