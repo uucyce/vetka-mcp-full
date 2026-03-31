@@ -5327,6 +5327,88 @@ class TaskBoard:
             pass
         return None
 
+    # MARKER_196.CORE_GAP_1: Auto-commit after pipeline file write
+    def _auto_commit_pipeline_files(
+        self,
+        task_id: str,
+        files_created: List[str],
+        task_title: str = "",
+    ) -> Optional[str]:
+        """Create a git commit for files written by the pipeline.
+
+        This bridges the gap where pipeline.execute() writes files to disk
+        but dispatch_task() sets status='done' without a commit_hash.
+
+        Args:
+            task_id: Task board ID for commit message
+            files_created: List of file paths written by pipeline
+            task_title: Task title for commit message
+
+        Returns:
+            Commit hash if successful, None otherwise
+        """
+        import subprocess as _sub
+
+        if not files_created:
+            return None
+
+        # Filter to only files that actually exist on disk
+        existing = []
+        for fp in files_created:
+            try:
+                if Path(fp).exists():
+                    existing.append(fp)
+            except Exception:
+                pass
+
+        if not existing:
+            logger.warning(
+                f"[TaskBoard] Auto-commit: no existing files for task {task_id}"
+            )
+            return None
+
+        try:
+            # git add
+            add_r = _sub.run(
+                ["git", "add"] + existing, capture_output=True, text=True, timeout=10
+            )
+            if add_r.returncode != 0:
+                logger.warning(
+                    f"[TaskBoard] Auto-commit git add failed: {add_r.stderr.strip()}"
+                )
+
+            # git commit
+            title_preview = (task_title or "")[:60]
+            msg = f"phase196.CORE_GAP_1: Pipeline auto-commit — {title_preview} [task:{task_id}]"
+            commit_r = _sub.run(
+                ["git", "commit", "-m", msg], capture_output=True, text=True, timeout=10
+            )
+            if commit_r.returncode != 0:
+                # Might be "nothing to commit" if files were already staged
+                if "nothing to commit" not in commit_r.stderr.lower():
+                    logger.warning(
+                        f"[TaskBoard] Auto-commit failed: {commit_r.stderr.strip()}"
+                    )
+                    return None
+                # Try to get HEAD hash anyway
+                hash_r = _sub.run(
+                    ["git", "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                return hash_r.stdout.strip() if hash_r.returncode == 0 else None
+
+            # Get commit hash
+            hash_r = _sub.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5
+            )
+            return hash_r.stdout.strip() if hash_r.returncode == 0 else None
+
+        except Exception as e:
+            logger.error(f"[TaskBoard] Auto-commit exception: {e}")
+            return None
+
     async def dispatch_task(
         self,
         task_id: str,
@@ -5470,6 +5552,18 @@ class TaskBoard:
                     # Always unregister after completion
                     TaskBoard.unregister_pipeline(task_id)
 
+                # MARKER_196.CORE_GAP_1: Auto-commit files written by pipeline
+                files_created = result.get("results", {}).get("files_created", [])
+                commit_hash = None
+                if files_created:
+                    commit_hash = self._auto_commit_pipeline_files(
+                        task_id, files_created, task.get("title", "")
+                    )
+                    logger.info(
+                        f"[TaskBoard] Auto-commit for task {task_id}: "
+                        f"{len(files_created)} files, commit={commit_hash or 'none'}"
+                    )
+
                 # Update task with results
                 pipeline_status = result.get("status", "unknown")
                 completed = pipeline_status == "done"
@@ -5490,6 +5584,7 @@ class TaskBoard:
                         "approval_status", "unknown"
                     ),
                     "success": result.get("results", {}).get("success", completed),
+                    "commit_hash": commit_hash,
                 }
                 result_summary = json.dumps(pipeline_results)[:2000]  # 2KB limit
 
@@ -5498,6 +5593,7 @@ class TaskBoard:
                     pipeline_task_id=result.get("task_id"),
                     assigned_tier=pipeline.preset_name,
                     result_summary=result_summary,
+                    commit_hash=commit_hash,
                 )
 
                 if completed and task.get("require_closure_proof"):
