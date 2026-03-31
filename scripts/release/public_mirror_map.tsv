@@ -8,3 +8,4 @@ src/orchestration	vetka-orchestration-core	main
 client/src/components/chat	vetka-chat-ui	main
 client/src/components/mcc	mycelium	main
 src/reflex	reflex-tool-engine	main
+photo_parallax_playground	vetka-parallax	main
