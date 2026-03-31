@@ -1365,25 +1365,25 @@
   },
   "vetka_search_files": {
     "tool_id": "vetka_search_files",
-    "curiosity": 0.04742587317756678,
-    "trust": 0.004375391587004396,
+    "curiosity": 0.01798620996209156,
+    "trust": 0.2806612204216107,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 11,
-    "success_count": 0,
+    "usage_count": 13,
+    "success_count": 2,
     "failure_count": 11,
-    "last_updated": 1774404901.1533282
+    "last_updated": 1774969576.92374
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 4.599055376537186e-10,
-    "trust": 1.3540607380455595e-07,
+    "curiosity": 1.6918979223288784e-10,
+    "trust": 5.720906618242489e-08,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 48,
+    "usage_count": 50,
     "success_count": 6,
-    "failure_count": 42,
-    "last_updated": 1774613713.3922062
+    "failure_count": 44,
+    "last_updated": 1774969576.920674
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -1398,14 +1398,14 @@
   },
   "vetka_list_files": {
     "tool_id": "vetka_list_files",
-    "curiosity": 0.9241418199787566,
-    "trust": 0.3,
-    "caution": 0.9,
-    "mood_label": "curious",
-    "usage_count": 0,
-    "success_count": 0,
-    "failure_count": 0,
-    "last_updated": 1773908002.900822
+    "curiosity": 0.6224593312018546,
+    "trust": 0.324451875,
+    "caution": 0.1,
+    "mood_label": "neutral",
+    "usage_count": 4,
+    "success_count": 2,
+    "failure_count": 2,
+    "last_updated": 1774969576.924907
   },
   "mycelium_call_model": {
     "tool_id": "mycelium_call_model",
@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 1.3863432936411706e-49,
+    "curiosity": 5.100071961364906e-50,
     "trust": 0.9999999999999997,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 230,
-    "success_count": 230,
+    "usage_count": 232,
+    "success_count": 232,
     "failure_count": 0,
-    "last_updated": 1774839575.384703
+    "last_updated": 1774969576.926045
   },
   "Read": {
     "tool_id": "Read",
@@ -2432,14 +2432,14 @@
   },
   "__debrief_bug__": {
     "tool_id": "__debrief_bug__",
-    "curiosity": 2.1151310375910807e-19,
-    "trust": 4.721559411945774e-18,
+    "curiosity": 7.781132241133797e-20,
+    "trust": 1.9948588515470897e-18,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 91,
+    "usage_count": 93,
     "success_count": 0,
-    "failure_count": 91,
-    "last_updated": 1774839575.6098702
+    "failure_count": 93,
+    "last_updated": 1774969576.95299
   },
   "session_init": {
     "tool_id": "session_init",
