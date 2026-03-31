@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
+import yaml
 
 from src.services.browser_manager import (
     BrowserManager,
@@ -39,6 +40,10 @@ from src.services.browser_manager import (
 logger = logging.getLogger(__name__)
 
 # ── Configuration ─────────────────────────────────────────────────────
+
+# MARKER_BP1.5.WIRING: Config file path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "browser_agents.yaml"
 
 DEFAULT_GATEWAY_URL = os.getenv("VETKA_GATEWAY_URL", "http://localhost:5001")
 DEFAULT_POLL_INTERVAL_S = int(os.getenv("BROWSER_POLL_INTERVAL_S", "10"))
@@ -96,6 +101,7 @@ class BrowserAgentProxy:
         agent_type: str = DEFAULT_AGENT_TYPE,
         project_id: str = DEFAULT_PROJECT_ID,
         browser_manager: Optional[BrowserManager] = None,
+        config_path: Optional[Path] = None,
     ):
         self.gateway_url = gateway_url.rstrip("/")
         self.poll_interval_s = poll_interval_s
@@ -103,6 +109,11 @@ class BrowserAgentProxy:
         self.agent_name = agent_name
         self.agent_type = agent_type
         self.project_id = project_id
+
+        # MARKER_BP1.5.WIRING: Load config from browser_agents.yaml
+        self.config_path = config_path or DEFAULT_CONFIG_PATH
+        self.config = self._load_config()
+        self._apply_config_overrides()
 
         self.browser_manager = browser_manager or get_browser_manager()
         self._http_client: Optional[httpx.AsyncClient] = None
@@ -115,6 +126,102 @@ class BrowserAgentProxy:
         self.tasks_processed = 0
         self.tasks_failed = 0
         self.total_duration_s = 0.0
+
+    # ── Config Loading (MARKER_BP1.5.WIRING) ─────────────────────────
+
+    def _load_config(self) -> Dict[str, Any]:
+        """Load browser_agents.yaml configuration."""
+        if not self.config_path.exists():
+            logger.warning(
+                "Config not found at %s, using env var defaults",
+                self.config_path,
+            )
+            return {}
+
+        with open(self.config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        logger.info("Loaded browser agent config from %s", self.config_path)
+        return config
+
+    def _apply_config_overrides(self):
+        """Apply config values from browser_agents.yaml, overriding env defaults."""
+        if not self.config:
+            return
+
+        # TaskBoard gateway URL
+        tb_cfg = self.config.get("taskboard", {})
+        if tb_cfg.get("gateway_url"):
+            self.gateway_url = tb_cfg["gateway_url"].rstrip("/")
+
+        # Polling interval
+        polling = tb_cfg.get("polling", {})
+        if polling.get("interval"):
+            self.poll_interval_s = polling["interval"]
+            logger.info("Poll interval from config: %ds", self.poll_interval_s)
+
+        # Agent identity
+        agent_cfg = tb_cfg.get("agent", {})
+        if agent_cfg.get("name"):
+            self.agent_name = agent_cfg["name"]
+        if agent_cfg.get("agent_type"):
+            self.agent_type = agent_cfg["agent_type"]
+        if agent_cfg.get("api_key"):
+            api_key = agent_cfg["api_key"]
+            if api_key.startswith("${") and api_key.endswith("}"):
+                env_var = api_key[2:-1]
+                api_key = os.environ.get(env_var, "")
+            if api_key:
+                self._auth_token = api_key
+            else:
+                logger.warning(
+                    "Browser proxy API key not set (env var %s empty)", env_var
+                )
+
+        # Browser settings
+        browser_cfg = self.config.get("browser", {})
+        if browser_cfg.get("max_instances"):
+            logger.info(
+                "Max browser instances from config: %d", browser_cfg["max_instances"]
+            )
+
+        # Rate limiting
+        global_cfg = self.config.get("global", {})
+        rate_limit = global_cfg.get("rate_limit", {})
+        if rate_limit.get("max_requests_per_hour"):
+            logger.info(
+                "Rate limit from config: %d req/hour",
+                rate_limit["max_requests_per_hour"],
+            )
+
+    def get_service_accounts(self, service: str) -> List[Dict[str, Any]]:
+        """Get account list for a service from config."""
+        services = self.config.get("services", {})
+        svc = services.get(service, {})
+        return svc.get("accounts", [])
+
+    def get_service_url(self, service: str) -> Optional[str]:
+        """Get service URL from config."""
+        services = self.config.get("services", {})
+        svc = services.get(service, {})
+        return svc.get("url")
+
+    def get_service_adapter_path(self, service: str) -> Optional[str]:
+        """Get adapter file path from config."""
+        services = self.config.get("services", {})
+        svc = services.get(service, {})
+        return svc.get("adapter")
+
+    @property
+    def _auth_token(self) -> Optional[str]:
+        """Get API key for Gateway API auth."""
+        return getattr(self, "_auth_token_value", None) or os.environ.get(
+            "BROWSER_PROXY_API_KEY"
+        )
+
+    @_auth_token.setter
+    def _auth_token(self, value: str):
+        self._auth_token_value = value
 
     # ── Lifecycle ─────────────────────────────────────────────────────
 
@@ -199,9 +306,11 @@ class BrowserAgentProxy:
     async def _fetch_pending_tasks(self) -> List[Dict[str, Any]]:
         """Fetch pending tasks from the TaskBoard Gateway API."""
         try:
+            headers = self._gateway_auth_headers()
             resp = await self._http_client.get(
-                "/api/taskboard/list",
+                "/api/gateway/tasks",
                 params={"status": "pending", "limit": 20},
+                headers=headers,
             )
             resp.raise_for_status()
             data = resp.json()
@@ -210,21 +319,37 @@ class BrowserAgentProxy:
             logger.warning("Failed to fetch pending tasks: %s", e)
             return []
 
+    def _gateway_auth_headers(self) -> Dict[str, str]:
+        """Build auth headers for Gateway API requests."""
+        headers = {"Content-Type": "application/json"}
+        token = self._auth_token
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        return headers
+
     async def _update_task_status(
         self,
         task_id: str,
         status: str,
         result: TaskResult,
     ):
-        """Update task status via the TaskBoard REST API."""
+        """Update task status via the Gateway API complete endpoint.
+
+        MARKER_BP1.5.WIRING: Uses /api/gateway/tasks/{id}/complete to set
+        status to need_qa after code extraction and git commit.
+        """
         try:
+            headers = self._gateway_auth_headers()
+            body = {
+                "status": status,
+                "result_summary": self._format_result_summary(result),
+                "result_status": "success" if result.success else "failure",
+                "commit_hash": result.commit_hash,
+            }
             resp = await self._http_client.patch(
                 f"/api/taskboard/{task_id}",
-                json={
-                    "status": status,
-                    "result_summary": self._format_result_summary(result),
-                    "result_status": "success" if result.success else "failure",
-                },
+                json=body,
+                headers=headers,
             )
             resp.raise_for_status()
             logger.info("Task %s updated to status: %s", task_id, status)
@@ -411,7 +536,11 @@ class BrowserAgentProxy:
         code_files: Dict[str, str],
         service: str,
     ) -> Optional[str]:
-        """Write extracted code to files and commit via git."""
+        """Write extracted code to files and commit via git.
+
+        MARKER_BP1.5.WIRING: Commits with task ID in message for auto-close,
+        then pushes to remote.
+        """
         if not code_files:
             return None
 
@@ -437,8 +566,9 @@ class BrowserAgentProxy:
             if add_result.returncode != 0:
                 logger.warning("git add failed: %s", add_result.stderr)
 
+            # MARKER_BP1.5.WIRING: Include task ID for auto-close
             commit_msg = (
-                f"phase196.BP1.1: Browser proxy — {service} code extraction "
+                f"phase196.BP1.5: Browser proxy wiring — {service} code extraction "
                 f"[task:{task_id}]"
             )
             commit_result = subprocess.run(
@@ -458,7 +588,24 @@ class BrowserAgentProxy:
                 text=True,
                 timeout=5,
             )
-            return hash_result.stdout.strip()
+            commit_hash = hash_result.stdout.strip()
+
+            # Push to remote
+            try:
+                push_result = subprocess.run(
+                    ["git", "push"],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if push_result.returncode != 0:
+                    logger.warning("git push failed: %s", push_result.stderr)
+                else:
+                    logger.info("Pushed commit %s", commit_hash[:12])
+            except subprocess.TimeoutExpired:
+                logger.warning("git push timed out")
+
+            return commit_hash
 
         except Exception as e:
             logger.error("Git commit failed: %s", e)

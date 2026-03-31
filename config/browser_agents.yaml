@@ -1,0 +1,199 @@
+# MARKER_BP1.5: Browser Agent Proxy Configuration
+# Account credentials for free-tier AI chat services
+# Used by: src/services/browser_agent_proxy.py + src/services/browser_manager.py
+
+# ── Global Settings ───────────────────────────────────────────────────
+global:
+  # Default viewport for all browser instances
+  viewport:
+    width: 1440
+    height: 900
+  
+  # Human-like timing (seconds)
+  timing:
+    min_delay: 2.0
+    max_delay: 5.0
+    page_load_timeout: 30.0
+    action_timeout: 15.0
+  
+  # Rate limiting per account
+  rate_limit:
+    max_requests_per_hour: 10
+    cooldown_after_captcha: 1800  # 30 minutes
+  
+  # Session persistence
+  sessions:
+    storage_dir: "data/browser_sessions"
+    max_lifetime: 14400  # 4 hours in seconds
+    auto_save_interval: 300  # 5 minutes
+
+# ── Service Accounts ──────────────────────────────────────────────────
+# Each service can have multiple accounts for rotation
+
+services:
+  gemini:
+    name: "Google Gemini"
+    url: "https://aistudio.google.com/app/prompts/new_chat"
+    adapter: "src/services/adapters/gemini_adapter.py"
+    accounts:
+      - email: "PLACEHOLDER_1@gmail.com"
+        password: "PLACEHOLDER"
+        recovery_email: "PLACEHOLDER_RECOVERY@gmail.com"
+        enabled: true
+        last_used: null
+        captcha_count: 0
+      # Add more accounts for rotation
+      # - email: "PLACEHOLDER_2@gmail.com"
+      #   password: "PLACEHOLDER"
+      #   enabled: true
+
+  kimi:
+    name: "Moonshot Kimi"
+    url: "https://kimi.moonshot.cn/"
+    adapter: "src/services/adapters/kimi_adapter.py"
+    accounts:
+      - phone: "PLACEHOLDER_PHONE"
+        password: "PLACEHOLDER"
+        enabled: true
+        last_used: null
+        captcha_count: 0
+
+  grok:
+    name: "xAI Grok"
+    url: "https://grok.x.ai/"
+    adapter: "src/services/adapters/grok_adapter.py"
+    accounts:
+      - email: "PLACEHOLDER_xai@gmail.com"
+        password: "PLACEHOLDER"
+        enabled: true
+        last_used: null
+        captcha_count: 0
+
+  perplexity:
+    name: "Perplexity AI"
+    url: "https://www.perplexity.ai/"
+    adapter: "src/services/adapters/perplexity_adapter.py"
+    accounts:
+      - email: "PLACEHOLDER_pplx@gmail.com"
+        password: "PLACEHOLDER"
+        enabled: true
+        last_used: null
+        captcha_count: 0
+
+  mistral:
+    name: "Mistral Le Chat"
+    url: "https://chat.mistral.ai/chat"
+    adapter: "src/services/adapters/mistral_adapter.py"
+    accounts:
+      - email: "PLACEHOLDER_mistral@gmail.com"
+        password: "PLACEHOLDER"
+        enabled: true
+        last_used: null
+        captcha_count: 0
+
+# ── TaskBoard Integration ─────────────────────────────────────────────
+taskboard:
+  # Gateway API endpoints
+  gateway_url: "http://localhost:5001"
+  api:
+    list_tasks: "/api/gateway/tasks"
+    get_task: "/api/gateway/tasks/{task_id}"
+    claim_task: "/api/gateway/tasks/{task_id}/claim"
+    complete_task: "/api/gateway/tasks/{task_id}/complete"
+    local_claim: "/api/taskboard/claim"
+    local_complete: "/api/taskboard/complete"
+  
+  # Agent identity (set during registration)
+  agent:
+    name: "browser-proxy-qwen"
+    agent_type: "qwen-browser"
+    api_key: "${BROWSER_PROXY_API_KEY}"  # Set via environment variable
+  
+  # Polling settings
+  polling:
+    interval: 30  # seconds between task checks
+    max_concurrent: 3
+    retry_on_failure: 3
+    retry_delay: 10
+
+# ── Browser Configuration ────────────────────────────────────────────
+browser:
+  # Playwright settings
+  engine: "playwright"
+  browser_type: "chromium"
+  headless: true
+  
+  # Launch arguments for stealth
+  launch_args:
+    - "--no-sandbox"
+    - "--disable-setuid-sandbox"
+    - "--disable-blink-features=AutomationControlled"
+    - "--disable-infobars"
+    - "--window-size=1440,900"
+  
+  # Context settings
+  context:
+    user_agent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    locale: "en-US"
+    timezone: "America/Los_Angeles"
+    viewport:
+      width: 1440
+      height: 900
+  
+  # Number of parallel browser instances
+  max_instances: 6
+  
+  # Memory monitoring
+  memory:
+    max_mb_per_instance: 500
+    restart_threshold: 0.8  # restart at 80% of max
+
+# ── Captcha Handling ──────────────────────────────────────────────────
+captcha:
+  detection:
+    selectors:
+      - ".g-recaptcha"
+      - ".h-captcha"
+      - "[data-sitekey]"
+      - "#turnstile-widget"
+      - "iframe[src*='recaptcha']"
+      - "iframe[src*='hcaptcha']"
+  
+  # Notification settings
+  notification:
+    enabled: true
+    command: "osascript -e 'display notification \"{message}\" with title \"Browser Proxy Captcha\"'"
+  
+  # Auto-pause on captcha detection
+  auto_pause: true
+  pause_timeout: 600  # 10 minutes before moving to next account
+
+# ── Code Extraction ───────────────────────────────────────────────────
+extraction:
+  # DOM selectors for code blocks
+  selectors:
+    - "pre code"
+    - ".code-block"
+    - "div[class*='codeBlock']"
+    - "div[class*='CodeBlock']"
+    - "article pre"
+  
+  # Markdown code block pattern
+  markdown_pattern: "```(?:\\w+)?\\n([\\s\\S]*?)\\n```"
+  
+  # Validation
+  validation:
+    min_length: 50
+    max_length: 50000
+    syntax_check:
+      python: "ast.parse"
+      typescript: "tsc --noEmit"
+      javascript: "node --check"
+
+# ── Logging ───────────────────────────────────────────────────────────
+logging:
+  level: "INFO"
+  file: "logs/browser_proxy.log"
+  max_size_mb: 50
+  backup_count: 5
+  format: "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
