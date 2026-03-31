@@ -103,7 +103,7 @@ TaskBoard is one component of the full VETKA platform. Here's how everything con
 | **MCC** | [mycelium](https://github.com/danilagoleen/mycelium) | Optional | Multi-window command center |
 | **Memory Stack** | [vetka-memory-stack](https://github.com/danilagoleen/vetka-memory-stack) | Optional | ELISION compression, vector memory |
 | **REFLEX** | Built into vetka-live | Optional | Adaptive prompting experiment |
-| **Browser Proxy** | In vetka-live | Optional | Free-tier AI automation (Playwright) |
+| **WEATHER** | [vetka-live](https://github.com/danilagoleen/vetka-live) | Optional | Browser automation (Gemini/Kimi via Playwright) |
 
 ### Standalone Mode (TaskBoard Only)
 
