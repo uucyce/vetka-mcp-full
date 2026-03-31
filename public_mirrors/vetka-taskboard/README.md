@@ -218,6 +218,88 @@ WEATHER agents (Theta, Iota, Kappa) run on **free** Qwen models via Opencode, pr
 
 ---
 
+## ⚓ Building Your Team
+
+Captain Polaris documented the complete process of building a multi-agent fleet. Here's the quick version:
+
+### One Command to Add a Role
+
+```bash
+# From the VETKA monorepo:
+./scripts/release/add_role.sh <Callsign> <domain> <worktree-name> <client>
+
+# Example — add a new QA agent:
+./scripts/release/add_role.sh Lambda qa cut-qa-3 opencode
+
+# Example — add a new engine agent:
+./scripts/release/add_role.sh Nu engine cut-nu claude_code
+```
+
+This single command:
+1. Adds the role to `agent_registry.yaml`
+2. Creates a git branch (`agent/<callsign>`)
+3. Creates a worktree (`.claude/worktrees/<name>`)
+4. Generates `CLAUDE.md` (for Claude Code agents)
+5. Generates `AGENTS.md` (for Opencode agents)
+6. Commits the registry change
+
+### The Current Fleet
+
+| Callsign | Domain | Client | Model | Purpose |
+|----------|--------|--------|-------|---------|
+| Commander | architect | Claude Code | Opus | Strategy, coordination |
+| Polaris | architect | Opencode | Qwen | Captain / free-tier architect |
+| Alpha | engine | Claude Code | Sonnet | Core logic, APIs |
+| Beta | media | Claude Code | Sonnet | Pipelines, codecs |
+| Gamma | ux | Claude Code | Sonnet | UI components |
+| Delta | qa | Claude Code | Sonnet | Tests, verification |
+| Epsilon | qa | Claude Code | Sonnet | Additional QA |
+| Lambda | qa | Opencode | Qwen | Free-tier QA |
+| Mu | qa | Opencode | Qwen | Free-tier QA |
+| Zeta | harness | Claude Code | Opus | Memory, pipeline |
+| Eta | harness | Claude Code | Sonnet | Infra assistant |
+| Theta | weather | Opencode | Qwen | WEATHER profiles |
+| Iota | weather | Opencode | Qwen | WEATHER mediator |
+| Kappa | weather | Opencode | Qwen | WEATHER terminal |
+
+### Role Template
+
+To add a role manually, add this to `data/templates/agent_registry.yaml`:
+
+```yaml
+- callsign: "YourCallsign"
+  domain: "your_domain"
+  pipeline_stage: "coder"     # coder | verifier | null
+  tool_type: "opencode"       # opencode | claude_code
+  role_title: "Human-readable title"
+  worktree: "worktree-name"
+  branch: "agent/yourcallsign"
+  model_tier: "sonnet"        # sonnet | opus
+  file: "src/your_domain/"    # ← REQUIRED for generators
+  owned_paths:
+    - "src/your_domain/"
+  blocked_paths: []
+```
+
+Then generate the worktree files:
+
+```bash
+python -m src.tools.generate_claude_md --role YourCallsign
+python -m src.tools.generate_agents_md --role YourCallsign
+```
+
+### Common Pitfalls (from Captain Polaris's Log)
+
+1. **Missing `file:` field** — generators crash without it
+2. **AGENTS.md vs CLAUDE.md** — Opencode reads AGENTS.md, Claude Code reads CLAUDE.md. Generate both.
+3. **Registry order** — role entries must be before `shared_zones:` in the YAML
+4. **Registry sync** — merge registry changes to main before generating files
+5. **Worktree files** — `.claude/worktrees/` is gitignored; files are auto-generated
+
+For the full story, see [POLARIS_TEAM_CREATION_LOG.md](https://github.com/danilagoleen/vetka-live/blob/main/docs/200_taskboard_forever/POLARIS_TEAM_CREATION_LOG.md).
+
+---
+
 ## API Overview
 
 ### Agent Registration
