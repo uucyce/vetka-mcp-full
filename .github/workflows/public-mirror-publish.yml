@@ -45,3 +45,57 @@ jobs:
           PUBLIC_MIRROR_VISIBILITY: ${{ github.event.inputs.visibility || 'public' }}
         run: |
           ./scripts/release/publish_public_mirrors.sh
+
+  parallax-extras:
+    needs: publish-mirrors
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout VETKA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          path: vetka
+
+      - name: Checkout vetka-parallax
+        uses: actions/checkout@v4
+        with:
+          repository: danilagoleen/vetka-parallax
+          token: ${{ secrets.PUBLIC_MIRROR_TOKEN }}
+          path: parallax
+
+      - name: Sync scripts, docs, tests
+        run: |
+          cd vetka
+
+          # Scripts
+          mkdir -p ../parallax/scripts
+          for f in scripts/photo_parallax_* scripts/vetka_parallax_cli.py; do
+            [ -e "$f" ] && cp "$f" ../parallax/scripts/
+          done
+
+          # Docs
+          rm -rf ../parallax/docs
+          [ -d docs/180_photo-to-parallax ] && cp -r docs/180_photo-to-parallax ../parallax/docs
+
+          # Tests
+          mkdir -p ../parallax/tests
+          for f in tests/test_*parallax* tests/test_*layer_manifest*; do
+            [ -e "$f" ] && cp "$f" ../parallax/tests/
+          done
+
+      - name: Commit if changed
+        run: |
+          cd parallax
+          git config user.name "VETKA Mirror Bot"
+          git config user.email "mirror@vetka.dev"
+          git add -A
+          if ! git diff --cached --quiet; then
+            git commit -m "mirror: sync scripts/docs/tests from VETKA [$(date -u +%Y-%m-%d)]"
+            git push
+            echo "Pushed extras to vetka-parallax"
+          else
+            echo "No extras changes."
+          fi
