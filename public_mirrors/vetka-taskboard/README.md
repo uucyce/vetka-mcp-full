@@ -124,9 +124,97 @@ When connected to the VETKA ecosystem, TaskBoard gains:
 - **REFLEX experiments** — A/B testing of prompting strategies
 - **MCP tool integration** — agents can call VETKA tools through the gateway
 - **MCC visualization** — 3D task graph in the command center
-- **Browser Agent Proxy** — free-tier AI via Gemini/Kimi web UI
+- **WEATHER** — free-tier AI via Gemini/Kimi web UI
 
 To connect to the full platform, run the [VETKA monorepo](https://github.com/danilagoleen/vetka-live) — TaskBoard is included as a sub-component.
+
+---
+
+## 🤖 Agent Roles & Pipeline
+
+TaskBoard is designed for **multi-agent coordination**. Instead of one AI doing everything, specialized agents work in parallel — each with a defined role, model, and domain.
+
+### The Pipeline
+
+```
+Commander (Architect)
+    │
+    ├── Alpha (Engine) ──────┐
+    ├── Beta  (Media)  ──────┼── Parallel execution
+    ├── Gamma (UX)     ──────┤
+    └── Delta (QA)     ──────┘
+              │
+         Merge & Deploy
+```
+
+### Agent Roles
+
+| Role | Model Tier | Client | Domain | Purpose |
+|------|-----------|--------|--------|---------|
+| **Commander** | Opus (GPT-4o) | Claude Code | Architect | Strategy, coordination, merge decisions |
+| **Alpha** | Sonnet (Claude 3.5) | Claude Code | Engine | Core logic, APIs, data layer |
+| **Beta** | Sonnet (Claude 3.5) | Claude Code | Media | Pipelines, codecs, processing |
+| **Gamma** | Sonnet (Claude 3.5) | Claude Code | UX | UI components, styling, interactions |
+| **Delta** | Sonnet (Claude 3.5) | Claude Code | QA | Tests, verification, compliance |
+| **Zeta** | Opus (GPT-4o) | Claude Code | Infra | Memory, pipeline, orchestration |
+| **Theta** | Qwen 3.6 Free | Opencode | WEATHER | Profile management, prompt injection |
+| **Iota** | Qwen 3.6 Free | Opencode | WEATHER | Local model bridge, context packing |
+| **Kappa** | Qwen 3.6 Free | Opencode | WEATHER | Terminal integration, CLI agents |
+
+### Why Roles Matter
+
+Roles accelerate agent integration because:
+
+1. **No context switching** — Each agent loads only its domain context via `session_init role=Role`
+2. **Parallel execution** — Alpha, Beta, Gamma work simultaneously on different parts of the same feature
+3. **Model optimization** — Expensive models (Opus) for strategy, cheap models (Qwen Free) for routine tasks
+4. **Conflict prevention** — Each role owns specific file paths, preventing merge conflicts
+5. **Knowledge transfer** — Agents receive "predecessor advice" from previous runs of the same role
+
+### Running Agents via Terminal
+
+Each agent runs in its own terminal session. Here's the pattern:
+
+```bash
+# 1. Start Commander (plans the work)
+cd vetka-worktree/architect
+claude --model opus
+# Inside: "vetka session init" → "Create tasks for feature X"
+
+# 2. Start worker agents (do the work) — each in a separate terminal
+cd vetka-worktree/engine    && claude --model sonnet   # Alpha
+cd vetka-worktree/media     && claude --model sonnet   # Beta
+cd vetka-worktree/ux        && claude --model sonnet   # Gamma
+cd vetka-worktree/qa        && claude --model sonnet   # Delta
+
+# 3. Start WEATHER agents (free-tier AI) — via Opencode
+cd vetka-worktree/weather-core     && opencode -m qwen3.6-plus-free   # Theta
+cd vetka-worktree/weather-mediator && opencode -m qwen3.6-plus-free   # Iota
+cd vetka-worktree/weather-terminal && opencode -m qwen3.6-plus-free   # Kappa
+
+# 4. Each agent initializes
+# Inside each terminal: "vetka session init"
+# Agent loads its role context, claims a task, starts working
+
+# 5. Monitor progress
+vetka_task_board action=active_agents
+```
+
+### WEATHER — Free-Tier AI Automation
+
+**WEATHER** (Web Execution & Adaptive Task Heuristic Environment Router) is VETKA's browser automation layer. It connects TaskBoard to free AI services:
+
+| Letter | Word | Meaning |
+|--------|------|---------|
+| **W** | Web | Browser-based automation (Playwright/Chromium) |
+| **E** | Execution | Runs tasks: navigate, click, type, extract |
+| **A** | Adaptive | Responds to captcha, rate limits, UI changes |
+| **T** | Task | Driven by TaskBoard — claim → execute → submit |
+| **H** | Heuristic | Smart selectors, pattern matching, fallbacks |
+| **E** | Environment | Multi-service: Gemini, Kimi, Grok, Perplexity, Mistral |
+| **R** | Router | Routes tasks to the right browser/account/adapter |
+
+WEATHER agents (Theta, Iota, Kappa) run on **free** Qwen models via Opencode, providing unlimited parallel capacity without API costs.
 
 ---
 
