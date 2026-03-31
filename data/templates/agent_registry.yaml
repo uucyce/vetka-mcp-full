@@ -166,6 +166,7 @@ roles:
     worktree: "cut-qa-3"
     branch: "agent/lambda-qa"
     model_tier: "sonnet"
+    file: "e2e/*.spec.cjs"
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -192,6 +193,7 @@ roles:
     worktree: "cut-qa-4"
     branch: "agent/mu-qa"
     model_tier: "sonnet"
+    file: "e2e/*.spec.cjs"
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -300,6 +302,60 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
     roadmap: ""
 
+  # ── Theta: WEATHER Core (Opencode/Qwen) ─────────────────
+  - callsign: "Theta"
+    domain: "weather"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "WEATHER Core / Opencode Qwen"
+    worktree: "weather-core"
+    branch: "agent/theta-weather"
+    model_tier: "sonnet"
+    file: "src/services/browser_manager.py"
+    owned_paths:
+      - "src/services/browser_manager.py"
+      - "src/services/adapters/base_adapter.py"
+      - "src/services/adapters/gemini_adapter.py"
+      - "config/browser_agents.yaml"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+
+  # ── Iota: WEATHER Mediator (Opencode/Qwen) ──────────────
+  - callsign: "Iota"
+    domain: "weather"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "WEATHER Mediator / Opencode Qwen"
+    worktree: "weather-mediator"
+    branch: "agent/iota-mediator"
+    model_tier: "sonnet"
+    file: "src/services/weather_mediator.py"
+    owned_paths:
+      - "src/services/weather_mediator.py"
+      - "src/services/code_extractor.py"
+      - "src/services/browser_agent_proxy.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+
+  # ── Kappa: WEATHER Terminal (Opencode/Qwen) ─────────────
+  - callsign: "Kappa"
+    domain: "weather"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "WEATHER Terminal / Opencode Qwen"
+    worktree: "weather-terminal"
+    branch: "agent/kappa-terminal"
+    model_tier: "sonnet"
+    file: "client/src/components/weather/"
+    owned_paths:
+      - "client/src/components/weather/"
+      - "src/api/routes/weather_routes.py"
+    blocked_paths:
+      - "client/src/components/cut/"
+      - "e2e/"
+
 # ── Shared Zones ────────────────────────────────────────────
 # Files where multiple agents have partial ownership.
 # Protocol: declare scope in task description before touching.
@@ -346,47 +402,6 @@ shared_zones:
   - file: "package.json"
     owners: {}
     protocol: "Any agent may add dependencies — declare in task"
-
-# ── WEATHER Roles ─────────────────────────────────────────────
-  - callsign: "Theta"
-    agent_type: "claude_code"
-    domain: "weather"
-    model_tier: "sonnet"
-    branch: "agent/theta-weather"
-    owned_paths:
-      - "src/services/browser_manager.py"
-      - "src/services/adapters/base_adapter.py"
-      - "src/services/adapters/gemini_adapter.py"
-      - "config/browser_agents.yaml"
-    blocked_paths:
-      - "client/src/components/"
-      - "e2e/"
-
-  - callsign: "Iota"
-    agent_type: "claude_code"
-    domain: "weather"
-    model_tier: "sonnet"
-    branch: "agent/iota-mediator"
-    owned_paths:
-      - "src/services/weather_mediator.py"
-      - "src/services/code_extractor.py"
-      - "src/services/browser_agent_proxy.py"
-    blocked_paths:
-      - "client/src/components/"
-      - "e2e/"
-
-  - callsign: "Kappa"
-    agent_type: "claude_code"
-    domain: "weather"
-    model_tier: "sonnet"
-    branch: "agent/kappa-terminal"
-    owned_paths:
-      - "client/src/components/weather/"
-      - "src/api/routes/weather_routes.py"
-      - "client/src-tauri/src/commands.rs"
-    blocked_paths:
-      - "client/src/components/cut/"
-      - "e2e/"
 
 # ── External Agents (Gateway API) ─────────────────────────
 # AI Studio agents (Gemini, Kimi, Perplexity) — access via REST Gateway API.
