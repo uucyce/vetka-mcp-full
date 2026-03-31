@@ -41,7 +41,16 @@ _ROUTER_SPECS: List[Tuple[str, str, str]] = [
     ("cam_router", ".cam_routes", "router"),
     ("activity_router", ".activity_routes", "router"),
     ("task_router", ".task_routes", "router"),
-    ("taskboard_router", ".taskboard_routes", "router"),  # MARKER_201.LOCALGUYS: register /api/taskboard/* routes
+    (
+        "taskboard_router",
+        ".taskboard_routes",
+        "router",
+    ),  # MARKER_201.LOCALGUYS: register /api/taskboard/* routes
+    (
+        "gateway_router",
+        ".gateway_routes",
+        "router",
+    ),  # MARKER_196.GW1.5: Agent Gateway API
     ("tracker_router", ".task_tracker_routes", "router"),
     ("feedback_router", ".feedback_routes", "router"),
     ("dag_router", ".dag_routes", "router"),
@@ -65,7 +74,6 @@ _ROUTER_MAP: Dict[str, Tuple[str, str]] = {
 }
 
 
-
 def _load_router(name: str) -> APIRouter:
     module_name, attr_name = _ROUTER_MAP[name]
     module = import_module(module_name, __name__)
@@ -74,12 +82,10 @@ def _load_router(name: str) -> APIRouter:
     return router
 
 
-
 def __getattr__(name: str):
     if name in _ROUTER_MAP:
         return _load_router(name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
 
 
 def get_all_routers() -> List[APIRouter]:
@@ -90,7 +96,6 @@ def get_all_routers() -> List[APIRouter]:
         List of APIRouter instances to register with the app.
     """
     return [_load_router(name) for name, _, _ in _ROUTER_SPECS]
-
 
 
 def register_all_routers(app: FastAPI) -> None:
@@ -105,22 +110,30 @@ def register_all_routers(app: FastAPI) -> None:
     for router in routers:
         app.include_router(router)
 
-    opencode_bridge_enabled = os.getenv("OPENCODE_BRIDGE_ENABLED", "false").lower() == "true"
+    opencode_bridge_enabled = (
+        os.getenv("OPENCODE_BRIDGE_ENABLED", "false").lower() == "true"
+    )
 
     if opencode_bridge_enabled:
         try:
             from src.opencode_bridge.routes import router as bridge_router
 
-            app.include_router(bridge_router, prefix="/api/bridge", tags=["OpenCode Bridge"])
+            app.include_router(
+                bridge_router, prefix="/api/bridge", tags=["OpenCode Bridge"]
+            )
             print("✅ [Phase 90.X] OpenCode Bridge registered on /api/bridge/*")
         except ImportError as e:
             print(f"⚠️  [Phase 90.X] OpenCode Bridge import failed: {e}")
         except Exception as e:
             print(f"❌ [Phase 90.X] OpenCode Bridge registration error: {e}")
     else:
-        print("ℹ️  [Phase 90.X] OpenCode Bridge disabled (set OPENCODE_BRIDGE_ENABLED=true to enable)")
+        print(
+            "ℹ️  [Phase 90.X] OpenCode Bridge disabled (set OPENCODE_BRIDGE_ENABLED=true to enable)"
+        )
 
-    print(f"  [API] Registered {len(routers)} FastAPI routers (Phase 108.4: +1 activity feed)")
+    print(
+        f"  [API] Registered {len(routers)} FastAPI routers (Phase 108.4: +1 activity feed)"
+    )
 
 
 __all__ = [
