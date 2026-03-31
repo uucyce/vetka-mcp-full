@@ -5,7 +5,6 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
-import { usePanelSyncStore } from './usePanelSyncStore';
 import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
@@ -541,7 +540,6 @@ interface CutEditorState {
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop: boolean) => void;
-  toggleLoopPlayback: () => void;               // MARKER_LOOP_HOTKEY: Ctrl+L
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show: boolean) => void;
   setShowDeleteTracksDialog: (show: boolean) => void;
@@ -1441,8 +1439,21 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
   },
   setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
-  // MARKER_W1.3: Source/Program routing — fully decoupled
-  setSourceMedia: (path) => set({ sourceMediaPath: path }),
+  // MARKER_W1.3: Source/Program routing — fully decoupled.
+  // Source Monitor reads sourceMediaPath, Program Monitor reads programMediaPath.
+  // setSourceMedia should ONLY be called by explicit user actions:
+  //   - double-click timeline clip
+  //   - Match Frame (F)
+  //   - DAG/Script click (via PanelSyncBridge)
+  //   - "Open in Source Monitor" menu
+  // NEVER auto-sync from timeline playback (that's the REGRESSION we fixed).
+  setSourceMedia: (path) => {
+    if (import.meta.env.DEV) {
+      const stack = new Error().stack?.split('\n').slice(2, 5).join(' | ');
+      console.log(`[CUT SourceMonitor] setSourceMedia(${path}) ← ${stack}`);
+    }
+    set({ sourceMediaPath: path });
+  },
   setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
@@ -1468,7 +1479,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop) => set({ loopPlayback: loop }),
-  toggleLoopPlayback: () => set((s) => ({ loopPlayback: !s.loopPlayback })),
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
   setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
@@ -2290,19 +2300,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 }));
 
-// MARKER_PW2: Panel Sync Bridge — propagate Script/DAG clicks to editor store
-// Script click → activeSceneId updates → selectedSceneId → PulseInspector/ClipInspector reactive
-// DAG click → selectedAssetPath updates → setSourceMedia → Source Monitor loads clip
-usePanelSyncStore.subscribe((state, prev) => {
-  // When selectedAssetPath changes → load in Source Monitor
-  if (state.selectedAssetPath && state.selectedAssetPath !== prev.selectedAssetPath) {
-    useCutEditorStore.getState().setSourceMedia(state.selectedAssetPath);
-  }
-  // When activeSceneId changes → store it for PulseInspector/ClipInspector
-  if (state.activeSceneId && state.activeSceneId !== prev.activeSceneId) {
-    useCutEditorStore.setState({ selectedSceneId: state.activeSceneId });
-  }
-});
+// MARKER_PW2: Panel Sync Bridge — REMOVED duplicate module-level subscription.
+// usePanelSyncBridge() hook in CutStandalone.tsx handles this (single source of truth).
+// Module-level subscribe was redundant and could cause double-fire on selectedAssetPath changes.
 
 // MARKER_PW8: Timeline ID sync — keep CutEditorStore.timelineId in sync with TimelineInstanceStore
 // DAG, StorySpace, Inspector can read useCutEditorStore(s => s.timelineId) instead of hardcoding 'main'

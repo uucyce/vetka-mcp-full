@@ -77,13 +77,6 @@ function fmtTC(sec: number, fps: number): string {
   return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}:${String(f).padStart(2,'0')}`;
 }
 
-// MARKER_GAMMA-FIND-TC-MODE: respect timecodeDisplayMode (same pattern as StatusBar/MarkerListPanel)
-function fmtTime(sec: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
-  if (mode === 'frames') return `${Math.round(sec * fps)}f`;
-  if (mode === 'seconds') return `${sec.toFixed(2)}s`;
-  return fmtTC(sec, fps);
-}
-
 function basename(path: string): string {
   return path.split('/').pop()?.split('\\').pop() || path;
 }
@@ -94,8 +87,6 @@ export function FindDialog() {
   const show = useCutEditorStore((s) => s.showFindDialog);
   const lanes = useCutEditorStore((s) => s.lanes);
   const fps = useCutEditorStore((s) => s.projectFramerate) || 25;
-  // MARKER_GAMMA-FIND-TC-MODE: respect user's display mode preference
-  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
   const seek = useCutEditorStore((s) => s.seek);
 
   const [query, setQuery] = useState('');
@@ -195,7 +186,7 @@ export function FindDialog() {
                 onClick={() => { seek(clip.startSec); close(); }}
                 onMouseEnter={() => setActiveIdx(idx)}
               >
-                <span style={TC}>{fmtTime(clip.startSec, fps, timecodeDisplayMode)}</span>
+                <span style={TC}>{fmtTC(clip.startSec, fps)}</span>
                 <span style={LANE_BADGE}>{clip.laneId}</span>
                 <span style={FILENAME} title={clip.name}>{clip.name}</span>
               </div>

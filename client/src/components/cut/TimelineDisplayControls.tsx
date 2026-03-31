@@ -85,9 +85,6 @@ export default function TimelineDisplayControls() {
   const showThroughEdits = useCutEditorStore((s) => s.showThroughEdits);
   const showClipLabels = useCutEditorStore((s) => s.showClipLabels);
   const showRubberBand = useCutEditorStore((s) => s.showRubberBand);
-  // MARKER_GAMMA-CLIP-LABEL-MODE: clip label display mode selector
-  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
-  const setClipLabelMode = useCutEditorStore((s) => s.setClipLabelMode);
   const trackHeightPreset = useCutEditorStore((s) => s.trackHeightPreset);
   const cycleTrackHeights = useCutEditorStore((s) => s.cycleTrackHeights);
   const showVideoTracks = useCutEditorStore((s) => s.showVideoTracks);
@@ -171,32 +168,6 @@ export default function TimelineDisplayControls() {
           <div style={TOGGLE_ROW} onClick={toggleShowRubberBand} data-testid="toggle-rubber-band">
             <CheckMark checked={showRubberBand} />
             <span>Show Opacity/Volume Band</span>
-          </div>
-
-          {/* MARKER_GAMMA-CLIP-LABEL-MODE: Clip label display mode (FCP7 #45) */}
-          <div style={{ ...TOGGLE_ROW, marginTop: 2, gap: 0, flexDirection: 'column', alignItems: 'flex-start', padding: '3px 12px' }}>
-            <span style={{ fontSize: 9, color: '#666', marginBottom: 2 }}>Label:</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['name', 'filename', 'color'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  data-testid={`clip-label-mode-${mode}`}
-                  onClick={() => setClipLabelMode(mode)}
-                  style={{
-                    padding: '1px 6px',
-                    borderRadius: 3,
-                    border: `1px solid ${clipLabelMode === mode ? '#999' : '#444'}`,
-                    background: clipLabelMode === mode ? '#222' : '#111',
-                    color: clipLabelMode === mode ? '#ccc' : '#666',
-                    fontSize: 9,
-                    cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
           </div>
 
           <div style={SEPARATOR} />

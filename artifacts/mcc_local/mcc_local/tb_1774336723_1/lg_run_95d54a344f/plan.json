@@ -1,0 +1,17 @@
+{
+  "approach": "Evaluate ELYSIA against REFLEX using MCC to determine revival/archival. Prioritize risk mitigation by analyzing maintenance costs vs. potential improvements. Base decision on comparative performance and strategic alignment.",
+  "steps": [
+    "Implement MCC framework to compare Weaviate ELYSIA and REFLEX capabilities",
+    "Conduct controlled experiments to measure ELYSIA's performance against REFLEX benchmarks",
+    "Analyze results to quantify maintenance costs vs. potential value retention",
+    "Assess risks of archival (loss of improvements) vs. revival (resource allocation)",
+    "Document findings and recommend decision with justification",
+    "Update orchestration tools to reflect archival/revival decision"
+  ],
+  "files_to_modify": [
+    {
+      "path": "src/orchestration/elysia_tools.py",
+      "change": "Implement MCC evaluation logic for ELYSIA vs REFLEX comparison"
+    }
+  ]
+}

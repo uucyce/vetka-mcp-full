@@ -1261,7 +1261,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
     addDefaultTransition: () => useCutEditorStore.getState().addDefaultTransition(),
     addAudioTransition: () => useCutEditorStore.getState().addAudioTransition(),
-    toggleLoopPlayback: () => useCutEditorStore.getState().toggleLoopPlayback(),
     // MARKER_FCP7.SPEED: Cmd+J opens speed control dialog (FCP7 Ch.69)
     openSpeedControl: () => useCutEditorStore.getState().setShowSpeedControl(true),
 
@@ -1477,6 +1476,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
 
   // MARKER_P0.PROGRAM: Derive programMediaPath from topmost clip under playhead
   // Without this, Program Monitor stays empty — setProgramMedia() was never called.
+  // IMPORTANT: This effect must ONLY call setProgramMedia(), NEVER setSourceMedia().
+  // Source Monitor is fully independent — it only changes via explicit user action.
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const lanes = useCutEditorStore((s) => s.lanes);
   const setProgramMedia = useCutEditorStore((s) => s.setProgramMedia);

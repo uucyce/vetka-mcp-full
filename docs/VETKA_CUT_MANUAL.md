@@ -1037,12 +1037,11 @@ No voice-over recording, microphone input, or record-to-timeline feature.
 ---
 
 ### 6.11 Loop Playback
-**Status:** IMPLEMENTED
-**Hotkey:** `Ctrl+L` (both presets)
+**Status:** [PLANNED — no wave assigned]
 
-`loopPlayback: boolean` in store, `toggleLoopPlayback()` action. When enabled, playhead wraps to `sequenceMarkIn` (or 0) on reaching timeline end — implemented in `CutEditorLayoutV2.tsx` RAF loop (MARKER_GAMMA-LOOP). Loop button in `MonitorTransport.tsx` transport bar (highlights when active). Menu item in View menu.
+No `loopPlay` or `isLooping` state. No loop toggle in transport or playback hook.
 
-**Differs from FCP7:** Same Ctrl+L hotkey. FCP7 loops between In/Out points; CUT loops In-to-end (or full timeline if no In mark).
+**Differs from FCP7:** FCP7 has Loop Playback (Ctrl+L). CUT does not implement this yet.
 
 ---
 
