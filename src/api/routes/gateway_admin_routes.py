@@ -1,35 +1,31 @@
 """
-MARKER_196.GW3.1: Admin endpoints for Agent Gateway management.
+MARKER_196.GW3.1 + MARKER_196.GW-SEC: Admin endpoints for Agent Gateway management.
 
 Internal-only endpoints for managing registered agents:
 list, suspend, activate, rotate keys, view audit log.
+
+SECURITY: All endpoints require GATEWAY_ADMIN_KEY via X-Admin-Key header.
+This is separate from agent Bearer tokens — agents cannot access admin endpoints.
 """
 
 import hashlib
 import secrets
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
-from src.api.middleware.auth import verify_agent_authorization
+from src.api.middleware.auth import verify_admin_key
 from src.orchestration.task_board import get_task_board
 
 router = APIRouter(prefix="/api/gateway/admin", tags=["gateway-admin"])
 
 
-def _verify_admin():
-    """Internal admin guard — requires valid API key."""
-    # For MVP: reuse the same auth middleware.
-    # In production, add a separate admin-only check.
-    return verify_agent_authorization
-
-
 @router.get("/agents")
 async def list_agents(
     status: Optional[str] = Query(None),
-    agent: dict = Depends(_verify_admin()),
+    _admin: bool = Depends(verify_admin_key),
 ) -> Dict[str, Any]:
-    """List all registered agents."""
+    """List all registered agents. Requires GATEWAY_ADMIN_KEY."""
     board = get_task_board()
     agents = board.list_agents(status=status)
     return {"success": True, "agents": agents, "count": len(agents)}
@@ -38,9 +34,9 @@ async def list_agents(
 @router.post("/agents/{agent_id}/suspend")
 async def suspend_agent(
     agent_id: str,
-    agent: dict = Depends(_verify_admin()),
+    _admin: bool = Depends(verify_admin_key),
 ) -> Dict[str, Any]:
-    """Suspend an agent (prevent further API access)."""
+    """Suspend an agent (prevent further API access). Requires GATEWAY_ADMIN_KEY."""
     board = get_task_board()
     db = board.db
     row = db.execute(
@@ -50,16 +46,16 @@ async def suspend_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     db.execute("UPDATE agents SET status = 'suspended' WHERE id = ?", (agent_id,))
     db.commit()
-    board.log_audit(agent_id=agent["id"], action="suspend_agent", task_id=agent_id)
+    board.log_audit(agent_id="admin", action="suspend_agent", task_id=agent_id)
     return {"success": True, "agent_id": agent_id, "status": "suspended"}
 
 
 @router.post("/agents/{agent_id}/activate")
 async def activate_agent(
     agent_id: str,
-    agent: dict = Depends(_verify_admin()),
+    _admin: bool = Depends(verify_admin_key),
 ) -> Dict[str, Any]:
-    """Reactivate a suspended agent."""
+    """Reactivate a suspended agent. Requires GATEWAY_ADMIN_KEY."""
     board = get_task_board()
     db = board.db
     row = db.execute(
@@ -69,16 +65,16 @@ async def activate_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
     db.execute("UPDATE agents SET status = 'active' WHERE id = ?", (agent_id,))
     db.commit()
-    board.log_audit(agent_id=agent["id"], action="activate_agent", task_id=agent_id)
+    board.log_audit(agent_id="admin", action="activate_agent", task_id=agent_id)
     return {"success": True, "agent_id": agent_id, "status": "active"}
 
 
 @router.post("/agents/{agent_id}/rotate-key")
 async def rotate_agent_key(
     agent_id: str,
-    agent: dict = Depends(_verify_admin()),
+    _admin: bool = Depends(verify_admin_key),
 ) -> Dict[str, Any]:
-    """Generate a new API key for an agent. Old key is invalidated."""
+    """Generate a new API key for an agent. Old key is invalidated. Requires GATEWAY_ADMIN_KEY."""
     board = get_task_board()
     db = board.db
     row = db.execute("SELECT id FROM agents WHERE id = ?", (agent_id,)).fetchone()
@@ -89,7 +85,7 @@ async def rotate_agent_key(
     new_hash = hashlib.sha256(new_key.encode()).hexdigest()
     db.execute("UPDATE agents SET api_key_hash = ? WHERE id = ?", (new_hash, agent_id))
     db.commit()
-    board.log_audit(agent_id=agent["id"], action="rotate_key", task_id=agent_id)
+    board.log_audit(agent_id="admin", action="rotate_key", task_id=agent_id)
     return {
         "success": True,
         "agent_id": agent_id,
@@ -104,9 +100,9 @@ async def get_audit_log(
     offset: int = Query(0, ge=0),
     agent_id: Optional[str] = Query(None),
     action: Optional[str] = Query(None),
-    agent: dict = Depends(_verify_admin()),
+    _admin: bool = Depends(verify_admin_key),
 ) -> Dict[str, Any]:
-    """View audit log entries (paginated)."""
+    """View audit log entries (paginated). Requires GATEWAY_ADMIN_KEY."""
     board = get_task_board()
     db = board.db
 

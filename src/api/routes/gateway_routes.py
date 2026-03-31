@@ -292,8 +292,11 @@ async def stream_events(
     request: Request,
     agent_id: Optional[str] = Query(None),
     task_id: Optional[str] = Query(None),
+    agent: dict = Depends(verify_agent_authorization),
 ):
-    """SSE stream for real-time task updates (auth optional for public events)."""
+    """SSE stream for real-time task updates. Requires valid agent API key."""
     from src.services.gateway_sse import sse_stream as _sse_handler
 
-    return await _sse_handler(request, agent_id=agent_id, task_id=task_id)
+    return await _sse_handler(
+        request, agent_id=agent_id or agent.get("id"), task_id=task_id
+    )
