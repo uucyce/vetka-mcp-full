@@ -51,6 +51,11 @@ _ROUTER_SPECS: List[Tuple[str, str, str]] = [
         ".gateway_routes",
         "router",
     ),  # MARKER_196.GW1.5: Agent Gateway API
+    (
+        "gateway_admin_router",
+        ".gateway_admin_routes",
+        "router",
+    ),  # MARKER_196.GW3.1: Gateway Admin API
     ("tracker_router", ".task_tracker_routes", "router"),
     ("feedback_router", ".feedback_routes", "router"),
     ("dag_router", ".dag_routes", "router"),

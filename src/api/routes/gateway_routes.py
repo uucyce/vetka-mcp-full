@@ -282,3 +282,18 @@ async def get_my_tasks(
     ]
 
     return {"success": True, "tasks": my_tasks, "count": len(my_tasks)}
+
+
+# ── SSE Stream ───────────────────────────────────────────────────────
+
+
+@router.get("/stream")
+async def stream_events(
+    request: Request,
+    agent_id: Optional[str] = Query(None),
+    task_id: Optional[str] = Query(None),
+):
+    """SSE stream for real-time task updates (auth optional for public events)."""
+    from src.services.gateway_sse import sse_stream as _sse_handler
+
+    return await _sse_handler(request, agent_id=agent_id, task_id=task_id)

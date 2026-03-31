@@ -2824,6 +2824,21 @@ class TaskBoard:
             },
         )
 
+        # MARKER_196.GW2.2: Emit SSE event for external agents
+        try:
+            from src.services.gateway_sse import emit_task_event
+
+            emit_task_event(
+                task_id,
+                "task_claimed",
+                {
+                    "assigned_to": agent_name,
+                    "agent_type": agent_type,
+                },
+            )
+        except Exception:
+            pass  # SSE is optional — never break claim
+
         # MARKER_ZETA.D4: Warn-mode domain validation via AgentRegistry
         domain_warning = None
         try:
@@ -3027,6 +3042,22 @@ class TaskBoard:
                 "commit_message": commit_message[:50] if commit_message else None,
             },
         )
+
+        # MARKER_196.GW2.2: Emit SSE event for external agents
+        try:
+            from src.services.gateway_sse import emit_task_event
+
+            emit_task_event(
+                task_id,
+                "task_completed",
+                {
+                    "assigned_to": task.get("assigned_to"),
+                    "commit_hash": commit_hash,
+                    "status": final_status,
+                },
+            )
+        except Exception:
+            pass  # SSE is optional — never break complete
 
         # MARKER_200.AGENT_WAKE: Notify Commander about completed task
         self._auto_notify(
