@@ -4820,6 +4820,12 @@ class TaskBoard:
             if claude_md_path.exists():
                 claude_md_backup = claude_md_path.read_text()
 
+            # MARKER_201.AGENTS_MD_GUARD: Save main's AGENTS.md before merge
+            agents_md_path = Path(tmp_dir) / "AGENTS.md"
+            agents_md_backup = None
+            if agents_md_path.exists():
+                agents_md_backup = agents_md_path.read_text()
+
             # ---- Execute strategy (all operations in tmp_dir) ----
 
             if strategy == "snapshot":
@@ -4928,6 +4934,17 @@ class TaskBoard:
                     await _git("commit", "--amend", "--no-edit")
                     logger.info(
                         "[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md"
+                    )
+
+            # MARKER_201.AGENTS_MD_GUARD: Restore main's AGENTS.md if changed by merge
+            if agents_md_backup is not None and agents_md_path.exists():
+                current_content = agents_md_path.read_text()
+                if current_content != agents_md_backup:
+                    agents_md_path.write_text(agents_md_backup)
+                    await _git("add", "AGENTS.md")
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info(
+                        "[MergeRequest] AGENTS_MD_GUARD: Restored main's AGENTS.md"
                     )
 
             # MARKER_201.DOC_HEAL: Restore docs deleted by branch after merge.
