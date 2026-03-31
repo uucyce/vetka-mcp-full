@@ -3886,6 +3886,140 @@ class TaskBoard:
 
         return completed
 
+    # MARKER_196.CORE-GAP-3: Universal task completion from agent result
+    def complete_task_from_result(
+        self,
+        task_id: str,
+        content: str,
+        *,
+        agent_id: Optional[str] = None,
+        branch: Optional[str] = None,
+        allowed_paths: Optional[List[str]] = None,
+        auto_commit: bool = True,
+    ) -> Dict[str, Any]:
+        """Universal path: agent produced result -> files written -> git commit -> task complete.
+
+        MARKER_196.CORE-GAP-3: One function to close the loop from any agent output.
+        1. Extract code blocks from content (uses code_extractor)
+        2. Write files to disk
+        3. Git commit with [task:{task_id}]
+        4. auto_complete_by_commit() closes task
+
+        Args:
+            task_id: Task to complete
+            content: Raw agent output (may contain code blocks + text)
+            agent_id: Agent identity for audit trail
+            branch: Git branch (auto-detected if None)
+            allowed_paths: Override task's allowed_paths for file writing
+            auto_commit: If True, git commit after writing files
+
+        Returns:
+            {"success": bool, "files_written": [...], "commit_hash": str|None, "task_closed": bool}
+        """
+        task = self.get_task(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        files_written = []
+        commit_hash = None
+
+        # Step 1: Extract code blocks from content
+        try:
+            from src.services.code_extractor import CodeExtractor
+
+            extractor = CodeExtractor(
+                allowed_paths=allowed_paths or task.get("allowed_paths") or [],
+            )
+            extraction = extractor.extract_from_markdown(content)
+
+            if not extraction.files:
+                logger.warning(
+                    f"[TaskBoard] CORE-GAP-3: No code blocks found in task {task_id} output"
+                )
+                # Still allow closing even without code — content may be research/report
+        except ImportError:
+            logger.warning(
+                "[TaskBoard] code_extractor not available, skipping extraction"
+            )
+            extraction = None
+
+        # Step 2: Write files to disk
+        if extraction and extraction.files:
+            for ef in extraction.files:
+                try:
+                    target_path = ef.suggested_path
+                    if not os.path.isabs(target_path):
+                        target_path = str(PROJECT_ROOT / target_path)
+
+                    os.makedirs(os.path.dirname(target_path), exist_ok=True)
+                    with open(target_path, "w", encoding="utf-8") as f:
+                        f.write(ef.content)
+
+                    files_written.append(target_path)
+                    logger.info(
+                        f"[TaskBoard] Wrote {target_path} ({ef.char_count} chars)"
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"[TaskBoard] Failed to write {ef.suggested_path}: {e}"
+                    )
+
+        # Step 3: Git commit
+        if auto_commit and files_written:
+            task_title = task.get("title", task_id)
+            commit_msg = (
+                f"phase{task_id.split('_')[1] if '_' in task_id else 'auto'}: {task_title} "
+                f"[task:{task_id}]"
+            )
+            try:
+                import subprocess
+
+                for fp in files_written:
+                    subprocess.run(["git", "add", fp], capture_output=True, timeout=10)
+                result = subprocess.run(
+                    ["git", "commit", "-m", commit_msg],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if result.returncode == 0:
+                    # Extract commit hash
+                    match = re.search(r"\[([a-f0-9]{7,})\]", result.stdout)
+                    commit_hash = match.group(1) if match else None
+                    logger.info(
+                        f"[TaskBoard] Committed {len(files_written)} files: {commit_hash}"
+                    )
+                else:
+                    logger.warning(
+                        f"[TaskBoard] Git commit failed: {result.stderr[:200]}"
+                    )
+            except Exception as e:
+                logger.error(f"[TaskBoard] Git commit failed: {e}")
+
+        # Step 4: Complete the task
+        completion = self.complete_task(
+            task_id,
+            commit_hash=commit_hash,
+            commit_message=commit_msg if files_written else f"Task {task_id} completed",
+            closure_proof={
+                "files_written": files_written,
+                "content_length": len(content),
+                "blocks_extracted": len(extraction.files) if extraction else 0,
+                "commit_hash": commit_hash,
+                "activating_agent": agent_id or task.get("assigned_to", "unknown"),
+            },
+            closed_by=agent_id or task.get("assigned_to"),
+            branch=branch,
+        )
+
+        return {
+            "success": completion.get("success", False),
+            "files_written": files_written,
+            "commit_hash": commit_hash,
+            "task_closed": completion.get("success", False),
+            "completion_result": completion,
+        }
+
     def find_tasks_by_changed_files(self, changed_files: list) -> list:
         """MARKER_198.P1.9: Find pending/claimed/running tasks whose allowed_paths intersect changed_files.
 

@@ -164,6 +164,30 @@
         "verifier": "anthropic/claude-opus-4.6",
         "scout": "google/gemini-3-pro-preview"
       }
+    },
+    "browser_researcher": {
+      "description": "Browser-based research: free-tier Gemini/Kimi via Playwright",
+      "provider": "polza",
+      "roles": {
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "browser_proxy",
+        "coder": "qwen/qwen3-coder",
+        "verifier": "z-ai/glm-4.7-flash",
+        "scout": "z-ai/glm-4.7-flash"
+      },
+      "researcher_strategy": "browser"
+    },
+    "hybrid_researcher": {
+      "description": "Hybrid research: Grok API + Browser Proxy in parallel",
+      "provider": "polza",
+      "roles": {
+        "architect": "moonshotai/kimi-k2.5",
+        "researcher": "x-ai/grok-4.1-fast",
+        "coder": "qwen/qwen3-coder",
+        "verifier": "z-ai/glm-4.7-flash",
+        "scout": "z-ai/glm-4.7-flash"
+      },
+      "researcher_strategy": "hybrid"
     }
   }
 }
