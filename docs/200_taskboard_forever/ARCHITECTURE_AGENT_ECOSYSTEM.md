@@ -1,9 +1,34 @@
 # VETKA Agent Ecosystem — Architecture Document
 
-**Version:** 1.0
+**Version:** 1.1
 **Date:** 2026-03-31
-**Phase:** 196.15
+**Phase:** 196.16
 **Status:** Living document — update as ecosystem evolves
+
+---
+
+## 0. Naming Conventions
+
+### COHORT — Cooperative Orchestration of Hybrid Reasoning Teams
+The VETKA multi-agent system. Different teams (Dragon, G3, Mycelium, Ralph Loop) are COHORTs — each with unique model composition, workflow chains, and interaction protocols.
+
+| COHORT | Architect | Researcher | Coder | Verifier | Purpose |
+|--------|-----------|------------|-------|----------|---------|
+| **Dragon Bronze** | Qwen3-30b | Grok Fast 4.1 | Qwen3-coder-flash | Mimo-v2-flash | Quick fixes |
+| **Dragon Silver** | Kimi K2.5 | Grok Fast 4.1 | Qwen3-coder | GLM-4.7-flash | Standard work |
+| **Dragon Gold** | Kimi K2.5 | Grok Fast 4.1 | Qwen3-coder | Qwen3-235b | Complex tasks |
+| **G3** | GPT-4o | Grok | Claude Sonnet | Claude Opus | Deep reasoning |
+| **Mycelium** | Kimi K2.5 | Grok Fast 4.1 | Qwen3-coder | GLM/Qwen | Fractal decomposition |
+| **Ralph Loop** | — | — | Qwen (iterative) | Self-verify | Autonomous iteration |
+
+### WEATHER — Web Execution & Adaptive Task Heuristic Environment Router
+The browser automation layer. Agents operate "in the weather" — navigating web AI services (Gemini, Kimi, Grok, Perplexity, Mistral) through Playwright/Chromium.
+
+```
+TaskBoard → WEATHER Orchestrator → Playwright → AI Service → Code extraction → Git
+```
+
+**Why "weather":** Dynamic, adaptive, conditions change (captcha, rate limits, UI updates). Agents navigate through it.
 
 ---
 
@@ -16,7 +41,7 @@ VETKA runs a **multi-agent ecosystem** where AI agents (local, cloud, browser-ba
 │                    VETKA Agent Ecosystem                        │
 │                                                                 │
 │   ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐      │
-│   │  Local   │  │  Cloud   │  │ Browser  │  │ External │      │
+│   │  Local   │  │  Cloud   │  │ WEATHER  │  │ External │      │
 │   │  Agents  │  │  Agents  │  │  Scouts  │  │  Agents  │      │
 │   └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘      │
 │        │              │              │              │            │
@@ -31,8 +56,8 @@ VETKA runs a **multi-agent ecosystem** where AI agents (local, cloud, browser-ba
 │   └────────────────────┬─────────────────────────────────┘      │
 │                        │                                         │
 │   ┌────────────────────▼─────────────────────────────────┐      │
-│   │              Mycelium Pipeline                        │      │
-│   │   Architect → Scouts → Researcher → Coder → Verifier │      │
+│   │              COHORT Pipelines                         │      │
+│   │   Dragon / G3 / Mycelium / Ralph Loop                 │      │
 │   └──────────────────────────────────────────────────────┘      │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
@@ -111,26 +136,32 @@ REST API for external agents. Auth via API keys.
 | `GET /api/gateway/stream` | SSE real-time updates |
 | `GET /api/gateway/admin/*` | Admin endpoints |
 
-### 3.3 Mycelium Pipeline (`src/orchestration/agent_pipeline.py`)
+### 3.3 COHORT Pipelines (`src/orchestration/agent_pipeline.py`)
 
-Fractal agent system. Decomposes tasks into subtasks.
+Fractal agent system. Decomposes tasks into subtasks via different COHORTs.
 
-**Roles:**
+**COHORT Types:**
+- **Dragon** (Bronze/Silver/Gold) — Asian model squad, auto-tier selection
+- **G3** — GPT + Grok + Claude deep reasoning
+- **Mycelium** — Fractal decomposition with scouts
+- **Ralph Loop** — Autonomous iterative refinement
+
+**Roles within each COHORT:**
 1. **Architect** — plans, breaks into subtasks
-2. **Scouts** (NEW) — fast context gathering via LiteRT
+2. **Scouts** — fast context gathering
 3. **Researcher** — investigates unclear parts
 4. **Coder** — implements with STM context
 5. **Verifier** — QA review
 
-**Auto-tier selection:** Architect estimates complexity → pipeline selects Bronze/Silver/Gold team.
+### 3.4 WEATHER Browser Proxy (`src/services/browser_agent_proxy.py`)
 
-### 3.4 Browser Proxy (`src/services/browser_agent_proxy.py`)
-
-Automates web AI services via Playwright. Acts as "Researcher" alternative.
+Automates web AI services via Playwright. Acts as "Researcher" alternative within the WEATHER layer.
 
 ```
-TaskBoard → Orchestrator → Playwright → Gemini/Kimi/Grok → Code extraction → Git commit
+TaskBoard → WEATHER Orchestrator → Playwright → Gemini/Kimi/Grok → Code extraction → Git commit
 ```
+
+**WEATHER = Web Execution & Adaptive Task Heuristic Environment Router**
 
 ### 3.5 Scout Agents (`src/services/scout_agents.py`) [NEW]
 
@@ -181,7 +212,7 @@ Extract code → write files → git commit → auto_complete_by_commit().
 
 ---
 
-## 5. Data Flow: Full Pipeline
+## 5. Data Flow: Full COHORT Pipeline
 
 ```
 User: @dragon "Implement parallax effect"
@@ -190,7 +221,7 @@ User: @dragon "Implement parallax effect"
 MCC dispatches task to TaskBoard
   │
   ▼
-Mycelium Pipeline starts
+COHORT Pipeline starts (auto-selects Dragon Silver)
   │
   ├── Architect (Kimi): Plan subtasks
   │   └── estimates complexity → selects tier
@@ -201,9 +232,9 @@ Mycelium Pipeline starts
   │   └── Scout 3: search Qdrant → related docs
   │   └── Results aggregated → DOM context
   │
-  ├── Researcher (Grok or Browser Proxy):
+  ├── Researcher (Grok API OR WEATHER Browser Proxy):
   │   └── investigates unclear parts
-  │   └── Browser Proxy: opens Gemini.ai, scrapes response
+  │   └── WEATHER: opens Gemini.ai, scrapes response
   │
   ├── Coder (Qwen): Implements
   │   └── uses STM context + scout results
@@ -235,12 +266,12 @@ The goal: maximize AI output while minimizing API costs.
 |-------|------|------|-------|
 | **Scouts** | LiteRT local | Free | ⚡ 0.1s |
 | **Architect** | Kimi (Polza) | Cheap | 🔄 2s |
-| **Researcher** | Grok API OR Browser Proxy | Cheap/Free | 🔄 5-30s |
+| **Researcher** | Grok API OR WEATHER | Cheap/Free | 🔄 5-30s |
 | **Coder** | Qwen3-coder (Polza) | Cheap | 🔄 10s |
 | **Verifier** | GLM-4.7-flash (Polza) | Cheap | 🔄 5s |
-| **Browser** | Gemini/Kimi/Grok web | Free | 🐌 30-60s |
+| **WEATHER** | Gemini/Kimi/Grok web | Free | 🐌 30-60s |
 
-**Strategy:** Use free browser agents for bulk work, API agents for speed-critical tasks.
+**Strategy:** Use free WEATHER agents for bulk work, API agents for speed-critical tasks.
 
 ---
 

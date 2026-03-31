@@ -1,24 +1,29 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 3.0 | **Дата:** 2026-03-29 (Phase 200 — Sonnet fleet update)
+**Версия:** 4.0 | **Дата:** 2026-03-31 (Phase 201 — Opencode Qwen fleet)
 
 ---
 
-## Модели: Opus vs Sonnet
+## Модели: Opus vs Sonnet vs Qwen
 
-Не все роли требуют Opus. Sonnet справляется с 90% задач и его лимит практически неисчерпаем.
+Не все роли требуют Opus. Sonnet справляется с 90% задач. Qwen через opencode — бесплатный и быстрый.
 
-| Роль | Модель | Почему |
-|------|--------|--------|
-| **Commander** | **Opus** | Стратегические решения, merge conflicts, координация |
-| **Zeta** | **Opus** | Инфра/архитектура, сложный debugging |
-| **Alpha** | Sonnet | Endpoints, ops, паттерны — формульная работа |
-| **Beta** | Sonnet | FFmpeg pipelines, тесты — техничная но шаблонная |
-| **Gamma** | Sonnet | UI компоненты, CSS, wiring — sweet spot Sonnet |
-| **Delta** | Sonnet | Верификация, тест-раны — не требует глубокого reasoning |
-| **Epsilon** | Sonnet | Contract tests — аналогично Delta |
-| **Eta** | Sonnet | Инфра-помощник Zeta — шаблонные таски |
+| Роль | Модель | Клиент | Почему |
+|------|--------|--------|--------|
+| **Commander** | **Opus** | Claude Code | Стратегические решения, merge conflicts, координация |
+| **Zeta** | **Opus** | Claude Code | Инфра/архитектура, сложный debugging |
+| **Alpha** | Sonnet | Claude Code | Endpoints, ops, паттерны — формульная работа |
+| **Beta** | Sonnet | Claude Code | FFmpeg pipelines, тесты — техничная но шаблонная |
+| **Gamma** | Sonnet | Claude Code | UI компоненты, CSS, wiring — sweet spot Sonnet |
+| **Delta** | Sonnet | Claude Code | Верификация, тест-раны — не требует глубокого reasoning |
+| **Epsilon** | Sonnet | Claude Code | Contract tests — аналогично Delta |
+| **Lambda** | Qwen3.6+ Free | Opencode | QA3 — верификация через opencode |
+| **Mu** | Qwen3.6+ Free | Opencode | QA4 — верификация через opencode |
+| **Eta** | Sonnet | Claude Code | Инфра-помощник Zeta — шаблонные таски |
+| **Theta** | Qwen3.6 Plus Free | **Opencode** | WEATHER Core — profile manager, universal prompt injection |
+| **Iota** | Qwen3.6 Plus Free | **Opencode** | WEATHER Mediator — local model bridge, context packing |
+| **Kappa** | Qwen3.6 Plus Free | **Opencode** | WEATHER Terminal — xterm.js, CLI agent integration |
 
-**Экономия:** ~3x по Opus лимиту. 7 Opus агентов выжигают лимит за 2-3 часа. 2 Opus + 6 Sonnet — хватает на полный рабочий день.
+**Экономия:** Opus + Sonnet через Claude Code, Qwen через opencode (бесплатно). 2 Opus + 6 Sonnet + 3 Qwen = полный рабочий день без лимитов.
 
 ---
 
@@ -29,12 +34,11 @@
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine
 claude --dangerously-skip-permissions --model sonnet
 
-# 2. Перегенерировать CLAUDE.md для всех ролей (после merge/experience reports)
-cd ~/Documents/VETKA_Project/vetka_live_03
-.venv/bin/python -m src.tools.generate_claude_md --all
+# 2. Запустить Qwen-агента через opencode (WEATHER роли)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core
+opencode -m opencode/qwen3.6-plus-free
 
 # 3. Посмотреть кто сейчас работает
-# (в любом агенте)
 vetka_task_board action=active_agents
 ```
 
@@ -42,7 +46,7 @@ vetka_task_board action=active_agents
 
 ## Команды запуска
 
-### Sonnet-флот (рекомендуемый — экономит Opus лимит)
+### Claude Code — Sonnet-флот (CUT домен)
 
 ```bash
 # Alpha (Engine) — Sonnet
@@ -60,42 +64,42 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --
 # Epsilon (QA2) — Sonnet
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model sonnet
 
+# Lambda (QA3) — Qwen via Opencode
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencode -m opencode/qwen3.6-plus-free
+
+# Mu (QA4) — Qwen via Opencode
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-4 && opencode -m opencode/qwen3.6-plus-free
+
 # Eta (Harness 2) — Sonnet
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
 
-# Zeta (Harness) — Opus (нужен для инфра-решений)
+# Zeta (Harness) — Opus
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
 
-# Commander (Architect) — Opus (координация, merge)
+# Commander (Architect) — Opus
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
 ```
 
-### Полный Opus-флот (когда лимиты не проблема)
+### Opencode — Qwen3.6 Plus Free (WEATHER домен)
 
 ```bash
-# Alpha (Engine)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions
+# Theta (WEATHER Core) — Qwen
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core && opencode -m opencode/qwen3.6-plus-free
 
-# Beta (Media)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions
+# Iota (WEATHER Mediator) — Qwen
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mediator && opencode -m opencode/qwen3.6-plus-free
 
-# Gamma (UX)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions
+# Kappa (WEATHER Terminal) — Qwen
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-terminal && opencode -m opencode/qwen3.6-plus-free
+```
 
-# Delta (QA)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions
+### Opencode — TUI режим (интерактивный)
 
-# Epsilon (QA2)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions
-
-# Zeta (Harness)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
-
-# Eta (Harness 2)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions
-
-# Commander (Architect)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
+```bash
+# Просто зайти в worktree и запустить TUI
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core
+opencode
+# В TUI: /model opencode/qwen3.6-plus-free
 ```
 
 ---
@@ -104,32 +108,29 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && cl
 
 **Базовый путь:** `~/Documents/VETKA_Project/vetka_live_03` (далее `$VETKA`)
 
-| Роль | Worktree | Домен | Модель | Что делает |
-|------|----------|-------|--------|------------|
-| **Alpha** | `cut-engine` | Engine | Sonnet | Store, timeline, hotkeys, playback, Tauri |
-| **Beta** | `cut-media` | Media | Sonnet | Codecs, color, scopes, render, effects |
-| **Gamma** | `cut-ux` | UX | Sonnet | Panels, menus, layout, dockview |
-| **Delta** | `cut-qa` | QA | Sonnet | E2E тесты, TDD, FCP7 compliance |
-| **Epsilon** | `cut-qa-2` | QA2 | Sonnet | E2E тесты, дополнительная QA capacity |
-| **Zeta** | `harness` | Harness | **Opus** | Memory, pipeline, task_board, REFLEX |
-| **Eta** | `harness-eta` | Harness | Sonnet | Zeta's partner — infra, tests, recon |
-| **Commander** | `pedantic-bell` | Architect | **Opus** | Координация, merge, dispatch |
-
-
-
-
-
-
-Агент получает роль двумя путями (оба работают):
-1. **`role=` в session_init** (рекомендуется) — прямая привязка, без угадывания
-2. **Автодетекция по worktree** (fallback) — из `.claude/worktrees/<name>/` определяет branch → registry → role
-
-**CLAUDE.md теперь тонкий маршрутизатор** (~10 строк, Phase 197): только identity + ссылка на session_init.
-Все данные (owned_paths, predecessor advice, key docs) приходят динамически через `session_init → role_context`.
+| Роль | Worktree | Домен | Клиент | Модель | Что делает |
+|------|----------|-------|--------|--------|------------|
+| **Alpha** | `cut-engine` | Engine | Claude Code | Sonnet | Store, timeline, hotkeys, playback, Tauri |
+| **Beta** | `cut-media` | Media | Claude Code | Sonnet | Codecs, color, scopes, render, effects |
+| **Gamma** | `cut-ux` | UX | Claude Code | Sonnet | Panels, menus, layout, dockview |
+| **Delta** | `cut-qa` | QA | Claude Code | Sonnet | E2E тесты, TDD, FCP7 compliance |
+| **Epsilon** | `cut-qa-2` | QA2 | Claude Code | Sonnet | E2E тесты, дополнительная QA capacity |
+| **Lambda** | `cut-qa-3` | QA3 | **Opencode** | Qwen3.6+ Free | QA верификация через opencode |
+| **Mu** | `cut-qa-4` | QA4 | **Opencode** | Qwen3.6+ Free | QA верификация через opencode |
+| **Zeta** | `harness` | Harness | Claude Code | **Opus** | Memory, pipeline, task_board, REFLEX |
+| **Eta** | `harness-eta` | Harness | Claude Code | Sonnet | Zeta's partner — infra, tests, recon |
+| **Commander** | `pedantic-bell` | Architect | Claude Code | **Opus** | Координация, merge, dispatch |
+| **Theta** | `weather-core` | WEATHER | **Opencode** | Qwen3.6+ Free | Profile manager, universal prompt injection |
+| **Iota** | `weather-mediator` | WEATHER | **Opencode** | Qwen3.6+ Free | Local model mediator, context packing |
+| **Kappa** | `weather-terminal` | WEATHER | **Opencode** | Qwen3.6+ Free | Terminal integration, CLI agents |
 
 ---
 
-## Что говорить агенту
+## Инициализация
+
+Агент получает роль двумя путями (оба работают):
+1. **`role=` в session_init** (рекомендуется) — прямая привязка, без угадывания
+2. **Автодетекция по worktree** (fallback) — из worktree определяет branch → registry → role
 
 ### Первое сообщение (для любого агента)
 ```
@@ -137,39 +138,52 @@ vetka session init
 ```
 Агент загрузит контекст проекта, task board, protocol status.
 
-**Session init по ролям** (Phase 198 — рекомендуемый способ):
+**Session init по ролям:**
 ```
-# Агент сам передаёт role= при инициализации:
-mcp__vetka__vetka_session_init role=Alpha    # → Engine context
-mcp__vetka__vetka_session_init role=Beta     # → Media context
-mcp__vetka__vetka_session_init role=Gamma    # → UX context
-mcp__vetka__vetka_session_init role=Delta    # → QA context
-mcp__vetka__vetka_session_init role=Zeta     # → Harness context
-mcp__vetka__vetka_session_init role=Eta      # → Harness2 context
+mcp__vetka__vetka_session_init role=Alpha     # → Engine context
+mcp__vetka__vetka_session_init role=Beta      # → Media context
+mcp__vetka__vetka_session_init role=Gamma     # → UX context
+mcp__vetka__vetka_session_init role=Delta     # → QA context
+mcp__vetka__vetka_session_init role=Epsilon   # → QA2 context
+mcp__vetka__vetka_session_init role=Lambda    # → QA3 context (Opencode)
+mcp__vetka__vetka_session_init role=Mu        # → QA4 context (Opencode)
+mcp__vetka__vetka_session_init role=Zeta      # → Harness context
+mcp__vetka__vetka_session_init role=Eta       # → Harness2 context
+mcp__vetka__vetka_session_init role=Theta     # → WEATHER Core context
+mcp__vetka__vetka_session_init role=Iota      # → WEATHER Mediator context
+mcp__vetka__vetka_session_init role=Kappa     # → WEATHER Terminal context
 mcp__vetka__vetka_session_init role=Commander # → Architect context
 ```
 
 `role=` даёт точную привязку к роли без branch detection fallback.
-Если `role=` не указан — система определит роль по worktree branch (старый путь, работает).
 
 **Что возвращает session_init:**
 - `role_context` — callsign, domain, branch, owned_paths, blocked_paths, workflow_hints
 - `task_board_summary` — pending/in_progress/done counts + top tasks
 - `predecessor_advice` — уроки от предыдущего агента этой роли
-- `engram_learnings` — hot patterns из ENGRAM L1 (danger, architecture)
-- `reflex_recommendations` — top-3 tool recommendations
 - `protocol_status` — checklist (session_init ✓, task_board ?, task claimed ?)
 
-Это **универсальный контракт** — работает одинаково для Claude Code, Codex, Gemini, Cursor, MCC.
+Это **универсальный контракт** — работает одинаково для Claude Code, Opencode, Codex, Cursor, MCC.
 
 ### Дать задачу из борда
 ```
-Возьми задачу tb_1774153652_5
+Возьми задачу tb_1774980906_74494_1
 ```
 или
 ```
 Посмотри борд, возьми что-то по своему домену
 ```
+
+### WEATHER таски (Qwen агенты)
+
+| Task ID | Title | Роль |
+|---------|-------|------|
+| `tb_1774980906_74494_1` | WEATHER-201.1 Profile Manager | Theta |
+| `tb_1774980908_74494_1` | WEATHER-201.2 Universal prompt injection | Theta |
+| `tb_1774980913_74494_1` | WEATHER-201.3 TaskBoard UI sidebar | Gamma |
+| `tb_1774980916_74494_1` | WEATHER-201.4 Terminal integration | Kappa |
+| `tb_1774980919_74494_1` | WEATHER-201.5 Local model mediator | Iota |
+| `tb_1774980923_74494_1` | WEATHER-201.6 Integration tests | Delta |
 
 ### Запустить Commander (архитектор-капитан)
 ```
@@ -181,120 +195,64 @@ vetka session init
 создай таски с ролями (Alpha/Beta/Gamma/Delta) и dispatch.
 ```
 
-### Попросить Commander сделать master plan
-```
-Нужно сделать [большая фича/рефакторинг]. Сделай мастер-план:
-- Разбей на sous-chefs (параллельные агенты)
-- Определи зависимости между волнами
-- Создай таски на борде
-```
-
 ### Попросить merge
 ```
 Замерджь ветку claude/cut-engine в main
 ```
-Commander знает merge ritual (pre-check → merge → vite build → promote).
-
-### Обновить CLAUDE.md после сессии
-```
-Перегенерируй CLAUDE.md для всех ролей
-```
-или вручную:
-```bash
-.venv/bin/python -m src.tools.generate_claude_md --all
-```
 
 ---
 
-## Workflow patterns — когда что использовать
+## Workflow patterns
 
 ### Простая задача (1 агент, < 30 мин)
 ```
 Запусти нужный worktree → дай задачу → он сделает
 ```
-Пример: "Почини баг в timeline playback" → запускаешь Alpha.
 
-### Параллельная работа (4-5 агентов)
+### Параллельная работа (Claude Code + Opencode)
 ```
-1. Запусти Commander (main или pedantic-bell)
-2. "Вот фича X. Раздели на домены, создай таски, dispatch"
-3. Commander создаёт таски с role=Alpha/Beta/Gamma/Delta
-4. Открой 4 терминала, запусти агентов в worktrees
-5. Каждый скажет "vetka session init" → увидит свои таски → возьмёт
-6. Когда все закончат → Commander мержит
+1. Запусти Commander (Claude Code) → "vetka session init" → план
+2. Commander создаёт таски с role=
+3. Запусти Qwen-агентов (Opencode) в WEATHER worktrees
+4. Каждый: "vetka session init" → берёт задачу → работает
+5. Когда все закончат → Commander мержит
 ```
 
 ### Dragon (автоматический pipeline)
 ```
 В любом агенте: @dragon <задача>
 ```
-Dragon сам выберет тир (Bronze/Silver/Gold) и прогонит через
-scout → architect → researcher → coder → verifier.
-
-### Sous-Chef pattern (cross-cutting инфра)
-```
-Commander на main:
-"Сделай мастер-план для REFLEX Emotions.
-Волна 1: SC-A (core) + SC-B (тесты) параллельно.
-Волна 2: SC-C (wiring) после SC-A."
-```
-Commander запускает sous-chefs как background agents в изолированных worktrees.
 
 ---
 
-## Роли при создании задач
+## Таблица доменов
 
-Когда **ты сам** создаёшь задачу или просишь Commander:
-
-### CUT-доменная задача → указывай роль
-```
-Создай задачу: "Fix timeline playback stutter"
-  role=Alpha domain=engine
-  allowed_paths=["client/src/store/useTimelineInstanceStore.ts"]
-```
-
-### Cross-cutting задача → без роли
-```
-Создай задачу: "Add REFLEX Emotions core"
-  project_id=vetka
-  (role и domain пустые — любой агент может взять)
-```
-
-### Не знаешь какая роль → оставь пустой
-```
-Создай задачу: "Improve color rendering"
-  (агент сам определит роль при claim через registry)
-```
-
-### Таблица доменов
 | Если задача про... | Роль | Domain |
 |---|---|---|
 | Store, timeline, playback, hotkeys, Tauri | Alpha | engine |
 | Codecs, color, scopes, render, effects, LUT | Beta | media |
 | Panels, menus, layout, dockview, workspace | Gamma | ux |
-| Тесты, E2E, Playwright, compliance | Delta | qa |
+| Тесты, E2E, Playwright, compliance | Delta / Epsilon / Lambda / Mu | qa |
 | Docs, merge, координация, архитектура | Commander | architect |
 | REFLEX, pipeline, memory, инфра | Zeta / Eta | harness |
+| WEATHER: profiles, universal prompt injection | Theta | weather |
+| WEATHER: local model mediator, context packing | Iota | weather |
+| WEATHER: terminal, CLI agents, xterm.js | Kappa | weather |
 
 ---
 
-## Полезные команды для агентов
+## Полезные команды
 
-```
+```bash
 # Борд
 vetka_task_board action=list project_id=CUT filter_status=pending
 vetka_task_board action=active_agents
 vetka_task_board action=summary
 
-# Генератор CLAUDE.md
-.venv/bin/python -m src.tools.generate_claude_md --all           # все роли
-.venv/bin/python -m src.tools.generate_claude_md --role Alpha    # одна роль
-.venv/bin/python -m src.tools.generate_claude_md --role Alpha --dry-run  # preview
-
 # Git worktrees
-git worktree list                    # кто где
-git log --oneline claude/cut-engine  # что сделал Alpha
-git diff main..claude/cut-engine     # что изменилось
+git worktree list
+git log --oneline agent/theta-weather   # что сделал Theta
+git diff main..agent/theta-weather      # что изменилось
 ```
 
 ---
@@ -304,43 +262,36 @@ git diff main..claude/cut-engine     # что изменилось
 | Файл | Назначение |
 |---|---|
 | `data/templates/agent_registry.yaml` | Роли, домены, owned_paths, blocked_paths |
-| `data/templates/claude_md_template.j2` | Шаблон CLAUDE.md для генератора |
-| `.claude/worktrees/*/CLAUDE.md` | Per-worktree инструкции (auto-generated) |
+| `.claude/worktrees/*/CLAUDE.md` | Per-worktree инструкции |
 | `data/experience_reports/*.json` | Experience reports от агентов |
 | `src/services/agent_registry.py` | Python loader для registry |
-| `src/services/experience_report.py` | ExperienceReportStore |
-| `src/tools/generate_claude_md.py` | Генератор CLAUDE.md |
-| `docs/192_task_SQLite/ARCHITECTURE_ZETA_AGENT_INIT_SYSTEM.md` | Архитектура системы |
+| `docs/200_taskboard_forever/ARCHITECTURE_AGENT_ECOSYSTEM.md` | Полная архитектура агентов |
+| `docs/201ph_WEATHERE/ARCHITECTURE_WEATHER.md` | WEATHER архитектура |
+| `docs/201ph_WEATHERE/RECON_WEATHER_BROWSER_2026-03-31.md` | WEATHER RECON |
 
 ---
 
-## Типичный день с 6 агентами
+## Типичный день с 11 агентами
 
 ```
 Утро:
-  1. Запусти Commander → "vetka session init" → покажи борд
+  1. Запусти Commander (Claude Code) → "vetka session init" → покажи борд
   2. Commander создаёт план на день, dispatch задачи с role=
 
 Работа:
-  3. Открой 4-5 терминалов → запусти агентов в worktrees
-  4. Каждый: "vetka session init" → берёт задачу → работает
-  5. Ты переключаешься между терминалами, отвечаешь на вопросы
-  6. Делегируй рутину Sonnet-агентам (98% лимита не используется!)
+  3. CUT-агенты (Claude Code): Alpha, Beta, Gamma, Delta в своих worktrees
+  4. WEATHER-агенты (Opencode): Theta, Iota, Kappa в своих worktrees
+  5. Каждый: "vetka session init" → берёт задачу → работает
+  6. Ты переключаешься между терминалами, отвечаешь на вопросы
 
 Merge:
-  7. Commander → "замерджь Alpha через task_board merge_request"
-  8. Post-merge hook автоматически: digest + CLAUDE.md regen + task promote
+  7. Commander → "замерджь через task_board merge_request"
+  8. Post-merge hook: digest + task promote
 
 Вечер:
   9. Debrief Q1-Q3 при закрытии тасков → автоматически в CORTEX + ENGRAM
   10. STM snapshot сохраняется → следующая сессия начнёт с памятью
 ```
-
-**Phase 198 improvements:**
-- CLAUDE.md regen автоматический (post-merge hook), не надо вручную
-- Debrief → память: прямой pipeline, без .md файлов
-- Sonnet-агенты: 23 агента = 4% лимита. Используй их для рекона и простых фиксов
-- Token efficiency: session_init -55%, CLAUDE.md -93%, task claim -87%
 
 ---
 
