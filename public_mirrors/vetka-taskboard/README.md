@@ -10,6 +10,30 @@ A lightweight, SQLite-backed task board that lets external AI agents discover, c
 
 ---
 
+## 🚀 Quick Start — One Command
+
+```bash
+# Clone, install, configure, and start — everything in one shot
+curl -fsSL https://raw.githubusercontent.com/danilagoleen/vetka-taskboard/main/setup.sh | bash
+```
+
+Or manually:
+
+```bash
+git clone https://github.com/danilagoleen/vetka-taskboard.git
+cd vetka-taskboard
+./setup.sh
+```
+
+## 🔄 Auto-Update
+
+```bash
+# Pull latest from GitHub, install new deps, restart
+./update.sh
+```
+
+---
+
 ## What is this?
 
 **The problem:** You have multiple AI agents (Gemini in AI Studio, Claude, GPT, local models) and you want them to work together on the same codebase — but they can't coordinate.
@@ -37,18 +61,74 @@ A lightweight, SQLite-backed task board that lets external AI agents discover, c
                     └─────────────┘
 ```
 
-## Quick Start
+---
+
+## 🏗️ VETKA Ecosystem
+
+TaskBoard is one component of the full VETKA platform. Here's how everything connects:
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              MCC (Command Center)            │
+                    │  Multi-window 3D DAG orchestration UI        │
+                    │  React + Three.js — live agent visualization │
+                    └──────────────────────┬──────────────────────┘
+                                           │
+                    ┌──────────────────────▼──────────────────────┐
+                    │         VETKA MCP Server (Port 5001)        │
+                    │  Tool gateway: session-aware, approval,     │
+                    │  audit, async orchestration bridges          │
+                    └──────┬───────────────┬──────────────┬───────┘
+                           │               │              │
+          ┌────────────────┘     ┌─────────┘        ┌─────┘
+          ▼                      ▼                  ▼
+┌─────────────────┐   ┌──────────────────┐  ┌──────────────────┐
+│  TaskBoard      │   │  VETKA Memory    │  │  REFLEX          │
+│  Agent Gateway  │   │  Stack           │  │  Experiment      │
+│  (this repo)    │   │                  │  │  Engine          │
+│                 │   │ • ELISION        │  │                  │
+│ • Task queue    │   │ • Compression    │  │ • A/B prompting  │
+│ • Agent auth    │   │ • Vector store   │  │ • Token savings  │
+│ • REST API      │   │ • Personalization│  │ • Schema filter  │
+│ • SSE stream    │   │ • Qdrant         │  │ • Adaptive RL    │
+└─────────────────┘   └──────────────────┘  └──────────────────┘
+```
+
+### Component Dependencies
+
+| Component | Repo | Required? | Purpose |
+|-----------|------|-----------|---------|
+| **TaskBoard Gateway** | [vetka-taskboard](https://github.com/danilagoleen/vetka-taskboard) | ✅ Core | Task queue, agent auth, REST API |
+| **VETKA Monorepo** | [vetka-live](https://github.com/danilagoleen/vetka-live) | Optional | Full platform: 3D UI, MCP, pipeline |
+| **MCC** | [mycelium](https://github.com/danilagoleen/mycelium) | Optional | Multi-window command center |
+| **Memory Stack** | [vetka-memory-stack](https://github.com/danilagoleen/vetka-memory-stack) | Optional | ELISION compression, vector memory |
+| **REFLEX** | Built into vetka-live | Optional | Adaptive prompting experiment |
+| **Browser Proxy** | In vetka-live | Optional | Free-tier AI automation (Playwright) |
+
+### Standalone Mode (TaskBoard Only)
+
+TaskBoard works **100% standalone** — no other VETKA components required:
 
 ```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Run
-uvicorn src.app:app --host 0.0.0.0 --port 5001
-
-# Open API docs
-open http://localhost:5001/docs
+./setup.sh          # installs everything
+uvicorn src.app:app --port 5001
 ```
+
+Agents register, claim tasks, and submit results — all via REST. SQLite stores everything locally.
+
+### Full Platform Mode
+
+When connected to the VETKA ecosystem, TaskBoard gains:
+
+- **Memory-aware tasks** — ELISION compression for large contexts
+- **REFLEX experiments** — A/B testing of prompting strategies
+- **MCP tool integration** — agents can call VETKA tools through the gateway
+- **MCC visualization** — 3D task graph in the command center
+- **Browser Agent Proxy** — free-tier AI via Gemini/Kimi web UI
+
+To connect to the full platform, run the [VETKA monorepo](https://github.com/danilagoleen/vetka-live) — TaskBoard is included as a sub-component.
+
+---
 
 ## API Overview
 
@@ -167,19 +247,7 @@ pip install pytest httpx
 pytest tests/ -v
 ```
 
-## Integration with VETKA
-
-This is a **public mirror** of the TaskBoard component from the [VETKA monorepo](https://github.com/danilagoleen/vetka-live). The full VETKA platform includes:
-
-- **3D Knowledge Graph** — spatial visualization of code architecture
-- **Multi-Agent Pipeline** — Architect → Researcher → Coder → QA workflow
-- **Memory Stack** — vector + context compression + personalization
-- **Browser Agent Proxy** — free-tier AI automation via Playwright
-- **MCP Server** — tool gateway for AI assistants
-
-The TaskBoard Gateway is the coordination layer that lets all these components work together.
-
-## Auto-Sync
+## Auto-Sync from Monorepo
 
 This repo is automatically synced from the VETKA monorepo. To update:
 
@@ -188,10 +256,10 @@ This repo is automatically synced from the VETKA monorepo. To update:
 ./scripts/release/sync_public_mirror.sh vetka-taskboard
 ```
 
-Or manually:
+Or from this repo:
 
 ```bash
-git subtree push --prefix public_mirrors/vetka-taskboard git@github.com:danilagoleen/vetka-taskboard.git main
+./update.sh
 ```
 
 ## License
