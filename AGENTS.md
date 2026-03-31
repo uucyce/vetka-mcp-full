@@ -106,21 +106,27 @@ Three agents work on ONE codebase through ONE TaskBoard:
 | **Opus** (Codex) | Codex | Full MCP (VETKA + MYCELIUM) | Architecture, pipeline, infra |
 | **Cursor** (Opus 4.5) | cursor | Full MCP (VETKA + MYCELIUM) | Frontend, DAG viz, UI |
 | **Codex** (Codex worktree) | Codex | Full MCP (VETKA + MYCELIUM) | Tests, cleanup, isolated modules |
+| **Qwen** (Opencode) | opencode | Full MCP (VETKA + MYCELIUM) | WEATHER, browser automation |
 
 ### Task Lifecycle (ALL agents follow this)
 
 ```
-1. GET TASK:    mycelium_task_board action=list filter_status=pending
-2. CLAIM:       mycelium_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
-3. TRACK START: mycelium_track_started task_id=<id> title=<title> source=<agent>
-4. DO WORK:     Edit files, run tests
+1. INIT:        vetka_session_init (FIRST action, always)
+2. GET TASK:    vetka_task_board action=list filter_status=pending
+3. CLAIM:       vetka_task_board action=claim task_id=<id> assigned_to=<agent> agent_type=<type>
+4. DO WORK:     Edit files (ONLY allowed_paths), run tests
 5. COMMIT:      vetka_git_commit message="phase{N}.{M}: description [task:{task_id}]"
-                → Auto-triggers: digest update + task auto-complete + push (on main)
-6. VERIFY:      Check task was auto-completed, or manually: mycelium_task_board action=complete task_id=<id>
+6. SET QA:      vetka_task_board action=update task_id=<id> status=need_qa
+                → DO NOT set done_worktree yourself! QA agent does that after verification.
 ```
 
-**CRITICAL: Step 5 is the key step.** A properly formatted commit message auto-closes tasks.
-Steps 5→6 replace the old manual `track_done` + `complete` — those are now optional fallbacks.
+**CRITICAL: Step 6 is the key difference.** After committing, set status to `need_qa`.
+The QA agent (Delta/Epsilon) will verify and either:
+- `verified` → task passes QA
+- `needs_fix` → you fix and resubmit
+
+**NEVER set `done_worktree` yourself** — that's the QA agent's job after verification.
+**NEVER use `git commit` directly** — always use `vetka_git_commit` (triggers hooks + auto-close).
 
 ### Commit Message Format (for auto-complete)
 
@@ -183,10 +189,11 @@ Set port in `.Codex/launch.json` per worktree to avoid conflicts.
 ### Rules
 - Check `assigned_to` field — only take tasks assigned to you or unassigned
 - NEVER modify files assigned to another agent (check OPUS_STATUS.md coordination notes)
-- After completing a task, check if new tasks appeared (board may update)
+- After committing, set task status to `need_qa` via TaskBoard
 - If blocked, update task status to `hold` and note the blocker in description
 - **ALWAYS include `[task:tb_xxxx]` in commit messages** for auto-close to work
 - **NEVER use `git commit` directly** — always use `vetka_git_commit` (triggers hooks + auto-close)
+- **NEVER set `done_worktree` yourself** — QA agent does that after verification
 
 ### File Ownership & Conflict Prevention (Phase 170+)
 
@@ -252,6 +259,7 @@ You are the architect and commander. When planning ANY non-trivial task, deploy 
 1. ALWAYS call `vetka_session_init` FIRST
 2. Use MARKER_XXX.Y convention for code comments
 3. Tests: `python -m pytest tests/ -v`
-4. Commit via `vetka_git_commit` with `[task:tb_xxxx]` in message (auto-closes task + updates digest)
-5. NO new UI panels/buttons — use existing UI, add functions only
-6. ALL work goes through TaskBoard: create task → claim → work → commit with task ID → auto-close
+4. Commit via `vetka_git_commit` with `[task:tb_xxxx]` in message
+5. After commit, set task status to `need_qa` via TaskBoard — DO NOT set done_worktree yourself
+6. NO new UI panels/buttons — use existing UI, add functions only
+7. ALL work goes through TaskBoard: create task → claim → work → commit → need_qa → QA verifies

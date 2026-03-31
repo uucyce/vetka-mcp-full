@@ -157,6 +157,59 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
+  # ── Lambda: QA3 Domain (Opencode/Qwen) ──────────────────
+  - callsign: "Lambda"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "opencode"
+    role_title: "QA Engineer 3 / Opencode Qwen"
+    worktree: "cut-qa-3"
+    branch: "agent/lambda-qa"
+    model_tier: "sonnet"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "client/e2e/"
+      - "tests/test_*.py"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_FCP7_DELTA2_CH41_115_2026-03-20.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Mu: QA4 Domain (Opencode/Qwen) ──────────────────────
+  - callsign: "Mu"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "opencode"
+    role_title: "QA Engineer 4 / Opencode Qwen"
+    worktree: "cut-qa-4"
+    branch: "agent/mu-qa"
+    model_tier: "sonnet"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "client/e2e/"
+      - "tests/test_*.py"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
+      - "scripts/detect_*.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_FCP7_DELTA2_CH41_115_2026-03-20.md"
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
+    roadmap: ""
+
   # ── Zeta: Harness/Infrastructure Domain ─────────────────
   - callsign: "Zeta"
     domain: "harness"
@@ -293,3 +346,141 @@ shared_zones:
   - file: "package.json"
     owners: {}
     protocol: "Any agent may add dependencies — declare in task"
+
+# ── WEATHER Roles ─────────────────────────────────────────────
+  - callsign: "Theta"
+    agent_type: "claude_code"
+    domain: "weather"
+    model_tier: "sonnet"
+    branch: "agent/theta-weather"
+    owned_paths:
+      - "src/services/browser_manager.py"
+      - "src/services/adapters/base_adapter.py"
+      - "src/services/adapters/gemini_adapter.py"
+      - "config/browser_agents.yaml"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+
+  - callsign: "Iota"
+    agent_type: "claude_code"
+    domain: "weather"
+    model_tier: "sonnet"
+    branch: "agent/iota-mediator"
+    owned_paths:
+      - "src/services/weather_mediator.py"
+      - "src/services/code_extractor.py"
+      - "src/services/browser_agent_proxy.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+
+  - callsign: "Kappa"
+    agent_type: "claude_code"
+    domain: "weather"
+    model_tier: "sonnet"
+    branch: "agent/kappa-terminal"
+    owned_paths:
+      - "client/src/components/weather/"
+      - "src/api/routes/weather_routes.py"
+      - "client/src-tauri/src/commands.rs"
+    blocked_paths:
+      - "client/src/components/cut/"
+      - "e2e/"
+
+# ── External Agents (Gateway API) ─────────────────────────
+# AI Studio agents (Gemini, Kimi, Perplexity) — access via REST Gateway API.
+# These agents claim tasks through /api/gateway/* endpoints.
+external_agents:
+  - callsign: "Gemini-1"
+    agent_type: "gemini"
+    domain: "general"
+    model_tier: "gold"
+    branch: "agent/gemini-1"
+    capabilities:
+      - python
+      - typescript
+      - react
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
+
+  - callsign: "Gemini-2"
+    agent_type: "gemini"
+    domain: "general"
+    model_tier: "silver"
+    branch: "agent/gemini-2"
+    capabilities:
+      - python
+      - typescript
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
+
+  - callsign: "Kimi-1"
+    agent_type: "kimi"
+    domain: "general"
+    model_tier: "gold"
+    branch: "agent/kimi-1"
+    capabilities:
+      - python
+      - typescript
+      - architecture
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
+
+  - callsign: "Perplexity-1"
+    agent_type: "perplexity"
+    domain: "research"
+    model_tier: "silver"
+    branch: "agent/perplexity-1"
+    capabilities:
+      - python
+      - research
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
+
+  - callsign: "Claude-Web-1"
+    agent_type: "claude"
+    domain: "general"
+    model_tier: "gold"
+    branch: "agent/claude-web-1"
+    capabilities:
+      - python
+      - typescript
+      - react
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
+
+  - callsign: "GPT-Web-1"
+    agent_type: "gpt"
+    domain: "general"
+    model_tier: "silver"
+    branch: "agent/gpt-web-1"
+    capabilities:
+      - python
+      - typescript
+    owned_paths:
+      - "docs/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src-tauri/"
+      - "data/"
