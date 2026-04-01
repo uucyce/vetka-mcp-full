@@ -394,6 +394,8 @@ interface CutEditorState {
 
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
+  showPublishDialog: boolean;
+  showTimecodeEntry: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   showFindDialog: boolean;          // MARKER_FCP7-FIND: Edit > Find overlay
   findQuery: string;                // active search query for clip highlighting
@@ -403,6 +405,10 @@ interface CutEditorState {
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
   showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
+  // MARKER_MATCH-SEQ: Match Sequence Settings popup
+  showMatchSequencePopup: boolean;
+  pendingMatchClipPath: string | null;
+  setShowMatchSequencePopup: (show: boolean, clipPath?: string | null) => void;
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -563,6 +569,9 @@ interface CutEditorState {
   setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
+  setShowPublishDialog: (show: boolean) => void;
+  setShowTimecodeEntry: (show: boolean) => void;
+  cycleTimelineDisplayMode: () => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
   setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
@@ -827,6 +836,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
+  showPublishDialog: false,
+  showTimecodeEntry: false,
   showSpeedControl: false,          // MARKER_B11
   showFindDialog: false,            // MARKER_FCP7-FIND
   findQuery: '',                    // MARKER_FCP7-FIND
@@ -835,6 +846,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditClipId: null,
   trimEditPoint: 0,
   showPasteAttributes: false,       // MARKER_PASTE_ATTR
+  showMatchSequencePopup: false,    // MARKER_MATCH-SEQ
+  pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -1082,7 +1095,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
   // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
   pasteAttributesSelective: (config: PasteAttributesConfig) => {
-    const { clipboard, selectedClipIds, lanes } = get();
+    const { clipboard, lanes } = get();
+    const selectedClipIds = useSelectionStore.getState().selectedClipIds;
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const source = clipboard[0];
     const ops: Array<Record<string, unknown>> = [];
@@ -1510,8 +1524,16 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
+  setShowPublishDialog: (show) => set({ showPublishDialog: show }),
+  setShowTimecodeEntry: (show) => set({ showTimecodeEntry: show }),
+  cycleTimelineDisplayMode: () => set((s) => {
+    const order = ['timecode', 'frames', 'seconds'] as const;
+    const next = order[(order.indexOf(s.timecodeDisplayMode) + 1) % order.length];
+    return { timecodeDisplayMode: next };
+  }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
+  setShowMatchSequencePopup: (show, clipPath) => set({ showMatchSequencePopup: show, pendingMatchClipPath: clipPath ?? null }),
   setFindQuery: (query) => set({ findQuery: query }),
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),

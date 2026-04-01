@@ -1219,7 +1219,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const allClips: { clipId: string; time: number }[] = [];
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
-              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec });
             }
           }
           allClips.sort((a, b) => a.time - b.time);
@@ -1260,7 +1260,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // Match by linked_to field (explicit link)
               if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by sync.linked_clip_id (legacy)
-              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              if ((c.sync as any)?.linked_clip_id === clipId || (clickedClip.sync as any)?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by scene_id (same scene = linked)
               if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
             }
@@ -2561,7 +2561,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 const txAlign = tx.alignment;
                                 const zoomVal = zoom;
 
-                                const onMove = (e: MouseEvent) => {
+                                const onMove = (e: globalThis.MouseEvent) => {
                                   const deltaPx = startX - e.clientX; // drag left = increase duration
                                   const deltaSec = deltaPx / zoomVal;
                                   const newDur = Math.max(0.04, startDur + deltaSec);
@@ -2578,7 +2578,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                   s.setLanes(updated);
                                 };
 
-                                const onUp = (e: MouseEvent) => {
+                                const onUp = (e: globalThis.MouseEvent) => {
                                   window.removeEventListener('mousemove', onMove);
                                   window.removeEventListener('mouseup', onUp);
                                   const deltaPx = startX - e.clientX;
@@ -3174,29 +3174,30 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   </div>
                 );
               }
+              const mi = item as { label: string; shortcut?: string; action: () => void; disabled?: boolean };
               return (
                 <button
-                  key={item.label}
-                  disabled={Boolean(item.disabled)}
-                  onClick={item.action}
+                  key={mi.label}
+                  disabled={Boolean(mi.disabled)}
+                  onClick={mi.action}
                   style={{
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     background: 'transparent',
-                    color: item.disabled ? '#444' : '#ccc',
+                    color: mi.disabled ? '#444' : '#ccc',
                     border: 'none',
                     borderRadius: 4,
                     padding: '6px 8px',
-                    cursor: item.disabled ? 'default' : 'pointer',
+                    cursor: mi.disabled ? 'default' : 'pointer',
                     fontSize: 11,
                     fontFamily: 'system-ui',
                   }}
                 >
-                  <span>{item.label}</span>
-                  {item.shortcut ? (
-                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{item.shortcut}</span>
+                  <span>{mi.label}</span>
+                  {mi.shortcut ? (
+                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{mi.shortcut}</span>
                   ) : null}
                 </button>
               );
