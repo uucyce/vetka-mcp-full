@@ -154,6 +154,7 @@ from src.api.routes.cut_routes_workers import (  # noqa: E402
     _build_music_cue_summary,    # used by /project-state runtime path
     _build_rhythm_surface,       # used by /project-state runtime path
     _infer_cut_asset_kind,       # MARKER_B74: moved to workers
+    _resolve_asset_path,         # used by /media/support endpoint
 )
 
 router.include_router(worker_router)
