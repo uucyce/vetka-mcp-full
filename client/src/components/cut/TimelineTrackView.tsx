@@ -3024,7 +3024,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             const clipPath = contextMenu.clip.source_path;
             const close = () => setContextMenu(null);
 
-            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | { type: 'color_picker' } | 'separator';
 
             const items: MenuItem[] = [
               // ── Selection ──
@@ -3081,6 +3081,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 });
               }},
               'separator',
+              // MARKER_COLOR-LABEL: FCP7 color label picker — 8 circles + clear
+              { type: 'color_picker' as const },
+              'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
@@ -3106,6 +3109,43 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             return items.map((item, idx) => {
               if (item === 'separator') {
                 return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
+              }
+              if ('type' in item && item.type === 'color_picker') {
+                const activeLabel = contextMenu.clip.color_label;
+                return (
+                  <div key="color-picker" style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', gap: 4 }}>
+                    <span style={{ color: '#555', fontSize: 10, marginRight: 2, flexShrink: 0 }}>Label</span>
+                    {Object.entries(COLOR_LABEL_MAP).map(([name, hex]) => (
+                      <button
+                        key={name}
+                        title={name}
+                        onClick={() => {
+                          close();
+                          void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: name } }]);
+                        }}
+                        style={{
+                          width: 12, height: 12, borderRadius: '50%',
+                          background: hex, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+                          outline: activeLabel === name ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
+                          outlineOffset: activeLabel === name ? 1 : 0,
+                        }}
+                      />
+                    ))}
+                    <button
+                      key="clear"
+                      title="Clear label"
+                      onClick={() => {
+                        close();
+                        void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: null } }]);
+                      }}
+                      style={{
+                        background: 'none', border: '1px solid #333', borderRadius: '50%',
+                        width: 12, height: 12, padding: 0, cursor: 'pointer', color: '#555',
+                        fontSize: 9, lineHeight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >×</button>
+                  </div>
+                );
               }
               return (
                 <button
