@@ -1280,11 +1280,9 @@ Pipeline in `cut_render_engine.py`:
 ---
 
 ### 9.2 Multicam
-**Status:** PARTIAL
+**Status:** IMPLEMENTED
 
-`MulticamViewer.tsx` — grid of camera angles (1 col for 1, 2x2 for 2-4, 3x3 for 5+). Active angle highlighted. Click-to-cut via `multicamSwitchAngle(i)`.
-
-**Current limitation:** Video preview in each cell is a placeholder (angle number, no frames).
+`MulticamViewer.tsx` — grid of camera angles (1 col for 1, 2x2 for 2-4, 3x3 for 5+). Active angle highlighted. Click-to-cut via `multicamSwitchAngle(i)`. Video preview in each cell via `/api/cut/thumbnail` endpoint (debounced 300ms fetch, cached thumbnails).
 
 **Audio cross-correlation sync** — **[PLANNED — killer feature]** (PluralEyes replacement).
 
