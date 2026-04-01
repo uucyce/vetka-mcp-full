@@ -1,89 +1,117 @@
 # WEATHER — Web Execution & Adaptive Task Heuristic Environment Router
 
 **Phase:** 201
-**Date:** 2026-03-31
-**Status:** Architecture document — implementation in progress
+**Date:** 2026-03-31 (updated 2026-04-02)
+**Status:** PARKED — conservation until after CUT MVP
 
-### Acronym Breakdown
-
-| Letter | Word | Meaning |
-|--------|------|---------|
-| **W** | Web | Browser-based automation (Playwright/Chromium) |
-| **E** | Execution | Runs tasks: navigate, click, type, extract |
-| **A** | Adaptive | Responds to captcha, rate limits, UI changes |
-| **T** | Task | Driven by TaskBoard — claim → execute → submit |
-| **H** | Heuristic | Smart selectors, pattern matching, fallbacks |
-| **E** | Environment | Multi-service: Gemini, Kimi, Grok, Perplexity, Mistral |
-| **R** | Router | Routes tasks to the right browser/account/adapter |
+> **Conservation Note (2026-04-02):** WEATHER is a critical long-term vision but CUT MVP takes priority. This document has been rewritten to reflect the correct architecture (compose from existing, not build from scratch). All obsolete adapter tasks closed. New P4 tasks created for when we return. — Captain Polaris
 
 ---
 
 ## 1. Overview
 
-WEATHER is the browser automation layer of VETKA. It connects the TaskBoard to free-tier AI chat services (Gemini, Kimi, Grok, Perplexity, Mistral) via Playwright/Chromium automation.
+WEATHER is the **browser automation + local model orchestration layer** of VETKA. It connects the TaskBoard to free-tier AI chat services (Gemini, Kimi, Grok, Perplexity, Mistral) via Playwright/Chromium automation, orchestrated by local models through the localgays harness.
 
 **Why WEATHER:** Agents operate "in the weather" — navigating dynamic web conditions (captcha, rate limits, UI changes, session expiry). The system adapts to conditions like weather.
 
-```
-TaskBoard → WEATHER Orchestrator → Playwright → AI Service → Code extraction → Git
-```
-
----
-
-## 2. Architecture
+**Key insight from Grok research (2026-04-01):** Do NOT build separate adapters or fork external solutions (browser-use). WEATHER = **compose from existing VETKA components**. ~70-95% of infrastructure already exists across phases 136-147, MCC, localgays, and the agent registry.
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                      WEATHER Layer                           │
-│                                                              │
-│  ┌─────────────┐    ┌──────────────┐    ┌────────────────┐  │
-│  │ Orchestrator│───▶│Browser Manager│───▶│Service Adapters│  │
-│  │  (proxy.py) │    │  (manager.py) │    │  (gemini/kimi) │  │
-│  └──────┬──────┘    └──────┬───────┘    └───────┬────────┘  │
-│         │                  │                     │            │
-│  ┌──────▼──────────────────▼─────────────────────▼──────┐    │
-│  │              Code Extractor                           │    │
-│  │         (DOM parsing + OCR + validation)              │    │
-│  └──────────────────────┬───────────────────────────────┘    │
-│                         │                                     │
-│                  git commit → push → need_qa                  │
-└──────────────────────────────────────────────────────────────┘
+TaskBoard → localgays orchestrator → Playwright pool → AI Service (browser) → Code extraction → Git → TaskBoard update
 ```
 
 ---
 
-## 3. Components
+## 2. Architecture — Compose from Existing
 
-### 3.1 Orchestrator (`src/services/browser_agent_proxy.py`)
-- Polls TaskBoard Gateway API for pending tasks
-- Assigns tasks to available browser slots
-- Routes to appropriate service adapter
-- Handles commit + push + status update
+WEATHER is NOT a standalone system. It is a **glue layer** that connects existing VETKA components into a pipeline:
 
-### 3.2 Browser Manager (`src/services/browser_manager.py`)
-- Launches/manages N Chromium instances
-- Session persistence (cookies/localStorage)
-- Health checks + memory monitoring
-- Account rotation on captcha
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                         WEATHER Layer                                │
+│                                                                      │
+│  ┌─────────────┐    ┌──────────────┐    ┌──────────────────────┐    │
+│  │  TaskBoard  │───▶│  localgays   │───▶│  Playwright Pool     │    │
+│  │  (SQLite)   │    │  (harness)   │    │  (browser automation)│    │
+│  └─────────────┘    └──────┬───────┘    └──────────┬───────────┘    │
+│                            │                        │                │
+│  ┌─────────────────────────▼────────────────────────▼───────────┐    │
+│  │              AI Service Sessions (browser)                    │    │
+│  │         Gemini / Kimi / Grok / Perplexity / Mistral           │    │
+│  └────────────────────────────┬─────────────────────────────────┘    │
+│                               │                                       │
+│  ┌────────────────────────────▼─────────────────────────────────┐    │
+│  │              Code Extract + Validator                         │    │
+│  │         (DOM parsing + OCR + syntax check + security)         │    │
+│  └────────────────────────────┬─────────────────────────────────┘    │
+│                               │                                       │
+│                        git commit → push → need_qa                    │
+└──────────────────────────────────────────────────────────────────────┘
+```
 
-### 3.3 Service Adapters (`src/services/adapters/`)
-- `base_adapter.py` — abstract interface
-- `gemini_adapter.py` — Google AI Studio
-- `kimi_adapter.py` — Moonshot Kimi (TODO)
-- `grok_adapter.py` — xAI Grok (TODO)
-- `perplexity_adapter.py` — Perplexity (TODO)
-- `mistral_adapter.py` — Mistral Le Chat (TODO)
+### 2.1 Component Sources (Where Each Piece Lives)
 
-### 3.4 Code Extractor (`src/services/code_extractor.py`)
-- DOM parsing (primary) — `<pre>`, `<code>`, markdown blocks
-- OCR fallback (Tesseract) — for image-rendered code
-- Language detection (15+ languages)
-- Syntax validation (ast.parse, tsc, node --check)
-- Security checks (path traversal, injection)
+| WEATHER Component | Source | Path | Status |
+|-------------------|--------|------|--------|
+| **Browser Shell** | VETKA Tauri (phases 136-147) | `client/src-tauri/` | ✅ Working (web search, viewport save, contextual retrieval) |
+| **Orchestrator** | localgays harness | `src/services/` | 🔄 In progress (local model integration) |
+| **Playwright Pool** | Already used by Codex/Claude Code | E2E infrastructure | ✅ Available (50+ E2E tests use Playwright) |
+| **Agent Phonebook** | unified_key_manager | `src/services/` | ✅ Working (provider credentials) |
+| **Chat (local + API)** | MCC/VETKA chat panels | `client/src/components/chat/` | ✅ Working |
+| **TaskBoard Sidebar** | MCC | MCC UI | ✅ Working (needs project/agent filters) |
+| **Code Extractor** | code_extractor.py | `src/services/code_extractor.py` | ✅ Working (DOM + OCR + validation) |
+| **MCC Playground** | MCC workflow env | MCC | ✅ Working (orchestration environment) |
 
 ---
 
-## 4. Captcha Handling
+## 3. Design Principles
+
+### 3.1 No Separate Adapters
+**Decision (2026-04-02):** Do NOT build per-service adapters (kimi_adapter.py, grok_adapter.py, etc.). Instead:
+- One universal Playwright context pool
+- Sessions managed by profile (userDataDir), not by adapter class
+- Selectors handled heuristically (ARIA roles, text matching, OCR fallback)
+- Provider-specific logic lives in `config/browser_agents.yaml` (selectors, URLs), not in code
+
+### 3.2 Compose, Don't Build
+Every WEATHER component already exists somewhere in VETKA. WEATHER = wiring:
+- **Browser** → VETKA Tauri shell (phases 136-147)
+- **Chat** → MCC/VETKA chat panels
+- **Keys** → unified_key_manager (agent phonebook)
+- **Orchestration** → localgays harness + MCC playground
+- **Playwright** → existing E2E infrastructure
+- **TaskBoard** → MCC sidebar (add filters)
+
+### 3.3 Local-First
+- Local model (Qwen via LiteRT/Ollama) = primary orchestrator
+- Free AI services (Gemini/Kimi/Grok web UI) = execution layer
+- No API keys needed for web UI — sessions via browser cookies
+- All data stays local (SQLite TaskBoard, cookie profiles)
+
+---
+
+## 4. Session Management
+
+```
+data/browser_sessions/
+├── gemini_account_1/
+│   ├── cookies.json
+│   ├── local_storage.json
+│   └── last_active: timestamp
+├── kimi_account_1/
+│   └── ...
+└── ...
+```
+
+- Sessions saved every 5 minutes
+- Max lifetime: 4 hours
+- Auto-restore on restart
+- Session profiles = Playwright `userDataDir` (persistent contexts)
+- Rotation: round-robin + LRU eviction (evict after 1h idle)
+
+---
+
+## 5. Captcha Handling
 
 ### Detection
 - Monitor for `.g-recaptcha`, `.h-captcha`, `[data-sitekey]`, `#turnstile-widget`
@@ -103,43 +131,25 @@ TaskBoard → WEATHER Orchestrator → Playwright → AI Service → Code extrac
 
 ---
 
-## 5. Session Management
+## 6. Code Extraction Pipeline
 
 ```
-data/browser_sessions/
-├── gemini_account_1/
-│   ├── cookies.json
-│   ├── local_storage.json
-│   └── last_active: timestamp
-├── kimi_account_1/
-│   └── ...
-└── ...
+AI Response → DOM Parser → Code Block → Syntax Check → Security Scan → Git
+     │              │            │            │              │
+     └── Fallback: OCR (Tesseract) if DOM fails
 ```
 
-- Sessions saved every 5 minutes
-- Max lifetime: 4 hours
-- Auto-restore on restart
+| Method | Accuracy | When |
+|--------|----------|------|
+| DOM Parsing | 98% | Primary — `<pre>`, `<code>`, markdown blocks |
+| OCR (Tesseract) | 92% | Fallback — screenshot when DOM fails |
+| Vision Model | 75% | Experimental — screenshot-to-code |
+
+Validation: `ast.parse` (Python), `tsc --noEmit` (TS), `node --check` (JS), Bandit (security)
 
 ---
 
-## 6. Configuration
-
-`config/browser_agents.yaml` — account credentials, timing, rate limits, selectors.
-
----
-
-## 7. Integration Points
-
-| System | Connection | Protocol |
-|--------|-----------|----------|
-| TaskBoard | Gateway API | HTTP REST |
-| Git | Direct | subprocess |
-| AI Services | Playwright | Browser automation |
-| User | macOS notifications | osascript |
-
----
-
-## 8. Scalability
+## 7. Scalability
 
 | Metric | Value |
 |--------|-------|
@@ -148,25 +158,57 @@ data/browser_sessions/
 | Total RAM | ~1.2GB |
 | Parallel tasks | 3 |
 | Sessions per service | 10 accounts |
+| Tasks/day (estimate) | 50-100 |
 
 ---
 
-## 9. File Map
+## 8. Integration Points
 
-| File | Status | Description |
-|------|--------|-------------|
-| `src/services/browser_agent_proxy.py` | ✅ | Orchestrator |
-| `src/services/browser_manager.py` | ✅ | Browser lifecycle |
-| `src/services/adapters/base_adapter.py` | ✅ | Abstract interface |
-| `src/services/adapters/gemini_adapter.py` | ✅ | Gemini adapter |
-| `src/services/adapters/kimi_adapter.py` | ❌ TODO | Kimi adapter |
-| `src/services/adapters/grok_adapter.py` | ❌ TODO | Grok adapter |
-| `src/services/adapters/perplexity_adapter.py` | ❌ TODO | Perplexity adapter |
-| `src/services/adapters/mistral_adapter.py` | ❌ TODO | Mistral adapter |
-| `src/services/code_extractor.py` | ✅ | Code extraction |
-| `config/browser_agents.yaml` | ✅ | Configuration |
-| `tests/test_browser_proxy_*.py` | ❌ TODO | Integration tests |
+| System | Connection | Protocol |
+|--------|-----------|----------|
+| TaskBoard | MCP tools + Gateway API | HTTP REST |
+| Git | Direct | subprocess |
+| AI Services | Playwright | Browser automation |
+| Local Model | localgays / Ollama | HTTP / subprocess |
+| User | macOS notifications + MCC UI | osascript + SSE |
+
+---
+
+## 9. Research References
+
+- **Grok Research:** `docs/201ph_WEATHERE/weather_vetka-grok_research.md`
+  - browser-use (2.5k stars) — 80% ready, but we compose from existing instead
+  - Captcha/rate-limit/session patterns with success rates
+  - Tauri + Playwright integration options
+- **Polaris Experience:** `docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_POLARIS_2026-03-31.md`
+  - Key insight: "Start with universal approach, not separate adapters"
+- **RECON:** `docs/201ph_WEATHERE/RECON_WEATHER_BROWSER_2026-03-31.md`
+  - Tauri browser audit — 40% coverage, 60% needs new work
+
+---
+
+## 10. Conservation Status
+
+**Status:** PARKED
+**Date:** 2026-04-02
+**Reason:** CUT MVP takes priority. WEATHER is critical but not blocking.
+**When to return:** After CUT MVP gate (MERGE POINT 4: Save + Render + Export)
+**What's ready now:**
+- ✅ Browser shell (VETKA Tauri phases 136-147)
+- ✅ Code extractor
+- ✅ Playwright infrastructure (E2E tests)
+- ✅ Agent phonebook (unified_key_manager)
+- ✅ Chat panels (MCC/VETKA)
+- ✅ TaskBoard sidebar (MCC — needs filters)
+- 🔄 localgays harness (in progress)
+
+**What needs building (when we return):**
+- Glue layer: TaskBoard → localgays → Playwright → AI
+- Browser session pool + multi-account rotation
+- TaskBoard sidebar filters (project, agent)
+- WEATHER UI integration in VETKA browser
 
 ---
 
 *WEATHER: Web Execution & Adaptive Task Heuristic Environment Router*
+*Composed from existing VETKA components — not built from scratch*
