@@ -186,7 +186,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
         if (clip.clip_id === selectedClipId) {
-          return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
+          return clip.color_correction ?? null;
         }
       }
     }

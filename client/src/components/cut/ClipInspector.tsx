@@ -339,7 +339,7 @@ export default function ClipInspector() {
         <div style={ROW}>
           <span style={LABEL}>Log Profile</span>
           <select
-            value={(clip as any).color_correction?.logProfile || ''}
+            value={clip.color_correction?.logProfile || ''}
             onChange={(e) => handleLogProfileChange(e.target.value)}
             style={{
               background: '#111',
@@ -360,11 +360,11 @@ export default function ClipInspector() {
           <span style={LABEL}>LUT</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={VALUE}>
-              {(clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath
-                ? ((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath?.split('/').pop() || 'LUT')
+              {clip.color_correction?.lutName || clip.color_correction?.lutPath
+                ? (clip.color_correction?.lutName || clip.color_correction?.lutPath?.split('/').pop() || 'LUT')
                 : 'None'}
             </span>
-            {((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath) && (
+            {(clip.color_correction?.lutName || clip.color_correction?.lutPath) && (
               <button
                 onClick={handleLutClear}
                 style={{
