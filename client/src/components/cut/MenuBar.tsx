@@ -736,7 +736,7 @@ export default function MenuBar() {
           const s = store.getState();
           const t = s.currentTime;
           const selectedLane = s.lanes.find((lane) =>
-            lane.clips.some((c) => c.clip_id === s.selectedClipId)
+            lane.clips.some((c) => c.clip_id === useSelectionStore.getState().selectedClipId)
           );
           if (!selectedLane) return;
           const clipsToSplit = selectedLane.clips.filter(

@@ -320,7 +320,7 @@ export default function ClipInspector() {
         <div style={SECTION}>
           <div style={HEADER}>Effects</div>
           {Object.entries(clip.effects).map(([key, val]) => {
-            if (val === undefined || val === 1 || val === 0 || val === false) return null;
+            if (val === undefined || val === 1 || val === 0) return null;
             return (
               <div key={key} style={ROW}>
                 <span style={LABEL}>{key}</span>
