@@ -875,9 +875,9 @@ def generate_thumbnail(
         "-ss", str(seek_sec),
         "-i", video_path,
         "-frames:v", "1",
-        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease",
+        "-vf", f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+               f"pad={width}:{height}:-1:-1:color=black",
         "-q:v", "3",  # JPEG quality (2-5 is good, lower=better)
-        "-f", "image2",
         output_path,
     ]
 
