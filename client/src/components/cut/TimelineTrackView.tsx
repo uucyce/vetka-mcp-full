@@ -460,6 +460,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const lanes = useCutEditorStore((state) => state.lanes);
   const waveforms = useCutEditorStore((state) => state.waveforms);
   const markers = useCutEditorStore((state) => state.markers);
+  // MARKER_A3.2: Marker visibility filter
+  const visibleMarkerKinds = useCutEditorStore((state) => state.visibleMarkerKinds);
   const zoom = useCutEditorStore((state) => state.zoom);
   const scrollLeft = useCutEditorStore((state) => state.scrollLeft);
   const trackHeight = useCutEditorStore((state) => state.trackHeight);
@@ -2856,7 +2858,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 })}
 
                 {/* MARKER_A3.1: BPM markers on timeline lanes — thin vertical lines */}
-                {zoom > 30 && markers.filter((m) => !m.media_path && BPM_MARKER_KINDS.has(m.kind)).map((marker) => {
+                {/* MARKER_A3.2: Filter by visibleMarkerKinds */}
+                {zoom > 30 && markers.filter((m) => !m.media_path && BPM_MARKER_KINDS.has(m.kind) && visibleMarkerKinds.has(m.kind)).map((marker) => {
                   const markerX = marker.start_sec * zoom - scrollLeft;
                   if (markerX < 0 || markerX > containerWidth) return null;
                   const color = MARKER_COLORS[marker.kind] || '#888';

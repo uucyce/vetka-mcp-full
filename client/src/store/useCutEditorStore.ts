@@ -426,6 +426,8 @@ interface CutEditorState {
   showClipBorders: boolean;
   showWaveforms: boolean;
   waveformHiddenLanes: Set<string>;  // MARKER_A3.4: per-lane waveform visibility
+  // MARKER_A3.2: Per-marker-kind visibility toggles for BPM markers
+  visibleMarkerKinds: Set<string>;   // kinds in set = visible, empty = all visible (default)
   showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
@@ -605,6 +607,9 @@ interface CutEditorState {
   setClipLabelMode: (mode: 'name' | 'color' | 'filename') => void;
   cycleClipLabelMode: () => void;  // MARKER_FCP7-CH45: cycles name→filename→color→name
   setTimecodeDisplayMode: (mode: 'timecode' | 'frames' | 'seconds') => void;
+  // MARKER_A3.2: Marker visibility toggles (per-kind filtering)
+  toggleMarkerKind: (kind: string) => void;
+  setVisibleMarkerKinds: (kinds: Set<string>) => void;
   toggleShowVideoTracks: () => void;
   toggleShowAudioTracks: () => void;
 
@@ -858,6 +863,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipBorders: true,
   showWaveforms: true,
   waveformHiddenLanes: new Set<string>(),  // MARKER_A3.4
+  // MARKER_A3.2: All marker kinds visible by default (empty set = show all)
+  visibleMarkerKinds: new Set<string>(['bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point']),
   showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
@@ -1686,6 +1693,13 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     return { clipLabelMode: next };
   }),
   setTimecodeDisplayMode: (mode) => set({ timecodeDisplayMode: mode }),
+  // MARKER_A3.2: Marker kind visibility
+  toggleMarkerKind: (kind: string) => set((s) => {
+    const next = new Set(s.visibleMarkerKinds);
+    if (next.has(kind)) next.delete(kind); else next.add(kind);
+    return { visibleMarkerKinds: next };
+  }),
+  setVisibleMarkerKinds: (kinds) => set({ visibleMarkerKinds: kinds }),
   toggleShowVideoTracks: () => set((s) => ({ showVideoTracks: !s.showVideoTracks })),
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
