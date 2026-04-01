@@ -127,6 +127,56 @@ export const IconSkipEnd = memo((props: IconProps) => {
 });
 IconSkipEnd.displayName = 'IconSkipEnd';
 
+/** Step back 1 frame |◂ */
+export const IconPrevFrame = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <rect x="2" y="3" width="1.5" height="10" rx="0.5" fill={d.color} />
+      <path d="M11 3.5L5.5 8L11 12.5V3.5z" fill={d.color} />
+    </svg>
+  );
+});
+IconPrevFrame.displayName = 'IconPrevFrame';
+
+/** Step forward 1 frame ▸| */
+export const IconNextFrame = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M5 3.5L10.5 8L5 12.5V3.5z" fill={d.color} />
+      <rect x="12.5" y="3" width="1.5" height="10" rx="0.5" fill={d.color} />
+    </svg>
+  );
+});
+IconNextFrame.displayName = 'IconNextFrame';
+
+/** Previous edit point |◂◂ */
+export const IconPrevEdit = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <rect x="1.5" y="3" width="1.5" height="10" rx="0.5" fill={d.color} />
+      <path d="M8.5 3.5L4.5 8L8.5 12.5V3.5z" fill={d.color} />
+      <path d="M13.5 3.5L9.5 8L13.5 12.5V3.5z" fill={d.color} />
+    </svg>
+  );
+});
+IconPrevEdit.displayName = 'IconPrevEdit';
+
+/** Next edit point ▸▸| */
+export const IconNextEdit = memo((props: IconProps) => {
+  const d = defaults(props);
+  return (
+    <svg width={d.width} height={d.height} viewBox="0 0 16 16" fill="none" style={d.style} className={d.className}>
+      <path d="M2.5 3.5L6.5 8L2.5 12.5V3.5z" fill={d.color} />
+      <path d="M7.5 3.5L11.5 8L7.5 12.5V3.5z" fill={d.color} />
+      <rect x="13" y="3" width="1.5" height="10" rx="0.5" fill={d.color} />
+    </svg>
+  );
+});
+IconNextEdit.displayName = 'IconNextEdit';
+
 /** Export / arrow up from box */
 export const IconExport = memo((props: IconProps) => {
   const d = defaults(props);
