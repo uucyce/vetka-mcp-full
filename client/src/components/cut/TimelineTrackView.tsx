@@ -527,8 +527,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_GAMMA-2: Marker CRUD actions
   const deleteMarker = useCutEditorStore((state) => state.deleteMarker);
-  // MARKER_A3.2: Marker visibility filter from MenuBar toggle
-  const visibleMarkerKinds = useDockviewStore((state) => state.visibleMarkerKinds);
   // MARKER_W6.TOOL-SM: Cursor maps per context
   // Lane background cursor (when hovering empty space)
   // MARKER_W6.HAND-ZOOM: hand shows 'grabbing' during active pan

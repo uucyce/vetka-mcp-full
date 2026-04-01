@@ -335,8 +335,6 @@ interface CutEditorState {
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   showInsertTracksDialog: boolean;
   showDeleteTracksDialog: boolean;
-  // MARKER_GAMMA-FIND: Find dialog (⌘F)
-  showFindDialog: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -545,8 +543,6 @@ interface CutEditorState {
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show: boolean) => void;
   setShowDeleteTracksDialog: (show: boolean) => void;
-  // MARKER_GAMMA-FIND: Find dialog
-  setShowFindDialog: (show: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -780,7 +776,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   showInsertTracksDialog: false,
   showDeleteTracksDialog: false,
-  showFindDialog: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -1489,7 +1484,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
   setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
   setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
-  setShowFindDialog: (show) => set({ showFindDialog: show }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {

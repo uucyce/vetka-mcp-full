@@ -488,7 +488,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     cut: () => useCutEditorStore.getState().cutClips(),
     paste: () => useCutEditorStore.getState().pasteClips('overwrite'),
     pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
-    pasteAttributes: () => useCutEditorStore.getState().pasteAttributes(),
 
     // MARKER_UNDO-FIX: All editing ops route through applyTimelineOps for undo support
     // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
@@ -1063,28 +1062,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         s.setMarkers(s.markers.filter((m) => m.marker_id !== nearest!.marker_id));
       }
     },
-    // Alt+V — paste attributes (effects) from clipboard clip to selected clip
-    pasteAttributes: () => {
-      const s = useCutEditorStore.getState();
-      const clipboard = (s as any).clipboard as Array<{ clip_id: string; effects?: any; keyframes?: any }> | undefined;
-      if (!clipboard || clipboard.length === 0) return;
-      const sourceClip = clipboard[0];
-      if (!sourceClip.effects && !sourceClip.keyframes) return;
-      const targetIds = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
-      if (targetIds.length === 0) return;
-      const newLanes = s.lanes.map((lane) => ({
-        ...lane,
-        clips: lane.clips.map((c) => {
-          if (!targetIds.includes(c.clip_id)) return c;
-          return {
-            ...c,
-            effects: sourceClip.effects ? { ...sourceClip.effects } : c.effects,
-            keyframes: sourceClip.keyframes ? { ...sourceClip.keyframes } : c.keyframes,
-          };
-        }),
-      }));
-      s.setLanes(newLanes);
-    },
     // F9 → insert edit alias — delegates to performInsert (same logic as comma key, with audio lane support)
     insertEditF9: performInsert,
     // F10 → overwrite edit alias — delegates to performOverwrite (same logic as period key, with audio lane support)
@@ -1163,52 +1140,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // MARKER_SOURCE_ACQUIRE: Cmd+8 — open Source Acquire panel
     focusSourceAcquire: () => {
       window.dispatchEvent(new CustomEvent('cut:focus-panel', { detail: { panelId: 'acquire' } }));
-    },
-
-    // MARKER_FCP7FIX: 4 missing actions — revealMasterClip, collapse/expand, rename
-    // Shift+F — reveal master clip in project browser (fires CustomEvent for DAG panel to handle)
-    revealMasterClip: () => {
-      const s = useCutEditorStore.getState();
-      const clipId = s.selectedClipId;
-      if (!clipId) return;
-      for (const lane of s.lanes) {
-        const clip = lane.clips.find((c) => c.clip_id === clipId);
-        if (clip?.source_path) {
-          window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', { detail: { sourcePath: clip.source_path } }));
-          return;
-        }
-      }
-    },
-    // Shift+- — toggle track collapse for the lane of the selected clip
-    collapseExpandTrack: () => {
-      const s = useCutEditorStore.getState();
-      const clipId = s.selectedClipId;
-      if (!clipId) return;
-      for (const lane of s.lanes) {
-        if (lane.clips.some((c) => c.clip_id === clipId)) {
-          s.toggleTrackCollapse(lane.lane_id);
-          return;
-        }
-      }
-    },
-    // Shift+= — expand track to max height for the lane of the selected clip
-    expandTrack: () => {
-      const s = useCutEditorStore.getState();
-      const clipId = s.selectedClipId;
-      if (!clipId) return;
-      for (const lane of s.lanes) {
-        if (lane.clips.some((c) => c.clip_id === clipId)) {
-          s.expandTrackMax(lane.lane_id);
-          return;
-        }
-      }
-    },
-    // Enter — start inline rename on selected clip
-    renameClipInline: () => {
-      const s = useCutEditorStore.getState();
-      if (s.selectedClipId) {
-        s.setRenamingClip(s.selectedClipId);
-      }
     },
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
@@ -1314,10 +1245,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     },
     cycleClipLabelMode: () => {
       useCutEditorStore.getState().cycleClipLabelMode();
-    },
-    findDialog: () => {
-      const s = useCutEditorStore.getState();
-      s.setShowFindDialog(!s.showFindDialog);
     },
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);

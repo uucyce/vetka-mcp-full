@@ -311,8 +311,6 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   findDialog:             'global',
   // MARKER_FCP7-CH45
   cycleClipLabelMode:     'global',
-  // MARKER_FCP7-FIND
-  findDialog:             'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
