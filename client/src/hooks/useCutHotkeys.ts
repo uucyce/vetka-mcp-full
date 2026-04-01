@@ -454,7 +454,6 @@ export const PREMIERE_PRESET: HotkeyMap = {
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
-  pasteAttributes:   'Alt+v',
   // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
@@ -463,14 +462,10 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   linkUnlinkClips:   'Alt+l',
-  // MARKER_SOURCE_ACQUIRE
-  focusSourceAcquire:'Cmd+8',
   // MARKER_GAMMA-FIND: Find dialog
   findDialog:        'Cmd+f',
   // MARKER_FCP7-CH45: Cycle clip label mode
   cycleClipLabelMode: 'Alt+w',
-  // MARKER_FCP7-FIND: Find dialog
-  findDialog: 'Cmd+f',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -595,7 +590,6 @@ export const FCP7_PRESET: HotkeyMap = {
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
-  pasteAttributes:   'Alt+v',
   // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
@@ -604,15 +598,11 @@ export const FCP7_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   linkUnlinkClips:   'Cmd+l',
-  // MARKER_SOURCE_ACQUIRE
-  focusSourceAcquire:'Cmd+8',
   // MARKER_GAMMA-FIND: Find dialog
   findDialog:        'Cmd+f',
   // MARKER_FCP7-CH45: Cycle clip label mode (FCP7 cycleClipDisplayMode)
   // Note: Cmd+Alt+w taken by toggleTimelineDisplayMode; use Alt+w here
   cycleClipLabelMode: 'Alt+w',
-  // MARKER_FCP7-FIND: Find dialog (FCP7 Ch.10)
-  findDialog: 'Cmd+f',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
