@@ -139,24 +139,6 @@ router.include_router(import_router)
 from src.api.routes.cut_routes_pulse import pulse_router  # noqa: E402
 
 router.include_router(pulse_router)
-
-# MARKER_B70: Workers sub-router extracted for modularity (14 endpoints, ~3100 lines)
-from src.api.routes.cut_routes_workers import (  # noqa: E402
-    worker_router,
-    _collect_project_jobs,
-    _worker_job_error,
-    _find_active_duplicate_job,
-    _count_active_background_jobs_for_sandbox,
-    _ACTIVE_JOB_STATES,
-    _SANDBOX_BACKGROUND_LIMIT,
-    _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
-    _build_sync_surface,         # used by /project-state runtime path
-    _build_music_cue_summary,    # used by /project-state runtime path
-    _build_rhythm_surface,       # used by /project-state runtime path
-    _infer_cut_asset_kind,       # MARKER_B74: moved to workers
-)
-
-router.include_router(worker_router)
 # MARKER_GEN-ROUTES: Generation Control sub-router (GenerationControlPanel backend)
 from src.api.routes.cut_routes_generation import generation_router  # noqa: E402
 
