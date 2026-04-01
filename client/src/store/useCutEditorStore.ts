@@ -6,6 +6,14 @@
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
 import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
+import type { ColorCorrection } from './useColorPresetStore';
+
+// MARKER_COLOR-CORRECTION-TYPE: per-clip color correction — extends presets ColorCorrection with LUT/log fields
+export type ClipColorCorrection = Partial<ColorCorrection> & {
+  lutPath?: string;
+  lutName?: string;
+  logProfile?: string;
+};
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -157,6 +165,8 @@ export type TimelineClip = {
   name?: string;
   // MARKER_COLOR-LABEL: FCP7-style editorial color label (set via set_clip_meta). Rendered as 3px left strip on timeline clip.
   color_label?: string;
+  // MARKER_COLOR-CORRECTION-TYPE: per-clip color grading (exposure, LUT, log profile, 3-way wheels).
+  color_correction?: ClipColorCorrection;
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;
@@ -1084,8 +1094,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       }
 
       // Color Correction
-      if (config.colorCorrection && (source as any).color_correction) {
-        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify((source as any).color_correction)) });
+      if (config.colorCorrection && source.color_correction) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify(source.color_correction)) });
       }
 
       // Motion (position, scale, rotation, anchor, crop)
