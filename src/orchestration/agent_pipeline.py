@@ -33,18 +33,12 @@ logger = logging.getLogger(__name__)
 # MARKER_126.5A: Custom exception for pipeline cancellation
 class PipelineCancelled(Exception):
     """Raised when pipeline is cancelled via stop button or API."""
-
     pass
 
 
 # MARKER_123.1_IMPORT: FC loop for coder function calling
 try:
-    from src.tools.fc_loop import (
-        execute_fc_loop,
-        get_coder_tool_schemas,
-        MAX_FC_TURNS_CODER,
-    )
-
+    from src.tools.fc_loop import execute_fc_loop, get_coder_tool_schemas, MAX_FC_TURNS_CODER
     FC_LOOP_AVAILABLE = True
 except ImportError:
     FC_LOOP_AVAILABLE = False
@@ -53,7 +47,6 @@ except ImportError:
 # MARKER_150.4_IMPORT: PatchApplier for sparse apply (surgical code edits)
 try:
     from src.tools.patch_applier import PatchApplier
-
     PATCH_APPLIER_AVAILABLE = True
 except ImportError:
     PATCH_APPLIER_AVAILABLE = False
@@ -61,17 +54,12 @@ except ImportError:
 
 # MARKER_145.ADAPTIVE_TIMEOUT_IMPORT: Adaptive timeout from model registry
 try:
-    from src.elisya.llm_model_registry import (
-        calculate_timeout as _calculate_adaptive_timeout,
-    )
+    from src.elisya.llm_model_registry import calculate_timeout as _calculate_adaptive_timeout
     from src.elisya.model_updater import ensure_model_profile as _ensure_model_profile
-
     ADAPTIVE_TIMEOUT_AVAILABLE = True
 except ImportError:
     ADAPTIVE_TIMEOUT_AVAILABLE = False
-    logger.debug(
-        "[Pipeline] Adaptive timeout not available, using static PHASE_TIMEOUTS"
-    )
+    logger.debug("[Pipeline] Adaptive timeout not available, using static PHASE_TIMEOUTS")
 
 # MARKER_104_PARALLEL_1: Semaphore control for parallel pipeline execution
 # Phase 104.2: MAX_PARALLEL_PIPELINES controls concurrent subtask execution
@@ -88,9 +76,7 @@ MAX_STM_BEFORE_RESET = int(os.getenv("VETKA_STM_RESET_THRESHOLD", "10"))
 # MARKER_118.8_PIPELINE_CONSTANTS: Extracted from hardcoded values
 PIPELINE_STM_LIMIT = int(os.getenv("VETKA_PIPELINE_STM_LIMIT", "5"))
 PIPELINE_ELISION_LEVEL = int(os.getenv("VETKA_PIPELINE_ELISION_LEVEL", "2"))
-PIPELINE_COMPRESS_THRESHOLD = int(
-    os.getenv("VETKA_PIPELINE_COMPRESS_THRESHOLD", "1000")
-)
+PIPELINE_COMPRESS_THRESHOLD = int(os.getenv("VETKA_PIPELINE_COMPRESS_THRESHOLD", "1000"))
 PIPELINE_TRUNCATE_RESULT = int(os.getenv("VETKA_PIPELINE_TRUNCATE_RESULT", "500"))
 PIPELINE_STM_SUMMARY_WINDOW = int(os.getenv("VETKA_PIPELINE_STM_SUMMARY_WINDOW", "3"))
 PIPELINE_SUMMARY_TRUNCATE = int(os.getenv("VETKA_PIPELINE_SUMMARY_TRUNCATE", "200"))
@@ -111,9 +97,7 @@ PHASE_TIMEOUTS = {
     "scout": int(os.getenv("VETKA_TIMEOUT_SCOUT", "30")),
     "architect": int(os.getenv("VETKA_TIMEOUT_ARCHITECT", "60")),
     "researcher": int(os.getenv("VETKA_TIMEOUT_RESEARCHER", "45")),
-    "coder": int(
-        os.getenv("VETKA_TIMEOUT_CODER", "180")
-    ),  # Fallback; was 90, raised for FC 4-turn loops
+    "coder": int(os.getenv("VETKA_TIMEOUT_CODER", "180")),  # Fallback; was 90, raised for FC 4-turn loops
     "verifier": int(os.getenv("VETKA_TIMEOUT_VERIFIER", "30")),
 }
 # MARKER_133.C33B_END
@@ -129,12 +113,8 @@ def _get_pipeline_semaphore() -> asyncio.Semaphore:
     global _pipeline_semaphore
     if _pipeline_semaphore is None:
         _pipeline_semaphore = asyncio.Semaphore(MAX_PARALLEL_PIPELINES)
-        logger.info(
-            f"[Pipeline] Initialized semaphore with MAX_PARALLEL_PIPELINES={MAX_PARALLEL_PIPELINES}"
-        )
+        logger.info(f"[Pipeline] Initialized semaphore with MAX_PARALLEL_PIPELINES={MAX_PARALLEL_PIPELINES}")
     return _pipeline_semaphore
-
-
 # MARKER_104_PARALLEL_1_END
 
 # MARKER_104_ELISION_PROMPTS_START: Import ELISION compression
@@ -144,23 +124,16 @@ from src.memory.elision import ElisionCompressor, get_elision_compressor
 # MARKER_102.1_START: Pipeline storage paths
 # MARKER_117_2B_SANDBOX: Primary path + TMPDIR fallback for MCP sandbox
 TASKS_FILE = Path(__file__).parent.parent.parent / "data" / "pipeline_tasks.json"
-_TASKS_FILE_FALLBACK = (
-    Path(os.environ.get("TMPDIR", "/tmp")) / "vetka_pipeline_tasks.json"
-)
-PROMPTS_FILE = (
-    Path(__file__).parent.parent.parent / "data" / "templates" / "pipeline_prompts.json"
-)
+_TASKS_FILE_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_pipeline_tasks.json"
+PROMPTS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "pipeline_prompts.json"
 # MARKER_117_PRESETS: Presets config file
-PRESETS_FILE = (
-    Path(__file__).parent.parent.parent / "data" / "templates" / "model_presets.json"
-)
+PRESETS_FILE = Path(__file__).parent.parent.parent / "data" / "templates" / "model_presets.json"
 # MARKER_102.1_END
 
 
 @dataclass
 class Subtask:
     """Subtask with optional research trigger"""
-
     description: str
     needs_research: bool = False
     question: Optional[str] = None
@@ -182,7 +155,6 @@ class Subtask:
 @dataclass
 class PipelineTask:
     """Main task with fractal subtasks"""
-
     task_id: str
     task: str
     phase_type: str  # research, fix, build
@@ -209,27 +181,18 @@ class AgentPipeline:
     Auto-triggers Grok researcher on any "?" or needs_research=True.
     """
 
-    def __init__(
-        self,
-        chat_id: Optional[str] = None,
-        auto_write: bool = True,
-        provider: Optional[str] = None,
-        preset: Optional[str] = None,
-        sio=None,
-        sid: Optional[str] = None,
-        async_mode: bool = False,
-        http_client=None,
-        ws_broadcaster=None,
-        playground_root: Optional[str] = None,
-    ):
+    def __init__(self, chat_id: Optional[str] = None, auto_write: bool = True,
+                 provider: Optional[str] = None, preset: Optional[str] = None,
+                 sio=None, sid: Optional[str] = None,
+                 async_mode: bool = False, http_client=None, ws_broadcaster=None,
+                 playground_root: Optional[str] = None):
         self.llm_tool = None  # Lazy load
         # MARKER_129.4: Async mode for MYCELIUM (native async LLM calls)
         self.async_mode = async_mode
-        self._http_client = http_client  # MyceliumHTTPClient for chat relay
+        self._http_client = http_client      # MyceliumHTTPClient for chat relay
         self._ws_broadcaster = ws_broadcaster  # MyceliumWSBroadcaster for DevPanel
         # MARKER_126.5A: Cancellation support — asyncio Event for stop-button
         import asyncio as _asyncio
-
         self._cancelled = _asyncio.Event()
         self._cancel_reason: str = ""
         # MARKER_117_PROVIDER: Provider override for all pipeline LLM calls
@@ -247,13 +210,9 @@ class AgentPipeline:
         self._tokens_in: int = 0
         self._tokens_out: int = 0
         # MARKER_151.11A: Per-agent statistics breakdown
-        self._agent_stats: Dict[
-            str, Dict
-        ] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
+        self._agent_stats: Dict[str, Dict] = {}  # role → {calls, tokens_in, tokens_out, duration_s, retries, success_count, fail_count}
         # MARKER_152.4: Timeline events for pipeline drill-down visualization
-        self._timeline_events: List[
-            Dict
-        ] = []  # [{ts, role, event, detail, duration_s}]
+        self._timeline_events: List[Dict] = []  # [{ts, role, event, detail, duration_s}]
         # MARKER_182.RUNID: Unique run ID per pipeline execution (set in execute())
         self._run_id: Optional[str] = None
         # MARKER_182.SESSIONID: Session ID linking related tasks (passed from heartbeat)
@@ -266,11 +225,11 @@ class AgentPipeline:
         self._reflex_stats: Dict[str, Any] = {
             "enabled": False,
             "recommendations_given": 0,
-            "tools_recommended": [],  # flat list of all tool_ids recommended
-            "tools_used": [],  # flat list of all tool_ids actually used
+            "tools_recommended": [],      # flat list of all tool_ids recommended
+            "tools_used": [],             # flat list of all tool_ids actually used
             "feedback_recorded": 0,
             "verifier_feedbacks": 0,
-            "schemas_filtered": 0,  # MARKER_173.P1: times IP-7 reduced schemas
+            "schemas_filtered": 0,        # MARKER_173.P1: times IP-7 reduced schemas
             "schemas_original_count": 0,  # MARKER_173.P1: total schemas before filtering
             "schemas_filtered_count": 0,  # MARKER_173.P1: total schemas after filtering
         }
@@ -304,9 +263,6 @@ class AgentPipeline:
         self.elision_compressor = get_elision_compressor()
         self.elision_level = PIPELINE_ELISION_LEVEL
         # MARKER_104_ELISION_PROMPTS_END
-        # MARKER_196.BROWSER-RESEARCHER: Researcher strategy selection
-        # "api" = Grok via API (default), "browser" = Browser Proxy (free), "hybrid" = both
-        self.researcher_strategy: str = "api"
         self._load_prompts()
         self._apply_preset()
 
@@ -370,7 +326,7 @@ Always add MARKERs to your code.
 Follow existing patterns in the codebase.
 
 Respond with implementation plan or code."""
-                },
+                }
             }
             # MARKER_102.2_END
 
@@ -401,9 +357,7 @@ Respond with implementation plan or code."""
 
         preset = presets_data.get("presets", {}).get(self.preset_name)
         if not preset:
-            logger.warning(
-                f"[Pipeline] Preset '{self.preset_name}' not found. Available: {list(presets_data.get('presets', {}).keys())}"
-            )
+            logger.warning(f"[Pipeline] Preset '{self.preset_name}' not found. Available: {list(presets_data.get('presets', {}).keys())}")
             return
 
         # Apply model overrides from preset
@@ -412,29 +366,20 @@ Respond with implementation plan or code."""
         for role_name, model_name in roles.items():
             if role_name in self.prompts:
                 self.prompts[role_name]["model"] = model_name
-                logger.info(
-                    f"[Pipeline] Preset '{self.preset_name}': {role_name} → {model_name}"
-                )
+                logger.info(f"[Pipeline] Preset '{self.preset_name}': {role_name} → {model_name}")
 
         # Apply provider override from preset (if not already set explicitly)
         if not self.provider_override and preset.get("provider"):
             self.provider_override = preset["provider"]
-            logger.info(
-                f"[Pipeline] Preset '{self.preset_name}': provider → {self.provider_override}"
-            )
+            logger.info(f"[Pipeline] Preset '{self.preset_name}': provider → {self.provider_override}")
 
         self.preset_models = roles
-        logger.info(
-            f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}"
-        )
-
+        logger.info(f"[Pipeline] Applied preset '{self.preset_name}': {preset.get('description', '')}")
     # MARKER_117_PRESETS_END
 
     # MARKER_133.C33B: Per-phase timeout wrapper
     # MARKER_145.ADAPTIVE_TIMEOUT: Enhanced with model-aware adaptive timeout
-    async def _safe_phase(
-        self, phase_name: str, coro, *, model: str = "", fc_turns: int = 1
-    ) -> Optional[Any]:
+    async def _safe_phase(self, phase_name: str, coro, *, model: str = "", fc_turns: int = 1) -> Optional[Any]:
         """Execute pipeline phase with timeout. Returns None on timeout (non-fatal for most phases).
 
         MARKER_133.C33B: Each phase gets a configurable timeout.
@@ -466,38 +411,25 @@ Respond with implementation plan or code."""
                 )
                 logger.info(
                     "[Pipeline] Adaptive timeout: %s=%ds (model=%s, complexity=%s, fc=%d) [static fallback=%ds]",
-                    phase_name,
-                    timeout,
-                    model,
-                    complexity,
-                    fc_turns,
-                    fallback_timeout,
+                    phase_name, timeout, model, complexity, fc_turns, fallback_timeout,
                 )
             except Exception as e:
                 timeout = fallback_timeout
                 logger.warning(
                     "[Pipeline] Adaptive timeout failed for %s (model=%s): %s — using fallback %ds",
-                    phase_name,
-                    model,
-                    e,
-                    fallback_timeout,
+                    phase_name, model, e, fallback_timeout,
                 )
         # MARKER_145.ADAPTIVE_TIMEOUT_END
 
         try:
             return await asyncio.wait_for(coro, timeout=timeout)
         except asyncio.TimeoutError:
-            logger.error(
-                f"[Pipeline] Phase '{phase_name}' timed out after {timeout}s — skipping"
-            )
-            await self._emit_progress(
-                "system", f"Phase {phase_name} timed out ({timeout}s) — continuing"
-            )
+            logger.error(f"[Pipeline] Phase '{phase_name}' timed out after {timeout}s — skipping")
+            await self._emit_progress("system", f"Phase {phase_name} timed out ({timeout}s) — continuing")
             return None
         except Exception as e:
             logger.error(f"[Pipeline] Phase '{phase_name}' failed: {e}")
             return None
-
     # MARKER_133.C33B_END
 
     # MARKER_145.ADAPTIVE_TIMEOUT: Helper methods for token estimation
@@ -508,25 +440,24 @@ Respond with implementation plan or code."""
         Used by calculate_timeout() for processing time estimation.
         """
         estimates = {
-            "scout": 2000,  # task + prefetch context
+            "scout": 2000,      # task + prefetch context
             "architect": 5000,  # task + scout report + research + feedback
-            "researcher": 3000,  # task + web search results
-            "coder": 6000,  # task + subtask + context + marker rails + FC tool results
-            "verifier": 4000,  # task + coder output + checklist
+            "researcher": 3000, # task + web search results
+            "coder": 6000,      # task + subtask + context + marker rails + FC tool results
+            "verifier": 4000,   # task + coder output + checklist
         }
         return estimates.get(phase_name, 4000)
 
     def _estimate_output_tokens(self, phase_name: str) -> int:
         """Estimate expected output tokens for a pipeline phase."""
         estimates = {
-            "scout": 500,  # structured JSON report
+            "scout": 500,       # structured JSON report
             "architect": 1200,  # plan with subtasks
             "researcher": 800,  # research findings
-            "coder": 2000,  # code output (largest)
-            "verifier": 300,  # pass/fail JSON
+            "coder": 2000,      # code output (largest)
+            "verifier": 300,    # pass/fail JSON
         }
         return estimates.get(phase_name, 800)
-
     @staticmethod
     def _normalize_complexity(complexity: str) -> str:
         """Normalize architect complexity estimate to calculate_timeout keys.
@@ -545,7 +476,6 @@ Respond with implementation plan or code."""
             "hard": "complex",
         }
         return mapping.get(complexity.lower().strip(), "medium")
-
     # MARKER_145.ADAPTIVE_TIMEOUT_HELPERS_END
 
     # MARKER_119.4: Scout role — codebase scan before Architect
@@ -556,23 +486,17 @@ Respond with implementation plan or code."""
         MARKER_124.7B: Two-step scout:
         1. Pre-fetch: VetkaSearchCodeTool (ripgrep + name filter) → real file list
         2. LLM call: Scout model receives pre-fetched files → produces structured JSON
-        MARKER_196.SCOUT-1: Also runs LiteRT parallel scouts for fast local context.
 
         Returns structured JSON with context_summary, relevant_files,
         patterns_found, risks, recommendations.
         """
-        # MARKER_196.SCOUT-1: Run LiteRT scouts in parallel with LLM scout
-        lite_scout_coro = self._run_lite_scouts(task)
-
         if "scout" not in self.prompts:
-            logger.debug("[Pipeline] Scout role not configured, using LiteRT only")
-            tool = None
-        else:
-            tool = self._get_llm_tool()
+            logger.debug("[Pipeline] Scout role not configured, skipping")
+            return None
 
+        tool = self._get_llm_tool()
         if not tool:
-            # LiteRT-only mode
-            return await lite_scout_coro
+            return None
 
         prompt = self.prompts["scout"]
         model = prompt.get("model", "anthropic/claude-haiku-4.5")
@@ -585,15 +509,13 @@ Respond with implementation plan or code."""
 
         user_content = f"Phase type: {phase_type}\n\nTask to scout:\n{task}"
         if prefetch_context:
-            user_content += (
-                f"\n\n--- Code search results (from ripgrep) ---\n{prefetch_context}"
-            )
+            user_content += f"\n\n--- Code search results (from ripgrep) ---\n{prefetch_context}"
 
         call_args = {
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
-                {"role": "user", "content": user_content},
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 1000,
@@ -603,8 +525,8 @@ Respond with implementation plan or code."""
                 "semantic_query": task,
                 "semantic_limit": 5,
                 "include_prefs": False,
-                "compress": True,
-            },
+                "compress": True
+            }
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
@@ -612,7 +534,7 @@ Respond with implementation plan or code."""
         # MARKER_129.4: Dual-mode LLM call (async in MYCELIUM, sync in VETKA)
         # MARKER_151.11C: Scout timing for per-agent stats
         _scout_t0 = time.time()
-        if getattr(self, "async_mode", False):
+        if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
@@ -621,58 +543,25 @@ Respond with implementation plan or code."""
         _scout_usage = result.get("result", {}).get("usage", {})
         self._last_used_model = result.get("result", {}).get("model", model)
 
-        # MARKER_196.SCOUT-1: Wait for LiteRT scouts
-        lite_scout_result = await lite_scout_coro
-
         try:
             if not result.get("success"):
-                logger.warning(
-                    f"[Pipeline] Scout LLM call failed: {result.get('error')}"
-                )
-                self._track_agent_stat(
-                    "scout",
-                    _scout_usage.get("prompt_tokens", 0),
-                    _scout_usage.get("completion_tokens", 0),
-                    _scout_duration,
-                    success=False,
-                )
-                # Fall back to LiteRT scouts
-                return lite_scout_result
-            self._track_agent_stat(
-                "scout",
-                _scout_usage.get("prompt_tokens", 0),
-                _scout_usage.get("completion_tokens", 0),
-                _scout_duration,
-                success=True,
-            )
+                logger.warning(f"[Pipeline] Scout LLM call failed: {result.get('error')}")
+                self._track_agent_stat("scout", _scout_usage.get("prompt_tokens", 0),
+                                       _scout_usage.get("completion_tokens", 0), _scout_duration, success=False)
+                return None
+            self._track_agent_stat("scout", _scout_usage.get("prompt_tokens", 0),
+                                   _scout_usage.get("completion_tokens", 0), _scout_duration, success=True)
             response_text = result.get("result", {}).get("content", "{}")
             scout_data = self._extract_json(response_text)
             # MARKER_128.1A: Inject detected project context into scout_data
             # so coder sees "Detected imports: zustand, react, three" in context
-            if hasattr(self, "_last_prefetch_context") and self._last_prefetch_context:
+            if hasattr(self, '_last_prefetch_context') and self._last_prefetch_context:
                 # Extract "--- Project context ---" section if present
                 pctx = self._last_prefetch_context
                 if "--- Project context ---" in pctx:
-                    ctx_line = (
-                        pctx.split("--- Project context ---\n")[-1]
-                        .split("\n---")[0]
-                        .strip()
-                    )
+                    ctx_line = pctx.split("--- Project context ---\n")[-1].split("\n---")[0].strip()
                     if ctx_line:
                         scout_data["project_context"] = ctx_line
-
-            # MARKER_196.SCOUT-1: Merge LiteRT scout results
-            if lite_scout_result:
-                lite_files = lite_scout_result.get("relevant_files", [])
-                lite_facts = lite_scout_result.get("facts", [])
-                existing_files = set(scout_data.get("relevant_files", []))
-                for f in lite_files:
-                    if f not in existing_files:
-                        scout_data.setdefault("relevant_files", []).append(f)
-                scout_data.setdefault("lite_scout_facts", []).extend(lite_facts)
-                scout_data["lite_scout_files"] = len(lite_files)
-                scout_data["lite_scout_facts_count"] = len(lite_facts)
-
             logger.info(
                 f"[Pipeline] Scout found {len(scout_data.get('relevant_files', []))} files, "
                 f"{len(scout_data.get('patterns_found', []))} patterns"
@@ -680,28 +569,6 @@ Respond with implementation plan or code."""
             return scout_data
         except Exception as e:
             logger.warning(f"[Pipeline] Scout parse failed (non-fatal): {e}")
-            return lite_scout_result
-
-    # MARKER_196.SCOUT-1: LiteRT parallel scouts for fast local context
-    async def _run_lite_scouts(self, task: str) -> Optional[Dict[str, Any]]:
-        """Run LiteRT parallel scouts for fast local context gathering.
-
-        Uses grep + file reads without LLM calls — returns in seconds.
-        Results are merged into the main scout report.
-        """
-        try:
-            from src.services.scout_agents import (
-                run_scout_mission,
-                scout_to_context_dict,
-            )
-
-            mission = await run_scout_mission(
-                query=task,
-                num_scouts=3,
-            )
-            return scout_to_context_dict(mission)
-        except Exception as e:
-            logger.debug(f"[Pipeline] LiteRT scouts failed (non-fatal): {e}")
             return None
 
     async def _scout_prefetch(self, task: str) -> Optional[str]:
@@ -714,7 +581,6 @@ Respond with implementation plan or code."""
         """
         try:
             from src.tools.registry import VetkaSearchCodeTool
-
             code_tool = VetkaSearchCodeTool()
 
             # Extract search terms: filenames, identifiers, keywords
@@ -731,27 +597,13 @@ Respond with implementation plan or code."""
                 if result.success and result.result:
                     for line in str(result.result).split("\n"):
                         line = line.strip()
-                        if (
-                            line
-                            and ("/" in line)
-                            and not line.startswith("Code search")
-                        ):
+                        if line and ("/" in line) and not line.startswith("Code search"):
                             path = line.split(" — ")[0].strip()
                             if path and path not in all_paths:
                                 all_paths.add(path)
                                 results_text.append(line)
                                 # Collect code file paths for marker scanning
-                                if any(
-                                    path.endswith(ext)
-                                    for ext in (
-                                        ".ts",
-                                        ".tsx",
-                                        ".py",
-                                        ".rs",
-                                        ".jsx",
-                                        ".js",
-                                    )
-                                ):
+                                if any(path.endswith(ext) for ext in ('.ts', '.tsx', '.py', '.rs', '.jsx', '.js')):
                                     abs_path = path
                                     if not path.startswith("/"):
                                         abs_path = f"{code_tool._PROJECT_ROOT}/{path}"
@@ -764,9 +616,7 @@ Respond with implementation plan or code."""
             marker_section = self._scan_markers_in_files(code_file_paths[:5])
 
             # MARKER_124.9A: Read file snippets with line numbers for marker placement
-            snippet_section = self._read_file_snippets(
-                code_file_paths[:3], max_lines=60
-            )
+            snippet_section = self._read_file_snippets(code_file_paths[:3], max_lines=60)
 
             # MARKER_128.1A: Detect project context (imports, frameworks) from found files
             project_ctx = self._detect_project_context(code_file_paths)
@@ -775,22 +625,16 @@ Respond with implementation plan or code."""
             if project_ctx:
                 output += f"\n\n--- Project context ---\n{project_ctx}"
             if marker_section:
-                output += (
-                    f"\n\n--- Existing markers in these files ---\n{marker_section}"
-                )
+                output += f"\n\n--- Existing markers in these files ---\n{marker_section}"
             if snippet_section:
                 output += f"\n\n--- Code snippets (with line numbers for marker_map placement) ---\n{snippet_section}"
-                output += (
-                    "\n\nIMPORTANT: Use these line numbers to create your marker_map. "
-                    "Place markers at exact lines where the Coder should INSERT or MODIFY code. "
-                    "The Coder will use vetka_read_file(path, marker='MARKER_SCOUT_X') to jump straight to those locations."
-                )
+                output += "\n\nIMPORTANT: Use these line numbers to create your marker_map. " \
+                          "Place markers at exact lines where the Coder should INSERT or MODIFY code. " \
+                          "The Coder will use vetka_read_file(path, marker='MARKER_SCOUT_X') to jump straight to those locations."
 
-            logger.info(
-                f"[Pipeline] Scout pre-fetch: {len(results_text)} files, "
-                f"{len(marker_section.splitlines()) if marker_section else 0} markers, "
-                f"{len(snippet_section.splitlines()) if snippet_section else 0} snippet lines ({keywords})"
-            )
+            logger.info(f"[Pipeline] Scout pre-fetch: {len(results_text)} files, "
+                        f"{len(marker_section.splitlines()) if marker_section else 0} markers, "
+                        f"{len(snippet_section.splitlines()) if snippet_section else 0} snippet lines ({keywords})")
             return output
         except Exception as e:
             logger.debug(f"[Pipeline] Scout pre-fetch failed (non-fatal): {e}")
@@ -817,11 +661,11 @@ Respond with implementation plan or code."""
                 name = p.name
                 for i, line in enumerate(lines):
                     # Find MARKER_ tags (both // and # comment styles)
-                    match = re.search(r"(?://|#)\s*(MARKER_\S+)", line)
+                    match = re.search(r'(?://|#)\s*(MARKER_\S+)', line)
                     if match:
                         marker = match.group(1).rstrip(":")
                         desc = line.strip()[:80]
-                        marker_lines.append(f"  {name}:{i + 1} — {marker} — {desc}")
+                        marker_lines.append(f"  {name}:{i+1} — {marker} — {desc}")
             except Exception:
                 continue
 
@@ -849,12 +693,10 @@ Respond with implementation plan or code."""
                 show_lines = min(max_lines, total)
                 numbered = []
                 for i in range(show_lines):
-                    numbered.append(f"  {i + 1:4d} | {lines[i]}")
+                    numbered.append(f"  {i+1:4d} | {lines[i]}")
                 snippet = "\n".join(numbered)
                 rel_name = p.name
-                snippets.append(
-                    f"[{rel_name}] ({total} lines total, showing 1-{show_lines})\n{snippet}"
-                )
+                snippets.append(f"[{rel_name}] ({total} lines total, showing 1-{show_lines})\n{snippet}")
             except Exception:
                 continue
 
@@ -892,21 +734,8 @@ Respond with implementation plan or code."""
                     m = re.search(r"^(?:from|import)\s+([\w.]+)", line)
                     if m:
                         pkg = m.group(1).split(".")[0]
-                        if pkg not in (
-                            "src",
-                            "os",
-                            "sys",
-                            "json",
-                            "re",
-                            "typing",
-                            "pathlib",
-                            "logging",
-                            "dataclasses",
-                            "datetime",
-                            "time",
-                            "asyncio",
-                            "collections",
-                        ):
+                        if pkg not in ("src", "os", "sys", "json", "re", "typing", "pathlib", "logging",
+                                       "dataclasses", "datetime", "time", "asyncio", "collections"):
                             imports_found.add(pkg)
             except Exception:
                 continue
@@ -916,7 +745,6 @@ Respond with implementation plan or code."""
 
         # Format as concise context line
         return f"Detected imports in project files: {', '.join(sorted(imports_found)[:15])}"
-
     # MARKER_128.1A_END
 
     @staticmethod
@@ -929,23 +757,18 @@ Respond with implementation plan or code."""
         - Quoted terms ('bookmarked', "zustand")
         """
         import re
-
         keywords = []
 
         # 1. Explicit file paths/names (e.g., client/src/store/useStore.ts)
-        file_patterns = re.findall(
-            r"[\w/.-]+\.(?:ts|tsx|js|jsx|py|rs|css|scss)\b", task
-        )
+        file_patterns = re.findall(r'[\w/.-]+\.(?:ts|tsx|js|jsx|py|rs|css|scss)\b', task)
         for fp in file_patterns:
             name = fp.split("/")[-1]  # Just filename
             if name not in keywords:
                 keywords.append(name)
 
         # 2. CamelCase/PascalCase identifiers (e.g., toggleBookmark, ChatPanel)
-        identifiers = re.findall(r"\b[a-z]+(?:[A-Z][a-z]+)+\b", task)  # camelCase
-        identifiers += re.findall(
-            r"\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b", task
-        )  # PascalCase
+        identifiers = re.findall(r'\b[a-z]+(?:[A-Z][a-z]+)+\b', task)  # camelCase
+        identifiers += re.findall(r'\b[A-Z][a-z]+(?:[A-Z][a-z]+)+\b', task)  # PascalCase
         for ident in identifiers:
             if ident not in keywords and len(ident) > 3:
                 keywords.append(ident)
@@ -957,7 +780,6 @@ Respond with implementation plan or code."""
                 keywords.append(q)
 
         return keywords[:5]
-
     # MARKER_119.4_END
 
     # MARKER_117.4C: Auto-tier resolution
@@ -977,151 +799,21 @@ Respond with implementation plan or code."""
             data = json.loads(PRESETS_FILE.read_text())
             # MARKER_118.10_TITAN_TIER: Use titan tier map if current preset is a titan
             if self.preset_name and self.preset_name.startswith("titan_"):
-                tier_map = data.get(
-                    "_titan_tier_map",
-                    {
-                        "low": "titan_lite",
-                        "medium": "titan_core",
-                        "high": "titan_prime",
-                    },
-                )
+                tier_map = data.get("_titan_tier_map", {
+                    "low": "titan_lite",
+                    "medium": "titan_core",
+                    "high": "titan_prime"
+                })
             else:
-                tier_map = data.get(
-                    "_tier_map",
-                    {
-                        "low": "dragon_bronze",
-                        "medium": "dragon_silver",
-                        "high": "dragon_gold",
-                    },
-                )
+                tier_map = data.get("_tier_map", {
+                    "low": "dragon_bronze",
+                    "medium": "dragon_silver",
+                    "high": "dragon_gold"
+                })
             return tier_map.get(complexity)
         except Exception:
             return None
-
     # MARKER_117.4C_END
-
-    # MARKER_196.BROWSER-RESEARCHER: Browser-based researcher via Playwright
-    async def _research_browser(self, question: str) -> Dict[str, Any]:
-        """Research using Browser Agent Proxy (Gemini/Kimi via web UI) instead of API.
-
-        MARKER_196.BROWSER-RESEARCHER: Free-tier research option.
-        Falls back to API if browser proxy is unavailable.
-        """
-        default_result = {
-            "insights": ["Browser research unavailable"],
-            "actionable_steps": [],
-            "enriched_context": question,
-            "confidence": 0.3,
-            "source": "browser_fallback",
-        }
-        try:
-            from src.services.adapters.gemini_adapter import GeminiAdapter
-            from src.services.code_extractor import CodeExtractor
-
-            # Build a research prompt for the browser adapter
-            research_prompt = (
-                f"Research this topic thoroughly and return your findings as code blocks "
-                f"with markdown explanations. Topic: {question}\n\n"
-                f"Structure your response with:\n"
-                f"1. Key insights as text\n"
-                f"2. Relevant code patterns as ```python or ```typescript blocks\n"
-                f"3. Actionable next steps\n"
-                f"4. Confidence score (0.0-1.0)"
-            )
-
-            adapter = GeminiAdapter(self.browser, self.config)
-            result = await adapter.execute(research_prompt, timeout_ms=180000)
-
-            if not result.success:
-                logger.warning(f"[Pipeline] Browser research failed: {result.error}")
-                return default_result
-
-            # Extract code blocks from browser response
-            extractor = CodeExtractor()
-            extraction = extractor.extract_from_markdown(result.raw_text)
-
-            insights = []
-            actionable_steps = []
-            code_blocks = []
-
-            for ef in extraction.files:
-                code_blocks.append(f"```{ef.language}\n{ef.content}\n```")
-                insights.append(f"Found {ef.language} code ({ef.char_count} chars)")
-
-            # Parse insights from raw text
-            lines = result.raw_text.split("\n")
-            for line in lines:
-                stripped = line.strip()
-                if stripped.startswith("- ") or stripped.startswith("* "):
-                    insights.append(stripped[2:])
-                elif stripped and len(stripped) > 20:
-                    insights.append(stripped[:200])
-
-            return {
-                "insights": insights[:20] or [result.raw_text[:500]],
-                "actionable_steps": actionable_steps,
-                "enriched_context": result.raw_text[:2000],
-                "confidence": 0.7,
-                "source": "browser",
-                "code_blocks": code_blocks[:10],
-                "response_time_ms": result.response_time_ms,
-            }
-
-        except ImportError:
-            logger.debug(
-                "[Pipeline] Browser adapter not available, falling back to API research"
-            )
-            return default_result
-        except Exception as e:
-            logger.error(f"[Pipeline] Browser research error: {e}")
-            return default_result
-
-    async def _research_hybrid(self, question: str) -> Dict[str, Any]:
-        """Run both API and browser research in parallel, merge results.
-
-        MARKER_196.BROWSER-RESEARCHER: Best of both worlds — fast API + free browser.
-        """
-        api_task = asyncio.create_task(self._research(question))
-        browser_task = asyncio.create_task(self._research_browser(question))
-
-        api_result, browser_result = await asyncio.gather(
-            api_task, browser_task, return_exceptions=True
-        )
-
-        if isinstance(api_result, Exception):
-            api_result = {
-                "insights": [],
-                "actionable_steps": [],
-                "enriched_context": "",
-                "confidence": 0,
-                "source": "api_failed",
-            }
-        if isinstance(browser_result, Exception):
-            browser_result = {
-                "insights": [],
-                "actionable_steps": [],
-                "enriched_context": "",
-                "confidence": 0,
-                "source": "browser_failed",
-            }
-
-        # Merge results — API takes priority for confidence
-        merged = {
-            "insights": api_result.get("insights", [])
-            + browser_result.get("insights", []),
-            "actionable_steps": api_result.get("actionable_steps", [])
-            + browser_result.get("actionable_steps", []),
-            "enriched_context": (
-                api_result.get("enriched_context", "")
-                + "\n\n--- Browser Research ---\n"
-                + browser_result.get("enriched_context", "")
-            )[:3000],
-            "confidence": max(
-                api_result.get("confidence", 0), browser_result.get("confidence", 0)
-            ),
-            "source": "hybrid",
-        }
-        return merged
 
     # MARKER_122.1_START: Parallel recon — Scout + Researcher concurrently
     async def _parallel_recon(self, task: str, phase_type: str) -> tuple:
@@ -1129,72 +821,34 @@ Respond with implementation plan or code."""
 
         Returns (scout_context, research_context) — either can be None on failure.
         MARKER_133.C33B: Wrapped with per-phase timeouts.
-        MARKER_196.BROWSER-RESEARCHER: Supports api/browser/hybrid researcher strategies.
         """
         try:
             # MARKER_133.C33B: Apply phase timeouts to scout and researcher
             # MARKER_145.ADAPTIVE_TIMEOUT: Pass model IDs for adaptive timeout calculation
             _scout_model = self.prompts.get("scout", {}).get("model", "")
             _researcher_model = self.prompts.get("researcher", {}).get("model", "")
-
-            # MARKER_196.BROWSER-RESEARCHER: Select researcher strategy
-            strategy = getattr(self, "researcher_strategy", "api")
-            if strategy == "browser":
-                research_coro = self._safe_phase(
-                    "researcher", self._research_browser(task), model="browser_proxy"
-                )
-            elif strategy == "hybrid":
-                research_coro = self._safe_phase(
-                    "researcher", self._research_hybrid(task), model="hybrid"
-                )
-            else:
-                research_coro = self._safe_phase(
-                    "researcher", self._research(task), model=_researcher_model
-                )
-
             results = await asyncio.gather(
-                self._safe_phase(
-                    "scout", self._scout_scan(task, phase_type), model=_scout_model
-                )
-                if "scout" in self.prompts
-                else asyncio.sleep(0),
-                research_coro,
-                return_exceptions=True,
+                self._safe_phase("scout", self._scout_scan(task, phase_type), model=_scout_model) if "scout" in self.prompts else asyncio.sleep(0),
+                self._safe_phase("researcher", self._research(task), model=_researcher_model),
+                return_exceptions=True
             )
-            scout_ctx = (
-                results[0]
-                if not isinstance(results[0], (Exception, type(None), float))
-                else None
-            )
-            research_ctx = (
-                results[1]
-                if not isinstance(results[1], (Exception, type(None), float))
-                else None
-            )
+            scout_ctx = results[0] if not isinstance(results[0], (Exception, type(None), float)) else None
+            research_ctx = results[1] if not isinstance(results[1], (Exception, type(None), float)) else None
             return (scout_ctx, research_ctx)
         except Exception as e:
             logger.warning(f"[Pipeline] Parallel recon failed: {e}")
             return (None, None)
-
     # MARKER_122.1_END
 
     # MARKER_122.2_START: Verify subtask after coder execution
-    async def _verify_subtask(
-        self, subtask, coder_result: str, phase_type: str
-    ) -> Dict[str, Any]:
+    async def _verify_subtask(self, subtask, coder_result: str, phase_type: str) -> Dict[str, Any]:
         """Call verifier model to evaluate coder output.
 
         Returns:
             {"passed": bool, "issues": [], "suggestions": [], "confidence": float, "severity": "minor"|"major"}
         Graceful degradation: on any failure returns {"passed": True}.
         """
-        default_pass = {
-            "passed": True,
-            "issues": [],
-            "suggestions": [],
-            "confidence": 0.5,
-            "severity": "minor",
-        }
+        default_pass = {"passed": True, "issues": [], "suggestions": [], "confidence": 0.5, "severity": "minor"}
         try:
             tool = self._get_llm_tool()
             if not tool or "verifier" not in self.prompts:
@@ -1217,8 +871,7 @@ Respond with implementation plan or code."""
                 if marker_map and isinstance(marker_map, list):
                     markers = "; ".join(
                         f"{m.get('marker_id', '?')}={m.get('file', '?')}:{m.get('line', '?')} [{m.get('action', '?')}]"
-                        for m in marker_map[:3]
-                        if isinstance(m, dict)
+                        for m in marker_map[:3] if isinstance(m, dict)
                     )
                     original_context += f"\nMarker rails: {markers}"
 
@@ -1233,10 +886,10 @@ Respond with implementation plan or code."""
                 "model": model,
                 "messages": [
                     {"role": "system", "content": prompt["system"]},
-                    {"role": "user", "content": user_content},
+                    {"role": "user", "content": user_content}
                 ],
                 "temperature": temperature,
-                "max_tokens": 1000,
+                "max_tokens": 1000
             }
             if self.provider_override:
                 call_args["model_source"] = self.provider_override
@@ -1244,7 +897,7 @@ Respond with implementation plan or code."""
             # MARKER_129.4: Dual-mode LLM call
             # MARKER_151.11D: Verifier timing for per-agent stats
             _verifier_t0 = time.time()
-            if getattr(self, "async_mode", False):
+            if getattr(self, 'async_mode', False):
                 result = await tool.execute(call_args)
             else:
                 result = tool.execute(call_args)
@@ -1254,16 +907,9 @@ Respond with implementation plan or code."""
             self._last_used_model = result.get("result", {}).get("model", model)
 
             if not result.get("success"):
-                logger.warning(
-                    f"[Pipeline] Verifier LLM call failed: {result.get('error')}"
-                )
-                self._track_agent_stat(
-                    "verifier",
-                    _verifier_usage.get("prompt_tokens", 0),
-                    _verifier_usage.get("completion_tokens", 0),
-                    _verifier_duration,
-                    success=False,
-                )
+                logger.warning(f"[Pipeline] Verifier LLM call failed: {result.get('error')}")
+                self._track_agent_stat("verifier", _verifier_usage.get("prompt_tokens", 0),
+                                       _verifier_usage.get("completion_tokens", 0), _verifier_duration, success=False)
                 return default_pass
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -1285,35 +931,23 @@ Respond with implementation plan or code."""
                     verification["passed"] = False
                 elif conf >= 0.7 and len(issues) == 0:
                     verification["passed"] = True
-                    logger.info(
-                        f"[Pipeline] Verifier: inferred passed=True (confidence={conf}, no issues)"
-                    )
+                    logger.info(f"[Pipeline] Verifier: inferred passed=True (confidence={conf}, no issues)")
                 elif conf >= 0.8:
                     verification["passed"] = True
-                    logger.info(
-                        f"[Pipeline] Verifier: inferred passed=True (high confidence={conf})"
-                    )
+                    logger.info(f"[Pipeline] Verifier: inferred passed=True (high confidence={conf})")
                 else:
                     # Strategy 2: Regex fallback on raw text
                     import re
-
                     raw_lower = response_text.lower()
                     if re.search(r'"passed"\s*:\s*true', raw_lower):
                         verification["passed"] = True
-                    elif re.search(
-                        r"\b(pass|passed|approved?|correct|complete)\b", raw_lower
-                    ) and not re.search(
-                        r"\b(fail|failed|reject|wrong|incomplete|missing)\b", raw_lower
-                    ):
+                    elif re.search(r'\b(pass|passed|approved?|correct|complete)\b', raw_lower) and \
+                         not re.search(r'\b(fail|failed|reject|wrong|incomplete|missing)\b', raw_lower):
                         verification["passed"] = True
-                        logger.info(
-                            f"[Pipeline] Verifier: inferred passed=True from positive keywords in text"
-                        )
+                        logger.info(f"[Pipeline] Verifier: inferred passed=True from positive keywords in text")
                     else:
                         verification["passed"] = False
-                        verification.setdefault("issues", []).append(
-                            "Verifier ambiguous — defaulting to retry"
-                        )
+                        verification.setdefault("issues", []).append("Verifier ambiguous — defaulting to retry")
 
             if "confidence" not in verification:
                 # Infer confidence from passed status
@@ -1325,17 +959,12 @@ Respond with implementation plan or code."""
             if "severity" not in verification:
                 issues = verification.get("issues", [])
                 confidence = verification.get("confidence", 0.5)
-                verification["severity"] = (
-                    "minor" if len(issues) <= 2 and confidence >= 0.6 else "major"
-                )
+                verification["severity"] = "minor" if len(issues) <= 2 and confidence >= 0.6 else "major"
 
             # MARKER_125.0B: Confidence gate — auto-fail if confidence below threshold
             # even when model says passed=true (low-confidence passes are unreliable)
             confidence = verification.get("confidence", 0.5)
-            if (
-                verification.get("passed", False)
-                and confidence < VERIFIER_PASS_THRESHOLD
-            ):
+            if verification.get("passed", False) and confidence < VERIFIER_PASS_THRESHOLD:
                 logger.info(
                     f"[Pipeline] Verifier confidence {confidence:.2f} < threshold {VERIFIER_PASS_THRESHOLD} — "
                     f"auto-failing despite passed=true"
@@ -1347,19 +976,14 @@ Respond with implementation plan or code."""
                 verification["severity"] = "minor"  # Don't escalate, just retry
 
             # MARKER_151.11D: Track verifier success based on parsed result
-            self._track_agent_stat(
-                "verifier",
-                _verifier_usage.get("prompt_tokens", 0),
-                _verifier_usage.get("completion_tokens", 0),
-                _verifier_duration,
-                success=verification.get("passed", False),
-            )
+            self._track_agent_stat("verifier", _verifier_usage.get("prompt_tokens", 0),
+                                   _verifier_usage.get("completion_tokens", 0), _verifier_duration,
+                                   success=verification.get("passed", False))
             return verification
 
         except Exception as e:
             logger.warning(f"[Pipeline] Verifier failed (graceful degradation): {e}")
             return default_pass
-
     # MARKER_122.2_END
 
     # MARKER_182.VERIFIER_MERGE: Merge all actions from a run into a single git commit
@@ -1382,7 +1006,6 @@ Respond with implementation plan or code."""
 
         try:
             from src.orchestration.action_registry import ActionRegistry
-
             registry = ActionRegistry()
         except Exception as e:
             return {"success": False, "error": f"ActionRegistry unavailable: {e}"}
@@ -1391,24 +1014,16 @@ Respond with implementation plan or code."""
         edited_files = registry.get_edit_files_for_run(run_id)
         if not edited_files:
             # Check: maybe actions weren't logged (backward compat)
-            return {
-                "success": True,
-                "commit_hash": None,
-                "files_committed": [],
-                "note": "No tracked edits for this run",
-            }
+            return {"success": True, "commit_hash": None,
+                    "files_committed": [], "note": "No tracked edits for this run"}
 
         # 2. Verify files exist on disk
         from pathlib import Path
-
         project_root = Path(__file__).resolve().parents[2]
         try:
             result = subprocess.run(
                 ["git", "rev-parse", "--show-toplevel"],
-                cwd=str(project_root),
-                capture_output=True,
-                text=True,
-                timeout=5,
+                cwd=str(project_root), capture_output=True, text=True, timeout=5
             )
             if result.returncode == 0:
                 project_root = Path(result.stdout.strip())
@@ -1424,12 +1039,8 @@ Respond with implementation plan or code."""
                 logger.warning(f"[VerifierMerge] File not found (skipping): {f}")
 
         if not valid_files:
-            return {
-                "success": True,
-                "commit_hash": None,
-                "files_committed": [],
-                "note": "All tracked files already committed or missing",
-            }
+            return {"success": True, "commit_hash": None,
+                    "files_committed": [], "note": "All tracked files already committed or missing"}
 
         # 3. Prepare commit message
         msg = commit_message or f"phase182: task {task_id} completed [run:{run_id}]"
@@ -1440,10 +1051,7 @@ Respond with implementation plan or code."""
         for f in valid_files:
             stage_result = subprocess.run(
                 ["git", "add", f],
-                cwd=str(project_root),
-                capture_output=True,
-                text=True,
-                timeout=10,
+                cwd=str(project_root), capture_output=True, text=True, timeout=10
             )
             if stage_result.returncode != 0:
                 stderr = stage_result.stderr or ""
@@ -1455,37 +1063,22 @@ Respond with implementation plan or code."""
         # 5. MARKER_182.GITCOMMIT: One clean commit
         commit_result = subprocess.run(
             ["git", "commit", "-m", msg],
-            cwd=str(project_root),
-            capture_output=True,
-            text=True,
-            timeout=30,
+            cwd=str(project_root), capture_output=True, text=True, timeout=30
         )
 
         if commit_result.returncode != 0:
             stderr = commit_result.stderr or ""
-            if (
-                "nothing to commit" in stderr.lower()
-                or "nothing to commit" in (commit_result.stdout or "").lower()
-            ):
-                return {
-                    "success": True,
-                    "commit_hash": None,
-                    "files_committed": valid_files,
-                    "note": "Nothing to commit (already up to date)",
-                }
+            if "nothing to commit" in stderr.lower() or "nothing to commit" in (commit_result.stdout or "").lower():
+                return {"success": True, "commit_hash": None,
+                        "files_committed": valid_files, "note": "Nothing to commit (already up to date)"}
             return {"success": False, "error": f"Git commit failed: {stderr}"}
 
         # 6. Get commit hash
         hash_result = subprocess.run(
             ["git", "rev-parse", "HEAD"],
-            cwd=str(project_root),
-            capture_output=True,
-            text=True,
-            timeout=5,
+            cwd=str(project_root), capture_output=True, text=True, timeout=5
         )
-        commit_hash = (
-            hash_result.stdout.strip() if hash_result.returncode == 0 else None
-        )
+        commit_hash = hash_result.stdout.strip() if hash_result.returncode == 0 else None
 
         # 7. Log merge action to ActionRegistry
         registry.log_action(
@@ -1503,14 +1096,11 @@ Respond with implementation plan or code."""
         )
         registry.flush()
 
-        logger.info(
-            f"[VerifierMerge] Committed {len(valid_files)} files: {commit_hash[:8] if commit_hash else '?'}"
-        )
+        logger.info(f"[VerifierMerge] Committed {len(valid_files)} files: {commit_hash[:8] if commit_hash else '?'}")
 
         # MARKER_183.2: Extract and store learnings after successful merge
         try:
             from src.orchestration.resource_learnings import extract_and_store_learnings
-
             learning_ids = await extract_and_store_learnings(
                 run_id=run_id,
                 task_id=task_id,
@@ -1533,9 +1123,8 @@ Respond with implementation plan or code."""
 
     # MARKER_122.3_START: Retry coder with verifier feedback
     # MARKER_149.RETRY_FIX: Save first attempt + inject into retry context
-    async def _retry_coder(
-        self, subtask, verifier_result: Dict, phase_type: str, previous_result: str = ""
-    ) -> str:
+    async def _retry_coder(self, subtask, verifier_result: Dict, phase_type: str,
+                           previous_result: str = "") -> str:
         """Re-run coder with verifier feedback AND previous attempt injected into context."""
         subtask.retry_count += 1
         # MARKER_151.11I: Track coder retries in per-agent stats
@@ -1543,9 +1132,7 @@ Respond with implementation plan or code."""
             self._agent_stats["coder"]["retries"] += 1
         # MARKER_152.4: Timeline event for retry
         issues_str = "; ".join(str(i) for i in verifier_result.get("issues", [])[:2])
-        self._emit_timeline_event(
-            "coder", "retry", f"attempt {subtask.retry_count}: {issues_str}"
-        )
+        self._emit_timeline_event("coder", "retry", f"attempt {subtask.retry_count}: {issues_str}")
         if subtask.context is None:
             subtask.context = {}
 
@@ -1573,12 +1160,11 @@ Respond with implementation plan or code."""
         await self._emit_progress(
             "@verifier",
             f"⚠️ Issues found, retrying coder (attempt {subtask.retry_count}/{MAX_CODER_RETRIES})",
-            model=self._last_used_model,
+            model=self._last_used_model
         )
 
         result = await self._execute_subtask(subtask, phase_type)
         return result
-
     # MARKER_122.3_END
 
     # MARKER_122.4_START: Upgrade coder tier on repeated failures
@@ -1598,9 +1184,7 @@ Respond with implementation plan or code."""
         }
         new_tier = upgrade_map.get(self.preset_name)
         if not new_tier:
-            logger.info(
-                f"[Pipeline] Already at max tier ({self.preset_name}), no upgrade possible"
-            )
+            logger.info(f"[Pipeline] Already at max tier ({self.preset_name}), no upgrade possible")
             return False
 
         old_tier = self.preset_name
@@ -1608,21 +1192,14 @@ Respond with implementation plan or code."""
         self._apply_preset()
         logger.info(f"[Pipeline] ⚡ Tier upgrade: {old_tier} → {new_tier}")
         # MARKER_152.4: Timeline event for tier upgrade
-        self._emit_timeline_event(
-            "pipeline", "tier_upgrade", f"{old_tier} → {new_tier}"
-        )
+        self._emit_timeline_event("pipeline", "tier_upgrade", f"{old_tier} → {new_tier}")
         return True
-
     # MARKER_122.4_END
 
     # MARKER_122.5_START: Escalate to architect for re-planning
     async def _escalate_to_architect(
-        self,
-        task: str,
-        failed_subtasks: list,
-        original_plan: Dict,
-        phase_type: str,
-        scout_context: Optional[Dict] = None,
+        self, task: str, failed_subtasks: list, original_plan: Dict,
+        phase_type: str, scout_context: Optional[Dict] = None
     ) -> Dict[str, Any]:
         """Re-plan when verifier reports major issues on subtasks.
 
@@ -1631,22 +1208,15 @@ Respond with implementation plan or code."""
         """
         # MARKER_152.4: Timeline event for escalation
         self._emit_timeline_event(
-            "architect", "escalate", f"{len(failed_subtasks)} failed subtasks → re-plan"
+            "architect", "escalate",
+            f"{len(failed_subtasks)} failed subtasks → re-plan"
         )
         # Build failure context
         failure_lines = []
         for s in failed_subtasks:
-            desc = s.description if hasattr(s, "description") else str(s)[:100]
-            fb_raw = (
-                s.verifier_feedback
-                if hasattr(s, "verifier_feedback") and s.verifier_feedback
-                else "No feedback"
-            )
-            fb = (
-                str(fb_raw.get("issues", fb_raw))
-                if isinstance(fb_raw, dict)
-                else str(fb_raw)
-            )
+            desc = s.description if hasattr(s, 'description') else str(s)[:100]
+            fb_raw = s.verifier_feedback if hasattr(s, 'verifier_feedback') and s.verifier_feedback else "No feedback"
+            fb = str(fb_raw.get("issues", fb_raw)) if isinstance(fb_raw, dict) else str(fb_raw)
             failure_lines.append(f"- {desc[:80]}: {fb[:200]}")
 
         replan_context = (
@@ -1658,16 +1228,12 @@ Respond with implementation plan or code."""
         await self._emit_progress(
             "@architect",
             f"🔄 Re-planning {len(failed_subtasks)} failed subtasks...",
-            model=self.prompts.get("architect", {}).get("model", ""),
+            model=self.prompts.get("architect", {}).get("model", "")
         )
 
         try:
-            plan = await self._architect_plan(
-                task,
-                phase_type,
-                scout_context=scout_context,
-                replan_context=replan_context,
-            )
+            plan = await self._architect_plan(task, phase_type, scout_context=scout_context,
+                                               replan_context=replan_context)
             return plan
         except Exception as e:
             logger.warning(f"[Pipeline] Architect re-plan failed: {e}")
@@ -1675,7 +1241,6 @@ Respond with implementation plan or code."""
             for st in original_plan.get("subtasks", []):
                 st["needs_research"] = True
             return original_plan
-
     # MARKER_122.5_END
 
     # MARKER_118.8_ADAPTIVE_ELISION
@@ -1699,14 +1264,12 @@ Respond with implementation plan or code."""
         """Lazy load LLM tool to avoid circular imports"""
         if self.llm_tool is None:
             try:
-                if getattr(self, "async_mode", False):
+                if getattr(self, 'async_mode', False):
                     # MARKER_129.4: Use async LLM tool in MYCELIUM
                     from src.mcp.tools.llm_call_tool_async import LLMCallToolAsync
-
                     self.llm_tool = LLMCallToolAsync()
                 else:
                     from src.mcp.tools.llm_call_tool import LLMCallTool
-
                     self.llm_tool = LLMCallTool()
             except ImportError:
                 logger.warning("LLMCallTool not available, using fallback")
@@ -1735,14 +1298,8 @@ Respond with implementation plan or code."""
             self._tokens_out += usage.get("completion_tokens", 0)
 
     # MARKER_151.11B: Per-agent statistics tracking
-    def _track_agent_stat(
-        self,
-        role: str,
-        tokens_in: int = 0,
-        tokens_out: int = 0,
-        duration: float = 0.0,
-        success: bool = True,
-    ):
+    def _track_agent_stat(self, role: str, tokens_in: int = 0, tokens_out: int = 0,
+                          duration: float = 0.0, success: bool = True):
         """Track per-agent statistics for Stats Dashboard v2.
 
         Called alongside _track_llm_call at each LLM call site.
@@ -1750,42 +1307,30 @@ Respond with implementation plan or code."""
         """
         if role not in self._agent_stats:
             self._agent_stats[role] = {
-                "calls": 0,
-                "tokens_in": 0,
-                "tokens_out": 0,
-                "duration_s": 0.0,
-                "retries": 0,
-                "success_count": 0,
-                "fail_count": 0,
+                'calls': 0, 'tokens_in': 0, 'tokens_out': 0,
+                'duration_s': 0.0, 'retries': 0,
+                'success_count': 0, 'fail_count': 0
             }
         stats = self._agent_stats[role]
-        stats["calls"] += 1
-        stats["tokens_in"] += tokens_in
-        stats["tokens_out"] += tokens_out
-        stats["duration_s"] += duration
+        stats['calls'] += 1
+        stats['tokens_in'] += tokens_in
+        stats['tokens_out'] += tokens_out
+        stats['duration_s'] += duration
         if success:
-            stats["success_count"] += 1
+            stats['success_count'] += 1
         else:
-            stats["fail_count"] += 1
+            stats['fail_count'] += 1
         # MARKER_152.4: Auto-emit timeline event from stat tracking
         self._emit_timeline_event(
             role=role,
             event="end" if success else "fail",
-            detail=f"tokens={tokens_in + tokens_out}"
-            if (tokens_in + tokens_out) > 0
-            else "",
+            detail=f"tokens={tokens_in+tokens_out}" if (tokens_in + tokens_out) > 0 else "",
             duration_s=duration,
         )
 
     # MARKER_152.4: Timeline event tracking for pipeline drill-down
-    def _emit_timeline_event(
-        self,
-        role: str,
-        event: str,
-        detail: str = "",
-        duration_s: float = 0.0,
-        subtask_idx: int = -1,
-    ):
+    def _emit_timeline_event(self, role: str, event: str, detail: str = "",
+                              duration_s: float = 0.0, subtask_idx: int = -1):
         """Record a timestamped pipeline event for drill-down timeline visualization.
 
         Events build a complete execution trace: start/end of each agent phase,
@@ -1793,16 +1338,14 @@ Respond with implementation plan or code."""
 
         Used by: GET /api/analytics/task/{id} → timeline[] for Recharts Gantt.
         """
-        self._timeline_events.append(
-            {
-                "ts": time.time(),
-                "role": role,
-                "event": event,  # start, end, retry, escalate, verify_pass, verify_fail, tier_upgrade
-                "detail": detail[:200] if detail else "",
-                "duration_s": round(duration_s, 2),
-                "subtask_idx": subtask_idx,
-            }
-        )
+        self._timeline_events.append({
+            "ts": time.time(),
+            "role": role,
+            "event": event,       # start, end, retry, escalate, verify_pass, verify_fail, tier_upgrade
+            "detail": detail[:200] if detail else "",
+            "duration_s": round(duration_s, 2),
+            "subtask_idx": subtask_idx,
+        })
 
         # MARKER_182.3: Log timeline events to ActionRegistry
         if self._action_registry and self._run_id:
@@ -1812,9 +1355,7 @@ Respond with implementation plan or code."""
                     agent=role,
                     action=event,
                     file=detail[:200] if detail else f"{role}/{event}",
-                    result="success"
-                    if event not in ("fail", "verify_fail")
-                    else "failed",
+                    result="success" if event not in ("fail", "verify_fail") else "failed",
                     session_id=self._session_id,
                     duration_ms=int(duration_s * 1000),
                     metadata={"subtask_idx": subtask_idx, "source": "timeline"},
@@ -1834,7 +1375,6 @@ Respond with implementation plan or code."""
         """
         try:
             import httpx
-
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get("http://localhost:5001/api/cam/pinned")
                 if resp.status_code != 200:
@@ -1899,9 +1439,7 @@ Respond with implementation plan or code."""
             )
             return result.compressed, result.legend
         except Exception as e:
-            logger.warning(
-                f"[Pipeline] ELISION compression failed: {e}, using raw context"
-            )
+            logger.warning(f"[Pipeline] ELISION compression failed: {e}, using raw context")
             # Fallback: return original context as string
             if isinstance(context, (dict, list)):
                 return json.dumps(context), {}
@@ -1930,21 +1468,12 @@ Respond with implementation plan or code."""
 Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
 {compressed}"""
-
     # MARKER_104_ELISION_PROMPTS_END
 
     # MARKER_102.27_START: Progress emission to VETKA chat
     # MARKER_117.8B: Async emit — SocketIO direct for solo, AsyncClient for groups
     # Replaces sync httpx.Client that was BLOCKING the event loop for 5s per emit
-    async def _emit_progress(
-        self,
-        role: str,
-        message: str,
-        subtask_idx: int = 0,
-        total: int = 0,
-        model: str = None,
-        metadata: dict = None,
-    ):
+    async def _emit_progress(self, role: str, message: str, subtask_idx: int = 0, total: int = 0, model: str = None, metadata: dict = None):
         """
         Emit progress update to VETKA chat.
 
@@ -1976,7 +1505,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             full_message = f"{role}{model_tag}: {progress}{message}"
 
             # MARKER_129.4A: Broadcast to DevPanel via MYCELIUM WebSocket (direct, no relay)
-            if getattr(self, "_ws_broadcaster", None):
+            if getattr(self, '_ws_broadcaster', None):
                 try:
                     ws_payload = {
                         "type": "pipeline_activity",
@@ -1985,7 +1514,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "model": model or "system",
                         "subtask_idx": subtask_idx,
                         "total": total,
-                        "task_id": getattr(self, "_board_task_id", None),
+                        "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset_name,
                         "timestamp": time.time(),
                     }
@@ -1997,16 +1526,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     pass  # Never fail pipeline on WS broadcast
 
             # MARKER_129.4B: Chat relay via MYCELIUM HTTP client (→ VETKA ChatPanel)
-            if getattr(self, "_http_client", None) and self.chat_id:
+            if getattr(self, '_http_client', None) and self.chat_id:
                 try:
                     await self._http_client.emit_pipeline_progress(
-                        self.chat_id,
-                        role,
-                        full_message,
-                        model=model or "system",
-                        subtask_idx=subtask_idx,
-                        total=total,
-                        metadata=metadata,
+                        self.chat_id, role, full_message, model=model or "system",
+                        subtask_idx=subtask_idx, total=total, metadata=metadata
                     )
                 except Exception:
                     pass
@@ -2022,7 +1546,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         "model": model or "system",
                         "subtask_idx": subtask_idx,
                         "total": total,
-                        "task_id": getattr(self, "_board_task_id", None),
+                        "task_id": getattr(self, '_board_task_id', None),
                         "preset": self.preset,
                         "timestamp": time.time(),
                     }
@@ -2052,13 +1576,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_117.8B Route 2: HTTP async (group chat — non-blocking)
             if self.chat_id:
                 import httpx
-
                 http_json = {
                     "agent_id": "pipeline",
                     "content": full_message,
-                    "message_type": "reflex"
-                    if metadata and metadata.get("type") == "reflex"
-                    else "system",
+                    "message_type": "reflex" if metadata and metadata.get("type") == "reflex" else "system",
                 }
                 # MARKER_174.REFLEX_LIVE: Include structured metadata
                 if metadata:
@@ -2066,12 +1587,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     response = await client.post(
                         f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
-                        json=http_json,
+                        json=http_json
                     )
                     if response.status_code != 200:
-                        logger.warning(
-                            f"[Pipeline] Emit got status {response.status_code}"
-                        )
+                        logger.warning(f"[Pipeline] Emit got status {response.status_code}")
                 logger.debug(f"[Pipeline] HTTP emit: {full_message[:80]}...")
                 return
 
@@ -2088,12 +1607,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 hook(role, message, subtask_idx, total)
             except Exception as e:
                 logger.debug(f"[Pipeline] Hook error: {e}")
-
     # MARKER_102.27_END
 
     # MARKER_104_STREAM_VISIBILITY: Stream event emission with visibility control
     def _emit_stream_event(
-        self, event_type: str, data: Dict[str, Any], visibility: str = "summary"
+        self,
+        event_type: str,
+        data: Dict[str, Any],
+        visibility: str = "summary"
     ):
         """
         Emit event with visibility control for selective streaming.
@@ -2137,18 +1658,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if isinstance(value, str):
                 # Truncate long strings
                 if len(value) > 200:
-                    summarized[key] = (
-                        value[:200] + f"... [{len(value) - 200} chars truncated]"
-                    )
+                    summarized[key] = value[:200] + f"... [{len(value) - 200} chars truncated]"
                 else:
                     summarized[key] = value
             elif isinstance(value, dict):
                 # Recursively summarize nested dicts
                 if len(str(value)) > 200:
-                    summarized[key] = {
-                        "_summary": f"Dict with {len(value)} keys",
-                        "_keys": list(value.keys())[:5],
-                    }
+                    summarized[key] = {"_summary": f"Dict with {len(value)} keys", "_keys": list(value.keys())[:5]}
                 else:
                     summarized[key] = value
             elif isinstance(value, list):
@@ -2181,36 +1697,30 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_118.6: Route 1 — emit "chat_response" for ChatPanel visibility
             if self.sio and self.sid:
-                await self.sio.emit(
-                    "chat_response",
-                    {
-                        "message": content,
-                        "agent": "pipeline",
-                        "model": "system",
-                    },
-                    to=self.sid,
-                )
+                await self.sio.emit("chat_response", {
+                    "message": content,
+                    "agent": "pipeline",
+                    "model": "system",
+                }, to=self.sid)
                 logger.debug(f"[Pipeline] SIO stream event: {event_type}")
                 return
 
             # MARKER_117.8B: Route 2 — HTTP async (group)
             if self.chat_id:
                 import httpx
-
                 async with httpx.AsyncClient(timeout=5.0) as client:
                     await client.post(
                         f"http://localhost:5001/api/debug/mcp/groups/{self.chat_id}/send",
                         json={
                             "agent_id": "pipeline",
                             "content": content,
-                            "message_type": "system",
-                        },
+                            "message_type": "system"
+                        }
                     )
                 logger.debug(f"[Pipeline] HTTP stream event: {event_type}")
         except Exception as e:
             # Don't fail pipeline on emit errors
             logger.warning(f"[Pipeline] Stream emit failed (non-fatal): {e}")
-
     # MARKER_104_STREAM_VISIBILITY_END
 
     # MARKER_102.17_START: Robust JSON extraction from LLM responses
@@ -2233,7 +1743,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             pass
 
         # Try 2: Extract from ```json ... ``` block
-        json_block = re.search(r"```json\s*([\s\S]*?)\s*```", text)
+        json_block = re.search(r'```json\s*([\s\S]*?)\s*```', text)
         if json_block:
             try:
                 return json.loads(json_block.group(1))
@@ -2241,7 +1751,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 pass
 
         # Try 3: Extract from ``` ... ``` block
-        code_block = re.search(r"```\s*([\s\S]*?)\s*```", text)
+        code_block = re.search(r'```\s*([\s\S]*?)\s*```', text)
         if code_block:
             try:
                 return json.loads(code_block.group(1))
@@ -2249,7 +1759,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 pass
 
         # Try 4: Find JSON object in text (greedy match from { to })
-        json_match = re.search(r"\{[\s\S]*\}", text)
+        json_match = re.search(r'\{[\s\S]*\}', text)
         if json_match:
             try:
                 return json.loads(json_match.group(0))
@@ -2257,7 +1767,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 pass
 
         # Try 5: Find JSON starting from first {
-        first_brace = text.find("{")
+        first_brace = text.find('{')
         if first_brace != -1:
             try:
                 return json.loads(text[first_brace:])
@@ -2266,7 +1776,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         logger.warning(f"[Pipeline] Could not extract JSON from: {text[:100]}...")
         raise json.JSONDecodeError("No valid JSON found", text, 0)
-
     # MARKER_102.17_END
 
     # MARKER_102.3_START: Task storage
@@ -2294,12 +1803,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MCP sandbox: project dir is read-only, fall back to TMPDIR
             logger.warning(f"[Pipeline] Sandboxed write blocked, using TMPDIR: {e}")
             try:
-                _TASKS_FILE_FALLBACK.write_text(
-                    json.dumps(tasks, indent=2, default=str)
-                )
-                logger.info(
-                    f"[Pipeline] Tasks saved to fallback: {_TASKS_FILE_FALLBACK}"
-                )
+                _TASKS_FILE_FALLBACK.write_text(json.dumps(tasks, indent=2, default=str))
+                logger.info(f"[Pipeline] Tasks saved to fallback: {_TASKS_FILE_FALLBACK}")
             except Exception as e2:
                 logger.error(f"[Pipeline] TMPDIR fallback also failed: {e2}")
 
@@ -2327,13 +1832,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """MARKER_173.P4.ARM — Get A/B experiment arm for this pipeline run."""
         if self._reflex_experiment_arm is None:
             try:
-                from src.services.reflex_experiment import (
-                    is_experiment_active,
-                    assign_arm,
-                )
-
+                from src.services.reflex_experiment import is_experiment_active, assign_arm
                 if is_experiment_active():
-                    pipeline_id = getattr(self, "_board_task_id", "") or ""
+                    pipeline_id = getattr(self, '_board_task_id', '') or ''
                     self._reflex_experiment_arm = assign_arm(pipeline_id)
                 else:
                     self._reflex_experiment_arm = ""  # Not in experiment
@@ -2347,14 +1848,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             arm = self._get_reflex_experiment_arm()
             if not arm:
                 return
-            from src.services.reflex_experiment import (
-                get_reflex_experiment,
-                ExperimentMetrics,
-            )
-
+            from src.services.reflex_experiment import get_reflex_experiment, ExperimentMetrics
             rs = self._reflex_stats
             metrics = ExperimentMetrics(
-                pipeline_id=getattr(self, "_board_task_id", "") or "",
+                pipeline_id=getattr(self, '_board_task_id', '') or '',
                 arm=arm,
                 experiment_id="reflex_active_v1",
                 success_rate=pipeline_stats.get("success_rate", 0.0),
@@ -2362,17 +1859,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 duration_ms=pipeline_stats.get("duration_ms", 0.0),
                 tokens_used=pipeline_stats.get("total_tokens", 0),
                 schemas_filtered=rs.get("schemas_filtered", 0),
-                tokens_saved_estimate=rs.get("schemas_original_count", 0)
-                - rs.get("schemas_filtered_count", 0),
+                tokens_saved_estimate=rs.get("schemas_original_count", 0) - rs.get("schemas_filtered_count", 0),
                 fallback_count=0,
                 subtask_count=pipeline_stats.get("subtasks_total", 0),
             )
             get_reflex_experiment().record_metrics(metrics)
-            logger.info(
-                "[REFLEX P4] Experiment recorded: arm=%s, success=%.2f",
-                arm,
-                metrics.success_rate,
-            )
+            logger.info("[REFLEX P4] Experiment recorded: arm=%s, success=%.2f", arm, metrics.success_rate)
         except Exception as e:
             logger.debug("[REFLEX P4] Experiment record error (non-fatal): %s", e)
 
@@ -2381,9 +1873,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self._reflex_emitter is None:
             try:
                 from src.services.reflex_streaming import ReflexEventEmitter
-
                 self._reflex_emitter = ReflexEventEmitter(
-                    ws_broadcaster=getattr(self, "_ws_broadcaster", None),
+                    ws_broadcaster=getattr(self, '_ws_broadcaster', None),
                 )
             except ImportError:
                 pass
@@ -2494,10 +1985,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """Get most recent tasks"""
         tasks = self._load_tasks()
         sorted_tasks = sorted(
-            tasks.values(), key=lambda t: t.get("timestamp", 0), reverse=True
+            tasks.values(),
+            key=lambda t: t.get("timestamp", 0),
+            reverse=True
         )
         return sorted_tasks[:limit]
-
     # MARKER_102.20_END
 
     # MARKER_102.25_START: STM (Short-Term Memory) helpers
@@ -2515,23 +2007,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             result: Raw subtask result string
         """
         import logging
-
         logger = logging.getLogger(__name__)
 
         try:
             from src.memory.elision import get_elision_compressor
-
             compressor = get_elision_compressor()
         except ImportError:
             # Fallback if ELISION not available
             logger.warning("[STM] ELISION import failed, using truncation only")
-            self.stm.append(
-                {
-                    "marker": marker,
-                    "result": result[:PIPELINE_TRUNCATE_RESULT] if result else "",
-                    "compressed": False,
-                }
-            )
+            self.stm.append({
+                "marker": marker,
+                "result": result[:PIPELINE_TRUNCATE_RESULT] if result else "",
+                "compressed": False
+            })
             if len(self.stm) > self.stm_limit:
                 self.stm.pop(0)
             return
@@ -2542,9 +2030,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         # Only compress if result is large enough
         if original_size > PIPELINE_COMPRESS_THRESHOLD:
             try:
-                compression = compressor.compress(
-                    result_str, level=self._get_adaptive_elision_level()
-                )
+                compression = compressor.compress(result_str, level=self._get_adaptive_elision_level())
                 stm_entry = {
                     "marker": marker,
                     "result": compression.compressed,
@@ -2553,7 +2039,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "compressed_size": compression.compressed_length,
                     "compression_ratio": round(compression.compression_ratio, 2),
                     "tokens_saved": compression.tokens_saved_estimate,
-                    "level": 2,
+                    "level": 2
                 }
                 logger.debug(
                     f"[STM] Compressed {marker}: {compression.original_length} -> "
@@ -2562,20 +2048,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     f"~{compression.tokens_saved_estimate} tokens saved)"
                 )
             except Exception as e:
-                logger.warning(
-                    f"[STM] Compression failed for {marker}: {e}, using truncation"
-                )
+                logger.warning(f"[STM] Compression failed for {marker}: {e}, using truncation")
                 stm_entry = {
                     "marker": marker,
                     "result": result_str[:PIPELINE_TRUNCATE_RESULT],
-                    "compressed": False,
+                    "compressed": False
                 }
         else:
             # Small results: no compression needed
             stm_entry = {
                 "marker": marker,
                 "result": result_str[:PIPELINE_TRUNCATE_RESULT] if result_str else "",
-                "compressed": False,
+                "compressed": False
             }
 
         self.stm.append(stm_entry)
@@ -2594,7 +2078,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         Decompresses as needed for context passing.
         """
         import logging
-
         logger = logging.getLogger(__name__)
 
         if not self.stm:
@@ -2605,7 +2088,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         # Try to import compressor for decompression
         try:
             from src.memory.elision import get_elision_compressor
-
             compressor = get_elision_compressor()
         except ImportError:
             compressor = None
@@ -2659,10 +2141,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "num_compressed": num_compressed,
             "compression_ratio": (
                 round(total_original / total_compressed, 2)
-                if total_compressed > 0
-                else 0.0
+                if total_compressed > 0 else 0.0
             ),
-            "tokens_saved_estimate": total_tokens_saved,
+            "tokens_saved_estimate": total_tokens_saved
         }
 
     def _log_stm_summary(self):
@@ -2676,7 +2157,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 f"~{stats['tokens_saved_estimate']} tokens saved "
                 f"({stats['compression_ratio']}x compression)"
             )
-
     # MARKER_102.25_END
 
     # MARKER_119.2: Pipeline-to-STMBuffer bridge
@@ -2702,22 +2182,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 f"{'; '.join(previews)}"
             )[:500]
             # MARKER_183.3: Include session_id + run_id in STM metadata
-            stm.add_message(
-                summary,
-                source="pipeline",
-                metadata={
-                    "session_id": getattr(self, "_session_id", None),
-                    "run_id": getattr(self, "_run_id", None),
-                    "task_id": task_id,
-                    "phase_type": phase_type,
-                },
-            )
-            logger.info(
-                f"[Pipeline] Bridged STM summary to global STMBuffer ({len(summary)} chars)"
-            )
+            stm.add_message(summary, source="pipeline", metadata={
+                "session_id": getattr(self, '_session_id', None),
+                "run_id": getattr(self, '_run_id', None),
+                "task_id": task_id,
+                "phase_type": phase_type,
+            })
+            logger.info(f"[Pipeline] Bridged STM summary to global STMBuffer ({len(summary)} chars)")
         except Exception as e:
             logger.warning(f"[Pipeline] STM bridge failed (non-fatal): {e}")
-
     # MARKER_119.2_END
     # MARKER_102.3_END
 
@@ -2733,48 +2206,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # Python indicators
         py_indicators = [
-            "def ",
-            "class ",
-            "import ",
-            "from ",
-            "async def ",
-            "if __name__",
-            '"""',
-            "'''",
-            "self.",
-            "None",
-            "True",
-            "False",
-            "@property",
-            "@staticmethod",
-            "@classmethod",
-            "raise ",
+            'def ', 'class ', 'import ', 'from ', 'async def ',
+            'if __name__', '"""', "'''", 'self.', 'None', 'True', 'False',
+            '@property', '@staticmethod', '@classmethod', 'raise ',
         ]
 
         # JavaScript/TypeScript indicators
         js_indicators = [
-            "const ",
-            "let ",
-            "var ",
-            "function ",
-            "=>",
-            "export ",
-            "import {",
-            'from "',
-            "from '",
-            "interface ",
-            "type ",
-            "async function",
-            "await ",
-            "null",
-            "undefined",
-            "true",
-            "false",
-            "React",
-            "useState",
-            "useEffect",
-            "// ",
-            "/* ",
+            'const ', 'let ', 'var ', 'function ', '=>', 'export ',
+            'import {', 'from "', "from '", 'interface ', 'type ',
+            'async function', 'await ', 'null', 'undefined', 'true', 'false',
+            'React', 'useState', 'useEffect', '// ', '/* ',
         ]
 
         # Count indicators
@@ -2783,18 +2225,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # Determine detected language
         if py_score > js_score + 2:
-            detected = "python"
+            detected = 'python'
         elif js_score > py_score + 2:
-            detected = "javascript"
+            detected = 'javascript'
         else:
-            detected = "ambiguous"
+            detected = 'ambiguous'
 
         # Validate against extension
-        if ext in (".py",):
-            if detected == "javascript":
+        if ext in ('.py',):
+            if detected == 'javascript':
                 return False, f"BLOCKED: JS/TS code detected but target is {ext}"
-        elif ext in (".ts", ".tsx", ".js", ".jsx"):
-            if detected == "python":
+        elif ext in ('.ts', '.tsx', '.js', '.jsx'):
+            if detected == 'python':
                 return False, f"BLOCKED: Python code detected but target is {ext}"
 
         return True, ""
@@ -2810,7 +2252,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             Path object — either in playground worktree or in PROJECT_ROOT
         """
         from pathlib import Path
-
         if self.playground_root:
             # Scope all writes to the playground worktree
             return Path(self.playground_root) / filepath
@@ -2838,33 +2279,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # MARKER_133.FIX3: Multi-format code extraction
         # Pattern 1: Standard markdown code blocks: ```[lang]\ncode\n```
-        pattern = (
-            r"```(?:python|py|javascript|js|typescript|ts|rust|rs|)?\s*\n(.*?)\n```"
-        )
+        pattern = r'```(?:python|py|javascript|js|typescript|ts|rust|rs|)?\s*\n(.*?)\n```'
         matches = re.findall(pattern, content, re.DOTALL | re.IGNORECASE)
 
         # Pattern 2: "// file: path" format (Qwen-style output)
         # Extract file path AND code that follows
-        file_pattern = (
-            r"(?://|#)\s*file:\s*([^\s\n]+)\s*\n(.*?)(?=(?://|#)\s*file:|```|$)"
-        )
+        file_pattern = r'(?://|#)\s*file:\s*([^\s\n]+)\s*\n(.*?)(?=(?://|#)\s*file:|```|$)'
         file_matches = re.findall(file_pattern, content, re.DOTALL | re.IGNORECASE)
 
         if not matches and not file_matches:
             # Pattern 3: Fallback — if content looks like code (has def/class/import), treat whole thing as code
-            code_indicators = [
-                "def ",
-                "class ",
-                "import ",
-                "from ",
-                "async def ",
-                "@router",
-                "@app",
-            ]
+            code_indicators = ['def ', 'class ', 'import ', 'from ', 'async def ', '@router', '@app']
             if any(indicator in content[:500] for indicator in code_indicators):
-                logger.info(
-                    "[Pipeline] No code blocks found but content looks like code, treating as raw code"
-                )
+                logger.info("[Pipeline] No code blocks found but content looks like code, treating as raw code")
                 matches = [content]
             else:
                 logger.debug("[Pipeline] No code blocks found in response")
@@ -2877,7 +2304,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 continue
             filepath = file_path_match.strip()
             # Validate it looks like a real path
-            if "." in filepath and ("/" in filepath or filepath.endswith(".py")):
+            if '.' in filepath and ('/' in filepath or filepath.endswith('.py')):
                 self._write_extracted_file(filepath, code, files_created, subtask)
 
         # Process standard code blocks
@@ -2891,16 +2318,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             filepath = None
 
             # Try to find path in code itself first (# file: path)
-            inline_path = re.search(r"(?://|#)\s*file:\s*([^\s\n]+)", code[:200])
+            inline_path = re.search(r'(?://|#)\s*file:\s*([^\s\n]+)', code[:200])
             if inline_path:
                 filepath = inline_path.group(1).strip()
 
             # Then try subtask description
             if not filepath and subtask.description:
                 path_match = re.search(
-                    r"((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))",
+                    r'((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
                     subtask.description,
-                    re.IGNORECASE,
+                    re.IGNORECASE
                 )
                 if path_match:
                     filepath = path_match.group(1)
@@ -2908,18 +2335,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Then try the LLM content itself for file references
             if not filepath:
                 content_path = re.search(
-                    r"((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))",
+                    r'((?:src|data|client)/[^\s]+?\.(?:py|js|ts|tsx|md|json))',
                     content[:500],
-                    re.IGNORECASE,
+                    re.IGNORECASE
                 )
                 if content_path:
                     filepath = content_path.group(1)
 
             # Fallback: Use MARKER or generic name
             if not filepath:
-                marker = getattr(subtask, "marker", f"file_{i + 1}")
+                marker = getattr(subtask, 'marker', f'file_{i+1}')
                 # Clean marker for filename
-                safe_marker = re.sub(r"[^\w\-_.]", "_", str(marker))
+                safe_marker = re.sub(r'[^\w\-_.]', '_', str(marker))
                 filepath = f"src/vetka_out/{safe_marker}.py"
 
             # Ensure directory exists and write file
@@ -2934,71 +2361,45 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # Save to staging instead of overwriting
                     staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
-                    staging_path = (
-                        staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
-                    )
-                    staging_path.write_text(code, encoding="utf-8")
+                    staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
                     logger.warning(f"[Pipeline] Blocked code saved to: {staging_path}")
                     continue  # Skip this file, don't overwrite
 
                 # MARKER_130.C19D: Extra safety — only overwrite files in safe directories
                 # MARKER_135.SAFE_DIRS: Expanded to allow pipeline writes to src/ and tests/
-                safe_dirs = ("src/", "data/", "tests/")
+                safe_dirs = ('src/', 'data/', 'tests/')
                 # Never overwrite critical infrastructure files (unless in playground)
-                _forbidden = (
-                    "agent_pipeline.py",
-                    "mycelium_mcp_server.py",
-                    "vetka_mcp_bridge.py",
-                    "__init__.py",
-                    "main.py",
-                    "app.py",
-                )
+                _forbidden = ('agent_pipeline.py', 'mycelium_mcp_server.py', 'vetka_mcp_bridge.py',
+                              '__init__.py', 'main.py', 'app.py')
                 if path_obj.name in _forbidden and not self.playground_root:
                     logger.error(f"[Pipeline] BLOCKED critical file: {filepath}")
                     staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
-                    staging_path = (
-                        staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
-                    )
-                    staging_path.write_text(code, encoding="utf-8")
+                    staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
                     logger.warning(f"[Pipeline] Blocked code saved to: {staging_path}")
                     continue
-                if (
-                    path_obj.exists()
-                    and not any(str(filepath).startswith(d) for d in safe_dirs)
-                    and not self.playground_root
-                ):
-                    logger.error(
-                        f"[Pipeline] BLOCKED: Cannot overwrite existing file {filepath}"
-                    )
+                if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs) and not self.playground_root:
+                    logger.error(f"[Pipeline] BLOCKED: Cannot overwrite existing file {filepath}")
                     staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                     staging_dir.mkdir(parents=True, exist_ok=True)
-                    staging_path = (
-                        staging_dir
-                        / f"{path_obj.stem}_WOULD_OVERWRITE{path_obj.suffix}"
-                    )
-                    staging_path.write_text(code, encoding="utf-8")
-                    logger.warning(
-                        f"[Pipeline] Would-overwrite code saved to: {staging_path}"
-                    )
+                    staging_path = staging_dir / f"{path_obj.stem}_WOULD_OVERWRITE{path_obj.suffix}"
+                    staging_path.write_text(code, encoding='utf-8')
+                    logger.warning(f"[Pipeline] Would-overwrite code saved to: {staging_path}")
                     continue
 
                 path_obj.parent.mkdir(parents=True, exist_ok=True)
-                path_obj.write_text(code, encoding="utf-8")
+                path_obj.write_text(code, encoding='utf-8')
                 files_created.append(filepath)
                 scope_label = f" [playground]" if self.playground_root else ""
-                logger.info(
-                    f"[Pipeline] Spawn created{scope_label}: {filepath} ({len(code)} chars)"
-                )
+                logger.info(f"[Pipeline] Spawn created{scope_label}: {filepath} ({len(code)} chars)")
 
                 # MARKER_123.1D: Phase 123.1 - Emit glow for pipeline-created files
                 try:
                     from src.services.activity_hub import get_activity_hub
-
                     hub = get_activity_hub()
-                    hub.emit_glow_sync(
-                        str(path_obj.absolute()), 1.0, "vetka_out:created"
-                    )
+                    hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "vetka_out:created")
                 except Exception:
                     pass  # Non-critical
 
@@ -3009,7 +2410,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     fallback_dir = self._resolve_write_path("data/vetka_staging")
                     fallback_dir.mkdir(parents=True, exist_ok=True)
                     fallback_path = fallback_dir / Path(filepath).name
-                    fallback_path.write_text(code, encoding="utf-8")
+                    fallback_path.write_text(code, encoding='utf-8')
                     files_created.append(str(fallback_path))
                     logger.warning(f"[Pipeline] Written to fallback: {fallback_path}")
                 except Exception as e2:
@@ -3017,12 +2418,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         return files_created
 
-    def _write_extracted_file(
-        self, filepath: str, code: str, files_created: List[str], subtask
-    ) -> None:
+    def _write_extracted_file(self, filepath: str, code: str, files_created: List[str], subtask) -> None:
         """MARKER_133.FIX3: Write a single extracted file to disk with safety checks."""
         from pathlib import Path
-
         try:
             # MARKER_146.PLAYGROUND: Scope writes to playground if active
             path_obj = self._resolve_write_path(filepath)
@@ -3034,40 +2432,29 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 staging_dir = self._resolve_write_path("data/vetka_staging/blocked")
                 staging_dir.mkdir(parents=True, exist_ok=True)
                 staging_path = staging_dir / f"{path_obj.stem}_BLOCKED{path_obj.suffix}"
-                staging_path.write_text(code, encoding="utf-8")
+                staging_path.write_text(code, encoding='utf-8')
                 return
 
             # Safety: existing files outside safe dirs go to staging (relaxed in playground)
             # MARKER_135.SAFE_DIRS: Expanded (same as _spawn_pipeline_files)
-            safe_dirs = ("src/", "data/", "tests/")
-            if (
-                path_obj.exists()
-                and not any(str(filepath).startswith(d) for d in safe_dirs)
-                and not self.playground_root
-            ):
-                staging_dir = self._resolve_write_path(
-                    "data/vetka_staging/would_overwrite"
-                )
+            safe_dirs = ('src/', 'data/', 'tests/')
+            if path_obj.exists() and not any(str(filepath).startswith(d) for d in safe_dirs) and not self.playground_root:
+                staging_dir = self._resolve_write_path("data/vetka_staging/would_overwrite")
                 staging_dir.mkdir(parents=True, exist_ok=True)
                 staging_path = staging_dir / f"{path_obj.stem}_NEW{path_obj.suffix}"
-                staging_path.write_text(code, encoding="utf-8")
+                staging_path.write_text(code, encoding='utf-8')
                 files_created.append(str(staging_path))
-                logger.info(
-                    f"[Pipeline] Existing file → staged: {staging_path} ({len(code)} chars)"
-                )
+                logger.info(f"[Pipeline] Existing file → staged: {staging_path} ({len(code)} chars)")
                 return
 
             path_obj.parent.mkdir(parents=True, exist_ok=True)
-            path_obj.write_text(code, encoding="utf-8")
+            path_obj.write_text(code, encoding='utf-8')
             files_created.append(filepath)
             scope_label = f" [playground]" if self.playground_root else ""
-            logger.info(
-                f"[Pipeline] Created{scope_label}: {filepath} ({len(code)} chars)"
-            )
+            logger.info(f"[Pipeline] Created{scope_label}: {filepath} ({len(code)} chars)")
 
             try:
                 from src.services.activity_hub import get_activity_hub
-
                 hub = get_activity_hub()
                 hub.emit_glow_sync(str(path_obj.absolute()), 1.0, "vetka_out:created")
             except Exception:
@@ -3079,11 +2466,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 fallback_dir = self._resolve_write_path("data/vetka_staging")
                 fallback_dir.mkdir(parents=True, exist_ok=True)
                 fallback_path = fallback_dir / Path(filepath).name
-                fallback_path.write_text(code, encoding="utf-8")
+                fallback_path.write_text(code, encoding='utf-8')
                 files_created.append(str(fallback_path))
             except Exception as e2:
                 logger.error(f"[Pipeline] Fallback failed: {e2}")
-
     # MARKER_103.4_END
 
     # MARKER_102.4_START: Core pipeline methods
@@ -3103,7 +2489,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         # MARKER_182.RUNID: Generate unique run_id for this execution
         import secrets as _secrets
-
         run_ts = int(time.time() * 1000)
         run_suffix = _secrets.token_hex(4)
         self._run_id = f"run_{run_ts}_{task_id[-8:]}_{run_suffix}"
@@ -3111,37 +2496,32 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         # MARKER_182.3: Initialize ActionRegistry for this run
         try:
             from src.orchestration.action_registry import ActionRegistry
-
             self._action_registry = ActionRegistry()
         except Exception as _ar_err:
-            logger.warning(
-                f"[Pipeline] ActionRegistry init failed (non-fatal): {_ar_err}"
-            )
+            logger.warning(f"[Pipeline] ActionRegistry init failed (non-fatal): {_ar_err}")
             self._action_registry = None
 
         pipeline_task = PipelineTask(
-            task_id=task_id, task=task, phase_type=phase_type, status="planning"
+            task_id=task_id,
+            task=task,
+            phase_type=phase_type,
+            status="planning"
         )
         self._update_task(pipeline_task)
 
         logger.info(f"[Pipeline] Starting {phase_type} pipeline for: {task[:50]}...")
         # MARKER_152.4: Pipeline start event
-        self._emit_timeline_event(
-            "pipeline", "start", f"{phase_type} | {self.preset_name}"
-        )
+        self._emit_timeline_event("pipeline", "start", f"{phase_type} | {self.preset_name}")
 
         # MARKER_126.9E: Apply selected key preference if set from UI
-        if hasattr(self, "selected_key") and self.selected_key:
+        if hasattr(self, 'selected_key') and self.selected_key:
             from src.utils.unified_key_manager import get_key_manager
-
             km = get_key_manager()
-            provider = self.selected_key.get("provider", "")
-            key_masked = self.selected_key.get("key_masked", "")
+            provider = self.selected_key.get('provider', '')
+            key_masked = self.selected_key.get('key_masked', '')
             if provider and key_masked:
                 km.set_preferred_key(provider, key_masked)
-                logger.info(
-                    f"[Pipeline] Using selected key: {provider}/{key_masked[:12]}..."
-                )
+                logger.info(f"[Pipeline] Using selected key: {provider}/{key_masked[:12]}...")
 
         # MARKER_102.28_START: Progress emission during execution
         # MARKER_117.6C: Show team composition at pipeline start
@@ -3149,20 +2529,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if self.preset_models:
             team_names = [m.split("/")[-1] for m in self.preset_models.values()]
             team_info += f" ({' → '.join(team_names)})"
-        await self._emit_progress(
-            "@mycelium", f"🚀 Starting {phase_type} pipeline | {team_info}"
-        )
+        await self._emit_progress("@mycelium", f"🚀 Starting {phase_type} pipeline | {team_info}")
 
         try:
             # MARKER_122.1: Phase 0 — Parallel Recon (Scout + Researcher concurrently)
-            await self._emit_progress(
-                "@mycelium", "🔍 Parallel recon: Scout + Researcher..."
-            )
+            await self._emit_progress("@mycelium", "🔍 Parallel recon: Scout + Researcher...")
             self._emit_timeline_event("scout", "start", "parallel recon")
             self._emit_timeline_event("researcher", "start", "parallel recon")
-            scout_context, initial_research = await self._parallel_recon(
-                task, phase_type
-            )
+            scout_context, initial_research = await self._parallel_recon(task, phase_type)
             # MARKER_122.5C: Store scout context for subtask injection
             self._scout_context = scout_context
 
@@ -3172,10 +2546,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 self._pinned_context = await self._fetch_pinned_context()
                 if self._pinned_context:
                     pinned_count = self._pinned_context.count("📌")
-                    await self._emit_progress(
-                        "@mycelium",
-                        f"📌 Loaded {pinned_count} pinned files for context",
-                    )
+                    await self._emit_progress("@mycelium", f"📌 Loaded {pinned_count} pinned files for context")
             except Exception as pin_err:
                 logger.debug(f"[Pipeline] Pinned context skipped: {pin_err}")
             # MARKER_152.12A_END
@@ -3183,13 +2554,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 await self._emit_progress(
                     "@scout",
                     f"✅ Found {len(scout_context.get('relevant_files', []))} files, "
-                    f"{len(scout_context.get('patterns_found', []))} patterns",
+                    f"{len(scout_context.get('patterns_found', []))} patterns"
                 )
             if initial_research:
                 confidence = initial_research.get("confidence", "N/A")
-                await self._emit_progress(
-                    "@researcher", f"✅ Research done (confidence: {confidence})"
-                )
+                await self._emit_progress("@researcher", f"✅ Research done (confidence: {confidence})")
             # MARKER_122.1_END
 
             # Phase 1: Architect breaks down task (with recon context)
@@ -3197,15 +2566,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             feedback_context = None
             try:
                 from src.services.feedback_service import get_feedback_for_architect
-
                 feedback_context = get_feedback_for_architect(max_reports=5)
                 if feedback_context:
-                    await self._emit_progress(
-                        "@architect", f"📊 Loaded feedback from past runs"
-                    )
-                    logger.info(
-                        f"[Pipeline] Feedback injected into architect ({len(feedback_context)} chars)"
-                    )
+                    await self._emit_progress("@architect", f"📊 Loaded feedback from past runs")
+                    logger.info(f"[Pipeline] Feedback injected into architect ({len(feedback_context)} chars)")
             except Exception as fb_err:
                 logger.debug(f"[Pipeline] Feedback load skipped: {fb_err}")
             # MARKER_135.FB_LOOP_A_END
@@ -3214,17 +2578,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # Enrich architect context with prefetched files, markers, and workflow selection
             self._prefetch_context = None
             try:
-                from src.services.architect_prefetch import (
-                    ArchitectPrefetch,
-                    PrefetchContext,
-                )
-
+                from src.services.architect_prefetch import ArchitectPrefetch, PrefetchContext
                 task_packet = await self._load_mcc_task_context_packet()
-                packet_binding = (
-                    task_packet.get("workflow_binding")
-                    if isinstance(task_packet.get("workflow_binding"), dict)
-                    else {}
-                )
+                packet_binding = task_packet.get("workflow_binding") if isinstance(task_packet.get("workflow_binding"), dict) else {}
                 prefetch_ctx = ArchitectPrefetch.prepare(
                     task_description=task,
                     task_type=phase_type,
@@ -3233,30 +2589,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     task_packet=task_packet,
                 )
                 self._prefetch_context = prefetch_ctx
-                _pf_files = (
-                    [f["path"] for f in prefetch_ctx.relevant_files[:10]]
-                    if prefetch_ctx.relevant_files
-                    else []
-                )
-                _pf_markers = (
-                    [m.get("content", "")[:60] for m in prefetch_ctx.markers[:5]]
-                    if prefetch_ctx.markers
-                    else []
-                )
-                _pf_docs = list(
-                    ((prefetch_ctx.task_packet or {}).get("docs") or {}).get(
-                        "architecture_docs"
-                    )
-                    or []
-                )
+                _pf_files = [f["path"] for f in prefetch_ctx.relevant_files[:10]] if prefetch_ctx.relevant_files else []
+                _pf_markers = [m.get("content", "")[:60] for m in prefetch_ctx.markers[:5]] if prefetch_ctx.markers else []
+                _pf_docs = list(((prefetch_ctx.task_packet or {}).get("docs") or {}).get("architecture_docs") or [])
                 await self._emit_progress(
                     "@mycelium",
                     f"\U0001f52e Prefetch: {len(_pf_files)} files, {len(_pf_markers)} markers, "
-                    f"docs={len(_pf_docs)}, workflow={prefetch_ctx.workflow_name}",
+                    f"docs={len(_pf_docs)}, workflow={prefetch_ctx.workflow_name}"
                 )
-                logger.info(
-                    f"[Pipeline] MARKER_176.2: Prefetch ready \u2014 {prefetch_ctx.summary}"
-                )
+                logger.info(f"[Pipeline] MARKER_176.2: Prefetch ready \u2014 {prefetch_ctx.summary}")
             except Exception as prefetch_err:
                 logger.warning(f"MARKER_176.2: Prefetch skipped: {prefetch_err}")
             # MARKER_176.2_END
@@ -3264,56 +2605,33 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_117.6C: Model attribution in progress messages
             architect_model = self.prompts.get("architect", {}).get("model", "")
             self._emit_timeline_event("architect", "start", "planning subtasks")
-            await self._emit_progress(
-                "@architect",
-                "📋 Breaking down task into subtasks...",
-                model=architect_model,
-            )
+            await self._emit_progress("@architect", "📋 Breaking down task into subtasks...", model=architect_model)
             # MARKER_133.C33B: Architect phase with timeout — CRITICAL (abort on timeout)
             # MARKER_145.ADAPTIVE_TIMEOUT: Architect model for adaptive timeout
-            plan = await self._safe_phase(
-                "architect",
-                self._architect_plan(
-                    task,
-                    phase_type,
-                    scout_context=scout_context,
-                    research_context=initial_research,
-                    feedback_context=feedback_context,
-                ),
-                model=architect_model,
-            )
+            plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
+                                               research_context=initial_research,
+                                               feedback_context=feedback_context),
+                                          model=architect_model)
             # MARKER_133.C33B: If architect timed out, abort pipeline
             if plan is None:
-                logger.error(
-                    "[Pipeline] Architect phase timed out — cannot continue without plan"
-                )
+                logger.error("[Pipeline] Architect phase timed out — cannot continue without plan")
                 pipeline_task.status = "failed"
                 pipeline_task.results = {"error": "Architect phase timed out"}
                 self._update_task(pipeline_task)
-                return {
-                    "success": False,
-                    "error": "Architect phase timed out",
-                    "task_id": pipeline_task.task_id,
-                }
+                return {"success": False, "error": "Architect phase timed out", "task_id": pipeline_task.task_id}
             pipeline_task.subtasks = [
                 Subtask(**st) if isinstance(st, dict) else st
                 for st in plan.get("subtasks", [])
             ]
             total_subtasks = len(pipeline_task.subtasks)
-            await self._emit_progress(
-                "@architect",
-                f"✅ Plan ready: {total_subtasks} subtasks",
-                model=self._last_used_model,
-            )
+            await self._emit_progress("@architect", f"✅ Plan ready: {total_subtasks} subtasks", model=self._last_used_model)
 
             # MARKER_117_2A_FIX_D: Emit architect plan details to chat
             # Previously plan was only saved to pipeline_task.results, invisible in UI
-            subtask_list = "\n".join(
-                [
-                    f"  {i + 1}. {st.description[:80]}"
-                    for i, st in enumerate(pipeline_task.subtasks[:8])
-                ]
-            )
+            subtask_list = "\n".join([
+                f"  {i+1}. {st.description[:80]}"
+                for i, st in enumerate(pipeline_task.subtasks[:8])
+            ])
             if total_subtasks > 8:
                 subtask_list += f"\n  ... +{total_subtasks - 8} more"
             await self._emit_progress("@architect", f"📋 Plan:\n{subtask_list}")
@@ -3333,21 +2651,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 self._apply_preset()
                 await self._emit_progress(
                     "system",
-                    f"⚡ Auto-tier: {complexity} complexity → {tier_preset} (was {old_tier})",
+                    f"⚡ Auto-tier: {complexity} complexity → {tier_preset} (was {old_tier})"
                 )
             # MARKER_117.4C_END
 
             # MARKER_118.8_ADAPTIVE_STM: Override stm_limit based on complexity
             try:
                 data = json.loads(PRESETS_FILE.read_text())
-                stm_window_map = data.get(
-                    "_stm_window_map", {"low": 3, "medium": 5, "high": 8}
-                )
+                stm_window_map = data.get("_stm_window_map", {"low": 3, "medium": 5, "high": 8})
                 new_limit = stm_window_map.get(complexity, self.stm_limit)
                 if new_limit != self.stm_limit:
-                    logger.info(
-                        f"[Pipeline] Adaptive STM: {complexity} -> window={new_limit} (was {self.stm_limit})"
-                    )
+                    logger.info(f"[Pipeline] Adaptive STM: {complexity} -> window={new_limit} (was {self.stm_limit})")
                     self.stm_limit = new_limit
             except Exception:
                 pass  # Keep default
@@ -3356,36 +2670,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # If initial research confidence is LOW, architect re-evaluates with enriched context
             # MARKER_124.1C: Raised threshold 0.9 → 0.7 — replan only when researcher is truly unsure
             # At 0.9 every pipeline did double-planning (E2E showed confidence=0.85 → wasted replan)
-            if (
-                initial_research
-                and isinstance(initial_research, dict)
-                and initial_research.get("confidence", 1.0) < 0.7
-            ):
-                await self._emit_progress(
-                    "@architect",
-                    "📋 PM pass: refining plan with research context...",
-                    model=architect_model,
-                )
+            if initial_research and isinstance(initial_research, dict) and initial_research.get("confidence", 1.0) < 0.7:
+                await self._emit_progress("@architect", "📋 PM pass: refining plan with research context...", model=architect_model)
                 # MARKER_133.C33B: Architect PM pass with timeout
                 # MARKER_145.ADAPTIVE_TIMEOUT: Architect model for PM pass
-                refined_plan = await self._safe_phase(
-                    "architect",
-                    self._architect_plan(
-                        task,
-                        phase_type,
-                        scout_context=scout_context,
-                        research_context=initial_research,
-                    ),
-                    model=architect_model,
-                )
+                refined_plan = await self._safe_phase("architect", self._architect_plan(task, phase_type, scout_context=scout_context,
+                                                   research_context=initial_research),
+                                                     model=architect_model)
                 if refined_plan is None:
                     # PM replan failed, continue with original plan
-                    logger.warning(
-                        "[Pipeline] Architect PM pass timed out — using original plan"
-                    )
-                    await self._emit_progress(
-                        "system", "Architect PM pass timed out — using original plan"
-                    )
+                    logger.warning("[Pipeline] Architect PM pass timed out — using original plan")
+                    await self._emit_progress("system", "Architect PM pass timed out — using original plan")
                 else:
                     plan = refined_plan
                     pipeline_task.subtasks = [
@@ -3393,11 +2688,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         for st in plan.get("subtasks", [])
                     ]
                     total_subtasks = len(pipeline_task.subtasks)
-                    await self._emit_progress(
-                        "@architect",
-                        f"✅ PM refined plan: {total_subtasks} subtasks",
-                        model=self._last_used_model,
-                    )
+                    await self._emit_progress("@architect", f"✅ PM refined plan: {total_subtasks} subtasks", model=self._last_used_model)
             # MARKER_122.2_END
 
             # MARKER_102.24_START: Phase 2 with STM context passing
@@ -3425,16 +2716,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             pipeline_task.status = "done"
             pipeline_task.results = {
                 "plan": plan,
-                "subtasks_completed": len(
-                    [s for s in pipeline_task.subtasks if s.status == "done"]
-                ),
+                "subtasks_completed": len([s for s in pipeline_task.subtasks if s.status == "done"]),
                 "subtasks_total": len(pipeline_task.subtasks),
-                "execution_order": plan.get("execution_order", "sequential"),
+                "execution_order": plan.get("execution_order", "sequential")
             }
             self._update_task(pipeline_task)
 
-            completed = pipeline_task.results["subtasks_completed"]
-            total = pipeline_task.results["subtasks_total"]
+            completed = pipeline_task.results['subtasks_completed']
+            total = pipeline_task.results['subtasks_total']
             logger.info(f"[Pipeline] Completed: {completed}/{total} subtasks")
 
             # MARKER_104_MEMORY_STM: Log memory compression statistics
@@ -3443,10 +2732,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             self._bridge_to_global_stm(task_id, phase_type)
 
             # MARKER_121.3: Update Task Board if this was a board-dispatched task
-            if hasattr(self, "_board_task_id") and self._board_task_id:
+            if hasattr(self, '_board_task_id') and self._board_task_id:
                 try:
                     from src.orchestration.task_board import get_task_board
-
                     board = get_task_board()
                     board.update_task(
                         self._board_task_id,
@@ -3454,9 +2742,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         assigned_tier=self.preset_name,
                         result_summary=str(pipeline_task.results)[:500],
                     )
-                    logger.info(
-                        f"[Pipeline] Task board checkpoint saved: {self._board_task_id}"
-                    )
+                    logger.info(f"[Pipeline] Task board checkpoint saved: {self._board_task_id}")
                 except Exception as e:
                     logger.debug(f"[Pipeline] Task board update skipped: {e}")
             # MARKER_121.3_END
@@ -3469,24 +2755,18 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             ]
             for i, subtask in enumerate(pipeline_task.subtasks or []):
                 s_icon = "✅" if subtask.status == "done" else "❌"
-                marker = subtask.marker or f"step_{i + 1}"
-                report_lines.append(
-                    f"{s_icon} **{marker}**: {subtask.description[:80]}"
-                )
+                marker = subtask.marker or f"step_{i+1}"
+                report_lines.append(f"{s_icon} **{marker}**: {subtask.description[:80]}")
                 if subtask.result:
-                    preview = str(subtask.result)[:200].replace("\n", " ")
+                    preview = str(subtask.result)[:200].replace('\n', ' ')
                     report_lines.append(f"   └ {preview}")
             report_lines.append(f"\n🎉 Pipeline complete!")
-            await self._emit_to_chat(
-                "@mycelium", "\n".join(report_lines)
-            )  # MARKER_120.1: was missing await
+            await self._emit_to_chat("@mycelium", "\n".join(report_lines))  # MARKER_120.1: was missing await
             # MARKER_102.28_END
 
             # MARKER_126.0A: Record pipeline statistics for DevPanel
             try:
-                completed_subtasks = [
-                    s for s in pipeline_task.subtasks if s.status == "done"
-                ]
+                completed_subtasks = [s for s in pipeline_task.subtasks if s.status == "done"]
                 verifier_confidences = [
                     s.verifier_feedback.get("confidence", 0)
                     for s in pipeline_task.subtasks
@@ -3494,9 +2774,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 ]
                 pipeline_stats = {
                     "preset": self.preset_name or "default",
-                    "league": "dragon"
-                    if (self.preset_name or "").startswith("dragon")
-                    else "titan",
+                    "league": "dragon" if (self.preset_name or "").startswith("dragon") else "titan",
                     "phase_type": phase_type,
                     "subtasks_total": len(pipeline_task.subtasks),
                     "subtasks_completed": len(completed_subtasks),
@@ -3506,8 +2784,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "tokens_out": self._tokens_out,
                     "verifier_avg_confidence": (
                         sum(verifier_confidences) / len(verifier_confidences)
-                        if verifier_confidences
-                        else 0
+                        if verifier_confidences else 0
                     ),
                     "completed_at": time.time(),
                     "duration_s": round(time.time() - pipeline_task.timestamp, 1),
@@ -3521,50 +2798,38 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_173.P4: Record A/B experiment metrics
                 self._record_reflex_experiment(pipeline_stats)
                 # Save to TaskBoard if task has a board ID
-                if hasattr(self, "_board_task_id") and self._board_task_id:
+                if hasattr(self, '_board_task_id') and self._board_task_id:
                     from src.orchestration.task_board import get_task_board
-
                     board = get_task_board()
                     board.record_pipeline_stats(self._board_task_id, pipeline_stats)
                     # MARKER_135.DAG_BRIDGE: Save structured result for DAG visualization
                     dag_result = self._build_dag_result(pipeline_task, pipeline_stats)
                     board.update_task(self._board_task_id, result=dag_result)
-                    logger.info(
-                        f"[Pipeline DAG] Result saved for {self._board_task_id}: {len(dag_result.get('agents', {}))} agents, {len(dag_result.get('subtasks', []))} subtasks"
-                    )
+                    logger.info(f"[Pipeline DAG] Result saved for {self._board_task_id}: {len(dag_result.get('agents', {}))} agents, {len(dag_result.get('subtasks', []))} subtasks")
                 # Always store in pipeline_task results
                 if pipeline_task.results:
                     pipeline_task.results["stats"] = pipeline_stats
                 else:
                     pipeline_task.results = {"stats": pipeline_stats}
                 self._update_task(pipeline_task)
-                logger.info(
-                    f"[Pipeline Stats] {self.preset_name}: {pipeline_stats['subtasks_completed']}/{pipeline_stats['subtasks_total']} done, {pipeline_stats['llm_calls']} LLM calls, {pipeline_stats['duration_s']}s"
-                )
+                logger.info(f"[Pipeline Stats] {self.preset_name}: {pipeline_stats['subtasks_completed']}/{pipeline_stats['subtasks_total']} done, {pipeline_stats['llm_calls']} LLM calls, {pipeline_stats['duration_s']}s")
 
                 # MARKER_133.HISTORY: Record to pipeline history for observability
                 try:
                     from src.api.routes.pipeline_history import append_run
-
                     append_run(
                         task_id=task_id,
                         task_title=task[:200],
                         preset=self.preset_name or "unknown",
                         phase_type=phase_type,
-                        phases_completed=[
-                            s.marker
-                            for s in pipeline_task.subtasks
-                            if s.status == "done"
-                        ],
+                        phases_completed=[s.marker for s in pipeline_task.subtasks if s.status == "done"],
                         total_duration_s=pipeline_stats.get("duration_s", 0),
                         eval_score=pipeline_stats.get("verifier_avg_confidence"),
                         status="done" if pipeline_stats.get("success") else "failed",
                         llm_calls=pipeline_stats.get("llm_calls", 0),
                         tokens_in=pipeline_stats.get("tokens_in", 0),
                         tokens_out=pipeline_stats.get("tokens_out", 0),
-                        files_created=pipeline_task.results.get("files_created", [])
-                        if pipeline_task.results
-                        else [],
+                        files_created=pipeline_task.results.get("files_created", []) if pipeline_task.results else [],
                         subtasks_completed=pipeline_stats.get("subtasks_completed", 0),
                         subtasks_total=pipeline_stats.get("subtasks_total", 0),
                     )
@@ -3577,21 +2842,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # MARKER_133.TRACKER: Auto-track task completion in digest
             try:
-                if hasattr(self, "_board_task_id") and self._board_task_id:
-                    logger.debug(
-                        f"[Pipeline Tracker] Board-backed task {self._board_task_id} defers tracker update to closure protocol"
-                    )
+                if hasattr(self, '_board_task_id') and self._board_task_id:
+                    logger.debug(f"[Pipeline Tracker] Board-backed task {self._board_task_id} defers tracker update to closure protocol")
                 else:
                     from src.services.task_tracker import on_task_completed
-
                     await on_task_completed(
                         task_id=task_id,
                         task_title=task[:200],
                         status="done" if pipeline_stats.get("success") else "failed",
                         stats=pipeline_stats,
-                        source=f"dragon_{self.preset_name}"
-                        if self.preset_name
-                        else "dragon",
+                        source=f"dragon_{self.preset_name}" if self.preset_name else "dragon",
                     )
             except Exception as track_err:
                 logger.debug(f"[Pipeline Tracker] Failed: {track_err}")
@@ -3599,22 +2859,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_134.FEEDBACK_B: Save structured final report for feedback loop
             try:
                 from src.services.feedback_service import save_report
-
                 completed = sum(1 for s in pipeline_task.subtasks if s.status == "done")
                 total = len(pipeline_task.subtasks)
                 issues_found = []
                 for s in pipeline_task.subtasks:
                     vf = getattr(s, "verifier_feedback", None)
                     if isinstance(vf, dict) and not vf.get("passed", True):
-                        issues_found.append(
-                            {
-                                "type": "verifier_fail",
-                                "marker": s.marker or "unknown",
-                                "confidence": vf.get("confidence", 0),
-                                "issues": vf.get("issues", []),
-                                "severity": vf.get("severity", "minor"),
-                            }
-                        )
+                        issues_found.append({
+                            "type": "verifier_fail",
+                            "marker": s.marker or "unknown",
+                            "confidence": vf.get("confidence", 0),
+                            "issues": vf.get("issues", []),
+                            "severity": vf.get("severity", "minor"),
+                        })
                 # MARKER_135.FB_LOOP_C: Generate real improvements from this run
                 improvements_for_next = []
                 if issues_found:
@@ -3625,9 +2882,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             improvements_for_next.append(
                                 f"Fix {iss.get('marker', 'unknown')}: {'; '.join(str(i)[:60] for i in issue_list[:2])}"
                             )
-                retries_total = sum(
-                    getattr(s, "retry_count", 0) for s in pipeline_task.subtasks
-                )
+                retries_total = sum(getattr(s, "retry_count", 0) for s in pipeline_task.subtasks)
                 tier_up = pipeline_stats.get("tier_upgrades", 0)
                 if retries_total > 2:
                     improvements_for_next.append(
@@ -3649,16 +2904,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "session_id": self._session_id,  # MARKER_182.SESSIONID
                     "task": task[:200],
                     "summary": f"Completed {completed}/{total} subtasks",
-                    "quality_score": quality
-                    if quality
-                    else pipeline_stats.get("verifier_avg_confidence", 0),
+                    "quality_score": quality if quality else pipeline_stats.get("verifier_avg_confidence", 0),
                     "issues_found": issues_found,
                     "improvements_for_next_run": improvements_for_next,
-                    "files_created": pipeline_task.results.get("files_created", [])
-                    if pipeline_task.results
-                    else [],
-                    "tokens_used": pipeline_stats.get("tokens_in", 0)
-                    + pipeline_stats.get("tokens_out", 0),
+                    "files_created": pipeline_task.results.get("files_created", []) if pipeline_task.results else [],
+                    "tokens_used": pipeline_stats.get("tokens_in", 0) + pipeline_stats.get("tokens_out", 0),
                     "duration_s": pipeline_stats.get("duration_s", 0),
                     "preset": self.preset_name,
                     "status": "done" if pipeline_stats.get("success") else "failed",
@@ -3678,20 +2928,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if self._action_registry:
                 try:
                     flushed = self._action_registry.flush()
-                    logger.info(
-                        f"[ActionRegistry] Flushed {flushed} actions for run {self._run_id}"
-                    )
+                    logger.info(f"[ActionRegistry] Flushed {flushed} actions for run {self._run_id}")
                 except Exception as ar_err:
-                    logger.warning(
-                        f"[ActionRegistry] Flush failed (non-fatal): {ar_err}"
-                    )
+                    logger.warning(f"[ActionRegistry] Flush failed (non-fatal): {ar_err}")
 
             # MARKER_117.5A: Event-driven wakeup after pipeline completion
             # Cursor insight: "Planners should wake when tasks complete"
             # Auto-check chat for follow-up @dragon tasks
             try:
                 from src.orchestration.mycelium_heartbeat import on_pipeline_complete
-
                 await on_pipeline_complete(self.chat_id)
             except Exception as e:
                 logger.debug(f"[Pipeline] Wakeup hook skipped: {e}")
@@ -3702,9 +2947,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         except PipelineCancelled as e:
             # MARKER_126.5C: Graceful cancellation — save progress, emit message
             logger.info(f"[Pipeline] Cancelled: {e}")
-            completed_count = len(
-                [s for s in pipeline_task.subtasks if s.status == "done"]
-            )
+            completed_count = len([s for s in pipeline_task.subtasks if s.status == "done"])
             pipeline_task.status = "cancelled"
             pipeline_task.results = {
                 "error": f"Cancelled: {e}",
@@ -3716,24 +2959,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             self._bridge_to_global_stm(task_id, phase_type)
 
             # Update TaskBoard if board-dispatched
-            if hasattr(self, "_board_task_id") and self._board_task_id:
+            if hasattr(self, '_board_task_id') and self._board_task_id:
                 try:
                     from src.orchestration.task_board import get_task_board
                     from datetime import datetime as _dt
-
                     board = get_task_board()
-                    board.update_task(
-                        self._board_task_id,
-                        status="cancelled",
-                        completed_at=_dt.now().isoformat(),
-                    )
+                    board.update_task(self._board_task_id, status="cancelled",
+                                     completed_at=_dt.now().isoformat())
                 except Exception:
                     pass
 
-            await self._emit_progress(
-                "@mycelium",
-                f"⏹ Pipeline cancelled ({completed_count}/{len(pipeline_task.subtasks)} done): {str(e)[:40]}",
-            )
+            await self._emit_progress("@mycelium", f"⏹ Pipeline cancelled ({completed_count}/{len(pipeline_task.subtasks)} done): {str(e)[:40]}")
             return asdict(pipeline_task)
 
         except Exception as e:
@@ -3749,7 +2985,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             await self._emit_progress("@mycelium", f"❌ Pipeline failed: {str(e)[:50]}")
             return asdict(pipeline_task)
-
     # MARKER_102.4_END
 
     # MARKER_104_PARALLEL_3: Sequential execution method (STM context passing)
@@ -3768,13 +3003,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         for i, subtask in enumerate(pipeline_task.subtasks):
             # MARKER_126.5B: Check cancellation before each subtask
             self._check_cancelled()
-            logger.info(
-                f"[Pipeline] Subtask {i + 1}/{total_subtasks}: {subtask.description[:40]}..."
-            )
+            logger.info(f"[Pipeline] Subtask {i+1}/{total_subtasks}: {subtask.description[:40]}...")
 
             # MARKER_104_STREAM_VISIBILITY: Check subtask visibility
             if not subtask.visible:
-                logger.debug(f"[Pipeline] Subtask {i + 1} hidden (visible=False)")
+                logger.debug(f"[Pipeline] Subtask {i+1} hidden (visible=False)")
 
             # Inject STM context from previous subtasks
             if self.stm:
@@ -3784,7 +3017,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 subtask.context["previous_results"] = stm_summary
 
             # MARKER_122.5D: Inject scout report for coder awareness
-            if getattr(self, "_scout_context", None):
+            if getattr(self, '_scout_context', None):
                 if subtask.context is None:
                     subtask.context = {}
                 subtask.context["scout_report"] = self._scout_context
@@ -3798,13 +3031,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_117.6C: Model attribution for researcher
                 researcher_model = self.prompts.get("researcher", {}).get("model", "")
                 if subtask.visible:
-                    await self._emit_progress(
-                        "@researcher",
-                        f"🔍 Researching: {subtask.description[:40]}...",
-                        i + 1,
-                        total_subtasks,
-                        model=researcher_model,
-                    )
+                    await self._emit_progress("@researcher", f"🔍 Researching: {subtask.description[:40]}...", i+1, total_subtasks, model=researcher_model)
 
                 # Use description as question if no explicit question
                 question = subtask.question or subtask.description
@@ -3823,22 +3050,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     await self._emit_progress(
                         "@researcher",
                         f"🔍 Research done (confidence: {confidence}): {insights_preview}",
-                        i + 1,
-                        total_subtasks,
-                        model=self._last_used_model,
+                        i+1, total_subtasks, model=self._last_used_model
                     )
 
                 # Recursive: if researcher has further questions with low confidence
                 if research.get("confidence", 1.0) < 0.7:
-                    for fq in research.get("further_questions", [])[
-                        :2
-                    ]:  # Max 2 recursions
+                    for fq in research.get("further_questions", [])[:2]:  # Max 2 recursions
                         sub_research = await self._research(fq)
                         enriched = subtask.context.get("enriched_context", "")
-                        subtask.context["enriched_context"] = (
-                            enriched
-                            + f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
-                        )
+                        subtask.context["enriched_context"] = enriched + f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
 
             # Execute subtask
             subtask.status = "executing"
@@ -3848,58 +3068,36 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             coder_model = self.prompts.get("coder", {}).get("model", "")
             # Emit progress only if subtask is visible
             if subtask.visible:
-                await self._emit_progress(
-                    "@coder",
-                    f"⚙️ Executing: {subtask.description[:40]}...",
-                    i + 1,
-                    total_subtasks,
-                    model=coder_model,
-                )
+                await self._emit_progress("@coder", f"⚙️ Executing: {subtask.description[:40]}...", i+1, total_subtasks, model=coder_model)
 
             # MARKER_172.P4.IP1: REFLEX pre-FC recommendations
             try:
                 from src.services.reflex_integration import reflex_pre_fc
-
-                _recs = reflex_pre_fc(
-                    subtask, phase_type=phase_type, agent_role="coder"
-                )
+                _recs = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
                 # MARKER_172.P5.OBSERVE: Track recommendations
                 if _recs:
                     self._reflex_stats["enabled"] = True
                     self._reflex_stats["recommendations_given"] += 1
-                    self._reflex_stats["tools_recommended"].extend(
-                        r["tool_id"] for r in _recs
-                    )
+                    self._reflex_stats["tools_recommended"].extend(r["tool_id"] for r in _recs)
                     # MARKER_172.P5.4: Stream to DevPanel
                     # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     _rec_ids = ", ".join(r["tool_id"] for r in _recs[:3])
-                    await self._emit_progress(
-                        "@reflex",
-                        f"🎯 Recommends: {_rec_ids}",
-                        i + 1,
-                        total_subtasks,
+                    await self._emit_progress("@reflex", f"🎯 Recommends: {_rec_ids}", i+1, total_subtasks,
                         metadata={
                             "type": "reflex",
                             "event": "recommendation",
-                            "tools": [
-                                {
-                                    "id": r["tool_id"],
-                                    "score": round(r.get("score", 0), 2),
-                                }
-                                for r in _recs[:5]
-                            ],
+                            "tools": [{"id": r["tool_id"], "score": round(r.get("score", 0), 2)} for r in _recs[:5]],
                             "phase": phase_type,
                             "tier": self._get_model_tier(),
-                            "subtask": subtask.marker or f"step_{i + 1}",
-                        },
-                    )
+                            "subtask": subtask.marker or f"step_{i+1}",
+                        })
                     # MARKER_173.P3.IP1: Structured recommendation event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
                         await _emitter.emit_recommendation(
-                            pipeline_id=getattr(self, "_board_task_id", "") or "",
-                            subtask_idx=i + 1,
-                            subtask_marker=subtask.marker or f"step_{i + 1}",
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
                             phase_type=phase_type,
                             model_tier=self._get_model_tier(),
                             recommendations=_recs,
@@ -3910,12 +3108,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_133.C33B: Coder phase with timeout
             # MARKER_145.ADAPTIVE_TIMEOUT: Coder gets fc_turns=4 for FC loop, model from prompts
             _coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
-            result = await self._safe_phase(
-                "coder",
-                self._execute_subtask(subtask, phase_type),
-                model=coder_model,
-                fc_turns=_coder_fc,
-            )
+            result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                            model=coder_model, fc_turns=_coder_fc)
             if result is None:
                 # Coder timed out — mark subtask as failed and continue
                 subtask.status = "failed"
@@ -3926,14 +3120,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             # MARKER_172.P4.IP3: REFLEX post-FC feedback (record tool usage)
             try:
                 from src.services.reflex_integration import reflex_post_fc
-
                 _fc_execs = self._last_fc_tool_executions
                 if _fc_execs:
-                    _fb_count = reflex_post_fc(
-                        _fc_execs,
-                        phase_type=phase_type,
-                        subtask_id=subtask.marker or f"step_{i + 1}",
-                    )
+                    _fb_count = reflex_post_fc(_fc_execs, phase_type=phase_type, subtask_id=subtask.marker or f"step_{i+1}")
                     # MARKER_172.P5.OBSERVE: Track used tools + feedback
                     _used_names = [e.get("name", "") for e in _fc_execs]
                     self._reflex_stats["tools_used"].extend(_used_names)
@@ -3942,32 +3131,25 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     if _fb_count > 0:
                         _used_ids = ", ".join(_used_names[:3])
-                        await self._emit_progress(
-                            "@reflex",
-                            f"📊 Used: {_used_ids} ({_fb_count} feedback)",
-                            i + 1,
-                            total_subtasks,
+                        await self._emit_progress("@reflex", f"📊 Used: {_used_ids} ({_fb_count} feedback)", i+1, total_subtasks,
                             metadata={
                                 "type": "reflex",
                                 "event": "outcome",
                                 "tools_used": _used_names[:5],
                                 "feedback_count": _fb_count,
                                 "phase": phase_type,
-                                "subtask": subtask.marker or f"step_{i + 1}",
-                            },
-                        )
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                     # MARKER_173.P3.IP3: Structured outcome event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
                         await _emitter.emit_outcome(
-                            pipeline_id=getattr(self, "_board_task_id", "") or "",
-                            subtask_idx=i + 1,
-                            subtask_marker=subtask.marker or f"step_{i + 1}",
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
                             phase_type=phase_type,
                             model_tier=self._get_model_tier(),
-                            recommended_ids=list(
-                                self._reflex_stats.get("tools_recommended", [])
-                            ),
+                            recommended_ids=list(self._reflex_stats.get("tools_recommended", [])),
                             used_ids=_used_names,
                             feedback_count=_fb_count,
                         )
@@ -3978,110 +3160,54 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if phase_type in ("fix", "build") and "verifier" in self.prompts:
                 verifier_model = self.prompts.get("verifier", {}).get("model", "")
                 if subtask.visible:
-                    await self._emit_progress(
-                        "@verifier",
-                        f"🔎 Verifying: {subtask.marker or f'step_{i + 1}'}...",
-                        i + 1,
-                        total_subtasks,
-                        model=verifier_model,
-                    )
+                    await self._emit_progress("@verifier", f"🔎 Verifying: {subtask.marker or f'step_{i+1}'}...", i+1, total_subtasks, model=verifier_model)
                 # MARKER_133.C33B: Verifier phase with timeout
                 # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for adaptive timeout
-                verification = await self._safe_phase(
-                    "verifier",
-                    self._verify_subtask(subtask, result, phase_type),
-                    model=verifier_model,
-                )
+                verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                      model=verifier_model)
                 if verification is None:
                     # Verifier timed out — assume passed to continue pipeline
-                    verification = {
-                        "passed": True,
-                        "confidence": 0.5,
-                        "issues": ["Verifier timed out"],
-                    }
+                    verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
 
                 # MARKER_127.3: Default passed=False (not True) — missing field = not passed
                 # Also: major severity gets ONE retry before escalation (was: instant break)
-                while (
-                    not verification.get("passed", False)
-                    and subtask.retry_count < MAX_CODER_RETRIES
-                ):
+                while not verification.get("passed", False) and subtask.retry_count < MAX_CODER_RETRIES:
                     sev = verification.get("severity", "minor")
                     if sev == "major" and subtask.retry_count > 0:
                         # Already retried once for major — now escalate
                         subtask.escalated = True
                         if subtask.visible:
-                            await self._emit_progress(
-                                "@verifier",
-                                f"🚨 Major issue after retry — escalating",
-                                i + 1,
-                                total_subtasks,
-                            )
+                            await self._emit_progress("@verifier", f"🚨 Major issue after retry — escalating", i+1, total_subtasks)
                         break
                     if sev == "major" and subtask.visible:
-                        await self._emit_progress(
-                            "@verifier",
-                            f"⚠️ Major issue — retrying coder once",
-                            i + 1,
-                            total_subtasks,
-                        )
+                        await self._emit_progress("@verifier", f"⚠️ Major issue — retrying coder once", i+1, total_subtasks)
                     # Retry coder with feedback + MARKER_149.RETRY_FIX: pass first attempt
-                    result = await self._retry_coder(
-                        subtask, verification, phase_type, previous_result=result
-                    )
+                    result = await self._retry_coder(subtask, verification, phase_type, previous_result=result)
                     # MARKER_133.C33B: Verifier retry with timeout
                     # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for retry timeout
-                    verification = await self._safe_phase(
-                        "verifier",
-                        self._verify_subtask(subtask, result, phase_type),
-                        model=verifier_model,
-                    )
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                          model=verifier_model)
                     if verification is None:
-                        verification = {
-                            "passed": True,
-                            "confidence": 0.5,
-                            "issues": ["Verifier timed out"],
-                        }
+                        verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                         break  # Exit retry loop on timeout
 
                 # MARKER_122.4: Tier upgrade as last resort
-                if (
-                    not verification.get("passed", False)
-                    and subtask.retry_count >= MAX_CODER_RETRIES
-                    and not subtask.escalated
-                ):
+                if not verification.get("passed", False) and subtask.retry_count >= MAX_CODER_RETRIES and not subtask.escalated:
                     if self._upgrade_coder_tier():
-                        await self._emit_progress(
-                            "system", f"⚡ Upgrading coder tier to {self.preset_name}"
-                        )
+                        await self._emit_progress("system", f"⚡ Upgrading coder tier to {self.preset_name}")
                         subtask.retry_count = 0
                         # MARKER_133.C33B: Coder tier upgrade with timeout
                         # MARKER_145.ADAPTIVE_TIMEOUT: Re-read model after tier upgrade (preset changed)
-                        _upgraded_coder_model = self.prompts.get("coder", {}).get(
-                            "model", ""
-                        )
-                        _upgraded_verifier_model = self.prompts.get("verifier", {}).get(
-                            "model", ""
-                        )
-                        result = await self._safe_phase(
-                            "coder",
-                            self._execute_subtask(subtask, phase_type),
-                            model=_upgraded_coder_model,
-                            fc_turns=_coder_fc,
-                        )
+                        _upgraded_coder_model = self.prompts.get("coder", {}).get("model", "")
+                        _upgraded_verifier_model = self.prompts.get("verifier", {}).get("model", "")
+                        result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                                        model=_upgraded_coder_model, fc_turns=_coder_fc)
                         if result is None:
                             result = "Coder phase timed out during tier upgrade"
-                        verification = await self._safe_phase(
-                            "verifier",
-                            self._verify_subtask(subtask, result, phase_type),
-                            model=_upgraded_verifier_model,
-                        )
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                              model=_upgraded_verifier_model)
                         if verification is None:
-                            verification = {
-                                "passed": True,
-                                "confidence": 0.5,
-                                "issues": ["Verifier timed out"],
-                            }
+                            verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
 
                 # MARKER_127.1A: Store verification dict for stats (confidence collection)
                 subtask.verifier_feedback = verification
@@ -4090,18 +3216,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 if verification and verification.get("confidence", 1.0) < 0.8:
                     try:
                         from src.services.feedback_service import save_verifier_feedback
-
                         save_verifier_feedback(
                             task_id=task_id,
-                            subtask_marker=subtask.marker or f"step_{i + 1}",
+                            subtask_marker=subtask.marker or f"step_{i+1}",
                             score=verification.get("confidence", 0),
                             issues=verification.get("issues", []),
-                            suggestion="; ".join(
-                                str(s)
-                                for s in verification.get(
-                                    "suggestions", verification.get("issues", [])
-                                )
-                            ),
+                            suggestion="; ".join(str(s) for s in verification.get("suggestions", verification.get("issues", []))),
                             severity=verification.get("severity", "medium"),
                         )
                     except Exception as fb_err:
@@ -4111,12 +3231,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_172.P4.IP5: REFLEX verifier feedback
                 try:
                     from src.services.reflex_integration import reflex_verifier
-
-                    _fc_tool_names = [
-                        e.get("name", "") for e in self._last_fc_tool_executions
-                    ]
+                    _fc_tool_names = [e.get("name", "") for e in self._last_fc_tool_executions]
                     _vf_count = reflex_verifier(
-                        subtask_id=subtask.marker or f"step_{i + 1}",
+                        subtask_id=subtask.marker or f"step_{i+1}",
                         tools_used=_fc_tool_names,
                         verifier_passed=verification.get("passed", False),
                         phase_type=phase_type,
@@ -4126,14 +3243,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     # MARKER_172.P5.4: Stream verifier outcome to DevPanel
                     # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
                     if _vf_count > 0:
-                        _v_status = (
-                            "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
-                        )
-                        await self._emit_progress(
-                            "@reflex",
-                            f"{_v_status} → {_vf_count} tools feedback",
-                            i + 1,
-                            total_subtasks,
+                        _v_status = "✅ PASS" if verification.get("passed", False) else "⚠️ FAIL"
+                        await self._emit_progress("@reflex", f"{_v_status} → {_vf_count} tools feedback", i+1, total_subtasks,
                             metadata={
                                 "type": "reflex",
                                 "event": "verifier",
@@ -4141,16 +3252,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                                 "tools": _fc_tool_names[:5],
                                 "feedback_count": _vf_count,
                                 "phase": phase_type,
-                                "subtask": subtask.marker or f"step_{i + 1}",
-                            },
-                        )
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                     # MARKER_173.P3.IP5: Structured verifier event
                     _emitter = self._get_reflex_emitter()
                     if _emitter:
                         await _emitter.emit_verifier(
-                            pipeline_id=getattr(self, "_board_task_id", "") or "",
-                            subtask_idx=i + 1,
-                            subtask_marker=subtask.marker or f"step_{i + 1}",
+                            pipeline_id=getattr(self, '_board_task_id', '') or '',
+                            subtask_idx=i+1,
+                            subtask_marker=subtask.marker or f"step_{i+1}",
                             phase_type=phase_type,
                             tools_used=_fc_tool_names,
                             verifier_passed=verification.get("passed", False),
@@ -4161,13 +3271,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
                 if subtask.visible:
                     v_icon = "✅" if verification.get("passed", True) else "⚠️"
-                    await self._emit_progress(
-                        "@verifier",
-                        f"{v_icon} Verified: confidence={verification.get('confidence', 'N/A')}",
-                        i + 1,
-                        total_subtasks,
-                        model=self._last_used_model,
-                    )
+                    await self._emit_progress("@verifier", f"{v_icon} Verified: confidence={verification.get('confidence', 'N/A')}", i+1, total_subtasks, model=self._last_used_model)
             # MARKER_122.3_END
 
             subtask.result = result
@@ -4175,22 +3279,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Emit completion based on visibility flags
             if subtask.visible:
-                await self._emit_progress(
-                    "@coder",
-                    f"✅ Done: {subtask.marker or f'step_{i + 1}'}",
-                    i + 1,
-                    total_subtasks,
-                    model=self._last_used_model,
-                )
+                await self._emit_progress("@coder", f"✅ Done: {subtask.marker or f'step_{i+1}'}", i+1, total_subtasks, model=self._last_used_model)
                 # MARKER_117_2A_FIX_D: Emit coder result preview to chat
                 # Previously only marker name was emitted, not the actual result
                 if result and isinstance(result, str) and len(result) > 10:
-                    result_preview = result[:300].replace("\n", " ")
+                    result_preview = result[:300].replace('\n', ' ')
                     if len(result) > 300:
                         result_preview += "..."
-                    await self._emit_progress(
-                        "@coder", f"💻 Result: {result_preview}", i + 1, total_subtasks
-                    )
+                    await self._emit_progress("@coder", f"💻 Result: {result_preview}", i+1, total_subtasks)
 
             # MARKER_104_STREAM_VISIBILITY: Emit stream event with result if stream_result=True
             if subtask.stream_result and pipeline_task.visible_to_user:
@@ -4199,54 +3295,46 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     {
                         "subtask_idx": i + 1,
                         "total": total_subtasks,
-                        "marker": subtask.marker or f"step_{i + 1}",
+                        "marker": subtask.marker or f"step_{i+1}",
                         "result": result,
-                        "highlight_artifacts": pipeline_task.highlight_artifacts,
+                        "highlight_artifacts": pipeline_task.highlight_artifacts
                     },
-                    visibility=stream_level,
+                    visibility=stream_level
                 )
 
             # Add to STM for next subtask
-            self._add_to_stm(subtask.marker or f"step_{i + 1}", result)
+            self._add_to_stm(subtask.marker or f"step_{i+1}", result)
 
             # MARKER_117.5B: Auto context reset to combat drift (Cursor insight)
             # "Periodic fresh starts" — when STM grows beyond threshold,
             # compress to summary and reset. Prevents context drift in long runs.
             if len(self.stm) >= MAX_STM_BEFORE_RESET:
                 summary = self._get_stm_summary()
-                self.stm = [
-                    {
-                        "marker": "CONTEXT_RESET",
-                        "result": f"[Reset after {MAX_STM_BEFORE_RESET} subtasks] Summary: {summary[:500]}",
-                    }
-                ]
+                self.stm = [{
+                    "marker": "CONTEXT_RESET",
+                    "result": f"[Reset after {MAX_STM_BEFORE_RESET} subtasks] Summary: {summary[:500]}"
+                }]
                 await self._emit_progress(
                     "system",
-                    f"🔄 Context reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)",
+                    f"🔄 Context reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)"
                 )
-                logger.info(
-                    f"[Pipeline] STM reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)"
-                )
+                logger.info(f"[Pipeline] STM reset after {MAX_STM_BEFORE_RESET} subtasks (anti-drift)")
             # MARKER_117.5B_END
 
             self._update_task(pipeline_task)
 
         # MARKER_122.5: Architect escalation for major failures
-        escalated = [
-            s for s in pipeline_task.subtasks if getattr(s, "escalated", False)
-        ]
-        if escalated and hasattr(self, "_replan_count"):
+        escalated = [s for s in pipeline_task.subtasks if getattr(s, 'escalated', False)]
+        if escalated and hasattr(self, '_replan_count'):
             pass  # replan_count tracked in execute()
         if escalated:
-            replan_count = getattr(pipeline_task, "_replan_count", 0)
+            replan_count = getattr(pipeline_task, '_replan_count', 0)
             if replan_count < MAX_ARCHITECT_REPLANS:
                 pipeline_task._replan_count = replan_count + 1
-                await self._emit_progress(
-                    "@architect",
-                    f"🔄 Escalation: re-planning {len(escalated)} failed subtasks...",
-                )
+                await self._emit_progress("@architect", f"🔄 Escalation: re-planning {len(escalated)} failed subtasks...")
                 new_plan = await self._escalate_to_architect(
-                    pipeline_task.task, escalated, {}, phase_type, None
+                    pipeline_task.task, escalated, {},
+                    phase_type, None
                 )
                 # Create new subtasks from re-plan and execute them
                 new_subtasks = [
@@ -4258,18 +3346,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     for ns in new_subtasks:
                         pipeline_task.subtasks.append(ns)
                     new_total = len(new_subtasks)
-                    await self._emit_progress(
-                        "@architect", f"📋 Re-plan: {new_total} new subtasks"
-                    )
+                    await self._emit_progress("@architect", f"📋 Re-plan: {new_total} new subtasks")
                     # Execute only new subtasks
                     old_subtasks = pipeline_task.subtasks
                     pipeline_task.subtasks = new_subtasks
-                    await self._execute_subtasks_sequential(
-                        pipeline_task, phase_type, new_total
-                    )
+                    await self._execute_subtasks_sequential(pipeline_task, phase_type, new_total)
                     pipeline_task.subtasks = old_subtasks + new_subtasks
         # MARKER_122.5_END
-
     # MARKER_104_PARALLEL_3_END
 
     # MARKER_104_PARALLEL_4: Parallel execution with asyncio.gather()
@@ -4289,43 +3372,29 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
         await self._emit_progress(
             "@mycelium",
-            f"⚡ Parallel execution mode (max {MAX_PARALLEL_PIPELINES} concurrent)",
+            f"⚡ Parallel execution mode (max {MAX_PARALLEL_PIPELINES} concurrent)"
         )
-        logger.info(
-            f"[Pipeline] Parallel execution with semaphore limit={MAX_PARALLEL_PIPELINES}"
-        )
+        logger.info(f"[Pipeline] Parallel execution with semaphore limit={MAX_PARALLEL_PIPELINES}")
 
         async def run_subtask_with_limit(idx: int, subtask: Subtask) -> tuple[int, str]:
             """Run single subtask with semaphore limit and visibility control."""
             async with semaphore:
-                logger.info(
-                    f"[Pipeline] Parallel subtask {idx + 1}/{total_subtasks} acquired semaphore"
-                )
+                logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} acquired semaphore")
 
                 # MARKER_104_STREAM_VISIBILITY: Check subtask visibility before emitting
                 if subtask.visible:
-                    await self._emit_progress(
-                        "@coder",
-                        f"⚙️ [P] Executing: {subtask.description[:35]}...",
-                        idx + 1,
-                        total_subtasks,
-                    )
+                    await self._emit_progress("@coder", f"⚙️ [P] Executing: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                 # MARKER_122.5E: Inject scout report for parallel subtasks
-                if getattr(self, "_scout_context", None):
+                if getattr(self, '_scout_context', None):
                     if subtask.context is None:
                         subtask.context = {}
                     subtask.context["scout_report"] = self._scout_context
 
-                    # Auto-trigger research if needed (inside semaphore)
+                # Auto-trigger research if needed (inside semaphore)
                     subtask.status = "researching"
                     if subtask.visible:
-                        await self._emit_progress(
-                            "@researcher",
-                            f"🔍 [P] Researching: {subtask.description[:35]}...",
-                            idx + 1,
-                            total_subtasks,
-                        )
+                        await self._emit_progress("@researcher", f"🔍 [P] Researching: {subtask.description[:35]}...", idx+1, total_subtasks)
 
                     question = subtask.question or subtask.description
                     research = await self._research(question)
@@ -4338,14 +3407,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if subtask.visible:
                         confidence = research.get("confidence", "N/A")
                         insights = research.get("insights", [])
-                        insights_preview = "; ".join(
-                            str(ins)[:60] for ins in insights[:3]
-                        )
+                        insights_preview = "; ".join(str(ins)[:60] for ins in insights[:3])
                         await self._emit_progress(
                             "@researcher",
                             f"🔍 [P] Research done (confidence: {confidence}): {insights_preview}",
-                            idx + 1,
-                            total_subtasks,
+                            idx+1, total_subtasks
                         )
 
                     # Recursive research for low confidence
@@ -4353,10 +3419,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         for fq in research.get("further_questions", [])[:2]:
                             sub_research = await self._research(fq)
                             enriched = subtask.context.get("enriched_context", "")
-                            subtask.context["enriched_context"] = (
-                                enriched
-                                + f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
-                            )
+                            subtask.context["enriched_context"] = enriched + f"\n\nFollow-up ({fq}):\n{sub_research.get('enriched_context', '')}"
 
                 # Execute subtask
                 subtask.status = "executing"
@@ -4364,12 +3427,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_145.ADAPTIVE_TIMEOUT: Coder model + FC turns for parallel path
                 _par_coder_model = self.prompts.get("coder", {}).get("model", "")
                 _par_coder_fc = MAX_FC_TURNS_CODER if FC_LOOP_AVAILABLE else 1
-                result = await self._safe_phase(
-                    "coder",
-                    self._execute_subtask(subtask, phase_type),
-                    model=_par_coder_model,
-                    fc_turns=_par_coder_fc,
-                )
+                result = await self._safe_phase("coder", self._execute_subtask(subtask, phase_type),
+                                                model=_par_coder_model, fc_turns=_par_coder_fc)
                 if result is None:
                     subtask.status = "failed"
                     subtask.result = "Coder phase timed out"
@@ -4378,54 +3437,28 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 # MARKER_122.3: Verify-Retry loop (parallel path)
                 if phase_type in ("fix", "build") and "verifier" in self.prompts:
                     if subtask.visible:
-                        await self._emit_progress(
-                            "@verifier",
-                            f"🔎 [P] Verifying: {subtask.marker or f'step_{idx + 1}'}...",
-                            idx + 1,
-                            total_subtasks,
-                        )
+                        await self._emit_progress("@verifier", f"🔎 [P] Verifying: {subtask.marker or f'step_{idx+1}'}...", idx+1, total_subtasks)
                     # MARKER_133.C33B: Verifier phase with timeout (parallel path)
                     # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for parallel path
-                    _par_verifier_model = self.prompts.get("verifier", {}).get(
-                        "model", ""
-                    )
-                    verification = await self._safe_phase(
-                        "verifier",
-                        self._verify_subtask(subtask, result, phase_type),
-                        model=_par_verifier_model,
-                    )
+                    _par_verifier_model = self.prompts.get("verifier", {}).get("model", "")
+                    verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                          model=_par_verifier_model)
                     if verification is None:
-                        verification = {
-                            "passed": True,
-                            "confidence": 0.5,
-                            "issues": ["Verifier timed out"],
-                        }
+                        verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                     # MARKER_127.3: Default passed=False, major gets one retry (parallel path)
-                    while (
-                        not verification.get("passed", False)
-                        and subtask.retry_count < MAX_CODER_RETRIES
-                    ):
+                    while not verification.get("passed", False) and subtask.retry_count < MAX_CODER_RETRIES:
                         sev = verification.get("severity", "minor")
                         if sev == "major" and subtask.retry_count > 0:
                             subtask.escalated = True
                             break
                         # MARKER_149.RETRY_FIX: pass first attempt to retry (parallel path)
-                        result = await self._retry_coder(
-                            subtask, verification, phase_type, previous_result=result
-                        )
+                        result = await self._retry_coder(subtask, verification, phase_type, previous_result=result)
                         # MARKER_133.C33B: Verifier retry with timeout (parallel path)
                         # MARKER_145.ADAPTIVE_TIMEOUT: Verifier model for parallel retry
-                        verification = await self._safe_phase(
-                            "verifier",
-                            self._verify_subtask(subtask, result, phase_type),
-                            model=_par_verifier_model,
-                        )
+                        verification = await self._safe_phase("verifier", self._verify_subtask(subtask, result, phase_type),
+                                                              model=_par_verifier_model)
                         if verification is None:
-                            verification = {
-                                "passed": True,
-                                "confidence": 0.5,
-                                "issues": ["Verifier timed out"],
-                            }
+                            verification = {"passed": True, "confidence": 0.5, "issues": ["Verifier timed out"]}
                             break
                     # MARKER_127.1A: Store verification dict for stats (parallel path)
                     subtask.verifier_feedback = verification
@@ -4436,27 +3469,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
                 # MARKER_104_STREAM_VISIBILITY: Emit based on visibility flags
                 if subtask.visible:
-                    await self._emit_progress(
-                        "@coder",
-                        f"✅ [P] Done: {subtask.marker or f'step_{idx + 1}'}",
-                        idx + 1,
-                        total_subtasks,
-                    )
+                    await self._emit_progress("@coder", f"✅ [P] Done: {subtask.marker or f'step_{idx+1}'}", idx+1, total_subtasks)
                     # MARKER_117_2A_FIX_D: Emit coder result preview (parallel path)
                     if result and isinstance(result, str) and len(result) > 10:
-                        result_preview = result[:300].replace("\n", " ")
+                        result_preview = result[:300].replace('\n', ' ')
                         if len(result) > 300:
                             result_preview += "..."
-                        await self._emit_progress(
-                            "@coder",
-                            f"💻 [P] Result: {result_preview}",
-                            idx + 1,
-                            total_subtasks,
-                        )
+                        await self._emit_progress("@coder", f"💻 [P] Result: {result_preview}", idx+1, total_subtasks)
 
-                logger.info(
-                    f"[Pipeline] Parallel subtask {idx + 1}/{total_subtasks} completed"
-                )
+                logger.info(f"[Pipeline] Parallel subtask {idx+1}/{total_subtasks} completed")
 
                 return (idx, result)
 
@@ -4478,7 +3499,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 subtask = pipeline_task.subtasks[idx]
 
                 # Add to STM (order may vary in parallel mode)
-                self._add_to_stm(subtask.marker or f"step_{idx + 1}", result)
+                self._add_to_stm(subtask.marker or f"step_{idx+1}", result)
 
                 # MARKER_104_STREAM_VISIBILITY: Emit stream event if stream_result=True
                 if subtask.stream_result and pipeline_task.visible_to_user:
@@ -4487,17 +3508,16 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                         {
                             "subtask_idx": idx + 1,
                             "total": total_subtasks,
-                            "marker": subtask.marker or f"step_{idx + 1}",
+                            "marker": subtask.marker or f"step_{idx+1}",
                             "result": result,
                             "highlight_artifacts": pipeline_task.highlight_artifacts,
-                            "parallel": True,
+                            "parallel": True
                         },
-                        visibility=stream_level,
+                        visibility=stream_level
                     )
 
         # Update pipeline task state
         self._update_task(pipeline_task)
-
     # MARKER_104_PARALLEL_5_END
 
     # MARKER_151.14A: Collect team performance summary for Architect context
@@ -4510,12 +3530,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         """
         try:
             from src.orchestration.task_board import get_task_board
-
             board = get_task_board()
             all_tasks = board.list_tasks()
             # Filter tasks that have per-agent stats
             recent_tasks = [
-                t for t in all_tasks if t.get("stats", {}).get("agent_stats")
+                t for t in all_tasks
+                if t.get("stats", {}).get("agent_stats")
             ]
             if not recent_tasks:
                 return ""
@@ -4538,9 +3558,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 total = totals["success"] + totals["fail"]
                 rate = totals["success"] / total * 100 if total > 0 else 0
                 flag = " ⚠️ WEAK" if rate < 60 else ""
-                lines.append(
-                    f"- {role}: {rate:.0f}% success ({totals['calls']} calls){flag}"
-                )
+                lines.append(f"- {role}: {rate:.0f}% success ({totals['calls']} calls){flag}")
 
             return "\n".join(lines)
         except Exception:
@@ -4566,32 +3584,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 return {}
 
             workflow_binding = {
-                "workflow_id": str(
-                    task.get("workflow_id") or task.get("workflow_family") or ""
-                ).strip(),
-                "workflow_family": str(
-                    task.get("workflow_family") or task.get("workflow_id") or ""
-                ).strip(),
-                "workflow_selection_origin": str(
-                    task.get("workflow_selection_origin") or ""
-                ).strip(),
-                "preset": str(
-                    task.get("preset") or task.get("team_profile") or ""
-                ).strip(),
+                "workflow_id": str(task.get("workflow_id") or task.get("workflow_family") or "").strip(),
+                "workflow_family": str(task.get("workflow_family") or task.get("workflow_id") or "").strip(),
+                "workflow_selection_origin": str(task.get("workflow_selection_origin") or "").strip(),
+                "preset": str(task.get("preset") or task.get("team_profile") or "").strip(),
             }
             workflow_family = str(workflow_binding.get("workflow_family") or "").strip()
             workflow_contract = {}
             if workflow_family:
-                workflow_contract = (
-                    await mcc_routes_module._resolve_workflow_contract(workflow_family)
-                    or {}
-                )
+                workflow_contract = await mcc_routes_module._resolve_workflow_contract(workflow_family) or {}
 
-            history = (
-                board.get_task_history(board_task_id)
-                if hasattr(board, "get_task_history")
-                else list(task.get("status_history") or [])
-            )
+            history = board.get_task_history(board_task_id) if hasattr(board, "get_task_history") else list(task.get("status_history") or [])
             latest_run = get_localguys_run_registry().get_latest_for_task(board_task_id)
             packet = build_task_context_packet(
                 task,
@@ -4606,15 +3609,10 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             return {}
 
     # MARKER_102.5_START: Architect planning
-    async def _architect_plan(
-        self,
-        task: str,
-        phase_type: str,
-        scout_context: Optional[Dict] = None,
-        research_context: Optional[Dict] = None,
-        replan_context: Optional[str] = None,
-        feedback_context: Optional[str] = None,
-    ) -> Dict[str, Any]:
+    async def _architect_plan(self, task: str, phase_type: str, scout_context: Optional[Dict] = None,
+                               research_context: Optional[Dict] = None,
+                               replan_context: Optional[str] = None,
+                               feedback_context: Optional[str] = None) -> Dict[str, Any]:
         """
         Architect breaks down task into subtasks.
         Marks unclear parts with needs_research=True.
@@ -4629,16 +3627,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if not tool:
             # Fallback: simple breakdown
             return {
-                "subtasks": [
-                    {
-                        "description": task,
-                        "needs_research": True,
-                        "question": f"How to approach: {task}?",
-                        "marker": "MARKER_102.1",
-                    }
-                ],
+                "subtasks": [{"description": task, "needs_research": True, "question": f"How to approach: {task}?", "marker": "MARKER_102.1"}],
                 "execution_order": "sequential",
-                "estimated_complexity": "medium",
+                "estimated_complexity": "medium"
             }
 
         prompt = self.prompts["architect"]
@@ -4673,7 +3664,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         try:
             from src.orchestration.resource_learnings import get_learnings_for_architect
             import asyncio
-
             learnings_ctx = await get_learnings_for_architect(task, limit=3)
             if learnings_ctx:
                 user_content += f"\n\n{learnings_ctx}"
@@ -4681,62 +3671,31 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             logger.debug(f"[Pipeline] Learnings injection skipped: {e}")
         # MARKER_183.2_END
         # MARKER_152.12B: Inject pinned files so Architect knows user focus areas
-        pinned_ctx = getattr(self, "_pinned_context", "")
+        pinned_ctx = getattr(self, '_pinned_context', '')
         if pinned_ctx:
             user_content += f"\n\n{pinned_ctx}"
         # MARKER_152.12B_END
         # MARKER_176.2B: Inject prefetch context into architect user message
-        if hasattr(self, "_prefetch_context") and self._prefetch_context:
+        if hasattr(self, '_prefetch_context') and self._prefetch_context:
             _pctx = self._prefetch_context
-            _pfiles = (
-                [f["path"] for f in _pctx.relevant_files[:10]]
-                if _pctx.relevant_files
-                else []
-            )
-            _pmarkers = (
-                [m.get("content", "")[:60] for m in _pctx.markers[:5]]
-                if _pctx.markers
-                else []
-            )
-            _packet = (
-                _pctx.task_packet
-                if isinstance(getattr(_pctx, "task_packet", None), dict)
-                else {}
-            )
-            _packet_docs = (
-                _packet.get("docs") if isinstance(_packet.get("docs"), dict) else {}
-            )
-            _packet_tests = (
-                _packet.get("tests") if isinstance(_packet.get("tests"), dict) else {}
-            )
-            _packet_scope = (
-                _packet.get("code_scope")
-                if isinstance(_packet.get("code_scope"), dict)
-                else {}
-            )
-            _packet_binding = (
-                _packet.get("roadmap_binding")
-                if isinstance(_packet.get("roadmap_binding"), dict)
-                else {}
-            )
-            _packet_gaps = [
-                str(item).strip()
-                for item in list(_packet.get("gaps") or [])
-                if str(item).strip()
-            ]
+            _pfiles = [f["path"] for f in _pctx.relevant_files[:10]] if _pctx.relevant_files else []
+            _pmarkers = [m.get("content", "")[:60] for m in _pctx.markers[:5]] if _pctx.markers else []
+            _packet = _pctx.task_packet if isinstance(getattr(_pctx, "task_packet", None), dict) else {}
+            _packet_docs = _packet.get("docs") if isinstance(_packet.get("docs"), dict) else {}
+            _packet_tests = _packet.get("tests") if isinstance(_packet.get("tests"), dict) else {}
+            _packet_scope = _packet.get("code_scope") if isinstance(_packet.get("code_scope"), dict) else {}
+            _packet_binding = _packet.get("roadmap_binding") if isinstance(_packet.get("roadmap_binding"), dict) else {}
+            _packet_gaps = [str(item).strip() for item in list(_packet.get("gaps") or []) if str(item).strip()]
             _packet_slice = {}
             if _packet:
                 try:
                     from src.services.roadmap_task_sync import build_role_context_slice
-
                     _packet_slice = build_role_context_slice(
                         _packet,
                         "architect",
                         overlays={
                             "pinned_summary": getattr(self, "_pinned_context", ""),
-                            "viewport_summary": str(
-                                getattr(self, "_viewport_summary", "") or ""
-                            ),
+                            "viewport_summary": str(getattr(self, "_viewport_summary", "") or ""),
                         },
                     )
                 except Exception:
@@ -4749,9 +3708,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 f"Related markers: {', '.join(_pmarkers) if _pmarkers else 'none'}"
             )
             if _pctx.workflow_reinforcement:
-                _prefetch_block += "\nReinforcement: " + ", ".join(
-                    _pctx.workflow_reinforcement[:3]
-                )
+                _prefetch_block += "\nReinforcement: " + ", ".join(_pctx.workflow_reinforcement[:3])
             if _pctx.similar_tasks:
                 _prefetch_block += "\nSimilar past tasks: " + "; ".join(
                     t.get("description", "")[:50] for t in _pctx.similar_tasks[:3]
@@ -4766,19 +3723,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     f"\nPacket gaps: {', '.join(_packet_gaps) if _packet_gaps else 'none'}"
                 )
                 if _packet_slice:
-                    _prefetch_block += f"\nArchitect slice keys: {', '.join(sorted(_packet_slice.keys()))}"
-                    _slice_ui = (
-                        _packet_slice.get("ui_context")
-                        if isinstance(_packet_slice.get("ui_context"), dict)
-                        else {}
+                    _prefetch_block += (
+                        f"\nArchitect slice keys: {', '.join(sorted(_packet_slice.keys()))}"
                     )
-                    _slice_viewport = str(
-                        _slice_ui.get("viewport_summary") or ""
-                    ).strip()
+                    _slice_ui = _packet_slice.get("ui_context") if isinstance(_packet_slice.get("ui_context"), dict) else {}
+                    _slice_viewport = str(_slice_ui.get("viewport_summary") or "").strip()
                     if _slice_viewport:
-                        _prefetch_block += (
-                            f"\nArchitect viewport: {_slice_viewport[:180]}"
-                        )
+                        _prefetch_block += f"\nArchitect viewport: {_slice_viewport[:180]}"
             user_content += _prefetch_block
         # MARKER_176.2B_END
         # MARKER_151.14B: Inject team performance summary for Architect awareness
@@ -4790,31 +3741,19 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         _arch_system_prompt = prompt["system"]
         try:
             from src.services.reflex_integration import _is_enabled
-
             if _is_enabled():
                 from src.services.reflex_feedback import get_reflex_feedback
-
                 fb = get_reflex_feedback()
                 summary = fb.get_feedback_summary()
                 if summary.get("total_entries", 0) > 0:
                     reflex_preamble = f"\n\n[REFLEX Team Performance]\n"
-                    reflex_preamble += (
-                        f"Total tool calls tracked: {summary['total_entries']}\n"
-                    )
+                    reflex_preamble += f"Total tool calls tracked: {summary['total_entries']}\n"
                     reflex_preamble += f"Success rate: {summary['success_rate']:.0%}\n"
-                    reflex_preamble += (
-                        f"Useful rate: {summary.get('useful_rate', 0):.0%}\n"
-                    )
+                    reflex_preamble += f"Useful rate: {summary.get('useful_rate', 0):.0%}\n"
                     tools = summary.get("tools", {})
-                    top_tools = sorted(
-                        tools.items(), key=lambda x: x[1]["count"], reverse=True
-                    )[:3]
+                    top_tools = sorted(tools.items(), key=lambda x: x[1]["count"], reverse=True)[:3]
                     if top_tools:
-                        reflex_preamble += (
-                            "Top tools: "
-                            + ", ".join(f"{t[0]}({t[1]['count']})" for t in top_tools)
-                            + "\n"
-                        )
+                        reflex_preamble += "Top tools: " + ", ".join(f"{t[0]}({t[1]['count']})" for t in top_tools) + "\n"
                     _arch_system_prompt = _arch_system_prompt + reflex_preamble
         except Exception:
             pass
@@ -4823,7 +3762,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "model": model,
             "messages": [
                 {"role": "system", "content": _arch_system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 2000,
@@ -4833,15 +3772,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "semantic_query": task,
                 "semantic_limit": 3,
                 "include_prefs": False,  # MARKER_135.FIX_SYNC: was True → sync Qdrant blocked async event loop
-                "compress": True,
-            },
+                "compress": True
+            }
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         # MARKER_129.4: Dual-mode LLM call
         # MARKER_151.11E: Architect timing for per-agent stats
         _arch_t0 = time.time()
-        if getattr(self, "async_mode", False):
+        if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
@@ -4849,24 +3788,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         self._track_llm_call(result)
         _arch_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track architect model for attribution
-        self._last_used_model = result.get("result", {}).get(
-            "model", call_args.get("model", "")
-        )
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # MARKER_102.16_START: Parse JSON response with robust extraction
         try:
             # LLMCallTool returns: {"success": bool, "result": {"content": str, ...}, "error": str}
             if not result.get("success"):
-                logger.warning(
-                    f"[Pipeline] Architect LLM call failed: {result.get('error')}"
-                )
-                self._track_agent_stat(
-                    "architect",
-                    _arch_usage.get("prompt_tokens", 0),
-                    _arch_usage.get("completion_tokens", 0),
-                    _arch_duration,
-                    success=False,
-                )
+                logger.warning(f"[Pipeline] Architect LLM call failed: {result.get('error')}")
+                self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                       _arch_usage.get("completion_tokens", 0), _arch_duration, success=False)
                 raise ValueError(result.get("error", "Unknown error"))
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -4874,52 +3804,26 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
 
             # Validate required fields
             if "subtasks" not in plan:
-                plan["subtasks"] = [
-                    {
-                        "description": task,
-                        "needs_research": True,
-                        "marker": "MARKER_102.1",
-                    }
-                ]
+                plan["subtasks"] = [{"description": task, "needs_research": True, "marker": "MARKER_102.1"}]
             if "execution_order" not in plan:
                 plan["execution_order"] = "sequential"
             if "estimated_complexity" not in plan:
                 plan["estimated_complexity"] = "medium"
 
-            logger.info(
-                f"[Pipeline] Architect plan: {len(plan.get('subtasks', []))} subtasks, {plan.get('execution_order')}"
-            )
-            self._track_agent_stat(
-                "architect",
-                _arch_usage.get("prompt_tokens", 0),
-                _arch_usage.get("completion_tokens", 0),
-                _arch_duration,
-                success=True,
-            )
+            logger.info(f"[Pipeline] Architect plan: {len(plan.get('subtasks', []))} subtasks, {plan.get('execution_order')}")
+            self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                   _arch_usage.get("completion_tokens", 0), _arch_duration, success=True)
             return plan
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[Pipeline] Failed to parse architect response: {e}")
-            self._track_agent_stat(
-                "architect",
-                _arch_usage.get("prompt_tokens", 0),
-                _arch_usage.get("completion_tokens", 0),
-                _arch_duration,
-                success=False,
-            )
+            self._track_agent_stat("architect", _arch_usage.get("prompt_tokens", 0),
+                                   _arch_usage.get("completion_tokens", 0), _arch_duration, success=False)
             return {
-                "subtasks": [
-                    {
-                        "description": task,
-                        "needs_research": True,
-                        "question": task,
-                        "marker": "MARKER_102.1",
-                    }
-                ],
+                "subtasks": [{"description": task, "needs_research": True, "question": task, "marker": "MARKER_102.1"}],
                 "execution_order": "sequential",
-                "estimated_complexity": "medium",
+                "estimated_complexity": "medium"
             }
-
     # MARKER_102.16_END
     # MARKER_102.5_END
 
@@ -4935,7 +3839,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "insights": ["Research unavailable - LLM tool not loaded"],
                 "actionable_steps": [],
                 "enriched_context": question,
-                "confidence": 0.5,
+                "confidence": 0.5
             }
 
         prompt = self.prompts["researcher"]
@@ -4949,7 +3853,6 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         web_context = ""
         try:
             from src.mcp.tools.web_search_tool import WebSearchTool
-
             web_tool = WebSearchTool()
             # MARKER_120.4: Enrich query with tech keywords for better Tavily results
             # Raw VETKA-specific questions return nothing; add technology context
@@ -4963,13 +3866,9 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 if results:
                     snippets = []
                     for r in results[:3]:
-                        snippets.append(
-                            f"- {r.get('title', '')} ({r.get('url', '')})\n  {r.get('content', '')[:300]}"
-                        )
+                        snippets.append(f"- {r.get('title', '')} ({r.get('url', '')})\n  {r.get('content', '')[:300]}")
                     web_context = "\n\n[Web Search Results]\n" + "\n".join(snippets)
-                    logger.info(
-                        f"[Pipeline] Web search: {len(results)} results for researcher"
-                    )
+                    logger.info(f"[Pipeline] Web search: {len(results)} results for researcher")
         except Exception as e:
             logger.debug(f"[Pipeline] Web search skipped: {e}")
         # MARKER_119.7_END
@@ -4981,7 +3880,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "model": model,
             "messages": [
                 {"role": "system", "content": prompt["system"]},
-                {"role": "user", "content": user_content},
+                {"role": "user", "content": user_content}
             ],
             "temperature": temperature,
             "max_tokens": 1500,
@@ -4991,15 +3890,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                 "semantic_query": question,
                 "semantic_limit": 5,
                 "include_prefs": False,  # MARKER_135.FIX_SYNC: was True → sync Qdrant blocked async event loop
-                "compress": True,
-            },
+                "compress": True
+            }
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
         # MARKER_129.4: Dual-mode LLM call
         # MARKER_151.11F: Researcher timing for per-agent stats
         _res_t0 = time.time()
-        if getattr(self, "async_mode", False):
+        if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
@@ -5007,23 +3906,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         self._track_llm_call(result)
         _res_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track researcher model for attribution
-        self._last_used_model = result.get("result", {}).get(
-            "model", call_args.get("model", "")
-        )
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # MARKER_102.18_START: Parse researcher JSON with robust extraction
         try:
             if not result.get("success"):
-                logger.warning(
-                    f"[Pipeline] Researcher LLM call failed: {result.get('error')}"
-                )
-                self._track_agent_stat(
-                    "researcher",
-                    _res_usage.get("prompt_tokens", 0),
-                    _res_usage.get("completion_tokens", 0),
-                    _res_duration,
-                    success=False,
-                )
+                logger.warning(f"[Pipeline] Researcher LLM call failed: {result.get('error')}")
+                self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                       _res_usage.get("completion_tokens", 0), _res_duration, success=False)
                 raise ValueError(result.get("error", "Unknown error"))
 
             response_text = result.get("result", {}).get("content", "{}")
@@ -5037,53 +3927,35 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             if "confidence" not in research:
                 research["confidence"] = 0.7
 
-            logger.info(
-                f"[Pipeline] Research confidence: {research.get('confidence', 'N/A')}"
-            )
-            self._track_agent_stat(
-                "researcher",
-                _res_usage.get("prompt_tokens", 0),
-                _res_usage.get("completion_tokens", 0),
-                _res_duration,
-                success=True,
-            )
+            logger.info(f"[Pipeline] Research confidence: {research.get('confidence', 'N/A')}")
+            self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                   _res_usage.get("completion_tokens", 0), _res_duration, success=True)
             return research
 
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"[Pipeline] Failed to parse researcher response: {e}")
-            self._track_agent_stat(
-                "researcher",
-                _res_usage.get("prompt_tokens", 0),
-                _res_usage.get("completion_tokens", 0),
-                _res_duration,
-                success=False,
-            )
+            self._track_agent_stat("researcher", _res_usage.get("prompt_tokens", 0),
+                                   _res_usage.get("completion_tokens", 0), _res_duration, success=False)
             # Fallback: use raw text as enriched context
-            raw_content = (
-                result.get("result", {}).get("content", question)
-                if result.get("success")
-                else question
-            )
+            raw_content = result.get("result", {}).get("content", question) if result.get("success") else question
             return {
                 "insights": ["See enriched_context"],
                 "actionable_steps": [],
                 "enriched_context": raw_content[:500] if raw_content else question,
-                "confidence": 0.6,
+                "confidence": 0.6
             }
-
     # MARKER_102.18_END
     # MARKER_102.6_END
 
     # MARKER_150.4A: Detect target files from subtask context → determine patch vs create mode
     @staticmethod
-    def _detect_target_files(subtask: "Subtask", base_path: str = "") -> List[str]:
+    def _detect_target_files(subtask: 'Subtask', base_path: str = "") -> List[str]:
         """Extract target file paths from subtask context (marker_map + relevant_files).
 
         Returns list of EXISTING file paths that the coder should PATCH (not rewrite).
         Empty list = CREATE mode (new files).
         """
         from pathlib import Path
-
         target_files = []
         seen = set()
 
@@ -5099,9 +3971,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     if f_path and f_path not in seen:
                         seen.add(f_path)
                         # Resolve against base_path (playground worktree) or project root
-                        full_path = (
-                            Path(base_path) / f_path if base_path else Path(f_path)
-                        )
+                        full_path = Path(base_path) / f_path if base_path else Path(f_path)
                         if full_path.is_file():
                             target_files.append(f_path)
 
@@ -5118,7 +3988,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         return target_files
 
     # MARKER_150.4B: Apply patches from coder output to target files
-    async def _apply_patches(self, content: str, subtask: "Subtask") -> List[str]:
+    async def _apply_patches(self, content: str, subtask: 'Subtask') -> List[str]:
         """Apply coder's patch output (unified diff or marker insert) to files.
 
         Returns list of files successfully patched. Empty = no patches applied.
@@ -5148,17 +4018,11 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             if result.get("success"):
                                 files_patched.append(file_path)
                                 logger.info(f"[Pipeline] Patched (diff): {file_path}")
-                                await self._emit_progress(
-                                    "@coder", f"🔧 Patched: {file_path}"
-                                )
+                                await self._emit_progress("@coder", f"🔧 Patched: {file_path}")
                             else:
-                                logger.warning(
-                                    f"[Pipeline] Diff apply failed for {file_path}: {result.get('error', '')}"
-                                )
+                                logger.warning(f"[Pipeline] Diff apply failed for {file_path}: {result.get('error', '')}")
                         except Exception as e:
-                            logger.warning(
-                                f"[Pipeline] Diff apply error for {file_path}: {e}"
-                            )
+                            logger.warning(f"[Pipeline] Diff apply error for {file_path}: {e}")
 
             elif mode == "marker_insert":
                 patches = applier.extract_patches(content)
@@ -5174,20 +4038,12 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             )
                             if result.get("success"):
                                 files_patched.append(file_path)
-                                logger.info(
-                                    f"[Pipeline] Patched (marker): {file_path} at {marker_id}"
-                                )
-                                await self._emit_progress(
-                                    "@coder", f"📌 Marker insert: {file_path}"
-                                )
+                                logger.info(f"[Pipeline] Patched (marker): {file_path} at {marker_id}")
+                                await self._emit_progress("@coder", f"📌 Marker insert: {file_path}")
                             else:
-                                logger.warning(
-                                    f"[Pipeline] Marker insert failed for {file_path}: {result.get('error', '')}"
-                                )
+                                logger.warning(f"[Pipeline] Marker insert failed for {file_path}: {result.get('error', '')}")
                         except Exception as e:
-                            logger.warning(
-                                f"[Pipeline] Marker insert error for {file_path}: {e}"
-                            )
+                            logger.warning(f"[Pipeline] Marker insert error for {file_path}: {e}")
 
             elif mode == "create":
                 # New file — extract and create via PatchApplier
@@ -5201,19 +4057,14 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             if result.get("success"):
                                 files_patched.append(file_path)
                                 logger.info(f"[Pipeline] Created: {file_path}")
-                                await self._emit_progress(
-                                    "@coder", f"📁 Created: {file_path}"
-                                )
+                                await self._emit_progress("@coder", f"📁 Created: {file_path}")
                         except Exception as e:
-                            logger.warning(
-                                f"[Pipeline] Create file error for {file_path}: {e}"
-                            )
+                            logger.warning(f"[Pipeline] Create file error for {file_path}: {e}")
 
         except Exception as e:
             logger.warning(f"[Pipeline] PatchApplier failed: {e}")
 
         return files_patched
-
     # MARKER_150.4B_END
 
     # MARKER_102.7_START: Subtask execution
@@ -5232,22 +4083,13 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         context_parts = []
         if subtask.context:
             if subtask.context.get("enriched_context"):
-                context_parts.append(
-                    f"Research context:\n{subtask.context['enriched_context']}"
-                )
+                context_parts.append(f"Research context:\n{subtask.context['enriched_context']}")
             if subtask.context.get("actionable_steps"):
-                steps = "\n".join(
-                    [
-                        f"- {s.get('step', s)}"
-                        for s in subtask.context["actionable_steps"]
-                    ]
-                )
+                steps = "\n".join([f"- {s.get('step', s)}" for s in subtask.context["actionable_steps"]])
                 context_parts.append(f"Actionable steps:\n{steps}")
             # MARKER_122.5A: Pass STM previous results to coder
             if subtask.context.get("previous_results"):
-                context_parts.append(
-                    f"Previous subtask results:\n{subtask.context['previous_results']}"
-                )
+                context_parts.append(f"Previous subtask results:\n{subtask.context['previous_results']}")
             # MARKER_149.RETRY_FIX: Inject verifier feedback + previous attempt on retry
             if subtask.context.get("verifier_feedback"):
                 context_parts.append(subtask.context["verifier_feedback"])
@@ -5280,21 +4122,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                             action = m.get("action", "MODIFY")
                             mid = m.get("marker_id", "MARKER_SCOUT_X")
                             desc = m.get("description", "")
-                            scout_str += (
-                                f"\n  📍 {mid}: {f_path}:{line} [{action}] — {desc}"
-                            )
+                            scout_str += f"\n  📍 {mid}: {f_path}:{line} [{action}] — {desc}"
                     scout_str += "\n\nUse vetka_read_file(file_path, marker='MARKER_SCOUT_X') to jump to each location."
                 context_parts.append(f"Scout report:\n{scout_str}")
 
         # MARKER_152.12C: Inject pinned files context for coder awareness
-        pinned_ctx = getattr(self, "_pinned_context", "")
+        pinned_ctx = getattr(self, '_pinned_context', '')
         if pinned_ctx:
             context_parts.append(pinned_ctx)
         # MARKER_152.12C_END
 
-        context_str = (
-            "\n\n".join(context_parts) if context_parts else "No additional context."
-        )
+        context_str = "\n\n".join(context_parts) if context_parts else "No additional context."
 
         # MARKER_102.13: Select model from prompts config based on phase
         # fix/build -> coder (Claude), research -> researcher (Grok)
@@ -5311,11 +4149,8 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         _reflex_recs_coder = []
         try:
             from src.services.reflex_integration import reflex_pre_fc, _is_enabled
-
             if _is_enabled():
-                _reflex_recs_coder = reflex_pre_fc(
-                    subtask, phase_type=phase_type, agent_role="coder"
-                )
+                _reflex_recs_coder = reflex_pre_fc(subtask, phase_type=phase_type, agent_role="coder")
                 if _reflex_recs_coder:
                     coder_hint = "\n\n[REFLEX Recommendations]\n"
                     for rec in _reflex_recs_coder[:5]:
@@ -5330,26 +4165,15 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
         if phase_type in ["fix", "build"]:
             try:
                 from src.mcp.tools.library_docs_tool import LibraryDocsTool
-
                 lib_tool = LibraryDocsTool()
-                libraries = self._extract_library_names(
-                    subtask.description + " " + context_str
-                )
+                libraries = self._extract_library_names(subtask.description + " " + context_str)
                 for lib_name in libraries[:2]:
-                    lib_result = lib_tool.execute(
-                        {
-                            "library": lib_name,
-                            "topic": subtask.description,
-                            "tokens": 2000,
-                        }
-                    )
+                    lib_result = lib_tool.execute({"library": lib_name, "topic": subtask.description, "tokens": 2000})
                     if lib_result.get("success"):
                         docs = lib_result.get("result", {}).get("docs", "")
                         if docs:
                             lib_context += f"\n\n[{lib_name} docs]\n{docs[:1500]}"
-                            logger.info(
-                                f"[Pipeline] Library docs: fetched {lib_name} for coder"
-                            )
+                            logger.info(f"[Pipeline] Library docs: fetched {lib_name} for coder")
             except Exception as e:
                 logger.debug(f"[Pipeline] Library docs skipped: {e}")
         # MARKER_119.8_END
@@ -5369,9 +4193,7 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
                     "Do NOT rewrite the entire file. Output ONLY the changed portions.\n"
                     "Read each target file FIRST to get correct line numbers."
                 )
-                logger.info(
-                    f"[Pipeline] PATCH MODE for {len(patch_target_files)} files: {files_str}"
-                )
+                logger.info(f"[Pipeline] PATCH MODE for {len(patch_target_files)} files: {files_str}")
             else:
                 mode_instruction = "\n\n📝 MODE: CREATE — You are creating NEW files. Output full file content."
         # MARKER_150.4C_END
@@ -5383,20 +4205,17 @@ Note: ELISION preserves all semantic meaning. Use expand() mentally if needed.
             "model": model,
             "messages": [
                 {"role": "system", "content": system_prompt},
-                {
-                    "role": "user",
-                    "content": f"""
+                {"role": "user", "content": f"""
 Phase type: {phase_type}
 Subtask: {subtask.description}
-Marker: {subtask.marker or "MARKER_102.X"}
+Marker: {subtask.marker or 'MARKER_102.X'}
 
 {context_str}{lib_context}{mode_instruction}
 
-Execute this subtask. Provide clear, actionable output.""",
-                },
+Execute this subtask. Provide clear, actionable output."""}
             ],
             "temperature": temperature,
-            "max_tokens": 2000,
+            "max_tokens": 2000
         }
         if self.provider_override:
             call_args["model_source"] = self.provider_override
@@ -5405,7 +4224,7 @@ Execute this subtask. Provide clear, actionable output.""",
             call_args["inject_context"] = {
                 "semantic_query": subtask.description,
                 "semantic_limit": 3,
-                "compress": True,
+                "compress": True
             }
 
         # MARKER_123.1A: Function Calling for coder (async FC loop)
@@ -5420,7 +4239,6 @@ Execute this subtask. Provide clear, actionable output.""",
                 # MARKER_173.P1.IP7: Active REFLEX tool schema filtering
                 try:
                     from src.services.reflex_integration import reflex_filter_schemas
-
                     _orig_count = len(coder_tool_schemas)
                     coder_tool_schemas = reflex_filter_schemas(
                         coder_tool_schemas,
@@ -5435,11 +4253,7 @@ Execute this subtask. Provide clear, actionable output.""",
                         self._reflex_stats["schemas_original_count"] += _orig_count
                         self._reflex_stats["schemas_filtered_count"] += _filtered_count
                         # MARKER_174.REFLEX_LIVE: Structured metadata for chat rendering
-                        await self._emit_progress(
-                            "@reflex",
-                            f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}",
-                            i + 1,
-                            total_subtasks,
+                        await self._emit_progress("@reflex", f"🔧 Filtered schemas: {_orig_count}→{_filtered_count}", i+1, total_subtasks,
                             metadata={
                                 "type": "reflex",
                                 "event": "filter",
@@ -5447,16 +4261,15 @@ Execute this subtask. Provide clear, actionable output.""",
                                 "filtered_count": _filtered_count,
                                 "tier": self._get_model_tier(),
                                 "phase": phase_type,
-                                "subtask": subtask.marker or f"step_{i + 1}",
-                            },
-                        )
+                                "subtask": subtask.marker or f"step_{i+1}",
+                            })
                         # MARKER_173.P3.IP7: Structured filter event
                         _emitter = self._get_reflex_emitter()
                         if _emitter:
                             await _emitter.emit_filter(
-                                pipeline_id=getattr(self, "_board_task_id", "") or "",
-                                subtask_idx=i + 1,
-                                subtask_marker=subtask.marker or f"step_{i + 1}",
+                                pipeline_id=getattr(self, '_board_task_id', '') or '',
+                                subtask_idx=i+1,
+                                subtask_marker=subtask.marker or f"step_{i+1}",
                                 phase_type=phase_type,
                                 model_tier=self._get_model_tier(),
                                 original_count=_orig_count,
@@ -5491,19 +4304,13 @@ Execute this subtask. Provide clear, actionable output.""",
                             if e["name"] == "vetka_read_file"
                         ]
                         if files_read:
-                            logger.info(
-                                f"[Pipeline] Coder FC: read {len(files_read)} files: {', '.join(files_read[:5])}"
-                            )
-                            await self._emit_progress(
-                                "@coder", f"📖 Read {len(files_read)} files via FC"
-                            )
+                            logger.info(f"[Pipeline] Coder FC: read {len(files_read)} files: {', '.join(files_read[:5])}")
+                            await self._emit_progress("@coder", f"📖 Read {len(files_read)} files via FC")
                     content = fc_result.get("content", "")
                     if content:
                         logger.info(f"[Pipeline] FC subtask result: {content[:100]}...")
                         # MARKER_151.11G: Track coder FC success (no token info from FC loop)
-                        self._track_agent_stat(
-                            "coder", 0, 0, _coder_duration, success=True
-                        )
+                        self._track_agent_stat("coder", 0, 0, _coder_duration, success=True)
                         # MARKER_150.4D: Try PatchApplier FIRST for patch mode
                         if patch_target_files and self.auto_write:
                             files_patched = await self._apply_patches(content, subtask)
@@ -5511,45 +4318,29 @@ Execute this subtask. Provide clear, actionable output.""",
                                 content += f"\n\n[Pipeline Note: Patched files - {', '.join(files_patched)}]"
                                 return content
                             else:
-                                logger.info(
-                                    "[Pipeline] PatchApplier returned no results, falling through to extract_and_write"
-                                )
+                                logger.info("[Pipeline] PatchApplier returned no results, falling through to extract_and_write")
                         # MARKER_150.4D_END
                         # Post-process: extract and write files (same as one-shot path)
                         # MARKER_137.FIX_AUTOWRITE: Detect ALL file patterns (// file: AND # file:)
-                        if phase_type == "build" and (
-                            "```" in content or "file:" in content.lower()
-                        ):
+                        if phase_type == "build" and ("```" in content or "file:" in content.lower()):
                             if self.auto_write:
-                                files_created = self._extract_and_write_files(
-                                    content, subtask
-                                )
+                                files_created = self._extract_and_write_files(content, subtask)
                                 if files_created:
-                                    await self._emit_progress(
-                                        "@coder",
-                                        f"📁 Created {len(files_created)} files: {', '.join(files_created)}",
-                                    )
+                                    await self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
                                     content += f"\n\n[Pipeline Note: Created files - {', '.join(files_created)}]"
                             else:
-                                await self._emit_progress(
-                                    "@coder",
-                                    f"📝 Code staged in JSON (auto_write=False)",
-                                )
+                                await self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
                                 content += f"\n\n[Pipeline Note: Code staged - use retro_apply_spawn.py to create files]"
                         return content
                     else:
-                        logger.warning(
-                            "[Pipeline] FC returned empty content, falling back to one-shot"
-                        )
+                        logger.warning("[Pipeline] FC returned empty content, falling back to one-shot")
             except Exception as e:
-                logger.warning(
-                    f"[Pipeline] FC loop failed ({e}), falling back to one-shot"
-                )
+                logger.warning(f"[Pipeline] FC loop failed ({e}), falling back to one-shot")
         # MARKER_123.1A_END
 
         # Original one-shot path (fallback if FC unavailable/failed)
         # MARKER_129.4: Dual-mode LLM call
-        if getattr(self, "async_mode", False):
+        if getattr(self, 'async_mode', False):
             result = await tool.execute(call_args)
         else:
             result = tool.execute(call_args)
@@ -5557,9 +4348,7 @@ Execute this subtask. Provide clear, actionable output.""",
         self._track_llm_call(result)
         _coder_usage = result.get("result", {}).get("usage", {})
         # MARKER_117.6C: Track coder model for attribution
-        self._last_used_model = result.get("result", {}).get(
-            "model", call_args.get("model", "")
-        )
+        self._last_used_model = result.get("result", {}).get("model", call_args.get("model", ""))
 
         # Extract content from LLMCallTool response format
         if result.get("success"):
@@ -5567,13 +4356,8 @@ Execute this subtask. Provide clear, actionable output.""",
             if content:
                 logger.info(f"[Pipeline] Subtask result: {content[:100]}...")
                 # MARKER_151.11G: Track coder one-shot success
-                self._track_agent_stat(
-                    "coder",
-                    _coder_usage.get("prompt_tokens", 0),
-                    _coder_usage.get("completion_tokens", 0),
-                    _coder_duration,
-                    success=True,
-                )
+                self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                       _coder_usage.get("completion_tokens", 0), _coder_duration, success=True)
 
                 # MARKER_150.4E: Try PatchApplier FIRST for patch mode (one-shot path)
                 if patch_target_files and self.auto_write:
@@ -5582,9 +4366,7 @@ Execute this subtask. Provide clear, actionable output.""",
                         content += f"\n\n[Pipeline Note: Patched files - {', '.join(files_patched)}]"
                         return content
                     else:
-                        logger.info(
-                            "[Pipeline] PatchApplier (one-shot) returned no results, falling through"
-                        )
+                        logger.info("[Pipeline] PatchApplier (one-shot) returned no results, falling through")
                 # MARKER_150.4E_END
 
                 # MARKER_103.4_START: Post-process build phase - extract and write files
@@ -5592,48 +4374,30 @@ Execute this subtask. Provide clear, actionable output.""",
                 # auto_write=True: Write files immediately
                 # auto_write=False: Only save to JSON (use retro_apply_spawn.py later)
                 # MARKER_137.FIX_AUTOWRITE: Detect ALL file patterns (// file: AND # file:)
-                if phase_type == "build" and (
-                    "```" in content or "file:" in content.lower()
-                ):
+                if phase_type == "build" and ("```" in content or "file:" in content.lower()):
                     if self.auto_write:
                         files_created = self._extract_and_write_files(content, subtask)
                         if files_created:
-                            await self._emit_progress(
-                                "@coder",
-                                f"📁 Created {len(files_created)} files: {', '.join(files_created)}",
-                            )
+                            await self._emit_progress("@coder", f"📁 Created {len(files_created)} files: {', '.join(files_created)}")
                             content += f"\n\n[Pipeline Note: Created files - {', '.join(files_created)}]"
                     else:
                         # Staging mode - just log, files stay in JSON for retro_apply
-                        await self._emit_progress(
-                            "@coder", f"📝 Code staged in JSON (auto_write=False)"
-                        )
+                        await self._emit_progress("@coder", f"📝 Code staged in JSON (auto_write=False)")
                         content += f"\n\n[Pipeline Note: Code staged - use retro_apply_spawn.py to create files]"
                 # MARKER_103.4_END
 
                 return content
             else:
                 logger.warning(f"[Pipeline] Subtask returned empty content")
-                self._track_agent_stat(
-                    "coder",
-                    _coder_usage.get("prompt_tokens", 0),
-                    _coder_usage.get("completion_tokens", 0),
-                    _coder_duration,
-                    success=False,
-                )
+                self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                       _coder_usage.get("completion_tokens", 0), _coder_duration, success=False)
                 return "Subtask completed (no content)"
         else:
             error = result.get("error", "Unknown error")
             logger.warning(f"[Pipeline] Subtask LLM call failed: {error}")
-            self._track_agent_stat(
-                "coder",
-                _coder_usage.get("prompt_tokens", 0),
-                _coder_usage.get("completion_tokens", 0),
-                _coder_duration,
-                success=False,
-            )
+            self._track_agent_stat("coder", _coder_usage.get("prompt_tokens", 0),
+                                   _coder_usage.get("completion_tokens", 0), _coder_duration, success=False)
             return f"Error: {error}"
-
     # MARKER_102.22_END
     # MARKER_102.7_END
 
@@ -5650,117 +4414,35 @@ Execute this subtask. Provide clear, actionable output.""",
         import re
 
         stopwords = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "is",
-            "it",
-            "this",
-            "that",
-            "with",
-            "from",
-            "as",
-            "by",
-            "be",
-            "code",
-            "file",
-            "function",
-            "class",
-            "method",
-            "variable",
-            "project",
-            "task",
-            "subtask",
-            "implement",
-            "create",
-            "add",
-            "fix",
-            "update",
-            "build",
-            "test",
-            "error",
-            "bug",
-            "feature",
-            "new",
-            "old",
-            "use",
-            "using",
-            "import",
-            "module",
-            "package",
-            "library",
-            "framework",
-            "vetka",
-            "marker",
-            "phase",
-            "research",
-            "context",
-            "system",
-            "check",
-            "look",
-            "find",
-            "should",
-            "must",
-            "need",
-            "make",
-            "component",
-            "components",
-            "canvas",
-            "client",
-            "src",
-            "app",
+            "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
+            "of", "is", "it", "this", "that", "with", "from", "as", "by", "be",
+            "code", "file", "function", "class", "method", "variable", "project",
+            "task", "subtask", "implement", "create", "add", "fix", "update",
+            "build", "test", "error", "bug", "feature", "new", "old", "use",
+            "using", "import", "module", "package", "library", "framework",
+            "vetka", "marker", "phase", "research", "context", "system",
+            "check", "look", "find", "should", "must", "need", "make",
+            "component", "components", "canvas", "client", "src", "app",
         }
 
         # Known frameworks/libraries that Context7 has docs for
         known_libs = {
-            "react": "react",
-            "vue": "vue",
-            "angular": "angular",
-            "svelte": "svelte",
-            "nextjs": "nextjs",
-            "next.js": "nextjs",
-            "three.js": "threejs",
-            "threejs": "threejs",
-            "three": "threejs",
-            "zustand": "zustand",
-            "redux": "redux",
-            "mobx": "mobx",
-            "fastapi": "fastapi",
-            "django": "django",
-            "flask": "flask",
-            "express": "express",
-            "nestjs": "nestjs",
-            "tailwindcss": "tailwindcss",
-            "tailwind": "tailwindcss",
-            "typescript": "typescript",
-            "prisma": "prisma",
-            "tauri": "tauri",
-            "electron": "electron",
-            "numpy": "numpy",
-            "pandas": "pandas",
-            "pytorch": "pytorch",
-            "tensorflow": "tensorflow",
-            "scipy": "scipy",
-            "httpx": "httpx",
-            "requests": "requests",
-            "axios": "axios",
-            "socketio": "socketio",
-            "socket.io": "socketio",
-            "qdrant": "qdrant",
-            "weaviate": "weaviate",
-            "ffmpeg": "ffmpeg",
-            "whisper": "whisper",
-            "pydantic": "pydantic",
-            "sqlalchemy": "sqlalchemy",
+            "react": "react", "vue": "vue", "angular": "angular",
+            "svelte": "svelte", "nextjs": "nextjs", "next.js": "nextjs",
+            "three.js": "threejs", "threejs": "threejs", "three": "threejs",
+            "zustand": "zustand", "redux": "redux", "mobx": "mobx",
+            "fastapi": "fastapi", "django": "django", "flask": "flask",
+            "express": "express", "nestjs": "nestjs",
+            "tailwindcss": "tailwindcss", "tailwind": "tailwindcss",
+            "typescript": "typescript", "prisma": "prisma",
+            "tauri": "tauri", "electron": "electron",
+            "numpy": "numpy", "pandas": "pandas", "pytorch": "pytorch",
+            "tensorflow": "tensorflow", "scipy": "scipy",
+            "httpx": "httpx", "requests": "requests", "axios": "axios",
+            "socketio": "socketio", "socket.io": "socketio",
+            "qdrant": "qdrant", "weaviate": "weaviate",
+            "ffmpeg": "ffmpeg", "whisper": "whisper",
+            "pydantic": "pydantic", "sqlalchemy": "sqlalchemy",
         }
 
         names = set()
@@ -5772,33 +4454,24 @@ Execute this subtask. Provide clear, actionable output.""",
                 names.add(lib_name)
 
         # Pattern 2: import X / from X
-        for m in re.finditer(r"(?:import|from)\s+([a-zA-Z][a-zA-Z0-9_-]+)", text):
+        for m in re.finditer(r'(?:import|from)\s+([a-zA-Z][a-zA-Z0-9_-]+)', text):
             name = m.group(1).lower().split(".")[0]
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
         # Pattern 3: using X / with X framework/library
-        for m in re.finditer(
-            r"(?:using|with)\s+([a-zA-Z][a-zA-Z0-9_.-]+)\s*(?:library|framework|package|sdk)?",
-            text,
-            re.IGNORECASE,
-        ):
+        for m in re.finditer(r'(?:using|with)\s+([a-zA-Z][a-zA-Z0-9_.-]+)\s*(?:library|framework|package|sdk)?', text, re.IGNORECASE):
             name = m.group(1).lower().rstrip(".")
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
         # Pattern 4: X library/framework/package/docs
-        for m in re.finditer(
-            r"([a-zA-Z][a-zA-Z0-9_.-]+)\s+(?:library|framework|package|sdk|docs|documentation|api|hook|hooks|store)",
-            text,
-            re.IGNORECASE,
-        ):
+        for m in re.finditer(r'([a-zA-Z][a-zA-Z0-9_.-]+)\s+(?:library|framework|package|sdk|docs|documentation|api|hook|hooks|store)', text, re.IGNORECASE):
             name = m.group(1).lower().rstrip(".")
             if name not in stopwords and len(name) > 1:
                 names.add(name)
 
         return list(names)[:5]
-
     # MARKER_119.8_HELPER_END
 
 
@@ -5807,7 +4480,7 @@ async def mycelium_pipeline(
     task: str,
     phase_type: str = "research",
     chat_id: Optional[str] = None,
-    auto_write: bool = True,
+    auto_write: bool = True
 ) -> Dict[str, Any]:
     """
     Mycelium Pipeline for fractal agent execution.
@@ -5831,6 +4504,7 @@ async def mycelium_pipeline(
     return await pipeline.execute(task, phase_type)
 
 
+
 def get_pipeline_status(task_id: str) -> Optional[Dict[str, Any]]:
     """Get status of a pipeline task"""
     if TASKS_FILE.exists():
@@ -5843,11 +4517,7 @@ def list_pipeline_tasks(limit: int = 10) -> List[Dict[str, Any]]:
     """List recent pipeline tasks"""
     if TASKS_FILE.exists():
         tasks = json.loads(TASKS_FILE.read_text())
-        sorted_tasks = sorted(
-            tasks.values(), key=lambda x: x.get("timestamp", 0), reverse=True
-        )
+        sorted_tasks = sorted(tasks.values(), key=lambda x: x.get("timestamp", 0), reverse=True)
         return sorted_tasks[:limit]
     return []
-
-
 # MARKER_102.8_END

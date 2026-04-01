@@ -671,10 +671,10 @@ Reverse Match Frame (`Shift+F`): from Source Monitor position + active source pa
 ---
 
 ### 3.13 Subclip Creation
-**Status:** PARTIAL
+**Status:** IMPLEMENTED
 **Hotkey:** `Cmd+U` (both presets)
 
-Creates a virtual subclip from `sourceMarkIn`/`sourceMarkOut`. Dispatches a `pipeline-activity` event for ProjectPanel to display. The hotkey handler is fully functional but the MenuBar item is `disabled: true`.
+Creates a virtual subclip from `sourceMarkIn`/`sourceMarkOut`. Dispatches a `pipeline-activity` event for ProjectPanel to display. The hotkey handler is fully functional and MenuBar item "Make Subclip" is enabled.
 
 **Differs from FCP7:** Subclips are not persisted to disk — in-memory only for the current session.
 
@@ -1003,7 +1003,7 @@ No audio during manual playhead drag. Visual waveform hover tracks position but 
 **Status:** IMPLEMENTED
 **Hotkey:** `Cmd+Shift+T` (both presets)
 
-`addAudioTransition()` store action — finds nearest edit point on audio lanes only (`lane_type.startsWith('audio')`), applies `cross_dissolve` transition. Render pipeline converts to FFmpeg `acrossfade` for audio streams. Menu item "Add Audio Transition" wired to `addAudioTransition()`. `Cmd+T` remains "Add Video Transition" (`addDefaultTransition()` all lanes).
+`addDefaultTransition()` store action — finds nearest edit point on audio lanes only (`lane_type.startsWith('audio')`), applies `cross_dissolve` transition. Render pipeline converts to FFmpeg `acrossfade` for audio streams. Menu item "Add Audio Transition" wired to `addDefaultTransition()`. `Cmd+T` remains "Add Video Transition" (`addDefaultTransition()` all lanes).
 
 **Differs from FCP7:** Same Cmd+T / Cmd+Shift+T split as FCP7 (video vs audio transition).
 
