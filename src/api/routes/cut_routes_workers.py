@@ -50,6 +50,7 @@ from src.services.cut_scene_graph_taxonomy import (
 from src.api.routes.cut_routes_bootstrap import (
     _build_initial_timeline_state,
     _infer_cut_media_modality,
+    _run_cut_bootstrap_job,
     _utc_now_iso,
 )
 
