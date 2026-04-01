@@ -155,6 +155,8 @@ export type TimelineClip = {
   source_path: string;
   // MARKER_INLINE-RENAME: User-editable clip label. If set, shown in clipLabelMode=name instead of filename.
   name?: string;
+  // MARKER_COLOR-LABEL: FCP7-style editorial color label (set via set_clip_meta). Rendered as 3px left strip on timeline clip.
+  color_label?: string;
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;

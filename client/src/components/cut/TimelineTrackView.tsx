@@ -44,6 +44,18 @@ const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
+// MARKER_COLOR-LABEL: FCP7 editorial color label palette — used as 3px left stripe on clips
+const COLOR_LABEL_MAP: Record<string, string> = {
+  red:    '#c0403a',
+  orange: '#c06c1e',
+  yellow: '#a88c00',
+  green:  '#3a8a3a',
+  teal:   '#2a7878',
+  blue:   '#3858a8',
+  purple: '#6e40a0',
+  grey:   '#555555',
+};
+
 const CONTAINER_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -2152,6 +2164,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           style={{
                             position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
                             background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.25) 4px, rgba(0,0,0,0.25) 5px)',
+                          }}
+                        />
+                      )}
+                      {/* MARKER_COLOR-LABEL: FCP7 editorial color label — 3px left strip */}
+                      {clip.color_label && COLOR_LABEL_MAP[clip.color_label] && (
+                        <div
+                          data-testid={`cut-clip-color-label-${clip.clip_id}`}
+                          style={{
+                            position: 'absolute', left: 0, top: 0, bottom: 0,
+                            width: 3, borderRadius: '3px 0 0 3px',
+                            background: COLOR_LABEL_MAP[clip.color_label],
+                            zIndex: 2, pointerEvents: 'none',
                           }}
                         />
                       )}
