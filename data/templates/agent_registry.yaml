@@ -48,7 +48,7 @@ roles:
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: simple fixes, imports, pipelines
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
       - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
@@ -85,7 +85,7 @@ roles:
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: wiring, SVG, CSS
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
       - "client/src/components/cut/DockviewLayout.tsx"
@@ -112,7 +112,7 @@ roles:
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: checklist QA, pytest runs
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -138,7 +138,7 @@ roles:
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: contract tests, verification
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"

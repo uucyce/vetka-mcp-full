@@ -44,18 +44,6 @@ const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
-// MARKER_COLOR-LABEL: FCP7 editorial color label palette — used as 3px left stripe on clips
-const COLOR_LABEL_MAP: Record<string, string> = {
-  red:    '#c0403a',
-  orange: '#c06c1e',
-  yellow: '#a88c00',
-  green:  '#3a8a3a',
-  teal:   '#2a7878',
-  blue:   '#3858a8',
-  purple: '#6e40a0',
-  grey:   '#555555',
-};
-
 const CONTAINER_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -2167,18 +2155,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           }}
                         />
                       )}
-                      {/* MARKER_COLOR-LABEL: FCP7 editorial color label — 3px left strip */}
-                      {clip.color_label && COLOR_LABEL_MAP[clip.color_label] && (
-                        <div
-                          data-testid={`cut-clip-color-label-${clip.clip_id}`}
-                          style={{
-                            position: 'absolute', left: 0, top: 0, bottom: 0,
-                            width: 3, borderRadius: '3px 0 0 3px',
-                            background: COLOR_LABEL_MAP[clip.color_label],
-                            zIndex: 2, pointerEvents: 'none',
-                          }}
-                        />
-                      )}
                       <div
                         data-clip="1"
                         style={{
@@ -2878,6 +2854,32 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     />
                   );
                 })}
+
+                {/* MARKER_A3.1: BPM markers on timeline lanes — thin vertical lines */}
+                {zoom > 30 && markers.filter((m) => !m.media_path && BPM_MARKER_KINDS.has(m.kind)).map((marker) => {
+                  const markerX = marker.start_sec * zoom - scrollLeft;
+                  if (markerX < 0 || markerX > containerWidth) return null;
+                  const color = MARKER_COLORS[marker.kind] || '#888';
+                  const opacity = Math.max(0.15, Math.min(0.8, (marker.score ?? 0.5)));
+                  return (
+                    <div
+                      key={`bpm_${lane.lane_id}_${marker.marker_id}`}
+                      style={{
+                        position: 'absolute',
+                        left: markerX,
+                        top: 1,
+                        bottom: 1,
+                        width: 1,
+                        background: color,
+                        opacity,
+                        pointerEvents: 'none',
+                        zIndex: 20,
+                      }}
+                      title={`${marker.kind.replace('bpm_', '').replace('_', ' ')}: ${(marker.score ?? 0).toFixed(2)} @ ${marker.start_sec.toFixed(2)}s`}
+                    />
+                  );
+                })}
+
                 {/* MARKER_DND: Drop zone visual indicator */}
                 {dropZone && dropZone.laneId === lane.lane_id ? (
                   <>
@@ -3024,7 +3026,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             const clipPath = contextMenu.clip.source_path;
             const close = () => setContextMenu(null);
 
-            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | { type: 'color_picker' } | 'separator';
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
 
             const items: MenuItem[] = [
               // ── Selection ──
@@ -3081,9 +3083,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 });
               }},
               'separator',
-              // MARKER_COLOR-LABEL: FCP7 color label picker — 8 circles + clear
-              { type: 'color_picker' as const },
-              'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
@@ -3109,43 +3108,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             return items.map((item, idx) => {
               if (item === 'separator') {
                 return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
-              }
-              if ('type' in item && item.type === 'color_picker') {
-                const activeLabel = contextMenu.clip.color_label;
-                return (
-                  <div key="color-picker" style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', gap: 4 }}>
-                    <span style={{ color: '#555', fontSize: 10, marginRight: 2, flexShrink: 0 }}>Label</span>
-                    {Object.entries(COLOR_LABEL_MAP).map(([name, hex]) => (
-                      <button
-                        key={name}
-                        title={name}
-                        onClick={() => {
-                          close();
-                          void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: name } }]);
-                        }}
-                        style={{
-                          width: 12, height: 12, borderRadius: '50%',
-                          background: hex, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
-                          outline: activeLabel === name ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                          outlineOffset: activeLabel === name ? 1 : 0,
-                        }}
-                      />
-                    ))}
-                    <button
-                      key="clear"
-                      title="Clear label"
-                      onClick={() => {
-                        close();
-                        void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: null } }]);
-                      }}
-                      style={{
-                        background: 'none', border: '1px solid #333', borderRadius: '50%',
-                        width: 12, height: 12, padding: 0, cursor: 'pointer', color: '#555',
-                        fontSize: 9, lineHeight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}
-                    >×</button>
-                  </div>
-                );
               }
               return (
                 <button

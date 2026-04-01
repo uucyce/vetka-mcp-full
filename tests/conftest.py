@@ -173,6 +173,90 @@ def isolate_task_board(tmp_path, monkeypatch):
         tb_mod._board_instance = None
 
 
+# ── MARKER_QA.BOOTSTRAP_ASYNC_V2: Common bootstrap helpers for all test files ──
+# Old pattern (removed): POST /api/cut/bootstrap → returns project immediately
+# New pattern (async): POST /api/cut/worker/bootstrap-async → returns job_id, poll until done
+#
+# @issue: Test regression discovered 2026-04-01 — 34 tests failed with KeyError: 'project'
+#         Root cause: /api/cut/bootstrap sync endpoint removed, only /bootstrap-async exists
+# @fix: Extracted async bootstrap helper + worker_router registration to conftest
+#
+import time
+from pathlib import Path
+from fastapi.testclient import TestClient
+
+def cut_make_client_with_workers() -> TestClient:
+    """Create TestClient with both main router AND worker_router registered.
+
+    Use this in test files instead of the old _make_client pattern.
+
+    Example:
+        client = cut_make_client_with_workers()
+        project_id = cut_bootstrap_async_and_wait(client, source_dir, sandbox_root)
+    """
+    from fastapi import FastAPI
+    from src.api.routes.cut_routes import router
+    from src.api.routes.cut_routes_workers import worker_router
+
+    app = FastAPI()
+    app.include_router(router)
+    app.include_router(worker_router, prefix="/api/cut/worker")
+    return TestClient(app)
+
+
+def cut_bootstrap_async_and_wait(
+    client: TestClient,
+    source_dir: Path,
+    sandbox_root: Path,
+    project_name: str = "Test Project"
+) -> str:
+    """Wait for async bootstrap job to complete and return project_id.
+
+    Replaces the old sync /api/cut/bootstrap pattern with the new async pipeline:
+    1. POST /api/cut/worker/bootstrap-async → get job_id
+    2. Poll /api/cut/job/{job_id} until done
+    3. Extract project_id from job.result.project.project_id
+
+    Args:
+        client: TestClient with worker_router registered
+        source_dir: Path to media source directory
+        sandbox_root: Path to CUT sandbox
+        project_name: Project name for bootstrap
+
+    Returns:
+        project_id string
+
+    Raises:
+        AssertionError if bootstrap fails
+    """
+    # Step 1: Start async bootstrap job
+    bootstrap_resp = client.post(
+        "/api/cut/worker/bootstrap-async",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": project_name,
+        },
+    )
+    assert bootstrap_resp.status_code == 200, f"Bootstrap failed: {bootstrap_resp.text}"
+    job_id = bootstrap_resp.json()["job_id"]
+
+    # Step 2: Poll until job completes (max 20 attempts @ 50ms = 1 second timeout)
+    for _ in range(20):
+        job_resp = client.get(f"/api/cut/job/{job_id}")
+        job = job_resp.json()["job"]
+        if job["state"] in {"done", "error", "cancelled"}:
+            break
+        time.sleep(0.05)
+
+    assert job["state"] == "done", f"Bootstrap job failed: {job}"
+
+    # Step 3: Extract project_id from job result
+    assert job["result"]["success"] is True, f"Bootstrap result failed: {job['result']}"
+    project_id = job["result"]["project"]["project_id"]
+    return str(project_id)
+
+
 def pytest_runtest_setup(item):
     """
     Safety net for unittest-style tests where autouse fixtures may not run.

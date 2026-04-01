@@ -1,22 +1,22 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 4.0 | **Дата:** 2026-03-31 (Phase 201 — Opencode Qwen fleet)
+**Версия:** 5.0 | **Дата:** 2026-04-01 (Phase 196.6 — Haiku optimization wave)
 
 ---
 
-## Модели: Opus vs Sonnet vs Qwen
+## Модели: Opus vs Sonnet vs Haiku vs Qwen
 
-Не все роли требуют Opus. Sonnet справляется с 90% задач. Qwen через opencode — бесплатный и быстрый.
+Три уровня Claude + бесплатный Qwen. Haiku 4.5 = 3x дешевле Sonnet, быстрее output. Для шаблонных задач (import fix, SVG, pytest) — Haiku хватает с запасом.
 
 | Роль | Модель | Клиент | Почему |
 |------|--------|--------|--------|
 | **Commander** | **Opus** | Claude Code | Стратегические решения, merge conflicts, координация |
 | **Polaris** | Qwen3.6+ Free | **Opencode** | Капитан — координация opencode флота, WEATHER dispatch |
 | **Zeta** | **Opus** | Claude Code | Инфра/архитектура, сложный debugging |
-| **Alpha** | Sonnet | Claude Code | Endpoints, ops, паттерны — формульная работа |
-| **Beta** | Sonnet | Claude Code | FFmpeg pipelines, тесты — техничная но шаблонная |
-| **Gamma** | Sonnet | Claude Code | UI компоненты, CSS, wiring — sweet spot Sonnet |
-| **Delta** | Sonnet | Claude Code | Верификация, тест-раны — не требует глубокого reasoning |
-| **Epsilon** | Sonnet | Claude Code | Contract tests — аналогично Delta |
+| **Alpha** | **Sonnet** | Claude Code | Единственный Sonnet — сложные engine фиксы, архитектурные решения |
+| **Beta** | **Haiku** | Claude Code | FFmpeg pipelines, imports, шаблонные фиксы |
+| **Gamma** | **Haiku** | Claude Code | UI wiring, SVG иконки, CSS — быстро и дёшево |
+| **Delta** | **Haiku** | Claude Code | QA по чеклисту, pytest раны, code review |
+| **Epsilon** | **Haiku** | Claude Code | Contract tests, верификация — аналогично Delta |
 | **Lambda** | Qwen3.6+ Free | Opencode | QA3 — верификация через opencode |
 | **Mu** | Qwen3.6+ Free | Opencode | QA4 — верификация через opencode |
 | **Eta** | Sonnet | Claude Code | Инфра-помощник Zeta — шаблонные таски |
@@ -24,7 +24,7 @@
 | **Iota** | Qwen3.6 Plus Free | **Opencode** | WEATHER Mediator — local model bridge, context packing |
 | **Kappa** | Qwen3.6 Plus Free | **Opencode** | WEATHER Terminal — xterm.js, CLI agent integration |
 
-**Экономия:** Opus + Sonnet через Claude Code, Qwen через opencode (бесплатно). 2 Opus + 6 Sonnet + 3 Qwen = полный рабочий день без лимитов.
+**Экономия:** 2 Opus + 1 Sonnet + 4 Haiku + 1 Sonnet (Eta) + 5 Qwen = максимальная пропускная способность при минимальных лимитах. Haiku-агенты проходят те же QA gates, поэтому качество не страдает.
 
 ---
 
@@ -47,23 +47,23 @@ vetka_task_board action=active_agents
 
 ## Команды запуска
 
-### Claude Code — Sonnet-флот (CUT домен)
+### Claude Code — CUT домен (Opus / Sonnet / Haiku)
 
 ```bash
-# Alpha (Engine) — Sonnet
+# Alpha (Engine) — Sonnet (единственный Sonnet — сложные фиксы)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
 
-# Beta (Media) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model sonnet
+# Beta (Media) — Haiku (imports, pipelines, шаблонная работа)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model haiku
 
-# Gamma (UX) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model sonnet
+# Gamma (UX) — Haiku (wiring, SVG, CSS)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model haiku
 
-# Delta (QA) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model sonnet
+# Delta (QA) — Haiku (pytest, code review по чеклисту)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model haiku
 
-# Epsilon (QA2) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model sonnet
+# Epsilon (QA2) — Haiku (contract tests, верификация)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model haiku
 
 # Lambda (QA3) — Qwen via Opencode
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencode -m opencode/qwen3.6-plus-free
@@ -80,6 +80,8 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude -
 # Commander (Architect) — Opus
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
 ```
+
+> **Когда повышать Haiku до Sonnet:** Если агент не справляется с задачей (3+ попытки, ошибки reasoning), временно повысьте: `claude --dangerously-skip-permissions --model sonnet`. После задачи верните обратно на haiku.
 
 ### Opencode — Qwen3.6 Plus Free (WEATHER домен)
 
@@ -114,11 +116,11 @@ opencode
 
 | Роль | Worktree | Домен | Клиент | Модель | Что делает |
 |------|----------|-------|--------|--------|------------|
-| **Alpha** | `cut-engine` | Engine | Claude Code | Sonnet | Store, timeline, hotkeys, playback, Tauri |
-| **Beta** | `cut-media` | Media | Claude Code | Sonnet | Codecs, color, scopes, render, effects |
-| **Gamma** | `cut-ux` | UX | Claude Code | Sonnet | Panels, menus, layout, dockview |
-| **Delta** | `cut-qa` | QA | Claude Code | Sonnet | E2E тесты, TDD, FCP7 compliance |
-| **Epsilon** | `cut-qa-2` | QA2 | Claude Code | Sonnet | E2E тесты, дополнительная QA capacity |
+| **Alpha** | `cut-engine` | Engine | Claude Code | **Sonnet** | Store, timeline, hotkeys, playback, Tauri |
+| **Beta** | `cut-media` | Media | Claude Code | **Haiku** | Codecs, color, scopes, render, effects |
+| **Gamma** | `cut-ux` | UX | Claude Code | **Haiku** | Panels, menus, layout, dockview |
+| **Delta** | `cut-qa` | QA | Claude Code | **Haiku** | E2E тесты, TDD, FCP7 compliance |
+| **Epsilon** | `cut-qa-2` | QA2 | Claude Code | **Haiku** | E2E тесты, дополнительная QA capacity |
 | **Lambda** | `cut-qa-3` | QA3 | **Opencode** | Qwen3.6+ Free | QA верификация через opencode |
 | **Mu** | `cut-qa-4` | QA4 | **Opencode** | Qwen3.6+ Free | QA верификация через opencode |
 | **Zeta** | `harness` | Harness | Claude Code | **Opus** | Memory, pipeline, task_board, REFLEX |
@@ -277,26 +279,57 @@ git diff main..agent/theta-weather      # что изменилось
 
 ---
 
-## Типичный день с 11 агентами
+## Типичный день с 15 агентами
 
 ```
 Утро:
-  1. Запусти Commander (Claude Code) → "vetka session init" → покажи борд
+  1. Запусти Commander (Opus) → "vetka session init" → покажи борд
   2. Commander создаёт план на день, dispatch задачи с role=
 
-Работа:
-  3. CUT-агенты (Claude Code): Alpha, Beta, Gamma, Delta в своих worktrees
-  4. WEATHER-агенты (Opencode): Theta, Iota, Kappa в своих worktrees
-  5. Каждый: "vetka session init" → берёт задачу → работает
-  6. Ты переключаешься между терминалами, отвечаешь на вопросы
+Работа (CUT — Claude Code):
+  3. Alpha (Sonnet) — сложные engine фиксы
+  4. Beta, Gamma (Haiku) — шаблонные фиксы, wiring, SVG
+  5. Delta, Epsilon (Haiku) — QA по чеклисту, pytest
+
+Работа (WEATHER — Opencode/Qwen):
+  6. Theta, Iota, Kappa — WEATHER core/mediator/terminal
+  7. Lambda, Mu — QA верификация
+
+Работа (Инфра):
+  8. Zeta (Opus), Eta (Sonnet) — harness, memory, pipeline
+  9. Polaris (Qwen) — координация opencode флота
 
 Merge:
-  7. Commander → "замерджь через task_board merge_request"
-  8. Post-merge hook: digest + task promote
+  10. Commander → "замерджь через task_board merge_request"
+  11. Post-merge hook: digest + task promote
 
 Вечер:
-  9. Debrief Q1-Q3 при закрытии тасков → автоматически в CORTEX + ENGRAM
-  10. STM snapshot сохраняется → следующая сессия начнёт с памятью
+  12. Debrief Q1-Q3 при закрытии тасков → автоматически в CORTEX + ENGRAM
+  13. STM snapshot сохраняется → следующая сессия начнёт с памятью
+```
+
+### Экономия лимитов (v5.0 vs v4.0)
+
+| Было (v4.0) | Стало (v5.0) | Экономия |
+|---|---|---|
+| 2 Opus + 6 Sonnet | 2 Opus + 2 Sonnet + 4 Haiku | ~60% на CUT-агентах |
+| Sonnet = $3/M input | Haiku = $0.80/M input | 3.75x дешевле per agent |
+| Beta/Gamma/Delta/Epsilon на Sonnet | Те же на Haiku | Быстрее output, тот же QA gate |
+
+---
+
+## Escalation: когда Haiku не справляется
+
+Признаки что нужен Sonnet:
+- Агент зациклился (3+ попытки одного и того же)
+- Задача требует multi-file архитектурного reasoning
+- Merge conflict resolution (сложные)
+- Новая фича с нуля (не fix/wiring)
+
+Решение: временно повысить модель, после задачи вернуть.
+```bash
+# Временно Beta на Sonnet для сложной задачи
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model sonnet
 ```
 
 ---

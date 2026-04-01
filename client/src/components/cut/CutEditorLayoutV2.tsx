@@ -547,36 +547,39 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       sel.clearSelection();
     },
 
-    // MARKER_W6.WIRE: Nudge clip ±1 frame — supports multi-select (all selectedClipIds)
+    // MARKER_W6.WIRE: Nudge clip ±1 frame
     nudgeLeft: async () => {
       const s = useCutEditorStore.getState();
-      const { selectedClipIds } = useSelectionStore.getState();
-      if (selectedClipIds.size === 0) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
-      const ops: Array<Record<string, unknown>> = [];
+      // Find clip to get its current position and lane
       for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (selectedClipIds.has(clip.clip_id)) {
-            ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: Math.max(0, clip.start_sec - frameSec) });
-          }
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+        if (clip) {
+          await s.applyTimelineOps([{
+            op: 'move_clip', clip_id: clip.clip_id,
+            lane_id: lane.lane_id, start_sec: Math.max(0, clip.start_sec - frameSec),
+          }]);
+          return;
         }
       }
-      if (ops.length) await s.applyTimelineOps(ops);
     },
     nudgeRight: async () => {
       const s = useCutEditorStore.getState();
-      const { selectedClipIds } = useSelectionStore.getState();
-      if (selectedClipIds.size === 0) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
-      const ops: Array<Record<string, unknown>> = [];
       for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (selectedClipIds.has(clip.clip_id)) {
-            ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: clip.start_sec + frameSec });
-          }
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+        if (clip) {
+          await s.applyTimelineOps([{
+            op: 'move_clip', clip_id: clip.clip_id,
+            lane_id: lane.lane_id, start_sec: clip.start_sec + frameSec,
+          }]);
+          return;
         }
       }
-      if (ops.length) await s.applyTimelineOps(ops);
     },
 
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
