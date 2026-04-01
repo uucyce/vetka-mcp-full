@@ -388,12 +388,12 @@ async def cut_render_queue(
     if state_filter:
         render_jobs = [j for j in render_jobs if j.get("state") == state_filter]
 
-    # Sort: running first, then queued, then by creation time (newest first)
+    # Sort: running first, then queued, then by creation time (newest first).
+    # Two stable passes: (1) created_at DESC, (2) state_order ASC preserving inner order.
+    # Avoids unary minus on ISO timestamp strings (TypeError on str).
     state_order = {"running": 0, "queued": 1, "partial": 2, "done": 3, "error": 4, "cancelled": 5}
-    render_jobs.sort(key=lambda j: (
-        state_order.get(j.get("state", ""), 9),
-        -(j.get("created_at") or 0),
-    ))
+    render_jobs.sort(key=lambda j: j.get("created_at") or "", reverse=True)
+    render_jobs.sort(key=lambda j: state_order.get(j.get("state", ""), 9))
 
     return {
         "success": True,
