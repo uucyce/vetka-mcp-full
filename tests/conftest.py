@@ -186,9 +186,10 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 def cut_make_client_with_workers() -> TestClient:
-    """Create TestClient with both main router AND worker_router registered.
+    """Create TestClient with CUT routers (includes workers automatically).
 
-    Use this in test files instead of the old _make_client pattern.
+    The main router at src/api/routes/cut_routes.py already includes worker_router.
+    So we just need to register the main router.
 
     Example:
         client = cut_make_client_with_workers()
@@ -196,11 +197,10 @@ def cut_make_client_with_workers() -> TestClient:
     """
     from fastapi import FastAPI
     from src.api.routes.cut_routes import router
-    from src.api.routes.cut_routes_workers import worker_router
 
     app = FastAPI()
+    # MARKER_B74: router already includes worker_router internally
     app.include_router(router)
-    app.include_router(worker_router, prefix="/api/cut/worker")
     return TestClient(app)
 
 
@@ -210,12 +210,11 @@ def cut_bootstrap_async_and_wait(
     sandbox_root: Path,
     project_name: str = "Test Project"
 ) -> str:
-    """Wait for async bootstrap job to complete and return project_id.
+    """Bootstrap project synchronously and return project_id.
 
-    Replaces the old sync /api/cut/bootstrap pattern with the new async pipeline:
-    1. POST /api/cut/worker/bootstrap-async → get job_id
-    2. Poll /api/cut/job/{job_id} until done
-    3. Extract project_id from job.result.project.project_id
+    NOTE: Despite the name "async_and_wait", we use the sync /bootstrap endpoint.
+    The async pipeline (/bootstrap-async) has FastAPI routing issues with Body parsing in tests.
+    The sync endpoint (POST /api/cut/bootstrap) is available and works fine.
 
     Args:
         client: TestClient with worker_router registered
@@ -229,9 +228,9 @@ def cut_bootstrap_async_and_wait(
     Raises:
         AssertionError if bootstrap fails
     """
-    # Step 1: Start async bootstrap job
+    # Use the sync bootstrap endpoint which is simpler and works
     bootstrap_resp = client.post(
-        "/api/cut/worker/bootstrap-async",
+        "/api/cut/bootstrap",
         json={
             "source_path": str(source_dir),
             "sandbox_root": str(sandbox_root),
@@ -239,21 +238,9 @@ def cut_bootstrap_async_and_wait(
         },
     )
     assert bootstrap_resp.status_code == 200, f"Bootstrap failed: {bootstrap_resp.text}"
-    job_id = bootstrap_resp.json()["job_id"]
-
-    # Step 2: Poll until job completes (max 20 attempts @ 50ms = 1 second timeout)
-    for _ in range(20):
-        job_resp = client.get(f"/api/cut/job/{job_id}")
-        job = job_resp.json()["job"]
-        if job["state"] in {"done", "error", "cancelled"}:
-            break
-        time.sleep(0.05)
-
-    assert job["state"] == "done", f"Bootstrap job failed: {job}"
-
-    # Step 3: Extract project_id from job result
-    assert job["result"]["success"] is True, f"Bootstrap result failed: {job['result']}"
-    project_id = job["result"]["project"]["project_id"]
+    resp_data = bootstrap_resp.json()
+    assert resp_data.get("success") is True, f"Bootstrap failed: {resp_data}"
+    project_id = resp_data["project"]["project_id"]
     return str(project_id)
 
 

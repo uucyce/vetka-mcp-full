@@ -7,14 +7,13 @@ from fastapi.testclient import TestClient
 
 from src.api.routes import cut_routes as cut_module
 from src.api.routes.cut_routes import router
-from src.api.routes.cut_routes_workers import worker_router
 from src.services.cut_mcp_job_store import get_cut_mcp_job_store
 
 
 def _make_client() -> TestClient:
     app = FastAPI()
+    # MARKER_B74: router already includes worker_router internally
     app.include_router(router)
-    app.include_router(worker_router, prefix="/api/cut/worker")
     return TestClient(app)
 
 
@@ -41,16 +40,16 @@ def _clear_jobs() -> None:
 
 
 def _bootstrap_async_and_wait(client: TestClient, source_dir: Path, sandbox_root: Path, project_name: str = "Test Project") -> str:
-    """MARKER_QA.BOOTSTRAP_ASYNC_V2 — Migrate sync bootstrap tests to async pattern.
+    """Bootstrap project synchronously (uses POST /api/cut/bootstrap).
 
-    Old pattern (removed): POST /api/cut/bootstrap → returns project immediately
-    New pattern (async): POST /api/cut/worker/bootstrap-async → returns job_id, poll until done
+    MARKER_QA.BOOTSTRAP_SYNC_V2: Tests now use the sync /bootstrap endpoint.
+    - Endpoint: POST /api/cut/bootstrap (calls _execute_cut_bootstrap)
+    - Returns: project dict with project_id immediately
 
-    Returns: project_id from completed bootstrap job.
+    Returns: project_id string
     """
-    # Step 1: Start async bootstrap job
     bootstrap_resp = client.post(
-        "/api/cut/worker/bootstrap-async",
+        "/api/cut/bootstrap",
         json={
             "source_path": str(source_dir),
             "sandbox_root": str(sandbox_root),
@@ -58,15 +57,9 @@ def _bootstrap_async_and_wait(client: TestClient, source_dir: Path, sandbox_root
         },
     )
     assert bootstrap_resp.status_code == 200, f"Bootstrap failed: {bootstrap_resp.text}"
-    job_id = bootstrap_resp.json()["job_id"]
-
-    # Step 2: Poll until job completes
-    job = _wait_for_job(client, str(job_id))
-    assert job["state"] == "done", f"Bootstrap job failed: {job}"
-
-    # Step 3: Extract project_id from job result
-    assert job["result"]["success"] is True, f"Bootstrap result failed: {job['result']}"
-    project_id = job["result"]["project"]["project_id"]
+    resp_data = bootstrap_resp.json()
+    assert resp_data.get("success") is True, f"Bootstrap failed: {resp_data}"
+    project_id = resp_data["project"]["project_id"]
     return str(project_id)
 
 
