@@ -100,7 +100,7 @@ log = logging.getLogger("sherpa")
 # ── Config ─────────────────────────────────────────────────────────────
 @dataclass
 class ServiceConfig:
-    name: str           # Service group (e.g. "deepseek") — used for --service filter
+    name: str
     url: str
     profile_dir: str
     input_selector: str = "textarea"
@@ -108,11 +108,6 @@ class ServiceConfig:
     response_selector: str = "[data-message-author-role='assistant'], .response, .message"
     cooldown_seconds: int = 120
     enabled: bool = True
-    profile_name: str = ""  # Unique profile key (e.g. "deepseek_2"), defaults to last segment of profile_dir
-
-    def __post_init__(self):
-        if not self.profile_name:
-            self.profile_name = Path(self.profile_dir).name
 
 
 @dataclass
@@ -301,12 +296,12 @@ class BrowserClient:
     """Playwright-based browser for AI service interaction."""
 
     def __init__(self, services: List[ServiceConfig], headless: bool = True):
-        self.services = {s.profile_name: s for s in services}  # keyed by profile_name (unique per profile)
+        self.services = {s.name: s for s in services}
         self.headless = headless
         self._pw = None
         self._browser = None
-        self._contexts: Dict[str, Any] = {}  # profile_name -> context
-        self._pages: Dict[str, Any] = {}  # profile_name -> page
+        self._contexts: Dict[str, Any] = {}  # service_name -> context
+        self._pages: Dict[str, Any] = {}  # service_name -> page
 
     async def start(self):
         from playwright.async_api import async_playwright
@@ -922,17 +917,16 @@ class BrowserClient:
         return ""
 
     async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "") -> str:
-        """Extract the latest AI response, filtering out prompt echo.
+        """Extract the latest AI response, filtering out prompt echo."""
 
-        Strategy order:
-        1. DOM selectors — extracts FULL response text (15K+ chars)
-        2. Clipboard — fallback, gives only last code block (~1.4K chars)
-        3. Diff — compare pre/post send snapshots
-        """
+        # Strategy 0: Click Copy button (most reliable)
+        copied = await self._click_copy_button(page)
+        if copied and len(copied) > 100:
+            return copied
 
-        # Strategy 1: Use service-specific response selectors (PRIMARY — full DOM text)
+        # Strategy 1: Use service-specific response selectors
         selectors = [
-            # DeepSeek — main markdown container
+            # DeepSeek
             ".ds-markdown",
             # Grok
             '[class*="message-bubble"]',
@@ -974,18 +968,9 @@ class BrowserClient:
                 continue
 
         if best_text:
-            log.info(f"DOM extraction: {len(best_text)} chars")
             return best_text
 
-        # Strategy 2 (fallback): Click Copy button and read clipboard.
-        # NOTE: clipboard returns only the LAST code block, not the full response.
-        # Use only when DOM extraction fails.
-        copied = await self._click_copy_button(page)
-        if copied and len(copied) > 100:
-            log.info(f"Clipboard fallback: {len(copied)} chars")
-            return copied
-
-        # Strategy 3: Diff approach — compare current page text with pre-send snapshot
+        # Strategy 2: Diff approach — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
@@ -1016,27 +1001,19 @@ class BrowserClient:
         log.info("Browser will open. Log into each service manually.")
         log.info("Press Enter in terminal when done with each service.\n")
 
-        # Filter by service group name (e.g. --service deepseek gets deepseek_1, deepseek_2)
-        if services:
-            targets = [
-                pname for pname, svc in self.services.items()
-                if svc.name in services
-            ]
-        else:
-            targets = list(self.services.keys())
-
-        for profile_name in targets:
-            svc = self.services.get(profile_name)
+        targets = services or list(self.services.keys())
+        for svc_name in targets:
+            svc = self.services.get(svc_name)
             if not svc:
                 continue
-            log.info(f"Opening {profile_name} ({svc.url})...")
-            page = await self._get_page(profile_name)
+            log.info(f"Opening {svc.name} ({svc.url})...")
+            page = await self._get_page(svc_name)
             await page.goto(svc.url, wait_until="domcontentloaded")
 
-            input(f"\n>>> Log into {profile_name} ({svc.name}), then press Enter here... ")
+            input(f"\n>>> Log into {svc.name}, then press Enter here... ")
 
-            await self._save_storage_state(profile_name)
-            log.info(f"Session saved for {profile_name}")
+            await self._save_storage_state(svc_name)
+            log.info(f"Session saved for {svc.name}")
 
         log.info("\n=== Setup complete! Run 'python sherpa.py' to start recon. ===")
 
@@ -1188,14 +1165,8 @@ def save_recon_report(
 
 *Generated by Sherpa — Scout & Harvest Engine for Recon, Prep & Augmentation*
 """
-    if report_path.exists():
-        # Append — multiple services may enrich the same task
-        with report_path.open("a") as f:
-            f.write(f"\n\n---\n\n{report}")
-        log.info(f"Recon appended: {report_path}")
-    else:
-        report_path.write_text(report)
-        log.info(f"Recon saved: {report_path}")
+    report_path.write_text(report)
+    log.info(f"Recon saved: {report_path}")
     return report_path
 
 
@@ -1296,11 +1267,11 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
             svc = active_services[service_idx % len(active_services)]
             service_idx += 1
 
-            log.info(f"Sending to {svc.profile_name} ({svc.name})...")
+            log.info(f"Sending to {svc.name}...")
             try:
-                response = await browser.send_prompt(svc.profile_name, prompt)
+                response = await browser.send_prompt(svc.name, prompt)
             except Exception as e:
-                log.error(f"Browser error ({svc.profile_name}): {e}")
+                log.error(f"Browser error ({svc.name}): {e}")
                 response = ""
 
             if not response:
@@ -1326,7 +1297,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 7. Update task with recon
             updates = {
-                "status": "recon_done",  # Enriched — ready for coding agent, not for Sherpa again
+                "status": "pending",  # Release back to pool, enriched
             }
             # Append to existing recon_docs
             existing_recon = task.get("recon_docs", []) or []
@@ -1344,7 +1315,8 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             await tb.update_task(task_id, updates)
             tasks_processed += 1
-            log.info(f"Task {task_id} enriched → recon_done ({tasks_processed}/{cfg.max_tasks_per_run})")
+            skipped_ids.add(task_id)  # Don't take same task again
+            log.info(f"Task {task_id} enriched ({tasks_processed}/{cfg.max_tasks_per_run})")
 
             if once:
                 break
