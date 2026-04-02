@@ -11,14 +11,13 @@
  * Uses: useCutHotkeys persistence (localStorage).
  * Mount: as modal overlay or dockview panel.
  */
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 import {
   type CutHotkeyAction,
   type HotkeyPresetName,
   type HotkeyMap,
   PREMIERE_PRESET,
-  FCP7_PRESET,
   PRESETS,
   loadPresetName,
   savePresetName,
@@ -200,7 +199,6 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   const [conflict, setConflict] = useState<{ action: CutHotkeyAction; binding: string } | null>(null);
   // MARKER_GAMMA-HK2: Collapsible groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
-  const captureRef = useRef<HTMLDivElement>(null);
 
   // Get effective binding for an action
   const getBinding = useCallback((action: CutHotkeyAction): string => {

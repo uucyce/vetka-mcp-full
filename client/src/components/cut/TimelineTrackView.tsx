@@ -515,7 +515,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const soloLanes = useCutEditorStore((state) => state.soloLanes ?? new Set<string>());
   const lockedLanes = useCutEditorStore((state) => state.lockedLanes ?? new Set<string>());
   const targetedLanes = useCutEditorStore((state) => state.targetedLanes ?? new Set<string>());
-  const laneVolumes = useCutEditorStore((state) => state.laneVolumes);
   const snapEnabled = useCutEditorStore((state) => state.snapEnabled);
   const toggleMute = useCutEditorStore((state) => state.toggleMute);
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
@@ -527,7 +526,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 disabled clips (ghosted on timeline, excluded from export)
   const disabledClips = useCutEditorStore((state) => state.disabledClips ?? new Set<string>());
   const toggleClipEnabled = useCutEditorStore((state) => state.toggleClipEnabled);
-  const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
