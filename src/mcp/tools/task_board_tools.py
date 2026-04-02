@@ -390,6 +390,7 @@ TASK_BOARD_SCHEMA = {
             "type": "string",
             "enum": [
                 "pending",
+                "recon_done",
                 "queued",
                 "claimed",
                 "running",
