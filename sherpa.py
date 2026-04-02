@@ -401,55 +401,67 @@ class BrowserClient:
         if not input_el:
             log.error(f"Cannot find input on {service_name}")
             return ""
-        log.info("Step 2: Input found, clicking and typing prompt...")
+        log.info("Step 2: Input found, clicking...")
 
         await input_el.click()
-        await page.wait_for_timeout(1000)
+        await page.wait_for_timeout(500)
 
-        # Type prompt using keyboard simulation (most reliable for React)
-        # fill() doesn't trigger React state in many apps, so use type()
-        # For long prompts: use clipboard paste (fastest + triggers React)
-        log.info(f"Step 3: Pasting prompt ({len(prompt)} chars)...")
-        await page.evaluate(f"navigator.clipboard.writeText({json.dumps(prompt)})")
-        await page.wait_for_timeout(300)
-        # Paste from clipboard (Cmd+V on Mac, Ctrl+V on Linux)
-        await page.keyboard.press("Meta+v")
-        await page.wait_for_timeout(1000)
+        # Type prompt character by character (slow but 100% reliable with React)
+        # For prompts under 500 chars: type() directly
+        # For longer prompts: fill() + type last part to trigger React
+        log.info(f"Step 3: Typing prompt ({len(prompt)} chars)...")
 
-        # Verify text was entered
-        try:
-            current_value = await input_el.input_value()
-            if not current_value or len(current_value) < 10:
-                log.warning("Clipboard paste may have failed, trying fill()...")
-                await input_el.fill(prompt)
-                await page.wait_for_timeout(500)
-                # Force React events
-                await input_el.evaluate("""el => {
-                    el.dispatchEvent(new Event('input', { bubbles: true }));
-                    el.dispatchEvent(new Event('change', { bubbles: true }));
-                }""")
-                await page.wait_for_timeout(500)
-                await input_el.press("End")
-                await input_el.type(" ")
-                await page.wait_for_timeout(300)
-        except Exception:
-            pass  # Some inputs don't support input_value()
-
-        log.info("Step 4: Sending message...")
-
-        # Send message — try multiple strategies
-        # Strategy 1: JS click (most reliable, finds button near textarea)
-        sent = await self._js_click_send(page)
-        if not sent:
-            # Strategy 2: CSS selectors
-            log.info("JS click failed, trying CSS selectors...")
-            sent = await self._click_send(page, svc)
-        if not sent:
-            log.info("Buttons failed, trying keyboard...")
-            await input_el.click()
+        if len(prompt) <= 500:
+            # Short prompt — type it all (triggers every React event)
+            await input_el.type(prompt, delay=5)
+        else:
+            # Long prompt — fill bulk, then type last sentence to trigger React
+            bulk = prompt[:-50]
+            tail = prompt[-50:]
+            await input_el.fill(bulk)
             await page.wait_for_timeout(300)
-            await page.keyboard.press("Enter")
-            await page.wait_for_timeout(1000)
+            # Type the tail with real keystrokes to trigger React state
+            await input_el.press("End")
+            await input_el.type(tail, delay=5)
+
+        await page.wait_for_timeout(500)
+
+        # Verify text is in the textarea
+        has_text = False
+        try:
+            val = await input_el.input_value()
+            has_text = len(val) > 50
+            log.info(f"Textarea contains {len(val)} chars")
+        except Exception:
+            # contenteditable divs don't support input_value
+            try:
+                val = await input_el.inner_text()
+                has_text = len(val) > 50
+                log.info(f"Input contains {len(val)} chars")
+            except Exception:
+                has_text = True  # Assume it worked
+
+        if not has_text:
+            log.error("Failed to type prompt into textarea!")
+            return ""
+
+        log.info("Step 4: Sending message (Enter)...")
+
+        # Press Enter to send — textarea is focused, has content
+        await page.keyboard.press("Enter")
+        await page.wait_for_timeout(2000)
+
+        # Verify: if textarea is now empty, message was sent
+        try:
+            val_after = await input_el.input_value()
+            if len(val_after) < 10:
+                log.info("Message sent (textarea cleared)")
+            else:
+                log.warning(f"Textarea still has {len(val_after)} chars — trying Ctrl+Enter")
+                await page.keyboard.press("Control+Enter")
+                await page.wait_for_timeout(1000)
+        except Exception:
+            pass
 
         # Step 5: Wait for response
         log.info("Step 5: Waiting for AI response...")

@@ -359,6 +359,177 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 
 ---
 
+## Создание новой роли (add_role.sh v2)
+
+### Быстрый старт: добавить Mistral-4 (пример)
+
+```bash
+# 1️⃣ РЕГИСТРАЦИЯ роли в agent_registry.yaml
+cd ~/Documents/VETKA_Project/vetka_live_03
+bash scripts/add_role.sh Mistral-4 grok "WEATHER Agent 4"
+
+# Скрипт автоматически:
+# ✓ Проверит отсутствие дубликата (Mistral-4 ещё не существует)
+# ✓ Вставит роль перед shared_zones: в YAML (не в конец файла!)
+# ✓ Выполнит generate_agents_md.py (создаст role-specific CLAUDE.md)
+# ✓ Выведет: ✅ Role Mistral-4 registered
+```
+
+### Проверка регистрации
+
+```bash
+# Убедиться что роль добавлена в реестр
+cd ~/Documents/VETKA_Project/vetka_live_03
+grep -A 3 "Mistral-4:" agent_registry.yaml
+
+# Ожидаемый вывод:
+# Mistral-4:
+#   callsign: Mistral-4
+#   agent_type: grok
+#   description: WEATHER Agent 4
+```
+
+### Создание worktree для роли
+
+```bash
+# 2️⃣ СОЗДАТЬ изолированную среду (worktree) для Mistral-4
+cd ~/Documents/VETKA_Project/vetka_live_03
+git worktree add .claude/worktrees/weather-mistral-4 main
+
+# Скрипт создаст:
+# .claude/worktrees/weather-mistral-4/       ← новая среда
+# .claude/worktrees/weather-mistral-4/CLAUDE.md  ← role-specific конфиг (~800 байт)
+```
+
+### Запуск агента в worktree
+
+```bash
+# 3️⃣ ЗАПУСТИТЬ Mistral-4 в его worktree
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mistral-4
+
+# Запуск через Mistral Vibe CLI (требует: vibe auth login)
+vibe
+
+# В первом сообщении (обязательно!):
+vetka_session_init role=Mistral-4
+
+# Агент загрузит контекст + получит свои задачи
+```
+
+### Полная последовательность команд (copy-paste)
+
+```bash
+#!/bin/bash
+# Скрипт для добавления новой роли (пример: Mistral-4)
+
+set -e  # выход при ошибке
+
+PROJECT_ROOT=~/Documents/VETKA_Project/vetka_live_03
+NEW_ROLE="Mistral-4"
+AGENT_TYPE="grok"
+DESCRIPTION="WEATHER Agent 4"
+
+echo "🚀 Регистрация новой роли: $NEW_ROLE"
+cd "$PROJECT_ROOT"
+
+# 1. Добавить в реестр
+bash scripts/add_role.sh "$NEW_ROLE" "$AGENT_TYPE" "$DESCRIPTION"
+echo "✓ Роль зарегистрирована"
+
+# 2. Проверка
+echo "📋 Проверка в реестре:"
+grep -A 2 "$NEW_ROLE:" agent_registry.yaml
+
+# 3. Создать worktree
+WORKTREE_PATH=".claude/worktrees/weather-mistral-4"
+git worktree add "$WORKTREE_PATH" main
+echo "✓ Worktree создан: $WORKTREE_PATH"
+
+# 4. Информация для запуска
+echo ""
+echo "════════════════════════════════════════"
+echo "✅ Роль готова к запуску!"
+echo "════════════════════════════════════════"
+echo ""
+echo "Команда для старта:"
+echo "  cd $PROJECT_ROOT/$WORKTREE_PATH && vibe"
+echo ""
+echo "Первое сообщение в agentе:"
+echo "  vetka_session_init role=$NEW_ROLE"
+echo ""
+```
+
+### Что делает add_role.sh v2
+
+| Этап | Что происходит |
+|------|---|
+| **Валидация** | Проверка формата callsign `[A-Za-z0-9_-]+` |
+| **Дубль-гард** | Если роль уже существует → exit 1 |
+| **Вставка в YAML** | Перед `shared_zones:` (НЕ в конец файла!) |
+| **generate_agents_md** | Создание role-specific CLAUDE.md (~800 байт) |
+| **Проверка exit кода** | При ошибке generate_agents_md → скрипт падает |
+
+### Структура agent_registry.yaml
+
+```yaml
+roles:
+  Alpha:
+    callsign: Alpha
+    agent_type: opus
+    description: Architect
+
+  Mistral-1:
+    callsign: Mistral-1
+    agent_type: grok
+    description: WEATHER Agent 1
+
+  Mistral-4:  # ← НОВАЯ РОЛЬ, добавлена сюда
+    callsign: Mistral-4
+    agent_type: grok
+    description: WEATHER Agent 4
+
+shared_zones:
+  task_board: /src/orchestration/task_board.py
+  # ← add_role.sh вставляет ПЕРЕД этой строкой
+```
+
+### Ошибки и решения
+
+```bash
+# ❌ ERROR: Mistral-4 already exists
+# Причина: роль уже в реестре
+# Решение: используй другое имя или удали старую
+
+# ❌ Callsign format error
+# Причина: недопустимые символы (например: пробел, @, #)
+# Решение: используй только [A-Za-z0-9_-]
+
+# ❌ generate_agents_md failed
+# Причина: ошибка в скрипте генерации
+# Решение: проверь generate_agents_md.py, откати изменения в registry
+
+# ❌ Worktree already exists
+# Причина: .claude/worktrees/{role} уже создана
+# Решение: либо используй существующий, либо удали старый
+git worktree remove .claude/worktrees/weather-mistral-4
+```
+
+### Mistral агенты: где они регистрируются
+
+✅ **БЫЛО (старое):** Mistral-1/2/3 в `external_agents:` секции — невидимы для AgentRegistry
+
+❌ **ПОСЛЕ (2026-04-02):** Mistral-1/2/3 в `roles:` секции — видны всем агентам
+
+```bash
+# Проверить, что Mistral в roles (не в external_agents)
+grep -A 5 "roles:" agent_registry.yaml | grep Mistral
+# ✓ Mistral-1:
+# ✓ Mistral-2:
+# ✓ Mistral-3:
+```
+
+---
+
 *"Каждый агент знает свою роль. Тебе нужно только сказать — что делать."*
 
 ---
@@ -522,13 +693,58 @@ vibe auth login
 ### Что такое Vibe CLI
 Mistral Vibe CLI — это AI coding agent от Mistral, аналог Claude Code. Работает с моделями Devstral 2 (123B) и Devstral Small 2 (24B). Бесплатный лимит: ~10-15 задач/день на аккаунт.
 
-### Инструкции для Vibe агентов
-При запуске Vibe в worktree, агент получает роль из AGENTS.md:
-1. `vetka_session_init role=Mistral-1` (или Mistral-2, Mistral-3)
-2. Видит свою роль, домен, owned_paths
-3. Берёт задачу → работает → коммитит → need_qa
+### Инструкции для Vibe агентов (обновлено 2026-04-02)
 
-### Лимиты
-- **Бесплатный tier:** ~300-500 задач/месяц на аккаунт
-- **3 роли Mistral** = ~900-1500 задач/месяц суммарно
+При запуске Vibe в worktree, агент получает роль двумя способами:
+
+**Способ 1: Явная роль (РЕКОМЕНДУЕТСЯ)**
+```bash
+# В первом сообщении агенту:
+vetka_session_init role=Mistral-1
+# (или Mistral-2, Mistral-3)
+```
+
+**Способ 2: Автодетекция из worktree**
+- Vibe читает .claude/worktrees/{имя} → определяет ветку → ищет в agent_registry.yaml
+- Fallback если role= не указана
+
+**Процесс работы:**
+1. `vetka_session_init role=Mistral-1` → агент загружает контекст
+2. Видит свою роль (Mistral-1), домен (WEATHER или QA), owned_paths
+3. Берёт pending таск из task_board
+4. Работает → git commit → помечает need_qa
+5. Delta верифицирует → verified или needs_fix
+
+### Лимиты Mistral Vibe
+
+```
+Бесплатный tier (Vibe CLI):
+  - ~300-500 задач/месяц НА АККАУНТ
+  - 3 роли Mistral (1/2/3) = ~900-1500 задач/месяц СУММАРНО
+  - Cooldown между задачами: 30-60s
+
+Если лимит исчерпан:
+  - Добавить второй Mistral аккаунт (другой email)
+  - Создать новую роль (например, Mistral-4)
+  - Повернуть между аккаунтами вручную или через sherpa.py rotation
+```
+
+### Добавление второго Mistral аккаунта (если нужен больше лимит)
+
+```bash
+# 1. Создать новую роль
+cd ~/Documents/VETKA_Project/vetka_live_03
+bash scripts/add_role.sh Mistral-4 grok "WEATHER Agent 4 (extra account)"
+
+# 2. Логин в новый аккаунт
+vibe auth login
+# → Браузер откроется → залогиньтесь с ДРУГОГО email-адреса
+# → Получите новый API key
+
+# 3. Запустить новую роль
+git worktree add .claude/worktrees/weather-mistral-4 main
+cd .claude/worktrees/weather-mistral-4
+vibe
+# → vetka_session_init role=Mistral-4
+```
 - Идеально для: QA раны, WEATHER tasks, простые фиксы, документация
