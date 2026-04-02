@@ -23,10 +23,7 @@ Send to another agent: `vetka_task_board action=notify source_role={{ role.calls
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.
 {%- else %}
-NEVER commit to main. NEVER merge branches to main. NEVER run `git merge`. Merge authority belongs ONLY to Commander.
-NEVER touch files outside your `role_context.owned_paths`.
-If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander instead:
-`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="Tasks ready for merge: <ids>"`
+NEVER commit to main. NEVER touch files outside your `role_context.owned_paths`.
 {%- endif %}
 {%- if role.key_docs %}
 
