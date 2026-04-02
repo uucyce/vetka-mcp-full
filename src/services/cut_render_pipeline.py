@@ -639,6 +639,101 @@ def _build_atempo_chain(speed: float) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# MARKER_B11: Speed control compilation
+# ---------------------------------------------------------------------------
+
+def compile_video_speed_filter(speed: float) -> str:
+    """
+    Generate FFmpeg setpts filter for video speed change.
+
+    setpts scales the presentation timestamp by 1/speed.
+    Example: speed=2.0 (2x fast) → setpts=0.5*PTS (halve timestamps = play faster)
+
+    Args:
+        speed: Playback speed (0.25 to 4.0, where 1.0 = normal)
+
+    Returns:
+        FFmpeg filter string, or empty string if speed=1.0 (no-op)
+
+    Example:
+        >>> compile_video_speed_filter(2.0)
+        'setpts=0.5000*PTS'
+        >>> compile_video_speed_filter(0.5)
+        'setpts=2.0000*PTS'
+    """
+    if speed <= 0:
+        return "null"
+    if abs(speed - 1.0) < 0.001:  # Near 1.0, no-op
+        return "null"
+
+    pts_factor = 1.0 / speed
+    return f"setpts={pts_factor:.4f}*PTS"
+
+
+def compile_audio_speed_filter(speed: float, maintain_pitch: bool = True) -> str:
+    """
+    Generate FFmpeg audio filter chain for speed change.
+
+    MARKER_B11: Speed control with pitch preservation option.
+    - maintain_pitch=True: use atempo (preserves pitch, FCP7 default)
+    - maintain_pitch=False: use asetrate (shifts pitch with speed, old-school effect)
+
+    atempo supports 0.5-100.0 range. For extreme speeds, chains multiple filters.
+
+    Args:
+        speed: Playback speed (0.25 to 4.0)
+        maintain_pitch: If True, use atempo (preserve pitch). If False, use asetrate.
+
+    Returns:
+        FFmpeg filter string, or "anull" for no-op
+
+    Example:
+        >>> compile_audio_speed_filter(2.0, maintain_pitch=True)
+        'atempo=2.0000'
+        >>> compile_audio_speed_filter(0.5, maintain_pitch=False)
+        'asetrate=r=0.5000*44100'
+    """
+    if speed <= 0:
+        return "anull"
+    if abs(speed - 1.0) < 0.001:  # Near 1.0, no-op
+        return "anull"
+
+    if maintain_pitch:
+        # Use atempo: preserves pitch, handles chaining for extreme speeds
+        filters = _build_atempo_chain(speed)
+        return ",".join(filters)
+    else:
+        # Use asetrate: shifts pitch with speed (vintage effect)
+        return f"asetrate=r={speed:.4f}*44100"
+
+
+def compile_speed_filter(speed: float, is_audio: bool = False, maintain_pitch: bool = True) -> str:
+    """
+    Generate FFmpeg speed change filter (unified entry point).
+
+    MARKER_B11: Wrapper that selects video or audio filter based on is_audio flag.
+
+    Args:
+        speed: Playback speed (0.25 to 4.0)
+        is_audio: If True, return audio filter; if False, return video filter
+        maintain_pitch: Audio-only, ignored for video
+
+    Returns:
+        FFmpeg filter string ready for filter_complex
+
+    Example:
+        >>> compile_speed_filter(2.0, is_audio=False)
+        'setpts=0.5000*PTS'
+        >>> compile_speed_filter(2.0, is_audio=True)
+        'atempo=2.0000'
+    """
+    if is_audio:
+        return compile_audio_speed_filter(speed, maintain_pitch)
+    else:
+        return compile_video_speed_filter(speed)
+
+
+# ---------------------------------------------------------------------------
 # MARKER_B10: Transition filter generation
 # ---------------------------------------------------------------------------
 

@@ -705,6 +705,11 @@ class BrowserClient:
             await input_el.type(prompt[-30:], delay=5)
         await page.wait_for_timeout(500)
 
+        # Human-like pause before sending (1-2s)
+        import random
+        pause = random.uniform(1.0, 2.5)
+        await page.wait_for_timeout(int(pause * 1000))
+
         # Send: Enter key (works without file attachments)
         log.info("Pressing Enter to send...")
         await page.keyboard.press("Enter")
@@ -713,6 +718,16 @@ class BrowserClient:
         # Wait for response
         log.info("Waiting for AI response...")
         response = await self._wait_and_extract(page, svc, timeout_ms, prompt_text=prompt, pre_text=pre_send_text)
+
+        # If empty response — possible rate limit or page error. Try reload once.
+        if not response:
+            log.warning(f"Empty response from {service_name}. Checking for rate limit...")
+            page_text = await self._get_all_text(page)
+            if any(kw in page_text.lower() for kw in ["too frequent", "rate limit", "try again", "error", "something went wrong"]):
+                log.warning(f"Rate limit detected on {service_name}! Reloading page...")
+                await page.reload(wait_until="domcontentloaded")
+                await page.wait_for_timeout(5000)
+            # Don't retry — let main loop handle via next service rotation
 
         await self._save_storage_state(service_name)
         return response
@@ -1125,10 +1140,11 @@ class BrowserClient:
 
                 # Below minimum but stable — keep waiting, AI might resume
                 if copy_visible and stable_count >= 3 and curr_len < MIN_COMPLETE:
-                    if stable_count <= 6:  # Wait up to 18s extra for short responses
-                        log.info(f"Response short ({curr_len} chars < {MIN_COMPLETE}), waiting for more...")
+                    if stable_count <= 15:  # Wait up to 45s for AI to resume (DeepThink pauses)
+                        if stable_count % 3 == 0:  # Log every 9s, not every 3s
+                            log.info(f"Response short ({curr_len} chars < {MIN_COMPLETE}), waiting for more... ({stable_count * 3}s)")
                     else:
-                        log.info(f"Response stuck at {curr_len} chars. Extracting what we have...")
+                        log.info(f"Response stuck at {curr_len} chars after {stable_count * 3}s. Extracting...")
                         break
 
                 # Fallback: no copy button but very stable (7 checks = 21s) + above minimum
@@ -1736,7 +1752,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 7. Update task with recon
             updates = {
-                "status": "pending",  # Release back to pool, enriched
+                "status": "recon_done",  # Mark as enriched — agents pick up recon_done tasks
             }
             # Append to existing recon_docs
             existing_recon = task.get("recon_docs", []) or []
