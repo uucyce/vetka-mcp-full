@@ -91,7 +91,7 @@ services:
   - name: chatgpt
     url: https://chatgpt.com
     profile_dir: data/sherpa_profiles/chatgpt_1
-    input_selector: 'textarea#prompt-textarea, div[contenteditable="true"]'
+    input_selector: 'div[contenteditable="true"]'  # probe confirmed: no textarea, only contenteditable
     send_selector: 'button[data-testid="send-button"]'
     response_selector: '[data-message-author-role="assistant"]'
     cooldown_seconds: 120
@@ -162,7 +162,7 @@ services:
     send_selector: 'button[type="submit"], button:has-text("Send")'
     response_selector: '.prose, [class*="message"], article'
     cooldown_seconds: 60
-    enabled: false
+    enabled: true                 # PASS — anonymous, no login needed
 
   - name: huggingchat
     url: https://huggingface.co/chat
