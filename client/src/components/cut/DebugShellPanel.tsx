@@ -45,6 +45,7 @@ export default function DebugShellPanel() {
   const status = useCutEditorStore((s) => s.debugStatus);
   const handlers = useCutEditorStore((s) => s.debugHandlers);
   const lanes = useCutEditorStore((s) => s.lanes);
+  const markers = useCutEditorStore((s) => s.markers);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const selectedClipId = useSelectionStore((s) => s.selectedClipId);
 

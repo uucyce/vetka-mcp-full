@@ -125,6 +125,7 @@ export default function MatchSequencePopup() {
         const h = video?.height ?? 1080;
         const fps = video?.fps ?? 25;
         const sr = audio?.sample_rate ?? 48000;
+        const res = matchResolution(w, h);
         setProbeData({
           resolution: `${w}x${h}`,
           fps,
@@ -153,6 +154,7 @@ export default function MatchSequencePopup() {
     const s = useCutEditorStore.getState();
     const res = matchResolution(probeData.width, probeData.height);
     const fps = matchFps(probeData.fps);
+    const sr = probeData.sampleRate as 44100 | 48000 | 96000;
 
     // Update store
     s.setSequenceResolution(res.preset);

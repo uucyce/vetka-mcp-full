@@ -771,6 +771,27 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     suggested[:3],
                 )
 
+        # MARKER_ETA.DESC_GUARD: Validate description length.
+        # P1/P2: block if description is empty or < 20 chars (too vague to act on).
+        # P3+: allow but surface a warning in response.
+        _desc_raw = payload.get("description", "").strip()
+        _priority_for_guard = int(payload.get("priority", 3))
+        if len(_desc_raw) < 20:
+            if _priority_for_guard <= 2:
+                return {
+                    "success": False,
+                    "error": (
+                        f"DESC_GUARD: P{_priority_for_guard} tasks require description ≥ 20 characters "
+                        f"(got {len(_desc_raw)}). Add context: what problem, why now, acceptance criteria."
+                    ),
+                    "desc_guard": True,
+                }
+            # P3+ — allow, but flag
+            payload["_desc_guard_warning"] = (
+                f"DESC_GUARD: description is short ({len(_desc_raw)} chars). "
+                "Consider adding more context for better task clarity."
+            )
+
         try:
             payload = apply_task_profile_defaults(payload)
         except ValueError as exc:
@@ -815,6 +836,36 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         _dg_warnings = payload.get("_doc_gate_warnings")
         if _dg_warnings:
             result["doc_gate_warning"] = _dg_warnings[0]
+
+        # MARKER_ETA.DESC_GUARD: Surface description length warning for P3+ tasks
+        _dg_desc = payload.get("_desc_guard_warning")
+        if _dg_desc:
+            result["desc_guard_warning"] = _dg_desc
+
+        # MARKER_ETA.SOFT_DEDUP: Check for similar existing tasks by title.
+        # Score is FTS5 BM25 rank (negative, closer to 0 = more similar).
+        # Threshold > -15 catches near-identical titles without false-positive noise.
+        try:
+            import re as _re_dedup
+            _clean_title = _re_dedup.sub(r"[^\w\s]", " ", title)
+            _title_words = _clean_title.split()[:6]
+            if _title_words:
+                _fts_hits = board.search_fts(" ".join(_title_words), limit=10)
+                _dupes = [
+                    {"task_id": h["task_id"], "snippet": h["snippet"][:120], "score": h["rank"]}
+                    for h in _fts_hits
+                    if h["task_id"] != task_id and h["rank"] > -15
+                ]
+                if _dupes:
+                    result["possible_duplicates"] = {
+                        "message": (
+                            f"SOFT_DEDUP: {len(_dupes)} similar task(s) found. "
+                            "Review before working — may already be covered."
+                        ),
+                        "tasks": _dupes[:5],
+                    }
+        except Exception:
+            pass  # Dedup is advisory, never blocks
 
         # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
         # When parallel tasks share allowed_paths, they risk API drift (different method names).
