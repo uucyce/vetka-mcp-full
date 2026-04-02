@@ -675,6 +675,47 @@ def _compile_xfade_filter(
     )
 
 
+def _map_audio_curve(curve_type: str) -> tuple[str, str]:
+    """
+    Map audio curve names to FFmpeg acrossfade curve parameters.
+
+    MARKER_B14: FCP7 Chapter 47 audio curve mapping.
+    FFmpeg acrossfade supports: qsin, tri, esin, qcos, hsin, log, ilog, ssin, sqrt, cbrt
+
+    Mapping:
+    - equal_power: qsin (quarter sine, +3dB at midpoint, smooth)
+    - linear: tri (triangle, 0dB at midpoint, dip feeling)
+    - exponential: esin (exponential sine, acceleration then deceleration)
+    - smooth_start: hsin (half sine, smooth entrance, sharp exit)
+    - smooth_end: qcos (quarter cosine, sharp entrance, smooth exit)
+    - log: log (logarithmic, slow start, sharp end)
+    - exponential_log: sqrt (square root, smooth acceleration)
+    - sigmoid: ilog (inverse log, sharp start, slow end)
+    - s_curve: ssin (squared sine, smooth on both ends)
+    - cubic: cbrt (cube root, gentler than sqrt)
+
+    Args:
+        curve_type: Human-readable curve name
+
+    Returns:
+        Tuple of (c1, c2) FFmpeg curve parameters (same curve applied to both channels)
+    """
+    mapping = {
+        "equal_power": ("qsin", "qsin"),      # Default, FCP7 standard
+        "linear": ("tri", "tri"),             # Straight fade, dip at midpoint
+        "exponential": ("esin", "esin"),      # Smooth acceleration/deceleration
+        "smooth_start": ("hsin", "hsin"),     # Gradual entrance, sharp exit
+        "smooth_end": ("qcos", "qcos"),       # Sharp entrance, gradual exit
+        "logarithmic": ("log", "log"),        # Slow start, sharp end
+        "exponential_log": ("sqrt", "sqrt"),  # Gentler acceleration than esin
+        "inverse_log": ("ilog", "ilog"),      # Sharp start, slow end
+        "s_curve": ("ssin", "ssin"),          # Smooth on both ends
+        "cubic": ("cbrt", "cbrt"),            # Gentler than sqrt
+    }
+    c1, c2 = mapping.get(curve_type, ("qsin", "qsin"))  # Default to equal_power
+    return c1, c2
+
+
 def _compile_acrossfade_filter(
     input1: str,
     input2: str,
@@ -686,15 +727,14 @@ def _compile_acrossfade_filter(
     Generate a single FFmpeg acrossfade filter string for audio transitions.
 
     MARKER_B14: Audio crossfade curve selection (FCP7 Ch.47).
-    - equal_power (+3dB at midpoint, sounds smooth) → qsin curve
-    - linear (0dB at midpoint, sounds dip) → tri curve
+    Supports 10+ curve types via _map_audio_curve().
 
     Args:
         input1: Input label (e.g. "[a0]")
         input2: Second input label (e.g. "[a1]")
         output: Output label (e.g. "[aout1]")
         duration_sec: Crossfade duration in seconds
-        audio_curve: Curve type ("equal_power" or "linear")
+        audio_curve: Curve type (see _map_audio_curve for options, default "equal_power")
 
     Returns:
         FFmpeg acrossfade filter string
@@ -702,9 +742,10 @@ def _compile_acrossfade_filter(
     Example:
         >>> _compile_acrossfade_filter("[a0]", "[a1]", "[aout1]", 1.0, "equal_power")
         '[a0][a1]acrossfade=d=1.000:c1=qsin:c2=qsin[aout1]'
+        >>> _compile_acrossfade_filter("[a0]", "[a1]", "[aout1]", 1.0, "exponential")
+        '[a0][a1]acrossfade=d=1.000:c1=esin:c2=esin[aout1]'
     """
-    curve = audio_curve if audio_curve == "linear" else "equal_power"
-    c1, c2 = ("tri", "tri") if curve == "linear" else ("qsin", "qsin")
+    c1, c2 = _map_audio_curve(audio_curve)
 
     return (
         f"{input1}{input2}acrossfade=d={duration_sec:.3f}"
