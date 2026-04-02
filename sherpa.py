@@ -1365,19 +1365,277 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 # ── Setup Mode ─────────────────────────────────────────────────────────
 async def setup_mode(cfg: SherpaConfig, services: List[str] = None):
     """Interactive profile setup."""
-    active = [s for s in cfg.services if s.enabled]
+    # Include ALL services (enabled or not) so you can setup new profiles
+    candidates = cfg.services
     if services:
-        active = [s for s in active if s.name in services]
-    browser = BrowserClient(active, headless=False)  # Always visible for setup
+        candidates = [s for s in candidates if s.name in services]
+    browser = BrowserClient(candidates, headless=False)  # Always visible for setup
     await browser.start()
     await browser.setup_profiles(services)
     await browser.stop()
+
+
+# ── Probe Mode ──────────────────────────────────────────────────────────
+async def probe_services(cfg: SherpaConfig, output_path: Path, services: List[str] = None, headless: bool = True):
+    """Non-interactive structural probe: navigate to each service, test selectors, detect bots.
+
+    Does NOT require login. Tests:
+    1. Page loads (no immediate block)
+    2. textarea / input found
+    3. Bot detection signatures (Cloudflare, captcha)
+    4. Response DOM selector exists (post-load)
+    5. Basic page title / structure
+
+    Writes results to RECON_SERVICES.md.
+    Run: python sherpa.py --probe [--service deepseek] [--visible]
+    """
+    from playwright.async_api import async_playwright
+
+    BOT_DETECT_PATTERNS = [
+        "captcha", "cloudflare", "ddos", "challenge", "access denied",
+        "bot detected", "verify you are human", "enable javascript",
+        "checking your browser", "just a moment",
+    ]
+    POPUP_SELECTORS = [
+        # Login/signup modal
+        '[role="dialog"]', '.modal', '[class*="modal"]', '[class*="popup"]',
+        '[class*="overlay"]', '[class*="Dialog"]',
+        # Cookie consent
+        '[class*="cookie"]', '[class*="consent"]', '[class*="gdpr"]',
+        # Login required
+        'button:has-text("Sign in")', 'button:has-text("Log in")',
+        'button:has-text("Sign up")', 'a:has-text("Sign in")',
+    ]
+    RATE_LIMIT_PATTERNS = [
+        "rate limit", "too many requests", "quota", "limit reached",
+        "upgrade", "subscribe", "premium", "out of messages",
+        "daily limit", "usage limit",
+    ]
+
+    # Use ALL services (including disabled) for probing
+    candidates = cfg.services
+    if services:
+        candidates = [s for s in candidates if s.name in services]
+    if not candidates:
+        log.error("No services to probe")
+        return
+
+    results = []
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=headless,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        for svc in candidates:
+            log.info(f"Probing {svc.profile_name} ({svc.url})...")
+            result = {
+                "profile_name": svc.profile_name,
+                "name": svc.name,
+                "url": svc.url,
+                "enabled": svc.enabled,
+                "loads": False,
+                "bot_detect": False,
+                "bot_signal": "",
+                "textarea": False,
+                "textarea_sel": "",
+                "response_sel": False,
+                "response_sel_found": "",
+                "popup": False,
+                "popup_type": "",       # login / cookie / modal
+                "login_required": False,
+                "rate_limit_hint": "",  # any visible rate-limit text
+                "models_visible": False,# model selector found in DOM
+                "page_title": "",
+                "error": "",
+            }
+            try:
+                ctx = await browser.new_context(
+                    viewport={"width": 1440, "height": 900},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                )
+                page = await ctx.new_page()
+                try:
+                    await page.goto(svc.url, wait_until="domcontentloaded", timeout=20_000)
+                    await page.wait_for_timeout(2000)  # Let JS render
+                    result["loads"] = True
+                    result["page_title"] = (await page.title())[:60]
+
+                    # Check bot detection
+                    body_text = (await page.locator("body").inner_text(timeout=3000)).lower()
+                    for pat in BOT_DETECT_PATTERNS:
+                        if pat in body_text:
+                            result["bot_detect"] = True
+                            result["bot_signal"] = pat
+                            break
+
+                    # Check rate limit hints in page text
+                    for pat in RATE_LIMIT_PATTERNS:
+                        if pat in body_text:
+                            result["rate_limit_hint"] = pat
+                            break
+
+                    if not result["bot_detect"]:
+                        # Test input selectors
+                        for sel in svc.input_selector.split(","):
+                            sel = sel.strip()
+                            try:
+                                count = await page.locator(sel).count()
+                                if count > 0:
+                                    result["textarea"] = True
+                                    result["textarea_sel"] = sel
+                                    break
+                            except Exception:
+                                continue
+
+                        # Test response selectors
+                        for sel in svc.response_selector.split(","):
+                            sel = sel.strip()
+                            try:
+                                count = await page.locator(sel).count()
+                                if count > 0:
+                                    result["response_sel"] = True
+                                    result["response_sel_found"] = sel
+                                    break
+                            except Exception:
+                                continue
+
+                        # Detect popups / modals
+                        for sel in POPUP_SELECTORS:
+                            try:
+                                el = page.locator(sel).first
+                                if await el.is_visible(timeout=500):
+                                    result["popup"] = True
+                                    if "sign" in sel.lower() or "log" in sel.lower():
+                                        result["popup_type"] = "login"
+                                        result["login_required"] = True
+                                    elif "cookie" in sel.lower() or "consent" in sel.lower():
+                                        result["popup_type"] = "cookie"
+                                    else:
+                                        result["popup_type"] = "modal"
+                                    break
+                            except Exception:
+                                continue
+
+                        # Detect model selector (dropdown / list of models)
+                        model_selectors = [
+                            'select', '[class*="model"]', '[aria-label*="model"]',
+                            '[aria-label*="Model"]', 'button:has-text("GPT")',
+                            'button:has-text("Claude")', 'button:has-text("Llama")',
+                            '[class*="ModelSelector"]',
+                        ]
+                        for sel in model_selectors:
+                            try:
+                                if await page.locator(sel).count() > 0:
+                                    result["models_visible"] = True
+                                    break
+                            except Exception:
+                                continue
+
+                except Exception as e:
+                    result["error"] = str(e)[:80]
+                finally:
+                    await ctx.close()
+
+            except Exception as e:
+                result["error"] = f"browser error: {str(e)[:60]}"
+
+            results.append(result)
+            verdict = "PASS" if (result["loads"] and result["textarea"] and not result["bot_detect"]) else \
+                      "BOT" if result["bot_detect"] else \
+                      "NO_INPUT" if (result["loads"] and not result["textarea"]) else \
+                      "FAIL"
+            log.info(f"  {svc.profile_name}: {verdict} | title={result['page_title'][:30]} | textarea={result['textarea']} | bot={result['bot_detect']}")
+
+        await browser.close()
+
+    # Write RECON_SERVICES.md
+    _write_probe_report(results, output_path)
+    log.info(f"Probe report written: {output_path}")
+
+
+def _write_probe_report(results: list, output_path: Path):
+    """Write compatibility matrix to RECON_SERVICES.md."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    passed = [r for r in results if r["loads"] and r["textarea"] and not r["bot_detect"]]
+    failed = [r for r in results if not r["loads"] or r["error"]]
+    bot = [r for r in results if r["bot_detect"]]
+    no_input = [r for r in results if r["loads"] and not r["textarea"] and not r["bot_detect"] and not r["error"]]
+
+    lines = [
+        f"# SHERPA — AI Services Probe Report",
+        f"",
+        f"**Generated:** {timestamp} by `python sherpa.py --probe`",
+        f"**Total probed:** {len(results)} | **PASS:** {len(passed)} | **BOT:** {len(bot)} | **NO_INPUT:** {len(no_input)} | **FAIL:** {len(failed)}",
+        f"",
+        f"## Legend",
+        f"",
+        f"- **PASS** — textarea found, page loads, no bot detect. Enable + test with real prompt.",
+        f"- **NEED_LOGIN** — loads but login popup shown. Setup profile then re-probe.",
+        f"- **BOT** — Cloudflare/captcha detected. Playwright blocked.",
+        f"- **NO_INPUT** — page loads but textarea not found.",
+        f"- **FAIL** — page didn't load / timeout.",
+        f"",
+        f"## Results",
+        f"",
+        f"| profile | loads | input | bot | popup | login | models | rate_limit | verdict | notes |",
+        f"|---------|-------|-------|-----|-------|-------|--------|------------|---------|-------|",
+    ]
+
+    for r in results:
+        if r["loads"] and r["textarea"] and not r["bot_detect"] and not r["login_required"]:
+            verdict = "**PASS**"
+        elif r["login_required"] or (r["popup"] and r["popup_type"] == "login"):
+            verdict = "NEED_LOGIN"
+        elif r["bot_detect"]:
+            verdict = f"BOT ({r['bot_signal']})"
+        elif r["loads"] and not r["textarea"]:
+            verdict = "NO_INPUT"
+        else:
+            verdict = "FAIL"
+
+        notes = r["error"][:35] if r["error"] else (r["textarea_sel"][:35] if r["textarea"] else "")
+        lines.append(
+            f"| {r['profile_name']} | {'Y' if r['loads'] else 'N'} | "
+            f"{'Y' if r['textarea'] else 'N'} | {'Y' if r['bot_detect'] else 'N'} | "
+            f"{'Y' if r['popup'] else 'N'} | {'Y' if r['login_required'] else 'N'} | "
+            f"{'Y' if r['models_visible'] else 'N'} | {r['rate_limit_hint'] or '-'} | "
+            f"{verdict} | {notes} |"
+        )
+
+    lines += [
+        f"",
+        f"## PASS — Enable These in sherpa.yaml",
+        f"",
+    ]
+    for r in passed:
+        lines.append(f"- `{r['profile_name']}` ({r['url']}) — textarea: `{r['textarea_sel']}`")
+
+    lines += [
+        f"",
+        f"## Top-5 Recommended (manual ranking after PASS review)",
+        f"",
+        f"1. TBD",
+        f"2. TBD",
+        f"3. TBD",
+        f"4. TBD",
+        f"5. TBD",
+        f"",
+        f"*Run again after login: `python sherpa.py --probe` to re-check with session cookies.*",
+    ]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines))
+
+
+# ── Entry Point ────────────────────────────────────────────────────────
 
 
 # ── Entry Point ────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Sherpa — Recon agent for VETKA tasks")
     parser.add_argument("--setup", action="store_true", help="Interactive login setup")
+    parser.add_argument("--probe", action="store_true", help="Non-interactive probe: test selectors for all services, write RECON_SERVICES.md")
     parser.add_argument("--once", action="store_true", help="Process one task and exit")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be processed")
     parser.add_argument("--service", type=str, help="Use specific service only (e.g. grok)")
@@ -1392,6 +1650,10 @@ def main():
     if args.setup:
         services = [args.service] if args.service else None
         asyncio.run(setup_mode(cfg, services))
+    elif args.probe:
+        services = [args.service] if args.service else None
+        out = PROJECT_ROOT / "docs" / "202ph_SHERPA" / "RECON_SERVICES.md"
+        asyncio.run(probe_services(cfg, out, services=services, headless=not args.visible))
     else:
         # PID Guard — only one Sherpa at a time
         if not acquire_guard():
