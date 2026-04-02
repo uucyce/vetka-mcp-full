@@ -197,7 +197,12 @@ class TaskBoard:
         self.settings: Dict[str, Any] = {
             "max_concurrent": 2,
             "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
-            "default_preset": "dragon_silver"
+            "default_preset": "dragon_silver",
+            # MARKER_202.SHERPA_SIGNAL: Sherpa availability status (queryable by any agent)
+            "sherpa_status": "stopped",  # idle | busy | stopped
+            "sherpa_pid": None,
+            "sherpa_last_seen": None,
+            "sherpa_tasks_enriched": 0,
         }
         self.integrity_warning: str = ""
 
