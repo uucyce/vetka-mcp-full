@@ -12,7 +12,6 @@ from src.services.cut_mcp_job_store import get_cut_mcp_job_store
 
 def _make_client() -> TestClient:
     app = FastAPI()
-    # MARKER_B74: router already includes worker_router internally
     app.include_router(router)
     return TestClient(app)
 
@@ -39,30 +38,6 @@ def _clear_jobs() -> None:
     get_cut_mcp_job_store().clear()
 
 
-def _bootstrap_async_and_wait(client: TestClient, source_dir: Path, sandbox_root: Path, project_name: str = "Test Project") -> str:
-    """Bootstrap project synchronously (uses POST /api/cut/bootstrap).
-
-    MARKER_QA.BOOTSTRAP_SYNC_V2: Tests now use the sync /bootstrap endpoint.
-    - Endpoint: POST /api/cut/bootstrap (calls _execute_cut_bootstrap)
-    - Returns: project dict with project_id immediately
-
-    Returns: project_id string
-    """
-    bootstrap_resp = client.post(
-        "/api/cut/bootstrap",
-        json={
-            "source_path": str(source_dir),
-            "sandbox_root": str(sandbox_root),
-            "project_name": project_name,
-        },
-    )
-    assert bootstrap_resp.status_code == 200, f"Bootstrap failed: {bootstrap_resp.text}"
-    resp_data = bootstrap_resp.json()
-    assert resp_data.get("success") is True, f"Bootstrap failed: {resp_data}"
-    project_id = resp_data["project"]["project_id"]
-    return str(project_id)
-
-
 def test_cut_audio_sync_worker_async_builds_persisted_result(tmp_path: Path):
     _clear_jobs()
     source_dir = tmp_path / "source"
@@ -76,8 +51,15 @@ def test_cut_audio_sync_worker_async_builds_persisted_result(tmp_path: Path):
     _bootstrap_sandbox(sandbox_root)
     client = _make_client()
 
-    # MARKER_QA.BOOTSTRAP_ASYNC_V2: Migrated from sync /api/cut/bootstrap to async pattern
-    project_id = _bootstrap_async_and_wait(client, source_dir, sandbox_root, "Audio Sync Demo")
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Audio Sync Demo",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
 
     created = client.post(
         "/api/cut/worker/audio-sync-async",
@@ -144,8 +126,15 @@ def test_cut_audio_sync_worker_suppresses_duplicate_active_task(tmp_path: Path, 
     _bootstrap_sandbox(sandbox_root)
     client = _make_client()
 
-    # MARKER_QA.BOOTSTRAP_ASYNC_V2: Migrated from sync /api/cut/bootstrap to async pattern
-    project_id = _bootstrap_async_and_wait(client, source_dir, sandbox_root, "Audio Sync Dup Demo")
+    bootstrap = client.post(
+        "/api/cut/bootstrap",
+        json={
+            "source_path": str(source_dir),
+            "sandbox_root": str(sandbox_root),
+            "project_name": "Audio Sync Dup Demo",
+        },
+    )
+    project_id = bootstrap.json()["project"]["project_id"]
 
     original = cut_module._build_signal_proxy_from_bytes
 
