@@ -127,6 +127,39 @@ services:
     cooldown_seconds: 60
     enabled: false                # enable after: python sherpa.py --setup --service kimi
 
+  # ── HuggingChat — open models (Llama, Qwen, Mistral, Gemma) ──────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service huggingchat
+  - name: huggingchat
+    url: https://huggingface.co/chat
+    profile_dir: data/sherpa_profiles/huggingchat_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '.prose, [class*="message"]'
+    cooldown_seconds: 90
+    enabled: false                # python sherpa.py --setup --service huggingchat
+
+  # ── Monica — all-in-one AI assistant ──────────────────────────────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service monica
+  - name: monica
+    url: https://monica.im/home
+    profile_dir: data/sherpa_profiles/monica_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"]'
+    cooldown_seconds: 90
+    enabled: false                # python sherpa.py --setup --service monica
+
+  # ── Bolt — full-stack code gen (StackBlitz) ────────────────────────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service bolt
+  - name: bolt
+    url: https://bolt.new
+    profile_dir: data/sherpa_profiles/bolt_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 120
+    enabled: false                # python sherpa.py --setup --service bolt
+
   # ── cto.new — playground with real code output ────────────────────
   # Long response times, but can produce complete working code
   - name: cto
@@ -163,15 +196,6 @@ services:
     response_selector: '.prose, [class*="message"], article'
     cooldown_seconds: 60
     enabled: true                 # PASS — anonymous, no login needed
-
-  - name: huggingchat
-    url: https://huggingface.co/chat
-    profile_dir: data/sherpa_profiles/huggingchat_1
-    input_selector: 'textarea'
-    send_selector: 'button[type="submit"]'
-    response_selector: '.prose, [class*="message"]'
-    cooldown_seconds: 90
-    enabled: false
 
   - name: mistral
     url: https://chat.mistral.ai
@@ -330,15 +354,6 @@ services:
     cooldown_seconds: 120
     enabled: false
 
-  - name: monica
-    url: https://monica.im/home
-    profile_dir: data/sherpa_profiles/monica_1
-    input_selector: 'textarea'
-    send_selector: 'button[type="submit"]'
-    response_selector: '[class*="message"], [class*="response"]'
-    cooldown_seconds: 90
-    enabled: false
-
   - name: forefront
     url: https://chat.forefront.ai
     profile_dir: data/sherpa_profiles/forefront_1
@@ -403,15 +418,6 @@ services:
     enabled: false
 
   # ── Tier 4: Code-Focused ────────────────────────────────────────────
-
-  - name: bolt
-    url: https://bolt.new
-    profile_dir: data/sherpa_profiles/bolt_1
-    input_selector: 'textarea'
-    send_selector: 'button[type="submit"]'
-    response_selector: '[class*="message"], [class*="response"], .prose'
-    cooldown_seconds: 120
-    enabled: false
 
   - name: v0
     url: https://v0.dev
