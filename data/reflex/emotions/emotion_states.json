@@ -2,9 +2,9 @@
   "vetka_search_semantic": {
     "tool_id": "vetka_search_semantic",
     "curiosity": 0.00020342697805520653,
-    "trust": 0.7359953390625,
-    "caution": 0.1,
-    "mood_label": "confident",
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "cautious",
     "usage_count": 22,
     "success_count": 22,
     "failure_count": 0,
@@ -2025,7 +2025,7 @@
   },
   "vetka_get_metrics": {
     "tool_id": "vetka_get_metrics",
-    "curiosity": 0.9372618199787566,
+    "curiosity": 0.9404618199787566,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2036,7 +2036,7 @@
   },
   "vetka_get_knowledge_graph": {
     "tool_id": "vetka_get_knowledge_graph",
-    "curiosity": 0.9372618199787566,
+    "curiosity": 0.9404618199787566,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 1.0377033238158344e-53,
+    "curiosity": 2.820770088460135e-53,
     "trust": 0.9999999999999997,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 249,
-    "success_count": 249,
+    "usage_count": 247,
+    "success_count": 247,
     "failure_count": 0,
-    "last_updated": 1775051534.763693
+    "last_updated": 1775133988.130183
   },
   "Read": {
     "tool_id": "Read",
@@ -2421,10 +2421,10 @@
   },
   "vetka_screenshot": {
     "tool_id": "vetka_screenshot",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.3,
-    "mood_label": "neutral",
+    "curiosity": 0.9241418199787566,
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "curious",
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
@@ -2439,7 +2439,7 @@
     "usage_count": 103,
     "success_count": 0,
     "failure_count": 103,
-    "last_updated": 1775051535.072656
+    "last_updated": 1775133988.421089
   },
   "session_init": {
     "tool_id": "session_init",

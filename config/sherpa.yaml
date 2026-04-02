@@ -1,0 +1,133 @@
+# SHERPA — Scout & Harvest Engine for Recon, Prep & Augmentation
+# Phase 202 | Config
+#
+# Usage:
+#   python sherpa.py --setup     # First run: log into services
+#   python sherpa.py             # Run recon loop
+#   python sherpa.py --once      # One task only
+#   python sherpa.py --dry-run   # Preview without sending
+
+# ── TaskBoard API ──────────────────────────────────────────────────────
+taskboard_url: "http://localhost:5001"
+
+# ── Local Model (for prompt summarization, NOT code generation) ───────
+ollama_url: "http://localhost:11434"
+ollama_model: "qwen3.5:latest"    # or qwen2.5:7b, deepseek-coder:6.7b
+
+# ── Agent Identity ────────────────────────────────────────────────────
+agent_name: "sherpa"
+agent_type: "mycelium"
+
+# ── Browser Settings ──────────────────────────────────────────────────
+headless: true                     # false = visible browser (for debugging)
+
+# ── Loop Settings ─────────────────────────────────────────────────────
+cooldown_between_tasks: 120        # seconds between tasks (when no service cooldown)
+max_tasks_per_run: 50              # safety limit per session
+
+# ── Task Selection ────────────────────────────────────────────────────
+# Which phase_types to prioritize (in order)
+phase_types:
+  - research
+  - build
+  - fix
+
+# ── AI Services ───────────────────────────────────────────────────────
+# Each service needs one-time manual login via: python sherpa.py --setup
+# Sessions are saved to profile_dir and reused automatically.
+# NO passwords stored here — only URLs and selectors.
+#
+# Priority order (top = first in rotation):
+#   1. DeepSeek — unlimited free tier
+#   2. Grok — very large limits
+#   3. Qwen — very large / unlimited, note: no .ts/.tsx file support
+#   4. Claude.ai — free Haiku tier
+#   5. ChatGPT — free tier
+#   6. Kimi — has "ok computer" mode for working code
+#   7. cto.new — playground, can produce real code if task fits in context
+
+services:
+  # ── DeepSeek (unlimited free) ──────────────────────────────────────
+  - name: deepseek
+    url: https://chat.deepseek.com
+    profile_dir: data/sherpa_profiles/deepseek_1
+    input_selector: 'textarea#chat-input, textarea'
+    send_selector: 'div[role="button"][aria-label*="Send"], button:has-text("Send")'
+    response_selector: '.ds-markdown, .markdown-body'
+    cooldown_seconds: 60          # unlimited — short cooldown ok
+    enabled: true
+
+  # ── Grok (xAI) — very large limits ────────────────────────────────
+  - name: grok
+    url: https://grok.com
+    profile_dir: data/sherpa_profiles/grok_1
+    input_selector: 'textarea'
+    send_selector: 'button[aria-label="Send message"], button:has(svg)'
+    response_selector: '[data-message-author-role="assistant"], .message-bubble'
+    cooldown_seconds: 90
+    enabled: true
+
+  # ── Qwen (Alibaba) — very large / unlimited ───────────────────────
+  # Note: does not accept .ts/.tsx files
+  - name: qwen
+    url: https://chat.qwen.ai
+    profile_dir: data/sherpa_profiles/qwen_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button:has-text("Send")'
+    response_selector: '.message-content, .markdown-body'
+    cooldown_seconds: 60
+    enabled: true
+
+  # ── Claude.ai (Anthropic) — free Haiku tier ───────────────────────
+  - name: claude
+    url: https://claude.ai
+    profile_dir: data/sherpa_profiles/claude_1
+    input_selector: 'div[contenteditable="true"], .ProseMirror'
+    send_selector: 'button[aria-label="Send Message"]'
+    response_selector: '[data-is-streaming], .font-claude-message'
+    cooldown_seconds: 180         # conservative — free tier limits
+    enabled: true
+
+  # ── ChatGPT (OpenAI) ──────────────────────────────────────────────
+  - name: chatgpt
+    url: https://chatgpt.com
+    profile_dir: data/sherpa_profiles/chatgpt_1
+    input_selector: 'textarea#prompt-textarea, div[contenteditable="true"]'
+    send_selector: 'button[data-testid="send-button"]'
+    response_selector: '[data-message-author-role="assistant"]'
+    cooldown_seconds: 120
+    enabled: true
+
+  # ── Kimi (Moonshot) — "ok computer" mode for working code ─────────
+  - name: kimi
+    url: https://www.kimi.com
+    profile_dir: data/sherpa_profiles/kimi_1
+    input_selector: 'textarea'
+    send_selector: 'button:has-text("Send"), button[type="submit"]'
+    response_selector: '.assistant-message, .chat-message, .markdown-body'
+    cooldown_seconds: 60
+    enabled: true
+
+  # ── cto.new — playground with real code output ────────────────────
+  # Long response times, but can produce complete working code
+  - name: cto
+    url: https://cto.new
+    profile_dir: data/sherpa_profiles/cto_1
+    input_selector: 'textarea'
+    send_selector: 'button:has-text("Send"), button[type="submit"]'
+    response_selector: '.message, .response, .markdown-body'
+    cooldown_seconds: 300         # slow — long cooldown
+    enabled: false                # enable when needed for code-heavy tasks
+
+  # ── Account Rotation ──────────────────────────────────────────────
+  # For services with per-account limits, add more profiles:
+  #
+  # - name: grok                 # same service name
+  #   url: https://grok.com
+  #   profile_dir: data/sherpa_profiles/grok_2    # different profile!
+  #   cooldown_seconds: 90
+  #   enabled: true
+  #
+  # Setup: python sherpa.py --setup --service grok
+  # Then login with a different gmail account.
+  # Sherpa rotates between all enabled entries round-robin.

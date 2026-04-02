@@ -530,3 +530,61 @@ external_agents:
     blocked_paths:
       - "client/src-tauri/"
       - "data/"
+
+  # ── Mistral-1: weather Domain (opencode/sonnet) ──────────────────
+  - callsign: "Mistral-1"
+    domain: "weather"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Mistral Weather Agent 1"
+    worktree: "weather-mistral-1"
+    branch: "agent/mistral-1-weather"
+    model_tier: "sonnet"
+    file: "src/services/"
+    owned_paths:
+      - "src/services/"
+      - "config/browser_agents.yaml"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+    roadmap: ""
+
+  # ── Mistral-2: qa Domain (opencode/sonnet) ──────────────────
+  - callsign: "Mistral-2"
+    domain: "qa"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Mistral QA Agent 2"
+    worktree: "cut-qa-5"
+    branch: "agent/mistral-2-qa"
+    model_tier: "sonnet"
+    file: "e2e/*.spec.cjs"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "client/e2e/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "src/services/"
+    roadmap: ""
+
+  # ── Mistral-3: weather Domain (opencode/sonnet) ──────────────────
+  - callsign: "Mistral-3"
+    domain: "weather"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Mistral Weather Agent 3"
+    worktree: "weather-mistral-2"
+    branch: "agent/mistral-3-weather"
+    model_tier: "sonnet"
+    file: "src/services/"
+    owned_paths:
+      - "src/services/"
+      - "config/browser_agents.yaml"
+    blocked_paths:
+      - "client/src/components/"
+      - "e2e/"
+    roadmap: ""

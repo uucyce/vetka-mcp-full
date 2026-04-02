@@ -23,8 +23,11 @@
 | **Theta** | Qwen3.6 Plus Free | **Opencode** | WEATHER Core — profile manager, universal prompt injection |
 | **Iota** | Qwen3.6 Plus Free | **Opencode** | WEATHER Mediator — local model bridge, context packing |
 | **Kappa** | Qwen3.6 Plus Free | **Opencode** | WEATHER Terminal — xterm.js, CLI agent integration |
+| **Mistral-1** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 1 — free tier, 10-15 tasks/day |
+| **Mistral-2** | Mistral Vibe | **Vibe CLI** | QA Agent 5 — free tier, 10-15 tasks/day |
+| **Mistral-3** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 2 — free tier, 10-15 tasks/day |
 
-**Экономия:** 2 Opus + 1 Sonnet + 4 Haiku + 1 Sonnet (Eta) + 5 Qwen = максимальная пропускная способность при минимальных лимитах. Haiku-агенты проходят те же QA gates, поэтому качество не страдает.
+**Экономия:** 2 Opus + 1 Sonnet + 4 Haiku + 1 Sonnet (Eta) + 5 Qwen + 3 Mistral Vibe (free) = максимальная пропускная способность.
 
 ---
 
@@ -99,6 +102,22 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mediator &&
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-terminal && opencode -m opencode/qwen3.6-plus-free
 ```
 
+### Mistral Vibe CLI — Free Tier (WEATHER + QA)
+
+```bash
+# Mistral-1 (WEATHER Agent 1) — Free
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mistral-1 && vibe
+
+# Mistral-2 (QA Agent 5) — Free
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-5 && vibe
+
+# Mistral-3 (WEATHER Agent 2) — Free
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mistral-2 && vibe
+```
+
+> **Mistral Vibe CLI:** Установить: `npm install -g @mistralai/vibe-cli` или `pip install mistral-vibe-cli`. Бесплатный лимит: ~10-15 задач/день на аккаунт.
+> **Первое сообщение:** `vetka_session_init role=Mistral-1` (или Mistral-2, Mistral-3)
+
 ### Opencode — TUI режим (интерактивный)
 
 ```bash
@@ -130,6 +149,9 @@ opencode
 | **Theta** | `weather-core` | WEATHER | **Opencode** | Qwen3.6+ Free | Profile manager, universal prompt injection |
 | **Iota** | `weather-mediator` | WEATHER | **Opencode** | Qwen3.6+ Free | Local model mediator, context packing |
 | **Kappa** | `weather-terminal` | WEATHER | **Opencode** | Qwen3.6+ Free | Terminal integration, CLI agents |
+| **Mistral-1** | `weather-mistral-1` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 1 — free tier |
+| **Mistral-2** | `cut-qa-5` | QA5 | **Vibe CLI** | Mistral Vibe | QA Agent 5 — free tier |
+| **Mistral-3** | `weather-mistral-2` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 2 — free tier |
 
 ---
 
@@ -160,6 +182,9 @@ mcp__vetka__vetka_session_init role=Polaris   # → Captain context (Opencode)
 mcp__vetka__vetka_session_init role=Theta     # → WEATHER Core context
 mcp__vetka__vetka_session_init role=Iota      # → WEATHER Mediator context
 mcp__vetka__vetka_session_init role=Kappa     # → WEATHER Terminal context
+mcp__vetka__vetka_session_init role=Mistral-1 # → WEATHER Agent 1 (Vibe CLI)
+mcp__vetka__vetka_session_init role=Mistral-2 # → QA Agent 5 (Vibe CLI)
+mcp__vetka__vetka_session_init role=Mistral-3 # → WEATHER Agent 2 (Vibe CLI)
 mcp__vetka__vetka_session_init role=Commander # → Architect context
 ```
 
@@ -335,3 +360,175 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 ---
 
 *"Каждый агент знает свою роль. Тебе нужно только сказать — что делать."*
+
+---
+
+## Sherpa — бесплатный разведчик для задач (Phase 202)
+
+### Что это
+Sherpa — **автономный recon-агент**, который обогащает pending-задачи исследованиями из бесплатных AI-сервисов (Grok, DeepSeek, Qwen, Claude Haiku, ChatGPT, Kimi). Sherpa **не пишет production код** — он готовит trail для настоящих агентов.
+
+### Зачем
+~30% сессии каждого агента уходит на recon (поиск файлов, изучение архитектуры, исследование подходов). Sherpa делает этот recon бесплатно и заранее. Результат: +30-50% throughput при тех же лимитах.
+
+### Как работает
+```
+TaskBoard (pending task)
+    → Sherpa берёт таск (claim)
+    → Ищет файлы в кодбазе (ripgrep)
+    → Собирает промпт из контекста
+    → Отправляет в DeepSeek/Grok/Qwen через Playwright
+    → Ждёт ответ
+    → Сохраняет в docs/sherpa_recon/sherpa_{task_id}.md
+    → Обновляет таск (recon_docs + implementation_hints)
+    → Возвращает таск в pending (обогащённый)
+```
+
+### Кто запускает Sherpa
+
+**Только один экземпляр одновременно.** Причины:
+- Chromium (Playwright) = ~300-500MB RAM
+- AI-сервисы блокируют параллельные сессии с одного аккаунта
+- Два Sherpa на одном таске = конфликт claim
+
+Запускает:
+- **Пользователь** — вручную в терминале
+- **Commander** — командой `python sherpa.py` в фоне
+- **Guard:** PID lock file (`data/sherpa.pid`) не даст запустить второй экземпляр
+
+> **Обычные агенты (Alpha, Beta, Gamma, Delta) НЕ запускают Sherpa.** Они пользуются его результатами — видят готовый recon в полях `recon_docs` и `implementation_hints` своих задач.
+
+### Установка (один раз)
+
+```bash
+# 0. Перейти в проект (обязательно!)
+cd ~/Documents/VETKA_Project/vetka_live_03
+
+# 1. Зависимости
+pip install httpx pyyaml playwright
+playwright install chromium
+
+# 2. Логин в сервисы (один раз, вручную)
+python sherpa.py --setup
+# Браузер откроется → залогинься в каждый сервис → Enter
+# Сессии сохраняются в data/sherpa_profiles/
+```
+
+### Команды запуска
+
+```bash
+# ВАЖНО: все команды из корня проекта!
+cd ~/Documents/VETKA_Project/vetka_live_03
+
+# Полный цикл (до 50 тасков, ~8 часов)
+python sherpa.py
+
+# Один таск и выход (для теста)
+python sherpa.py --once
+
+# Посмотреть что будет обработано (без отправки)
+python sherpa.py --dry-run
+
+# Только конкретный сервис
+python sherpa.py --service deepseek
+
+# Видимый браузер (для дебага)
+python sherpa.py --visible
+
+# Логин в конкретный сервис
+python sherpa.py --setup --service grok
+```
+
+### Ротация аккаунтов
+
+Для обхода лимитов можно добавить несколько аккаунтов одного сервиса:
+
+```yaml
+# В config/sherpa.yaml:
+services:
+  - name: grok
+    profile_dir: data/sherpa_profiles/grok_1   # аккаунт 1
+    enabled: true
+  - name: grok
+    profile_dir: data/sherpa_profiles/grok_2   # аккаунт 2
+    enabled: true
+```
+
+Каждый аккаунт — отдельный `--setup`:
+```bash
+python sherpa.py --setup --service grok
+# логин аккаунт 1, Enter
+# потом меняем profile_dir на grok_2, снова --setup
+```
+
+Sherpa ротирует round-robin по всем enabled сервисам.
+
+### Доступные сервисы
+
+| # | Сервис | Лимиты | Cooldown | Заметки |
+|---|--------|--------|----------|---------|
+| 1 | **DeepSeek** | Безлимит | 60s | Основная рабочая лошадка |
+| 2 | **Grok** | Очень большие | 90s | Хорошее качество |
+| 3 | **Qwen** | Безлимит / очень большие | 60s | Не принимает .ts/.tsx |
+| 4 | **Claude.ai** | Free Haiku | 180s | Консервативный cooldown |
+| 5 | **ChatGPT** | Free tier | 120s | |
+| 6 | **Kimi** | Хорошие | 60s | Режим "ok computer" для кода |
+| 7 | **cto.new** | Playground | 300s | disabled по умолчанию, медленно |
+
+### Что видят агенты после Sherpa
+
+Когда Alpha/Beta/Gamma берут таск, который прошёл через Sherpa:
+
+```
+task.recon_docs = ["docs/sherpa_recon/sherpa_tb_12345.md"]
+task.implementation_hints = """
+[Sherpa Recon 2026-04-02]
+- Modify src/services/timeline.py lines 120-145
+- Use existing TimelineStore.addClip() pattern
+- Risk: concurrent access from WebSocket handler
+"""
+```
+
+Агент сразу видит файлы, подход и риски — пропускает 30% recon фазы.
+
+### Файлы
+
+| Файл | Назначение |
+|------|-----------|
+| `sherpa.py` | Основной скрипт (~450 строк) |
+| `config/sherpa.yaml` | Сервисы, cooldowns, agent identity |
+| `docs/sherpa_recon/` | Recon-отчёты (sherpa_{task_id}.md) |
+| `data/sherpa_profiles/` | Сохранённые сессии браузера |
+| `logs/sherpa.log` | Лог работы |
+| `docs/202ph_SHERPA/SHERPA_CONCEPT.md` | Концепт-документ |
+
+---
+
+## Mistral Vibe CLI — Установка и настройка
+
+### Установка
+```bash
+# npm
+npm install -g @mistralai/vibe-cli
+
+# или pip
+pip install mistral-vibe-cli
+
+# Авторизация
+vibe auth login
+# Следуй инструкциям → получи API ключ с https://console.mistral.ai/
+```
+
+### Что такое Vibe CLI
+Mistral Vibe CLI — это AI coding agent от Mistral, аналог Claude Code. Работает с моделями Devstral 2 (123B) и Devstral Small 2 (24B). Бесплатный лимит: ~10-15 задач/день на аккаунт.
+
+### Инструкции для Vibe агентов
+При запуске Vibe в worktree, агент получает роль из AGENTS.md:
+1. `vetka_session_init role=Mistral-1` (или Mistral-2, Mistral-3)
+2. Видит свою роль, домен, owned_paths
+3. Берёт задачу → работает → коммитит → need_qa
+
+### Лимиты
+- **Бесплатный tier:** ~300-500 задач/месяц на аккаунт
+- **3 роли Mistral** = ~900-1500 задач/месяц суммарно
+- Идеально для: QA раны, WEATHER tasks, простые фиксы, документация
