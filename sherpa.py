@@ -97,168 +97,10 @@ logging.basicConfig(
 log = logging.getLogger("sherpa")
 
 
-# ── Feedback Collector (MARKER_202.FEEDBACK) ──────────────────────────
-FEEDBACK_FILE = PROJECT_ROOT / "data" / "sherpa_feedback.jsonl"
-FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
-
-
-class FeedbackCollector:
-    """Auto-collect per-task feedback to JSONL. Scores services from history."""
-
-    def __init__(self):
-        self.session_start = datetime.now().isoformat()
-        self.session_entries: list = []
-        self._scores: dict = {}
-
-    def load_scores(self) -> dict:
-        """Read last 50 entries, calculate per-service reliability scores."""
-        entries = []
-        if FEEDBACK_FILE.exists():
-            try:
-                lines = FEEDBACK_FILE.read_text().strip().split("\n")
-                for line in lines[-50:]:
-                    if line.strip():
-                        entries.append(json.loads(line))
-            except (json.JSONDecodeError, OSError):
-                pass
-
-        svc_stats: dict = {}
-        for entry in entries:
-            if entry.get("type") == "session_summary":
-                continue
-            svc = entry.get("service", "")
-            if not svc:
-                continue
-            if svc not in svc_stats:
-                svc_stats[svc] = {"total": 0, "success": 0, "total_chars": 0}
-            svc_stats[svc]["total"] += 1
-            if entry.get("success"):
-                svc_stats[svc]["success"] += 1
-                svc_stats[svc]["total_chars"] += entry.get("response_chars", 0)
-
-        self._scores = {}
-        for svc, s in svc_stats.items():
-            if s["total"] > 0:
-                rel = s["success"] / s["total"]
-                avg_c = s["total_chars"] / max(s["success"], 1)
-                self._scores[svc] = round(0.7 * rel + 0.3 * min(avg_c / 3000, 1.0), 3)
-        return self._scores
-
-    def get_service_ranking(self) -> list:
-        return sorted(self._scores.items(), key=lambda x: x[1], reverse=True)
-
-    def log_task(self, task_id: str, service: str, response_chars: int,
-                 time_seconds: float, success: bool, error_type: str = "") -> None:
-        entry = {
-            "ts": datetime.now().isoformat(), "task_id": task_id, "service": service,
-            "response_chars": response_chars, "time_seconds": round(time_seconds, 1),
-            "success": success, "error_type": error_type,
-        }
-        self.session_entries.append(entry)
-        try:
-            with open(FEEDBACK_FILE, "a") as f:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except OSError:
-            pass
-
-    def save_session_summary(self) -> None:
-        if not self.session_entries:
-            return
-        total = len(self.session_entries)
-        successes = sum(1 for e in self.session_entries if e.get("success"))
-        summary = {
-            "ts": datetime.now().isoformat(), "type": "session_summary",
-            "session_start": self.session_start, "tasks_total": total,
-            "tasks_success": successes, "tasks_failed": total - successes,
-            "services_used": list(set(e.get("service", "") for e in self.session_entries)),
-        }
-        try:
-            with open(FEEDBACK_FILE, "a") as f:
-                f.write(json.dumps(summary, ensure_ascii=False) + "\n")
-            log.info(f"Session summary: {successes}/{total} successful")
-        except OSError:
-            pass
-
-
-# ── Service Protocols (MARKER_202.PROTOCOLS) ──────────────────────────
-PROTOCOLS_DIR = PROJECT_ROOT / "data" / "sherpa_protocols"
-PROTOCOLS_DIR.mkdir(parents=True, exist_ok=True)
-
-CONSECUTIVE_FAILURES_DISABLE = 3
-
-
-class ServiceProtocol:
-    """Auto-generated per-service protocol from feedback. Self-healing."""
-
-    @staticmethod
-    def generate_all() -> dict:
-        """Read feedback, generate protocol YAML per service."""
-        if not FEEDBACK_FILE.exists():
-            return {}
-        entries: dict = {}
-        try:
-            for line in FEEDBACK_FILE.read_text().strip().split("\n"):
-                if not line.strip():
-                    continue
-                entry = json.loads(line)
-                if entry.get("type") == "session_summary":
-                    continue
-                svc = entry.get("service", "")
-                if svc:
-                    entries.setdefault(svc, []).append(entry)
-        except (json.JSONDecodeError, OSError):
-            return {}
-
-        protocols = {}
-        for svc_name, svc_entries in entries.items():
-            if len(svc_entries) < 5:
-                continue
-            successes = [e for e in svc_entries if e.get("success")]
-            failures = [e for e in svc_entries if not e.get("success")]
-            total = len(svc_entries)
-            times = [e.get("time_seconds", 0) for e in successes if e.get("time_seconds")]
-            avg_time = round(sum(times) / len(times), 1) if times else 0
-            chars = [e.get("response_chars", 0) for e in successes]
-            avg_chars = round(sum(chars) / len(chars)) if chars else 0
-            error_types = {}
-            for e in failures:
-                et = e.get("error_type", "unknown")
-                error_types[et] = error_types.get(et, 0) + 1
-            recent = svc_entries[-CONSECUTIVE_FAILURES_DISABLE:]
-            consecutive_fails = sum(1 for e in reversed(recent) if not e.get("success"))
-            auto_disabled = consecutive_fails >= CONSECUTIVE_FAILURES_DISABLE
-            protocol = {
-                "service": svc_name, "generated_at": datetime.now().isoformat(),
-                "interactions": total, "reliability_score": round(len(successes) / total, 3),
-                "avg_response_time_s": avg_time, "avg_response_chars": avg_chars,
-                "auto_disabled": auto_disabled,
-                "disable_reason": f"{consecutive_fails} consecutive failures" if auto_disabled else None,
-                "common_errors": dict(sorted(error_types.items(), key=lambda x: x[1], reverse=True)),
-            }
-            try:
-                with open(PROTOCOLS_DIR / f"{svc_name}.yaml", "w") as f:
-                    yaml.dump(protocol, f, default_flow_style=False, allow_unicode=True)
-                protocols[svc_name] = protocol
-            except OSError:
-                pass
-        return protocols
-
-    @staticmethod
-    def is_service_disabled(service_name: str) -> bool:
-        proto_path = PROTOCOLS_DIR / f"{service_name}.yaml"
-        if not proto_path.exists():
-            return False
-        try:
-            with open(proto_path) as f:
-                return (yaml.safe_load(f) or {}).get("auto_disabled", False)
-        except (yaml.YAMLError, OSError):
-            return False
-
-
 # ── Config ─────────────────────────────────────────────────────────────
 @dataclass
 class ServiceConfig:
-    name: str
+    name: str           # Service group (e.g. "deepseek") — used for --service filter
     url: str
     profile_dir: str
     input_selector: str = "textarea"
@@ -266,6 +108,11 @@ class ServiceConfig:
     response_selector: str = "[data-message-author-role='assistant'], .response, .message"
     cooldown_seconds: int = 120
     enabled: bool = True
+    profile_name: str = ""  # Unique profile key (e.g. "deepseek_2"), defaults to last segment of profile_dir
+
+    def __post_init__(self):
+        if not self.profile_name:
+            self.profile_name = Path(self.profile_dir).name
 
 
 @dataclass
@@ -354,28 +201,6 @@ class TaskBoardClient:
             f"{self.base}/api/tasks/{task_id}/cancel", json={"reason": reason}
         )
         return resp.status_code == 200
-
-    async def set_sherpa_status(self, status: str, tasks_enriched: int = 0) -> bool:
-        """MARKER_202.SHERPA_SIGNAL: Update Sherpa status in TaskBoard."""
-        try:
-            resp = await self.http.patch(
-                f"{self.base}/api/settings",
-                json={"sherpa_status": status, "sherpa_tasks_enriched": tasks_enriched},
-            )
-            return resp.status_code == 200
-        except Exception:
-            return False
-
-    async def notify_commanders(self, message: str) -> None:
-        """MARKER_202.SHERPA_SIGNAL: Notify Commander role."""
-        try:
-            await self.http.post(
-                f"{self.base}/api/taskboard/action",
-                json={"action": "notify", "source_role": "Sherpa",
-                      "target_role": "Commander", "message": message},
-            )
-        except Exception:
-            pass
 
     async def close(self):
         await self.http.aclose()
@@ -471,133 +296,17 @@ class OllamaClient:
         await self.http.aclose()
 
 
-# ── Sherpa Harness (MARKER_202.HARNESS) ──────────────────────────────
-class SherpaHarness:
-    """Qwen-powered guard/reflex/memory for intelligent task processing.
-
-    MARKER_202.HARNESS: Makes Sherpa a first-class agent with:
-    - Guard: validate task quality before sending to browser AI
-    - Reflex: skip known-bad patterns instantly (no LLM call)
-    - Memory: read protocols + feedback for service selection
-    """
-
-    # Reflex patterns — instant skip, no LLM needed
-    SKIP_PATTERNS = [
-        "DEBRIEF-IDEA",       # Ideas, not real tasks
-        "DEBRIEF-BUG",        # Bug reports, not actionable tasks
-        "[AUTO]",             # Auto-decomposed children (handled by local_loop)
-        "ETA-IDEA",           # Agent ideas
-        "COMMANDER-IDEA",     # Commander ideas
-    ]
-
-    # Minimum requirements for a recon-worthy task
-    MIN_DESC_LENGTH = 30
-    MIN_TITLE_LENGTH = 10
-
-    def __init__(self, ollama: 'OllamaClient', feedback: 'FeedbackCollector'):
-        self.ollama = ollama
-        self.feedback = feedback
-        self._guard_rejects = 0
-        self._reflex_skips = 0
-
-    def reflex_check(self, task: dict) -> tuple[bool, str]:
-        """Fast pattern matching — skip known-bad tasks instantly.
-
-        Returns: (should_skip, reason)
-        """
-        title = task.get("title", "")
-        tags = task.get("tags", [])
-
-        # Skip pattern match
-        for pattern in self.SKIP_PATTERNS:
-            if pattern in title:
-                self._reflex_skips += 1
-                return True, f"reflex:title_pattern:{pattern}"
-
-        # Skip already-enriched tasks (have recon_docs)
-        recon = task.get("recon_docs", [])
-        if recon and len(recon) > 0:
-            self._reflex_skips += 1
-            return True, "reflex:already_has_recon"
-
-        # Skip auto-decomposed tasks
-        if "auto-decomposed" in tags:
-            self._reflex_skips += 1
-            return True, "reflex:auto-decomposed"
-
-        return False, ""
-
-    def guard_check(self, task: dict) -> tuple[bool, str]:
-        """Validate task quality — is it worth sending to browser AI?
-
-        Returns: (is_valid, reason_if_invalid)
-        """
-        title = task.get("title", "")
-        desc = task.get("description", "") or ""
-
-        # Empty/short description
-        if len(desc.strip()) < self.MIN_DESC_LENGTH:
-            self._guard_rejects += 1
-            return False, f"guard:desc_too_short ({len(desc.strip())} chars)"
-
-        # Empty title
-        if len(title.strip()) < self.MIN_TITLE_LENGTH:
-            self._guard_rejects += 1
-            return False, f"guard:title_too_short ({len(title.strip())} chars)"
-
-        # Check allowed_paths exist on disk
-        paths = task.get("allowed_paths", [])
-        if paths:
-            existing = sum(1 for p in paths if (PROJECT_ROOT / p).exists())
-            if existing == 0 and len(paths) > 0:
-                self._guard_rejects += 1
-                return False, f"guard:no_valid_paths (0/{len(paths)} exist)"
-
-        return True, ""
-
-    def select_service(self, services: list, task: dict) -> 'ServiceConfig':
-        """Intelligent service selection based on feedback scores and protocols.
-
-        Uses feedback reliability scores to pick the best available service.
-        Falls back to round-robin if no scores available.
-        """
-        scores = self.feedback._scores
-        if not scores:
-            return services[0]  # No history — use first
-
-        # Score each available service
-        ranked = []
-        for svc in services:
-            score = scores.get(svc.name, 0.5)  # Default 0.5 for unknown
-            # Boost score for services not auto-disabled
-            if not ServiceProtocol.is_service_disabled(svc.name):
-                ranked.append((svc, score))
-
-        if not ranked:
-            return services[0]
-
-        # Sort by score descending, pick best
-        ranked.sort(key=lambda x: x[1], reverse=True)
-        return ranked[0][0]
-
-    def get_stats(self) -> dict:
-        return {
-            "guard_rejects": self._guard_rejects,
-            "reflex_skips": self._reflex_skips,
-        }
-
-
 # ── Browser Client (Playwright) ───────────────────────────────────────
 class BrowserClient:
     """Playwright-based browser for AI service interaction."""
 
     def __init__(self, services: List[ServiceConfig], headless: bool = True):
-        self.services = {s.name: s for s in services}
+        self.services = {s.profile_name: s for s in services}  # keyed by profile_name (unique per profile)
         self.headless = headless
         self._pw = None
         self._browser = None
-        self._contexts: Dict[str, Any] = {}  # service_name -> context
-        self._pages: Dict[str, Any] = {}  # service_name -> page
+        self._contexts: Dict[str, Any] = {}  # profile_name -> context
+        self._pages: Dict[str, Any] = {}  # profile_name -> page
 
     async def start(self):
         from playwright.async_api import async_playwright
@@ -1077,7 +786,7 @@ class BrowserClient:
                 log.info("AI is generating...")
                 break
             # Also check if response text appeared without streaming indicator
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             if text and len(text) > 50:
                 generation_started = True
                 log.info("Response text detected")
@@ -1087,7 +796,7 @@ class BrowserClient:
         if not generation_started:
             log.warning("No generation detected after 30s — message may not have been sent")
             # Try to extract whatever is on the page anyway
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             if text and len(text) > 100:
                 return text
             return ""
@@ -1098,7 +807,7 @@ class BrowserClient:
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             curr_len = len(text)
 
             elapsed = int(time.time() - start)
@@ -1131,7 +840,7 @@ class BrowserClient:
             await page.wait_for_timeout(3000)
 
         # Timeout — return whatever we have
-        text = await self._extract_response_text(page, prompt_text, pre_text)
+        text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
         if text and len(text) > 100:
             log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
@@ -1212,35 +921,39 @@ class BrowserClient:
 
         return ""
 
-    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "") -> str:
-        """Extract the latest AI response, filtering out prompt echo."""
+    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "",
+                                      svc: "ServiceConfig" = None) -> str:
+        """Extract the latest AI response, filtering out prompt echo.
 
-        # Strategy 0: Click Copy button (most reliable)
-        copied = await self._click_copy_button(page)
-        if copied and len(copied) > 100:
-            return copied
+        Strategy order:
+        1a. Service-specific selector from svc.response_selector (config-driven)
+        1b. Generic DOM selectors — extracts FULL response text
+        2.  Clipboard — fallback only, gives last code block (~1.4K chars)
+        3.  Diff — compare pre/post send snapshots
 
-        # Strategy 1: Use service-specific response selectors
-        selectors = [
-            # DeepSeek
-            ".ds-markdown",
-            # Grok
-            '[class*="message-bubble"]',
-            # ChatGPT
-            "[data-message-author-role='assistant']",
-            # Claude
-            ".font-claude-message",
-            # Qwen
-            ".message-content",
-            # Kimi
-            ".assistant-message",
-            # Generic markdown containers
+        Arena special case: TWO responses side-by-side → both captured and joined.
+        """
+        is_arena = svc and svc.name == "arena"
+
+        # Build selector list: service-specific first, then generic fallbacks
+        selectors = []
+        if svc and svc.response_selector:
+            for s in svc.response_selector.split(","):
+                s = s.strip()
+                if s:
+                    selectors.append(s)
+        # Generic fallbacks
+        selectors += [
+            ".ds-markdown",                          # DeepSeek
+            '[class*="message-bubble"]',             # Grok
+            "[data-message-author-role='assistant']",# ChatGPT
+            ".font-claude-message",                  # Claude
+            ".message-content",                      # Qwen
+            ".assistant-message",                    # Kimi
             ".markdown-body",
             ".prose",
-            # Generic response containers
             ".response-content",
             ".model-response",
-            # Generic: article blocks
             "article",
         ]
 
@@ -1251,28 +964,69 @@ class BrowserClient:
                 count = await elements.count()
                 if count == 0:
                     continue
-                # Get the LAST element (most recent response)
+
+                if is_arena and count >= 2:
+                    # Arena: collect ALL responses (Model A + Model B side by side)
+                    parts = []
+                    for i in range(count):
+                        try:
+                            el = elements.nth(i)
+                            if await el.is_visible(timeout=500):
+                                t = (await el.inner_text(timeout=3000)).strip()
+                                if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
+                                    parts.append(t)
+                        except Exception:
+                            continue
+                    if parts:
+                        combined = "\n\n---\n\n".join(
+                            f"[Model {chr(65+i)}]\n{p}" for i, p in enumerate(parts)
+                        )
+                        log.info(f"Arena dual capture: {len(parts)} responses, {len(combined)} chars total")
+                        return combined
+
+                # Standard: try LAST element first (most recent AI turn)
                 el = elements.last
                 if await el.is_visible(timeout=1000):
-                    text = await el.inner_text(timeout=5000)
-                    text = text.strip()
-                    # Filter: must be substantial + not part of prompt
+                    text = (await el.inner_text(timeout=5000)).strip()
                     if len(text) > 100 and not self._is_prompt_echo(text, prompt_text):
                         if len(text) > len(best_text):
                             best_text = text
+
+                # If last element too short, try concatenating ALL non-echo elements
+                # (handles multi-block responses where each block = separate container)
+                if len(best_text) < 2000 and count > 1:
+                    parts = []
+                    for i in range(count):
+                        try:
+                            t = (await elements.nth(i).inner_text(timeout=2000)).strip()
+                            if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
+                                parts.append(t)
+                        except Exception:
+                            continue
+                    if parts:
+                        combined = "\n\n".join(parts)
+                        if len(combined) > len(best_text):
+                            best_text = combined
+
             except Exception:
                 continue
 
         if best_text:
+            log.info(f"DOM extraction: {len(best_text)} chars")
             return best_text
 
-        # Strategy 2: Diff approach — compare current page text with pre-send snapshot
+        # Strategy 2 (fallback): Click Copy button and read clipboard.
+        # NOTE: clipboard returns only the LAST code block, not the full response.
+        copied = await self._click_copy_button(page)
+        if copied and len(copied) > 100:
+            log.info(f"Clipboard fallback: {len(copied)} chars")
+            return copied
+
+        # Strategy 3: Diff — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
-                # Find new text that wasn't there before
                 new_text = current_text.replace(pre_text, "").strip()
-                # Also remove the prompt itself
                 if prompt_text:
                     new_text = new_text.replace(prompt_text, "").strip()
                 if len(new_text) > 100:
@@ -1297,19 +1051,27 @@ class BrowserClient:
         log.info("Browser will open. Log into each service manually.")
         log.info("Press Enter in terminal when done with each service.\n")
 
-        targets = services or list(self.services.keys())
-        for svc_name in targets:
-            svc = self.services.get(svc_name)
+        # Filter by service group name (e.g. --service deepseek gets deepseek_1, deepseek_2)
+        if services:
+            targets = [
+                pname for pname, svc in self.services.items()
+                if svc.name in services
+            ]
+        else:
+            targets = list(self.services.keys())
+
+        for profile_name in targets:
+            svc = self.services.get(profile_name)
             if not svc:
                 continue
-            log.info(f"Opening {svc.name} ({svc.url})...")
-            page = await self._get_page(svc_name)
+            log.info(f"Opening {profile_name} ({svc.url})...")
+            page = await self._get_page(profile_name)
             await page.goto(svc.url, wait_until="domcontentloaded")
 
-            input(f"\n>>> Log into {svc.name}, then press Enter here... ")
+            input(f"\n>>> Log into {profile_name} ({svc.name}), then press Enter here... ")
 
-            await self._save_storage_state(svc_name)
-            log.info(f"Session saved for {svc.name}")
+            await self._save_storage_state(profile_name)
+            log.info(f"Session saved for {profile_name}")
 
         log.info("\n=== Setup complete! Run 'python sherpa.py' to start recon. ===")
 
@@ -1461,8 +1223,14 @@ def save_recon_report(
 
 *Generated by Sherpa — Scout & Harvest Engine for Recon, Prep & Augmentation*
 """
-    report_path.write_text(report)
-    log.info(f"Recon saved: {report_path}")
+    if report_path.exists():
+        # Append — multiple services may enrich the same task
+        with report_path.open("a") as f:
+            f.write(f"\n\n---\n\n{report}")
+        log.info(f"Recon appended: {report_path}")
+    else:
+        report_path.write_text(report)
+        log.info(f"Recon saved: {report_path}")
     return report_path
 
 
@@ -1495,34 +1263,6 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
     tasks_processed = 0
     skipped_ids: set = set()  # Track skipped tasks to avoid infinite loop
-
-    # MARKER_202.FEEDBACK: Init feedback + load service scores
-    feedback = FeedbackCollector()
-    scores = feedback.load_scores()
-    if scores:
-        ranking = feedback.get_service_ranking()
-        log.info(f"Service ranking: {', '.join(f'{s}={sc}' for s, sc in ranking)}")
-
-    # MARKER_202.PROTOCOLS: Generate/update protocols from feedback history
-    protocols = ServiceProtocol.generate_all()
-    if protocols:
-        log.info(f"Protocols updated for: {', '.join(protocols.keys())}")
-        # Filter out auto-disabled services
-        disabled = [s.name for s in active_services if ServiceProtocol.is_service_disabled(s.name)]
-        if disabled:
-            log.warning(f"Auto-disabled services (consecutive failures): {disabled}")
-            active_services = [s for s in active_services if s.name not in disabled]
-            if not active_services:
-                log.error("All services auto-disabled! Clear data/sherpa_protocols/ to reset.")
-                return
-
-    # MARKER_202.HARNESS: Initialize Qwen-powered harness
-    harness = SherpaHarness(ollama, feedback)
-
-    # MARKER_202.SHERPA_SIGNAL: Announce startup
-    await tb.set_sherpa_status("idle")
-    await tb.notify_commanders(f"Sherpa active (PID {os.getpid()}), processing tasks")
-
     try:
         while tasks_processed < cfg.max_tasks_per_run:
             # 1. Get pending tasks list and find first suitable one
@@ -1535,7 +1275,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 await asyncio.sleep(cfg.cooldown_between_tasks)
                 continue
 
-            # MARKER_202.HARNESS: Find first task passing reflex+guard checks
+            # Find first task with description that we haven't skipped
             task = None
             task_id = None
             task_title = None
@@ -1543,21 +1283,11 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 cid = candidate.get("id", "")
                 if cid in skipped_ids:
                     continue
-
-                # Reflex: instant pattern skip (no LLM)
-                should_skip, skip_reason = harness.reflex_check(candidate)
-                if should_skip:
-                    log.debug(f"Reflex skip {cid}: {skip_reason}")
+                cdesc = candidate.get("description", "") or ""
+                if len(cdesc.strip()) < 20:
+                    log.warning(f"Skipping {cid} — empty/short description")
                     skipped_ids.add(cid)
                     continue
-
-                # Guard: validate task quality
-                is_valid, guard_reason = harness.guard_check(candidate)
-                if not is_valid:
-                    log.warning(f"Guard reject {cid}: {guard_reason}")
-                    skipped_ids.add(cid)
-                    continue
-
                 # Found a good candidate — claim it
                 claimed = await tb.claim_task(cid)
                 if claimed:
@@ -1597,24 +1327,19 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                     break
                 continue
 
-            # 4. Send to browser AI service (harness-selected or round-robin fallback)
-            svc = harness.select_service(active_services, task)
-            service_idx += 1  # keep incrementing for fallback
+            # 4. Send to browser AI service (round-robin)
+            svc = active_services[service_idx % len(active_services)]
+            service_idx += 1
 
-            log.info(f"Sending to {svc.name}...")
-            await tb.set_sherpa_status("busy", tasks_processed)
-            _svc_start = time.time()
+            log.info(f"Sending to {svc.profile_name} ({svc.name})...")
             try:
-                response = await browser.send_prompt(svc.name, prompt)
+                response = await browser.send_prompt(svc.profile_name, prompt)
             except Exception as e:
-                log.error(f"Browser error ({svc.name}): {e}")
+                log.error(f"Browser error ({svc.profile_name}): {e}")
                 response = ""
-                feedback.log_task(task_id, svc.name, 0, time.time() - _svc_start, False, type(e).__name__)
 
             if not response:
                 log.warning(f"No response from {svc.name}, releasing task")
-                if not any(e.get("task_id") == task_id for e in feedback.session_entries):
-                    feedback.log_task(task_id, svc.name, 0, time.time() - _svc_start, False, "empty_response")
                 await tb.update_task(task_id, {"status": "pending"})
                 await asyncio.sleep(30)
                 continue
@@ -1636,7 +1361,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 7. Update task with recon
             updates = {
-                "status": "pending",  # Release back to pool, enriched
+                "status": "recon_done",  # Enriched — ready for coding agent, not for Sherpa again
             }
             # Append to existing recon_docs
             existing_recon = task.get("recon_docs", []) or []
@@ -1654,16 +1379,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             await tb.update_task(task_id, updates)
             tasks_processed += 1
-            skipped_ids.add(task_id)  # Don't take same task again
-            log.info(f"Task {task_id} enriched ({tasks_processed}/{cfg.max_tasks_per_run})")
-
-            # MARKER_202.FEEDBACK: Log success
-            feedback.log_task(task_id, svc.name, len(response), time.time() - _svc_start, True)
-            await tb.set_sherpa_status("idle", tasks_processed)
-
-            # MARKER_202.PROTOCOLS: Regenerate after every 5 tasks
-            if tasks_processed % 5 == 0:
-                ServiceProtocol.generate_all()
+            log.info(f"Task {task_id} enriched → recon_done ({tasks_processed}/{cfg.max_tasks_per_run})")
 
             if once:
                 break
@@ -1675,38 +1391,286 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
     except KeyboardInterrupt:
         log.info("Interrupted by user")
     finally:
-        # MARKER_202.FEEDBACK: Save session summary
-        feedback.save_session_summary()
-        # MARKER_202.PROTOCOLS: Final protocol generation
-        ServiceProtocol.generate_all()
-        # MARKER_202.SHERPA_SIGNAL: Announce shutdown
-        await tb.set_sherpa_status("stopped", tasks_processed)
-        await tb.notify_commanders(f"Sherpa stopped. {tasks_processed} tasks enriched.")
-
         await browser.stop()
         await tb.close()
         await ollama.close()
-        h_stats = harness.get_stats()
-        log.info(f"Sherpa done. processed={tasks_processed} "
-                 f"guard_rejects={h_stats['guard_rejects']} reflex_skips={h_stats['reflex_skips']}")
+        log.info(f"Sherpa done. Tasks processed: {tasks_processed}")
 
 
 # ── Setup Mode ─────────────────────────────────────────────────────────
 async def setup_mode(cfg: SherpaConfig, services: List[str] = None):
     """Interactive profile setup."""
-    active = [s for s in cfg.services if s.enabled]
+    # Include ALL services (enabled or not) so you can setup new profiles
+    candidates = cfg.services
     if services:
-        active = [s for s in active if s.name in services]
-    browser = BrowserClient(active, headless=False)  # Always visible for setup
+        candidates = [s for s in candidates if s.name in services]
+    browser = BrowserClient(candidates, headless=False)  # Always visible for setup
     await browser.start()
     await browser.setup_profiles(services)
     await browser.stop()
+
+
+# ── Probe Mode ──────────────────────────────────────────────────────────
+async def probe_services(cfg: SherpaConfig, output_path: Path, services: List[str] = None, headless: bool = True):
+    """Non-interactive structural probe: navigate to each service, test selectors, detect bots.
+
+    Does NOT require login. Tests:
+    1. Page loads (no immediate block)
+    2. textarea / input found
+    3. Bot detection signatures (Cloudflare, captcha)
+    4. Response DOM selector exists (post-load)
+    5. Basic page title / structure
+
+    Writes results to RECON_SERVICES.md.
+    Run: python sherpa.py --probe [--service deepseek] [--visible]
+    """
+    from playwright.async_api import async_playwright
+
+    BOT_DETECT_PATTERNS = [
+        "captcha", "cloudflare", "ddos", "challenge", "access denied",
+        "bot detected", "verify you are human", "enable javascript",
+        "checking your browser", "just a moment",
+    ]
+    POPUP_SELECTORS = [
+        # Login/signup modal
+        '[role="dialog"]', '.modal', '[class*="modal"]', '[class*="popup"]',
+        '[class*="overlay"]', '[class*="Dialog"]',
+        # Cookie consent
+        '[class*="cookie"]', '[class*="consent"]', '[class*="gdpr"]',
+        # Login required
+        'button:has-text("Sign in")', 'button:has-text("Log in")',
+        'button:has-text("Sign up")', 'a:has-text("Sign in")',
+    ]
+    RATE_LIMIT_PATTERNS = [
+        "rate limit", "too many requests", "quota", "limit reached",
+        "upgrade", "subscribe", "premium", "out of messages",
+        "daily limit", "usage limit",
+    ]
+
+    # Use ALL services (including disabled) for probing
+    candidates = cfg.services
+    if services:
+        candidates = [s for s in candidates if s.name in services]
+    if not candidates:
+        log.error("No services to probe")
+        return
+
+    results = []
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(
+            headless=headless,
+            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
+        )
+        for svc in candidates:
+            log.info(f"Probing {svc.profile_name} ({svc.url})...")
+            result = {
+                "profile_name": svc.profile_name,
+                "name": svc.name,
+                "url": svc.url,
+                "enabled": svc.enabled,
+                "loads": False,
+                "bot_detect": False,
+                "bot_signal": "",
+                "textarea": False,
+                "textarea_sel": "",
+                "response_sel": False,
+                "response_sel_found": "",
+                "popup": False,
+                "popup_type": "",       # login / cookie / modal
+                "login_required": False,
+                "rate_limit_hint": "",  # any visible rate-limit text
+                "models_visible": False,# model selector found in DOM
+                "page_title": "",
+                "error": "",
+            }
+            try:
+                ctx = await browser.new_context(
+                    viewport={"width": 1440, "height": 900},
+                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                )
+                page = await ctx.new_page()
+                try:
+                    await page.goto(svc.url, wait_until="domcontentloaded", timeout=20_000)
+                    await page.wait_for_timeout(2000)  # Let JS render
+                    result["loads"] = True
+                    result["page_title"] = (await page.title())[:60]
+
+                    # Check bot detection
+                    body_text = (await page.locator("body").inner_text(timeout=3000)).lower()
+                    for pat in BOT_DETECT_PATTERNS:
+                        if pat in body_text:
+                            result["bot_detect"] = True
+                            result["bot_signal"] = pat
+                            break
+
+                    # Check rate limit hints in page text
+                    for pat in RATE_LIMIT_PATTERNS:
+                        if pat in body_text:
+                            result["rate_limit_hint"] = pat
+                            break
+
+                    if not result["bot_detect"]:
+                        # Test input selectors
+                        for sel in svc.input_selector.split(","):
+                            sel = sel.strip()
+                            try:
+                                count = await page.locator(sel).count()
+                                if count > 0:
+                                    result["textarea"] = True
+                                    result["textarea_sel"] = sel
+                                    break
+                            except Exception:
+                                continue
+
+                        # Test response selectors
+                        for sel in svc.response_selector.split(","):
+                            sel = sel.strip()
+                            try:
+                                count = await page.locator(sel).count()
+                                if count > 0:
+                                    result["response_sel"] = True
+                                    result["response_sel_found"] = sel
+                                    break
+                            except Exception:
+                                continue
+
+                        # Detect popups / modals
+                        for sel in POPUP_SELECTORS:
+                            try:
+                                el = page.locator(sel).first
+                                if await el.is_visible(timeout=500):
+                                    result["popup"] = True
+                                    if "sign" in sel.lower() or "log" in sel.lower():
+                                        result["popup_type"] = "login"
+                                        result["login_required"] = True
+                                    elif "cookie" in sel.lower() or "consent" in sel.lower():
+                                        result["popup_type"] = "cookie"
+                                    else:
+                                        result["popup_type"] = "modal"
+                                    break
+                            except Exception:
+                                continue
+
+                        # Detect model selector (dropdown / list of models)
+                        model_selectors = [
+                            'select', '[class*="model"]', '[aria-label*="model"]',
+                            '[aria-label*="Model"]', 'button:has-text("GPT")',
+                            'button:has-text("Claude")', 'button:has-text("Llama")',
+                            '[class*="ModelSelector"]',
+                        ]
+                        for sel in model_selectors:
+                            try:
+                                if await page.locator(sel).count() > 0:
+                                    result["models_visible"] = True
+                                    break
+                            except Exception:
+                                continue
+
+                except Exception as e:
+                    result["error"] = str(e)[:80]
+                finally:
+                    await ctx.close()
+
+            except Exception as e:
+                result["error"] = f"browser error: {str(e)[:60]}"
+
+            results.append(result)
+            verdict = "PASS" if (result["loads"] and result["textarea"] and not result["bot_detect"]) else \
+                      "BOT" if result["bot_detect"] else \
+                      "NO_INPUT" if (result["loads"] and not result["textarea"]) else \
+                      "FAIL"
+            log.info(f"  {svc.profile_name}: {verdict} | title={result['page_title'][:30]} | textarea={result['textarea']} | bot={result['bot_detect']}")
+
+        await browser.close()
+
+    # Write RECON_SERVICES.md
+    _write_probe_report(results, output_path)
+    log.info(f"Probe report written: {output_path}")
+
+
+def _write_probe_report(results: list, output_path: Path):
+    """Write compatibility matrix to RECON_SERVICES.md."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+    passed = [r for r in results if r["loads"] and r["textarea"] and not r["bot_detect"]]
+    failed = [r for r in results if not r["loads"] or r["error"]]
+    bot = [r for r in results if r["bot_detect"]]
+    no_input = [r for r in results if r["loads"] and not r["textarea"] and not r["bot_detect"] and not r["error"]]
+
+    lines = [
+        f"# SHERPA — AI Services Probe Report",
+        f"",
+        f"**Generated:** {timestamp} by `python sherpa.py --probe`",
+        f"**Total probed:** {len(results)} | **PASS:** {len(passed)} | **BOT:** {len(bot)} | **NO_INPUT:** {len(no_input)} | **FAIL:** {len(failed)}",
+        f"",
+        f"## Legend",
+        f"",
+        f"- **PASS** — textarea found, page loads, no bot detect. Enable + test with real prompt.",
+        f"- **NEED_LOGIN** — loads but login popup shown. Setup profile then re-probe.",
+        f"- **BOT** — Cloudflare/captcha detected. Playwright blocked.",
+        f"- **NO_INPUT** — page loads but textarea not found.",
+        f"- **FAIL** — page didn't load / timeout.",
+        f"",
+        f"## Results",
+        f"",
+        f"| profile | loads | input | bot | popup | login | models | rate_limit | verdict | notes |",
+        f"|---------|-------|-------|-----|-------|-------|--------|------------|---------|-------|",
+    ]
+
+    for r in results:
+        if r["loads"] and r["textarea"] and not r["bot_detect"] and not r["login_required"]:
+            verdict = "**PASS**"
+        elif r["login_required"] or (r["popup"] and r["popup_type"] == "login"):
+            verdict = "NEED_LOGIN"
+        elif r["bot_detect"]:
+            verdict = f"BOT ({r['bot_signal']})"
+        elif r["loads"] and not r["textarea"]:
+            verdict = "NO_INPUT"
+        else:
+            verdict = "FAIL"
+
+        notes = r["error"][:35] if r["error"] else (r["textarea_sel"][:35] if r["textarea"] else "")
+        lines.append(
+            f"| {r['profile_name']} | {'Y' if r['loads'] else 'N'} | "
+            f"{'Y' if r['textarea'] else 'N'} | {'Y' if r['bot_detect'] else 'N'} | "
+            f"{'Y' if r['popup'] else 'N'} | {'Y' if r['login_required'] else 'N'} | "
+            f"{'Y' if r['models_visible'] else 'N'} | {r['rate_limit_hint'] or '-'} | "
+            f"{verdict} | {notes} |"
+        )
+
+    lines += [
+        f"",
+        f"## PASS — Enable These in sherpa.yaml",
+        f"",
+    ]
+    for r in passed:
+        lines.append(f"- `{r['profile_name']}` ({r['url']}) — textarea: `{r['textarea_sel']}`")
+
+    lines += [
+        f"",
+        f"## Top-5 Recommended (manual ranking after PASS review)",
+        f"",
+        f"1. TBD",
+        f"2. TBD",
+        f"3. TBD",
+        f"4. TBD",
+        f"5. TBD",
+        f"",
+        f"*Run again after login: `python sherpa.py --probe` to re-check with session cookies.*",
+    ]
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines))
+
+
+# ── Entry Point ────────────────────────────────────────────────────────
 
 
 # ── Entry Point ────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Sherpa — Recon agent for VETKA tasks")
     parser.add_argument("--setup", action="store_true", help="Interactive login setup")
+    parser.add_argument("--probe", action="store_true", help="Non-interactive probe: test selectors for all services, write RECON_SERVICES.md")
     parser.add_argument("--once", action="store_true", help="Process one task and exit")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be processed")
     parser.add_argument("--service", type=str, help="Use specific service only (e.g. grok)")
@@ -1721,6 +1685,10 @@ def main():
     if args.setup:
         services = [args.service] if args.service else None
         asyncio.run(setup_mode(cfg, services))
+    elif args.probe:
+        services = [args.service] if args.service else None
+        out = PROJECT_ROOT / "docs" / "202ph_SHERPA" / "RECON_SERVICES.md"
+        asyncio.run(probe_services(cfg, out, services=services, headless=not args.visible))
     else:
         # PID Guard — only one Sherpa at a time
         if not acquire_guard():
