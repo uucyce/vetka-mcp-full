@@ -356,26 +356,30 @@ class TaskBoardClient:
         return resp.status_code == 200
 
     async def set_sherpa_status(self, status: str, tasks_enriched: int = 0) -> bool:
-        """MARKER_202.SHERPA_SIGNAL: Update Sherpa status in TaskBoard."""
+        """MARKER_202.SHERPA_SIGNAL: Update Sherpa status in TaskBoard settings.
+
+        Uses PATCH /api/debug/task-board/settings (the actual endpoint).
+        Non-fatal — logs warning on failure, never blocks.
+        """
         try:
             resp = await self.http.patch(
-                f"{self.base}/api/settings",
+                f"{self.base}/api/debug/task-board/settings",
                 json={"sherpa_status": status, "sherpa_tasks_enriched": tasks_enriched},
             )
+            if resp.status_code != 200:
+                log.debug(f"sherpa_status update returned {resp.status_code} (non-fatal)")
             return resp.status_code == 200
-        except Exception:
+        except Exception as e:
+            log.debug(f"sherpa_status update failed (non-fatal): {e}")
             return False
 
     async def notify_commanders(self, message: str) -> None:
-        """MARKER_202.SHERPA_SIGNAL: Notify Commander role."""
-        try:
-            await self.http.post(
-                f"{self.base}/api/taskboard/action",
-                json={"action": "notify", "source_role": "Sherpa",
-                      "target_role": "Commander", "message": message},
-            )
-        except Exception:
-            pass
+        """MARKER_202.SHERPA_SIGNAL: Notify via task update (implementation_hints append).
+
+        No generic /api/taskboard/action endpoint exists. Instead, log to sherpa.log
+        and update status — Commanders check sherpa_status via settings endpoint.
+        """
+        log.info(f"[SIGNAL] {message}")
 
     async def close(self):
         await self.http.aclose()
