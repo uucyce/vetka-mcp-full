@@ -563,28 +563,19 @@ class FilterGraphBuilder:
             t = self._transition_map.get(i - 1)
 
             if t and not is_audio:
-                # Video xfade
-                xfade_type = _map_transition_type(t.type)
-                offset = max(0, running_offset - t.duration_sec)
-                filters.append(
-                    f"{current}{next_label}xfade=transition={xfade_type}"
-                    f":duration={t.duration_sec:.3f}:offset={offset:.3f}{out_label}"
+                # MARKER_B10: Video xfade via compile_xfade_filter helper
+                xfade_str = _compile_xfade_filter(
+                    current, next_label, out_label, t.type, t.duration_sec, running_offset
                 )
-                running_offset = offset + clips[i].duration_sec
+                filters.append(xfade_str)
+                running_offset = max(0, running_offset - t.duration_sec) + clips[i].duration_sec
 
             elif t and is_audio:
-                # MARKER_B14: Audio crossfade with curve selection
-                # equal_power (+3dB) = qsin (quarter sine), sounds smooth
-                # linear (0dB) = tri (triangle), sounds dip at midpoint
-                curve = getattr(t, "audio_curve", "equal_power")
-                if curve == "linear":
-                    c1, c2 = "tri", "tri"
-                else:
-                    c1, c2 = "qsin", "qsin"  # equal_power (default, FCP7 +3dB)
-                filters.append(
-                    f"{current}{next_label}acrossfade=d={t.duration_sec:.3f}"
-                    f":c1={c1}:c2={c2}{out_label}"
+                # MARKER_B14: Audio crossfade via compile_acrossfade_filter helper
+                acrossfade_str = _compile_acrossfade_filter(
+                    current, next_label, out_label, t.duration_sec, t.audio_curve
                 )
+                filters.append(acrossfade_str)
                 running_offset = running_offset - t.duration_sec + clips[i].duration_sec
 
             else:
@@ -645,6 +636,80 @@ def _build_atempo_chain(speed: float) -> list[str]:
 
     parts.append(f"atempo={remaining:.4f}")
     return parts
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B10: Transition filter generation
+# ---------------------------------------------------------------------------
+
+def _compile_xfade_filter(
+    input1: str,
+    input2: str,
+    output: str,
+    trans_type: str,
+    duration_sec: float,
+    timeline_offset: float,
+) -> str:
+    """
+    Generate a single FFmpeg xfade filter string for video transitions.
+
+    Args:
+        input1: Input label (e.g. "[v0]" or "[vout0]")
+        input2: Second input label (e.g. "[v1]")
+        output: Output label (e.g. "[vout1]")
+        trans_type: Transition type ("crossfade", "dissolve", "dip_to_black", "wipe")
+        duration_sec: Transition duration in seconds
+        timeline_offset: Timeline position where transition begins
+
+    Returns:
+        FFmpeg xfade filter string
+
+    Example:
+        >>> _compile_xfade_filter("[v0]", "[v1]", "[vout1]", "crossfade", 1.0, 1.0)
+        '[v0][v1]xfade=transition=fade:duration=1.000:offset=1.000[vout1]'
+    """
+    xfade_type = _map_transition_type(trans_type)
+    return (
+        f"{input1}{input2}xfade=transition={xfade_type}"
+        f":duration={duration_sec:.3f}:offset={timeline_offset:.3f}{output}"
+    )
+
+
+def _compile_acrossfade_filter(
+    input1: str,
+    input2: str,
+    output: str,
+    duration_sec: float,
+    audio_curve: str = "equal_power",
+) -> str:
+    """
+    Generate a single FFmpeg acrossfade filter string for audio transitions.
+
+    MARKER_B14: Audio crossfade curve selection (FCP7 Ch.47).
+    - equal_power (+3dB at midpoint, sounds smooth) → qsin curve
+    - linear (0dB at midpoint, sounds dip) → tri curve
+
+    Args:
+        input1: Input label (e.g. "[a0]")
+        input2: Second input label (e.g. "[a1]")
+        output: Output label (e.g. "[aout1]")
+        duration_sec: Crossfade duration in seconds
+        audio_curve: Curve type ("equal_power" or "linear")
+
+    Returns:
+        FFmpeg acrossfade filter string
+
+    Example:
+        >>> _compile_acrossfade_filter("[a0]", "[a1]", "[aout1]", 1.0, "equal_power")
+        '[a0][a1]acrossfade=d=1.000:c1=qsin:c2=qsin[aout1]'
+    """
+    curve = audio_curve if audio_curve == "linear" else "equal_power"
+    c1, c2 = ("tri", "tri") if curve == "linear" else ("qsin", "qsin")
+
+    return (
+        f"{input1}{input2}acrossfade=d={duration_sec:.3f}"
+        f":c1={c1}:c2={c2}{output}"
+    )
 
 
 # ---------------------------------------------------------------------------

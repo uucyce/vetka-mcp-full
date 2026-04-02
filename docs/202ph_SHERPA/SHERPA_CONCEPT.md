@@ -1,9 +1,10 @@
 # SHERPA — Scout & Harvest Engine for Recon, Prep & Augmentation
 
-**Phase:** 201
+**Phase:** 202
 **Date:** 2026-04-02
-**Status:** Concept document
+**Status:** v1.0 live, 10 services configured, P0/P1 bugs tracked
 **Origin:** WEATHER simplification — no new browser, no framework, just scripts
+**Current Services:** DeepSeek (2x), Kimi (2x), Arena, Z.ai, Mistral, HuggingChat, Monica, Bolt
 
 ---
 
