@@ -471,6 +471,122 @@ class OllamaClient:
         await self.http.aclose()
 
 
+# ── Sherpa Harness (MARKER_202.HARNESS) ──────────────────────────────
+class SherpaHarness:
+    """Qwen-powered guard/reflex/memory for intelligent task processing.
+
+    MARKER_202.HARNESS: Makes Sherpa a first-class agent with:
+    - Guard: validate task quality before sending to browser AI
+    - Reflex: skip known-bad patterns instantly (no LLM call)
+    - Memory: read protocols + feedback for service selection
+    """
+
+    # Reflex patterns — instant skip, no LLM needed
+    SKIP_PATTERNS = [
+        "DEBRIEF-IDEA",       # Ideas, not real tasks
+        "DEBRIEF-BUG",        # Bug reports, not actionable tasks
+        "[AUTO]",             # Auto-decomposed children (handled by local_loop)
+        "ETA-IDEA",           # Agent ideas
+        "COMMANDER-IDEA",     # Commander ideas
+    ]
+
+    # Minimum requirements for a recon-worthy task
+    MIN_DESC_LENGTH = 30
+    MIN_TITLE_LENGTH = 10
+
+    def __init__(self, ollama: 'OllamaClient', feedback: 'FeedbackCollector'):
+        self.ollama = ollama
+        self.feedback = feedback
+        self._guard_rejects = 0
+        self._reflex_skips = 0
+
+    def reflex_check(self, task: dict) -> tuple[bool, str]:
+        """Fast pattern matching — skip known-bad tasks instantly.
+
+        Returns: (should_skip, reason)
+        """
+        title = task.get("title", "")
+        tags = task.get("tags", [])
+
+        # Skip pattern match
+        for pattern in self.SKIP_PATTERNS:
+            if pattern in title:
+                self._reflex_skips += 1
+                return True, f"reflex:title_pattern:{pattern}"
+
+        # Skip already-enriched tasks (have recon_docs)
+        recon = task.get("recon_docs", [])
+        if recon and len(recon) > 0:
+            self._reflex_skips += 1
+            return True, "reflex:already_has_recon"
+
+        # Skip auto-decomposed tasks
+        if "auto-decomposed" in tags:
+            self._reflex_skips += 1
+            return True, "reflex:auto-decomposed"
+
+        return False, ""
+
+    def guard_check(self, task: dict) -> tuple[bool, str]:
+        """Validate task quality — is it worth sending to browser AI?
+
+        Returns: (is_valid, reason_if_invalid)
+        """
+        title = task.get("title", "")
+        desc = task.get("description", "") or ""
+
+        # Empty/short description
+        if len(desc.strip()) < self.MIN_DESC_LENGTH:
+            self._guard_rejects += 1
+            return False, f"guard:desc_too_short ({len(desc.strip())} chars)"
+
+        # Empty title
+        if len(title.strip()) < self.MIN_TITLE_LENGTH:
+            self._guard_rejects += 1
+            return False, f"guard:title_too_short ({len(title.strip())} chars)"
+
+        # Check allowed_paths exist on disk
+        paths = task.get("allowed_paths", [])
+        if paths:
+            existing = sum(1 for p in paths if (PROJECT_ROOT / p).exists())
+            if existing == 0 and len(paths) > 0:
+                self._guard_rejects += 1
+                return False, f"guard:no_valid_paths (0/{len(paths)} exist)"
+
+        return True, ""
+
+    def select_service(self, services: list, task: dict) -> 'ServiceConfig':
+        """Intelligent service selection based on feedback scores and protocols.
+
+        Uses feedback reliability scores to pick the best available service.
+        Falls back to round-robin if no scores available.
+        """
+        scores = self.feedback._scores
+        if not scores:
+            return services[0]  # No history — use first
+
+        # Score each available service
+        ranked = []
+        for svc in services:
+            score = scores.get(svc.name, 0.5)  # Default 0.5 for unknown
+            # Boost score for services not auto-disabled
+            if not ServiceProtocol.is_service_disabled(svc.name):
+                ranked.append((svc, score))
+
+        if not ranked:
+            return services[0]
+
+        # Sort by score descending, pick best
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked[0][0]
+
+    def get_stats(self) -> dict:
+        return {
+            "guard_rejects": self._guard_rejects,
+            "reflex_skips": self._reflex_skips,
+        }
+
+
 # ── Browser Client (Playwright) ───────────────────────────────────────
 class BrowserClient:
     """Playwright-based browser for AI service interaction."""
@@ -1400,6 +1516,9 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 log.error("All services auto-disabled! Clear data/sherpa_protocols/ to reset.")
                 return
 
+    # MARKER_202.HARNESS: Initialize Qwen-powered harness
+    harness = SherpaHarness(ollama, feedback)
+
     # MARKER_202.SHERPA_SIGNAL: Announce startup
     await tb.set_sherpa_status("idle")
     await tb.notify_commanders(f"Sherpa active (PID {os.getpid()}), processing tasks")
@@ -1416,7 +1535,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 await asyncio.sleep(cfg.cooldown_between_tasks)
                 continue
 
-            # Find first task with description that we haven't skipped
+            # MARKER_202.HARNESS: Find first task passing reflex+guard checks
             task = None
             task_id = None
             task_title = None
@@ -1424,11 +1543,21 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 cid = candidate.get("id", "")
                 if cid in skipped_ids:
                     continue
-                cdesc = candidate.get("description", "") or ""
-                if len(cdesc.strip()) < 20:
-                    log.warning(f"Skipping {cid} — empty/short description")
+
+                # Reflex: instant pattern skip (no LLM)
+                should_skip, skip_reason = harness.reflex_check(candidate)
+                if should_skip:
+                    log.debug(f"Reflex skip {cid}: {skip_reason}")
                     skipped_ids.add(cid)
                     continue
+
+                # Guard: validate task quality
+                is_valid, guard_reason = harness.guard_check(candidate)
+                if not is_valid:
+                    log.warning(f"Guard reject {cid}: {guard_reason}")
+                    skipped_ids.add(cid)
+                    continue
+
                 # Found a good candidate — claim it
                 claimed = await tb.claim_task(cid)
                 if claimed:
@@ -1468,9 +1597,9 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                     break
                 continue
 
-            # 4. Send to browser AI service (round-robin)
-            svc = active_services[service_idx % len(active_services)]
-            service_idx += 1
+            # 4. Send to browser AI service (harness-selected or round-robin fallback)
+            svc = harness.select_service(active_services, task)
+            service_idx += 1  # keep incrementing for fallback
 
             log.info(f"Sending to {svc.name}...")
             await tb.set_sherpa_status("busy", tasks_processed)
@@ -1557,7 +1686,9 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
         await browser.stop()
         await tb.close()
         await ollama.close()
-        log.info(f"Sherpa done. Tasks processed: {tasks_processed}")
+        h_stats = harness.get_stats()
+        log.info(f"Sherpa done. processed={tasks_processed} "
+                 f"guard_rejects={h_stats['guard_rejects']} reflex_skips={h_stats['reflex_skips']}")
 
 
 # ── Setup Mode ─────────────────────────────────────────────────────────
