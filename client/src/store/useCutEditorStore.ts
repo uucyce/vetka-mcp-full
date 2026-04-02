@@ -904,10 +904,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
-  setTrackHeight: (h) => set({ trackHeight: Math.max(28, Math.min(180, h)) }),
+  // MARKER_A3.5: Track height constraints — 20px min (compact), 200px max (expansive)
+  setTrackHeight: (h) => set({ trackHeight: Math.max(20, Math.min(200, h)) }),
   setTrackHeightForLane: (laneId, h) =>
     set((state) => ({
-      trackHeights: { ...state.trackHeights, [laneId]: Math.max(28, Math.min(180, h)) },
+      trackHeights: { ...state.trackHeights, [laneId]: Math.max(20, Math.min(200, h)) },
     })),
   cycleTrackHeights: () =>
     set((state) => {

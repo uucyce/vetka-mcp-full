@@ -804,18 +804,24 @@ class BrowserClient:
             text = await self._extract_response_text(page, prompt_text, pre_text)
             curr_len = len(text)
 
+            elapsed = int(time.time() - start)
+
             if streaming:
-                # Still generating — reset stability counter
                 stable_count = 0
-                elapsed = int(time.time() - start)
                 if elapsed % 15 == 0:
                     log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
-            elif curr_len > 100:
-                # Not streaming + has content — check stability
-                if curr_len == prev_len:
+            else:
+                # Check for COPY BUTTON — definitive signal that response is complete
+                copy_visible = await self._is_copy_button_visible(page)
+                if copy_visible and curr_len > 100:
+                    log.info(f"Copy button appeared — response complete ({curr_len} chars, {elapsed}s)")
+                    return text
+
+                # Fallback: text stability check (if copy button not found)
+                if curr_len > 100 and curr_len == prev_len:
                     stable_count += 1
-                    if stable_count >= 2:  # Stable for 2 checks
-                        log.info(f"Response complete ({curr_len} chars)")
+                    if stable_count >= 5:  # 15 seconds stable without copy button
+                        log.info(f"Response stable ({curr_len} chars, {elapsed}s)")
                         return text
                 else:
                     stable_count = 0
@@ -1045,21 +1051,21 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
     allowed_paths = task.get("allowed_paths", []) or []
     contract = task.get("completion_contract", []) or []
 
-    # Read docs content from disk
+    # Read docs content from disk (full content, services handle 100K+ tokens)
     docs_text = ""
-    for doc_path in (arch_docs + recon_docs)[:3]:
+    for doc_path in (arch_docs + recon_docs)[:5]:
         resolved = _resolve_doc_path(doc_path)
-        if resolved:
-            content = resolved.read_text(errors="replace")[:5000]
+        if resolved and resolved.stat().st_size < 100_000:
+            content = resolved.read_text(errors="replace")
             docs_text += f"\n### {doc_path}\n{content}\n"
 
-    # Read code snippets
+    # Read code snippets (full files up to 100 lines)
     snippets_text = ""
     for s in code_snippets[:5]:
-        snippet = read_file_snippet(s["path"], max_lines=40)
+        snippet = read_file_snippet(s["path"], max_lines=100)
         if snippet:
             rel = s["path"].replace(str(PROJECT_ROOT) + "/", "")
-            snippets_text += f"\n### {rel}\n```\n{snippet[:3000]}\n```\n"
+            snippets_text += f"\n### {rel}\n```\n{snippet}\n```\n"
 
     contract_text = ""
     if contract:
