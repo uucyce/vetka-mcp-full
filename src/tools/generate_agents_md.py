@@ -53,6 +53,50 @@ You are **{callsign}** — {role_title}.
 - NEVER set `done_worktree` yourself — QA agent does that after verification
 """
 
+TEMPLATE_VIBE = """\
+# {callsign} — {role_title}
+
+**Role:** {role_title} | **Domain:** {domain} | **Branch:** `{branch}`
+
+## Init
+
+**MCP required.** Vibe must have vetka MCP loaded from `~/.vibe/config.toml`.
+If `vetka_session_init` shows as "Unknown tool" — MCP not connected. Restart Vibe after verifying the config.
+
+```
+1. vetka_session_init role={callsign}
+   → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
+2. vetka_task_board action=list filter_status={filter_status}
+3. Claim → Work → commit → need_qa
+```
+
+### If MCP unavailable (fallback — read-only init)
+```bash
+cd /Users/danilagulin/Documents/VETKA_Project/vetka_live_03
+python -c "
+import asyncio, sys
+sys.path.insert(0, '.')
+from src.mcp.tools.session_tools import vetka_session_init
+result = asyncio.run(vetka_session_init(user_id='danila', role='{callsign}', compress=True))
+import json; print(json.dumps(result, indent=2, default=str))
+"
+```
+After Python init — use bash tools only (git, find, cat). vetka_git_commit and vetka_task_board require MCP.
+
+## YOUR ROLE
+You are **{callsign}** — {role_title}.
+
+{owned_paths_section}
+{blocked_paths_section}
+
+## RULES
+- Modify ONLY files in your allowed_paths
+- NEVER touch blocked_paths
+- Commit via `vetka_git_commit` with `[task:tb_xxxx]`
+- After commit: `vetka_task_board action=update status=need_qa`
+- NEVER set `done_worktree` yourself — QA agent does that after verification
+"""
+
 
 def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
     registry = AgentRegistry(_REGISTRY_PATH)
@@ -66,6 +110,7 @@ def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
     branch = role.branch
     role_title = role.role_title or f"{callsign} Agent"
     pipeline_stage = role.pipeline_stage or "coder"
+    tool_type = role.tool_type or "claude_code"
     owned_paths = role.owned_paths or []
     blocked_paths = role.blocked_paths or []
 
@@ -81,7 +126,8 @@ def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
         paths_str = "\n".join(f"- {p}" for p in blocked_paths[:8])
         blocked_section = f"## BLOCKED PATHS\n{paths_str}"
 
-    content = TEMPLATE.format(
+    template = TEMPLATE_VIBE if tool_type == "vibe" else TEMPLATE
+    content = template.format(
         callsign=callsign,
         role_title=role_title,
         domain=domain,

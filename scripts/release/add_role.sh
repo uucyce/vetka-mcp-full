@@ -63,7 +63,7 @@ if [[ -z "$CALLSIGN" || -z "$DOMAIN" || -z "$WORKTREE" ]]; then
   echo "Usage: $0 --callsign NAME --domain DOMAIN --worktree NAME [options]"
   echo ""
   echo "Options:"
-  echo "  --tool-type     opencode|claude_code (default: opencode)"
+  echo "  --tool-type     opencode|claude_code|vibe (default: opencode)"
   echo "  --model-tier    sonnet|opus|haiku (default: sonnet)"
   echo "  --pipeline-stage coder|verifier|architect (default: coder)"
   echo "  --role-title    Human-readable title"
@@ -218,6 +218,13 @@ if [[ "$TOOL_TYPE" == "opencode" ]]; then
   echo "  cd .claude/worktrees/${WORKTREE} && opencode -m opencode/qwen3.6-plus-free"
 elif [[ "$TOOL_TYPE" == "claude_code" ]]; then
   echo "  cd .claude/worktrees/${WORKTREE} && claude --dangerously-skip-permissions"
+elif [[ "$TOOL_TYPE" == "vibe" ]]; then
+  echo "  cd .claude/worktrees/${WORKTREE} && vibe"
+  echo ""
+  echo "  NOTE: Vibe requires vetka MCP in ~/.vibe/config.toml:"
+  echo "    mcp_servers = [{name=\"vetka\", transport=\"stdio\", command=\"python\","
+  echo "      args=[\"$(pwd)/src/mcp/vetka_mcp_bridge.py\"],"
+  echo "      env={VETKA_API_URL=\"http://localhost:5001\", PYTHONPATH=\"$(pwd)\"}}]"
 else
   echo "  cd .claude/worktrees/${WORKTREE} && <your-tool>"
 fi
