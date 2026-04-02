@@ -495,3 +495,142 @@ class TestMixerWebSocket:
         handler = sio._handlers["mixer_levels_request"]
         asyncio.get_event_loop().run_until_complete(handler("sid3", "bad_payload"))
         sio.emit.assert_not_called()
+
+
+# ===========================================================================
+# MARKER_B13 — apply_mixer_to_plan → FFmpeg filter chain
+# task: tb_1775145287_85802_1
+# ===========================================================================
+
+class TestMixerToRenderPipelineChain:
+    """Verify apply_mixer_to_plan correctly injects audio filters into RenderClip.audio_effects
+    and that compile_audio_filters produces correct FFmpeg filter strings."""
+
+    def _make_plan(self, lane_id: str = "A1") -> "Any":
+        """Build a minimal RenderPlan with one clip on the given lane."""
+        from src.services.cut_render_pipeline import RenderPlan, RenderClip
+        clip = RenderClip(
+            source_path="/tmp/test.mp4",
+            start_sec=0.0,
+            source_in=0.0,
+            source_out=5.0,
+            lane_id=lane_id,
+        )
+        plan = RenderPlan(clips=[clip])
+        return plan, clip
+
+    def test_volume_filter_injected_for_reduced_fader(self):
+        """Lane volume 0.5 → volume filter with negative dB injected into clip.audio_effects."""
+        from src.services.cut_audio_engine import MixerState, LaneMixerState, apply_mixer_to_plan
+        plan, clip = self._make_plan("A1")
+        mixer = MixerState()
+        mixer.lanes["A1"] = LaneMixerState(lane_id="A1", volume=0.5, mute=False, solo=False, pan=0.0)
+        apply_mixer_to_plan(plan, mixer)
+        # Clip should have a volume effect injected
+        types = [e.get("type") if isinstance(e, dict) else getattr(e, "type", None)
+                 for e in clip.audio_effects]
+        assert "volume" in types, f"Expected volume effect, got: {types}"
+
+    def test_muted_track_silenced(self):
+        """Muted lane → volume filter with -96dB (silence) injected and compiled."""
+        from src.services.cut_audio_engine import MixerState, LaneMixerState, apply_mixer_to_plan
+        from src.services.cut_effects_engine import EffectParam, compile_audio_filters
+        plan, clip = self._make_plan("A1")
+        mixer = MixerState()
+        mixer.lanes["A1"] = LaneMixerState(lane_id="A1", volume=1.0, mute=True, solo=False, pan=0.0)
+        apply_mixer_to_plan(plan, mixer)
+        # Normalize dicts → EffectParam (same as render pipeline)
+        normalized = [
+            e if not isinstance(e, dict)
+            else EffectParam(effect_id=e.get("effect_id", ""), type=e.get("type", ""),
+                             enabled=e.get("enabled", True), params=e.get("params", {}))
+            for e in clip.audio_effects
+        ]
+        filters = compile_audio_filters(normalized)
+        assert any("volume" in f for f in filters), f"No volume filter found in {filters}"
+        vol_filter = next(f for f in filters if "volume" in f)
+        import re
+        m = re.search(r"volume=(-?\d+(?:\.\d+)?)dB", vol_filter)
+        assert m, f"Could not parse dB from {vol_filter}"
+        db = float(m.group(1))
+        assert db <= -90, f"Expected silence (≤-90dB) for muted track, got {db}dB"
+
+    def test_master_volume_applied(self):
+        """Master volume 0.7 → volume filter injected on clip with no lane setting."""
+        from src.services.cut_audio_engine import MixerState, apply_mixer_to_plan
+        from src.services.cut_effects_engine import EffectParam, compile_audio_filters
+        plan, clip = self._make_plan("A1")
+        mixer = MixerState(master_volume=0.7)
+        # Lane has unity (no explicit lane entry)
+        apply_mixer_to_plan(plan, mixer)
+        # Normalize dicts → EffectParam (same as render pipeline)
+        normalized = [
+            e if not isinstance(e, dict)
+            else EffectParam(effect_id=e.get("effect_id", ""), type=e.get("type", ""),
+                             enabled=e.get("enabled", True), params=e.get("params", {}))
+            for e in clip.audio_effects
+        ]
+        filters = compile_audio_filters(normalized)
+        assert any("volume" in f for f in filters), f"Master volume filter missing from {filters}"
+
+    def test_unity_volume_no_filter(self):
+        """Lane volume 1.0 + master volume 1.0 → no volume filter added (optimization)."""
+        from src.services.cut_audio_engine import MixerState, LaneMixerState, apply_mixer_to_plan
+        plan, clip = self._make_plan("A1")
+        mixer = MixerState(master_volume=1.0)
+        mixer.lanes["A1"] = LaneMixerState(lane_id="A1", volume=1.0, mute=False, solo=False, pan=0.0)
+        apply_mixer_to_plan(plan, mixer)
+        # No effects should be injected at unity
+        types = [e.get("type") if isinstance(e, dict) else getattr(e, "type", None)
+                 for e in clip.audio_effects]
+        assert "volume" not in types, f"Unexpected volume filter at unity: {types}"
+
+    def test_pan_filter_injected_for_non_zero_pan(self):
+        """Non-zero pan → _pan effect injected → stereotools filter in compile output."""
+        from src.services.cut_audio_engine import MixerState, LaneMixerState, apply_mixer_to_plan
+        from src.services.cut_effects_engine import EffectParam, compile_audio_filters
+        plan, clip = self._make_plan("A1")
+        mixer = MixerState()
+        mixer.lanes["A1"] = LaneMixerState(lane_id="A1", volume=1.0, mute=False, solo=False, pan=0.5)
+        apply_mixer_to_plan(plan, mixer)
+        # Normalize dicts → EffectParam (same as render pipeline)
+        normalized = [
+            e if not isinstance(e, dict)
+            else EffectParam(effect_id=e.get("effect_id", ""), type=e.get("type", ""),
+                             enabled=e.get("enabled", True), params=e.get("params", {}))
+            for e in clip.audio_effects
+        ]
+        filters = compile_audio_filters(normalized)
+        assert any("stereotools" in f for f in filters), f"Expected stereotools pan filter, got: {filters}"
+
+    def test_render_timeline_with_mixer_dict_applies_volume(self):
+        """End-to-end: render_timeline accepts mixer dict and plan clips have volume effects after apply."""
+        from src.services.cut_audio_engine import MixerState, LaneMixerState, apply_mixer_to_plan
+        from src.services.cut_render_pipeline import RenderPlan, RenderClip
+
+        # Simulate what render_timeline does with mixer param
+        plan = RenderPlan(clips=[
+            RenderClip(source_path="/tmp/a.mp4", start_sec=0.0,
+                       source_in=0, source_out=3, lane_id="V1"),
+            RenderClip(source_path="/tmp/b.mp4", start_sec=0.0,
+                       source_in=0, source_out=3, lane_id="A1"),
+        ])
+        mixer_dict = {
+            "lanes": {
+                "V1": {"volume": 1.0, "mute": False, "solo": False, "pan": 0.0},
+                "A1": {"volume": 0.5, "mute": False, "solo": False, "pan": 0.0},
+            },
+            "master_volume": 1.0,
+        }
+        mixer_state = MixerState.from_dict(mixer_dict)
+        apply_mixer_to_plan(plan, mixer_state)
+
+        a1_clip = next(c for c in plan.clips if c.lane_id == "A1")
+        types = [e.get("type") if isinstance(e, dict) else getattr(e, "type", None)
+                 for e in a1_clip.audio_effects]
+        assert "volume" in types, f"A1 clip at 50% should have volume filter, got: {types}"
+
+        v1_clip = next(c for c in plan.clips if c.lane_id == "V1")
+        v1_types = [e.get("type") if isinstance(e, dict) else getattr(e, "type", None)
+                    for e in v1_clip.audio_effects]
+        assert "volume" not in v1_types, f"V1 clip at 100% should NOT have volume filter, got: {v1_types}"

@@ -503,9 +503,22 @@ class FilterGraphBuilder:
             parts.append("asetpts=PTS-STARTPTS")
 
         # MARKER_B9: Insert audio effects between trim and speed
+        # MARKER_B13-FIX: clip.audio_effects may contain plain dicts (injected by
+        # apply_mixer_to_plan) or EffectParam objects (from effect editor).
+        # compile_audio_filters only handles EffectParam — normalize dicts first.
         if clip.audio_effects:
-            from src.services.cut_effects_engine import compile_audio_filters
-            effect_filters = compile_audio_filters(clip.audio_effects)
+            from src.services.cut_effects_engine import EffectParam, compile_audio_filters
+            normalized = [
+                e if not isinstance(e, dict)
+                else EffectParam(
+                    effect_id=e.get("effect_id", ""),
+                    type=e.get("type", ""),
+                    enabled=e.get("enabled", True),
+                    params=e.get("params", {}),
+                )
+                for e in clip.audio_effects
+            ]
+            effect_filters = compile_audio_filters(normalized)
             parts.extend(effect_filters)
 
         # MARKER_B11: Speed change with pitch control
