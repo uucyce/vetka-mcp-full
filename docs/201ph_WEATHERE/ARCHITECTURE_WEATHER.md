@@ -2,9 +2,9 @@
 
 **Phase:** 201
 **Date:** 2026-03-31 (updated 2026-04-02)
-**Status:** PARKED — conservation until after CUT MVP
+**Status:** ACTIVE — Sherpa v1.0 MVP live, WEATHER = Sherpa v2.x backend
 
-> **Conservation Note (2026-04-02):** WEATHER is a critical long-term vision but CUT MVP takes priority. This document has been rewritten to reflect the correct architecture (compose from existing, not build from scratch). All obsolete adapter tasks closed. New P4 tasks created for when we return. — Captain Polaris
+> **Status Update (2026-04-02):** Sherpa v1.0 is now operational — TaskBoard integration, Playwright profiles, 10 services configured, DeepSeek+Kimi working, Ollama summary, recon save. WEATHER is no longer parked; it is the **upgrade path for Sherpa** (v2.1: Tauri browser shell + multi-agent pool). CUT MVP still takes priority for code work, but docs/planning for Sherpa→WEATHER integration is active. — Captain Polaris
 
 ---
 
@@ -15,6 +15,20 @@ WEATHER is the **browser automation + local model orchestration layer** of VETKA
 **Why WEATHER:** Agents operate "in the weather" — navigating dynamic web conditions (captcha, rate limits, UI changes, session expiry). The system adapts to conditions like weather.
 
 **Key insight from Grok research (2026-04-01):** Do NOT build separate adapters or fork external solutions (browser-use). WEATHER = **compose from existing VETKA components**. ~70-95% of infrastructure already exists across phases 136-147, MCC, localgays, and the agent registry.
+
+**Sherpa → WEATHER evolution (2026-04-02):** Sherpa v1.0 is the **pragmatic first step** — a standalone recon script using existing Playwright + Chrome. WEATHER is the **evolutionary upgrade**: Sherpa running inside VETKA's Tauri browser shell with multi-agent pool, TaskBoard sidebar, and shared browser infrastructure. See `docs/202ph_SHERPA/` for Sherpa docs and `docs/201ph_WEATHERE/SHERPA_INTEGRATION_PLAN.md` for migration path.
+
+```
+Sherpa v1.0 (NOW) → Playwright scripts + Chrome
+       ↓
+Sherpa v1.1 → Stability (DOM extraction, service rating)
+       ↓
+Sherpa v2.0 → Vision (Pixtral OCR, screenshot-based UI detection)
+       ↓
+Sherpa v2.1 = WEATHER v1.0 → VETKA Tauri browser shell + multi-agent pool
+       ↓
+WEATHER v2.x → Full browser automation platform
+```
 
 ```
 TaskBoard → localgays orchestrator → Playwright pool → AI Service (browser) → Code extraction → Git → TaskBoard update
@@ -54,13 +68,14 @@ WEATHER is NOT a standalone system. It is a **glue layer** that connects existin
 | WEATHER Component | Source | Path | Status |
 |-------------------|--------|------|--------|
 | **Browser Shell** | VETKA Tauri (phases 136-147) | `client/src-tauri/` | ✅ Working (web search, viewport save, contextual retrieval) |
-| **Orchestrator** | localgays harness | `src/services/` | 🔄 In progress (local model integration) |
-| **Playwright Pool** | Already used by Codex/Claude Code | E2E infrastructure | ✅ Available (50+ E2E tests use Playwright) |
+| **Orchestrator** | localgays harness + Sherpa | `src/services/` + `sherpa.py` | ✅ Sherpa v1.0 live, localgays in progress |
+| **Playwright Pool** | Sherpa `browser_manager.py` | `src/services/browser_manager.py` | ✅ Working (persistent contexts, 10 services) |
 | **Agent Phonebook** | unified_key_manager | `src/services/` | ✅ Working (provider credentials) |
 | **Chat (local + API)** | MCC/VETKA chat panels | `client/src/components/chat/` | ✅ Working |
 | **TaskBoard Sidebar** | MCC | MCC UI | ✅ Working (needs project/agent filters) |
 | **Code Extractor** | code_extractor.py | `src/services/code_extractor.py` | ✅ Working (DOM + OCR + validation) |
 | **MCC Playground** | MCC workflow env | MCC | ✅ Working (orchestration environment) |
+| **Recon Engine** | Sherpa pipeline | `sherpa.py` | ✅ MVP live (DeepSeek+Kimi working) |
 
 ---
 
@@ -184,14 +199,65 @@ Validation: `ast.parse` (Python), `tsc --noEmit` (TS), `node --check` (JS), Band
   - Key insight: "Start with universal approach, not separate adapters"
 - **RECON:** `docs/201ph_WEATHERE/RECON_WEATHER_BROWSER_2026-03-31.md`
   - Tauri browser audit — 40% coverage, 60% needs new work
+- **Sherpa Concept:** `docs/202ph_SHERPA/SHERPA_CONCEPT.md`
+  - Recon engine vision, economics, pipeline design
+- **Sherpa Architecture:** `docs/202ph_SHERPA/ARCHITECTURE_SHERPA.md`
+  - Current state, bugs, roadmap, integration with WEATHER
+- **Sherpa Probe:** `docs/202ph_SHERPA/RECON_SERVICES.md`
+  - 40 AI services tested, zero bot detection, top-5 recommendations
+- **Sherpa Infra:** `docs/202ph_SHERPA/RECON_SHERPA_INFRA.md`
+  - Infrastructure reconnaissance, existing components
+- **Integration Plan:** `docs/201ph_WEATHERE/SHERPA_INTEGRATION_PLAN.md`
+  - Migration path from Sherpa scripts to WEATHER Tauri shell
 
 ---
 
-## 10. Conservation Status
+## 10. Sherpa Integration Status
 
-**Status:** PARKED
+**Sherpa v1.0 — LIVE** (see `docs/202ph_SHERPA/`)
+
+### What Sherpa Has Achieved
+- ✅ TaskBoard HTTP API integration (localhost:5000/5001)
+- ✅ Playwright persistent profiles (`data/sherpa_profiles/`)
+- ✅ 10 services configured (DeepSeek x2, Kimi x2, Arena, Z.ai, Mistral, HuggingChat, Monica, Bolt)
+- ✅ DeepSeek + Kimi working reliably for sending prompts
+- ✅ Ollama/Qwen 3.5 for response summarization
+- ✅ Recon save to `docs/sherpa_recon/sherpa_{task_id}.md`
+- ✅ Task enrichment (recon_docs + implementation_hints)
+- ✅ PID lock guard (max 1 instance)
+- ✅ Probe mode tested 40+ services (zero bot detection!)
+
+### Known Sherpa Issues (P0/P1)
+- 🔴 **P0: Copy button extracts last block only** — needs DOM `inner_text()` fix (task: SHERPA-DOM, assigned Eta)
+- 🔴 **P0: Arena.ai dual responses** — only captures one of two side-by-side responses (part of SHERPA-DOM)
+- 🟡 **P1: 404 spam on /api/settings** — PATCH calls returning 404 (task: SHERPA-INFRA, assigned Zeta)
+
+### Sherpa → WEATHER Migration Path
+| Sherpa Version | WEATHER Version | Features | Status |
+|----------------|-----------------|----------|--------|
+| v1.0 (NOW) | — | Single-instance Playwright scripts | ✅ Live |
+| v1.1 Stability | — | DOM extraction, service rating, profile rotation | 🔄 Next |
+| v2.0 Vision | — | Pixtral OCR, screenshot-based UI detection | Planned |
+| v2.1 | WEATHER v1.0 | VETKA Tauri browser shell + TaskBoard sidebar | Planned |
+| v2.2 Multi-Agent | WEATHER v1.1 | Commander queue + browser pool | Planned |
+
+### Shared Infrastructure
+- `browser_manager.py` — already used by Sherpa, will be WEATHER's browser lifecycle manager
+- `data/sherpa_profiles/` — Playwright persistent contexts, reusable by WEATHER
+- `code_extractor.py` — shared between Sherpa (future) and WEATHER
+- TaskBoard API — single source of truth for task state
+
+### Integration Plan
+See `docs/201ph_WEATHERE/SHERPA_INTEGRATION_PLAN.md` for detailed migration steps.
+
+---
+
+## 11. Conservation Status (Legacy)
+
+**Status:** ACTIVE (upgraded from PARKED on 2026-04-02)
+**Previous Status:** PARKED — conservation until after CUT MVP
 **Date:** 2026-04-02
-**Reason:** CUT MVP takes priority. WEATHER is critical but not blocking.
+**Reason for original park:** CUT MVP takes priority. WEATHER is critical but not blocking.
 **When to return:** After CUT MVP gate (MERGE POINT 4: Save + Render + Export)
 **What's ready now:**
 - ✅ Browser shell (VETKA Tauri phases 136-147)
@@ -200,13 +266,14 @@ Validation: `ast.parse` (Python), `tsc --noEmit` (TS), `node --check` (JS), Band
 - ✅ Agent phonebook (unified_key_manager)
 - ✅ Chat panels (MCC/VETKA)
 - ✅ TaskBoard sidebar (MCC — needs filters)
+- ✅ **Sherpa v1.0** — recon engine live (NEW)
 - 🔄 localgays harness (in progress)
 
 **What needs building (when we return):**
-- Glue layer: TaskBoard → localgays → Playwright → AI
-- Browser session pool + multi-account rotation
+- ~~Glue layer: TaskBoard → localgays → Playwright → AI~~ ← **Sherpa already does this**
+- Browser session pool + multi-account rotation (Sherpa v2.2 / WEATHER v1.1)
 - TaskBoard sidebar filters (project, agent)
-- WEATHER UI integration in VETKA browser
+- WEATHER UI integration in VETKA browser (Sherpa v2.1)
 
 ---
 

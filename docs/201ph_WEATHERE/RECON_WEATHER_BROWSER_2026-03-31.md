@@ -1,9 +1,44 @@
 # RECON: WEATHER Browser — Transform VETKA Tauri into Universal AI Service Interface
 
 **Task:** `tb_1774980431_74494_1`
-**Date:** 2026-03-31
+**Date:** 2026-03-31 (updated 2026-04-02)
 **Phase:** 201
 **Author:** Opus (Commander)
+
+---
+
+## 0. Update: Sherpa v1.0 Probe Results (2026-04-02)
+
+**Sherpa has now executed probe mode on 40+ AI services.** Key findings that update this recon:
+
+### Probe Results Summary
+- **Zero bot detection** on ANY service — no Cloudflare blocks, no CAPTCHA triggers
+- **Main challenge:** SPA textarea loading (not security)
+- **Top 5 services confirmed working:**
+  1. **arena_1** (lmarena.ai) — ONLY true anonymous PASS. No login. Rotates 50+ models. Unlimited.
+  2. **mistral_1** (chat.mistral.ai) — textarea confirmed, strong coding, large context (after --setup)
+  3. **huggingchat_1** (huggingface.co/chat) — textarea confirmed, open models (after --setup)
+  4. **monica_1** (monica.im) — textarea confirmed, all-in-one AI (after --setup)
+  5. **chatgpt_1** (chatgpt.com) — input confirmed (contenteditable, needs selector fix + --setup)
+
+### Services to Disable
+- phind_1 (404), codeium_1 (404, now Windsurf), sensenova_1 (timeout), forefront_1 (empty page)
+
+### Lessons Learned for WEATHER
+1. **No per-service adapters needed** — universal Playwright approach works across all services
+2. **Persistent profiles are critical** — sessions survive restarts via Playwright userDataDir
+3. **Copy button extraction is buggy** — grabs last code block only, not full response. Fix: use `inner_text()` on response container div
+4. **Arena.ai dual responses** — side-by-side benchmark mode needs multi-container grab
+5. **Cooldown-based rate limiting** (120s) works well for respecting free-tier limits
+6. **Chinese SPAs are viable** — Kimi/DeepSeek work reliably after initial setup
+
+### Impact on This Recon
+- **Section 3.4 (Universal Agent Interface):** Confirmed — universal approach works. Selector registry still needed but no adapters.
+- **Section 3.5 (Profile Management):** Confirmed — Playwright persistent contexts solve this natively.
+- **Section 4 (Recommended Architecture):** Option A (Playwright-Based) validated by Sherpa's success.
+- **Timeline estimate:** Reduced from 2-3 days to ~1 day for core (Sherpa already proved the hard parts).
+
+---
 
 ---
 

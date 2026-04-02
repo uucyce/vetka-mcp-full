@@ -100,7 +100,7 @@ log = logging.getLogger("sherpa")
 # ── Config ─────────────────────────────────────────────────────────────
 @dataclass
 class ServiceConfig:
-    name: str           # Service group (e.g. "deepseek") — used for --service filter
+    name: str
     url: str
     profile_dir: str
     input_selector: str = "textarea"
@@ -108,11 +108,6 @@ class ServiceConfig:
     response_selector: str = "[data-message-author-role='assistant'], .response, .message"
     cooldown_seconds: int = 120
     enabled: bool = True
-    profile_name: str = ""  # Unique profile key (e.g. "deepseek_2"), defaults to last segment of profile_dir
-
-    def __post_init__(self):
-        if not self.profile_name:
-            self.profile_name = Path(self.profile_dir).name
 
 
 @dataclass
@@ -301,12 +296,12 @@ class BrowserClient:
     """Playwright-based browser for AI service interaction."""
 
     def __init__(self, services: List[ServiceConfig], headless: bool = True):
-        self.services = {s.profile_name: s for s in services}  # keyed by profile_name (unique per profile)
+        self.services = {s.name: s for s in services}
         self.headless = headless
         self._pw = None
         self._browser = None
-        self._contexts: Dict[str, Any] = {}  # profile_name -> context
-        self._pages: Dict[str, Any] = {}  # profile_name -> page
+        self._contexts: Dict[str, Any] = {}  # service_name -> context
+        self._pages: Dict[str, Any] = {}  # service_name -> page
 
     async def start(self):
         from playwright.async_api import async_playwright
@@ -786,7 +781,7 @@ class BrowserClient:
                 log.info("AI is generating...")
                 break
             # Also check if response text appeared without streaming indicator
-            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+            text = await self._extract_response_text(page, prompt_text, pre_text)
             if text and len(text) > 50:
                 generation_started = True
                 log.info("Response text detected")
@@ -796,7 +791,7 @@ class BrowserClient:
         if not generation_started:
             log.warning("No generation detected after 30s — message may not have been sent")
             # Try to extract whatever is on the page anyway
-            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+            text = await self._extract_response_text(page, prompt_text, pre_text)
             if text and len(text) > 100:
                 return text
             return ""
@@ -807,7 +802,7 @@ class BrowserClient:
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+            text = await self._extract_response_text(page, prompt_text, pre_text)
             curr_len = len(text)
 
             elapsed = int(time.time() - start)
@@ -840,7 +835,7 @@ class BrowserClient:
             await page.wait_for_timeout(3000)
 
         # Timeout — return whatever we have
-        text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+        text = await self._extract_response_text(page, prompt_text, pre_text)
         if text and len(text) > 100:
             log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
@@ -921,39 +916,35 @@ class BrowserClient:
 
         return ""
 
-    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "",
-                                      svc: "ServiceConfig" = None) -> str:
-        """Extract the latest AI response, filtering out prompt echo.
+    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "") -> str:
+        """Extract the latest AI response, filtering out prompt echo."""
 
-        Strategy order:
-        1a. Service-specific selector from svc.response_selector (config-driven)
-        1b. Generic DOM selectors — extracts FULL response text
-        2.  Clipboard — fallback only, gives last code block (~1.4K chars)
-        3.  Diff — compare pre/post send snapshots
+        # Strategy 0: Click Copy button (most reliable)
+        copied = await self._click_copy_button(page)
+        if copied and len(copied) > 100:
+            return copied
 
-        Arena special case: TWO responses side-by-side → both captured and joined.
-        """
-        is_arena = svc and svc.name == "arena"
-
-        # Build selector list: service-specific first, then generic fallbacks
-        selectors = []
-        if svc and svc.response_selector:
-            for s in svc.response_selector.split(","):
-                s = s.strip()
-                if s:
-                    selectors.append(s)
-        # Generic fallbacks
-        selectors += [
-            ".ds-markdown",                          # DeepSeek
-            '[class*="message-bubble"]',             # Grok
-            "[data-message-author-role='assistant']",# ChatGPT
-            ".font-claude-message",                  # Claude
-            ".message-content",                      # Qwen
-            ".assistant-message",                    # Kimi
+        # Strategy 1: Use service-specific response selectors
+        selectors = [
+            # DeepSeek
+            ".ds-markdown",
+            # Grok
+            '[class*="message-bubble"]',
+            # ChatGPT
+            "[data-message-author-role='assistant']",
+            # Claude
+            ".font-claude-message",
+            # Qwen
+            ".message-content",
+            # Kimi
+            ".assistant-message",
+            # Generic markdown containers
             ".markdown-body",
             ".prose",
+            # Generic response containers
             ".response-content",
             ".model-response",
+            # Generic: article blocks
             "article",
         ]
 
@@ -964,69 +955,28 @@ class BrowserClient:
                 count = await elements.count()
                 if count == 0:
                     continue
-
-                if is_arena and count >= 2:
-                    # Arena: collect ALL responses (Model A + Model B side by side)
-                    parts = []
-                    for i in range(count):
-                        try:
-                            el = elements.nth(i)
-                            if await el.is_visible(timeout=500):
-                                t = (await el.inner_text(timeout=3000)).strip()
-                                if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
-                                    parts.append(t)
-                        except Exception:
-                            continue
-                    if parts:
-                        combined = "\n\n---\n\n".join(
-                            f"[Model {chr(65+i)}]\n{p}" for i, p in enumerate(parts)
-                        )
-                        log.info(f"Arena dual capture: {len(parts)} responses, {len(combined)} chars total")
-                        return combined
-
-                # Standard: try LAST element first (most recent AI turn)
+                # Get the LAST element (most recent response)
                 el = elements.last
                 if await el.is_visible(timeout=1000):
-                    text = (await el.inner_text(timeout=5000)).strip()
+                    text = await el.inner_text(timeout=5000)
+                    text = text.strip()
+                    # Filter: must be substantial + not part of prompt
                     if len(text) > 100 and not self._is_prompt_echo(text, prompt_text):
                         if len(text) > len(best_text):
                             best_text = text
-
-                # If last element too short, try concatenating ALL non-echo elements
-                # (handles multi-block responses where each block = separate container)
-                if len(best_text) < 2000 and count > 1:
-                    parts = []
-                    for i in range(count):
-                        try:
-                            t = (await elements.nth(i).inner_text(timeout=2000)).strip()
-                            if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
-                                parts.append(t)
-                        except Exception:
-                            continue
-                    if parts:
-                        combined = "\n\n".join(parts)
-                        if len(combined) > len(best_text):
-                            best_text = combined
-
             except Exception:
                 continue
 
         if best_text:
-            log.info(f"DOM extraction: {len(best_text)} chars")
             return best_text
 
-        # Strategy 2 (fallback): Click Copy button and read clipboard.
-        # NOTE: clipboard returns only the LAST code block, not the full response.
-        copied = await self._click_copy_button(page)
-        if copied and len(copied) > 100:
-            log.info(f"Clipboard fallback: {len(copied)} chars")
-            return copied
-
-        # Strategy 3: Diff — compare current page text with pre-send snapshot
+        # Strategy 2: Diff approach — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
+                # Find new text that wasn't there before
                 new_text = current_text.replace(pre_text, "").strip()
+                # Also remove the prompt itself
                 if prompt_text:
                     new_text = new_text.replace(prompt_text, "").strip()
                 if len(new_text) > 100:
@@ -1051,27 +1001,19 @@ class BrowserClient:
         log.info("Browser will open. Log into each service manually.")
         log.info("Press Enter in terminal when done with each service.\n")
 
-        # Filter by service group name (e.g. --service deepseek gets deepseek_1, deepseek_2)
-        if services:
-            targets = [
-                pname for pname, svc in self.services.items()
-                if svc.name in services
-            ]
-        else:
-            targets = list(self.services.keys())
-
-        for profile_name in targets:
-            svc = self.services.get(profile_name)
+        targets = services or list(self.services.keys())
+        for svc_name in targets:
+            svc = self.services.get(svc_name)
             if not svc:
                 continue
-            log.info(f"Opening {profile_name} ({svc.url})...")
-            page = await self._get_page(profile_name)
+            log.info(f"Opening {svc.name} ({svc.url})...")
+            page = await self._get_page(svc_name)
             await page.goto(svc.url, wait_until="domcontentloaded")
 
-            input(f"\n>>> Log into {profile_name} ({svc.name}), then press Enter here... ")
+            input(f"\n>>> Log into {svc.name}, then press Enter here... ")
 
-            await self._save_storage_state(profile_name)
-            log.info(f"Session saved for {profile_name}")
+            await self._save_storage_state(svc_name)
+            log.info(f"Session saved for {svc.name}")
 
         log.info("\n=== Setup complete! Run 'python sherpa.py' to start recon. ===")
 
@@ -1223,14 +1165,8 @@ def save_recon_report(
 
 *Generated by Sherpa — Scout & Harvest Engine for Recon, Prep & Augmentation*
 """
-    if report_path.exists():
-        # Append — multiple services may enrich the same task
-        with report_path.open("a") as f:
-            f.write(f"\n\n---\n\n{report}")
-        log.info(f"Recon appended: {report_path}")
-    else:
-        report_path.write_text(report)
-        log.info(f"Recon saved: {report_path}")
+    report_path.write_text(report)
+    log.info(f"Recon saved: {report_path}")
     return report_path
 
 
@@ -1331,11 +1267,11 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
             svc = active_services[service_idx % len(active_services)]
             service_idx += 1
 
-            log.info(f"Sending to {svc.profile_name} ({svc.name})...")
+            log.info(f"Sending to {svc.name}...")
             try:
-                response = await browser.send_prompt(svc.profile_name, prompt)
+                response = await browser.send_prompt(svc.name, prompt)
             except Exception as e:
-                log.error(f"Browser error ({svc.profile_name}): {e}")
+                log.error(f"Browser error ({svc.name}): {e}")
                 response = ""
 
             if not response:
@@ -1361,7 +1297,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 7. Update task with recon
             updates = {
-                "status": "recon_done",  # Enriched — ready for coding agent, not for Sherpa again
+                "status": "pending",  # Release back to pool, enriched
             }
             # Append to existing recon_docs
             existing_recon = task.get("recon_docs", []) or []
@@ -1379,7 +1315,8 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             await tb.update_task(task_id, updates)
             tasks_processed += 1
-            log.info(f"Task {task_id} enriched → recon_done ({tasks_processed}/{cfg.max_tasks_per_run})")
+            skipped_ids.add(task_id)  # Don't take same task again
+            log.info(f"Task {task_id} enriched ({tasks_processed}/{cfg.max_tasks_per_run})")
 
             if once:
                 break
@@ -1400,277 +1337,19 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 # ── Setup Mode ─────────────────────────────────────────────────────────
 async def setup_mode(cfg: SherpaConfig, services: List[str] = None):
     """Interactive profile setup."""
-    # Include ALL services (enabled or not) so you can setup new profiles
-    candidates = cfg.services
+    active = [s for s in cfg.services if s.enabled]
     if services:
-        candidates = [s for s in candidates if s.name in services]
-    browser = BrowserClient(candidates, headless=False)  # Always visible for setup
+        active = [s for s in active if s.name in services]
+    browser = BrowserClient(active, headless=False)  # Always visible for setup
     await browser.start()
     await browser.setup_profiles(services)
     await browser.stop()
-
-
-# ── Probe Mode ──────────────────────────────────────────────────────────
-async def probe_services(cfg: SherpaConfig, output_path: Path, services: List[str] = None, headless: bool = True):
-    """Non-interactive structural probe: navigate to each service, test selectors, detect bots.
-
-    Does NOT require login. Tests:
-    1. Page loads (no immediate block)
-    2. textarea / input found
-    3. Bot detection signatures (Cloudflare, captcha)
-    4. Response DOM selector exists (post-load)
-    5. Basic page title / structure
-
-    Writes results to RECON_SERVICES.md.
-    Run: python sherpa.py --probe [--service deepseek] [--visible]
-    """
-    from playwright.async_api import async_playwright
-
-    BOT_DETECT_PATTERNS = [
-        "captcha", "cloudflare", "ddos", "challenge", "access denied",
-        "bot detected", "verify you are human", "enable javascript",
-        "checking your browser", "just a moment",
-    ]
-    POPUP_SELECTORS = [
-        # Login/signup modal
-        '[role="dialog"]', '.modal', '[class*="modal"]', '[class*="popup"]',
-        '[class*="overlay"]', '[class*="Dialog"]',
-        # Cookie consent
-        '[class*="cookie"]', '[class*="consent"]', '[class*="gdpr"]',
-        # Login required
-        'button:has-text("Sign in")', 'button:has-text("Log in")',
-        'button:has-text("Sign up")', 'a:has-text("Sign in")',
-    ]
-    RATE_LIMIT_PATTERNS = [
-        "rate limit", "too many requests", "quota", "limit reached",
-        "upgrade", "subscribe", "premium", "out of messages",
-        "daily limit", "usage limit",
-    ]
-
-    # Use ALL services (including disabled) for probing
-    candidates = cfg.services
-    if services:
-        candidates = [s for s in candidates if s.name in services]
-    if not candidates:
-        log.error("No services to probe")
-        return
-
-    results = []
-
-    async with async_playwright() as pw:
-        browser = await pw.chromium.launch(
-            headless=headless,
-            args=["--no-sandbox", "--disable-blink-features=AutomationControlled"],
-        )
-        for svc in candidates:
-            log.info(f"Probing {svc.profile_name} ({svc.url})...")
-            result = {
-                "profile_name": svc.profile_name,
-                "name": svc.name,
-                "url": svc.url,
-                "enabled": svc.enabled,
-                "loads": False,
-                "bot_detect": False,
-                "bot_signal": "",
-                "textarea": False,
-                "textarea_sel": "",
-                "response_sel": False,
-                "response_sel_found": "",
-                "popup": False,
-                "popup_type": "",       # login / cookie / modal
-                "login_required": False,
-                "rate_limit_hint": "",  # any visible rate-limit text
-                "models_visible": False,# model selector found in DOM
-                "page_title": "",
-                "error": "",
-            }
-            try:
-                ctx = await browser.new_context(
-                    viewport={"width": 1440, "height": 900},
-                    user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-                )
-                page = await ctx.new_page()
-                try:
-                    await page.goto(svc.url, wait_until="domcontentloaded", timeout=20_000)
-                    await page.wait_for_timeout(2000)  # Let JS render
-                    result["loads"] = True
-                    result["page_title"] = (await page.title())[:60]
-
-                    # Check bot detection
-                    body_text = (await page.locator("body").inner_text(timeout=3000)).lower()
-                    for pat in BOT_DETECT_PATTERNS:
-                        if pat in body_text:
-                            result["bot_detect"] = True
-                            result["bot_signal"] = pat
-                            break
-
-                    # Check rate limit hints in page text
-                    for pat in RATE_LIMIT_PATTERNS:
-                        if pat in body_text:
-                            result["rate_limit_hint"] = pat
-                            break
-
-                    if not result["bot_detect"]:
-                        # Test input selectors
-                        for sel in svc.input_selector.split(","):
-                            sel = sel.strip()
-                            try:
-                                count = await page.locator(sel).count()
-                                if count > 0:
-                                    result["textarea"] = True
-                                    result["textarea_sel"] = sel
-                                    break
-                            except Exception:
-                                continue
-
-                        # Test response selectors
-                        for sel in svc.response_selector.split(","):
-                            sel = sel.strip()
-                            try:
-                                count = await page.locator(sel).count()
-                                if count > 0:
-                                    result["response_sel"] = True
-                                    result["response_sel_found"] = sel
-                                    break
-                            except Exception:
-                                continue
-
-                        # Detect popups / modals
-                        for sel in POPUP_SELECTORS:
-                            try:
-                                el = page.locator(sel).first
-                                if await el.is_visible(timeout=500):
-                                    result["popup"] = True
-                                    if "sign" in sel.lower() or "log" in sel.lower():
-                                        result["popup_type"] = "login"
-                                        result["login_required"] = True
-                                    elif "cookie" in sel.lower() or "consent" in sel.lower():
-                                        result["popup_type"] = "cookie"
-                                    else:
-                                        result["popup_type"] = "modal"
-                                    break
-                            except Exception:
-                                continue
-
-                        # Detect model selector (dropdown / list of models)
-                        model_selectors = [
-                            'select', '[class*="model"]', '[aria-label*="model"]',
-                            '[aria-label*="Model"]', 'button:has-text("GPT")',
-                            'button:has-text("Claude")', 'button:has-text("Llama")',
-                            '[class*="ModelSelector"]',
-                        ]
-                        for sel in model_selectors:
-                            try:
-                                if await page.locator(sel).count() > 0:
-                                    result["models_visible"] = True
-                                    break
-                            except Exception:
-                                continue
-
-                except Exception as e:
-                    result["error"] = str(e)[:80]
-                finally:
-                    await ctx.close()
-
-            except Exception as e:
-                result["error"] = f"browser error: {str(e)[:60]}"
-
-            results.append(result)
-            verdict = "PASS" if (result["loads"] and result["textarea"] and not result["bot_detect"]) else \
-                      "BOT" if result["bot_detect"] else \
-                      "NO_INPUT" if (result["loads"] and not result["textarea"]) else \
-                      "FAIL"
-            log.info(f"  {svc.profile_name}: {verdict} | title={result['page_title'][:30]} | textarea={result['textarea']} | bot={result['bot_detect']}")
-
-        await browser.close()
-
-    # Write RECON_SERVICES.md
-    _write_probe_report(results, output_path)
-    log.info(f"Probe report written: {output_path}")
-
-
-def _write_probe_report(results: list, output_path: Path):
-    """Write compatibility matrix to RECON_SERVICES.md."""
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    passed = [r for r in results if r["loads"] and r["textarea"] and not r["bot_detect"]]
-    failed = [r for r in results if not r["loads"] or r["error"]]
-    bot = [r for r in results if r["bot_detect"]]
-    no_input = [r for r in results if r["loads"] and not r["textarea"] and not r["bot_detect"] and not r["error"]]
-
-    lines = [
-        f"# SHERPA — AI Services Probe Report",
-        f"",
-        f"**Generated:** {timestamp} by `python sherpa.py --probe`",
-        f"**Total probed:** {len(results)} | **PASS:** {len(passed)} | **BOT:** {len(bot)} | **NO_INPUT:** {len(no_input)} | **FAIL:** {len(failed)}",
-        f"",
-        f"## Legend",
-        f"",
-        f"- **PASS** — textarea found, page loads, no bot detect. Enable + test with real prompt.",
-        f"- **NEED_LOGIN** — loads but login popup shown. Setup profile then re-probe.",
-        f"- **BOT** — Cloudflare/captcha detected. Playwright blocked.",
-        f"- **NO_INPUT** — page loads but textarea not found.",
-        f"- **FAIL** — page didn't load / timeout.",
-        f"",
-        f"## Results",
-        f"",
-        f"| profile | loads | input | bot | popup | login | models | rate_limit | verdict | notes |",
-        f"|---------|-------|-------|-----|-------|-------|--------|------------|---------|-------|",
-    ]
-
-    for r in results:
-        if r["loads"] and r["textarea"] and not r["bot_detect"] and not r["login_required"]:
-            verdict = "**PASS**"
-        elif r["login_required"] or (r["popup"] and r["popup_type"] == "login"):
-            verdict = "NEED_LOGIN"
-        elif r["bot_detect"]:
-            verdict = f"BOT ({r['bot_signal']})"
-        elif r["loads"] and not r["textarea"]:
-            verdict = "NO_INPUT"
-        else:
-            verdict = "FAIL"
-
-        notes = r["error"][:35] if r["error"] else (r["textarea_sel"][:35] if r["textarea"] else "")
-        lines.append(
-            f"| {r['profile_name']} | {'Y' if r['loads'] else 'N'} | "
-            f"{'Y' if r['textarea'] else 'N'} | {'Y' if r['bot_detect'] else 'N'} | "
-            f"{'Y' if r['popup'] else 'N'} | {'Y' if r['login_required'] else 'N'} | "
-            f"{'Y' if r['models_visible'] else 'N'} | {r['rate_limit_hint'] or '-'} | "
-            f"{verdict} | {notes} |"
-        )
-
-    lines += [
-        f"",
-        f"## PASS — Enable These in sherpa.yaml",
-        f"",
-    ]
-    for r in passed:
-        lines.append(f"- `{r['profile_name']}` ({r['url']}) — textarea: `{r['textarea_sel']}`")
-
-    lines += [
-        f"",
-        f"## Top-5 Recommended (manual ranking after PASS review)",
-        f"",
-        f"1. TBD",
-        f"2. TBD",
-        f"3. TBD",
-        f"4. TBD",
-        f"5. TBD",
-        f"",
-        f"*Run again after login: `python sherpa.py --probe` to re-check with session cookies.*",
-    ]
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text("\n".join(lines))
-
-
-# ── Entry Point ────────────────────────────────────────────────────────
 
 
 # ── Entry Point ────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="Sherpa — Recon agent for VETKA tasks")
     parser.add_argument("--setup", action="store_true", help="Interactive login setup")
-    parser.add_argument("--probe", action="store_true", help="Non-interactive probe: test selectors for all services, write RECON_SERVICES.md")
     parser.add_argument("--once", action="store_true", help="Process one task and exit")
     parser.add_argument("--dry-run", action="store_true", help="Show what would be processed")
     parser.add_argument("--service", type=str, help="Use specific service only (e.g. grok)")
@@ -1685,10 +1364,6 @@ def main():
     if args.setup:
         services = [args.service] if args.service else None
         asyncio.run(setup_mode(cfg, services))
-    elif args.probe:
-        services = [args.service] if args.service else None
-        out = PROJECT_ROOT / "docs" / "202ph_SHERPA" / "RECON_SERVICES.md"
-        asyncio.run(probe_services(cfg, out, services=services, headless=not args.visible))
     else:
         # PID Guard — only one Sherpa at a time
         if not acquire_guard():
