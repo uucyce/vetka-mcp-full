@@ -346,6 +346,7 @@ class BrowserClient:
             storage_state=self._load_storage_state(profile_path),
             viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            permissions=["clipboard-read", "clipboard-write"],  # No popup for clipboard
         )
         page = await ctx.new_page()
         self._contexts[service_name] = ctx
@@ -811,20 +812,24 @@ class BrowserClient:
                 if elapsed % 15 == 0:
                     log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
             else:
-                # Check for COPY BUTTON — definitive signal that response is complete
+                # Text growing? Reset stability counter
+                if curr_len != prev_len:
+                    stable_count = 0
+                    if elapsed % 10 == 0 and curr_len > 0:
+                        log.info(f"Response growing... ({curr_len} chars, {elapsed}s)")
+                else:
+                    stable_count += 1
+
+                # COMPLETE = Copy button visible + text stopped growing (3 checks = 9s)
                 copy_visible = await self._is_copy_button_visible(page)
-                if copy_visible and curr_len > 100:
-                    log.info(f"Copy button appeared — response complete ({curr_len} chars, {elapsed}s)")
+                if copy_visible and stable_count >= 3 and curr_len > 100:
+                    log.info(f"Response complete: Copy visible + text stable ({curr_len} chars, {elapsed}s)")
                     return text
 
-                # Fallback: text stability check (if copy button not found)
-                if curr_len > 100 and curr_len == prev_len:
-                    stable_count += 1
-                    if stable_count >= 5:  # 15 seconds stable without copy button
-                        log.info(f"Response stable ({curr_len} chars, {elapsed}s)")
-                        return text
-                else:
-                    stable_count = 0
+                # Fallback: no copy button but text very stable (5 checks = 15s)
+                if stable_count >= 5 and curr_len > 500:
+                    log.info(f"Response stable without Copy button ({curr_len} chars, {elapsed}s)")
+                    return text
 
             prev_len = curr_len
             await page.wait_for_timeout(3000)
@@ -836,6 +841,25 @@ class BrowserClient:
             return text
         log.error("Timeout: no response received")
         return ""
+
+    async def _is_copy_button_visible(self, page) -> bool:
+        """Check if a Copy button is visible — means response is COMPLETE."""
+        copy_selectors = [
+            'button[aria-label*="Copy" i]',
+            'button[data-testid*="copy" i]',
+            'button[title*="Copy" i]',
+            'button:has-text("Copy")',
+            '.copy-btn',
+            '[class*="copy" i]:not([class*="copyright"])',
+        ]
+        for sel in copy_selectors:
+            try:
+                el = page.locator(sel).last  # Last = for latest response
+                if await el.is_visible(timeout=500):
+                    return True
+            except Exception:
+                continue
+        return False
 
     async def _click_copy_button(self, page) -> str:
         """Strategy 0: Click the Copy button and read clipboard.
@@ -1291,6 +1315,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             await tb.update_task(task_id, updates)
             tasks_processed += 1
+            skipped_ids.add(task_id)  # Don't take same task again
             log.info(f"Task {task_id} enriched ({tasks_processed}/{cfg.max_tasks_per_run})")
 
             if once:

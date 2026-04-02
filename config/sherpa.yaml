@@ -67,8 +67,7 @@ services:
     cooldown_seconds: 90
     enabled: false
 
-  # ── Qwen (Alibaba) — very large / unlimited ───────────────────────
-  # Note: does not accept .ts/.tsx files
+  # ── Qwen (Alibaba) — DISABLED: cannot find input reliably ────────
   - name: qwen
     url: https://chat.qwen.ai
     profile_dir: data/sherpa_profiles/qwen_1
@@ -76,19 +75,19 @@ services:
     send_selector: 'button[type="submit"], button:has-text("Send")'
     response_selector: '.message-content, .markdown-body'
     cooldown_seconds: 60
-    enabled: true
+    enabled: false
 
-  # ── Claude.ai (Anthropic) — free Haiku tier ───────────────────────
+  # ── Claude.ai — DISABLED: copies prompt instead of response ──────
   - name: claude
     url: https://claude.ai
     profile_dir: data/sherpa_profiles/claude_1
     input_selector: 'div[contenteditable="true"], .ProseMirror'
     send_selector: 'button[aria-label="Send Message"]'
     response_selector: '[data-is-streaming], .font-claude-message'
-    cooldown_seconds: 180         # conservative — free tier limits
-    enabled: true
+    cooldown_seconds: 180
+    enabled: false
 
-  # ── ChatGPT (OpenAI) ──────────────────────────────────────────────
+  # ── ChatGPT — DISABLED: copies prompt instead of response ────────
   - name: chatgpt
     url: https://chatgpt.com
     profile_dir: data/sherpa_profiles/chatgpt_1
@@ -96,7 +95,7 @@ services:
     send_selector: 'button[data-testid="send-button"]'
     response_selector: '[data-message-author-role="assistant"]'
     cooldown_seconds: 120
-    enabled: true
+    enabled: false
 
   # ── Kimi (Moonshot) — "ok computer" mode for working code ─────────
   - name: kimi

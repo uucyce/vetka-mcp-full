@@ -301,6 +301,7 @@ git diff main..agent/theta-weather      # что изменилось
 | `docs/200_taskboard_forever/ARCHITECTURE_AGENT_ECOSYSTEM.md` | Полная архитектура агентов |
 | `docs/201ph_WEATHERE/ARCHITECTURE_WEATHER.md` | WEATHER архитектура |
 | `docs/201ph_WEATHERE/RECON_WEATHER_BROWSER_2026-03-31.md` | WEATHER RECON |
+| `docs/202ph_SHERPA/ARCHITECTURE_SHERPA.md` | Sherpa архитектура и roadmap |
 
 ---
 
@@ -537,22 +538,68 @@ grep -A 5 "roles:" agent_registry.yaml | grep Mistral
 ## Sherpa — бесплатный разведчик для задач (Phase 202)
 
 ### Что это
-Sherpa — **автономный recon-агент**, который обогащает pending-задачи исследованиями из бесплатных AI-сервисов (Grok, DeepSeek, Qwen, Claude Haiku, ChatGPT, Kimi). Sherpa **не пишет production код** — он готовит trail для настоящих агентов.
+Sherpa — **автономный recon-агент**, который обогащает pending-задачи исследованиями из бесплатных AI-сервисов (DeepSeek, Grok, Qwen, Claude Haiku, ChatGPT, Kimi). Sherpa **не пишет production код** — он готовит trail для настоящих агентов.
 
 ### Зачем
 ~30% сессии каждого агента уходит на recon (поиск файлов, изучение архитектуры, исследование подходов). Sherpa делает этот recon бесплатно и заранее. Результат: +30-50% throughput при тех же лимитах.
 
-### Как работает
+### Sherpa Commands
+
+```bash
+# First-time setup (login to AI services)
+cd ~/Documents/VETKA_Project/vetka_live_03
+python sherpa.py --setup
+
+# Run full recon cycle (50 tasks, ~1 hour)
+python sherpa.py --visible
+
+# Run single task for testing
+python sherpa.py --once --visible
+
+# Dry run — see what would be processed
+python sherpa.py --dry-run --once
+
+# Run headless (background, no browser window)
+python sherpa.py
+
+# Use specific service only
+python sherpa.py --service deepseek --visible
+```
+
+### What Sherpa Does
+
+- Takes pending tasks from TaskBoard
+- Searches codebase (ripgrep) for relevant files
+- Sends task description + architecture docs + code snippets to free AI services (DeepSeek, etc.)
+- Saves research response to docs/sherpa_recon/sherpa_{task_id}.md
+- Updates task with recon_docs and implementation_hints
+- Releases task back as pending (enriched) for coding agents
+
+### Rules
+
+- Only ONE Sherpa instance at a time (PID lock guard)
+- Only Commanders launch Sherpa
+- Config: config/sherpa.yaml
+- Recon output: docs/sherpa_recon/
+- Logs: logs/sherpa.log
+
+### Как работает (pipeline)
 ```
 TaskBoard (pending task)
-    → Sherpa берёт таск (claim)
-    → Ищет файлы в кодбазе (ripgrep)
-    → Собирает промпт из контекста
-    → Отправляет в DeepSeek/Grok/Qwen через Playwright
-    → Ждёт ответ
-    → Сохраняет в docs/sherpa_recon/sherpa_{task_id}.md
-    → Обновляет таск (recon_docs + implementation_hints)
-    → Возвращает таск в pending (обогащённый)
+    -> Sherpa claims task
+      -> ripgrep searches codebase for relevant files
+      -> Reads architecture_docs and recon_docs from task
+      -> Builds prompt (task desc + docs + code snippets)
+      -> Playwright opens DeepSeek
+      -> fill() prompt into textarea
+      -> Enter to send
+      -> Wait for Copy button + text stability
+      -> Extract response via clipboard
+      -> Ollama summarizes key points
+      -> Save to docs/sherpa_recon/sherpa_{task_id}.md
+      -> Update task: recon_docs + implementation_hints
+      -> Release task back to pending (enriched)
+    -> Cooldown -> next task
 ```
 
 ### Кто запускает Sherpa
@@ -581,33 +628,8 @@ playwright install chromium
 
 # 2. Логин в сервисы (один раз, вручную)
 python sherpa.py --setup
-# Браузер откроется → залогинься в каждый сервис → Enter
+# Браузер откроется -> залогинься в каждый сервис -> Enter
 # Сессии сохраняются в data/sherpa_profiles/
-```
-
-### Команды запуска
-
-```bash
-# ВАЖНО: все команды из корня проекта!
-cd ~/Documents/VETKA_Project/vetka_live_03
-
-# Полный цикл (до 50 тасков, ~8 часов)
-python sherpa.py
-
-# Один таск и выход (для теста)
-python sherpa.py --once
-
-# Посмотреть что будет обработано (без отправки)
-python sherpa.py --dry-run
-
-# Только конкретный сервис
-python sherpa.py --service deepseek
-
-# Видимый браузер (для дебага)
-python sherpa.py --visible
-
-# Логин в конкретный сервис
-python sherpa.py --setup --service grok
 ```
 
 ### Ротация аккаунтов
@@ -666,12 +688,13 @@ task.implementation_hints = """
 
 | Файл | Назначение |
 |------|-----------|
-| `sherpa.py` | Основной скрипт (~450 строк) |
+| `sherpa.py` | Основной скрипт (~500 строк) |
 | `config/sherpa.yaml` | Сервисы, cooldowns, agent identity |
 | `docs/sherpa_recon/` | Recon-отчёты (sherpa_{task_id}.md) |
 | `data/sherpa_profiles/` | Сохранённые сессии браузера |
 | `logs/sherpa.log` | Лог работы |
 | `docs/202ph_SHERPA/SHERPA_CONCEPT.md` | Концепт-документ |
+| `docs/202ph_SHERPA/ARCHITECTURE_SHERPA.md` | Архитектура и roadmap |
 
 ---
 
