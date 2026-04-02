@@ -193,9 +193,9 @@ services:
     profile_dir: data/sherpa_profiles/arena_1
     input_selector: 'textarea'
     send_selector: 'button[type="submit"], button:has-text("Send")'
-    response_selector: '.prose, [class*="message"], article'
+    response_selector: '.prose, [class*="message-content"], [class*="chat-message"], article'
     cooldown_seconds: 60
-    enabled: true                 # PASS — anonymous, no login needed
+    enabled: true                 # PASS — anonymous, no login needed. Dual response captured automatically.
 
   - name: mistral
     url: https://chat.mistral.ai

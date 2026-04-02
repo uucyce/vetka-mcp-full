@@ -786,7 +786,7 @@ class BrowserClient:
                 log.info("AI is generating...")
                 break
             # Also check if response text appeared without streaming indicator
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             if text and len(text) > 50:
                 generation_started = True
                 log.info("Response text detected")
@@ -796,7 +796,7 @@ class BrowserClient:
         if not generation_started:
             log.warning("No generation detected after 30s — message may not have been sent")
             # Try to extract whatever is on the page anyway
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             if text and len(text) > 100:
                 return text
             return ""
@@ -807,7 +807,7 @@ class BrowserClient:
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            text = await self._extract_response_text(page, prompt_text, pre_text)
+            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
             curr_len = len(text)
 
             elapsed = int(time.time() - start)
@@ -840,7 +840,7 @@ class BrowserClient:
             await page.wait_for_timeout(3000)
 
         # Timeout — return whatever we have
-        text = await self._extract_response_text(page, prompt_text, pre_text)
+        text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
         if text and len(text) > 100:
             log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
@@ -921,36 +921,39 @@ class BrowserClient:
 
         return ""
 
-    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "") -> str:
+    async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "",
+                                      svc: "ServiceConfig" = None) -> str:
         """Extract the latest AI response, filtering out prompt echo.
 
         Strategy order:
-        1. DOM selectors — extracts FULL response text (15K+ chars)
-        2. Clipboard — fallback, gives only last code block (~1.4K chars)
-        3. Diff — compare pre/post send snapshots
-        """
+        1a. Service-specific selector from svc.response_selector (config-driven)
+        1b. Generic DOM selectors — extracts FULL response text
+        2.  Clipboard — fallback only, gives last code block (~1.4K chars)
+        3.  Diff — compare pre/post send snapshots
 
-        # Strategy 1: Use service-specific response selectors (PRIMARY — full DOM text)
-        selectors = [
-            # DeepSeek — main markdown container
-            ".ds-markdown",
-            # Grok
-            '[class*="message-bubble"]',
-            # ChatGPT
-            "[data-message-author-role='assistant']",
-            # Claude
-            ".font-claude-message",
-            # Qwen
-            ".message-content",
-            # Kimi
-            ".assistant-message",
-            # Generic markdown containers
+        Arena special case: TWO responses side-by-side → both captured and joined.
+        """
+        is_arena = svc and svc.name == "arena"
+
+        # Build selector list: service-specific first, then generic fallbacks
+        selectors = []
+        if svc and svc.response_selector:
+            for s in svc.response_selector.split(","):
+                s = s.strip()
+                if s:
+                    selectors.append(s)
+        # Generic fallbacks
+        selectors += [
+            ".ds-markdown",                          # DeepSeek
+            '[class*="message-bubble"]',             # Grok
+            "[data-message-author-role='assistant']",# ChatGPT
+            ".font-claude-message",                  # Claude
+            ".message-content",                      # Qwen
+            ".assistant-message",                    # Kimi
             ".markdown-body",
             ".prose",
-            # Generic response containers
             ".response-content",
             ".model-response",
-            # Generic: article blocks
             "article",
         ]
 
@@ -961,15 +964,50 @@ class BrowserClient:
                 count = await elements.count()
                 if count == 0:
                     continue
-                # Get the LAST element (most recent response)
+
+                if is_arena and count >= 2:
+                    # Arena: collect ALL responses (Model A + Model B side by side)
+                    parts = []
+                    for i in range(count):
+                        try:
+                            el = elements.nth(i)
+                            if await el.is_visible(timeout=500):
+                                t = (await el.inner_text(timeout=3000)).strip()
+                                if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
+                                    parts.append(t)
+                        except Exception:
+                            continue
+                    if parts:
+                        combined = "\n\n---\n\n".join(
+                            f"[Model {chr(65+i)}]\n{p}" for i, p in enumerate(parts)
+                        )
+                        log.info(f"Arena dual capture: {len(parts)} responses, {len(combined)} chars total")
+                        return combined
+
+                # Standard: try LAST element first (most recent AI turn)
                 el = elements.last
                 if await el.is_visible(timeout=1000):
-                    text = await el.inner_text(timeout=5000)
-                    text = text.strip()
-                    # Filter: must be substantial + not part of prompt
+                    text = (await el.inner_text(timeout=5000)).strip()
                     if len(text) > 100 and not self._is_prompt_echo(text, prompt_text):
                         if len(text) > len(best_text):
                             best_text = text
+
+                # If last element too short, try concatenating ALL non-echo elements
+                # (handles multi-block responses where each block = separate container)
+                if len(best_text) < 2000 and count > 1:
+                    parts = []
+                    for i in range(count):
+                        try:
+                            t = (await elements.nth(i).inner_text(timeout=2000)).strip()
+                            if len(t) > 50 and not self._is_prompt_echo(t, prompt_text):
+                                parts.append(t)
+                        except Exception:
+                            continue
+                    if parts:
+                        combined = "\n\n".join(parts)
+                        if len(combined) > len(best_text):
+                            best_text = combined
+
             except Exception:
                 continue
 
@@ -979,19 +1017,16 @@ class BrowserClient:
 
         # Strategy 2 (fallback): Click Copy button and read clipboard.
         # NOTE: clipboard returns only the LAST code block, not the full response.
-        # Use only when DOM extraction fails.
         copied = await self._click_copy_button(page)
         if copied and len(copied) > 100:
             log.info(f"Clipboard fallback: {len(copied)} chars")
             return copied
 
-        # Strategy 3: Diff approach — compare current page text with pre-send snapshot
+        # Strategy 3: Diff — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
-                # Find new text that wasn't there before
                 new_text = current_text.replace(pre_text, "").strip()
-                # Also remove the prompt itself
                 if prompt_text:
                     new_text = new_text.replace(prompt_text, "").strip()
                 if len(new_text) > 100:
