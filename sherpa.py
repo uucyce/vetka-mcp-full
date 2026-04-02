@@ -97,6 +97,164 @@ logging.basicConfig(
 log = logging.getLogger("sherpa")
 
 
+# ── Feedback Collector (MARKER_202.FEEDBACK) ──────────────────────────
+FEEDBACK_FILE = PROJECT_ROOT / "data" / "sherpa_feedback.jsonl"
+FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+
+class FeedbackCollector:
+    """Auto-collect per-task feedback to JSONL. Scores services from history."""
+
+    def __init__(self):
+        self.session_start = datetime.now().isoformat()
+        self.session_entries: list = []
+        self._scores: dict = {}
+
+    def load_scores(self) -> dict:
+        """Read last 50 entries, calculate per-service reliability scores."""
+        entries = []
+        if FEEDBACK_FILE.exists():
+            try:
+                lines = FEEDBACK_FILE.read_text().strip().split("\n")
+                for line in lines[-50:]:
+                    if line.strip():
+                        entries.append(json.loads(line))
+            except (json.JSONDecodeError, OSError):
+                pass
+
+        svc_stats: dict = {}
+        for entry in entries:
+            if entry.get("type") == "session_summary":
+                continue
+            svc = entry.get("service", "")
+            if not svc:
+                continue
+            if svc not in svc_stats:
+                svc_stats[svc] = {"total": 0, "success": 0, "total_chars": 0}
+            svc_stats[svc]["total"] += 1
+            if entry.get("success"):
+                svc_stats[svc]["success"] += 1
+                svc_stats[svc]["total_chars"] += entry.get("response_chars", 0)
+
+        self._scores = {}
+        for svc, s in svc_stats.items():
+            if s["total"] > 0:
+                rel = s["success"] / s["total"]
+                avg_c = s["total_chars"] / max(s["success"], 1)
+                self._scores[svc] = round(0.7 * rel + 0.3 * min(avg_c / 3000, 1.0), 3)
+        return self._scores
+
+    def get_service_ranking(self) -> list:
+        return sorted(self._scores.items(), key=lambda x: x[1], reverse=True)
+
+    def log_task(self, task_id: str, service: str, response_chars: int,
+                 time_seconds: float, success: bool, error_type: str = "") -> None:
+        entry = {
+            "ts": datetime.now().isoformat(), "task_id": task_id, "service": service,
+            "response_chars": response_chars, "time_seconds": round(time_seconds, 1),
+            "success": success, "error_type": error_type,
+        }
+        self.session_entries.append(entry)
+        try:
+            with open(FEEDBACK_FILE, "a") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def save_session_summary(self) -> None:
+        if not self.session_entries:
+            return
+        total = len(self.session_entries)
+        successes = sum(1 for e in self.session_entries if e.get("success"))
+        summary = {
+            "ts": datetime.now().isoformat(), "type": "session_summary",
+            "session_start": self.session_start, "tasks_total": total,
+            "tasks_success": successes, "tasks_failed": total - successes,
+            "services_used": list(set(e.get("service", "") for e in self.session_entries)),
+        }
+        try:
+            with open(FEEDBACK_FILE, "a") as f:
+                f.write(json.dumps(summary, ensure_ascii=False) + "\n")
+            log.info(f"Session summary: {successes}/{total} successful")
+        except OSError:
+            pass
+
+
+# ── Service Protocols (MARKER_202.PROTOCOLS) ──────────────────────────
+PROTOCOLS_DIR = PROJECT_ROOT / "data" / "sherpa_protocols"
+PROTOCOLS_DIR.mkdir(parents=True, exist_ok=True)
+
+CONSECUTIVE_FAILURES_DISABLE = 3
+
+
+class ServiceProtocol:
+    """Auto-generated per-service protocol from feedback. Self-healing."""
+
+    @staticmethod
+    def generate_all() -> dict:
+        """Read feedback, generate protocol YAML per service."""
+        if not FEEDBACK_FILE.exists():
+            return {}
+        entries: dict = {}
+        try:
+            for line in FEEDBACK_FILE.read_text().strip().split("\n"):
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get("type") == "session_summary":
+                    continue
+                svc = entry.get("service", "")
+                if svc:
+                    entries.setdefault(svc, []).append(entry)
+        except (json.JSONDecodeError, OSError):
+            return {}
+
+        protocols = {}
+        for svc_name, svc_entries in entries.items():
+            if len(svc_entries) < 5:
+                continue
+            successes = [e for e in svc_entries if e.get("success")]
+            failures = [e for e in svc_entries if not e.get("success")]
+            total = len(svc_entries)
+            times = [e.get("time_seconds", 0) for e in successes if e.get("time_seconds")]
+            avg_time = round(sum(times) / len(times), 1) if times else 0
+            chars = [e.get("response_chars", 0) for e in successes]
+            avg_chars = round(sum(chars) / len(chars)) if chars else 0
+            error_types = {}
+            for e in failures:
+                et = e.get("error_type", "unknown")
+                error_types[et] = error_types.get(et, 0) + 1
+            recent = svc_entries[-CONSECUTIVE_FAILURES_DISABLE:]
+            consecutive_fails = sum(1 for e in reversed(recent) if not e.get("success"))
+            auto_disabled = consecutive_fails >= CONSECUTIVE_FAILURES_DISABLE
+            protocol = {
+                "service": svc_name, "generated_at": datetime.now().isoformat(),
+                "interactions": total, "reliability_score": round(len(successes) / total, 3),
+                "avg_response_time_s": avg_time, "avg_response_chars": avg_chars,
+                "auto_disabled": auto_disabled,
+                "disable_reason": f"{consecutive_fails} consecutive failures" if auto_disabled else None,
+                "common_errors": dict(sorted(error_types.items(), key=lambda x: x[1], reverse=True)),
+            }
+            try:
+                with open(PROTOCOLS_DIR / f"{svc_name}.yaml", "w") as f:
+                    yaml.dump(protocol, f, default_flow_style=False, allow_unicode=True)
+                protocols[svc_name] = protocol
+            except OSError:
+                pass
+        return protocols
+
+    @staticmethod
+    def is_service_disabled(service_name: str) -> bool:
+        proto_path = PROTOCOLS_DIR / f"{service_name}.yaml"
+        if not proto_path.exists():
+            return False
+        try:
+            with open(proto_path) as f:
+                return (yaml.safe_load(f) or {}).get("auto_disabled", False)
+        except (yaml.YAMLError, OSError):
+            return False
+
+
 # ── Config ─────────────────────────────────────────────────────────────
 @dataclass
 class ServiceConfig:
@@ -197,6 +355,32 @@ class TaskBoardClient:
         )
         return resp.status_code == 200
 
+    async def set_sherpa_status(self, status: str, tasks_enriched: int = 0) -> bool:
+        """MARKER_202.SHERPA_SIGNAL: Update Sherpa status in TaskBoard settings.
+
+        Uses PATCH /api/debug/task-board/settings (the actual endpoint).
+        Non-fatal — logs warning on failure, never blocks.
+        """
+        try:
+            resp = await self.http.patch(
+                f"{self.base}/api/debug/task-board/settings",
+                json={"sherpa_status": status, "sherpa_tasks_enriched": tasks_enriched},
+            )
+            if resp.status_code != 200:
+                log.debug(f"sherpa_status update returned {resp.status_code} (non-fatal)")
+            return resp.status_code == 200
+        except Exception as e:
+            log.debug(f"sherpa_status update failed (non-fatal): {e}")
+            return False
+
+    async def notify_commanders(self, message: str) -> None:
+        """MARKER_202.SHERPA_SIGNAL: Notify via task update (implementation_hints append).
+
+        No generic /api/taskboard/action endpoint exists. Instead, log to sherpa.log
+        and update status — Commanders check sherpa_status via settings endpoint.
+        """
+        log.info(f"[SIGNAL] {message}")
+
     async def close(self):
         await self.http.aclose()
 
@@ -289,6 +473,122 @@ class OllamaClient:
 
     async def close(self):
         await self.http.aclose()
+
+
+# ── Sherpa Harness (MARKER_202.HARNESS) ──────────────────────────────
+class SherpaHarness:
+    """Qwen-powered guard/reflex/memory for intelligent task processing.
+
+    MARKER_202.HARNESS: Makes Sherpa a first-class agent with:
+    - Guard: validate task quality before sending to browser AI
+    - Reflex: skip known-bad patterns instantly (no LLM call)
+    - Memory: read protocols + feedback for service selection
+    """
+
+    # Reflex patterns — instant skip, no LLM needed
+    SKIP_PATTERNS = [
+        "DEBRIEF-IDEA",       # Ideas, not real tasks
+        "DEBRIEF-BUG",        # Bug reports, not actionable tasks
+        "[AUTO]",             # Auto-decomposed children (handled by local_loop)
+        "ETA-IDEA",           # Agent ideas
+        "COMMANDER-IDEA",     # Commander ideas
+    ]
+
+    # Minimum requirements for a recon-worthy task
+    MIN_DESC_LENGTH = 30
+    MIN_TITLE_LENGTH = 10
+
+    def __init__(self, ollama: 'OllamaClient', feedback: 'FeedbackCollector'):
+        self.ollama = ollama
+        self.feedback = feedback
+        self._guard_rejects = 0
+        self._reflex_skips = 0
+
+    def reflex_check(self, task: dict) -> tuple[bool, str]:
+        """Fast pattern matching — skip known-bad tasks instantly.
+
+        Returns: (should_skip, reason)
+        """
+        title = task.get("title", "")
+        tags = task.get("tags", [])
+
+        # Skip pattern match
+        for pattern in self.SKIP_PATTERNS:
+            if pattern in title:
+                self._reflex_skips += 1
+                return True, f"reflex:title_pattern:{pattern}"
+
+        # Skip already-enriched tasks (have recon_docs)
+        recon = task.get("recon_docs", [])
+        if recon and len(recon) > 0:
+            self._reflex_skips += 1
+            return True, "reflex:already_has_recon"
+
+        # Skip auto-decomposed tasks
+        if "auto-decomposed" in tags:
+            self._reflex_skips += 1
+            return True, "reflex:auto-decomposed"
+
+        return False, ""
+
+    def guard_check(self, task: dict) -> tuple[bool, str]:
+        """Validate task quality — is it worth sending to browser AI?
+
+        Returns: (is_valid, reason_if_invalid)
+        """
+        title = task.get("title", "")
+        desc = task.get("description", "") or ""
+
+        # Empty/short description
+        if len(desc.strip()) < self.MIN_DESC_LENGTH:
+            self._guard_rejects += 1
+            return False, f"guard:desc_too_short ({len(desc.strip())} chars)"
+
+        # Empty title
+        if len(title.strip()) < self.MIN_TITLE_LENGTH:
+            self._guard_rejects += 1
+            return False, f"guard:title_too_short ({len(title.strip())} chars)"
+
+        # Check allowed_paths exist on disk
+        paths = task.get("allowed_paths", [])
+        if paths:
+            existing = sum(1 for p in paths if (PROJECT_ROOT / p).exists())
+            if existing == 0 and len(paths) > 0:
+                self._guard_rejects += 1
+                return False, f"guard:no_valid_paths (0/{len(paths)} exist)"
+
+        return True, ""
+
+    def select_service(self, services: list, task: dict) -> 'ServiceConfig':
+        """Intelligent service selection based on feedback scores and protocols.
+
+        Uses feedback reliability scores to pick the best available service.
+        Falls back to round-robin if no scores available.
+        """
+        scores = self.feedback._scores
+        if not scores:
+            return services[0]  # No history — use first
+
+        # Score each available service
+        ranked = []
+        for svc in services:
+            score = scores.get(svc.name, 0.5)  # Default 0.5 for unknown
+            # Boost score for services not auto-disabled
+            if not ServiceProtocol.is_service_disabled(svc.name):
+                ranked.append((svc, score))
+
+        if not ranked:
+            return services[0]
+
+        # Sort by score descending, pick best
+        ranked.sort(key=lambda x: x[1], reverse=True)
+        return ranked[0][0]
+
+    def get_stats(self) -> dict:
+        return {
+            "guard_rejects": self._guard_rejects,
+            "reflex_skips": self._reflex_skips,
+        }
 
 
 # ── Browser Client (Playwright) ───────────────────────────────────────
@@ -1199,6 +1499,34 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
     tasks_processed = 0
     skipped_ids: set = set()  # Track skipped tasks to avoid infinite loop
+
+    # MARKER_202.FEEDBACK: Init feedback + load service scores
+    feedback = FeedbackCollector()
+    scores = feedback.load_scores()
+    if scores:
+        ranking = feedback.get_service_ranking()
+        log.info(f"Service ranking: {', '.join(f'{s}={sc}' for s, sc in ranking)}")
+
+    # MARKER_202.PROTOCOLS: Generate/update protocols from feedback history
+    protocols = ServiceProtocol.generate_all()
+    if protocols:
+        log.info(f"Protocols updated for: {', '.join(protocols.keys())}")
+        # Filter out auto-disabled services
+        disabled = [s.name for s in active_services if ServiceProtocol.is_service_disabled(s.name)]
+        if disabled:
+            log.warning(f"Auto-disabled services (consecutive failures): {disabled}")
+            active_services = [s for s in active_services if s.name not in disabled]
+            if not active_services:
+                log.error("All services auto-disabled! Clear data/sherpa_protocols/ to reset.")
+                return
+
+    # MARKER_202.HARNESS: Initialize Qwen-powered harness
+    harness = SherpaHarness(ollama, feedback)
+
+    # MARKER_202.SHERPA_SIGNAL: Announce startup
+    await tb.set_sherpa_status("idle")
+    await tb.notify_commanders(f"Sherpa active (PID {os.getpid()}), processing tasks")
+
     try:
         while tasks_processed < cfg.max_tasks_per_run:
             # 1. Get pending tasks list and find first suitable one
@@ -1211,7 +1539,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 await asyncio.sleep(cfg.cooldown_between_tasks)
                 continue
 
-            # Find first task with description that we haven't skipped
+            # MARKER_202.HARNESS: Find first task passing reflex+guard checks
             task = None
             task_id = None
             task_title = None
@@ -1219,11 +1547,21 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 cid = candidate.get("id", "")
                 if cid in skipped_ids:
                     continue
-                cdesc = candidate.get("description", "") or ""
-                if len(cdesc.strip()) < 20:
-                    log.warning(f"Skipping {cid} — empty/short description")
+
+                # Reflex: instant pattern skip (no LLM)
+                should_skip, skip_reason = harness.reflex_check(candidate)
+                if should_skip:
+                    log.debug(f"Reflex skip {cid}: {skip_reason}")
                     skipped_ids.add(cid)
                     continue
+
+                # Guard: validate task quality
+                is_valid, guard_reason = harness.guard_check(candidate)
+                if not is_valid:
+                    log.warning(f"Guard reject {cid}: {guard_reason}")
+                    skipped_ids.add(cid)
+                    continue
+
                 # Found a good candidate — claim it
                 claimed = await tb.claim_task(cid)
                 if claimed:
@@ -1263,19 +1601,24 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                     break
                 continue
 
-            # 4. Send to browser AI service (round-robin)
-            svc = active_services[service_idx % len(active_services)]
-            service_idx += 1
+            # 4. Send to browser AI service (harness-selected or round-robin fallback)
+            svc = harness.select_service(active_services, task)
+            service_idx += 1  # keep incrementing for fallback
 
             log.info(f"Sending to {svc.name}...")
+            await tb.set_sherpa_status("busy", tasks_processed)
+            _svc_start = time.time()
             try:
                 response = await browser.send_prompt(svc.name, prompt)
             except Exception as e:
                 log.error(f"Browser error ({svc.name}): {e}")
                 response = ""
+                feedback.log_task(task_id, svc.name, 0, time.time() - _svc_start, False, type(e).__name__)
 
             if not response:
                 log.warning(f"No response from {svc.name}, releasing task")
+                if not any(e.get("task_id") == task_id for e in feedback.session_entries):
+                    feedback.log_task(task_id, svc.name, 0, time.time() - _svc_start, False, "empty_response")
                 await tb.update_task(task_id, {"status": "pending"})
                 await asyncio.sleep(30)
                 continue
@@ -1318,6 +1661,14 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
             skipped_ids.add(task_id)  # Don't take same task again
             log.info(f"Task {task_id} enriched ({tasks_processed}/{cfg.max_tasks_per_run})")
 
+            # MARKER_202.FEEDBACK: Log success
+            feedback.log_task(task_id, svc.name, len(response), time.time() - _svc_start, True)
+            await tb.set_sherpa_status("idle", tasks_processed)
+
+            # MARKER_202.PROTOCOLS: Regenerate after every 5 tasks
+            if tasks_processed % 5 == 0:
+                ServiceProtocol.generate_all()
+
             if once:
                 break
 
@@ -1328,10 +1679,20 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
     except KeyboardInterrupt:
         log.info("Interrupted by user")
     finally:
+        # MARKER_202.FEEDBACK: Save session summary
+        feedback.save_session_summary()
+        # MARKER_202.PROTOCOLS: Final protocol generation
+        ServiceProtocol.generate_all()
+        # MARKER_202.SHERPA_SIGNAL: Announce shutdown
+        await tb.set_sherpa_status("stopped", tasks_processed)
+        await tb.notify_commanders(f"Sherpa stopped. {tasks_processed} tasks enriched.")
+
         await browser.stop()
         await tb.close()
         await ollama.close()
-        log.info(f"Sherpa done. Tasks processed: {tasks_processed}")
+        h_stats = harness.get_stats()
+        log.info(f"Sherpa done. processed={tasks_processed} "
+                 f"guard_rejects={h_stats['guard_rejects']} reflex_skips={h_stats['reflex_skips']}")
 
 
 # ── Setup Mode ─────────────────────────────────────────────────────────
