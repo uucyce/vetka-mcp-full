@@ -109,6 +109,7 @@ VALID_STATUSES = {
     "pending_user_approval",
     "verified",
     "needs_fix",
+    "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
 }
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
@@ -2766,7 +2767,7 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued", "needs_fix"):
+        if task["status"] not in ("pending", "queued", "needs_fix", "recon_done"):
             return {
                 "success": False,
                 "error": f"Task {task_id} is {task['status']}, can't claim",
