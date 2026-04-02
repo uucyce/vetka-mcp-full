@@ -1272,16 +1272,71 @@ class BrowserClient:
             except Exception:
                 continue
 
-        if best_text:
-            return best_text
+        MIN_RESPONSE = 5000  # responses under 5K chars = likely incomplete
 
-        # Strategy 2: Clipboard fallback (copies last block only — less reliable)
+        if best_text and len(best_text) >= MIN_RESPONSE:
+            return best_text
+        elif best_text:
+            log.warning(f"DOM found only {len(best_text)} chars (< {MIN_RESPONSE}), trying deeper extraction...")
+
+        # Strategy 2: Scroll to bottom + find master Copy button
+        # Many services have a master Copy at the very bottom of the response
+        log.info("DOM selectors insufficient, scrolling to bottom for master Copy...")
+        try:
+            # Scroll to absolute bottom
+            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            await page.wait_for_timeout(1000)
+
+            # Look for Copy buttons — collect ALL, click the LAST (bottom-most = full response)
+            copy_buttons = page.locator(
+                'button:has-text("Copy"), button[aria-label*="Copy"], '
+                'button[aria-label*="copy"], [data-testid*="copy"]'
+            )
+            count = await copy_buttons.count()
+            if count > 0:
+                # Click the LAST Copy button (bottom of response = master copy)
+                last_copy = copy_buttons.nth(count - 1)
+                if await last_copy.is_visible(timeout=2000):
+                    await last_copy.click()
+                    await page.wait_for_timeout(500)
+                    try:
+                        text = await page.evaluate("navigator.clipboard.readText()")
+                        if text and len(text) >= MIN_RESPONSE:
+                            log.info(f"Master Copy (bottom, #{count}): {len(text)} chars")
+                            return text
+                        elif text:
+                            log.info(f"Master Copy too short ({len(text)} chars), trying concat...")
+                    except Exception:
+                        pass
+
+            # Concatenate ALL copy button contents
+            if count > 1:
+                all_copied = []
+                for i in range(count):
+                    try:
+                        btn = copy_buttons.nth(i)
+                        if await btn.is_visible(timeout=500):
+                            await btn.click()
+                            await page.wait_for_timeout(300)
+                            text = await page.evaluate("navigator.clipboard.readText()")
+                            if text and len(text) > 20:
+                                all_copied.append(text)
+                    except Exception:
+                        continue
+                if all_copied:
+                    combined = "\n\n".join(all_copied)
+                    log.info(f"Concatenated {len(all_copied)} Copy blocks: {len(combined)} chars")
+                    return combined
+        except Exception as e:
+            log.warning(f"Scroll+Copy fallback failed: {e}")
+
+        # Strategy 3: Single clipboard fallback (last resort)
         copied = await self._click_copy_button(page)
         if copied and len(copied) > 100:
-            log.info(f"DOM extraction failed, using clipboard fallback ({len(copied)} chars)")
+            log.info(f"Single clipboard fallback: {len(copied)} chars")
             return copied
 
-        # Strategy 3: Diff approach — compare current page text with pre-send snapshot
+        # Strategy 4: Diff approach — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
@@ -1289,9 +1344,15 @@ class BrowserClient:
                 if prompt_text:
                     new_text = new_text.replace(prompt_text, "").strip()
                 if len(new_text) > 100:
+                    log.info(f"Diff extraction: {len(new_text)} chars")
                     return new_text
             except Exception:
                 pass
+
+        # All strategies exhausted — return best_text even if < MIN_RESPONSE
+        if best_text:
+            log.warning(f"All strategies < {MIN_RESPONSE} chars. Best: {len(best_text)} chars (INCOMPLETE)")
+            return best_text
 
         return ""
 

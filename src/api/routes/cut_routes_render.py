@@ -68,6 +68,12 @@ class CutAutosaveRecoverRequest(BaseModel):
     sandbox_root: str
 
 
+class CutCompileTransitionsRequest(BaseModel):
+    """MARKER_B10 + B14 — Compile transitions to FFmpeg filter strings."""
+    clips: list[dict[str, Any]] = Field(description="List of RenderClip dicts with start_sec, duration_sec")
+    transitions: list[dict[str, Any]] = Field(description="List of Transition dicts with type, duration_sec, between, audio_curve")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -532,6 +538,89 @@ async def cut_render_all(req: CutRenderAllRequest) -> dict[str, Any]:
         "job_id": str(job["job_id"]),
         "job": job,
     }
+
+
+@render_router.post("/transitions/compile")
+async def cut_compile_transitions(req: CutCompileTransitionsRequest) -> dict[str, Any]:
+    """
+    MARKER_B10 + B14 — Compile transitions to FFmpeg filter strings.
+
+    Used by TransitionsPanel UI for live preview of generated filters.
+    Returns xfade (video) and acrossfade (audio) filter strings.
+    """
+    from src.services.cut_render_pipeline import RenderClip, Transition, _compile_xfade_filter, _compile_acrossfade_filter
+
+    try:
+        # Convert dict inputs to typed objects
+        clips = []
+        for clip_dict in req.clips:
+            clip = RenderClip(
+                source_path=clip_dict.get("source_path", ""),
+                start_sec=float(clip_dict.get("start_sec", 0)),
+                duration_sec=float(clip_dict.get("duration_sec", 0)),
+                source_in=float(clip_dict.get("source_in", 0)),
+                source_out=float(clip_dict.get("source_out", 0)),
+                speed=float(clip_dict.get("speed", 1.0)),
+            )
+            clips.append(clip)
+
+        transitions = []
+        for trans_dict in req.transitions:
+            trans = Transition(
+                type=trans_dict.get("type", "crossfade"),
+                duration_sec=float(trans_dict.get("duration_sec", 1.0)),
+                between=tuple(trans_dict.get("between", [0, 1])),
+                audio_curve=trans_dict.get("audio_curve", "equal_power"),
+            )
+            transitions.append(trans)
+
+        # Compile video and audio transitions
+        video_filters = []
+        audio_filters = []
+
+        for i, trans in enumerate(transitions):
+            from_idx, to_idx = trans.between
+            if from_idx >= len(clips) or to_idx >= len(clips):
+                continue
+
+            # Video xfade
+            current = f"[v{from_idx}]"
+            next_label = f"[v{to_idx}]"
+            out_label = f"[vout{to_idx}]"
+            offset = max(0, clips[from_idx].start_sec + clips[from_idx].duration_sec - trans.duration_sec)
+
+            xfade_str = _compile_xfade_filter(
+                current, next_label, out_label,
+                trans_type=trans.type,
+                duration_sec=trans.duration_sec,
+                timeline_offset=offset,
+            )
+            video_filters.append(xfade_str)
+
+            # Audio acrossfade
+            current_a = f"[a{from_idx}]"
+            next_label_a = f"[a{to_idx}]"
+            out_label_a = f"[aout{to_idx}]"
+
+            acrossfade_str = _compile_acrossfade_filter(
+                current_a, next_label_a, out_label_a,
+                duration_sec=trans.duration_sec,
+                audio_curve=trans.audio_curve,
+            )
+            audio_filters.append(acrossfade_str)
+
+        return {
+            "success": True,
+            "schema_version": "cut_compile_transitions_v1",
+            "video_filters": video_filters,
+            "audio_filters": audio_filters,
+            "total_transitions": len(transitions),
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e),
+        }
 
 
 @render_router.delete("/render/queue/{job_id}")
