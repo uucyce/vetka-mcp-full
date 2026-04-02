@@ -1009,8 +1009,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       // Zooms centered on cursor position (not left edge)
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
-        const zoomRef = useCutEditorStore.getState().zoom;
-        const scrollRef = useCutEditorStore.getState().scrollLeft;
+        const state = useCutEditorStore.getState();
+        const zoomRef = state.zoom;
+        const scrollRef = state.scrollLeft;
         // Cursor time before zoom
         const cursorLocalX = localX - LANE_HEADER_WIDTH;
         const cursorTime = (cursorLocalX + scrollRef) / zoomRef;
@@ -1018,9 +1019,22 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         const factor = event.deltaY > 0 ? 0.92 : 1.08; // smoother steps
         const newZoom = Math.max(10, Math.min(500, zoomRef * factor));
         // Adjust scroll so cursor stays over same time position
-        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
-        useCutEditorStore.getState().setZoom(newZoom);
-        useCutEditorStore.getState().setScrollLeft(newScroll);
+        let newScroll = cursorTime * newZoom - cursorLocalX;
+
+        // Clamp scroll boundaries
+        // Calculate viewport width and max timeline extent
+        const viewportWidth = Math.max((containerRect?.width || 0) - LANE_HEADER_WIDTH, 0);
+        const maxClipEnd = state.lanes.reduce((max, lane) => {
+          const laneMax = lane.clips.reduce((laneMax, clip) =>
+            Math.max(laneMax, clip.start_sec + clip.duration_sec), 0);
+          return Math.max(max, laneMax);
+        }, 0);
+        // Allow 20% empty space at the end for comfortable viewing
+        const maxScroll = Math.max(0, maxClipEnd * newZoom - viewportWidth * 0.8);
+        newScroll = clamp(newScroll, 0, maxScroll);
+
+        state.setZoom(newZoom);
+        state.setScrollLeft(newScroll);
         return;
       }
 

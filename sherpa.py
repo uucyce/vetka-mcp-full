@@ -370,107 +370,66 @@ class BrowserClient:
             await ctx.storage_state(path=str(state_file))
             log.info(f"Saved session: {service_name}")
 
-    async def send_prompt(self, service_name: str, prompt: str,
-                         attach_files: List[str] = None,
-                         timeout_ms: int = 180_000) -> str:
-        """Send prompt to AI service with optional file attachments."""
+    async def send_prompt(self, service_name: str, prompt: str, timeout_ms: int = 180_000) -> str:
+        """Send text prompt to AI service. Simple: fill textarea, press Enter."""
         svc = self.services[service_name]
         page = await self._get_page(service_name)
 
-        # Navigate to a NEW chat (avoid old conversation context)
+        # Navigate to a NEW chat
         log.info(f"Navigating to {svc.url}")
         await page.goto(svc.url, wait_until="domcontentloaded", timeout=30_000)
-        await page.wait_for_timeout(3000)  # Let page settle
+        await page.wait_for_timeout(3000)
 
-        # Dismiss popups (login prompts, cookie banners)
+        # Dismiss popups
         await self._dismiss_popups(page)
 
-        # Upload files BEFORE typing prompt (most services expect this order)
-        if attach_files:
-            uploaded = await self._upload_files(page, attach_files)
-            log.info(f"Attached {uploaded}/{len(attach_files)} files")
-            # Wait until files are ACTUALLY uploaded (adaptive, not hardcoded)
-            await self._wait_for_uploads_complete(page)
-
-        # Snapshot page text BEFORE sending (to filter it out from response)
+        # Snapshot page BEFORE (to filter sidebar from response)
         pre_send_text = await self._get_all_text(page)
-        log.info("Step 1: Finding input field...")
 
-        # Find and fill input
+        # Find textarea
         input_el = await self._find_input(page, svc)
         if not input_el:
             log.error(f"Cannot find input on {service_name}")
             return ""
-        log.info("Step 2: Input found, clicking...")
 
+        # Click and type
         await input_el.click()
         await page.wait_for_timeout(500)
 
-        # Type prompt character by character (slow but 100% reliable with React)
-        # For prompts under 500 chars: type() directly
-        # For longer prompts: fill() + type last part to trigger React
-        log.info(f"Step 3: Typing prompt ({len(prompt)} chars)...")
-
-        if len(prompt) <= 500:
-            # Short prompt — type it all (triggers every React event)
+        # fill() for bulk + type() last chars to trigger React
+        log.info(f"Typing prompt ({len(prompt)} chars)...")
+        if len(prompt) <= 300:
             await input_el.type(prompt, delay=5)
         else:
-            # Long prompt — fill bulk, then type last sentence to trigger React
-            bulk = prompt[:-50]
-            tail = prompt[-50:]
-            await input_el.fill(bulk)
+            await input_el.fill(prompt[:-30])
             await page.wait_for_timeout(300)
-            # Type the tail with real keystrokes to trigger React state
             await input_el.press("End")
-            await input_el.type(tail, delay=5)
-
+            await input_el.type(prompt[-30:], delay=5)
         await page.wait_for_timeout(500)
 
-        # Verify text is in the textarea
-        has_text = False
-        try:
-            val = await input_el.input_value()
-            has_text = len(val) > 50
-            log.info(f"Textarea contains {len(val)} chars")
-        except Exception:
-            # contenteditable divs don't support input_value
-            try:
-                val = await input_el.inner_text()
-                has_text = len(val) > 50
-                log.info(f"Input contains {len(val)} chars")
-            except Exception:
-                has_text = True  # Assume it worked
-
-        if not has_text:
-            log.error("Failed to type prompt into textarea!")
-            return ""
-
-        log.info("Step 4: Sending message (Enter)...")
-
-        # Press Enter to send — textarea is focused, has content
+        # Send: Enter key (works without file attachments)
+        log.info("Pressing Enter to send...")
         await page.keyboard.press("Enter")
-        await page.wait_for_timeout(2000)
+        await page.wait_for_timeout(3000)
 
-        # Verify: if textarea is now empty, message was sent
-        try:
-            val_after = await input_el.input_value()
-            if len(val_after) < 10:
-                log.info("Message sent (textarea cleared)")
-            else:
-                log.warning(f"Textarea still has {len(val_after)} chars — trying Ctrl+Enter")
-                await page.keyboard.press("Control+Enter")
-                await page.wait_for_timeout(1000)
-        except Exception:
-            pass
-
-        # Step 5: Wait for response
-        log.info("Step 5: Waiting for AI response...")
+        # Wait for response
+        log.info("Waiting for AI response...")
         response = await self._wait_and_extract(page, svc, timeout_ms, prompt_text=prompt, pre_text=pre_send_text)
 
-        # Save session
         await self._save_storage_state(service_name)
-
         return response
+
+    async def _check_message_sent(self, input_el) -> bool:
+        """Check if message was sent by verifying textarea is empty."""
+        try:
+            val = await input_el.input_value()
+            return len(val) < 10  # Textarea cleared = sent
+        except Exception:
+            try:
+                val = await input_el.inner_text()
+                return len(val) < 10
+            except Exception:
+                return False  # Can't verify
 
     async def _js_click_send(self, page) -> bool:
         """Find and click the SEND button (not attach/paperclip) via JS."""
@@ -1072,56 +1031,66 @@ def collect_attach_files(task: Dict, code_files: List[Dict[str, str]], max_files
 
 
 # ── Prompt Builder ─────────────────────────────────────────────────────
-def build_recon_prompt(task: Dict, attach_files: List[str]) -> str:
-    """Build a SHORT research question. Context goes via file attachments.
+def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
+    """Build full research prompt with docs and code inline.
 
-    The prompt is just the question — docs and code are attached as files.
-    This keeps textarea clean and leverages service's native file parsing.
+    Everything in one text block — no file attachments needed.
+    DeepSeek/Qwen handle 100K+ tokens in textarea.
     """
     title = task.get("title", "Unknown")
     desc = task.get("description", "")
     hints = task.get("implementation_hints", "")
+    arch_docs = task.get("architecture_docs", []) or []
+    recon_docs = task.get("recon_docs", []) or []
     allowed_paths = task.get("allowed_paths", []) or []
     contract = task.get("completion_contract", []) or []
 
+    # Read docs content from disk
+    docs_text = ""
+    for doc_path in (arch_docs + recon_docs)[:3]:
+        resolved = _resolve_doc_path(doc_path)
+        if resolved:
+            content = resolved.read_text(errors="replace")[:5000]
+            docs_text += f"\n### {doc_path}\n{content}\n"
+
+    # Read code snippets
+    snippets_text = ""
+    for s in code_snippets[:5]:
+        snippet = read_file_snippet(s["path"], max_lines=40)
+        if snippet:
+            rel = s["path"].replace(str(PROJECT_ROOT) + "/", "")
+            snippets_text += f"\n### {rel}\n```\n{snippet[:3000]}\n```\n"
+
     contract_text = ""
     if contract:
-        contract_text = "\nAcceptance criteria:\n" + "\n".join(f"- {c}" for c in contract)
+        contract_text = "\n## Acceptance Criteria\n" + "\n".join(f"- {c}" for c in contract)
 
-    file_list = ""
-    if attach_files:
-        file_names = [Path(f).name for f in attach_files]
-        file_list = f"\n\nI've attached {len(attach_files)} files: {', '.join(file_names)}"
-        file_list += "\nThese include architecture docs and relevant source code from the codebase."
+    prompt = f"""Research task for VETKA project (video NLE, React + FastAPI + FFmpeg).
 
-    prompt = f"""I'm working on a task for the VETKA project (video editing NLE, React + FastAPI + FFmpeg).{file_list}
+## Task: {title}
 
-TASK: {title}
-
-DESCRIPTION:
-{desc or 'No description provided'}
+## Description
+{desc}
 """
     if hints:
-        prompt += f"\nHINTS: {hints}\n"
-
+        prompt += f"\n## Hints\n{hints}\n"
     if allowed_paths:
-        prompt += f"\nTARGET PATHS: {', '.join(allowed_paths)}\n"
-
+        prompt += f"\n## Target Paths\n{', '.join(allowed_paths)}\n"
     if contract_text:
         prompt += contract_text
+    if docs_text:
+        prompt += f"\n## Architecture Docs\n{docs_text}\n"
+    if snippets_text:
+        prompt += f"\n## Relevant Code\n{snippets_text}\n"
 
     prompt += """
-
-Based on the attached files and this task description, research and provide:
-
-1. **Files to Modify** — specific paths and what to change in each
-2. **Approach** — step-by-step implementation plan
-3. **Example Code** — key code changes (real implementation, not pseudocode)
-4. **Risks** — edge cases, breaking changes, gotchas
-5. **Dependencies** — affected modules and imports
-
-Be specific. Reference actual function names and file paths from the attached code."""
-
+## Research needed:
+1. Files to Modify — specific paths
+2. Approach — step-by-step plan
+3. Example Code — key changes
+4. Risks — edge cases
+5. Dependencies — affected modules
+"""
     return prompt.strip()
 
     # Trim if too long (browser inputs have limits)
@@ -1134,7 +1103,7 @@ Be specific. Reference actual function names and file paths from the attached co
 # ── Recon Report ───────────────────────────────────────────────────────
 def save_recon_report(
     task_id: str, task_title: str, service_name: str,
-    prompt: str, response: str, attach_files: List[str],
+    prompt: str, response: str, code_files: List[Dict],
 ) -> Path:
     """Save recon results to markdown file."""
     report_path = RECON_DIR / f"sherpa_{task_id}.md"
@@ -1149,12 +1118,11 @@ def save_recon_report(
 
 ---
 
-## Files Sent as Attachments
+## Codebase Files Found
 """
-    for af in attach_files:
-        rel = af.replace(str(PROJECT_ROOT) + "/", "")
-        size_kb = Path(af).stat().st_size // 1024 if Path(af).exists() else 0
-        report += f"- `{rel}` ({size_kb}KB)\n"
+    for cf in code_files[:10]:
+        rel = cf["path"].replace(str(PROJECT_ROOT) + "/", "")
+        report += f"- `{rel}`\n"
 
     report += f"""
 ---
@@ -1252,32 +1220,26 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
             code_files = search_codebase(search_query, task.get("allowed_paths", []))
             log.info(f"Found {len(code_files)} relevant code files")
 
-            # 3. Collect files for attachment (docs from task + code from search)
-            attach_files = collect_attach_files(task, code_files)
-            log.info(f"Collected {len(attach_files)} files to attach")
-            for af in attach_files:
-                log.info(f"  → {Path(af).name} ({Path(af).stat().st_size // 1024}KB)")
-
-            # 4. Build short prompt (question only, context via attachments)
-            prompt = build_recon_prompt(task, attach_files)
+            # 3. Build prompt with docs + code inline
+            prompt = build_recon_prompt(task, code_files)
+            log.info(f"Prompt built ({len(prompt)} chars)")
 
             if dry_run:
                 log.info(f"[DRY RUN] Would send to {active_services[service_idx % len(active_services)].name}")
                 log.info(f"[DRY RUN] Prompt ({len(prompt)} chars): {prompt[:300]}...")
-                log.info(f"[DRY RUN] Attachments: {[Path(f).name for f in attach_files]}")
                 await tb.update_task(task_id, {"status": "pending"})
                 tasks_processed += 1
                 if once:
                     break
                 continue
 
-            # 5. Send to browser AI service (round-robin)
+            # 4. Send to browser AI service (round-robin)
             svc = active_services[service_idx % len(active_services)]
             service_idx += 1
 
-            log.info(f"Sending to {svc.name} with {len(attach_files)} attachments...")
+            log.info(f"Sending to {svc.name}...")
             try:
-                response = await browser.send_prompt(svc.name, prompt, attach_files=attach_files)
+                response = await browser.send_prompt(svc.name, prompt)
             except Exception as e:
                 log.error(f"Browser error ({svc.name}): {e}")
                 response = ""
@@ -1299,7 +1261,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 6. Save recon report
             report_path = save_recon_report(
-                task_id, task_title, svc.name, prompt, response, attach_files,
+                task_id, task_title, svc.name, prompt, response, code_files,
             )
             rel_report = str(report_path.relative_to(PROJECT_ROOT))
 
