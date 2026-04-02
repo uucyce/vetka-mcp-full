@@ -6,14 +6,6 @@
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
 import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
-import type { ColorCorrection } from './useColorPresetStore';
-
-// MARKER_COLOR-CORRECTION-TYPE: per-clip color correction — extends presets ColorCorrection with LUT/log fields
-export type ClipColorCorrection = Partial<ColorCorrection> & {
-  lutPath?: string;
-  lutName?: string;
-  logProfile?: string;
-};
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -163,10 +155,6 @@ export type TimelineClip = {
   source_path: string;
   // MARKER_INLINE-RENAME: User-editable clip label. If set, shown in clipLabelMode=name instead of filename.
   name?: string;
-  // MARKER_COLOR-LABEL: FCP7-style editorial color label (set via set_clip_meta). Rendered as 3px left strip on timeline clip.
-  color_label?: string;
-  // MARKER_COLOR-CORRECTION-TYPE: per-clip color grading (exposure, LUT, log profile, 3-way wheels).
-  color_correction?: ClipColorCorrection;
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;
@@ -394,8 +382,6 @@ interface CutEditorState {
 
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
-  showPublishDialog: boolean;
-  showTimecodeEntry: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   showFindDialog: boolean;          // MARKER_FCP7-FIND: Edit > Find overlay
   findQuery: string;                // active search query for clip highlighting
@@ -405,10 +391,6 @@ interface CutEditorState {
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
   showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
-  // MARKER_MATCH-SEQ: Match Sequence Settings popup
-  showMatchSequencePopup: boolean;
-  pendingMatchClipPath: string | null;
-  setShowMatchSequencePopup: (show: boolean, clipPath?: string | null) => void;
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -569,9 +551,6 @@ interface CutEditorState {
   setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
-  setShowPublishDialog: (show: boolean) => void;
-  setShowTimecodeEntry: (show: boolean) => void;
-  cycleTimelineDisplayMode: () => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
   setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
@@ -836,8 +815,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
-  showPublishDialog: false,
-  showTimecodeEntry: false,
   showSpeedControl: false,          // MARKER_B11
   showFindDialog: false,            // MARKER_FCP7-FIND
   findQuery: '',                    // MARKER_FCP7-FIND
@@ -846,8 +823,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditClipId: null,
   trimEditPoint: 0,
   showPasteAttributes: false,       // MARKER_PASTE_ATTR
-  showMatchSequencePopup: false,    // MARKER_MATCH-SEQ
-  pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -1095,8 +1070,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
   // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
   pasteAttributesSelective: (config: PasteAttributesConfig) => {
-    const { clipboard, lanes } = get();
-    const selectedClipIds = useSelectionStore.getState().selectedClipIds;
+    const { clipboard, selectedClipIds, lanes } = get();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const source = clipboard[0];
     const ops: Array<Record<string, unknown>> = [];
@@ -1108,8 +1082,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       }
 
       // Color Correction
-      if (config.colorCorrection && source.color_correction) {
-        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify(source.color_correction)) });
+      if (config.colorCorrection && (source as any).color_correction) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify((source as any).color_correction)) });
       }
 
       // Motion (position, scale, rotation, anchor, crop)
@@ -1524,16 +1498,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
-  setShowPublishDialog: (show) => set({ showPublishDialog: show }),
-  setShowTimecodeEntry: (show) => set({ showTimecodeEntry: show }),
-  cycleTimelineDisplayMode: () => set((s) => {
-    const order = ['timecode', 'frames', 'seconds'] as const;
-    const next = order[(order.indexOf(s.timecodeDisplayMode) + 1) % order.length];
-    return { timecodeDisplayMode: next };
-  }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
-  setShowMatchSequencePopup: (show, clipPath) => set({ showMatchSequencePopup: show, pendingMatchClipPath: clipPath ?? null }),
   setFindQuery: (query) => set({ findQuery: query }),
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),

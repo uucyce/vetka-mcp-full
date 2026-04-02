@@ -44,18 +44,6 @@ const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
-// MARKER_COLOR-LABEL: FCP7 editorial color label palette — used as 3px left stripe on clips
-const COLOR_LABEL_MAP: Record<string, string> = {
-  red:    '#c0403a',
-  orange: '#c06c1e',
-  yellow: '#a88c00',
-  green:  '#3a8a3a',
-  teal:   '#2a7878',
-  blue:   '#3858a8',
-  purple: '#6e40a0',
-  grey:   '#555555',
-};
-
 const CONTAINER_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -1219,7 +1207,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const allClips: { clipId: string; time: number }[] = [];
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
-              allClips.push({ clipId: clip.clip_id, time: clip.start_sec });
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
             }
           }
           allClips.sort((a, b) => a.time - b.time);
@@ -1260,7 +1248,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // Match by linked_to field (explicit link)
               if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by sync.linked_clip_id (legacy)
-              if ((c.sync as any)?.linked_clip_id === clipId || (clickedClip.sync as any)?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by scene_id (same scene = linked)
               if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
             }
@@ -2167,18 +2155,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           }}
                         />
                       )}
-                      {/* MARKER_COLOR-LABEL: FCP7 editorial color label — 3px left strip */}
-                      {clip.color_label && COLOR_LABEL_MAP[clip.color_label] && (
-                        <div
-                          data-testid={`cut-clip-color-label-${clip.clip_id}`}
-                          style={{
-                            position: 'absolute', left: 0, top: 0, bottom: 0,
-                            width: 3, borderRadius: '3px 0 0 3px',
-                            background: COLOR_LABEL_MAP[clip.color_label],
-                            zIndex: 2, pointerEvents: 'none',
-                          }}
-                        />
-                      )}
                       <div
                         data-clip="1"
                         style={{
@@ -2561,7 +2537,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 const txAlign = tx.alignment;
                                 const zoomVal = zoom;
 
-                                const onMove = (e: globalThis.MouseEvent) => {
+                                const onMove = (e: MouseEvent) => {
                                   const deltaPx = startX - e.clientX; // drag left = increase duration
                                   const deltaSec = deltaPx / zoomVal;
                                   const newDur = Math.max(0.04, startDur + deltaSec);
@@ -2578,7 +2554,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                   s.setLanes(updated);
                                 };
 
-                                const onUp = (e: globalThis.MouseEvent) => {
+                                const onUp = (e: MouseEvent) => {
                                   window.removeEventListener('mousemove', onMove);
                                   window.removeEventListener('mouseup', onUp);
                                   const deltaPx = startX - e.clientX;
@@ -3051,7 +3027,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             const clipPath = contextMenu.clip.source_path;
             const close = () => setContextMenu(null);
 
-            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | { type: 'color_picker' } | 'separator';
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
 
             const items: MenuItem[] = [
               // ── Selection ──
@@ -3108,9 +3084,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 });
               }},
               'separator',
-              // MARKER_COLOR-LABEL: FCP7 color label picker — 8 circles + clear
-              { type: 'color_picker' as const },
-              'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
@@ -3137,67 +3110,29 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               if (item === 'separator') {
                 return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
               }
-              if ('type' in item && item.type === 'color_picker') {
-                const activeLabel = contextMenu.clip.color_label;
-                return (
-                  <div key="color-picker" style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', gap: 4 }}>
-                    <span style={{ color: '#555', fontSize: 10, marginRight: 2, flexShrink: 0 }}>Label</span>
-                    {Object.entries(COLOR_LABEL_MAP).map(([name, hex]) => (
-                      <button
-                        key={name}
-                        title={name}
-                        onClick={() => {
-                          close();
-                          void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: name } }]);
-                        }}
-                        style={{
-                          width: 12, height: 12, borderRadius: '50%',
-                          background: hex, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
-                          outline: activeLabel === name ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
-                          outlineOffset: activeLabel === name ? 1 : 0,
-                        }}
-                      />
-                    ))}
-                    <button
-                      key="clear"
-                      title="Clear label"
-                      onClick={() => {
-                        close();
-                        void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: null } }]);
-                      }}
-                      style={{
-                        background: 'none', border: '1px solid #333', borderRadius: '50%',
-                        width: 12, height: 12, padding: 0, cursor: 'pointer', color: '#555',
-                        fontSize: 9, lineHeight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                      }}
-                    >×</button>
-                  </div>
-                );
-              }
-              const mi = item as { label: string; shortcut?: string; action: () => void; disabled?: boolean };
               return (
                 <button
-                  key={mi.label}
-                  disabled={Boolean(mi.disabled)}
-                  onClick={mi.action}
+                  key={item.label}
+                  disabled={Boolean(item.disabled)}
+                  onClick={item.action}
                   style={{
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     background: 'transparent',
-                    color: mi.disabled ? '#444' : '#ccc',
+                    color: item.disabled ? '#444' : '#ccc',
                     border: 'none',
                     borderRadius: 4,
                     padding: '6px 8px',
-                    cursor: mi.disabled ? 'default' : 'pointer',
+                    cursor: item.disabled ? 'default' : 'pointer',
                     fontSize: 11,
                     fontFamily: 'system-ui',
                   }}
                 >
-                  <span>{mi.label}</span>
-                  {mi.shortcut ? (
-                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{mi.shortcut}</span>
+                  <span>{item.label}</span>
+                  {item.shortcut ? (
+                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{item.shortcut}</span>
                   ) : null}
                 </button>
               );

@@ -57,7 +57,7 @@ services:
     cooldown_seconds: 60          # unlimited — short cooldown ok
     enabled: true
 
-  # ── Grok (xAI) — very large limits ────────────────────────────────
+  # ── Grok (xAI) — DISABLED: bot protection blocks Playwright ─────
   - name: grok
     url: https://grok.com
     profile_dir: data/sherpa_profiles/grok_1
@@ -65,7 +65,7 @@ services:
     send_selector: 'button[aria-label="Send message"], button:has(svg)'
     response_selector: '[data-message-author-role="assistant"], .message-bubble'
     cooldown_seconds: 90
-    enabled: true
+    enabled: false
 
   # ── Qwen (Alibaba) — very large / unlimited ───────────────────────
   # Note: does not accept .ts/.tsx files

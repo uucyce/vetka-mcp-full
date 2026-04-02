@@ -389,67 +389,132 @@ class BrowserClient:
         if attach_files:
             uploaded = await self._upload_files(page, attach_files)
             log.info(f"Attached {uploaded}/{len(attach_files)} files")
-            await page.wait_for_timeout(2000)  # Let files process
+            # Wait until files are ACTUALLY uploaded (adaptive, not hardcoded)
+            await self._wait_for_uploads_complete(page)
 
         # Snapshot page text BEFORE sending (to filter it out from response)
         pre_send_text = await self._get_all_text(page)
+        log.info("Step 1: Finding input field...")
 
         # Find and fill input
         input_el = await self._find_input(page, svc)
         if not input_el:
             log.error(f"Cannot find input on {service_name}")
             return ""
+        log.info("Step 2: Input found, clicking and typing prompt...")
 
         await input_el.click()
-        await page.wait_for_timeout(500)
+        await page.wait_for_timeout(1000)
 
-        # Type prompt — use multiple strategies to trigger React state updates
-        # Strategy 1: fill() + force input event (fast, works on most)
-        await input_el.fill(prompt)
-        await page.wait_for_timeout(500)
+        # Type prompt using keyboard simulation (most reliable for React)
+        # fill() doesn't trigger React state in many apps, so use type()
+        # For long prompts: use clipboard paste (fastest + triggers React)
+        log.info(f"Step 3: Pasting prompt ({len(prompt)} chars)...")
+        await page.evaluate(f"navigator.clipboard.writeText({json.dumps(prompt)})")
+        await page.wait_for_timeout(300)
+        # Paste from clipboard (Cmd+V on Mac, Ctrl+V on Linux)
+        await page.keyboard.press("Meta+v")
+        await page.wait_for_timeout(1000)
 
-        # Force React/Vue to detect the change via input event dispatch
-        await input_el.evaluate("""el => {
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-        }""")
-        await page.wait_for_timeout(500)
+        # Verify text was entered
+        try:
+            current_value = await input_el.input_value()
+            if not current_value or len(current_value) < 10:
+                log.warning("Clipboard paste may have failed, trying fill()...")
+                await input_el.fill(prompt)
+                await page.wait_for_timeout(500)
+                # Force React events
+                await input_el.evaluate("""el => {
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }""")
+                await page.wait_for_timeout(500)
+                await input_el.press("End")
+                await input_el.type(" ")
+                await page.wait_for_timeout(300)
+        except Exception:
+            pass  # Some inputs don't support input_value()
 
-        # Strategy 2: If fill didn't activate Send button, type last char manually
-        # This triggers keydown/keyup which React textarea handlers rely on
-        if len(prompt) > 0:
-            # Clear and re-type with keyboard simulation for the last few chars
-            await input_el.press("End")  # Move cursor to end
-            await input_el.type(" ")     # Type a space to trigger React
-            await page.wait_for_timeout(300)
+        log.info("Step 4: Sending message...")
 
-        # Find and click send button
-        sent = await self._click_send(page, svc)
+        # Send message — try multiple strategies
+        # Strategy 1: JS click (most reliable, finds button near textarea)
+        sent = await self._js_click_send(page)
         if not sent:
-            log.info("Send button not found, trying keyboard shortcuts")
-            # Re-focus the input first
+            # Strategy 2: CSS selectors
+            log.info("JS click failed, trying CSS selectors...")
+            sent = await self._click_send(page, svc)
+        if not sent:
+            log.info("Buttons failed, trying keyboard...")
             await input_el.click()
             await page.wait_for_timeout(300)
-            # Try Enter (most services)
             await page.keyboard.press("Enter")
             await page.wait_for_timeout(1000)
-            # If still on same page with input visible, try Ctrl+Enter (some services)
-            try:
-                if await input_el.is_visible(timeout=500):
-                    text_after = await input_el.input_value() if await input_el.count() else ""
-                    if text_after:  # Text still there = Enter didn't send
-                        log.info("Enter didn't send, trying Ctrl+Enter")
-                        await page.keyboard.press("Control+Enter")
-            except Exception:
-                pass
 
-        # Wait for response (pass prompt text to filter it out)
+        # Step 5: Wait for response
+        log.info("Step 5: Waiting for AI response...")
         response = await self._wait_and_extract(page, svc, timeout_ms, prompt_text=prompt, pre_text=pre_send_text)
 
         # Save session
         await self._save_storage_state(service_name)
 
         return response
+
+    async def _js_click_send(self, page) -> bool:
+        """Find and click the SEND button (not attach/paperclip) via JS."""
+        try:
+            clicked = await page.evaluate("""() => {
+                const textarea = document.querySelector('textarea, div[contenteditable="true"]');
+                if (!textarea) return false;
+
+                // Collect all icon buttons near textarea
+                let candidates = [];
+                let parent = textarea.parentElement;
+                for (let i = 0; i < 5 && parent; i++) {
+                    const buttons = parent.querySelectorAll('button, [role="button"]');
+                    for (const btn of buttons) {
+                        const text = (btn.textContent || '').trim();
+                        // Skip labeled buttons (DeepThink, Search, Copy, etc)
+                        if (text && text.length > 3) continue;
+
+                        const style = window.getComputedStyle(btn);
+                        if (style.display === 'none' || style.visibility === 'hidden') continue;
+                        if (btn.disabled) continue;
+
+                        // Skip attach/upload buttons:
+                        // - Has nearby input[type=file]
+                        // - Has aria-label with attach/upload/file
+                        // - Has paperclip-like class
+                        const label = (btn.getAttribute('aria-label') || '').toLowerCase();
+                        if (label.includes('attach') || label.includes('upload') || label.includes('file')
+                            || label.includes('clip') || label.includes('добавить файл')) continue;
+                        const cls = (btn.className || '').toLowerCase();
+                        if (cls.includes('attach') || cls.includes('upload') || cls.includes('clip')) continue;
+                        // Check if there's an input[type=file] as sibling/child
+                        if (btn.querySelector('input[type="file"]')) continue;
+                        const nextSib = btn.nextElementSibling;
+                        if (nextSib && nextSib.tagName === 'INPUT' && nextSib.type === 'file') continue;
+
+                        if (btn.querySelector('svg')) {
+                            candidates.push(btn);
+                        }
+                    }
+                    parent = parent.parentElement;
+                }
+
+                // Pick the LAST candidate (send button is usually rightmost/last)
+                if (candidates.length > 0) {
+                    const sendBtn = candidates[candidates.length - 1];
+                    sendBtn.click();
+                    return true;
+                }
+                return false;
+            }""")
+            if clicked:
+                log.info("Sent via JS click")
+            return clicked
+        except Exception:
+            return False
 
     async def _find_input(self, page, svc: ServiceConfig) -> Optional[Any]:
         """Find the message input field."""
@@ -568,6 +633,86 @@ class BrowserClient:
         log.warning("Could not find file upload mechanism on this page")
         return 0
 
+    async def _wait_for_uploads_complete(self, page, timeout_s: int = 300):
+        """Wait until file uploads finish. Checks if Send button is enabled.
+
+        Simple and reliable: if Send button is visible + not disabled → files are ready.
+        Falls back to progressbar check only as secondary signal.
+        """
+        log.info("Waiting for file uploads to complete...")
+        start = time.time()
+        stable_count = 0
+
+        while time.time() - start < timeout_s:
+            # Primary check: is ANY clickable button near textarea enabled?
+            send_ready = await self._is_send_button_ready(page)
+            if send_ready:
+                stable_count += 1
+                if stable_count >= 2:  # Stable for 2 checks
+                    log.info(f"Files ready (send button enabled, {int(time.time()-start)}s)")
+                    return
+            else:
+                stable_count = 0
+                elapsed = int(time.time() - start)
+                if elapsed % 10 == 0:
+                    log.info(f"Files still uploading... ({elapsed}s)")
+
+            await page.wait_for_timeout(2000)
+
+        log.warning(f"Upload wait timeout ({timeout_s}s) — proceeding anyway")
+
+    async def _is_send_button_ready(self, page) -> bool:
+        """Check if the send/submit button exists and is not disabled."""
+        # Look for any visible, non-disabled button that could be "Send"
+        try:
+            # Use JS to find the send button reliably
+            result = await page.evaluate("""() => {
+                // Strategy 1: Find buttons/divs with send-like attributes
+                const candidates = [
+                    ...document.querySelectorAll('button[aria-label*="Send" i]'),
+                    ...document.querySelectorAll('button[aria-label*="send" i]'),
+                    ...document.querySelectorAll('button[data-testid*="send" i]'),
+                    ...document.querySelectorAll('button[type="submit"]'),
+                    ...document.querySelectorAll('[role="button"][aria-label*="send" i]'),
+                ];
+
+                // Strategy 2: Find the SVG arrow button near textarea (common pattern)
+                if (candidates.length === 0) {
+                    const textarea = document.querySelector('textarea');
+                    if (textarea) {
+                        // Look in parent containers for buttons
+                        let parent = textarea.parentElement;
+                        for (let i = 0; i < 5 && parent; i++) {
+                            const buttons = parent.querySelectorAll('button, [role="button"], div[class*="btn"]');
+                            for (const btn of buttons) {
+                                // Skip if it's DeepThink or Search
+                                const text = btn.textContent || '';
+                                if (text.includes('DeepThink') || text.includes('Search')) continue;
+                                // Has SVG (icon button) or is near end of container
+                                if (btn.querySelector('svg') || btn.querySelector('img')) {
+                                    candidates.push(btn);
+                                }
+                            }
+                            parent = parent.parentElement;
+                        }
+                    }
+                }
+
+                for (const btn of candidates) {
+                    const style = window.getComputedStyle(btn);
+                    if (style.display === 'none' || style.visibility === 'hidden') continue;
+                    if (btn.disabled) return false;  // Found but disabled = still uploading
+                    if (btn.getAttribute('aria-disabled') === 'true') return false;
+                    if (btn.classList.contains('disabled')) return false;
+                    // Found visible, enabled send button
+                    return true;
+                }
+                return false;  // No send button found
+            }""")
+            return result
+        except Exception:
+            return False
+
     async def _dismiss_popups(self, page):
         """Try to close common popups."""
         dismiss_selectors = [
@@ -599,43 +744,120 @@ class BrowserClient:
         except Exception:
             return ""
 
+    async def _is_ai_streaming(self, page) -> bool:
+        """Check if the AI is still generating a response.
+
+        Looks for streaming indicators in the DOM:
+        - Typing cursors / blinking carets
+        - Loading spinners
+        - "Thinking" / "Generating" labels
+        - Stop/Cancel buttons (visible = still generating)
+        - Streaming attributes on response elements
+        """
+        streaming_selectors = [
+            # Stop/Cancel button (visible = AI is generating)
+            'button:has-text("Stop")',
+            'button:has-text("stop")',
+            'button[aria-label*="Stop"]',
+            'button[aria-label*="Cancel"]',
+            'button:has-text("Остановить")',
+            # Thinking/loading indicators
+            '[class*="thinking" i]',
+            '[class*="generating" i]',
+            '[class*="streaming" i]',
+            '[class*="typing" i]',
+            '[data-is-streaming="true"]',
+            # Animated elements (spinners, pulsing dots)
+            '[class*="loading" i]:not([class*="file"])',
+            '[class*="spinner" i]',
+            '.animate-pulse',
+            '[class*="dot-flashing"]',
+            # DeepSeek specific
+            '[class*="is-receiving"]',
+            # Cursor/caret in response
+            '.blinking-cursor',
+            '[class*="cursor" i][class*="blink" i]',
+        ]
+        for sel in streaming_selectors:
+            try:
+                el = page.locator(sel).first
+                if await el.is_visible(timeout=300):
+                    return True
+            except Exception:
+                continue
+        return False
+
     async def _wait_and_extract(self, page, svc: ServiceConfig, timeout_ms: int,
                                  prompt_text: str = "", pre_text: str = "") -> str:
-        """Wait for AI response to complete, then extract text."""
-        log.info("Waiting for response...")
+        """Wait for AI response to complete, then extract text.
 
+        Adaptive waiting — watches real DOM state:
+        1. Wait for FIRST content to appear (something is being generated)
+        2. Wait for streaming to STOP (Stop button disappears, no spinners)
+        3. Extract final response text
+        No hardcoded waits for specific durations.
+        """
+        log.info("Waiting for response...")
         start = time.time()
         max_wait = timeout_ms / 1000
 
-        # Phase 1: Wait longer for initial response (10s)
-        await page.wait_for_timeout(10_000)
+        # Phase 1: Wait for generation to START (max 30s)
+        generation_started = False
+        while time.time() - start < min(30, max_wait):
+            if await self._is_ai_streaming(page):
+                generation_started = True
+                log.info("AI is generating...")
+                break
+            # Also check if response text appeared without streaming indicator
+            text = await self._extract_response_text(page, prompt_text, pre_text)
+            if text and len(text) > 50:
+                generation_started = True
+                log.info("Response text detected")
+                break
+            await page.wait_for_timeout(2000)
 
-        # Phase 2: Poll until response stabilizes (stops growing)
-        # Key: response must be NEW text (not prompt echo)
+        if not generation_started:
+            log.warning("No generation detected after 30s — message may not have been sent")
+            # Try to extract whatever is on the page anyway
+            text = await self._extract_response_text(page, prompt_text, pre_text)
+            if text and len(text) > 100:
+                return text
+            return ""
+
+        # Phase 2: Wait for generation to FINISH
+        # Poll: is_streaming? + text length stable?
         prev_len = 0
         stable_count = 0
         while time.time() - start < max_wait:
+            streaming = await self._is_ai_streaming(page)
             text = await self._extract_response_text(page, prompt_text, pre_text)
             curr_len = len(text)
 
-            if curr_len > 100 and curr_len == prev_len:
-                stable_count += 1
-                if stable_count >= 3:  # Stable for 6 seconds
-                    log.info(f"Response stabilized ({curr_len} chars)")
-                    return text
-            else:
+            if streaming:
+                # Still generating — reset stability counter
                 stable_count = 0
+                elapsed = int(time.time() - start)
+                if elapsed % 15 == 0:
+                    log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
+            elif curr_len > 100:
+                # Not streaming + has content — check stability
+                if curr_len == prev_len:
+                    stable_count += 1
+                    if stable_count >= 2:  # Stable for 2 checks
+                        log.info(f"Response complete ({curr_len} chars)")
+                        return text
+                else:
+                    stable_count = 0
 
             prev_len = curr_len
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)
 
         # Timeout — return whatever we have
         text = await self._extract_response_text(page, prompt_text, pre_text)
         if text and len(text) > 100:
-            log.warning(f"Timeout but got partial response ({len(text)} chars)")
+            log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
-        else:
-            log.error("Timeout: no response received")
+        log.error("Timeout: no response received")
         return ""
 
     async def _click_copy_button(self, page) -> str:

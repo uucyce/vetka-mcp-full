@@ -204,13 +204,9 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
 
   // Get effective binding for an action
   const getBinding = useCallback((action: CutHotkeyAction): string => {
-    if (customOverrides[action]) {
-      const v = customOverrides[action]!;
-      return Array.isArray(v) ? v[0] ?? '' : v;
-    }
+    if (customOverrides[action]) return customOverrides[action]!;
     const preset = presetName === 'custom' ? PREMIERE_PRESET : (PRESETS[presetName] || PREMIERE_PRESET);
-    const pv = preset[action];
-    return (Array.isArray(pv) ? pv[0] ?? '' : pv) || '';
+    return preset[action] || '';
   }, [presetName, customOverrides]);
 
   // Check for conflicts
