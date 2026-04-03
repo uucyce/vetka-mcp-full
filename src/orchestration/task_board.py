@@ -1966,6 +1966,7 @@ class TaskBoard:
                           "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
                           "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
                           "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
+                          "subtasks",  # MARKER_191.20: [{title, done}] checklist for multi-step tasks
                           }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
@@ -2006,6 +2007,69 @@ class TaskBoard:
         self._notify_board_update("updated")
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
+
+    # MARKER_191.20: Subtask progress tracking
+    def subtask_done(self, task_id: str, subtask_title: str) -> Dict[str, Any]:
+        """Mark a named subtask as done within a task's subtasks list.
+
+        The subtasks field stores [{title: str, done: bool}].
+        Matching is case-insensitive substring — partial title is enough.
+
+        Returns dict with success, matched_title, progress {done, total, percent}.
+        """
+        task = self.tasks.get(task_id)
+        if not task:
+            return {"success": False, "error": f"Task {task_id} not found"}
+
+        subtasks = task.get("subtasks")
+        if not isinstance(subtasks, list):
+            return {"success": False, "error": "Task has no subtasks list. Set subtasks=[{title,done}] via action=update first."}
+
+        needle = subtask_title.lower().strip()
+        matched = None
+        for item in subtasks:
+            if not isinstance(item, dict):
+                continue
+            if needle in item.get("title", "").lower():
+                item["done"] = True
+                matched = item["title"]
+                break
+
+        if matched is None:
+            titles = [s.get("title", "") for s in subtasks if isinstance(s, dict)]
+            return {"success": False, "error": f"No subtask matching '{subtask_title}'. Available: {titles}"}
+
+        done_count = sum(1 for s in subtasks if isinstance(s, dict) and s.get("done"))
+        total = len(subtasks)
+        task["subtasks"] = subtasks
+        self._save_task(task)
+        self._notify_board_update("updated")
+        logger.info("[TaskBoard] subtask_done %s: '%s' (%d/%d)", task_id, matched, done_count, total)
+        return {
+            "success": True,
+            "matched_title": matched,
+            "progress": {
+                "done": done_count,
+                "total": total,
+                "percent": round(100 * done_count / total) if total else 0,
+            },
+        }
+
+    @staticmethod
+    def get_subtask_progress(task: dict) -> Optional[Dict[str, Any]]:
+        """Compute subtask progress from task dict. Returns None if no subtasks."""
+        subtasks = task.get("subtasks")
+        if not isinstance(subtasks, list) or not subtasks:
+            return None
+        valid = [s for s in subtasks if isinstance(s, dict)]
+        total = len(valid)
+        done_count = sum(1 for s in valid if s.get("done"))
+        return {
+            "done": done_count,
+            "total": total,
+            "percent": round(100 * done_count / total) if total else 0,
+            "items": valid,
+        }
 
     def remove_task(self, task_id: str) -> bool:
         """Remove a task from the board.

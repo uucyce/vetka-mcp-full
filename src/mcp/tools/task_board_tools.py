@@ -1083,6 +1083,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_191.7: Auto-inject docs content for MCP agents
         docs = _load_docs_content_sync(task)
         result = {"success": True, "task": task}
+        # MARKER_191.20: Inject subtask_progress for visibility
+        from src.orchestration.task_board import TaskBoard as _TB
+        _progress = _TB.get_subtask_progress(task)
+        if _progress is not None:
+            result["subtask_progress"] = _progress
         if docs:
             result["docs_content"] = docs
         return result
@@ -1823,6 +1828,16 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(notif_ids, str):
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
+
+    # MARKER_191.20: Subtask progress tracking — mark one subtask as done
+    elif action == "subtask_done":
+        task_id = arguments.get("task_id")
+        subtask_title = arguments.get("subtask_title", "").strip()
+        if not task_id:
+            return {"success": False, "error": "task_id is required for subtask_done"}
+        if not subtask_title:
+            return {"success": False, "error": "subtask_title is required for subtask_done"}
+        return board.subtask_done(task_id, subtask_title)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
