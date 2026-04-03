@@ -72,7 +72,7 @@ from src.services.pulse_srt_bridge import (
 )
 from src.services.converters.premiere_xml_converter import build_premiere_xml
 from src.services.converters.fcpxml_converter import build_fcpxml
-from src.services.cut_codec_probe import probe_file, probe_duration
+from src.services.cut_codec_probe import probe_file, probe_duration, probe_and_detect_log
 from src.services.pulse_story_space import (
     TrianglePosition,
     StorySpacePoint,
@@ -139,24 +139,10 @@ router.include_router(import_router)
 from src.api.routes.cut_routes_pulse import pulse_router  # noqa: E402
 
 router.include_router(pulse_router)
+# MARKER_GEN-ROUTES: Generation Control sub-router (GenerationControlPanel backend)
+from src.api.routes.cut_routes_generation import generation_router  # noqa: E402
 
-# MARKER_B70: Workers sub-router extracted for modularity (14 endpoints, ~3100 lines)
-from src.api.routes.cut_routes_workers import (  # noqa: E402
-    worker_router,
-    _collect_project_jobs,
-    _worker_job_error,
-    _find_active_duplicate_job,
-    _count_active_background_jobs_for_sandbox,
-    _ACTIVE_JOB_STATES,
-    _SANDBOX_BACKGROUND_LIMIT,
-    _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
-    _build_sync_surface,         # used by /project-state runtime path
-    _build_music_cue_summary,    # used by /project-state runtime path
-    _build_rhythm_surface,       # used by /project-state runtime path
-    _infer_cut_asset_kind,       # MARKER_B74: moved to workers
-)
-
-router.include_router(worker_router)
+router.include_router(generation_router)
 
 
 # CutBootstrapRequest — moved to cut_routes_bootstrap.py (MARKER_B65)
@@ -193,7 +179,7 @@ class CutTimeMarkerApplyRequest(BaseModel):
     op: Literal["create", "archive"] = "create"
     marker_id: str | None = None
     media_path: str = ""
-    kind: Literal["favorite", "negative", "comment", "cam", "insight", "chat"] = "favorite"
+    kind: Literal["favorite", "comment", "cam", "insight", "chat"] = "favorite"
     start_sec: float = Field(default=0.0, ge=0.0)
     end_sec: float = Field(default=1.0, ge=0.0)
     anchor_sec: float | None = Field(default=None, ge=0.0)
@@ -210,7 +196,7 @@ class CutTimeMarkerApplyRequest(BaseModel):
 class PlayerLabMarkerImportItem(BaseModel):
     marker_id: str = ""
     media_path: str
-    kind: Literal["favorite", "negative", "comment", "cam", "insight", "chat"] = "favorite"
+    kind: Literal["favorite", "comment", "cam", "insight", "chat"] = "favorite"
     start_sec: float = Field(default=0.0, ge=0.0)
     end_sec: float = Field(default=0.0, ge=0.0)
     anchor_sec: float | None = Field(default=None, ge=0.0)
@@ -418,6 +404,27 @@ class CutSceneDetectApplyRequest(BaseModel):
     max_duration_sec: float = Field(default=300.0, ge=10.0, le=3600.0, description="Max duration per file to analyse")
     lane_id: str = Field(default="scenes", description="Lane to create detected scene clips on")
     update_scene_graph: bool = Field(default=True, description="Also update the scene graph with detected scenes")
+
+
+# MARKER_B70: Workers sub-router extracted for modularity (14 endpoints, ~3100 lines)
+# Import moved here (after Request class definitions) to avoid circular imports
+from src.api.routes.cut_routes_workers import (  # noqa: E402
+    worker_router,
+    _collect_project_jobs,
+    _worker_job_error,
+    _find_active_duplicate_job,
+    _count_active_background_jobs_for_sandbox,
+    _ACTIVE_JOB_STATES,
+    _SANDBOX_BACKGROUND_LIMIT,
+    _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
+    _build_sync_surface,         # used by /project-state runtime path
+    _build_music_cue_summary,    # used by /project-state runtime path
+    _build_rhythm_surface,       # used by /project-state runtime path
+    _infer_cut_asset_kind,       # MARKER_B74: moved to workers
+    _resolve_asset_path,         # used by /media/support endpoint
+)
+
+router.include_router(worker_router)
 
 
 def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:
@@ -1233,8 +1240,6 @@ VALID_TIMELINE_OPS: frozenset[str] = frozenset({
     "apply_sync_offset",
     # Markers
     "delete_marker",
-    # Lane management (FCP7 Ch.59: Insert/Delete Tracks)
-    "add_lane", "remove_lane",
     # Async / dedicated-endpoint proxies
     "run_pulse_analysis", "run_automontage_favorites",
 })
@@ -1680,10 +1685,16 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             effects = op.get("effects")
             if effects is None:
                 clip.pop("effects", None)
+            elif isinstance(effects, dict):
+                # MARKER_CLIP_EFFECTS_WIRE: frontend sends flat ClipEffects dict
+                # {brightness: 0.1, gamma: 1.5, ...} → convert to backend EffectParam structure
+                from src.services.cut_effects_engine import clip_effects_dict_to_effect_params
+                clip_effects_obj = clip_effects_dict_to_effect_params(effects)
+                clip["effects"] = clip_effects_obj.to_dict()
+            elif isinstance(effects, list):
+                clip["effects"] = {"video_effects": effects, "audio_effects": []}
             else:
-                if not isinstance(effects, list):
-                    raise ValueError("effects must be a list")
-                clip["effects"] = effects
+                raise ValueError("effects must be a dict (ClipEffects) or list (EffectParam[])")
             applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
             continue
 
@@ -1958,49 +1969,6 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "marker_id": marker_id, "removed": removed})
             continue
 
-        # MARKER_A5.6: add_lane — insert a new empty lane (video or audio).
-        # FCP7 Ch.59: Insert Tracks creates empty tracks at specified position.
-        if op_type == "add_lane":
-            import uuid as _uuid
-            lane_type = str(op.get("lane_type") or "video").strip()
-            if not (lane_type.startswith("video") or lane_type.startswith("audio")):
-                raise ValueError(f"add_lane: invalid lane_type '{lane_type}' — must start with 'video' or 'audio'")
-            prefix = "video" if lane_type.startswith("video") else "audio"
-            new_lane_id = f"{prefix}_{_uuid.uuid4().hex[:8]}"
-            new_lane: dict[str, Any] = {
-                "lane_id": new_lane_id,
-                "lane_type": lane_type,
-                "clips": [],
-            }
-            lanes = state.setdefault("lanes", [])
-            position = op.get("position")
-            if position is not None and isinstance(position, int) and 0 <= position <= len(lanes):
-                lanes.insert(position, new_lane)
-            else:
-                lanes.append(new_lane)
-            applied_ops.append({"op": op_type, "lane_id": new_lane_id, "lane_type": lane_type})
-            continue
-
-        # MARKER_A5.6: remove_lane — remove an empty lane by ID.
-        # Safety: refuses to remove lanes with clips unless force=True.
-        if op_type == "remove_lane":
-            lane_id = str(op.get("lane_id") or "").strip()
-            if not lane_id:
-                raise ValueError("remove_lane requires lane_id")
-            force = bool(op.get("force", False))
-            lanes = state.get("lanes", [])
-            target = next((l for l in lanes if str(l.get("lane_id") or "") == lane_id), None)
-            if target is None:
-                applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": False, "reason": "lane_not_found"})
-                continue
-            clips = target.get("clips") or []
-            if clips and not force:
-                applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": False, "reason": "lane_not_empty"})
-                continue
-            state["lanes"] = [l for l in lanes if str(l.get("lane_id") or "") != lane_id]
-            applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": True, "clips_removed": len(clips)})
-            continue
-
         # MARKER_DELTABUG-PULSE: run_pulse_analysis / run_automontage_favorites are no-ops here.
         # These ops arrive via timeline op pipeline but the real work is done by dedicated
         # endpoints (/api/cut/pulse/... and /api/cut/pulse/auto-montage).
@@ -2010,6 +1978,63 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "note": "routed_to_dedicated_endpoint"})
             continue
 
+        # MARKER_MIXER_STATE: Mixer ops — store in state["mixer"] for persistence/undo
+        if op_type in ("set_track_volume", "set_track_pan", "set_track_mute", "set_track_solo"):
+            lane_id = str(op.get("lane_id") or "").strip()
+            if not lane_id:
+                raise ValueError(f"{op_type} requires lane_id")
+            mixer = state.setdefault("mixer", {"lanes": {}, "master_volume": 1.0, "master_pan": 0.0})
+            lane = mixer.setdefault("lanes", {}).setdefault(lane_id, {
+                "volume": 1.0, "pan": 0.0, "muted": False, "solo": False,
+            })
+            applied: dict[str, Any] = {"op": op_type, "lane_id": lane_id}
+            if op_type == "set_track_volume":
+                v = max(0.0, min(1.5, float(op.get("volume", 1.0))))
+                lane["volume"] = round(v, 4)
+                applied["volume"] = lane["volume"]
+            elif op_type == "set_track_pan":
+                p = max(-1.0, min(1.0, float(op.get("pan", 0.0))))
+                lane["pan"] = round(p, 4)
+                applied["pan"] = lane["pan"]
+            elif op_type == "set_track_mute":
+                lane["muted"] = bool(op.get("muted", False))
+                applied["muted"] = lane["muted"]
+            elif op_type == "set_track_solo":
+                lane["solo"] = bool(op.get("solo", False))
+                applied["solo"] = lane["solo"]
+            # Sync to engine store for WebSocket metering
+            try:
+                from src.services.cut_audio_engine import update_lane_mixer as _ulm
+                _ulm(str(state.get("project_id") or "project"), lane_id, **{
+                    k: lane[k] for k in ("volume", "pan", "muted", "solo") if k in lane
+                })
+            except Exception:
+                pass
+            applied_ops.append(applied)
+            continue
+
+        if op_type in ("set_master_volume", "set_master_pan"):
+            mixer = state.setdefault("mixer", {"lanes": {}, "master_volume": 1.0, "master_pan": 0.0})
+            applied = {"op": op_type}
+            if op_type == "set_master_volume":
+                v = max(0.0, min(1.5, float(op.get("volume", 1.0))))
+                mixer["master_volume"] = round(v, 4)
+                applied["volume"] = mixer["master_volume"]
+            elif op_type == "set_master_pan":
+                p = max(-1.0, min(1.0, float(op.get("pan", 0.0))))
+                mixer["master_pan"] = round(p, 4)
+                applied["pan"] = mixer["master_pan"]
+            # Sync to engine store
+            try:
+                from src.services.cut_audio_engine import update_master_mixer as _umm
+                _umm(str(state.get("project_id") or "project"), **{
+                    "volume": mixer.get("master_volume", 1.0),
+                    "pan": mixer.get("master_pan", 0.0),
+                })
+            except Exception:
+                pass
+            applied_ops.append(applied)
+            continue
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
 
     state["revision"] = int(state.get("revision") or 0) + 1
@@ -2468,12 +2493,21 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
     ext = path.suffix.lower().lstrip(".")
     mime_type, _ = mimetypes.guess_type(str(path))
     # MARKER_B1-CLEANUP: Use cut_codec_probe for structured probe + playback class
+    # MARKER_BETA_v1.0_E: Auto detect log profile on import
+    log_detection: dict[str, Any] = {}
     if body.probe_ffprobe:
-        probe_result = probe_file(path)
-        playback_class = probe_result.playback_class or "unknown"
-        ffprobe_payload = {"available": probe_result.available, "probe": probe_result.to_dict()}
-        if probe_result.error:
-            ffprobe_payload["error"] = probe_result.error
+        probe_and_log = probe_and_detect_log(path)
+        if probe_and_log.get("success"):
+            probe_result_dict = probe_and_log.get("metadata", {})
+            log_detection = probe_and_log.get("log_detection", {})
+            ffprobe_payload = {"available": True, "probe": probe_result_dict}
+            # Extract playback_class from the detected log profile or default
+            playback_class = "native"  # default for video with log profile
+            if "playback_class" in probe_result_dict:
+                playback_class = probe_result_dict.get("playback_class", "unknown")
+        else:
+            ffprobe_payload = {"available": False, "error": probe_and_log.get("error", "unknown error")}
+            playback_class = "unknown"
     else:
         ffprobe_payload = {"available": False, "error": "disabled"}
         # Fallback to extension-based classification
@@ -2497,6 +2531,7 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
         "playback_class": playback_class,
         "production_formats": PRODUCTION_VIDEO_FORMATS,
         "ffprobe": ffprobe_payload,
+        "log_detection": log_detection,
     }
 
 
@@ -2601,7 +2636,7 @@ async def cut_import_markers_srt(body: CutMarkerSrtImportRequest) -> dict[str, A
         if not media_path:
             continue
         marker_kind = str(meta.get("kind") or "comment")
-        if marker_kind not in {"favorite", "negative", "comment", "cam", "insight", "chat"}:
+        if marker_kind not in {"favorite", "comment", "cam", "insight", "chat"}:
             marker_kind = "comment"
         req = CutTimeMarkerApplyRequest(
             sandbox_root=body.sandbox_root,
@@ -4434,6 +4469,78 @@ async def cut_layers_manifest(
         "success": True,
         "manifest": manifest.to_dict(),
     }
+
+
+# MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame / Reverse Match Frame backend
+class MatchFrameRequest(BaseModel):
+    project_id: str
+    timeline_id: str = ""
+    sandbox_root: str = ""
+    # Forward match: timeline position → source clip + timecode
+    timeline_position: float | None = None
+    # Reverse match: source clip + source timecode → timeline position
+    source_path: str | None = None
+    source_timecode: float | None = None
+
+
+@router.post("/match-frame")
+async def cut_match_frame(body: MatchFrameRequest) -> dict[str, Any]:
+    """
+    MARKER_MATCH_FRAME — FCP7 Ch.27 Match Frame (F) + Reverse Match Frame (Shift+F).
+
+    Forward (timeline_position set):
+      Find the clip on the timeline whose range covers timeline_position.
+      Returns source_path + source_timecode (offset within the source file).
+
+    Reverse (source_path + source_timecode set):
+      Search all lanes for a clip from source_path whose source range covers source_timecode.
+      Returns timeline_position (where to seek the playhead).
+    """
+    store = CutProjectStore(body.sandbox_root)
+    timeline_state = store.load_timeline_state()
+    if timeline_state is None:
+        return {"success": False, "error": "timeline_not_ready"}
+
+    lanes: list[dict] = timeline_state.get("lanes", [])
+
+    # ── Forward: timeline → source ─────────────────────────────────────
+    if body.timeline_position is not None:
+        t = body.timeline_position
+        for lane in lanes:
+            for clip in lane.get("clips", []):
+                start = float(clip.get("start_sec", 0))
+                dur = float(clip.get("duration_sec", 0))
+                if start <= t < start + dur:
+                    source_in = float(clip.get("source_in", 0))
+                    return {
+                        "success": True,
+                        "match": "forward",
+                        "source_path": clip.get("source_path", ""),
+                        "source_timecode": round(source_in + (t - start), 4),
+                    }
+        return {"success": False, "error": "no_clip_at_position"}
+
+    # ── Reverse: source → timeline ─────────────────────────────────────
+    if body.source_path and body.source_timecode is not None:
+        st = body.source_timecode
+        for lane in lanes:
+            for clip in lane.get("clips", []):
+                if clip.get("source_path") != body.source_path:
+                    continue
+                source_in = float(clip.get("source_in", 0))
+                dur = float(clip.get("duration_sec", 0))
+                if source_in <= st < source_in + dur:
+                    timeline_pos = float(clip.get("start_sec", 0)) + (st - source_in)
+                    return {
+                        "success": True,
+                        "match": "reverse",
+                        "timeline_position": round(timeline_pos, 4),
+                        "lane_id": lane.get("lane_id", ""),
+                        "clip_id": clip.get("clip_id", ""),
+                    }
+        return {"success": False, "error": "no_clip_for_source_timecode"}
+
+    return {"success": False, "error": "invalid_request", "detail": "Provide timeline_position OR source_path+source_timecode"}
 
 
 # ---------------------------------------------------------------------------
