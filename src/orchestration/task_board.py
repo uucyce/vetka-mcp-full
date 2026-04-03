@@ -2699,6 +2699,36 @@ class TaskBoard:
                 "[TaskBoard] NOTIFY: %s → %s [%s] %s",
                 source_role or "system", target_role, ntype, message[:80],
             )
+
+            # MARKER_204.FILE_SIGNAL: Write file signal for hook-based delivery
+            try:
+                import json as _json_signal
+                signals_dir = Path.home() / ".claude" / "signals"
+                signals_dir.mkdir(parents=True, exist_ok=True)
+                signal_file = signals_dir / f"{target_role}.json"
+                signal_entry = {
+                    "id": notif_id,
+                    "from": source_role or "system",
+                    "message": message[:500],
+                    "ntype": ntype,
+                    "task_id": task_id,
+                    "ts": now,
+                }
+                # Append to existing array (don't overwrite)
+                existing = []
+                if signal_file.exists():
+                    try:
+                        existing = _json_signal.loads(signal_file.read_text(encoding="utf-8"))
+                        if not isinstance(existing, list):
+                            existing = []
+                    except Exception:
+                        existing = []
+                existing.append(signal_entry)
+                signal_file.write_text(_json_signal.dumps(existing, ensure_ascii=False), encoding="utf-8")
+                logger.debug("[TaskBoard] FILE_SIGNAL: wrote %s (%d entries)", signal_file.name, len(existing))
+            except Exception as sig_err:
+                logger.debug("[TaskBoard] FILE_SIGNAL write failed (non-fatal): %s", sig_err)
+
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")
