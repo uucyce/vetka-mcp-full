@@ -91,11 +91,21 @@ services:
   - name: chatgpt
     url: https://chatgpt.com
     profile_dir: data/sherpa_profiles/chatgpt_1
-    input_selector: 'textarea#prompt-textarea, div[contenteditable="true"]'
+    input_selector: 'div[contenteditable="true"]'  # probe confirmed: no textarea, only contenteditable
     send_selector: 'button[data-testid="send-button"]'
     response_selector: '[data-message-author-role="assistant"]'
     cooldown_seconds: 120
     enabled: false
+
+  # ── DeepSeek profile 2 (secondary gmail #2) ──────────────────────
+  - name: deepseek
+    url: https://chat.deepseek.com
+    profile_dir: data/sherpa_profiles/deepseek_2
+    input_selector: 'textarea#chat-input, textarea'
+    send_selector: 'div[role="button"][aria-label*="Send"], button:has-text("Send")'
+    response_selector: '.ds-markdown, .markdown-body'
+    cooldown_seconds: 60
+    enabled: false                # enable after: python sherpa.py --setup --service deepseek
 
   # ── Kimi (Moonshot) — "ok computer" mode for working code ─────────
   - name: kimi
@@ -107,57 +117,7 @@ services:
     cooldown_seconds: 60
     enabled: true
 
-  # ── LMSYS Arena — benchmark arena, always responds, model-agnostic ─
-  - name: arena
-    url: https://arena.ai
-    profile_dir: data/sherpa_profiles/arena_1
-    input_selector: 'textarea'
-    send_selector: 'button:has-text("Send"), button[type="submit"]'
-    response_selector: '.markdown-body, .message-content'
-    cooldown_seconds: 60
-    enabled: true
-
-  # ── Z.ai (Zhipu/ChatGLM) — GLM-4.6+, strong coding ───────────────
-  - name: zai
-    url: https://chat.z.ai
-    profile_dir: data/sherpa_profiles/zai_1
-    input_selector: 'textarea'
-    send_selector: 'button:has-text("Send"), button[type="submit"]'
-    response_selector: '.markdown-body, .message-content'
-    cooldown_seconds: 60
-    enabled: true
-
-  # ── Mistral Le Chat — free tier, good reasoning ────────────────────
-  - name: mistral
-    url: https://chat.mistral.ai/chat
-    profile_dir: data/sherpa_profiles/mistral_1
-    input_selector: 'textarea'
-    send_selector: 'button:has-text("Send"), button[type="submit"]'
-    response_selector: '.markdown-body, .message-content, .assistant'
-    cooldown_seconds: 90
-    enabled: true
-
-  # ── cto.new — playground with real code output ────────────────────
-  - name: cto
-    url: https://cto.new
-    profile_dir: data/sherpa_profiles/cto_1
-    input_selector: 'textarea'
-    send_selector: 'button:has-text("Send"), button[type="submit"]'
-    response_selector: '.message, .response, .markdown-body'
-    cooldown_seconds: 300
-    enabled: false
-
-  # ── DeepSeek account 2 (secondary gmail) ──────────────────────────
-  - name: deepseek
-    url: https://chat.deepseek.com
-    profile_dir: data/sherpa_profiles/deepseek_2
-    input_selector: 'textarea#chat-input, textarea'
-    send_selector: 'div[role="button"][aria-label*="Send"], button:has-text("Send")'
-    response_selector: '.ds-markdown, .markdown-body'
-    cooldown_seconds: 60
-    enabled: true
-
-  # ── Kimi account 2 (secondary gmail) ──────────────────────────────
+  # ── Kimi profile 2 (secondary gmail #2) ───────────────────────────
   - name: kimi
     url: https://www.kimi.com
     profile_dir: data/sherpa_profiles/kimi_2
@@ -165,17 +125,323 @@ services:
     send_selector: 'button:has-text("Send"), button[type="submit"]'
     response_selector: '.assistant-message, .chat-message, .markdown-body'
     cooldown_seconds: 60
-    enabled: true
+    enabled: false                # enable after: python sherpa.py --setup --service kimi
 
-  # ── Account Rotation ──────────────────────────────────────────────
-  # For services with per-account limits, add more profiles:
+  # ── HuggingChat — open models (Llama, Qwen, Mistral, Gemma) ──────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service huggingchat
+  - name: huggingchat
+    url: https://huggingface.co/chat
+    profile_dir: data/sherpa_profiles/huggingchat_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '.prose, [class*="message"]'
+    cooldown_seconds: 90
+    enabled: false                # python sherpa.py --setup --service huggingchat
+
+  # ── Monica — all-in-one AI assistant ──────────────────────────────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service monica
+  - name: monica
+    url: https://monica.im/home
+    profile_dir: data/sherpa_profiles/monica_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"]'
+    cooldown_seconds: 90
+    enabled: false                # python sherpa.py --setup --service monica
+
+  # ── Bolt — full-stack code gen (StackBlitz) ────────────────────────
+  # probe: textarea confirmed, NEED_LOGIN. Setup: python sherpa.py --setup --service bolt
+  - name: bolt
+    url: https://bolt.new
+    profile_dir: data/sherpa_profiles/bolt_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 120
+    enabled: false                # python sherpa.py --setup --service bolt
+
+  # ── cto.new — playground with real code output ────────────────────
+  # Long response times, but can produce complete working code
+  - name: cto
+    url: https://cto.new
+    profile_dir: data/sherpa_profiles/cto_1
+    input_selector: 'textarea'
+    send_selector: 'button:has-text("Send"), button[type="submit"]'
+    response_selector: '.message, .response, .markdown-body'
+    cooldown_seconds: 300         # slow — long cooldown
+    enabled: false                # enable when needed for code-heavy tasks
+
+  # ── Account Rotation — How to add more profiles ───────────────────
+  # Pattern: same `name` (service group), different `profile_dir`.
+  # profile_name auto-derives from profile_dir last segment (deepseek_2, etc.)
+  # BrowserClient keys by profile_name, so both profiles run in parallel.
   #
-  # - name: grok                 # same service name
-  #   url: https://grok.com
-  #   profile_dir: data/sherpa_profiles/grok_2    # different profile!
-  #   cooldown_seconds: 90
-  #   enabled: true
-  #
-  # Setup: python sherpa.py --setup --service grok
-  # Then login with a different gmail account.
-  # Sherpa rotates between all enabled entries round-robin.
+  # Setup a new profile: python sherpa.py --setup --service deepseek
+  # (opens ALL deepseek_* profiles for manual login, one by one)
+  # Then set enabled: true for the new profile.
+  # Sherpa rotates between all enabled entries of a service round-robin.
+
+  # ════════════════════════════════════════════════════════════════════
+  # PROBE CANDIDATES — python sherpa.py --probe  →  RECON_SERVICES.md
+  # enabled: false — login required before activating
+  # ════════════════════════════════════════════════════════════════════
+
+  # ── Tier 1: High Potential ─────────────────────────────────────────
+
+  - name: arena
+    url: https://lmarena.ai
+    profile_dir: data/sherpa_profiles/arena_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button:has-text("Send")'
+    response_selector: '.prose, [class*="message-content"], [class*="chat-message"], article'
+    cooldown_seconds: 60
+    enabled: true                 # PASS — anonymous, no login needed. Dual response captured automatically.
+
+  - name: mistral
+    url: https://chat.mistral.ai
+    profile_dir: data/sherpa_profiles/mistral_1
+    input_selector: 'textarea'
+    send_selector: 'button[aria-label*="Send"], button[type="submit"]'
+    response_selector: '[class*="message"], .prose'
+    cooldown_seconds: 90
+    enabled: false
+
+  - name: phind
+    url: https://phind.com
+    profile_dir: data/sherpa_profiles/phind_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="answer"], [class*="response"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: perplexity
+    url: https://perplexity.ai
+    profile_dir: data/sherpa_profiles/perplexity_1
+    input_selector: 'textarea'
+    send_selector: 'button[aria-label*="Submit"], button[type="submit"]'
+    response_selector: '[class*="answer"], .prose, [class*="markdown"]'
+    cooldown_seconds: 120
+    enabled: false
+
+  - name: you
+    url: https://you.com/chat
+    profile_dir: data/sherpa_profiles/you_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button[aria-label*="Send"]'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: groq
+    url: https://groq.com
+    profile_dir: data/sherpa_profiles/groq_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], .prose, article'
+    cooldown_seconds: 30
+    enabled: false
+
+  - name: cohere
+    url: https://coral.cohere.com
+    profile_dir: data/sherpa_profiles/cohere_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button[aria-label*="Send"]'
+    response_selector: '[class*="message"], .prose'
+    cooldown_seconds: 90
+    enabled: false
+
+  # ── Tier 2: Chinese Direct ──────────────────────────────────────────
+
+  - name: doubao
+    url: https://doubao.com
+    profile_dir: data/sherpa_profiles/doubao_1
+    input_selector: 'textarea'
+    send_selector: 'button[aria-label*="发送"], button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: minimax
+    url: https://www.minimaxi.com/chat
+    profile_dir: data/sherpa_profiles/minimax_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: chatglm
+    url: https://chatglm.cn
+    profile_dir: data/sherpa_profiles/chatglm_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: tongyi
+    url: https://tongyi.aliyun.com
+    profile_dir: data/sherpa_profiles/tongyi_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button[aria-label*="发送"]'
+    response_selector: '[class*="message"], [class*="answer"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: spark
+    url: https://xinghuo.xfyun.cn
+    profile_dir: data/sherpa_profiles/spark_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: tiangong
+    url: https://www.tiangong.cn
+    profile_dir: data/sherpa_profiles/tiangong_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: baichuan
+    url: https://www.baichuan-ai.com/chat
+    profile_dir: data/sherpa_profiles/baichuan_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: sensenova
+    url: https://sensechat.sensetime.com
+    profile_dir: data/sherpa_profiles/sensenova_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="content"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  # ── Tier 3: Western Underdog ────────────────────────────────────────
+
+  - name: blackbox
+    url: https://blackbox.ai
+    profile_dir: data/sherpa_profiles/blackbox_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"], button:has-text("Send")'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: pi
+    url: https://pi.ai/talk
+    profile_dir: data/sherpa_profiles/pi_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"]'
+    cooldown_seconds: 90
+    enabled: false
+
+  - name: poe
+    url: https://poe.com
+    profile_dir: data/sherpa_profiles/poe_1
+    input_selector: 'textarea'
+    send_selector: 'button[class*="send"], button[type="submit"]'
+    response_selector: '[class*="Message"], [class*="response"]'
+    cooldown_seconds: 120
+    enabled: false
+
+  - name: forefront
+    url: https://chat.forefront.ai
+    profile_dir: data/sherpa_profiles/forefront_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 90
+    enabled: false
+
+  - name: openrouter
+    url: https://openrouter.ai/chat
+    profile_dir: data/sherpa_profiles/openrouter_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: venice
+    url: https://venice.ai/chat
+    profile_dir: data/sherpa_profiles/venice_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"], .prose'
+    cooldown_seconds: 90
+    enabled: false
+
+  - name: together
+    url: https://api.together.ai/playground
+    profile_dir: data/sherpa_profiles/together_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="output"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: fireworks
+    url: https://fireworks.ai/chat
+    profile_dir: data/sherpa_profiles/fireworks_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: ora
+    url: https://ora.ai
+    profile_dir: data/sherpa_profiles/ora_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"]'
+    cooldown_seconds: 90
+    enabled: false
+
+  - name: nat
+    url: https://nat.dev
+    profile_dir: data/sherpa_profiles/nat_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="output"]'
+    cooldown_seconds: 60
+    enabled: false
+
+  # ── Tier 4: Code-Focused ────────────────────────────────────────────
+
+  - name: v0
+    url: https://v0.dev
+    profile_dir: data/sherpa_profiles/v0_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], [class*="response"]'
+    cooldown_seconds: 120
+    enabled: false
+
+  - name: codeium
+    url: https://codeium.com/chat
+    profile_dir: data/sherpa_profiles/codeium_1
+    input_selector: 'textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="message"], .prose'
+    cooldown_seconds: 60
+    enabled: false
+
+  - name: andi
+    url: https://andisearch.com
+    profile_dir: data/sherpa_profiles/andi_1
+    input_selector: 'input[type="text"], textarea'
+    send_selector: 'button[type="submit"]'
+    response_selector: '[class*="answer"], [class*="result"], .prose'
+    cooldown_seconds: 60
+    enabled: false
