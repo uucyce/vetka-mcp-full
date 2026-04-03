@@ -72,7 +72,7 @@ from src.services.pulse_srt_bridge import (
 )
 from src.services.converters.premiere_xml_converter import build_premiere_xml
 from src.services.converters.fcpxml_converter import build_fcpxml
-from src.services.cut_codec_probe import probe_file, probe_duration
+from src.services.cut_codec_probe import probe_file, probe_duration, probe_and_detect_log
 from src.services.pulse_story_space import (
     TrianglePosition,
     StorySpacePoint,
@@ -2493,12 +2493,21 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
     ext = path.suffix.lower().lstrip(".")
     mime_type, _ = mimetypes.guess_type(str(path))
     # MARKER_B1-CLEANUP: Use cut_codec_probe for structured probe + playback class
+    # MARKER_BETA_v1.0_E: Auto detect log profile on import
+    log_detection: dict[str, Any] = {}
     if body.probe_ffprobe:
-        probe_result = probe_file(path)
-        playback_class = probe_result.playback_class or "unknown"
-        ffprobe_payload = {"available": probe_result.available, "probe": probe_result.to_dict()}
-        if probe_result.error:
-            ffprobe_payload["error"] = probe_result.error
+        probe_and_log = probe_and_detect_log(path)
+        if probe_and_log.get("success"):
+            probe_result_dict = probe_and_log.get("metadata", {})
+            log_detection = probe_and_log.get("log_detection", {})
+            ffprobe_payload = {"available": True, "probe": probe_result_dict}
+            # Extract playback_class from the detected log profile or default
+            playback_class = "native"  # default for video with log profile
+            if "playback_class" in probe_result_dict:
+                playback_class = probe_result_dict.get("playback_class", "unknown")
+        else:
+            ffprobe_payload = {"available": False, "error": probe_and_log.get("error", "unknown error")}
+            playback_class = "unknown"
     else:
         ffprobe_payload = {"available": False, "error": "disabled"}
         # Fallback to extension-based classification
@@ -2522,6 +2531,7 @@ async def cut_media_support(body: CutMediaSupportRequest) -> dict[str, Any]:
         "playback_class": playback_class,
         "production_formats": PRODUCTION_VIDEO_FORMATS,
         "ffprobe": ffprobe_payload,
+        "log_detection": log_detection,
     }
 
 
