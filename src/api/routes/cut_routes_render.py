@@ -74,6 +74,14 @@ class CutCompileTransitionsRequest(BaseModel):
     transitions: list[dict[str, Any]] = Field(description="List of Transition dicts with type, duration_sec, between, audio_curve")
 
 
+class CutAnalyzeWaveformRequest(BaseModel):
+    """MARKER_B15 — Analyze audio waveform for timeline visualization."""
+    audio_path: str = Field(description="Path to audio file (any format FFmpeg supports)")
+    width_px: int = Field(default=800, ge=1, le=8192, description="Width in pixels (bins)")
+    norm_type: str = Field(default="rms", description="Normalization type: 'rms' or 'peak'")
+    use_cache: bool = Field(default=True, description="Use in-memory cache")
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -620,6 +628,54 @@ async def cut_compile_transitions(req: CutCompileTransitionsRequest) -> dict[str
         return {
             "success": False,
             "error": str(e),
+        }
+
+
+@render_router.post("/waveform/analyze")
+async def cut_analyze_waveform(req: CutAnalyzeWaveformRequest) -> dict[str, Any]:
+    """
+    MARKER_B15 — Analyze audio waveform for timeline visualization.
+
+    Returns normalized peak values per pixel for UI rendering.
+    Supports all FFmpeg-compatible audio formats.
+    """
+    from src.services.cut_waveform_analyzer import compile_waveform_peaks
+
+    try:
+        # Validate norm_type
+        if req.norm_type not in ("rms", "peak"):
+            return {
+                "success": False,
+                "error": f"Invalid norm_type: {req.norm_type}. Must be 'rms' or 'peak'.",
+            }
+
+        # Compile waveform
+        result = compile_waveform_peaks(
+            audio_path=req.audio_path,
+            width_px=req.width_px,
+            norm_type=req.norm_type,  # type: ignore
+            use_cache=req.use_cache,
+        )
+
+        return {
+            "success": True,
+            "schema_version": "cut_analyze_waveform_v1",
+            "peaks": result.peaks,
+            "duration_sec": result.duration_sec,
+            "channels": result.channels,
+            "sample_rate": result.sample_rate,
+            "norm_type": result.norm_type,
+            "width_px": req.width_px,
+        }
+    except FileNotFoundError as e:
+        return {
+            "success": False,
+            "error": f"Audio file not found: {req.audio_path}",
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Waveform analysis failed: {str(e)}",
         }
 
 
