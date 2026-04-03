@@ -285,16 +285,18 @@ class SherpaHarness:
             return False, f"guard:desc_too_short ({len(desc.strip())} chars)"
         return True, ""
 
+    _call_count: int = 0
+
     def select_service(self, services: list, task: dict):
-        scores = self.feedback._scores
-        if not scores:
-            return services[0]
-        ranked = [(svc, scores.get(svc.name, 0.5)) for svc in services
-                  if not ServiceProtocol.is_service_disabled(svc.name)]
-        if not ranked:
-            return services[0]
-        ranked.sort(key=lambda x: x[1], reverse=True)
-        return ranked[0][0]
+        """Round-robin to avoid rate limits. Never >1 request in a row to same service."""
+        available = [s for s in services if not ServiceProtocol.is_service_disabled(s.name)]
+        if not available:
+            available = services
+        idx = self._call_count % len(available)
+        self._call_count += 1
+        selected = available[idx]
+        log.info(f"Service rotation: {selected.name} ({idx + 1}/{len(available)})")
+        return selected
 
     def get_stats(self) -> dict:
         return {"guard_rejects": self._guard_rejects, "reflex_skips": self._reflex_skips}
@@ -555,15 +557,29 @@ class BrowserClient:
         log.info("Browser stopped")
 
     async def _get_page(self, service_name: str) -> Any:
-        """Get or create a persistent page for a service."""
+        """Get or reuse a SINGLE page. Closes previous context when switching services.
+        ONE TAB RULE: prevents CPU overload from multiple Chromium processes."""
+        svc = self.services.get(service_name)
+        if not svc:
+            raise ValueError(f"Unknown service: {service_name}")
+
+        # If same service — reuse existing page
         if service_name in self._pages:
             page = self._pages[service_name]
             if not page.is_closed():
                 return page
 
-        svc = self.services.get(service_name)
-        if not svc:
-            raise ValueError(f"Unknown service: {service_name}")
+        # Close ALL previous contexts first (one tab rule — CPU safety)
+        for old_name, old_ctx in list(self._contexts.items()):
+            if old_name != service_name:
+                try:
+                    await self._save_storage_state(old_name)
+                    await old_ctx.close()
+                    log.info(f"Closed previous tab: {old_name}")
+                except Exception:
+                    pass
+                self._contexts.pop(old_name, None)
+                self._pages.pop(old_name, None)
 
         profile_path = str(PROJECT_ROOT / svc.profile_dir)
         Path(profile_path).mkdir(parents=True, exist_ok=True)
@@ -572,7 +588,7 @@ class BrowserClient:
             storage_state=self._load_storage_state(profile_path),
             viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            permissions=["clipboard-read", "clipboard-write"],  # No popup for clipboard
+            permissions=["clipboard-read", "clipboard-write"],
         )
         page = await ctx.new_page()
         self._contexts[service_name] = ctx
@@ -1023,14 +1039,13 @@ class BrowserClient:
             return ""
 
         # Phase 2: Wait for generation to FINISH
-        # Poll: is_streaming? + text length stable?
+        # LIGHTWEIGHT: only measure DOM length, no Copy clicks, no scrolling
+        MIN_COMPLETE = 5000  # Responses under 5K chars = likely incomplete
         prev_len = 0
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
-            curr_len = len(text)
-
+            curr_len = await self._measure_response_length(page, svc)
             elapsed = int(time.time() - start)
 
             if streaming:
@@ -1038,7 +1053,6 @@ class BrowserClient:
                 if elapsed % 15 == 0:
                     log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
             else:
-                # Text growing? Reset stability counter
                 if curr_len != prev_len:
                     stable_count = 0
                     if elapsed % 10 == 0 and curr_len > 0:
@@ -1046,27 +1060,65 @@ class BrowserClient:
                 else:
                     stable_count += 1
 
-                # COMPLETE = Copy button visible + text stopped growing (3 checks = 9s)
+                # COMPLETE = stable + above minimum
                 copy_visible = await self._is_copy_button_visible(page)
-                if copy_visible and stable_count >= 3 and curr_len > 100:
-                    log.info(f"Response complete: Copy visible + text stable ({curr_len} chars, {elapsed}s)")
-                    return text
+                if copy_visible and stable_count >= 3 and curr_len >= MIN_COMPLETE:
+                    log.info(f"Response complete ({curr_len} chars, {elapsed}s). Extracting...")
+                    break
 
-                # Fallback: no copy button but text very stable (5 checks = 15s)
-                if stable_count >= 5 and curr_len > 500:
-                    log.info(f"Response stable without Copy button ({curr_len} chars, {elapsed}s)")
-                    return text
+                # Below minimum but stable — AI might be thinking, wait longer
+                if copy_visible and stable_count >= 3 and curr_len < MIN_COMPLETE:
+                    if stable_count <= 15:  # Wait up to 45s for AI to resume
+                        if stable_count % 3 == 0:
+                            log.info(f"Response short ({curr_len} chars < {MIN_COMPLETE}), waiting... ({stable_count * 3}s)")
+                    else:
+                        log.info(f"Response stuck at {curr_len} chars. Extracting...")
+                        break
+
+                # No copy button but very stable + above minimum
+                if stable_count >= 7 and curr_len >= MIN_COMPLETE:
+                    log.info(f"Response stable without Copy ({curr_len} chars, {elapsed}s). Extracting...")
+                    break
+
+                # Very long stable under minimum — give up
+                if stable_count >= 10 and curr_len > 500 and curr_len < MIN_COMPLETE:
+                    log.info(f"Response stuck at {curr_len} chars. Extracting what we have...")
+                    break
 
             prev_len = curr_len
             await page.wait_for_timeout(3000)
 
-        # Timeout — return whatever we have
+        # Phase 3: ONE full extraction
+        text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+        if text and len(text) > 100:
+            elapsed = int(time.time() - start)
+            log.info(f"Extracted {len(text)} chars in {elapsed}s")
+            return text
+
+        # Timeout fallback
         text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
         if text and len(text) > 100:
             log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
         log.error("Timeout: no response received")
         return ""
+
+    async def _measure_response_length(self, page, svc: 'ServiceConfig' = None) -> int:
+        """Lightweight DOM length check — no clicks, no scrolling."""
+        selectors = [".ds-markdown", ".markdown-body", ".message-content",
+                     ".assistant-message", ".prose", "article"]
+        if svc and svc.response_selector:
+            selectors = svc.response_selector.split(", ") + selectors
+        for sel in selectors:
+            try:
+                el = page.locator(sel).last
+                if await el.is_visible(timeout=500):
+                    text = await el.inner_text(timeout=2000)
+                    if text and len(text) > 20:
+                        return len(text.strip())
+            except Exception:
+                continue
+        return 0
 
     async def _is_copy_button_visible(self, page) -> bool:
         """Check if a Copy button is visible — means response is COMPLETE."""

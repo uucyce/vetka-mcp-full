@@ -5,16 +5,7 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
-import { usePanelSyncStore } from './usePanelSyncStore';
 import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
-import type { ColorCorrection } from './useColorPresetStore';
-
-// MARKER_COLOR-CORRECTION-TYPE: per-clip color correction — extends presets ColorCorrection with LUT/log fields
-export type ClipColorCorrection = Partial<ColorCorrection> & {
-  lutPath?: string;
-  lutName?: string;
-  logProfile?: string;
-};
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
 export type Keyframe = {
@@ -164,10 +155,6 @@ export type TimelineClip = {
   source_path: string;
   // MARKER_INLINE-RENAME: User-editable clip label. If set, shown in clipLabelMode=name instead of filename.
   name?: string;
-  // MARKER_COLOR-LABEL: FCP7-style editorial color label (set via set_clip_meta). Rendered as 3px left strip on timeline clip.
-  color_label?: string;
-  // MARKER_COLOR-CORRECTION-TYPE: per-clip color grading (exposure, LUT, log profile, 3-way wheels).
-  color_correction?: ClipColorCorrection;
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;
@@ -345,6 +332,9 @@ interface CutEditorState {
   editingMarkerId: string | null;
   // MARKER_GAMMA-LOOP: Loop playback (FCP7 Ch.8)
   loopPlayback: boolean;
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  showInsertTracksDialog: boolean;
+  showDeleteTracksDialog: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -392,8 +382,6 @@ interface CutEditorState {
 
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
-  showPublishDialog: boolean;
-  showTimecodeEntry: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
   showFindDialog: boolean;          // MARKER_FCP7-FIND: Edit > Find overlay
   findQuery: string;                // active search query for clip highlighting
@@ -403,10 +391,6 @@ interface CutEditorState {
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
   showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
-  // MARKER_MATCH-SEQ: Match Sequence Settings popup
-  showMatchSequencePopup: boolean;
-  pendingMatchClipPath: string | null;
-  setShowMatchSequencePopup: (show: boolean, clipPath?: string | null) => void;
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -440,6 +424,8 @@ interface CutEditorState {
   showClipBorders: boolean;
   showWaveforms: boolean;
   waveformHiddenLanes: Set<string>;  // MARKER_A3.4: per-lane waveform visibility
+  // MARKER_A3.2: Per-marker-kind visibility toggles for BPM markers
+  visibleMarkerKinds: Set<string>;   // kinds in set = visible, empty = all visible (default)
   showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
@@ -523,11 +509,12 @@ interface CutEditorState {
   // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
-  // MARKER_A5.6: Lane management (FCP7 Ch.59 Insert/Delete Tracks)
-  addLane: (laneType: 'video' | 'audio') => void;   // Insert empty lane (video or audio)
-  removeLane: (laneId: string) => void;              // Remove empty lane (no-op if has clips)
   // MARKER_TRANSITION: Default transition (FCP7 Ch.47 ⌘T)
-  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point
+  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point (any lane)
+  addAudioTransition: () => void;               // MARKER_AUDIO_XFADE: Add crossfade at nearest audio edit point
+  // MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame (F) + Reverse Match Frame (Shift+F)
+  matchFrame: () => void;       // playhead → find clip → open source at matching timecode
+  reverseMatchFrame: () => void; // source monitor position → seek timeline to matching clip
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -553,6 +540,9 @@ interface CutEditorState {
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop: boolean) => void;
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  setShowInsertTracksDialog: (show: boolean) => void;
+  setShowDeleteTracksDialog: (show: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -561,9 +551,6 @@ interface CutEditorState {
   setProxyMode: (mode: 'full' | 'proxy' | 'auto') => void;
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
-  setShowPublishDialog: (show: boolean) => void;
-  setShowTimecodeEntry: (show: boolean) => void;
-  cycleTimelineDisplayMode: () => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
   setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
@@ -601,10 +588,6 @@ interface CutEditorState {
   setLastSavedAt: (ts: string | null) => void;
   setSaveError: (err: string | null) => void;
   markUnsavedChanges: () => void;
-  // Aliases used by CutStandalone autosave integration
-  isDirty: boolean;
-  isSaving: boolean;
-  markDirty: () => void;
 
   // MARKER_W2.2: Source patching — resolve insert/overwrite destinations
   getInsertTargets: () => { videoLaneId: string | null; audioLaneId: string | null };
@@ -620,6 +603,9 @@ interface CutEditorState {
   setClipLabelMode: (mode: 'name' | 'color' | 'filename') => void;
   cycleClipLabelMode: () => void;  // MARKER_FCP7-CH45: cycles name→filename→color→name
   setTimecodeDisplayMode: (mode: 'timecode' | 'frames' | 'seconds') => void;
+  // MARKER_A3.2: Marker visibility toggles (per-kind filtering)
+  toggleMarkerKind: (kind: string) => void;
+  setVisibleMarkerKinds: (kinds: Set<string>) => void;
   toggleShowVideoTracks: () => void;
   toggleShowAudioTracks: () => void;
 
@@ -787,6 +773,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   editingMarkerId: null,
   // MARKER_GAMMA-LOOP: Loop playback
   loopPlayback: false,
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  showInsertTracksDialog: false,
+  showDeleteTracksDialog: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -826,8 +815,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
-  showPublishDialog: false,
-  showTimecodeEntry: false,
   showSpeedControl: false,          // MARKER_B11
   showFindDialog: false,            // MARKER_FCP7-FIND
   findQuery: '',                    // MARKER_FCP7-FIND
@@ -836,8 +823,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditClipId: null,
   trimEditPoint: 0,
   showPasteAttributes: false,       // MARKER_PASTE_ATTR
-  showMatchSequencePopup: false,    // MARKER_MATCH-SEQ
-  pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -856,8 +841,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lastSavedAt: null,
   saveError: null,
   hasUnsavedChanges: false,
-  isDirty: false,
-  isSaving: false,
 
   // MARKER_CLIPBOARD: Clipboard default
   clipboard: [],
@@ -875,6 +858,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipBorders: true,
   showWaveforms: true,
   waveformHiddenLanes: new Set<string>(),  // MARKER_A3.4
+  // MARKER_A3.2: All marker kinds visible by default (empty set = show all)
+  visibleMarkerKinds: new Set<string>(['bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point']),
   showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
@@ -919,10 +904,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
-  setTrackHeight: (h) => set({ trackHeight: Math.max(28, Math.min(180, h)) }),
+  // MARKER_A3.5: Track height constraints — 20px min (compact), 200px max (expansive)
+  setTrackHeight: (h) => set({ trackHeight: Math.max(20, Math.min(200, h)) }),
   setTrackHeightForLane: (laneId, h) =>
     set((state) => ({
-      trackHeights: { ...state.trackHeights, [laneId]: Math.max(28, Math.min(180, h)) },
+      trackHeights: { ...state.trackHeights, [laneId]: Math.max(20, Math.min(200, h)) },
     })),
   cycleTrackHeights: () =>
     set((state) => {
@@ -1085,8 +1071,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
   // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
   pasteAttributesSelective: (config: PasteAttributesConfig) => {
-    const { clipboard, lanes } = get();
-    const selectedClipIds = useSelectionStore.getState().selectedClipIds;
+    const { clipboard, selectedClipIds, lanes } = get();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const source = clipboard[0];
     const ops: Array<Record<string, unknown>> = [];
@@ -1098,8 +1083,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       }
 
       // Color Correction
-      if (config.colorCorrection && source.color_correction) {
-        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify(source.color_correction)) });
+      if (config.colorCorrection && (source as any).color_correction) {
+        ops.push({ op: 'set_prop', clip_id: clipId, key: 'color_correction', value: JSON.parse(JSON.stringify((source as any).color_correction)) });
       }
 
       // Motion (position, scale, rotation, anchor, crop)
@@ -1361,23 +1346,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     if (ops.length) void get().applyTimelineOps(ops);
   },
 
-  // MARKER_A5.6: Lane management — FCP7 Ch.59 Insert/Delete Tracks
-  // Routes through applyTimelineOps → backend add_lane/remove_lane → undo supported
-  addLane: (laneType) => {
-    void get().applyTimelineOps([{ op: 'add_lane', lane_type: laneType }]);
-  },
-  removeLane: (laneId) => {
-    const lane = get().lanes.find((l) => l.lane_id === laneId);
-    if (!lane) return;
-    if (lane.clips.length > 0) {
-      // Safety guard: only remove empty lanes from frontend
-      // Backend also enforces this, but guard here prevents unnecessary round-trip
-      console.warn(`[removeLane] Lane "${laneId}" has ${lane.clips.length} clips — cannot remove non-empty lane`);
-      return;
-    }
-    void get().applyTimelineOps([{ op: 'remove_lane', lane_id: laneId }]);
-  },
-
   // MARKER_TRANSITION: Add default cross dissolve at nearest edit point to playhead
   // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
   // FCP7 Ch.24: default transition = 30 frames (1s at 30fps, 1.2s at 25fps)
@@ -1410,10 +1378,85 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }]);
   },
 
+  // MARKER_AUDIO_XFADE: Audio-specific crossfade — targets only audio lanes (acrossfade in render)
+  addAudioTransition: () => {
+    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
+    const defaultDuration = 30 / (projectFramerate || 25);
+    let bestDist = Infinity;
+    let bestClipId = '';
+
+    lanes.forEach((lane) => {
+      if (lockedLanes.has(lane.lane_id)) return;
+      if (!lane.lane_type.startsWith('audio')) return;
+      lane.clips.forEach((clip) => {
+        const dist = Math.abs((clip.start_sec + clip.duration_sec) - currentTime);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestClipId = clip.clip_id;
+        }
+      });
+    });
+
+    if (!bestClipId || bestDist > 2.0) return;
+
+    void get().applyTimelineOps([{
+      op: 'set_transition',
+      clip_id: bestClipId,
+      transition: { type: 'cross_dissolve', duration_sec: defaultDuration, alignment: 'center' },
+    }]);
+  },
+
   // MARKER_DUAL-VIDEO: setActiveMedia is legacy — sets activeMediaPath only, does NOT bleed into source
+  // MARKER_MATCH_FRAME: FCP7 Ch.27 Match Frame (F) — find clip under playhead → open source at matching timecode
+  matchFrame: () => {
+    const s = get();
+    for (const lane of s.lanes) {
+      if (s.lockedLanes.has(lane.lane_id)) continue;
+      for (const clip of lane.clips) {
+        if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+          const sourceOffset = clip.source_in ?? 0;
+          const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
+          set({ sourceMediaPath: clip.source_path, sourceCurrentTime: Math.max(0, sourceTime), focusedPanel: 'source' });
+          return;
+        }
+      }
+    }
+  },
+  // MARKER_MATCH_FRAME: Reverse Match Frame (Shift+F) — source monitor position → seek timeline to matching clip
+  reverseMatchFrame: () => {
+    const s = get();
+    const sourcePath = s.sourceMediaPath;
+    const sourceTime = s.sourceCurrentTime;
+    if (!sourcePath) return;
+    for (const lane of s.lanes) {
+      for (const clip of lane.clips) {
+        if (clip.source_path !== sourcePath) continue;
+        const clipSourceIn = clip.source_in ?? 0;
+        const clipSourceOut = clipSourceIn + clip.duration_sec;
+        if (sourceTime >= clipSourceIn && sourceTime < clipSourceOut) {
+          const timelineTime = clip.start_sec + (sourceTime - clipSourceIn);
+          set({ currentTime: timelineTime, focusedPanel: 'timeline' });
+          return;
+        }
+      }
+    }
+  },
   setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
-  // MARKER_W1.3: Source/Program routing — fully decoupled
-  setSourceMedia: (path) => set({ sourceMediaPath: path }),
+  // MARKER_W1.3: Source/Program routing — fully decoupled.
+  // Source Monitor reads sourceMediaPath, Program Monitor reads programMediaPath.
+  // setSourceMedia should ONLY be called by explicit user actions:
+  //   - double-click timeline clip
+  //   - Match Frame (F)
+  //   - DAG/Script click (via PanelSyncBridge)
+  //   - "Open in Source Monitor" menu
+  // NEVER auto-sync from timeline playback (that's the REGRESSION we fixed).
+  setSourceMedia: (path) => {
+    if (import.meta.env.DEV) {
+      const stack = new Error().stack?.split('\n').slice(2, 5).join(' | ');
+      console.log(`[CUT SourceMonitor] setSourceMedia(${path}) ← ${stack}`);
+    }
+    set({ sourceMediaPath: path });
+  },
   setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
@@ -1439,6 +1482,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop) => set({ loopPlayback: loop }),
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
+  setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {
@@ -1453,16 +1499,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setProxyMode: (mode) => set({ proxyMode: mode }),
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
-  setShowPublishDialog: (show) => set({ showPublishDialog: show }),
-  setShowTimecodeEntry: (show) => set({ showTimecodeEntry: show }),
-  cycleTimelineDisplayMode: () => set((s) => {
-    const order = ['timecode', 'frames', 'seconds'] as const;
-    const next = order[(order.indexOf(s.timecodeDisplayMode) + 1) % order.length];
-    return { timecodeDisplayMode: next };
-  }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
-  setShowMatchSequencePopup: (show, clipPath) => set({ showMatchSequencePopup: show, pendingMatchClipPath: clipPath ?? null }),
   setFindQuery: (query) => set({ findQuery: query }),
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),
@@ -1624,11 +1662,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleZebra: () => set((s) => ({ showZebra: !s.showZebra })),
 
   // MARKER_W4.3: Save actions
-  setSaveStatus: (status) => set({ saveStatus: status, isSaving: status === 'saving' }),
+  setSaveStatus: (status) => set({ saveStatus: status }),
   setLastSavedAt: (ts) => set({ lastSavedAt: ts }),
   setSaveError: (err) => set({ saveError: err }),
-  markUnsavedChanges: () => set({ hasUnsavedChanges: true, isDirty: true, saveStatus: 'idle' }),
-  markDirty: () => set({ isDirty: true, hasUnsavedChanges: true, saveStatus: 'idle' }),
+  markUnsavedChanges: () => set({ hasUnsavedChanges: true, saveStatus: 'idle' }),
 
   // MARKER_DISPLAY-CTRL: Timeline Display Controls toggles
   toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
@@ -1651,6 +1688,13 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     return { clipLabelMode: next };
   }),
   setTimecodeDisplayMode: (mode) => set({ timecodeDisplayMode: mode }),
+  // MARKER_A3.2: Marker kind visibility
+  toggleMarkerKind: (kind: string) => set((s) => {
+    const next = new Set(s.visibleMarkerKinds);
+    if (next.has(kind)) next.delete(kind); else next.add(kind);
+    return { visibleMarkerKinds: next };
+  }),
+  setVisibleMarkerKinds: (kinds) => set({ visibleMarkerKinds: kinds }),
   toggleShowVideoTracks: () => set((s) => ({ showVideoTracks: !s.showVideoTracks })),
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
@@ -2265,19 +2309,9 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 }));
 
-// MARKER_PW2: Panel Sync Bridge — propagate Script/DAG clicks to editor store
-// Script click → activeSceneId updates → selectedSceneId → PulseInspector/ClipInspector reactive
-// DAG click → selectedAssetPath updates → setSourceMedia → Source Monitor loads clip
-usePanelSyncStore.subscribe((state, prev) => {
-  // When selectedAssetPath changes → load in Source Monitor
-  if (state.selectedAssetPath && state.selectedAssetPath !== prev.selectedAssetPath) {
-    useCutEditorStore.getState().setSourceMedia(state.selectedAssetPath);
-  }
-  // When activeSceneId changes → store it for PulseInspector/ClipInspector
-  if (state.activeSceneId && state.activeSceneId !== prev.activeSceneId) {
-    useCutEditorStore.setState({ selectedSceneId: state.activeSceneId });
-  }
-});
+// MARKER_PW2: Panel Sync Bridge — REMOVED duplicate module-level subscription.
+// usePanelSyncBridge() hook in CutStandalone.tsx handles this (single source of truth).
+// Module-level subscribe was redundant and could cause double-fire on selectedAssetPath changes.
 
 // MARKER_PW8: Timeline ID sync — keep CutEditorStore.timelineId in sync with TimelineInstanceStore
 // DAG, StorySpace, Inspector can read useCutEditorStore(s => s.timelineId) instead of hardcoding 'main'
