@@ -71,7 +71,7 @@ _SECTION_TIERS: Dict[str, int] = {
     "semantic_lessons": 3, "jepa_session_lens": 3, "capabilities": 3,
     "context_hints": 3,
     # T4: Specialist / diagnostic
-    "digest": 4, "memory_health": 4, "reflex_report": 4,
+    "digest": 4, "memory_health": 4, "agent_metrics": 4, "reflex_report": 4,
     "freshness_events": 4, "other_agents": 4,
 }
 
@@ -1959,6 +1959,66 @@ class SessionInitTool(BaseMCPTool):
             get_stm_buffer().save_to_disk()
         except Exception:
             pass  # STM save errors never block session init
+
+        # MARKER_203.AGENT_METRICS: Task velocity, merge lag, active agents
+        try:
+            from src.orchestration.task_board import get_task_board
+            from datetime import datetime as _dt, timedelta as _td
+
+            _board = get_task_board()
+            _all_tasks = _board.get_queue()
+            _now = _dt.now()
+            _7d_ago = (_now - _td(days=7)).isoformat()
+
+            # Task velocity: completed in last 7 days, per agent
+            _velocity: dict = {}
+            for _t in _all_tasks:
+                _ca = _t.get("completed_at", "")
+                if _ca and _ca >= _7d_ago:
+                    _agent = _t.get("assigned_to") or "unknown"
+                    _velocity[_agent] = _velocity.get(_agent, 0) + 1
+
+            # Merge lag: avg hours from done_worktree → done_main (last 20 merged)
+            _lags = []
+            for _t in _all_tasks:
+                if _t.get("status") != "done_main":
+                    continue
+                _hist = _t.get("status_history") or []
+                _wt_ts = None
+                _dm_ts = None
+                for _ev in _hist:
+                    if _ev.get("status") == "done_worktree" and not _wt_ts:
+                        _wt_ts = _ev.get("ts", "")
+                    if _ev.get("status") == "done_main" and not _dm_ts:
+                        _dm_ts = _ev.get("ts", "")
+                if _wt_ts and _dm_ts and _dm_ts > _wt_ts:
+                    try:
+                        _lag_h = (_dt.fromisoformat(_dm_ts) - _dt.fromisoformat(_wt_ts)).total_seconds() / 3600
+                        _lags.append(round(_lag_h, 1))
+                    except Exception:
+                        pass
+            _lags = _lags[-20:]  # last 20
+
+            # Active agents: currently claimed tasks
+            _active = {}
+            for _t in _all_tasks:
+                if _t.get("status") == "claimed":
+                    _agent = _t.get("assigned_to") or "unknown"
+                    _active[_agent] = _active.get(_agent, 0) + 1
+
+            context["agent_metrics"] = {
+                "velocity_7d": _velocity,
+                "total_completed_7d": sum(_velocity.values()),
+                "merge_lag_hours": {
+                    "avg": round(sum(_lags) / len(_lags), 1) if _lags else None,
+                    "min": min(_lags) if _lags else None,
+                    "max": max(_lags) if _lags else None,
+                    "sample_size": len(_lags),
+                },
+                "active_agents": _active,
+            }
+        except Exception:
+            pass  # Metrics never block session_init
 
         # MARKER_198.MEM_HEALTH: Memory subsystem health dashboard
         try:
