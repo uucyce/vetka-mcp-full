@@ -38,9 +38,56 @@ def _resolve_project_root() -> Path:
 
 
 _PROJECT_ROOT = _resolve_project_root()
-_ROLES_MEMORY_DIR = _PROJECT_ROOT / "memory" / "roles"
+
+# MARKER_203.ROLE_MEMORY_PATH: Store in ~/.claude/projects/.../memory/roles/
+# Same location as feedback_*.md — outside repo, no merge conflicts across worktrees.
+# All worktrees share one write target. Encoding: replace / and _ with - in project path.
+def _get_roles_memory_dir() -> Path:
+    """Return ~/.claude/projects/<key>/memory/roles/ for this project."""
+    key = "-" + str(_PROJECT_ROOT).lstrip("/").replace("/", "-").replace("_", "-")
+    claude_path = Path.home() / ".claude" / "projects" / key / "memory" / "roles"
+    if claude_path.parent.parent.exists():  # ~/.claude/projects/<key>/ must exist
+        return claude_path
+    # Fallback: repo-relative (worktrees still share main repo memory/)
+    return _PROJECT_ROOT / "memory" / "roles"
+
+
+_ROLES_MEMORY_DIR = _get_roles_memory_dir()
+
+MAX_ENTRIES_PER_ROLE = 50  # rotate: drop oldest beyond this limit
 
 _HEADER_MARKER = "[auto-entries below — do not edit manually]"
+
+
+def _rotate_if_needed(memory_path: Path, callsign: str) -> None:
+    """Drop oldest auto-entries if count exceeds MAX_ENTRIES_PER_ROLE.
+
+    Preserves manual preamble (everything before the header marker).
+    Non-blocking: silently returns on any error.
+    """
+    try:
+        text = memory_path.read_text(encoding="utf-8")
+        # Find split point: manual preamble vs auto-entries
+        marker_line = f"<!-- {_HEADER_MARKER} -->"
+        if marker_line in text:
+            preamble, _, auto_part = text.partition(marker_line)
+        else:
+            preamble, auto_part = "", text
+
+        raw_entries = auto_part.split("\n## [")
+        auto_entries = raw_entries[1:]  # first element is empty or pre-header text
+
+        if len(auto_entries) <= MAX_ENTRIES_PER_ROLE:
+            return  # nothing to rotate
+
+        kept = auto_entries[-MAX_ENTRIES_PER_ROLE:]
+        new_auto = "\n## [".join([""] + kept)
+        new_text = preamble + marker_line + new_auto
+        memory_path.write_text(new_text, encoding="utf-8")
+        dropped = len(auto_entries) - MAX_ENTRIES_PER_ROLE
+        logger.info("[RoleMemory] Rotated %s: dropped %d oldest entries", callsign, dropped)
+    except Exception as exc:
+        logger.debug("[RoleMemory] Rotation skipped for %s: %s", callsign, exc)
 
 
 def append_entry(
@@ -95,6 +142,7 @@ def append_entry(
                 )
             f.write(entry)
 
+        _rotate_if_needed(memory_path, callsign)
         logger.info("[RoleMemory] Appended entry for %s task=%s", callsign, task_id)
         return True
 
