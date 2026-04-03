@@ -65,7 +65,7 @@ _SECTION_TIERS: Dict[str, int] = {
     "persisted": 1, "user_preferences": 1,
     # T2: Important context
     "task_board_summary": 2, "engram_learnings": 2, "next_steps": 2,
-    "my_focus": 2, "project_digest": 2,
+    "my_focus": 2, "project_digest": 2, "role_memory": 2,
     # T3: Enrichment
     "reflex_recommendations": 3, "reflex_warnings": 3, "blocked_tools": 3,
     "semantic_lessons": 3, "jepa_session_lens": 3, "capabilities": 3,
@@ -1345,6 +1345,22 @@ class SessionInitTool(BaseMCPTool):
             my_focus = context["_all_agent_focus"].get(agent_type)
             if my_focus:
                 context["my_focus"] = my_focus
+
+        # MARKER_203.ROLE_MEMORY: Inject per-role experiential memory
+        _callsign = role_context.get("callsign") if role_context else None
+        if _callsign:
+            try:
+                from src.memory.role_memory_writer import load_recent
+                _recent = load_recent(_callsign, last_n=3)
+                if _recent:
+                    context["role_memory"] = {
+                        "callsign": _callsign,
+                        "last_sessions": _recent,
+                        "file": f"memory/roles/{_callsign}/MEMORY.md",
+                        "count": len(_recent),
+                    }
+            except Exception:
+                pass  # never fatal — write side may not exist yet
 
         # MARKER_194.1: Claimed tasks overlay — show other agents' active work
         try:
