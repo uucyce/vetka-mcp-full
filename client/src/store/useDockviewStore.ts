@@ -37,6 +37,9 @@ interface DockviewStoreState {
   visibleMarkerKinds: Set<string>;
   toggleMarkerKind: (kind: string) => void;
   isMarkerKindVisible: (kind: string) => boolean;
+  /** MARKER_A3.4: Per-lane waveform toggle (all visible by default) */
+  waveformHiddenLanes: Set<string>;
+  toggleLaneWaveform: (laneId: string) => void;
 }
 
 const LS_PREFIX = 'cut_dockview_';

@@ -40,6 +40,7 @@ import { EditMarkerDialog } from './panels/EditMarkerDialog';
 import { InsertTracksDialog, DeleteTracksDialog } from './panels/InsertDeleteTracksDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
+import FindDialog from './FindDialog';
 import { useGenerationControlStore } from '../../store/useGenerationControlStore';
 
 
@@ -95,7 +96,8 @@ function PasteAttributesModal() {
   const show = useCutEditorStore((s) => s.showPasteAttributes);
   if (!show) return null;
   const close = () => useCutEditorStore.getState().setShowPasteAttributes(false);
-  const { clipboard, selectedClipIds, lanes, pasteAttributesSelective } = useCutEditorStore.getState();
+  const { clipboard, lanes, pasteAttributesSelective } = useCutEditorStore.getState();
+  const { selectedClipIds } = useSelectionStore.getState();
   const sourceClipName = clipboard[0]?.source_path?.split('/').pop() ?? 'Unknown';
   const targetNames: string[] = [];
   for (const lane of lanes) {
@@ -1167,7 +1169,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     exportTimeline: () => {
       useCutEditorStore.getState().setShowExportDialog(true);
     },
-  }), [saveProject, threePointInsert, threePointOverwrite]);
+  }), [saveProject, performInsert, performOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
@@ -1344,7 +1346,16 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       // If playhead is within 2s before clip start and we haven't prefetched this clip yet
       if (currentTime >= clip.start_sec - 2 && currentTime < clip.start_sec && lastPrefetchRef.current !== clip.clip_id) {
         lastPrefetchRef.current = clip.clip_id;
-        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id }]);
+        prefetch([{
+          source_path: clip.source_path,
+          source_in: clip.source_in ?? 0,
+          duration_sec: clip.duration_sec,
+          start_sec: clip.start_sec,
+          clip_id: clip.clip_id,
+          volume: 1.0,
+          pan: 0,
+          muted: false,
+        }]);
         break;
       }
     }

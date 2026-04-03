@@ -34,7 +34,7 @@ import ThumbnailStrip from './ThumbnailStrip';
 import TrackResizeHandle from './TrackResizeHandle';
 import TimelineRuler from './TimelineRuler';
 // MARKER_PERF_VSCROLL: react-window available for future lane-level virtualization
-import { VariableSizeList as _VariableSizeList } from 'react-window';
+// import { VariableSizeList as _VariableSizeList } from 'react-window';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -1221,7 +1221,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const allClips: { clipId: string; time: number }[] = [];
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
-              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? 0 });
             }
           }
           allClips.sort((a, b) => a.time - b.time);

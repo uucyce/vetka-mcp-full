@@ -734,10 +734,12 @@ export default function MenuBar() {
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
           const s = store.getState();
+          const sel = useSelectionStore.getState();
           const t = s.currentTime;
-          const selectedLane = s.lanes.find((lane) =>
-            lane.clips.some((c) => c.clip_id === s.selectedClipId)
-          );
+          const selectedClipId = sel.selectedClipIds.size === 1 ? Array.from(sel.selectedClipIds)[0] : null;
+          const selectedLane = selectedClipId ? s.lanes.find((lane) =>
+            lane.clips.some((c) => c.clip_id === selectedClipId)
+          ) : null;
           if (!selectedLane) return;
           const clipsToSplit = selectedLane.clips.filter(
             (c) => t > c.start_sec && t < c.start_sec + c.duration_sec

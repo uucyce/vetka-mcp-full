@@ -78,9 +78,9 @@ export const useHotkeyStore = create<HotkeyStoreState>((set, get) => ({
 
   getBinding: (action) => {
     const { activePreset, customOverrides } = get();
-    if (customOverrides[action]) return customOverrides[action];
-    const preset = activePreset === 'custom' ? {} : (PRESETS[activePreset] ?? {});
-    return preset[action];
+    const binding = customOverrides[action] ?? (activePreset === 'custom' ? undefined : (PRESETS[activePreset] ?? {})[action]);
+    if (!binding) return undefined;
+    return typeof binding === 'string' ? binding : (Array.isArray(binding) ? binding[0] : undefined);
   },
 
   getResolvedMap: () => {
@@ -94,7 +94,9 @@ export const useHotkeyStore = create<HotkeyStoreState>((set, get) => ({
     const byKey = new Map<string, CutHotkeyAction[]>();
     for (const [action, binding] of Object.entries(resolved)) {
       if (!binding) continue;
-      const key = binding.toLowerCase();
+      const bindingStr = typeof binding === 'string' ? binding : (Array.isArray(binding) ? binding[0] : null);
+      if (!bindingStr) continue;
+      const key = bindingStr.toLowerCase();
       const existing = byKey.get(key) ?? [];
       existing.push(action as CutHotkeyAction);
       byKey.set(key, existing);

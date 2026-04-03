@@ -170,6 +170,7 @@ export type TimelineClip = {
     offset_sec?: number;
     confidence?: number;
     reference_path?: string;
+    linked_clip_id?: string;
   };
   // MARKER_GAMMA-LAYERUI-P1: Layer manifest reference (populated by Beta on depth map generation)
   layer_manifest?: LayerManifestMeta;
@@ -391,6 +392,10 @@ interface CutEditorState {
   trimEditPoint: number;            // time of edit point (seconds)
   setTrimEditActive: (active: boolean, clipId?: string | null, editPoint?: number) => void;
   showPasteAttributes: boolean;     // MARKER_PASTE_ATTR: Paste Attributes dialog
+  showPublishDialog: boolean;       // Publish dialog visibility
+  showTimecodeEntry: boolean;       // Timecode entry overlay visibility
+  showMatchSequencePopup: boolean;  // Match Sequence dialog visibility
+  pendingMatchClipPath: string | null;  // clip path pending match operation
   renderProgress: number | null;    // 0-1, null = not rendering
   renderStatus: string | null;      // "Encoding...", "Muxing audio...", etc
   renderError: string | null;
@@ -554,6 +559,11 @@ interface CutEditorState {
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
   setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
   setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
+  setShowPublishDialog: (show: boolean) => void;
+  setShowTimecodeEntry: (show: boolean) => void;
+  setShowMatchSequencePopup: (show: boolean) => void;
+  setPendingMatchClipPath: (path: string | null) => void;
+  cycleTimelineDisplayMode: () => void;
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -823,6 +833,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   trimEditClipId: null,
   trimEditPoint: 0,
   showPasteAttributes: false,       // MARKER_PASTE_ATTR
+  showPublishDialog: false,
+  showTimecodeEntry: false,
+  showMatchSequencePopup: false,
+  pendingMatchClipPath: null,
   renderProgress: null,
   renderStatus: null,
   renderError: null,
@@ -1071,7 +1085,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowPasteAttributes: (show: boolean) => set({ showPasteAttributes: show }),
   // MARKER_PASTE_ATTR_SELECTIVE: Apply selected attributes from clipboard to targets
   pasteAttributesSelective: (config: PasteAttributesConfig) => {
-    const { clipboard, selectedClipIds, lanes } = get();
+    const { clipboard, lanes } = get();
+    const { selectedClipIds } = useSelectionStore.getState();
     if (clipboard.length === 0 || selectedClipIds.size === 0) return;
     const source = clipboard[0];
     const ops: Array<Record<string, unknown>> = [];
@@ -1502,6 +1517,17 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
   setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
   setFindQuery: (query) => set({ findQuery: query }),
+  setShowPublishDialog: (show) => set({ showPublishDialog: show }),
+  setShowTimecodeEntry: (show) => set({ showTimecodeEntry: show }),
+  setShowMatchSequencePopup: (show) => set({ showMatchSequencePopup: show }),
+  setPendingMatchClipPath: (path) => set({ pendingMatchClipPath: path }),
+  cycleTimelineDisplayMode: () => {
+    const current = get().timecodeDisplayMode;
+    const modes: Array<'timecode' | 'frames' | 'seconds'> = ['timecode', 'frames', 'seconds'];
+    const idx = modes.indexOf(current);
+    const next = modes[(idx + 1) % modes.length];
+    set({ timecodeDisplayMode: next });
+  },
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),
   setRenderProgress: (p) => set({ renderProgress: p }),
