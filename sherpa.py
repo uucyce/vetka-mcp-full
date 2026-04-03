@@ -518,8 +518,11 @@ class SherpaHarness:
                 self._reflex_skips += 1
                 return True, f"reflex:title_pattern:{pattern}"
 
-        # Note: recon_docs check removed — recon_done status handles this
-        # Tasks with partial recon should be re-enriched
+        # Skip already-enriched tasks (have recon_docs)
+        recon = task.get("recon_docs", [])
+        if recon and len(recon) > 0:
+            self._reflex_skips += 1
+            return True, "reflex:already_has_recon"
 
         # Skip auto-decomposed tasks
         if "auto-decomposed" in tags:
@@ -705,11 +708,6 @@ class BrowserClient:
             await input_el.type(prompt[-30:], delay=5)
         await page.wait_for_timeout(500)
 
-        # Human-like pause before sending (1-2s)
-        import random
-        pause = random.uniform(1.0, 2.5)
-        await page.wait_for_timeout(int(pause * 1000))
-
         # Send: Enter key (works without file attachments)
         log.info("Pressing Enter to send...")
         await page.keyboard.press("Enter")
@@ -718,16 +716,6 @@ class BrowserClient:
         # Wait for response
         log.info("Waiting for AI response...")
         response = await self._wait_and_extract(page, svc, timeout_ms, prompt_text=prompt, pre_text=pre_send_text)
-
-        # If empty response — possible rate limit or page error. Try reload once.
-        if not response:
-            log.warning(f"Empty response from {service_name}. Checking for rate limit...")
-            page_text = await self._get_all_text(page)
-            if any(kw in page_text.lower() for kw in ["too frequent", "rate limit", "try again", "error", "something went wrong"]):
-                log.warning(f"Rate limit detected on {service_name}! Reloading page...")
-                await page.reload(wait_until="domcontentloaded")
-                await page.wait_for_timeout(5000)
-            # Don't retry — let main loop handle via next service rotation
 
         await self._save_storage_state(service_name)
         return response
@@ -1109,13 +1097,14 @@ class BrowserClient:
             return ""
 
         # Phase 2: Wait for generation to FINISH
-        # Use LIGHTWEIGHT DOM length check — no Copy clicks, no scrolling
+        # Poll: is_streaming? + text length stable?
         prev_len = 0
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            # Lightweight: just measure DOM text length, don't extract fully
-            curr_len = await self._measure_response_length(page)
+            text = await self._extract_response_text(page, prompt_text, pre_text)
+            curr_len = len(text)
+
             elapsed = int(time.time() - start)
 
             if streaming:
@@ -1123,6 +1112,7 @@ class BrowserClient:
                 if elapsed % 15 == 0:
                     log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
             else:
+                # Text growing? Reset stability counter
                 if curr_len != prev_len:
                     stable_count = 0
                     if elapsed % 10 == 0 and curr_len > 0:
@@ -1130,59 +1120,27 @@ class BrowserClient:
                 else:
                     stable_count += 1
 
-                MIN_COMPLETE = 5000  # Don't declare complete under 5K chars
-
-                # COMPLETE = text stopped growing + above minimum
+                # COMPLETE = Copy button visible + text stopped growing (3 checks = 9s)
                 copy_visible = await self._is_copy_button_visible(page)
-                if copy_visible and stable_count >= 3 and curr_len >= MIN_COMPLETE:
-                    log.info(f"Response complete ({curr_len} chars, {elapsed}s). Extracting...")
-                    break
+                if copy_visible and stable_count >= 3 and curr_len > 100:
+                    log.info(f"Response complete: Copy visible + text stable ({curr_len} chars, {elapsed}s)")
+                    return text
 
-                # Below minimum but stable — keep waiting, AI might resume
-                if copy_visible and stable_count >= 3 and curr_len < MIN_COMPLETE:
-                    if stable_count <= 15:  # Wait up to 45s for AI to resume (DeepThink pauses)
-                        if stable_count % 3 == 0:  # Log every 9s, not every 3s
-                            log.info(f"Response short ({curr_len} chars < {MIN_COMPLETE}), waiting for more... ({stable_count * 3}s)")
-                    else:
-                        log.info(f"Response stuck at {curr_len} chars after {stable_count * 3}s. Extracting...")
-                        break
-
-                # Fallback: no copy button but very stable (7 checks = 21s) + above minimum
-                if stable_count >= 7 and curr_len >= MIN_COMPLETE:
-                    log.info(f"Response stable without Copy ({curr_len} chars, {elapsed}s). Extracting...")
-                    break
-
-                # Very long stable without copy and under minimum — give up after 10 checks (30s)
-                if stable_count >= 10 and curr_len > 500:
-                    log.info(f"Response stuck at {curr_len} chars after {stable_count} checks. Extracting...")
-                    break
+                # Fallback: no copy button but text very stable (5 checks = 15s)
+                if stable_count >= 5 and curr_len > 500:
+                    log.info(f"Response stable without Copy button ({curr_len} chars, {elapsed}s)")
+                    return text
 
             prev_len = curr_len
             await page.wait_for_timeout(3000)
 
-        # Phase 3: ONE full extraction with all strategies
+        # Timeout — return whatever we have
         text = await self._extract_response_text(page, prompt_text, pre_text)
         if text and len(text) > 100:
-            elapsed = int(time.time() - start)
-            log.info(f"Extracted {len(text)} chars in {elapsed}s")
+            log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
-        log.error("Extraction failed after response stabilized")
+        log.error("Timeout: no response received")
         return ""
-
-    async def _measure_response_length(self, page) -> int:
-        """Lightweight DOM length check — no clicks, no scrolling."""
-        selectors = [".ds-markdown", ".markdown-body", ".message-content",
-                     ".assistant-message", ".prose", "article"]
-        for sel in selectors:
-            try:
-                el = page.locator(sel).last
-                if await el.is_visible(timeout=500):
-                    text = await el.inner_text(timeout=2000)
-                    if text and len(text) > 20:
-                        return len(text.strip())
-            except Exception:
-                continue
-        return 0
 
     async def _is_copy_button_visible(self, page) -> bool:
         """Check if a Copy button is visible — means response is COMPLETE."""
@@ -1261,7 +1219,12 @@ class BrowserClient:
     async def _extract_response_text(self, page, prompt_text: str = "", pre_text: str = "") -> str:
         """Extract the latest AI response, filtering out prompt echo."""
 
-        # Strategy 1 (PRIMARY): Use DOM inner_text on response containers
+        # Strategy 0: Click Copy button (most reliable)
+        copied = await self._click_copy_button(page)
+        if copied and len(copied) > 100:
+            return copied
+
+        # Strategy 1: Use service-specific response selectors
         selectors = [
             # DeepSeek
             ".ds-markdown",
@@ -1292,109 +1255,34 @@ class BrowserClient:
                 count = await elements.count()
                 if count == 0:
                     continue
-
-                # Try concatenating ALL matching elements (response may span multiple blocks)
-                all_texts = []
-                for i in range(count):
-                    try:
-                        el = elements.nth(i)
-                        if await el.is_visible(timeout=500):
-                            t = await el.inner_text(timeout=3000)
-                            t = t.strip()
-                            if t and len(t) > 20 and not self._is_prompt_echo(t, prompt_text):
-                                all_texts.append(t)
-                    except Exception:
-                        continue
-
-                if all_texts:
-                    combined = "\n\n".join(all_texts)
-                    if len(combined) > len(best_text):
-                        best_text = combined
-                        log.info(f"DOM extraction: {sel} → {len(combined)} chars ({count} elements)")
+                # Get the LAST element (most recent response)
+                el = elements.last
+                if await el.is_visible(timeout=1000):
+                    text = await el.inner_text(timeout=5000)
+                    text = text.strip()
+                    # Filter: must be substantial + not part of prompt
+                    if len(text) > 100 and not self._is_prompt_echo(text, prompt_text):
+                        if len(text) > len(best_text):
+                            best_text = text
             except Exception:
                 continue
 
-        MIN_RESPONSE = 5000  # responses under 5K chars = likely incomplete
-
-        if best_text and len(best_text) >= MIN_RESPONSE:
+        if best_text:
             return best_text
-        elif best_text:
-            log.warning(f"DOM found only {len(best_text)} chars (< {MIN_RESPONSE}), trying deeper extraction...")
 
-        # Strategy 2: Scroll to bottom + find master Copy button
-        # Many services have a master Copy at the very bottom of the response
-        log.info("DOM selectors insufficient, scrolling to bottom for master Copy...")
-        try:
-            # Scroll to absolute bottom
-            await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            await page.wait_for_timeout(1000)
-
-            # Look for Copy buttons — collect ALL, click the LAST (bottom-most = full response)
-            copy_buttons = page.locator(
-                'button:has-text("Copy"), button[aria-label*="Copy"], '
-                'button[aria-label*="copy"], [data-testid*="copy"]'
-            )
-            count = await copy_buttons.count()
-            if count > 0:
-                # Click the LAST Copy button (bottom of response = master copy)
-                last_copy = copy_buttons.nth(count - 1)
-                if await last_copy.is_visible(timeout=2000):
-                    await last_copy.click()
-                    await page.wait_for_timeout(500)
-                    try:
-                        text = await page.evaluate("navigator.clipboard.readText()")
-                        if text and len(text) >= MIN_RESPONSE:
-                            log.info(f"Master Copy (bottom, #{count}): {len(text)} chars")
-                            return text
-                        elif text:
-                            log.info(f"Master Copy too short ({len(text)} chars), trying concat...")
-                    except Exception:
-                        pass
-
-            # Concatenate ALL copy button contents
-            if count > 1:
-                all_copied = []
-                for i in range(count):
-                    try:
-                        btn = copy_buttons.nth(i)
-                        if await btn.is_visible(timeout=500):
-                            await btn.click()
-                            await page.wait_for_timeout(300)
-                            text = await page.evaluate("navigator.clipboard.readText()")
-                            if text and len(text) > 20:
-                                all_copied.append(text)
-                    except Exception:
-                        continue
-                if all_copied:
-                    combined = "\n\n".join(all_copied)
-                    log.info(f"Concatenated {len(all_copied)} Copy blocks: {len(combined)} chars")
-                    return combined
-        except Exception as e:
-            log.warning(f"Scroll+Copy fallback failed: {e}")
-
-        # Strategy 3: Single clipboard fallback (last resort)
-        copied = await self._click_copy_button(page)
-        if copied and len(copied) > 100:
-            log.info(f"Single clipboard fallback: {len(copied)} chars")
-            return copied
-
-        # Strategy 4: Diff approach — compare current page text with pre-send snapshot
+        # Strategy 2: Diff approach — compare current page text with pre-send snapshot
         if pre_text:
             try:
                 current_text = await self._get_all_text(page)
+                # Find new text that wasn't there before
                 new_text = current_text.replace(pre_text, "").strip()
+                # Also remove the prompt itself
                 if prompt_text:
                     new_text = new_text.replace(prompt_text, "").strip()
                 if len(new_text) > 100:
-                    log.info(f"Diff extraction: {len(new_text)} chars")
                     return new_text
             except Exception:
                 pass
-
-        # All strategies exhausted — return best_text even if < MIN_RESPONSE
-        if best_text:
-            log.warning(f"All strategies < {MIN_RESPONSE} chars. Best: {len(best_text)} chars (INCOMPLETE)")
-            return best_text
 
         return ""
 
@@ -1752,7 +1640,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             # 7. Update task with recon
             updates = {
-                "status": "recon_done",  # Mark as enriched — agents pick up recon_done tasks
+                "status": "pending",  # Release back to pool, enriched
             }
             # Append to existing recon_docs
             existing_recon = task.get("recon_docs", []) or []

@@ -280,6 +280,7 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
+                "sherpa_status",
             ],
             "description": "Operation to perform",
         },
@@ -1824,6 +1825,46 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(notif_ids, str):
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
+
+    # MARKER_202.SHERPA_SIGNAL: Query or update Sherpa availability status.
+    # GET:  action=sherpa_status (no args) → returns current status
+    # SET:  action=sherpa_status status=busy|idle|stopped [tasks_enriched=N]
+    elif action == "sherpa_status":
+        new_status = arguments.get("status")
+        if new_status:
+            # Update Sherpa status
+            import os
+            valid = ("idle", "busy", "stopped")
+            if new_status not in valid:
+                return {"success": False, "error": f"sherpa_status must be one of {valid}"}
+            board.settings["sherpa_status"] = new_status
+            if new_status in ("idle", "busy"):
+                board.settings["sherpa_pid"] = os.getpid()
+                from datetime import datetime
+                board.settings["sherpa_last_seen"] = datetime.now().isoformat()
+            if "tasks_enriched" in arguments:
+                try:
+                    board.settings["sherpa_tasks_enriched"] = int(arguments["tasks_enriched"])
+                except (ValueError, TypeError):
+                    pass
+            if new_status == "stopped":
+                board.settings["sherpa_pid"] = None
+            board._save("sherpa_status_update")
+            return {
+                "success": True,
+                "sherpa_status": new_status,
+                "sherpa_pid": board.settings.get("sherpa_pid"),
+                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
+            }
+        else:
+            # Query current status
+            return {
+                "success": True,
+                "sherpa_status": board.settings.get("sherpa_status", "stopped"),
+                "sherpa_pid": board.settings.get("sherpa_pid"),
+                "sherpa_last_seen": board.settings.get("sherpa_last_seen"),
+                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
+            }
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

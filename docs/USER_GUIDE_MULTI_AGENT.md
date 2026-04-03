@@ -771,3 +771,75 @@ vibe
 # → vetka_session_init role=Mistral-4
 ```
 - Идеально для: QA раны, WEATHER tasks, простые фиксы, документация
+
+---
+
+## Captain Burnell — Sherpa Architect
+
+Роль-одиночка. Создатель Sherpa (Phase 202). Подход: прототип сначала, документы потом.
+
+### Запуск
+
+```bash
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/magical-burnell
+claude
+# первое сообщение:
+vetka_session_init role=Burnell
+```
+
+### Зона ответственности
+
+- sherpa.py — основной скрипт агента-разведчика
+- config/sherpa.yaml — сервисы, профили, тайминги
+- docs/202ph_SHERPA/ — архитектура, roadmap, recon отчёты
+- Sherpa pipeline: TaskBoard -> Playwright -> AI services -> recon_docs
+- Координация бесплатных AI сервисов (DeepSeek, Kimi, Arena, Mistral, Z.ai)
+
+### Sherpa — быстрый старт
+
+```bash
+cd ~/Documents/VETKA_Project/vetka_live_03
+
+# Первый раз — залогиниться в сервисы (вторичные gmail!)
+python sherpa.py --setup
+
+# Запуск на 50 тасков (видимый браузер)
+python sherpa.py --visible
+
+# Один таск для теста
+python sherpa.py --once --visible
+
+# Фоновый режим (headless)
+python sherpa.py
+
+# Сухой прогон (без отправки)
+python sherpa.py --dry-run --once
+
+# Проверить совместимость сервисов
+python sherpa.py --probe
+
+# Если Sherpa завис — удалить PID lock
+rm data/sherpa.pid
+```
+
+### Ключевые файлы
+
+| Файл | Что |
+|------|-----|
+| `sherpa.py` | Основной скрипт (~600 строк) |
+| `config/sherpa.yaml` | 10 сервисов, профили, cooldown |
+| `data/sherpa_profiles/` | Сохранённые сессии браузера |
+| `data/sherpa_feedback.jsonl` | Автоматический лог (service, chars, time) |
+| `data/sherpa.pid` | PID lock (удалить если Sherpa завис) |
+| `docs/sherpa_recon/` | Результаты разведки по таскам |
+| `logs/sherpa.log` | Логи агента |
+
+### Правила
+
+- Только ОДИН экземпляр Sherpa одновременно (PID guard)
+- Только Commanders запускают Sherpa
+- Только ВТОРИЧНЫЕ gmail аккаунты (не основной!)
+- DeepSeek + Kimi = надёжные. Grok/ChatGPT = отключены (bot detection)
+- Ответ < 5000 chars = неполный, Sherpa ждёт дольше
+- После обогащения таск получает статус `recon_done`
+- Один таб браузера — при смене сервиса старый закрывается
