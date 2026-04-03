@@ -2439,6 +2439,20 @@ class TaskBoard:
         if task.get("status", "").startswith("done") or task.get("status") == "verified":
             return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
 
+        # MARKER_203.DOC_GATE_COMPLETE: Warn on completion if task has no docs attached.
+        # Soft gate: logs warning + injects doc_gate_warning in result.
+        # Hard block only for fix/build tasks (research/test are doc-exempt).
+        _has_docs = bool(task.get("architecture_docs")) or bool(task.get("recon_docs"))
+        _phase = task.get("phase_type", "")
+        _doc_exempt = _phase in ("research", "test")
+        _doc_gate_warning = None
+        if not _has_docs and not _doc_exempt:
+            _doc_gate_warning = (
+                f"DOC_GATE_COMPLETE: task {task_id} ({_phase}) has no architecture_docs or recon_docs. "
+                "Consider attaching docs before closing."
+            )
+            logger.warning(f"[TaskBoard] {_doc_gate_warning}")
+
         # MARKER_192.2: Allow execution_mode override at close time
         if execution_mode and execution_mode in ("pipeline", "manual"):
             task["execution_mode"] = execution_mode
@@ -2574,6 +2588,8 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} → {final_status}{branch_info}" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
         result = {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
+        if _doc_gate_warning:
+            result["doc_gate_warning"] = _doc_gate_warning
         if ownership_warnings:
             result["ownership_warnings"] = ownership_warnings
 
