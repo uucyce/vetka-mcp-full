@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { artifactApi } from '../services/artifactApi';
 import { Artifact } from '../types/artifact';

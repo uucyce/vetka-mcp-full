@@ -24,8 +24,6 @@ import {
 import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
-const SequenceSettingsDialog = lazy(() => import('./SequenceSettingsDialog'));
-const ReconnectMediaDialog = lazy(() => import('./ReconnectMediaDialog'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
 // MARKER_GAMMA-25: WorkspacePresets removed from menubar — switching via Window menu only
 
@@ -195,10 +193,6 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
-  const [showSeqSettings, setShowSeqSettings] = useState(false);
-  const [showReconnectMedia, setShowReconnectMedia] = useState(false);
-  const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
-  const projectId = useCutEditorStore((s) => s.projectId);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -399,9 +393,6 @@ export default function MenuBar() {
         { label: 'Publish...', shortcut: '⌘⇧P', action: () => store.getState().setShowPublishDialog(true) },
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
-        { separator: true },
-        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.25 — relink offline clips
-        { label: 'Reconnect Media...', action: () => setShowReconnectMedia(true) },
       ],
     },
     {
@@ -454,7 +445,7 @@ export default function MenuBar() {
           useSelectionStore.setState({ selectedClipIds: ids });
         }},
         { separator: true },
-        { label: 'Find...', shortcut: '⌘F', action: () => store.getState().setShowFindDialog(true) },
+        { label: 'Find...', shortcut: '⌘F', disabled: true },
         { separator: true },
         { label: 'Keyboard Shortcuts', shortcut: '⌘⌥K', submenu: [
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
@@ -621,14 +612,6 @@ export default function MenuBar() {
           }},
         ]},
         { separator: true },
-        // MARKER_GAMMA-MATCHFRAME: FCP7 Ch.50 — Match Frame / Reverse Match Frame
-        { label: 'Match Frame', shortcut: 'F', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
-        }},
-        { label: 'Reveal Master Clip', shortcut: '⇧F', action: () => {
-          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', shiftKey: true }));
-        }},
-        { separator: true },
         { label: 'Add Marker', shortcut: 'M', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
         }},
@@ -734,12 +717,10 @@ export default function MenuBar() {
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
           const s = store.getState();
-          const sel = useSelectionStore.getState();
           const t = s.currentTime;
-          const selectedClipId = sel.selectedClipIds.size === 1 ? Array.from(sel.selectedClipIds)[0] : null;
-          const selectedLane = selectedClipId ? s.lanes.find((lane) =>
-            lane.clips.some((c) => c.clip_id === selectedClipId)
-          ) : null;
+          const selectedLane = s.lanes.find((lane) =>
+            lane.clips.some((c) => c.clip_id === useSelectionStore.getState().selectedClipId)
+          );
           if (!selectedLane) return;
           const clipsToSplit = selectedLane.clips.filter(
             (c) => t > c.start_sec && t < c.start_sec + c.duration_sec
@@ -808,7 +789,7 @@ export default function MenuBar() {
         { label: 'Trim Edit', shortcut: 'T', disabled: true },
         { separator: true },
         { label: 'Add Video Transition', shortcut: '⌘T', action: () => store.getState().addDefaultTransition() },
-        { label: 'Add Audio Transition', shortcut: '⌘⇧T', action: () => store.getState().addAudioTransition() },
+        { label: 'Add Audio Transition', shortcut: '⌘⇧T', action: () => store.getState().addDefaultTransition() },
         { label: 'Transition Alignment', submenu: [
           { label: 'Center on Edit', action: () => setTransitionAlignment('center') },
           { label: 'Start on Edit', action: () => setTransitionAlignment('start') },
@@ -817,8 +798,16 @@ export default function MenuBar() {
         { separator: true },
         { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
-        { label: 'Insert Tracks...', action: () => store.getState().setShowInsertTracksDialog(true) },
-        { label: 'Delete Tracks...', action: () => store.getState().setShowDeleteTracksDialog(true) },
+        { label: 'Insert Tracks', submenu: [
+          { label: 'Add Video Track', action: () => store.getState().addLane('video') },
+          { label: 'Add Audio Track', action: () => store.getState().addLane('audio') },
+        ]},
+        { label: 'Delete Track', action: () => {
+          // Remove the first empty lane (video or audio) — prefer focused panel lane
+          const s = store.getState();
+          const emptyLane = s.lanes.find((l) => l.clips.length === 0);
+          if (emptyLane) { s.removeLane(emptyLane.lane_id); }
+        }},
         { separator: true },
         { label: 'Nest Item(s)', disabled: true },
         { label: 'Solo Selected Item(s)', action: () => {
@@ -836,9 +825,6 @@ export default function MenuBar() {
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
           void store.getState().runSceneDetection();
         }},
-        { separator: true },
-        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.115 — sequence resolution/fps/audio settings
-        { label: 'Sequence Settings...', shortcut: '⌘0', action: () => setShowSeqSettings(true) },
       ],
     },
     {
@@ -892,10 +878,6 @@ export default function MenuBar() {
         { label: 'Source Monitor', shortcut: '⇧2', action: () => togglePanel('source', 'source', 'SOURCE') },
         { label: 'Timeline', shortcut: '⇧3', action: () => togglePanel('timeline', 'timeline', 'Timeline') },
         { label: 'Program Monitor', shortcut: '⇧4', action: () => togglePanel('program', 'program', 'PROGRAM') },
-        // MARKER_ACQUIRE-WINDOW: FCP7 Log & Capture equivalent (4-tab ingest panel)
-        { label: 'Log & Capture', action: () => togglePanel('acquire', 'acquire', 'Acquire') },
-        // MARKER_GAMMA-MULTICAM-WINDOW: Multicam Viewer direct toggle (FCP7 Ch.42)
-        { label: 'Multicam Viewer', action: () => togglePanel('multicam', 'multicam', 'Multicam') },
         { separator: true },
         { label: 'Inspector', shortcut: '⇧5', action: () => togglePanel('inspector', 'inspector', 'Inspector') },
         { label: 'Clip Inspector', action: () => togglePanel('clip', 'clip', 'Clip') },
@@ -913,8 +895,6 @@ export default function MenuBar() {
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
         // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
-        // MARKER_GEN-WINDOW: AI Generation Control panel (Runway, Kling)
-        { label: 'Generation Control', action: () => togglePanel('generation', 'generation', 'Generation') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
         { label: 'Publish / Crosspost', action: () => togglePanel('publish', 'publish', 'Publish') },
@@ -1075,27 +1055,6 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
-        </Suspense>
-      )}
-      {/* MARKER_GAMMA-WIRE-DIALOGS: Orphaned dialogs now mounted via local state */}
-      {showSeqSettings && sandboxRoot && projectId && (
-        <Suspense fallback={null}>
-          <SequenceSettingsDialog
-            open={showSeqSettings}
-            onClose={() => setShowSeqSettings(false)}
-            sandboxRoot={sandboxRoot}
-            projectId={projectId}
-          />
-        </Suspense>
-      )}
-      {showReconnectMedia && sandboxRoot && projectId && (
-        <Suspense fallback={null}>
-          <ReconnectMediaDialog
-            open={showReconnectMedia}
-            onClose={() => setShowReconnectMedia(false)}
-            sandboxRoot={sandboxRoot}
-            projectId={projectId}
-          />
         </Suspense>
       )}
     </>

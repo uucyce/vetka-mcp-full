@@ -38,7 +38,7 @@ interface HotkeyStoreState {
   /** Clear all custom overrides */
   clearOverrides: () => void;
   /** Get resolved binding for an action (custom override > preset default) */
-  getBinding: (action: CutHotkeyAction) => string | undefined;
+  getBinding: (action: CutHotkeyAction) => string | string[] | undefined;
   /** Get all resolved bindings (preset merged with custom overrides) */
   getResolvedMap: () => HotkeyMap;
   /** Find conflicts: actions sharing the same key binding */
@@ -78,9 +78,9 @@ export const useHotkeyStore = create<HotkeyStoreState>((set, get) => ({
 
   getBinding: (action) => {
     const { activePreset, customOverrides } = get();
-    const binding = customOverrides[action] ?? (activePreset === 'custom' ? undefined : (PRESETS[activePreset] ?? {})[action]);
-    if (!binding) return undefined;
-    return typeof binding === 'string' ? binding : (Array.isArray(binding) ? binding[0] : undefined);
+    if (customOverrides[action]) return customOverrides[action];
+    const preset = activePreset === 'custom' ? {} : (PRESETS[activePreset] ?? {});
+    return preset[action];
   },
 
   getResolvedMap: () => {
@@ -94,12 +94,13 @@ export const useHotkeyStore = create<HotkeyStoreState>((set, get) => ({
     const byKey = new Map<string, CutHotkeyAction[]>();
     for (const [action, binding] of Object.entries(resolved)) {
       if (!binding) continue;
-      const bindingStr = typeof binding === 'string' ? binding : (Array.isArray(binding) ? binding[0] : null);
-      if (!bindingStr) continue;
-      const key = bindingStr.toLowerCase();
-      const existing = byKey.get(key) ?? [];
-      existing.push(action as CutHotkeyAction);
-      byKey.set(key, existing);
+      const keys = Array.isArray(binding) ? binding : [binding];
+      for (const k of keys) {
+        const key = k.toLowerCase();
+        const existing = byKey.get(key) ?? [];
+        existing.push(action as CutHotkeyAction);
+        byKey.set(key, existing);
+      }
     }
     // Only return entries with >1 action (actual conflicts)
     const conflicts = new Map<string, CutHotkeyAction[]>();
