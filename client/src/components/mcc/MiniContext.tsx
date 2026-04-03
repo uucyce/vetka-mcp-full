@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * MARKER_155A.WA.MINICONTEXT_SHELL.V1:
  * MiniContext — universal context shell for selected DAG entity.

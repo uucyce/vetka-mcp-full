@@ -33,8 +33,6 @@ const EFFECT_APPLY_MAP: Record<string, Record<string, number>> = {
 import ThumbnailStrip from './ThumbnailStrip';
 import TrackResizeHandle from './TrackResizeHandle';
 import TimelineRuler from './TimelineRuler';
-// MARKER_PERF_VSCROLL: react-window available for future lane-level virtualization
-// import { VariableSizeList as _VariableSizeList } from 'react-window';
 
 const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   video_main: { label: 'V1', color: '#999', icon: <IconFilmStrip size={12} color="#888" /> },
@@ -42,6 +40,18 @@ const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   take_alt_y: { label: 'V2', color: '#888', icon: <IconCamera size={12} color="#888" /> },
   take_alt_z: { label: 'V3', color: '#777', icon: <IconCamera size={12} color="#888" /> },
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
+};
+
+// MARKER_COLOR-LABEL: FCP7 editorial color label palette — used as 3px left stripe on clips
+const COLOR_LABEL_MAP: Record<string, string> = {
+  red:    '#c0403a',
+  orange: '#c06c1e',
+  yellow: '#a88c00',
+  green:  '#3a8a3a',
+  teal:   '#2a7878',
+  blue:   '#3858a8',
+  purple: '#6e40a0',
+  grey:   '#555555',
 };
 
 const CONTAINER_STYLE: CSSProperties = {
@@ -460,8 +470,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const lanes = useCutEditorStore((state) => state.lanes);
   const waveforms = useCutEditorStore((state) => state.waveforms);
   const markers = useCutEditorStore((state) => state.markers);
-  // MARKER_A3.2: Marker visibility filter
-  const visibleMarkerKinds = useCutEditorStore((state) => state.visibleMarkerKinds);
   const zoom = useCutEditorStore((state) => state.zoom);
   const scrollLeft = useCutEditorStore((state) => state.scrollLeft);
   const trackHeight = useCutEditorStore((state) => state.trackHeight);
@@ -503,7 +511,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const soloLanes = useCutEditorStore((state) => state.soloLanes ?? new Set<string>());
   const lockedLanes = useCutEditorStore((state) => state.lockedLanes ?? new Set<string>());
   const targetedLanes = useCutEditorStore((state) => state.targetedLanes ?? new Set<string>());
-  const laneVolumes = useCutEditorStore((state) => state.laneVolumes);
   const snapEnabled = useCutEditorStore((state) => state.snapEnabled);
   const toggleMute = useCutEditorStore((state) => state.toggleMute);
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
@@ -515,7 +522,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 disabled clips (ghosted on timeline, excluded from export)
   const disabledClips = useCutEditorStore((state) => state.disabledClips ?? new Set<string>());
   const toggleClipEnabled = useCutEditorStore((state) => state.toggleClipEnabled);
-  const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
@@ -527,6 +533,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const activeTool = useCutEditorStore((state) => state.activeTool);
   // MARKER_GAMMA-2: Marker CRUD actions
   const deleteMarker = useCutEditorStore((state) => state.deleteMarker);
+  // MARKER_A3.2: Marker visibility filter from MenuBar toggle
+  const visibleMarkerKinds = useDockviewStore((state) => state.visibleMarkerKinds);
   // MARKER_W6.TOOL-SM: Cursor maps per context
   // Lane background cursor (when hovering empty space)
   // MARKER_W6.HAND-ZOOM: hand shows 'grabbing' during active pan
@@ -546,10 +554,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     slip: 'ew-resize', slide: 'ew-resize', ripple: 'w-resize', roll: 'col-resize',
   };
   const edgeCursor = EDGE_CURSOR[activeTool] || 'ew-resize';
-  // MARKER_TRIM.HANDLE: Persistent handle tint when a trim tool is active
-  const isTrimTool = activeTool === 'ripple' || activeTool === 'roll' || activeTool === 'slip' || activeTool === 'slide';
-  const trimHandleBg = isTrimTool ? 'rgba(255,255,255,0.06)' : 'transparent';
-  const trimEdgeBorder = (activeTool === 'ripple' || activeTool === 'roll');
   // MARKER_DUAL-VIDEO: Timeline clip click → updates activeMedia (legacy) but NOT source monitor
   const setActiveMedia = useCutEditorStore((state) => state.setActiveMedia);
   const setSourceMedia = useCutEditorStore((state) => state.setSourceMedia);
@@ -704,27 +708,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
     if (laneIndex < 0) return null;
     return RULER_HEIGHT + laneIndex * trackHeight + 3;
   }, [displayLanes, dragState, trackHeight]);
-
-  // MARKER_PERF_VSCROLL: Pre-filter visible clips per lane to avoid iterating all clips on every
-  // scroll/zoom render. Stores {clip, clipIdx} pairs so original indices remain available for
-  // through-edit detection (which needs lane.clips[clipIdx - 1]).
-  const visibleClipsByLane = useMemo(() => {
-    const visStart = scrollLeft / zoom;
-    const visEnd = (scrollLeft + Math.max(containerWidth - LANE_HEADER_WIDTH, 0)) / zoom;
-    const result = new Map<string, Array<{ clip: TimelineClip; clipIdx: number }>>();
-    for (const lane of displayLanes) {
-      result.set(
-        lane.lane_id,
-        lane.clips
-          .map((clip, clipIdx) => ({ clip, clipIdx }))
-          .filter(({ clip }) =>
-            clip.start_sec + clip.duration_sec > visStart &&
-            clip.start_sec < visEnd
-          )
-      );
-    }
-    return result;
-  }, [displayLanes, scrollLeft, zoom, containerWidth]);
 
   const playheadX = currentTime * zoom - scrollLeft + LANE_HEADER_WIDTH;
 
@@ -1009,9 +992,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
       // Zooms centered on cursor position (not left edge)
       if (event.ctrlKey || event.metaKey) {
         event.preventDefault();
-        const state = useCutEditorStore.getState();
-        const zoomRef = state.zoom;
-        const scrollRef = state.scrollLeft;
+        const zoomRef = useCutEditorStore.getState().zoom;
+        const scrollRef = useCutEditorStore.getState().scrollLeft;
         // Cursor time before zoom
         const cursorLocalX = localX - LANE_HEADER_WIDTH;
         const cursorTime = (cursorLocalX + scrollRef) / zoomRef;
@@ -1019,22 +1001,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
         const factor = event.deltaY > 0 ? 0.92 : 1.08; // smoother steps
         const newZoom = Math.max(10, Math.min(500, zoomRef * factor));
         // Adjust scroll so cursor stays over same time position
-        let newScroll = cursorTime * newZoom - cursorLocalX;
-
-        // Clamp scroll boundaries
-        // Calculate viewport width and max timeline extent
-        const viewportWidth = Math.max((containerRect?.width || 0) - LANE_HEADER_WIDTH, 0);
-        const maxClipEnd = state.lanes.reduce((max, lane) => {
-          const laneMax = lane.clips.reduce((laneMax, clip) =>
-            Math.max(laneMax, clip.start_sec + clip.duration_sec), 0);
-          return Math.max(max, laneMax);
-        }, 0);
-        // Allow 20% empty space at the end for comfortable viewing
-        const maxScroll = Math.max(0, maxClipEnd * newZoom - viewportWidth * 0.8);
-        newScroll = clamp(newScroll, 0, maxScroll);
-
-        state.setZoom(newZoom);
-        state.setScrollLeft(newScroll);
+        const newScroll = Math.max(0, cursorTime * newZoom - cursorLocalX);
+        useCutEditorStore.getState().setZoom(newZoom);
+        useCutEditorStore.getState().setScrollLeft(newScroll);
         return;
       }
 
@@ -1221,7 +1190,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const allClips: { clipId: string; time: number }[] = [];
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
-              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? 0 });
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec });
             }
           }
           allClips.sort((a, b) => a.time - b.time);
@@ -1262,7 +1231,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // Match by linked_to field (explicit link)
               if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by sync.linked_clip_id (legacy)
-              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              if ((c.sync as any)?.linked_clip_id === clipId || (clickedClip.sync as any)?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by scene_id (same scene = linked)
               if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
             }
@@ -1955,16 +1924,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             zIndex: 130,
             pointerEvents: 'none',
           }}
-        >
-          {/* MARKER_TRIM.SNAP-DIAMOND: snap magnet indicator */}
-          <div style={{
-            position: 'absolute', top: -4, left: -4,
-            width: 7, height: 7,
-            background: 'rgba(220,220,220,0.85)',
-            transform: 'rotate(45deg)',
-            pointerEvents: 'none',
-          }} />
-        </div>
+        />
       ) : null}
 
       <div ref={contentRef} style={TRACKS_CONTAINER}>
@@ -2094,14 +2054,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 {/* MARKER_QA.DND1: FCP7 Ch.35 p.517 drop zone indicators (insert upper 1/3, overwrite lower 2/3) */}
                 <div data-drop-zone="insert" style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '33%', pointerEvents: 'none' }} />
                 <div data-drop-zone="overwrite" style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '67%', pointerEvents: 'none' }} />
-                {/* MARKER_PERF_VSCROLL: Only render clips in the visible time window */}
-                {(visibleClipsByLane.get(lane.lane_id) ?? []).map(({ clip, clipIdx }) => {
+                {lane.clips.map((clip, clipIdx) => {
                   if (dragState?.clipId === clip.clip_id) {
                     return null;
                   }
                   const { startSec, durationSec } = clipDisplayTime(clip, dragState);
                   const x = startSec * zoom - scrollLeft;
                   const width = durationSec * zoom;
+                  if (x + width < 0 || x > containerWidth) {
+                    return null;
+                  }
 
                   // MARKER_TL5: Through edit detection — continuous source media across adjacent clips
                   let isThroughEdit = false;
@@ -2169,6 +2131,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           }}
                         />
                       )}
+                      {/* MARKER_COLOR-LABEL: FCP7 editorial color label — 3px left strip */}
+                      {clip.color_label && COLOR_LABEL_MAP[clip.color_label] && (
+                        <div
+                          data-testid={`cut-clip-color-label-${clip.clip_id}`}
+                          style={{
+                            position: 'absolute', left: 0, top: 0, bottom: 0,
+                            width: 3, borderRadius: '3px 0 0 3px',
+                            background: COLOR_LABEL_MAP[clip.color_label],
+                            zIndex: 2, pointerEvents: 'none',
+                          }}
+                        />
+                      )}
                       <div
                         data-clip="1"
                         style={{
@@ -2179,18 +2153,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
-                          background: trimHandleBg,
-                          borderRight: trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : undefined,
+                          background: 'transparent',
                           transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_left', event)}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
-                          e.currentTarget.style.borderRight = '1px solid rgba(255,255,255,0.5)';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          e.currentTarget.style.borderRight = '1px solid rgba(255, 255, 255, 0.5)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = trimHandleBg;
-                          e.currentTarget.style.borderRight = trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : '';
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderRight = '';
                         }}
                       />
                       <div
@@ -2203,18 +2176,17 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           width: TRIM_HANDLE_WIDTH,
                           cursor: edgeCursor,
                           zIndex: 3,
-                          background: trimHandleBg,
-                          borderLeft: trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : undefined,
+                          background: 'transparent',
                           transition: 'background 0.15s',
                         }}
                         onMouseDown={(event) => beginClipInteraction(clip, lane.lane_id, 'trim_right', event)}
                         onMouseEnter={(e) => {
-                          e.currentTarget.style.background = 'rgba(255,255,255,0.25)';
-                          e.currentTarget.style.borderLeft = '1px solid rgba(255,255,255,0.5)';
+                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.25)';
+                          e.currentTarget.style.borderLeft = '1px solid rgba(255, 255, 255, 0.5)';
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.background = trimHandleBg;
-                          e.currentTarget.style.borderLeft = trimEdgeBorder ? '1px solid rgba(255,255,255,0.18)' : '';
+                          e.currentTarget.style.background = 'transparent';
+                          e.currentTarget.style.borderLeft = '';
                         }}
                       />
 
@@ -2551,7 +2523,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 const txAlign = tx.alignment;
                                 const zoomVal = zoom;
 
-                                const onMove = (e: MouseEvent) => {
+                                const onMove = (e: globalThis.MouseEvent) => {
                                   const deltaPx = startX - e.clientX; // drag left = increase duration
                                   const deltaSec = deltaPx / zoomVal;
                                   const newDur = Math.max(0.04, startDur + deltaSec);
@@ -2568,7 +2540,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                   s.setLanes(updated);
                                 };
 
-                                const onUp = (e: MouseEvent) => {
+                                const onUp = (e: globalThis.MouseEvent) => {
                                   window.removeEventListener('mousemove', onMove);
                                   window.removeEventListener('mouseup', onUp);
                                   const deltaPx = startX - e.clientX;
@@ -2815,7 +2787,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
 
                 {/* MARKER_FCP7.EDIT3: Through edit indicators — red triangles at edit points
                     between adjacent clips from the same source (FCP7 p.588) */}
-                {(visibleClipsByLane.get(lane.lane_id) ?? []).map(({ clip, clipIdx: ci }) => {
+                {lane.clips.map((clip, ci) => {
                   if (ci === 0) return null;
                   const prev = lane.clips[ci - 1];
                   // Through edit: adjacent clips from same source (razor split artifacts)
@@ -2868,33 +2840,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                     />
                   );
                 })}
-
-                {/* MARKER_A3.1: BPM markers on timeline lanes — thin vertical lines */}
-                {/* MARKER_A3.2: Filter by visibleMarkerKinds */}
-                {zoom > 30 && markers.filter((m) => !m.media_path && BPM_MARKER_KINDS.has(m.kind) && visibleMarkerKinds.has(m.kind)).map((marker) => {
-                  const markerX = marker.start_sec * zoom - scrollLeft;
-                  if (markerX < 0 || markerX > containerWidth) return null;
-                  const color = MARKER_COLORS[marker.kind] || '#888';
-                  const opacity = Math.max(0.15, Math.min(0.8, (marker.score ?? 0.5)));
-                  return (
-                    <div
-                      key={`bpm_${lane.lane_id}_${marker.marker_id}`}
-                      style={{
-                        position: 'absolute',
-                        left: markerX,
-                        top: 1,
-                        bottom: 1,
-                        width: 1,
-                        background: color,
-                        opacity,
-                        pointerEvents: 'none',
-                        zIndex: 20,
-                      }}
-                      title={`${marker.kind.replace('bpm_', '').replace('_', ' ')}: ${(marker.score ?? 0).toFixed(2)} @ ${marker.start_sec.toFixed(2)}s`}
-                    />
-                  );
-                })}
-
                 {/* MARKER_DND: Drop zone visual indicator */}
                 {dropZone && dropZone.laneId === lane.lane_id ? (
                   <>
@@ -3041,7 +2986,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             const clipPath = contextMenu.clip.source_path;
             const close = () => setContextMenu(null);
 
-            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | { type: 'color_picker' } | 'separator';
 
             const items: MenuItem[] = [
               // ── Selection ──
@@ -3098,6 +3043,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 });
               }},
               'separator',
+              // MARKER_COLOR-LABEL: FCP7 color label picker — 8 circles + clear
+              { type: 'color_picker' as const },
+              'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
@@ -3124,29 +3072,67 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               if (item === 'separator') {
                 return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
               }
+              if ('type' in item && item.type === 'color_picker') {
+                const activeLabel = contextMenu.clip.color_label;
+                return (
+                  <div key="color-picker" style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', gap: 4 }}>
+                    <span style={{ color: '#555', fontSize: 10, marginRight: 2, flexShrink: 0 }}>Label</span>
+                    {Object.entries(COLOR_LABEL_MAP).map(([name, hex]) => (
+                      <button
+                        key={name}
+                        title={name}
+                        onClick={() => {
+                          close();
+                          void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: name } }]);
+                        }}
+                        style={{
+                          width: 12, height: 12, borderRadius: '50%',
+                          background: hex, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+                          outline: activeLabel === name ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
+                          outlineOffset: activeLabel === name ? 1 : 0,
+                        }}
+                      />
+                    ))}
+                    <button
+                      key="clear"
+                      title="Clear label"
+                      onClick={() => {
+                        close();
+                        void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: null } }]);
+                      }}
+                      style={{
+                        background: 'none', border: '1px solid #333', borderRadius: '50%',
+                        width: 12, height: 12, padding: 0, cursor: 'pointer', color: '#555',
+                        fontSize: 9, lineHeight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >×</button>
+                  </div>
+                );
+              }
+              const mi = item as { label: string; shortcut?: string; action: () => void; disabled?: boolean };
               return (
                 <button
-                  key={item.label}
-                  disabled={Boolean(item.disabled)}
-                  onClick={item.action}
+                  key={mi.label}
+                  disabled={Boolean(mi.disabled)}
+                  onClick={mi.action}
                   style={{
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     background: 'transparent',
-                    color: item.disabled ? '#444' : '#ccc',
+                    color: mi.disabled ? '#444' : '#ccc',
                     border: 'none',
                     borderRadius: 4,
                     padding: '6px 8px',
-                    cursor: item.disabled ? 'default' : 'pointer',
+                    cursor: mi.disabled ? 'default' : 'pointer',
                     fontSize: 11,
                     fontFamily: 'system-ui',
                   }}
                 >
-                  <span>{item.label}</span>
-                  {item.shortcut ? (
-                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{item.shortcut}</span>
+                  <span>{mi.label}</span>
+                  {mi.shortcut ? (
+                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{mi.shortcut}</span>
                   ) : null}
                 </button>
               );
@@ -3214,23 +3200,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           <span style={{ position: 'relative', zIndex: 1, color: '#fff', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
             {basename(dragState.sourcePath)}
           </span>
-          {/* MARKER_TRIM-SLIP-GHOST: Source content shift indicator during slip */}
-          {dragState.mode === 'slip' && (() => {
-            const shift = (dragState.sourceIn ?? 0) - (dragState.originalSourceIn ?? 0);
-            if (Math.abs(shift) < 0.001) return null;
-            const arrowPx = Math.min(Math.abs(shift * zoom), 50);
-            const goRight = shift > 0;
-            return (
-              <div style={{
-                position: 'absolute', bottom: 4, left: '50%', transform: 'translateX(-50%)',
-                display: 'flex', alignItems: 'center', gap: 2, pointerEvents: 'none',
-              }}>
-                {!goRight && <span style={{ fontSize: 8, color: 'rgba(200,200,200,0.7)', lineHeight: 1 }}>{'‹'}</span>}
-                <div style={{ height: 2, width: Math.max(6, arrowPx), background: 'rgba(200,200,200,0.45)', borderRadius: 1 }} />
-                {goRight && <span style={{ fontSize: 8, color: 'rgba(200,200,200,0.7)', lineHeight: 1 }}>{'›'}</span>}
-              </div>
-            );
-          })()}
           {/* MARKER_W5.TRIM: Delta indicator for trim tools */}
           {(dragState.mode === 'slip' || dragState.mode === 'slide' || dragState.mode === 'ripple_left' || dragState.mode === 'ripple_right' || dragState.mode === 'roll') ? (() => {
             const fps = projectFramerate || 25;
@@ -3263,36 +3232,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             );
           })() : null}
         </div>
-      ) : null}
-
-      {/* MARKER_TRIM-SLIDE-GHOST: Neighbor ghost outlines during slide drag */}
-      {dragState?.mode === 'slide' && clipOverlayTop !== null && dragState.neighborLeft ? (
-        <div style={{
-          ...CLIP_STYLE,
-          left: dragState.neighborLeft.startSec * zoom - scrollLeft + LANE_HEADER_WIDTH,
-          top: clipOverlayTop,
-          width: Math.max(4, (dragState.startSec - dragState.neighborLeft.startSec) * zoom),
-          height: trackHeight - 6,
-          bottom: 'auto',
-          background: 'transparent',
-          border: '1px dashed rgba(160,160,160,0.35)',
-          pointerEvents: 'none',
-          zIndex: 119,
-        }} />
-      ) : null}
-      {dragState?.mode === 'slide' && clipOverlayTop !== null && dragState.neighborRight ? (
-        <div style={{
-          ...CLIP_STYLE,
-          left: (dragState.startSec + dragState.durationSec) * zoom - scrollLeft + LANE_HEADER_WIDTH,
-          top: clipOverlayTop,
-          width: Math.max(4, (dragState.neighborRight.startSec + dragState.neighborRight.durationSec - dragState.startSec - dragState.durationSec) * zoom),
-          height: trackHeight - 6,
-          bottom: 'auto',
-          background: 'transparent',
-          border: '1px dashed rgba(160,160,160,0.35)',
-          pointerEvents: 'none',
-          zIndex: 119,
-        }} />
       ) : null}
 
       {/* MARKER_C11: Playhead — active=bright white, inactive=dim grey */}
