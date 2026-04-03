@@ -54,6 +54,7 @@ import {
   MulticamPanel,
   SourceAcquirePanelDock,
   LayerStackPanel,
+  GenerationControlPanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -129,6 +130,8 @@ const PANEL_COMPONENTS = {
   timeline: TimelinePanel,
   multicam: MulticamPanel,
   acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
+  // MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
+  generation: GenerationControlPanelDock,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
@@ -145,10 +148,6 @@ const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'proje
 
 // MARKER_GAMMA-28: Preset builders extracted to presetBuilders.ts (shared with MenuBar)
 
-// MARKER_GAMMA-CRITICAL: Increment when localStorage layout schema changes incompatibly
-const DOCKVIEW_LAYOUT_VERSION = 3;
-const DOCKVIEW_VERSION_KEY = 'cut_dockview_schema_version';
-
 // ─── Main component ─────────────────────────────────────────────────
 
 interface DockviewLayoutProps {
@@ -164,18 +163,8 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 
-  // MARKER_GAMMA-CRITICAL: One-time cleanup of stale/corrupt saved layouts on mount
+  // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
-    // Version-gate: clear ALL preset layouts when schema version changes
-    const storedVersion = Number(localStorage.getItem(DOCKVIEW_VERSION_KEY) ?? 0);
-    if (storedVersion !== DOCKVIEW_LAYOUT_VERSION) {
-      console.info(`[CUT] Dockview layout version changed (${storedVersion}→${DOCKVIEW_LAYOUT_VERSION}), clearing stale presets`);
-      for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom']) {
-        try { localStorage.removeItem('cut_dockview_' + preset); } catch { /* ok */ }
-      }
-      localStorage.setItem(DOCKVIEW_VERSION_KEY, String(DOCKVIEW_LAYOUT_VERSION));
-      return; // already clean — skip duplicate-check below
-    }
     for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom'] as const) {
       try {
         const raw = localStorage.getItem('cut_dockview_' + preset);
@@ -604,8 +593,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   }
 
   return (
-    // MARKER_GAMMA-CRITICAL: flex:1 required — parent CutEditorLayoutV2 ROOT is flex-column; height:100% collapses to 0 without explicit flex allocation
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
       {/* MARKER_GAMMA-25: WorkspacePresets removed from top bar (FCP7: Window menu only) */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact

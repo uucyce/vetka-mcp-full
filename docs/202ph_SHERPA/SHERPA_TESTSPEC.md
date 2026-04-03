@@ -1,8 +1,8 @@
 # SHERPA Response Extraction Test Specification
-**Phase:** 202 v1.1 (Stability)
-**Date:** 2026-04-03
-**Author:** Epsilon (QA)
-**Target Agents:** Eta (DOM extraction fix), Zeta (service protocols)
+**Phase:** 202 v1.1 (Stability)  
+**Date:** 2026-04-03  
+**Author:** Epsilon (QA)  
+**Target Agents:** Eta (DOM extraction fix), Zeta (service protocols)  
 **Related:** ARCHITECTURE_SHERPA.md, P0 issues in Copy extraction & Arena dual responses
 
 ---
@@ -21,9 +21,9 @@ This document defines test scenarios and acceptance criteria for Sherpa's respon
 
 ### 2.1 DeepSeek Full Response Extraction
 
-**Service:** DeepSeek (text-only mode)
-**DOM Structure:** Single response container (div with response content + Copy button)
-**Current State:** Copy button truncates to last code block (~333-1112 chars)
+**Service:** DeepSeek (text-only mode)  
+**DOM Structure:** Single response container (div with response content + Copy button)  
+**Current State:** Copy button truncates to last code block (~333-1112 chars)  
 **Target:** Full response text (15K+ expected for typical 2-3 section recon)
 
 #### Test Setup
@@ -49,14 +49,14 @@ This document defines test scenarios and acceptance criteria for Sherpa's respon
   <div class="message-content">
     <!-- Header text -->
     <p>Here are 5 Python file I/O patterns...</p>
-
+    
     <!-- Code block 1 -->
     <pre><code class="language-python">...</code></pre>
     <button class="copy-btn">Copy</button>
-
+    
     <!-- Code block 2-5 -->
     ...
-
+    
     <!-- Master Copy button (if exists) -->
     <button class="copy-all">Copy All</button>
   </div>
@@ -67,7 +67,7 @@ This document defines test scenarios and acceptance criteria for Sherpa's respon
 ```
 Option A (Primary): inner_text() on entire response-container div
   result = document.querySelector('#chat-message-XXX').innerText
-
+  
 Option B (Fallback): Concatenate all code blocks + text sections
   sections = []
   sections.push(intro_text)
@@ -94,9 +94,9 @@ Option B (Fallback): Concatenate all code blocks + text sections
 
 ### 2.2 Kimi Full Response Extraction
 
-**Service:** Kimi (text-only mode, CN-based)
-**DOM Structure:** Single response container (similar to DeepSeek, different CSS classes)
-**Current State:** Same Copy button truncation as DeepSeek
+**Service:** Kimi (text-only mode, CN-based)  
+**DOM Structure:** Single response container (similar to DeepSeek, different CSS classes)  
+**Current State:** Same Copy button truncation as DeepSeek  
 **Target:** Full response extraction with DOM method (works across service variations)
 
 #### Test Case: KM-01 — Full Response Content Extraction
@@ -141,9 +141,9 @@ result = document.querySelector('[data-role="assistant"] .message-text').innerTe
 
 ### 2.3 Arena.ai Dual Response Extraction
 
-**Service:** Arena.ai (benchmark mode)
-**DOM Structure:** TWO independent response containers (left & right panels)
-**Current State:** Only capturing one response; missing comparative analysis
+**Service:** Arena.ai (benchmark mode)  
+**DOM Structure:** TWO independent response containers (left & right panels)  
+**Current State:** Only capturing one response; missing comparative analysis  
 **Target:** Extract both responses separately with clear left/right labels
 
 #### Test Case: AR-01 — Left Response Extraction
@@ -165,7 +165,7 @@ result = document.querySelector('[data-role="assistant"] .message-text').innerTe
     </div>
     <button class="copy-btn">Copy</button>
   </div>
-
+  
   <!-- Right panel: Model B -->
   <div class="response-panel right" id="response-right">
     <div class="model-header">Model B (e.g., Claude)</div>
@@ -434,10 +434,10 @@ After completion:
 // Strategy: search for actual text content, not specific structure
 const searchText = (element, depth = 0) => {
   if (depth > 5) return null; // prevent infinite recursion
-
+  
   let text = element.innerText?.trim();
   if (text && text.length > 500) return text; // found substantial content
-
+  
   // Try all children
   for (const child of element.children) {
     let result = searchText(child, depth + 1);
@@ -480,7 +480,7 @@ const response = searchText(document.getElementById('chat-XXX'));
 ```python
 def extract_response_dom(service_name: str) -> dict:
     """Extract response via DOM, not clipboard."""
-
+    
     try:
         # Service-specific primary selectors
         selectors = {
@@ -488,12 +488,12 @@ def extract_response_dom(service_name: str) -> dict:
             "kimi": "[data-role='assistant'] .message-text",
             "arena": ["#response-left .response-content", "#response-right .response-content"]
         }
-
+        
         # Get primary selector
         primary = selectors.get(service_name)
         if not primary:
             return {"status": "unknown_service"}
-
+        
         # Extract based on service
         if service_name == "arena":
             # Dual response
@@ -509,18 +509,18 @@ def extract_response_dom(service_name: str) -> dict:
             # Single response
             # Wait for text stability first
             wait_for_text_stability(page, timeout=30)
-
+            
             content = page.evaluate(f"document.querySelector('{primary}').innerText")
-
+            
             if not content or len(content) < 100:
                 return {"status": "empty_response"}
-
+            
             return {
                 "status": "success",
                 "content": content,
                 "chars": len(content)
             }
-
+    
     except TimeoutError:
         return {"status": "timeout"}
     except Exception as e:
@@ -532,21 +532,21 @@ def extract_response_dom(service_name: str) -> dict:
 ```python
 def extract_with_fallback(service_name: str, task_id: str):
     """Extract response, with fallback to next service if failed."""
-
+    
     result = extract_response_dom(service_name)
-
+    
     if result["status"] == "success":
         return result
-
+    
     if result["status"] in ["timeout", "empty_response", "error"]:
         # Log failure for self-learning
         log_service_feedback(service_name, result["status"], 0)
-
+        
         # Try next service in fallback chain
         next_service = get_fallback_service(service_name)
         if next_service:
             return extract_with_fallback(next_service, task_id)
-
+    
     # All fallbacks exhausted
     return {
         "status": "failed",
@@ -649,6 +649,6 @@ def extract_with_fallback(service_name: str, task_id: str):
 
 ---
 
-*Document Status: READY FOR IMPLEMENTATION*
-*Approval Path: Epsilon (QA design) → Eta (DOM extraction) → Zeta (fallback chain) → TaskBoard update*
+*Document Status: READY FOR IMPLEMENTATION*  
+*Approval Path: Epsilon (QA design) → Eta (DOM extraction) → Zeta (fallback chain) → TaskBoard update*  
 *Version: 1.0*

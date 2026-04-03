@@ -54,7 +54,6 @@ class AgentRole:
     predecessor_docs: str  # glob pattern
     key_docs: tuple[str, ...]
     roadmap: str
-    memory_path: str = ""  # MARKER_203.ROLE_MEMORY: path to role MEMORY.md
     model_tier: Optional[str] = None  # MARKER_200.MODEL_TIER: opus | sonnet | haiku
     # MARKER_201.TOOL_TYPE: What tool runs this agent (claude_code|codex|opencode|local_ollama)
     tool_type: str = "claude_code"
@@ -113,7 +112,6 @@ class AgentRegistry:
                 predecessor_docs=entry.get("predecessor_docs", ""),
                 key_docs=tuple(entry.get("key_docs", [])),
                 roadmap=entry.get("roadmap", ""),
-                memory_path=entry.get("memory_path", ""),  # MARKER_203.ROLE_MEMORY
                 model_tier=entry.get("model_tier"),  # MARKER_200.MODEL_TIER
                 tool_type=entry.get("tool_type", "claude_code"),
             )

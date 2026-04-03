@@ -63,10 +63,3 @@ Full ownership map: `data/templates/agent_registry.yaml`
 6. action=stale_check limit=30  (post-merge cleanup)
 ```
 {%- endif %}
-{%- if role.memory_path %}
-
-## Role Memory
-Your experiential memory across sessions: `{{ role.memory_path }}`
-Auto-injected via session_init (field `role_memory`). Last 3 task completions with Q1-Q3 debrief.
-You may also add narrative sections manually (Burnell-style preamble is preserved).
-{%- endif %}

@@ -42,6 +42,62 @@ The most powerful tool isn't the model, framework, or browser. It's the feedback
 5. recon_done status → prevents infinite loop on same task.
 6. DeepSeek + Kimi = reliable. ChatGPT/Grok = disabled (bot detection).
 
+## Correct Patterns (DO THIS)
+
+1. **Prototype first, document after** — WEATHER failed with architecture docs. Sherpa succeeded with working code. `code -> test -> fix -> document`.
+2. **Hardcoded numbers beat algorithms** — `MIN_COMPLETE = 5000` chars. No ML, no heuristics. One number solved extraction.
+3. **Fast feedback loop** — 15 iterations in 6 hours. User runs `--once --visible` -> sees problem -> reports -> fix -> repeat.
+4. **DOM over clipboard** — `.ds-markdown` inner_text() works universally. Clipboard requires permissions, copies wrong element.
+5. **Copy button = signal, not content** — Visible Copy button means response complete. Don't USE it for text extraction.
+6. **One tab rule** — Close previous tab before opening next. Playwright Chromium eats 300-500MB per context.
+7. **Round-robin services** — Never hit same service twice in a row. DeepSeek rate-limits after ~10 consecutive.
+8. **4-second human pause** — Between fill() and Enter. Prevents bot detection.
+
+## Anti-Patterns (DON'T DO THIS)
+
+1. **Don't add file attachments before text works** — 2 hours wasted. Enter stopped working with attachments. Reverted to text-only.
+2. **Don't trust clipboard in Playwright** — Permissions, wrong elements, popup blockers.
+3. **Don't use hardcoded waits** — Measure DOM text length, wait for stabilization. Not `sleep(30)`.
+4. **Don't let agents rewrite sherpa.py without tests** — Eta added probe (good) but broke Enter. Zeta's merge overwrote MIN_COMPLETE.
+5. **Don't claim same task repeatedly** — Without `recon_done`, Sherpa claimed same task 10+ times.
+
+## Service Reliability (50-task run)
+
+| Service | Success | Notes |
+|---------|---------|-------|
+| DeepSeek | 95% | Rate-limits after 10 consecutive |
+| Kimi | 90% | SPA input flaky in headless |
+| Arena | 85% | Dual capture works, sometimes grabs sidebar |
+| Qwen | 30% | Cannot find input reliably |
+| ChatGPT | 10% | Bot detection |
+| Grok | 0% | Bot protection blocks Playwright |
+| Claude.ai | 20% | Collapsed responses, artifacts, subscription popups |
+
+## Key Numbers
+
+- DeepSeek avg response: 10-15K chars, 60-100s
+- Kimi avg response: 8-20K chars, 70-160s
+- Arena dual capture: 30-40K chars
+- Prompt size: 17-55K chars
+- Success rate: 96% (48/50)
+- Total session: concept to 50-task autonomous run in 8 hours
+
+## Launch Commands
+
+```bash
+# Start Sherpa
+cd ~/Documents/VETKA_Project/vetka_live_03
+python sherpa.py --visible        # watch mode
+python sherpa.py                  # headless autonomous
+python sherpa.py --once --visible # test one task
+
+# Check results
+ls docs/sherpa_recon/ | wc -l
+
+# Setup new profiles
+python sherpa.py --setup --service deepseek
+```
+
 ## Character Notes
 Han Solo approach: no grand architecture, just make it fly.
 Ship = sherpa.py. Crew = Playwright + Ollama + TaskBoard.

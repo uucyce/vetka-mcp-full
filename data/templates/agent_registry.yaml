@@ -445,6 +445,28 @@ roles:
       - "e2e/"
     roadmap: ""
 
+
+  # ── Burnell: engine Domain (claude_code/opus) ──────────────────
+  - callsign: "Burnell"
+    domain: "engine"
+    pipeline_stage: "coder"
+    tool_type: "claude_code"
+    role_title: "Captain Burnell / Sherpa Architect"
+    worktree: "magical-burnell"
+    branch: "agent/burnell-engine"
+    model_tier: "opus"
+    file: "client/src/store/"
+    owned_paths:
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "client/src/components/cut/"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+    roadmap: ""
+
 # ── Shared Zones ────────────────────────────────────────────
 # Files where multiple agents have partial ownership.
 # Protocol: declare scope in task description before touching.

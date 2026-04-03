@@ -843,3 +843,5 @@ rm data/sherpa.pid
 - Ответ < 5000 chars = неполный, Sherpa ждёт дольше
 - После обогащения таск получает статус `recon_done`
 - Один таб браузера — при смене сервиса старый закрывается
+
+| **Burnell** | `magical-burnell` | engine | claude_code | opus | Captain Burnell / Sherpa Architect |
