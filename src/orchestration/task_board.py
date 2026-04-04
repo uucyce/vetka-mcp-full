@@ -3219,6 +3219,57 @@ class TaskBoard:
             )
             # MARKER_204.VIBE: Write signal file for Vibe agents so PRETOOL_HOOK picks it up
             self._write_vibe_signal(target_role, notif_id, source_role, message, ntype)
+
+            # MARKER_204.FILE_SIGNAL: Write file signal for hook-based delivery
+            try:
+                import json as _json_signal
+                signals_dir = Path.home() / ".claude" / "signals"
+                signals_dir.mkdir(parents=True, exist_ok=True)
+                signal_file = signals_dir / f"{target_role}.json"
+                signal_entry = {
+                    "id": notif_id,
+                    "from": source_role or "system",
+                    "message": message[:500],
+                    "ntype": ntype,
+                    "task_id": task_id,
+                    "ts": now,
+                }
+                # Append to existing array (don't overwrite)
+                existing = []
+                if signal_file.exists():
+                    try:
+                        existing = _json_signal.loads(signal_file.read_text(encoding="utf-8"))
+                        if not isinstance(existing, list):
+                            existing = []
+                    except Exception:
+                        existing = []
+                existing.append(signal_entry)
+                signal_file.write_text(_json_signal.dumps(existing, ensure_ascii=False), encoding="utf-8")
+                logger.debug("[TaskBoard] FILE_SIGNAL: wrote %s (%d entries)", signal_file.name, len(existing))
+            except Exception as sig_err:
+                logger.debug("[TaskBoard] FILE_SIGNAL write failed (non-fatal): %s", sig_err)
+
+            # MARKER_205.NOTIFY_BUS: Emit notify event through EventBus → UDS daemon
+            # This enables autospawn: daemon receives notify, checks tmux, spawns offline agent.
+            try:
+                if hasattr(self, 'event_bus') and self.event_bus:
+                    from src.orchestration.event_bus import AgentEvent
+                    event = AgentEvent(
+                        event_type="notify",
+                        source="task_board",
+                        payload={
+                            "action": "notify",
+                            "target_role": target_role,
+                            "source_role": source_role,
+                            "message": message[:500],
+                            "ntype": ntype,
+                            "task_id": task_id,
+                            "notification_id": notif_id,
+                        },
+                    )
+                    self.event_bus.emit(event)
+            except Exception as bus_err:
+                logger.debug("[TaskBoard] NOTIFY_BUS emit failed (non-fatal): %s", bus_err)
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")
