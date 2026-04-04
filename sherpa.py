@@ -464,12 +464,12 @@ def search_codebase(query: str, allowed_paths: List[str] = None, limit: int = 10
 
     # Priority 2: domain → paths mapping
     DOMAIN_PATHS = {
-        "engine":  ["clients/store", "clients/hooks", "client/srccmp/cut"],
+        "engine":  ["client/src/store", "client/src/hooks", "client/src/components/cut", "src/orchestration"],
         "media":   ["src/services", "src/media", "src/codecs"],
-        "ux":      ["client/srccmp", "client/src/layouts"],
+        "ux":      ["client/src/components", "client/src/layouts"],
         "qa":      ["tests", "e2e"],
         "harness": ["src/mcp/tools", "src/apir", "scripts"],
-        "cut":     ["client/srccmp/cut", "clients/store", "src/services"],
+        "cut":     ["client/src/components/cut", "client/src/store", "src/services"],
         "space":   ["sherpa.py", "config/sherpa.yaml", "src/services/browser_manager.py"],
     }
     domain_dirs = []
@@ -1544,11 +1544,23 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
     if snippets_text:
         prompt += f"\n## Relevant Code\n{snippets_text}\n"
 
-    prompt += """
+    # Build file inventory for anti-hallucination grounding
+    known_files = set()
+    for s in code_snippets:
+        rel = s["path"].replace(str(PROJECT_ROOT) + "/", "")
+        known_files.add(rel)
+
+    prompt += f"""
+## CRITICAL RULES
+- ONLY reference files from the "Relevant Code" section above or well-known framework paths
+- The files that ACTUALLY EXIST in this codebase are listed above — do NOT invent new file names
+- If you suggest creating a new file, explicitly mark it as [NEW FILE]
+{f'- Focus modifications on: {", ".join(allowed_paths)}' if allowed_paths else ''}
+
 ## Research needed:
-1. Files to Modify — specific paths that EXIST in this codebase
+1. Files to Modify — ONLY paths from the code above, or mark [NEW FILE] for new ones
 2. Approach — step-by-step plan
-3. Example Code — key changes
+3. Example Code — key changes with real function/class names from the code above
 4. Risks — edge cases
 5. Dependencies — affected modules
 """
@@ -1560,21 +1572,83 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
     return prompt.strip()
 
 
+# ── Hallucination Detector (PULSAR) ───────────────────────────────────
+def detect_hallucinated_paths(response: str, code_files: List[Dict]) -> Dict[str, Any]:
+    """Check if AI response references files that don't exist in codebase.
+
+    Returns {real: [...], hallucinated: [...], score: 0.0-1.0}
+    Score = real / (real + hallucinated). 1.0 = no hallucinations.
+    """
+    import re
+    # Extract file paths from AI response (src/..., client/..., *.py, *.ts, etc.)
+    path_pattern = r'(?:src|client|clients|tests|scripts|config|docs|e2e)/[\w/.-]+\.(?:py|ts|tsx|js|jsx|yaml|yml|json|md|css|scss)'
+    mentioned = set(re.findall(path_pattern, response))
+
+    # Also catch bare filenames like "file_scanner.py" (common hallucination)
+    bare_files = set(re.findall(r'\b[\w-]+\.(?:py|ts|tsx|js)\b', response))
+    # Filter out common false positives
+    bare_files -= {"package.json", "tsconfig.json", "index.ts", "index.js", "index.tsx",
+                   "vite.config.ts", "setup.py", "conftest.py", "pytest.ini"}
+
+    known_paths = {f["path"].replace(str(PROJECT_ROOT) + "/", "") for f in code_files}
+
+    real = []
+    hallucinated = []
+
+    for p in mentioned:
+        full = PROJECT_ROOT / p
+        if full.exists() or p in known_paths:
+            real.append(p)
+        else:
+            hallucinated.append(p)
+
+    # Check bare filenames against known code files
+    for bf in bare_files:
+        if bf in mentioned or any(bf in m for m in mentioned):
+            continue  # Already checked as full path
+        # Search if file exists anywhere in project
+        try:
+            proc = subprocess.run(
+                ["find", str(PROJECT_ROOT / "src"), str(PROJECT_ROOT / "client"),
+                 "-name", bf, "-type", "f"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if proc.stdout.strip():
+                real.append(bf)
+            else:
+                hallucinated.append(bf)
+        except Exception:
+            pass  # Don't crash on detection failure
+
+    total = len(real) + len(hallucinated)
+    score = len(real) / total if total > 0 else 1.0
+
+    if hallucinated:
+        log.warning(f"Hallucinated paths ({len(hallucinated)}): {hallucinated[:5]}")
+    log.info(f"Path verification: {len(real)} real, {len(hallucinated)} hallucinated, score={score:.2f}")
+
+    return {"real": real, "hallucinated": hallucinated, "score": round(score, 3), "total": total}
+
+
 # ── Recon Report ───────────────────────────────────────────────────────
 def save_recon_report(
     task_id: str, task_title: str, service_name: str,
     prompt: str, response: str, code_files: List[Dict],
+    hallucination_report: Dict = None,
 ) -> Path:
     """Save recon results to markdown file."""
     report_path = RECON_DIR / f"sherpa_{task_id}.md"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    h_score = hallucination_report.get("score", 1.0) if hallucination_report else 1.0
+    h_count = len(hallucination_report.get("hallucinated", [])) if hallucination_report else 0
 
     report = f"""# Sherpa Recon: {task_title}
 
 **Task ID:** `{task_id}`
 **Source:** {service_name}
 **Date:** {timestamp}
-**Agent:** Sherpa (Phase 202)
+**Agent:** Sherpa (Phase 202/PULSAR)
+**Path Accuracy:** {h_score:.0%} ({h_count} hallucinated paths)
 
 ---
 
@@ -1584,16 +1658,25 @@ def save_recon_report(
         rel = cf["path"].replace(str(PROJECT_ROOT) + "/", "")
         report += f"- `{rel}`\n"
 
+    # Add hallucination warning if detected
+    h_warning = ""
+    if hallucination_report and hallucination_report.get("hallucinated"):
+        h_paths = hallucination_report["hallucinated"]
+        h_warning = f"\n## ⚠ Hallucinated Paths (DO NOT USE)\n"
+        for hp in h_paths[:10]:
+            h_warning += f"- ~~`{hp}`~~ (does not exist)\n"
+        h_warning += "\n"
+
     report += f"""
 ---
-
+{h_warning}
 ## Research Response
 
 {response}
 
 ---
 
-*Generated by Sherpa — Scout & Harvest Engine for Recon, Prep & Augmentation*
+*Generated by Sherpa PULSAR — Scout & Harvest Engine for Recon, Prep & Augmentation*
 """
     if report_path.exists():
         # Append — multiple services may enrich the same task
@@ -1721,7 +1804,17 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 await asyncio.sleep(30)
                 continue
 
-            # 5. Optionally summarize with Ollama
+            # 5. Hallucination check — verify AI didn't invent file paths
+            path_check = detect_hallucinated_paths(response, code_files)
+            if path_check["hallucinated"]:
+                log.warning(f"AI hallucinated {len(path_check['hallucinated'])} paths — quality score: {path_check['score']}")
+                # Record in feedback
+                feedback.record(task_id, svc.name, response_chars=len(response),
+                                time_seconds=0, success=True,
+                                extra={"hallucination_score": path_check["score"],
+                                       "hallucinated_paths": path_check["hallucinated"][:5]})
+
+            # 6. Optionally summarize with Ollama
             summary_hint = ""
             if await ollama.is_available() and len(response) > 500:
                 summary_hint = await ollama.chat(
@@ -1730,9 +1823,10 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                     max_tokens=500,
                 )
 
-            # 6. Save recon report
+            # 7. Save recon report (with hallucination metadata)
             report_path = save_recon_report(
                 task_id, task_title, svc.name, prompt, response, code_files,
+                hallucination_report=path_check,
             )
             rel_report = str(report_path.relative_to(PROJECT_ROOT))
 
