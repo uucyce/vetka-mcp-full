@@ -253,7 +253,7 @@ export default function CutStandalone() {
   const { checkRecovery, recoverFromSnapshot } = useCutSaveSystem();
 
   const query = useMemo(parseQuery, []);
-  const [sandboxRoot] = useState(query.sandboxRoot);
+  const [sandboxRoot, setSandboxRoot] = useState(query.sandboxRoot);
   const [sourcePath] = useState(query.sourcePath);
   const [projectName] = useState(query.projectName || 'VETKA CUT Demo');
   const [projectId, setProjectId] = useState(query.projectId);
@@ -282,14 +282,15 @@ export default function CutStandalone() {
   const timeMarkers = (projectState?.time_marker_bundle?.items as CutTimeMarker[] | undefined) || [];
 
   const activeJobs = projectState?.active_jobs || [];
-  const refreshProjectState = useCallback(async (currentProjectId?: string, options?: { silent?: boolean }) => {
+  const refreshProjectState = useCallback(async (currentProjectId?: string, options?: { silent?: boolean }, sandboxRootOverride?: string) => {
     const pid = String(currentProjectId || projectId || '').trim();
-    if (!sandboxRoot || !pid) return;
+    const sr = sandboxRootOverride || sandboxRoot;
+    if (!sr || !pid) return;
     if (!options?.silent) {
       setStatus('Hydrating project state...');
     }
     const payload = await jsonFetch<CutProjectState>(
-      `/cut/project-state?sandbox_root=${encodeURIComponent(sandboxRoot)}&project_id=${encodeURIComponent(pid)}`
+      `/cut/project-state?sandbox_root=${encodeURIComponent(sr)}&project_id=${encodeURIComponent(pid)}`
     );
     setProjectState(payload);
     if (payload.success) {
@@ -308,6 +309,13 @@ export default function CutStandalone() {
   useEffect(() => {
     if (sandboxRoot && projectId) {
       void refreshProjectState(projectId);
+    }
+  }, []);
+
+  // MARKER_CUT-UX-NOWELCOME: auto-bootstrap Untitled project when no sandbox_root in query
+  useEffect(() => {
+    if (!query.sandboxRoot) {
+      void handleBootstrap();
     }
   }, []);
 
@@ -442,8 +450,13 @@ export default function CutStandalone() {
         setStatus(payload.error?.message || 'Bootstrap failed');
         return;
       }
+      // MARKER_CUT-UX-NOWELCOME: capture backend-assigned sandbox_root for fresh starts
+      const effectiveSandboxRoot = payload.project.sandbox_root || sandboxRoot;
+      if (effectiveSandboxRoot && effectiveSandboxRoot !== sandboxRoot) {
+        setSandboxRoot(effectiveSandboxRoot);
+      }
       setProjectId(payload.project.project_id);
-      await refreshProjectState(payload.project.project_id);
+      await refreshProjectState(payload.project.project_id, undefined, effectiveSandboxRoot || undefined);
 
       // MARKER_W4.3: Check for crash recovery after project load
       const recovery = await checkRecovery();
