@@ -1922,11 +1922,20 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     MCPSessionDispatcher.reset()
                 except Exception:
                     pass
+                # MARKER_205.HOT_RELOAD: Reset EventBus + TaskBoard singletons before reload
+                try:
+                    from src.orchestration.event_bus import reset_event_bus
+                    reset_event_bus()
+                except Exception:
+                    pass
                 try:
                     from src.orchestration.task_board import reset_task_board
                     reset_task_board()
                 except Exception:
                     pass
+                # Reload order: event_bus → task_board → tools (dependency order)
+                import src.orchestration.event_bus as _bus_mod
+                importlib.reload(_bus_mod)
                 import src.orchestration.task_board as _board_mod
                 importlib.reload(_board_mod)
                 import src.mcp.tools.task_board_tools as _tb_mod
@@ -2775,6 +2784,37 @@ async def main():
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGHUP, signal_handler)  # MARKER_181.6.12: Terminal close → graceful shutdown
+
+    # MARKER_205.HOT_RELOAD: SIGUSR1 triggers full module reload without restart.
+    # Usage: kill -USR1 $(pgrep -f vetka_mcp_bridge)
+    def _reload_handler(signum, frame):
+        import importlib as _rl
+        _log = __import__('logging').getLogger("VETKA_MCP")
+        try:
+            from src.orchestration.event_bus import reset_event_bus
+            reset_event_bus()
+        except Exception:
+            pass
+        try:
+            from src.orchestration.task_board import reset_task_board
+            reset_task_board()
+        except Exception:
+            pass
+        try:
+            from src.mcp.mcp_actor import MCPSessionDispatcher
+            MCPSessionDispatcher.reset()
+        except Exception:
+            pass
+        import src.orchestration.event_bus as _em
+        _rl.reload(_em)
+        import src.orchestration.task_board as _bm
+        _rl.reload(_bm)
+        import src.mcp.tools.task_board_tools as _tm
+        _rl.reload(_tm)
+        _log.info("[MCP] HOT_RELOAD: all modules reloaded via SIGUSR1")
+        print("[MCP] HOT_RELOAD complete — task_board + event_bus + tools reloaded", file=__import__('sys').stderr)
+
+    signal.signal(signal.SIGUSR1, _reload_handler)
 
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
