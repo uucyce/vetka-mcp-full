@@ -3,9 +3,9 @@
  * Tabs: YouTube fetch, AI Local, AI Remote, Local Import.
  * Monochrome: #1a1a1a bg, #222222 tabs, #888888 progress, zero color.
  */
-import { type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useSourceAcquireStore, type AcquireTab } from '../../../store/sourceAcquireStore';
+import { useSourceAcquireStore, type AcquireTab, type AcquireJob } from '../../../store/sourceAcquireStore';
 
 // ─── Tab definitions ────────────────────────────────────────────────
 

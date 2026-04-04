@@ -715,6 +715,11 @@ interface CutEditorState {
   // MARKER_EXPORT: Timeline export to editorial formats
   exportTimeline: (format: 'premiere-xml' | 'fcpxml' | 'otio' | 'edl') => Promise<void>;
   exportInProgress: boolean;
+  // MARKER_A5.6: Insert/Delete Tracks dialog visibility
+  showInsertTracksDialog: boolean;
+  setShowInsertTracksDialog: (show: boolean) => void;
+  showDeleteTracksDialog: boolean;
+  setShowDeleteTracksDialog: (show: boolean) => void;
 }
 
 export const useCutEditorStore = create<CutEditorState>((set, get) => ({
@@ -2108,6 +2113,11 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   montageInProgress: false,
   pulseAnalysisInProgress: false,
   exportInProgress: false,
+  // MARKER_A5.6: Insert/Delete Tracks dialog
+  showInsertTracksDialog: false,
+  setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
+  showDeleteTracksDialog: false,
+  setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
 
   runAutoMontage: async (mode) => {
     const { sandboxRoot, projectId, timelineId, montageInProgress } = get();

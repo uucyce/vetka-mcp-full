@@ -96,11 +96,16 @@ export type CutHotkeyAction =
   | 'splitEditJCut'
   // MARKER_TRANSITION: Default transition
   | 'addDefaultTransition'
+  // MARKER_AUDIO_XFADE: Audio crossfade
+  | 'addAudioTransition'
+  // MARKER_LOOP_HOTKEY: Loop playback toggle
+  | 'toggleLoopPlayback'
   // Navigation
   | 'prevEditPoint'
   | 'nextEditPoint'
   // MARKER_W5.MF: Match Frame + Q toggle (FCP7 Ch.50)
   | 'matchFrame'
+  | 'reverseMatchFrame'
   | 'toggleSourceProgram'
   // View
   | 'zoomIn'
@@ -152,6 +157,8 @@ export type CutHotkeyAction =
   | 'linkUnlinkClips'
   // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
   | 'focusSourceAcquire'
+  // MARKER_GAMMA-FIND: Find dialog
+  | 'findDialog'
   // MARKER_FCP7-CH45: Cycle clip label display mode
   | 'cycleClipLabelMode'
   // MARKER_FCP7-FIND: Edit > Find dialog (FCP7 Ch.10)
@@ -218,6 +225,7 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   nextEditPoint:       ['timeline', 'program'],
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:          'global',
+  reverseMatchFrame:   'global',
   toggleSourceProgram: 'global',
 
   // Markers — source, program, timeline (FCP7 Ch.37: markers fire in viewer/timeline context)
@@ -244,6 +252,8 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   splitEditLCut:       ['timeline'],
   splitEditJCut:       ['timeline'],
   addDefaultTransition:['timeline'],
+  addAudioTransition:  ['timeline'],
+  toggleLoopPlayback:  'global',
 
   // Global — always fire
   undo:                'global',
@@ -297,10 +307,10 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   linkUnlinkClips:        'global',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:     'global',
+  // MARKER_GAMMA-FIND: Find dialog
+  findDialog:             'global',
   // MARKER_FCP7-CH45
   cycleClipLabelMode:     'global',
-  // MARKER_FCP7-FIND
-  findDialog:             'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -343,6 +353,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   goToOut:           'Shift+o',
   markClip:          'x',
   playInToOut:       'Shift+\\',
+  toggleLoopPlayback: 'Ctrl+l',
   // Sequence operations
   liftClip:          ';',
   extractClip:       "'",
@@ -353,6 +364,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   splitEditLCut:     'Alt+e',
   splitEditJCut:     'Alt+Shift+e',
   addDefaultTransition: 'Cmd+t',
+  addAudioTransition:   'Cmd+Shift+t',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -397,6 +409,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   nextEditPoint:     'ArrowDown',
   // MARKER_W5.MF: Match Frame + Q toggle
   matchFrame:        'f',
+  reverseMatchFrame: 'Shift+f',
   toggleSourceProgram: 'q',
   // View
   zoomIn:            '=',
@@ -420,7 +433,7 @@ export const PREMIERE_PRESET: HotkeyMap = {
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
-  revealMasterClip:  'Shift+f',
+  revealMasterClip:  'Opt+f',
   collapseExpandTrack: 'Shift+minus',
   expandTrack:       'Shift+equal',
   renameClipInline:  'Enter',
@@ -435,10 +448,11 @@ export const PREMIERE_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
@@ -446,10 +460,10 @@ export const PREMIERE_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   linkUnlinkClips:   'Alt+l',
+  // MARKER_GAMMA-FIND: Find dialog
+  findDialog:        'Cmd+f',
   // MARKER_FCP7-CH45: Cycle clip label mode
   cycleClipLabelMode: 'Alt+w',
-  // MARKER_FCP7-FIND: Find dialog
-  findDialog: 'Cmd+f',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -475,6 +489,7 @@ export const FCP7_PRESET: HotkeyMap = {
   clearInOut:        'Alt+x',
   markClip:          'x',
   playInToOut:       'Ctrl+\\',
+  toggleLoopPlayback: 'Ctrl+l',
   // Sequence operations (FCP7 Ch.32)
   liftClip:          ';',
   extractClip:       "'",
@@ -484,6 +499,7 @@ export const FCP7_PRESET: HotkeyMap = {
   splitEditLCut:     'Alt+e',
   splitEditJCut:     'Alt+Shift+e',
   addDefaultTransition: 'Cmd+t',
+  addAudioTransition:   'Cmd+Shift+t',
   // Editing
   undo:              'Cmd+z',
   redo:              'Cmd+Shift+z',
@@ -529,6 +545,7 @@ export const FCP7_PRESET: HotkeyMap = {
   nextEditPoint:     'ArrowDown',
   // MARKER_W5.MF: Match Frame + Q toggle (FCP7)
   matchFrame:        'f',
+  reverseMatchFrame: 'Shift+f',
   toggleSourceProgram: 'q',
   // View
   zoomIn:            'Cmd+=',
@@ -552,7 +569,7 @@ export const FCP7_PRESET: HotkeyMap = {
   // MARKER_GAMMA-P1: New FCP7 UI actions
   editMarkerDialog:  'Shift+Enter',
   timecodeEntry:     'F2',
-  revealMasterClip:  'Shift+f',
+  revealMasterClip:  'Opt+f',
   collapseExpandTrack: 'Shift+minus',
   expandTrack:       'Shift+equal',
   renameClipInline:  'Enter',
@@ -567,10 +584,11 @@ export const FCP7_PRESET: HotkeyMap = {
   runAutoMontageFavorites: 'Cmd+Shift+m',
   // MARKER_EXPORT: Export timeline
   exportTimeline:    'Cmd+e',
-  // MARKER_TRIM5: Ripple trim, swap, delete marker
+  // MARKER_TRIM5: Ripple trim, swap, delete marker, paste attributes
   rippleTrimToPlayhead: 'w',
   swapClips:         'Cmd+Shift+s',
   deleteMarker:      'Cmd+`',
+  // insertEditF9/overwriteEditF10: REMOVED — handled by multi-bind on insertEdit/overwriteEdit
   // MARKER_SEL6: Selection actions
   selectClipAtPlayhead: 'F6',
   selectAllOnTrack:  'Alt+a',
@@ -578,11 +596,11 @@ export const FCP7_PRESET: HotkeyMap = {
   selectForward:     'Alt+Shift+ArrowRight',
   toggleAVSelection: 't',
   linkUnlinkClips:   'Cmd+l',
+  // MARKER_GAMMA-FIND: Find dialog
+  findDialog:        'Cmd+f',
   // MARKER_FCP7-CH45: Cycle clip label mode (FCP7 cycleClipDisplayMode)
   // Note: Cmd+Alt+w taken by toggleTimelineDisplayMode; use Alt+w here
   cycleClipLabelMode: 'Alt+w',
-  // MARKER_FCP7-FIND: Find dialog (FCP7 Ch.10)
-  findDialog: 'Cmd+f',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {
@@ -815,6 +833,7 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   // Mark operations
   { action: 'markClip', label: 'Mark Clip (X)', group: 'Marking' },
   { action: 'playInToOut', label: 'Play In to Out', group: 'Marking' },
+  { action: 'toggleLoopPlayback', label: 'Toggle Loop Playback (Ctrl+L)', group: 'Playback' },
   // Sequence operations
   { action: 'liftClip', label: 'Lift (leave gap)', group: 'Sequence' },
   { action: 'extractClip', label: 'Extract (close gap)', group: 'Sequence' },
@@ -824,11 +843,13 @@ export const ALL_ACTIONS: { action: CutHotkeyAction; label: string; group: strin
   { action: 'splitEditLCut', label: 'L-Cut (video ends, audio continues)', group: 'Sequence' },
   { action: 'splitEditJCut', label: 'J-Cut (audio starts, video later)', group: 'Sequence' },
   { action: 'addDefaultTransition', label: 'Add Default Transition (⌘T)', group: 'Sequence' },
+  { action: 'addAudioTransition', label: 'Add Audio Crossfade (⌘⇧T)', group: 'Sequence' },
   // Navigation
   { action: 'prevEditPoint', label: 'Previous Edit Point', group: 'Navigation' },
   { action: 'nextEditPoint', label: 'Next Edit Point', group: 'Navigation' },
   // MARKER_W5.MF
   { action: 'matchFrame', label: 'Match Frame (F)', group: 'Navigation' },
+  { action: 'reverseMatchFrame', label: 'Reverse Match Frame (Shift+F)', group: 'Navigation' },
   { action: 'toggleSourceProgram', label: 'Toggle Source/Program (Q)', group: 'Navigation' },
   // View
   { action: 'zoomIn', label: 'Zoom In', group: 'View' },

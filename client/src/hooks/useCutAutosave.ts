@@ -100,7 +100,7 @@ async function autosaveToBackend(): Promise<void> {
   const { sandboxRoot, projectId, lanes, markers, currentTime, zoom, scrollLeft,
           timelineId, projectFramerate,
           sourceMarkIn, sourceMarkOut, sequenceMarkIn, sequenceMarkOut } = state;
-  const selectedClipId = useSelectionStore.getState().selectedClipId;
+  const { selectedClipId } = useSelectionStore.getState();
 
   if (!sandboxRoot) return;
 
