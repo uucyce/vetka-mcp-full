@@ -2685,10 +2685,57 @@ class TaskBoard:
                 "[TaskBoard] NOTIFY: %s → %s [%s] %s",
                 source_role or "system", target_role, ntype, message[:80],
             )
+            # MARKER_204.VIBE: Write signal file for Vibe agents so PRETOOL_HOOK picks it up
+            self._write_vibe_signal(target_role, notif_id, source_role, message, ntype)
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def _write_vibe_signal(
+        self,
+        target_role: str,
+        notif_id: str,
+        source_role: str,
+        message: str,
+        ntype: str,
+    ) -> None:
+        """MARKER_204.VIBE: Write signal file for Vibe agents to ~/.vetka/signals/{role}.json.
+
+        PRETOOL_HOOK reads this file before each tool call, enabling push notifications
+        without polling for agents that use AGENTS.md (Vibe, Opencode).
+        """
+        try:
+            from src.services.agent_registry import get_agent_registry
+            reg = get_agent_registry()
+            role = reg.get_by_callsign(target_role)
+            tool_type = getattr(role, "tool_type", "claude_code") if role else "claude_code"
+
+            if tool_type in ("vibe", "opencode"):
+                import json
+                from pathlib import Path
+                signal_data = {
+                    "notification_id": notif_id,
+                    "from": source_role,
+                    "message": message,
+                    "type": ntype,
+                    "created_at": datetime.now().isoformat(),
+                }
+                # Write to ~/.vetka/signals/ for Vibe agents
+                vetka_dir = Path.home() / ".vetka" / "signals"
+                vetka_dir.mkdir(parents=True, exist_ok=True)
+                (vetka_dir / f"{target_role}.json").write_text(
+                    json.dumps(signal_data, ensure_ascii=False), encoding="utf-8"
+                )
+                # Also write to ~/.claude/signals/ for opencode agents
+                claude_dir = Path.home() / ".claude" / "signals"
+                claude_dir.mkdir(parents=True, exist_ok=True)
+                (claude_dir / f"{target_role}.json").write_text(
+                    json.dumps(signal_data, ensure_ascii=False), encoding="utf-8"
+                )
+                logger.debug("[TaskBoard] Signal file written for %s (tool_type=%s)", target_role, tool_type)
+        except Exception as e:
+            logger.debug("[TaskBoard] _write_vibe_signal failed (non-fatal): %s", e)
 
     def get_notifications(
         self,

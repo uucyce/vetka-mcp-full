@@ -1564,6 +1564,11 @@ class SessionInitTool(BaseMCPTool):
                 # MARKER_200.MODEL_TIER: Include model_tier from registry
                 if getattr(_role, "model_tier", None):
                     _role_ctx["model_tier"] = _role.model_tier
+                # MARKER_204.VIBE: Include tool_type + memory_path for Vibe/Opencode agents
+                if getattr(_role, "tool_type", None):
+                    _role_ctx["tool_type"] = _role.tool_type
+                if getattr(_role, "memory_path", None):
+                    _role_ctx["memory_path"] = _role.memory_path
 
                 # Workflow hints based on domain
                 if _role.domain == "architect":
