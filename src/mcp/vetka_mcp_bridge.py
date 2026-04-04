@@ -49,12 +49,14 @@ if _project_root not in sys.path:
 import asyncio
 import httpx
 import json
+import struct
 import sys
 import os
 import signal
 import uuid
 import contextvars
 import argparse
+from pathlib import Path
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
