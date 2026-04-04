@@ -70,6 +70,7 @@ import TimelineMiniMap from './panels/TimelineMiniMap';
 import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 import MatchSequencePopup from './MatchSequencePopup';
+import KeyframeGraphEditor from './KeyframeGraphEditor';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -103,6 +104,8 @@ const LutBrowserPanelDock = withErrorBoundary('LUTs', LutBrowserPanel);
 // SpeedControl mounted as Suspense modal in MenuBar.tsx (line 800+)
 // MARKER_GAMMA-LAYOUT1: TransitionsPanel removed — Transitions = category inside EffectsPanel
 const ToolsPaletteDock = withErrorBoundary('Tools', ToolsPalette);
+// MARKER_KF58: KeyframeGraphEditor panel (FCP7 Ch.58-59)
+const KeyframeGraphEditorDock = withErrorBoundary('Keyframes', KeyframeGraphEditor);
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -132,6 +135,8 @@ const PANEL_COMPONENTS = {
   acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
   // MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
   generation: GenerationControlPanelDock,
+  // MARKER_KF58: Keyframe Graph Editor panel (FCP7 Ch.58-59)
+  keyframes: KeyframeGraphEditorDock,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
