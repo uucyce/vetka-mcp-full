@@ -2446,6 +2446,12 @@ class TaskBoard:
             "agent_type": agent_type,
         })
 
+        # MARKER_207.NOTIFY_CLAIM: Auto-notify Commander when any agent claims a task
+        self._auto_notify(
+            task, self.NOTIF_TASK_CLAIMED,
+            source_role=agent_name,
+        )
+
         # MARKER_ZETA.D4: Warn-mode domain validation via AgentRegistry
         domain_warning = None
         try:
@@ -2638,6 +2644,13 @@ class TaskBoard:
             source_role=str(task.get("assigned_to") or ""),
         )
 
+        # MARKER_207.NOTIFY_QA: Auto-notify Delta (QA) when task goes to done_worktree
+        if final_status == "done_worktree":
+            self._auto_notify(
+                task, self.NOTIF_TASK_DONE_WORKTREE,
+                source_role=str(task.get("assigned_to") or ""),
+            )
+
         # MARKER_ZETA.D4: Warn-mode allowed_paths validation on complete
         ownership_warnings = []
         try:
@@ -2732,6 +2745,8 @@ class TaskBoard:
     NOTIF_TASK_NEEDS_FIX = "task_needs_fix"
     NOTIF_READY_TO_MERGE = "ready_to_merge"
     NOTIF_TASK_COMPLETED = "task_completed"
+    NOTIF_TASK_CLAIMED = "task_claimed"          # MARKER_207.NOTIFY_CLAIM
+    NOTIF_TASK_DONE_WORKTREE = "task_done_worktree"  # MARKER_207.NOTIFY_QA
     NOTIF_CUSTOM = "custom"
 
     def notify(
@@ -2936,6 +2951,12 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
             targets.append(("Commander", f"Task completed by {owner}: {title}"))
+        elif ntype == self.NOTIF_TASK_CLAIMED:
+            # MARKER_207.NOTIFY_CLAIM: Inform Commander when agent claims work
+            targets.append(("Commander", f"Task claimed by {owner}: {title} [{task_id}]"))
+        elif ntype == self.NOTIF_TASK_DONE_WORKTREE:
+            # MARKER_207.NOTIFY_QA: Route done_worktree to Delta for QA verification
+            targets.append(("Delta", f"Ready for QA: {title} [{task_id}] by {owner}"))
         else:
             return  # Unknown type, skip
 
