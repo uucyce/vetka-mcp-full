@@ -71,10 +71,8 @@ class UDSDaemon:
         self._role_worktree = self._load_registry()
 
     @staticmethod
-    def _load_registry() -> dict[str, dict]:
-        """Load role→{worktree, agent_type, ...} mapping from agent_registry.yaml.
-        MARKER_206.REGISTRY_V2 — returns dict per role instead of bare worktree string.
-        """
+    def _load_registry() -> dict[str, str]:
+        """Load role→worktree mapping from agent_registry.yaml."""
         registry_path = Path(__file__).resolve().parent.parent / "data" / "templates" / "agent_registry.yaml"
         if not registry_path.exists():
             logger.warning("agent_registry.yaml not found at %s", registry_path)
@@ -87,13 +85,7 @@ class UDSDaemon:
                 callsign = role.get("callsign")
                 worktree = role.get("worktree")
                 if callsign and worktree:
-                    mapping[callsign] = {
-                        "worktree": worktree,
-                        "agent_type": role.get("agent_type", "claude_code"),
-                        "terminal_pref": role.get("terminal_pref", "auto"),
-                        "vibe_url": role.get("vibe_url"),
-                        "spawn_command": role.get("spawn_command"),
-                    }
+                    mapping[callsign] = worktree
             logger.info("Registry loaded: %d roles with worktrees", len(mapping))
             return mapping
         except Exception as exc:
@@ -130,47 +122,22 @@ class UDSDaemon:
             # tmux session exists — agent is running but not UDS-connected
             return
 
-        # Agent offline — spawn via SYNAPSE (Phase 206) or legacy spawn_agent.sh
-        role_info = self._role_worktree.get(target_role)
-        if not role_info:
-            logger.warning("[AUTOSPAWN] No registry entry for role %s, skipping", target_role)
+        # Agent offline — spawn
+        worktree = self._role_worktree.get(target_role)
+        if not worktree:
+            logger.warning("[AUTOSPAWN] No worktree for role %s, skipping", target_role)
             return
 
-        # Support both v2 (dict) and v1 (bare string) registry formats
-        if isinstance(role_info, str):
-            worktree = role_info
-            agent_type = "claude_code"
-        else:
-            worktree = role_info.get("worktree")
-            agent_type = role_info.get("agent_type", "claude_code")
-
-        scripts_dir = Path(__file__).resolve().parent
-        synapse_script = scripts_dir / "spawn_synapse.sh"
-        legacy_script = scripts_dir / "spawn_agent.sh"
-
-        # MARKER_206.SYNAPSE_SPAWN — prefer spawn_synapse.sh, fall back to legacy
-        if synapse_script.exists():
-            spawn_script = synapse_script
-            spawn_args = [str(spawn_script), target_role, worktree, agent_type]
-        elif legacy_script.exists():
-            spawn_script = legacy_script
-            spawn_args = [str(spawn_script), target_role, worktree]
-        else:
-            logger.warning("[AUTOSPAWN] No spawn script found in %s", scripts_dir)
+        spawn_script = Path(__file__).resolve().parent / "spawn_agent.sh"
+        if not spawn_script.exists():
+            logger.warning("[AUTOSPAWN] spawn_agent.sh not found at %s", spawn_script)
             return
 
-        # Pass vibe_url via env if agent is vibe type
-        spawn_env = None
-        if isinstance(role_info, dict) and role_info.get("vibe_url"):
-            spawn_env = {**os.environ, "SYNAPSE_VIBE_URL": role_info["vibe_url"]}
-
-        logger.info("[AUTOSPAWN] %s offline → spawning via %s (type=%s, worktree=%s)",
-                    target_role, spawn_script.name, agent_type, worktree)
+        logger.info("[AUTOSPAWN] %s offline → spawning in worktree %s", target_role, worktree)
         subprocess.Popen(
-            spawn_args,
+            [str(spawn_script), target_role, worktree],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            env=spawn_env,
         )
         self._stats["autospawns"] += 1
 

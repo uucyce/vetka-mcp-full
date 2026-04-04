@@ -110,11 +110,72 @@ VALID_STATUSES = {
     "verified",
     "needs_fix",
     "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
+    "scout_recon",  # MARKER_203.SCOUT: Scout found code locations, ready for Sherpa or agent
 }
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
+
+# MARKER_203.SCOUT.LAZY: Lazy-loaded Scout singleton
+_scout_instance = None
+_scout_load_attempted = False
+
+
+def _get_scout():
+    """Lazy-load Scout. Returns None if scout.py not available."""
+    global _scout_instance, _scout_load_attempted
+    if _scout_load_attempted:
+        return _scout_instance
+    _scout_load_attempted = True
+    try:
+        from src.services.scout import get_scout
+        _scout_instance = get_scout(PROJECT_ROOT)
+        logger.info("[TaskBoard] SCOUT_HOOK: Scout loaded")
+    except ImportError:
+        logger.debug("[TaskBoard] SCOUT_HOOK: scout.py not found, scouting disabled")
+    except Exception as exc:
+        logger.warning("[TaskBoard] SCOUT_HOOK: failed to load Scout: %s", exc)
+    return _scout_instance
+
+
+def _run_scout_hook(task_payload: dict, board: "TaskBoard") -> None:
+    """Run Scout on a task and update scout_context + status if markers found.
+
+    MARKER_203.SCOUT.HOOK
+    Never raises — all errors caught and logged.
+    Only runs when task has allowed_paths or domain.
+    """
+    try:
+        has_paths = bool(task_payload.get("allowed_paths"))
+        has_domain = bool(task_payload.get("domain"))
+        if not has_paths and not has_domain:
+            return
+
+        if task_payload.get("phase_type") == "research":
+            return
+
+        scout = _get_scout()
+        if scout is None:
+            return
+
+        markers = scout.analyze(task_payload)
+        if not markers:
+            return
+
+        scout_context = [m.to_dict() for m in markers]
+        task_payload["scout_context"] = scout_context
+
+        if task_payload.get("status") == "pending":
+            task_payload["status"] = "scout_recon"
+
+        logger.info(
+            "[TaskBoard] SCOUT_HOOK: %d markers for %s",
+            len(markers), task_payload.get("id", "?"),
+        )
+    except Exception as exc:
+        logger.warning("[TaskBoard] SCOUT_HOOK error (safe): %s", exc)
+
 
 # Counter for generating IDs
 # MARKER_200.DEDUPE_FIX: Use PID + monotonic counter to prevent cross-process ID collisions.
@@ -226,6 +287,7 @@ class TaskBoard:
         """
         # Determine DB path
         if board_file is not None:
+            board_file = Path(board_file)  # ensure Path, not str — hotfix for agent spawn
             if str(board_file).endswith(".json"):
                 # Legacy callers passing .json path → derive .db path
                 self.board_file = board_file
@@ -2034,6 +2096,12 @@ class TaskBoard:
         # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
         self._insert_task(task_payload)
         self._notify_board_update("added")
+
+        # MARKER_203.SCOUT.ADD_HOOK: Scout enrichment on task creation
+        _run_scout_hook(task_payload, self)
+        if task_payload.get("scout_context"):
+            self._save_task(task_payload)
+
         logger.info(
             f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})"
         )
@@ -2391,6 +2459,8 @@ class TaskBoard:
             "merge_result",  # MARKER_184.5
             "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
             "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
+            "scout_context",  # MARKER_203.SCOUT: Code markers from PULSAR Scout
+            "verify_retries", "verification_notes",  # MARKER_205: Verifier middleware fields
         }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
@@ -2433,6 +2503,13 @@ class TaskBoard:
 
         self._save_task(task)
         self._notify_board_update("updated")
+
+        # MARKER_203.SCOUT.UPDATE_HOOK: Re-scout when paths or description change
+        if "allowed_paths" in updates or "description" in updates:
+            _run_scout_hook(task, self)
+            if task.get("scout_context"):
+                self._save_task(task)
+
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
@@ -4949,33 +5026,6 @@ class TaskBoard:
                             f"[MergeRequest] snapshot: '{fpath}' not on {branch}, skipping"
                         )
 
-                # MARKER_205.SNAPSHOT_AUTO_EXPAND: Auto-detect sidecar files changed
-                # in branch but not covered by allowed_paths (e.g. new modules, event_bus.py,
-                # tests outside owned paths). Without this, they silently disappear on merge.
-                # Real incident 2026-04-04: Zeta's event_bus.py lost — 2h debug, 3 conflicts.
-                rc, diff_out, _ = await _git("diff", "--name-only", f"main..{branch}")
-                if rc == 0 and diff_out:
-                    actual_changed = set(diff_out.splitlines())
-                    allowed_set = set(allowed_paths)
-                    sidecar_files = actual_changed - allowed_set
-                    if sidecar_files:
-                        logger.info(
-                            "[MergeRequest] snapshot auto-expand: %d sidecar file(s) "
-                            "changed in branch but outside allowed_paths: %s",
-                            len(sidecar_files), sorted(sidecar_files),
-                        )
-                        for fpath in sorted(sidecar_files):
-                            rc2, _, err2 = await _git("checkout", branch, "--", fpath)
-                            if rc2 != 0:
-                                logger.warning(
-                                    "[MergeRequest] snapshot auto-expand: '%s' checkout "
-                                    "failed, skipping: %s", fpath, err2
-                                )
-                            else:
-                                logger.debug(
-                                    "[MergeRequest] snapshot auto-expand: included '%s'", fpath
-                                )
-
                 # Check if anything changed
                 rc, st_out, _ = await _git("status", "--porcelain")
                 if not st_out:
@@ -4990,7 +5040,7 @@ class TaskBoard:
                 rc, _, err = await _git(
                     "commit",
                     "-m",
-                    f"Snapshot merge {branch} into main via TaskBoard",
+                    f"Snapshot merge {branch} into main via TaskBoard (allowed_paths only)",
                 )
                 if rc != 0:
                     return {"success": False, "error": f"Snapshot commit failed: {err}"}
