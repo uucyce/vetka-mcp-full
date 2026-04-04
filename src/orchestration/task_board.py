@@ -5026,6 +5026,33 @@ class TaskBoard:
                             f"[MergeRequest] snapshot: '{fpath}' not on {branch}, skipping"
                         )
 
+                # MARKER_205.SNAPSHOT_AUTO_EXPAND: Auto-detect sidecar files changed
+                # in branch but not covered by allowed_paths (e.g. new modules, event_bus.py,
+                # tests outside owned paths). Without this, they silently disappear on merge.
+                # Real incident 2026-04-04: Zeta's event_bus.py lost — 2h debug, 3 conflicts.
+                rc, diff_out, _ = await _git("diff", "--name-only", f"main..{branch}")
+                if rc == 0 and diff_out:
+                    actual_changed = set(diff_out.splitlines())
+                    allowed_set = set(allowed_paths)
+                    sidecar_files = actual_changed - allowed_set
+                    if sidecar_files:
+                        logger.info(
+                            "[MergeRequest] snapshot auto-expand: %d sidecar file(s) "
+                            "changed in branch but outside allowed_paths: %s",
+                            len(sidecar_files), sorted(sidecar_files),
+                        )
+                        for fpath in sorted(sidecar_files):
+                            rc2, _, err2 = await _git("checkout", branch, "--", fpath)
+                            if rc2 != 0:
+                                logger.warning(
+                                    "[MergeRequest] snapshot auto-expand: '%s' checkout "
+                                    "failed, skipping: %s", fpath, err2
+                                )
+                            else:
+                                logger.debug(
+                                    "[MergeRequest] snapshot auto-expand: included '%s'", fpath
+                                )
+
                 # Check if anything changed
                 rc, st_out, _ = await _git("status", "--porcelain")
                 if not st_out:
