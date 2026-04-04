@@ -3256,7 +3256,7 @@ class TaskBoard:
                     from src.orchestration.event_bus import AgentEvent
                     event = AgentEvent(
                         event_type="notify",
-                        source="task_board",
+                        source_agent="task_board",
                         payload={
                             "action": "notify",
                             "target_role": target_role,
