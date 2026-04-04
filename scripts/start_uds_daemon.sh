@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DAEMON_SCRIPT="$SCRIPT_DIR/uds_daemon.py"
 PYTHON="${VETKA_PYTHON:-$(dirname "$SCRIPT_DIR")/.venv/bin/python3}"
 SOCKET_PATH="/tmp/vetka-events.uds"
-PID_FILE="/tmp/vetka-events-daemon.pid"
+PID_FILE="/tmp/vetka-uds-daemon.pid"
 
 # Pass through --stop / --status to daemon script
 if [[ "${1:-}" == "--stop" ]]; then
