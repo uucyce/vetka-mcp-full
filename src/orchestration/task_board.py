@@ -2800,6 +2800,28 @@ class TaskBoard:
             except Exception as sig_err:
                 logger.debug("[TaskBoard] FILE_SIGNAL write failed (non-fatal): %s", sig_err)
 
+            # MARKER_205.NOTIFY_BUS: Emit notify event through EventBus → UDS daemon
+            # This enables autospawn: daemon receives notify, checks tmux, spawns offline agent.
+            try:
+                if hasattr(self, 'event_bus') and self.event_bus:
+                    from src.orchestration.event_bus import AgentEvent
+                    event = AgentEvent(
+                        event_type="notify",
+                        source="task_board",
+                        payload={
+                            "action": "notify",
+                            "target_role": target_role,
+                            "source_role": source_role,
+                            "message": message[:500],
+                            "ntype": ntype,
+                            "task_id": task_id,
+                            "notification_id": notif_id,
+                        },
+                    )
+                    self.event_bus.emit(event)
+            except Exception as bus_err:
+                logger.debug("[TaskBoard] NOTIFY_BUS emit failed (non-fatal): %s", bus_err)
+
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")

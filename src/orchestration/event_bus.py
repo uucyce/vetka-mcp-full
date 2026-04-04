@@ -460,11 +460,14 @@ def init_event_bus(db_path: Optional[Path] = None, enable_uds: bool = True) -> E
     bus.subscribe(piggyback)
 
     # 4. UDS Publisher — push to daemon for fan-out to MCP servers
-    #    Only if daemon socket exists (daemon must be started separately)
-    if enable_uds and os.path.exists(UDSPublisher.DEFAULT_SOCKET_PATH):
+    #    MARKER_205.LAZY_UDS: Always subscribe — UDSPublisher handles missing daemon
+    #    gracefully (drops events if socket doesn't exist, reconnects when it appears).
+    #    Previous check `os.path.exists(socket)` caused permanent UDS blackout if
+    #    daemon started after EventBus init.
+    if enable_uds:
         uds_pub = UDSPublisher()
         bus.subscribe(uds_pub)
-        logger.info("EventBus: UDS publisher wired (daemon at %s)", UDSPublisher.DEFAULT_SOCKET_PATH)
+        logger.info("EventBus: UDS publisher wired (lazy connect to %s)", UDSPublisher.DEFAULT_SOCKET_PATH)
 
     logger.info(
         "EventBus initialized with %d subscribers", bus.subscriber_count
