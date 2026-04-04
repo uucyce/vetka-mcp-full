@@ -18,6 +18,7 @@ roles:
     worktree: "cut-engine"
     branch: "claude/cut-engine"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    memory_path: "memory/roles/Alpha/MEMORY.md"
     owned_paths:
       - "client/src/store/useTimelineInstanceStore.ts"
       - "client/src/store/useCutEditorStore.ts"           # timeline fields ONLY
@@ -49,6 +50,7 @@ roles:
     worktree: "cut-media"
     branch: "claude/cut-media"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: simple fixes, imports, pipelines
+    memory_path: "memory/roles/Beta/MEMORY.md"
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
       - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
@@ -86,6 +88,7 @@ roles:
     worktree: "cut-ux"
     branch: "claude/cut-ux"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: wiring, SVG, CSS
+    memory_path: "memory/roles/Gamma/MEMORY.md"
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
       - "client/src/components/cut/DockviewLayout.tsx"
@@ -113,6 +116,7 @@ roles:
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — downgraded from sonnet: checklist QA, pytest runs
+    memory_path: "memory/roles/Delta/MEMORY.md"
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -166,6 +170,7 @@ roles:
     worktree: "cut-qa-3"
     branch: "agent/lambda-qa"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Lambda/MEMORY.md"
     file: "e2e/*.spec.cjs"
     owned_paths:
       - "e2e/*.spec.cjs"
@@ -193,6 +198,7 @@ roles:
     worktree: "cut-qa-4"
     branch: "agent/mu-qa"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Mu/MEMORY.md"
     file: "e2e/*.spec.cjs"
     owned_paths:
       - "e2e/*.spec.cjs"
@@ -221,6 +227,7 @@ roles:
     worktree: "harness"
     branch: "claude/harness"
     model_tier: "opus"  # MARKER_200.MODEL_TIER — infra needs deep reasoning
+    memory_path: "memory/roles/Zeta/MEMORY.md"
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -254,6 +261,7 @@ roles:
     role_title: "Harness Engineer 2 / Infrastructure"
     worktree: "harness-eta"
     branch: "claude/harness-eta"
+    memory_path: "memory/roles/Eta/MEMORY.md"
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -311,6 +319,7 @@ roles:
     worktree: "captain"
     branch: "agent/polaris-captain"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Polaris/MEMORY.md"
     file: "data/templates/agent_registry.yaml"
     owned_paths:
       - "data/templates/agent_registry.yaml"
@@ -342,6 +351,7 @@ roles:
     worktree: "weather-core"
     branch: "agent/theta-weather"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Theta/MEMORY.md"
     file: "src/services/browser_manager.py"
     owned_paths:
       - "src/services/browser_manager.py"
@@ -361,6 +371,7 @@ roles:
     worktree: "weather-mediator"
     branch: "agent/iota-mediator"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Iota/MEMORY.md"
     file: "src/services/weather_mediator.py"
     owned_paths:
       - "src/services/weather_mediator.py"
@@ -379,6 +390,7 @@ roles:
     worktree: "weather-terminal"
     branch: "agent/kappa-terminal"
     model_tier: "sonnet"
+    memory_path: "memory/roles/Kappa/MEMORY.md"
     file: "client/src/components/weather/"
     owned_paths:
       - "client/src/components/weather/"
@@ -391,12 +403,13 @@ roles:
   - callsign: "Mistral-1"
     domain: "weather"
     pipeline_stage: "coder"
-    tool_type: "opencode"
+    tool_type: "vibe"
     role_title: "Mistral Weather Agent 1"
     worktree: "weather-mistral-1"
     branch: "agent/mistral-1-weather"
     model_tier: "sonnet"
     file: "src/services/"
+    memory_path: "memory/roles/Mistral-1/MEMORY.md"
     owned_paths:
       - "src/services/"
       - "config/browser_agents.yaml"
@@ -409,12 +422,13 @@ roles:
   - callsign: "Mistral-2"
     domain: "qa"
     pipeline_stage: "verifier"
-    tool_type: "opencode"
+    tool_type: "vibe"
     role_title: "Mistral QA Agent 2"
     worktree: "cut-qa-5"
     branch: "agent/mistral-2-qa"
     model_tier: "sonnet"
     file: "e2e/*.spec.cjs"
+    memory_path: "memory/roles/Mistral-2/MEMORY.md"
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -431,12 +445,13 @@ roles:
   - callsign: "Mistral-3"
     domain: "weather"
     pipeline_stage: "coder"
-    tool_type: "opencode"
+    tool_type: "vibe"
     role_title: "Mistral Weather Agent 3"
     worktree: "weather-mistral-2"
     branch: "agent/mistral-3-weather"
     model_tier: "sonnet"
     file: "src/services/"
+    memory_path: "memory/roles/Mistral-3/MEMORY.md"
     owned_paths:
       - "src/services/"
       - "config/browser_agents.yaml"

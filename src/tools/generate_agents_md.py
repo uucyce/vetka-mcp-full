@@ -33,11 +33,20 @@ TEMPLATE = """\
 
 ## Init
 ```
-1. vetka_session_init role={callsign}
+1. mcp__vetka__vetka_session_init role={callsign}
    → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
-2. vetka_task_board action=list filter_status={filter_status}
-3. Claim → Work → commit → need_qa
+2. mcp__vetka__vetka_task_board action=list filter_status={filter_status}
+3. Claim → Work → mcp__vetka__vetka_task_board action=complete task_id=<id> branch={branch}
 ```
+
+`action=complete` = auto-stage + commit + close. NEVER raw git commit.
+
+## Signal Setup (PRETOOL_HOOK)
+Run before starting: `export VETKA_AGENT_ROLE={callsign}`
+Check inbox: `mcp__vetka__vetka_task_board action=notifications role={callsign}`
+Send message: `mcp__vetka__vetka_task_board action=notify source_role={callsign} target_role=Commander message="..."` to signal Commander
+
+{memory_section}
 
 ## YOUR ROLE
 You are **{callsign}** — {role_title}.
@@ -48,8 +57,7 @@ You are **{callsign}** — {role_title}.
 ## RULES
 - Modify ONLY files in your allowed_paths
 - NEVER touch blocked_paths
-- Commit via `vetka_git_commit` with `[task:tb_xxxx]`
-- After commit: `vetka_task_board action=update status=need_qa`
+- Commit via `mcp__vetka__vetka_git_commit` with `[task:tb_xxxx]`
 - NEVER set `done_worktree` yourself — QA agent does that after verification
 """
 
@@ -67,8 +75,10 @@ If `vetka_session_init` shows as "Unknown tool" — MCP not connected. Restart V
 1. vetka_session_init role={callsign}
    → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
 2. vetka_task_board action=list filter_status={filter_status}
-3. Claim → Work → commit → need_qa
+3. Claim → Work → vetka_task_board action=complete task_id=<id> branch={branch}
 ```
+
+`action=complete` = auto-stage + commit + close. NEVER raw git commit.
 
 ### If MCP unavailable (fallback — read-only init)
 ```bash
@@ -83,6 +93,20 @@ import json; print(json.dumps(result, indent=2, default=str))
 ```
 After Python init — use bash tools only (git, find, cat). vetka_git_commit and vetka_task_board require MCP.
 
+## Error Handling
+STOP immediately if you see:
+- "Unknown tool" → MCP not connected, restart Vibe
+- "Permission denied" → file outside owned_paths, do NOT modify
+- Any crash → notify Commander before retrying
+
+## Signal Setup (PRETOOL_HOOK)
+Launch via: `source launch_vibe.sh` (sets VETKA_AGENT_ROLE={callsign} + PRETOOL_HOOK=check_opencode_signals.sh)
+The `check_opencode_signals.sh` script runs before each tool call — reads signal files from `~/.vetka/signals/`.
+Check inbox: `vetka_task_board action=notifications role={callsign}`
+Send message: `vetka_task_board action=notify source_role={callsign} target_role=Commander message="..."` to signal Commander
+
+{memory_section}
+
 ## YOUR ROLE
 You are **{callsign}** — {role_title}.
 
@@ -93,7 +117,6 @@ You are **{callsign}** — {role_title}.
 - Modify ONLY files in your allowed_paths
 - NEVER touch blocked_paths
 - Commit via `vetka_git_commit` with `[task:tb_xxxx]`
-- After commit: `vetka_task_board action=update status=need_qa`
 - NEVER set `done_worktree` yourself — QA agent does that after verification
 """
 
@@ -126,6 +149,15 @@ def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
         paths_str = "\n".join(f"- {p}" for p in blocked_paths[:8])
         blocked_section = f"## BLOCKED PATHS\n{paths_str}"
 
+    memory_path = getattr(role, "memory_path", "") or ""
+    memory_section = ""
+    if memory_path:
+        memory_section = (
+            f"## Role Memory\n"
+            f"Your persistent memory: `{memory_path}`\n"
+            f"Read at session start. Write lessons/decisions there so next session picks them up."
+        )
+
     template = TEMPLATE_VIBE if tool_type == "vibe" else TEMPLATE
     content = template.format(
         callsign=callsign,
@@ -136,6 +168,7 @@ def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
         filter_status=filter_status,
         owned_paths_section=owned_section,
         blocked_paths_section=blocked_section,
+        memory_section=memory_section,
     )
 
     # Write to worktree
