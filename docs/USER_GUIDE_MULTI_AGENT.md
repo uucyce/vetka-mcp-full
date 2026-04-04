@@ -34,13 +34,13 @@
 ## Быстрый старт: 3 команды
 
 ```bash
-# 1. Запустить агента в worktree (роль загрузится автоматически)
+# 1. Запустить агента в worktree (роль загрузится автоматически, hook уведомит о сигналах)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine
 claude --dangerously-skip-permissions --model sonnet
 
-# 2. Запустить Qwen-агента через opencode (WEATHER роли)
+# 2. Запустить Qwen-агента через opencode (WEATHER роли) — с ролью для сигналов
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core
-opencode -m opencode/qwen3.6-plus-free
+VETKA_AGENT_ROLE=Theta opencode -m opencode/qwen3.6-plus-free
 
 # 3. Посмотреть кто сейчас работает
 vetka_task_board action=active_agents
@@ -231,6 +231,135 @@ vetka session init
 ### Попросить merge
 ```
 Замерджь ветку claude/cut-engine в main
+```
+
+---
+
+## Signal Delivery — Уведомления в реальном времени
+
+**Phase 204 (2026-04-04).** Commander отправляет `action=notify` → агент видит сообщение при следующем tool call. Без ручного обхода терминалов.
+
+### Как работает
+
+```
+Commander: vetka_task_board action=notify target_role=Alpha message="..."
+               ↓
+         SQLite notifications + ~/.claude/signals/Alpha.json
+               ↓
+         PreToolUse hook (check_notifications.sh) — срабатывает перед любым tool call
+               ↓
+         Агент видит сообщение в разговоре → действует
+```
+
+**Signal file format** (`~/.claude/signals/{ROLE}.json`):
+```json
+[
+  {"id": "notif_xxx", "from": "Commander", "message": "...", "ts": "ISO", "ntype": "custom"}
+]
+```
+
+Файл читается атомарно и удаляется после прочтения (one-shot delivery).
+
+### Настройка (один раз)
+
+**Шаг 1:** Убедиться что hooks установлены во всех worktrees:
+```bash
+cd ~/Documents/VETKA_Project/vetka_live_03
+bash scripts/install_notification_hooks.sh
+```
+
+Ожидаемый результат:
+```
+[OK]   Alpha (cut-engine): PreToolUse hook installed
+[OK]   Beta (cut-media): PreToolUse hook installed
+...
+[OK]   Eta (harness-eta): PreToolUse hook installed
+Done: 7 installed, 0 skipped, 0 errors
+```
+
+Команда идемпотентна — повторный запуск ничего не сломает.
+
+**Шаг 2:** Запустить UDS Daemon (автоматическая публикация событий):
+```bash
+bash scripts/start_uds_daemon.sh
+```
+
+Для macOS автостарт через launchd:
+```bash
+# Daemon стартует автоматически при входе в систему
+launchctl load ~/Library/LaunchAgents/com.vetka.uds-daemon.plist
+```
+
+**Шаг 3:** Проверить что директория сигналов существует:
+```bash
+ls ~/.claude/signals/   # создаётся автоматически install_notification_hooks.sh
+```
+
+### Обновлённый workflow Commander
+
+**Было (до Phase 204):**
+1. Commander: `action=notify target_role=Alpha message="Готово, замерджи"`
+2. Пользователь: переключается в терминал Alpha, пишет "проверь уведомления"
+3. Alpha: `action=notifications` → читает → действует
+
+**Стало (Phase 204+):**
+1. Commander: `action=notify target_role=Alpha message="Готово, замерджи"`
+2. Alpha: видит сообщение автоматически при следующем tool call
+
+Больше не нужно вручную обходить 5-8 терминалов.
+
+### Дополнительные сигналы
+
+Кроме `action=notify` агент всё равно может проверить вручную:
+```
+vetka_task_board action=notifications role=Alpha
+vetka_task_board action=ack_notifications role=Alpha
+```
+
+### Troubleshooting
+
+**Агент не видит уведомления:**
+```bash
+# Проверить что hook установлен
+cat .claude/settings.json | python3 -m json.tool | grep -A3 PreToolUse
+
+# Проверить что signal file создаётся после notify
+ls -la ~/.claude/signals/
+
+# Запустить hook вручную для теста
+bash scripts/check_notifications.sh Alpha
+```
+
+**Signal file не удаляется:**
+```bash
+# Временный файл застрял (race condition при параллельных запусках)
+ls ~/.claude/signals/*.tmp 2>/dev/null
+rm -f ~/.claude/signals/*.tmp
+```
+
+**Hook слишком медленный (>1сек):**
+- `stat` на несуществующий файл: <1ms
+- Чтение + python3 parse при наличии сигнала: ~30ms
+- Если <1ms нужно абсолютно: заменить python3 на `jq` (если установлен)
+
+### Opencode-агенты (Phase 205 prep)
+
+Для Qwen/Opencode агентов (Lambda, Mu, Polaris, Theta, Iota, Kappa) используется universal signal dir:
+
+```bash
+# Запуск Opencode с переменной роли
+VETKA_AGENT_ROLE=Lambda opencode -m opencode/qwen3.6-plus-free
+
+# Wrapper check_opencode_signals.sh проверяет обе директории:
+# 1. ~/.vetka/signals/{ROLE}.json  (universal, Opencode)
+# 2. ~/.claude/signals/{ROLE}.json (Claude Code fallback)
+```
+
+Настройка через `PRETOOL_HOOK` (Opencode env hook):
+```bash
+export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
+export VETKA_AGENT_ROLE=Lambda
+opencode -m opencode/qwen3.6-plus-free
 ```
 
 ---
