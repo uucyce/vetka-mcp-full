@@ -77,7 +77,8 @@ PRIORITY_SOMEDAY = 5
 #   verified = QA gate passed (MARKER_195.20), ready for merge
 #   needs_fix = QA gate failed, needs re-work
 # MARKER_196.QA: Added "need_qa" — explicit QA gate request between done_worktree and verified
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
+# MARKER_203.SCOUT: Added "scout_recon" (Scout enriched, pending Sherpa) and "recon_done" (Sherpa enriched, ready for agent)
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix", "scout_recon", "recon_done"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -2341,7 +2342,8 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued", "needs_fix"):
+        # MARKER_203.SCOUT: scout_recon and recon_done are claimable — agent can proceed without waiting for Sherpa
+        if task["status"] not in ("pending", "queued", "needs_fix", "scout_recon", "recon_done"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
