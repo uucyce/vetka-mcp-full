@@ -49,6 +49,7 @@ if _project_root not in sys.path:
 import asyncio
 import httpx
 import json
+import struct
 import sys
 import os
 import signal
@@ -1933,6 +1934,11 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                 importlib.reload(_tb_mod)
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
+                # MARKER_201.MCP_NOTIFY_RECEIVER: inject cross-process notifications
+                if _notification_receiver is not None:
+                    _push = _notification_receiver.drain_pending()
+                    if _push:
+                        result["push_notifications"] = _push
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"
                 return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
             except Exception as e:
@@ -2755,10 +2761,108 @@ async def graceful_shutdown():
     except Exception as e:
         print(f"[MCP] Pool cleanup error: {e}", file=sys.stderr)
 
+    # MARKER_201.MCP_NOTIFY_RECEIVER: Stop notification receiver on shutdown
+    if _notification_receiver is not None:
+        _notification_receiver.stop()
+
     # Close main client
     await cleanup_client()
 
     print("[MCP] Shutdown complete", file=sys.stderr)
+
+
+# MARKER_201.MCP_NOTIFY_RECEIVER: Cross-process notification receiver.
+# Connects to UDS Daemon (/tmp/vetka-events.uds) as an "agent" client.
+# The daemon fans out all EventBus events from all running worktrees to
+# this receiver, which buffers them for piggyback delivery in the next
+# vetka_task_board MCP response.
+#
+# Wire protocol: 4-byte big-endian length prefix + JSON payload.
+# Registration: first outgoing frame {"type": "agent", "role": <role>}
+#
+# Lifecycle: started once in main() when VETKA_AGENT_ROLE env var is set.
+# Reconnects with exponential backoff if the daemon is not running yet.
+
+class MCPNotificationReceiver:
+    """Buffers push notifications from the UDS daemon for piggybacking."""
+
+    SOCKET_PATH = "/tmp/vetka-events.uds"
+
+    def __init__(self, role: str, socket_path: str = SOCKET_PATH):
+        self._role = role
+        self._socket_path = socket_path
+        self._pending: list = []
+        self._running = False
+        self._task: Optional[asyncio.Task] = None
+
+    def start(self) -> None:
+        """Launch background listener coroutine as an asyncio Task."""
+        if self._task is None or self._task.done():
+            self._running = True
+            self._task = asyncio.create_task(
+                self._listen_loop(), name="uds-notify-receiver"
+            )
+
+    def stop(self) -> None:
+        """Cancel the background listener."""
+        self._running = False
+        if self._task and not self._task.done():
+            self._task.cancel()
+
+    def drain_pending(self) -> list:
+        """Return and clear all buffered notification frames."""
+        result = self._pending[:]
+        self._pending.clear()
+        return result
+
+    async def _listen_loop(self) -> None:
+        """Connect → register → read frames in a loop; reconnect on failure."""
+        backoff = 1.0
+        while self._running:
+            try:
+                reader, writer = await asyncio.open_unix_connection(self._socket_path)
+                # Send agent registration as first frame
+                reg = json.dumps({"type": "agent", "role": self._role}).encode()
+                writer.write(struct.pack(">I", len(reg)) + reg)
+                await writer.drain()
+                backoff = 1.0  # reset after successful connect
+
+                # Read length-prefixed frames until disconnect
+                while self._running:
+                    length_bytes = await reader.readexactly(4)
+                    length = struct.unpack(">I", length_bytes)[0]
+                    if length > 1_048_576:  # 1 MB sanity cap
+                        logger.warning("[MCPNotify] Oversized frame (%d bytes), reconnecting", length)
+                        break
+                    payload = await reader.readexactly(length)
+                    frame = json.loads(payload.decode())
+                    self._pending.append(frame)
+                    # Prevent unbounded growth between task_board calls
+                    if len(self._pending) > 200:
+                        self._pending = self._pending[-200:]
+
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
+
+            except (ConnectionRefusedError, FileNotFoundError):
+                pass  # daemon not running yet — retry silently
+            except asyncio.CancelledError:
+                return
+            except asyncio.IncompleteReadError:
+                pass  # daemon closed connection — reconnect
+            except Exception as exc:
+                logger.debug("[MCPNotify] Receiver error: %s", exc)
+
+            if self._running:
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 30.0)
+
+
+# Module-level singleton — set in main() when VETKA_AGENT_ROLE is present
+_notification_receiver: Optional[MCPNotificationReceiver] = None
 
 
 # MARKER_106a_4: Enhanced main with HTTP/WS/stdio modes
@@ -2778,6 +2882,27 @@ async def main():
 
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
+
+    # MARKER_205.UDS_AUTOSTART: Ensure UDS daemon is running (lightweight, 0 CPU idle).
+    # Every MCP bridge instance checks — first one to find it missing starts it.
+    _uds_socket = Path("/tmp/vetka-events.uds")
+    if not _uds_socket.exists():
+        _start_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "start_uds_daemon.sh"
+        if _start_script.exists():
+            import subprocess as _sp
+            _sp.Popen([str(_start_script)], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            print("[MCP] UDS daemon not running — started via start_uds_daemon.sh", file=sys.stderr)
+        else:
+            print("[MCP] UDS daemon not running and start script not found", file=sys.stderr)
+
+    # MARKER_201.MCP_NOTIFY_RECEIVER: Start cross-process notification receiver.
+    # Connects to UDS daemon and buffers push events for piggyback delivery.
+    global _notification_receiver
+    _agent_role = os.environ.get("VETKA_AGENT_ROLE", "").strip()
+    if _agent_role:
+        _notification_receiver = MCPNotificationReceiver(_agent_role)
+        _notification_receiver.start()
+        print(f"[MCP] MCPNotificationReceiver started (role={_agent_role})", file=sys.stderr)
 
     try:
         if args.http or args.ws:

@@ -57,7 +57,6 @@ class UDSDaemon:
         self.agents: dict[str, asyncio.StreamWriter] = {}
         # publisher connections (TaskBoard processes)
         self.publishers: list[asyncio.StreamReader] = []
-        self._stop_event: asyncio.Event | None = None  # created in run()
         self._stats = {
             "events_received": 0,
             "events_fanout": 0,
@@ -143,8 +142,6 @@ class UDSDaemon:
 
     async def run(self):
         """Start the daemon. Blocks forever (or until signal)."""
-        self._stop_event = asyncio.Event()
-
         # Clean up stale socket
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
@@ -163,18 +160,19 @@ class UDSDaemon:
             "UDS Daemon started on %s (PID %d)", self.socket_path, os.getpid()
         )
 
-        # Handle shutdown signals — set stop event instead of loop.stop()
+        # Handle shutdown signals
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, self._stop_event.set)
+            loop.add_signal_handler(sig, lambda: asyncio.create_task(self._shutdown(server)))
 
-        # Wait for stop signal (0 CPU while idle)
         async with server:
-            await self._stop_event.wait()
-            # Signal received — close server, let async-with handle cleanup
-            server.close()
-            await server.wait_closed()
+            await server.serve_forever()
 
+    async def _shutdown(self, server):
+        """Graceful shutdown."""
+        logger.info("Shutting down UDS Daemon...")
+        server.close()
+        await server.wait_closed()
         # Close all agent connections
         for role, writer in self.agents.items():
             try:
@@ -182,13 +180,14 @@ class UDSDaemon:
             except Exception:
                 pass
         self.agents.clear()
-
-        # Cleanup files
+        # Cleanup
         if os.path.exists(self.socket_path):
             os.unlink(self.socket_path)
         if os.path.exists(PID_FILE):
             os.unlink(PID_FILE)
         logger.info("UDS Daemon stopped. Stats: %s", json.dumps(self._stats))
+        # Stop event loop
+        asyncio.get_running_loop().stop()
 
     async def _handle_connection(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         """Handle a new connection. First frame determines type (publisher or agent)."""
