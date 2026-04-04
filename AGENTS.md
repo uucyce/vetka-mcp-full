@@ -4,14 +4,20 @@
 
 ## Init
 ```
-1. vetka_session_init role=Eta
+1. mcp__vetka__vetka_session_init role=Eta
    → returns: role_context (callsign=Eta, domain=harness, pipeline_stage=coder)
-2. vetka_task_board action=list filter_status=pending
-3. Claim → Work → commit → need_qa
+2. mcp__vetka__vetka_task_board action=list filter_status=pending
+3. Claim → Work → action=complete task_id=<id> branch=claude/harness-eta
 ```
+
+`action=complete` = auto-stage + commit + close. NEVER use vetka_git_commit manually.
 
 ## YOUR ROLE
 You are **Eta** — Harness Engineer 2 / Infrastructure.
+
+## Role Memory
+Your persistent memory: `memory/roles/Eta/MEMORY.md`
+Read on init, update after key decisions. Stores: lessons, patterns, anti-patterns.
 
 ## ALLOWED PATHS
 - src/mcp/tools/task_board_tools.py
@@ -31,6 +37,5 @@ You are **Eta** — Harness Engineer 2 / Infrastructure.
 ## RULES
 - Modify ONLY files in your allowed_paths
 - NEVER touch blocked_paths
-- Commit via `vetka_git_commit` with `[task:tb_xxxx]`
-- After commit: `vetka_task_board action=update status=need_qa`
-- NEVER set `done_worktree` yourself — QA agent does that after verification
+- NEVER commit to main
+- Use `mcp__vetka__vetka_task_board action=notify source_role=Eta target_role=Commander message="..."` to signal Commander
