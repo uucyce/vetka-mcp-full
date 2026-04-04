@@ -34,9 +34,12 @@ import logging
 import os
 import signal
 import struct
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+import yaml
 
 SOCKET_PATH = "/tmp/vetka-events.uds"
 PID_FILE = "/tmp/vetka-events-daemon.pid"
@@ -57,11 +60,85 @@ class UDSDaemon:
         self._stats = {
             "events_received": 0,
             "events_fanout": 0,
+            "autospawns": 0,
             "agents_connected": 0,
             "agents_disconnected": 0,
             "publishers_connected": 0,
             "started_at": datetime.now(timezone.utc).isoformat(),
         }
+        # Load role→worktree mapping from agent_registry.yaml
+        self._role_worktree = self._load_registry()
+
+    @staticmethod
+    def _load_registry() -> dict[str, str]:
+        """Load role→worktree mapping from agent_registry.yaml."""
+        registry_path = Path(__file__).resolve().parent.parent / "data" / "templates" / "agent_registry.yaml"
+        if not registry_path.exists():
+            logger.warning("agent_registry.yaml not found at %s", registry_path)
+            return {}
+        try:
+            with open(registry_path) as f:
+                data = yaml.safe_load(f)
+            mapping = {}
+            for role in data.get("roles", []):
+                callsign = role.get("callsign")
+                worktree = role.get("worktree")
+                if callsign and worktree:
+                    mapping[callsign] = worktree
+            logger.info("Registry loaded: %d roles with worktrees", len(mapping))
+            return mapping
+        except Exception as exc:
+            logger.warning("Failed to load agent_registry.yaml: %s", exc)
+            return {}
+
+    def _maybe_autospawn(self, raw_data: bytes):
+        """If event targets an offline agent, spawn it via tmux."""
+        try:
+            event = json.loads(raw_data)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+
+        # Only autospawn on notify events
+        payload = event.get("payload", {})
+        if event.get("event_type") != "notify" and payload.get("action") != "notify":
+            return
+
+        target_role = payload.get("target_role") or event.get("target_role")
+        if not target_role:
+            return
+
+        # Skip if agent is connected to daemon (online via UDS)
+        if target_role in self.agents:
+            return
+
+        # Check tmux session
+        session_name = f"vetka-{target_role}"
+        result = subprocess.run(
+            ["tmux", "has-session", "-t", session_name],
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            # tmux session exists — agent is running but not UDS-connected
+            return
+
+        # Agent offline — spawn
+        worktree = self._role_worktree.get(target_role)
+        if not worktree:
+            logger.warning("[AUTOSPAWN] No worktree for role %s, skipping", target_role)
+            return
+
+        spawn_script = Path(__file__).resolve().parent / "spawn_agent.sh"
+        if not spawn_script.exists():
+            logger.warning("[AUTOSPAWN] spawn_agent.sh not found at %s", spawn_script)
+            return
+
+        logger.info("[AUTOSPAWN] %s offline → spawning in worktree %s", target_role, worktree)
+        subprocess.Popen(
+            [str(spawn_script), target_role, worktree],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        self._stats["autospawns"] += 1
 
     async def run(self):
         """Start the daemon. Blocks forever (or until signal)."""
@@ -164,6 +241,9 @@ class UDSDaemon:
                 data = await reader.readexactly(length)
 
                 self._stats["events_received"] += 1
+
+                # Auto-spawn offline agents on notify events
+                self._maybe_autospawn(data)
 
                 # Fan-out to all connected agents
                 await self._fanout(data)
