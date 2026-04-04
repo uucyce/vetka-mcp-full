@@ -1,8 +1,12 @@
 # SHERPA — Scout & Harvest Engine for Recon, Prep & Augmentation
 
+> **SUPERSEDED** by `ARCHITECTURE_SHERPA_V2_SPACE.md` (Phase 203).
+> This doc describes Chrome MCP approach — actual implementation uses Playwright.
+> Kept as historical reference only.
+
 **Phase:** 202
 **Date:** 2026-04-02
-**Status:** v1.0 live, 10 services configured, P0/P1 bugs tracked
+**Status:** SUPERSEDED — see V2_SPACE doc
 **Origin:** WEATHER simplification — no new browser, no framework, just scripts
 **Current Services:** DeepSeek (2x), Kimi (2x), Arena, Z.ai, Mistral, HuggingChat, Monica, Bolt
 

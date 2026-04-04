@@ -1,5 +1,8 @@
 # RECON: Sherpa Infrastructure — What Exists, What's Missing
 
+> **PARTIALLY OUTDATED**: Status flow now includes `scout_recon` and `recon_done` (Phase 203).
+> Scout service (`src/services/scout.py`) was added after this recon.
+
 **Task:** `tb_1775084719_37380_1`
 **Date:** 2026-04-02
 **Phase:** 202

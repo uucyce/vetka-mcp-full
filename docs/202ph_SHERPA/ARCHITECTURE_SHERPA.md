@@ -1,4 +1,7 @@
-# SHERPA Architecture — Phase 202
+# SHERPA Architecture — Phase 202 (v1.0 Baseline)
+
+> **SUPERSEDED** by `ARCHITECTURE_SHERPA_V2_SPACE.md` + `ARCHITECTURE_SCOUT_VERIFIER_CHAIN.md`.
+> This is the v1.0 baseline. Current architecture includes Scout + Verifier chain (Phase 203).
 
 ## Current State (v1.0)
 - Text-only mode: all context (docs + code) inserted into prompt textarea
