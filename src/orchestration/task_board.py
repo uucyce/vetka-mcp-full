@@ -77,7 +77,32 @@ PRIORITY_SOMEDAY = 5
 #   verified = QA gate passed (MARKER_195.20), ready for merge
 #   needs_fix = QA gate failed, needs re-work
 # MARKER_196.QA: Added "need_qa" — explicit QA gate request between done_worktree and verified
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix", "recon_done"}
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix", "recon_done", "scout_recon"}
+
+# MARKER_205.VERIFIER_MIDDLEWARE: Lazy-loaded TaskVerifier for status transition gates.
+# If verifier.py (Phase 203 V1) is not yet deployed, all transitions pass through.
+_task_verifier = None
+_verifier_load_attempted = False
+VERIFIER_MAX_RETRIES = 3
+# Roles that bypass verifier checks (e.g. Commander correcting task state)
+VERIFIER_BYPASS_ROLES = {"Commander"}
+
+
+def _get_task_verifier():
+    """Lazy-load TaskVerifier. Returns None if verifier.py not available."""
+    global _task_verifier, _verifier_load_attempted
+    if _verifier_load_attempted:
+        return _task_verifier
+    _verifier_load_attempted = True
+    try:
+        from verifier import TaskVerifier
+        _task_verifier = TaskVerifier()
+        logger.info("[TaskBoard] VERIFIER_MIDDLEWARE: TaskVerifier loaded")
+    except ImportError:
+        logger.debug("[TaskBoard] VERIFIER_MIDDLEWARE: verifier.py not found, gate disabled")
+    except Exception as exc:
+        logger.warning("[TaskBoard] VERIFIER_MIDDLEWARE: failed to load TaskVerifier: %s", exc)
+    return _task_verifier
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -1968,6 +1993,51 @@ class TaskBoard:
                 if not has_commit:
                     logger.warning(f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash")
                     return False
+
+            # MARKER_205.VERIFIER_MIDDLEWARE: Gate on status transitions.
+            # Lazy-loads TaskVerifier (V1). If not available, passes through.
+            # Commander bypass: skip_verification or VERIFIER_BYPASS_ROLES.
+            skip_verification = updates.pop("skip_verification", False)
+            if new_status != old_status and not skip_verification:
+                caller_role = history_agent_name or str(task.get("assigned_to") or "")
+                if caller_role not in VERIFIER_BYPASS_ROLES:
+                    try:
+                        verifier = _get_task_verifier()
+                        if verifier is not None:
+                            verdict = verifier.check_transition(task, old_status, new_status)
+                            if not verdict.accepted:
+                                retries = (task.get("verify_retries") or 0) + 1
+                                rollback_status = verdict.rollback_to or old_status
+                                if retries >= VERIFIER_MAX_RETRIES:
+                                    rollback_status = "needs_fix"
+                                    verdict_reason = f"{verdict.reason} [MAX_RETRIES={VERIFIER_MAX_RETRIES}]"
+                                else:
+                                    verdict_reason = verdict.reason
+                                task["status"] = rollback_status
+                                task["verification_notes"] = verdict_reason
+                                task["verify_retries"] = retries
+                                self._save_task(task)
+                                self._append_history(
+                                    task,
+                                    event="verifier_rejected",
+                                    status=rollback_status,
+                                    agent_name=caller_role,
+                                    agent_type=str(task.get("agent_type") or ""),
+                                    source="verifier_middleware",
+                                    reason=verdict_reason,
+                                )
+                                logger.warning(
+                                    "[TaskBoard] VERIFIER rejected %s->%s for %s: %s (retries=%d)",
+                                    old_status, new_status, task_id, verdict_reason, retries,
+                                )
+                                return False
+                            # Accepted — reset retries
+                            if task.get("verify_retries"):
+                                updates["verify_retries"] = 0
+                    except Exception as exc:
+                        # Verifier must NEVER crash the task board
+                        logger.warning("[TaskBoard] VERIFIER_MIDDLEWARE error (passthrough): %s", exc)
+
         if "phase_type" in updates:
             try:
                 updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
@@ -2017,6 +2087,7 @@ class TaskBoard:
                           "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
                           "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
                           "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
+                          "verify_retries", "verification_notes", "scout_context",  # MARKER_205: Verifier + Scout fields
                           }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
