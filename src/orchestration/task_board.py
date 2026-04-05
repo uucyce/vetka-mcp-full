@@ -24,6 +24,7 @@ import time
 import logging
 import os
 import re
+import subprocess
 import asyncio
 from pathlib import Path
 from datetime import datetime
@@ -3460,6 +3461,27 @@ class TaskBoard:
                     source_role=source_role,
                     task_id=task_id,
                 )
+
+        # MARKER_208.SYNAPSE_WAKE: Actually wake target agents via tmux
+        # synapse_wake.sh handles session-exists check and activity threshold internally
+        _WAKE_TARGETS = {
+            self.NOTIF_TASK_COMPLETED: ["Delta"],
+            self.NOTIF_TASK_VERIFIED: ["Commander"],
+            self.NOTIF_READY_TO_MERGE: ["Commander"],
+            self.NOTIF_TASK_NEEDS_FIX: [],  # owner already notified, no wake needed
+        }
+        wake_roles = _WAKE_TARGETS.get(ntype, [])
+        for role in wake_roles:
+            try:
+                subprocess.run(
+                    ["bash", "scripts/synapse_wake.sh", role],
+                    cwd=str(PROJECT_ROOT),
+                    timeout=5,
+                    capture_output=True,
+                )
+                logger.info("[TaskBoard] SYNAPSE_WAKE: poked %s for %s", role, ntype)
+            except Exception as exc:
+                logger.warning("[TaskBoard] SYNAPSE_WAKE failed for %s: %s", role, exc)
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
