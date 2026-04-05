@@ -7,6 +7,7 @@
  */
 import { useMemo } from 'react';
 import { useCutEditorStore } from '../store/useCutEditorStore';
+import { useSelectionStore } from '../store/useSelectionStore';
 import type { TimelineClip, TimelineLane } from '../store/useCutEditorStore';
 
 /** Core timeline state — covers 90% of component needs */
@@ -38,7 +39,7 @@ export function useTimelineData(): TimelineData {
   const currentTime = useCutEditorStore((s) => s.currentTime);
   const duration = useCutEditorStore((s) => s.duration);
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const zoom = useCutEditorStore((s) => s.zoom);
   const scrollLeft = useCutEditorStore((s) => s.scrollLeft);
 
@@ -61,7 +62,7 @@ export function useTimelineData(): TimelineData {
  */
 export function useSelectedClip(): { clip: TimelineClip | null; clipId: string | null } {
   const lanes = useCutEditorStore((s) => s.lanes);
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
 
   const clip = useMemo(() => {
     if (!selectedClipId) return null;

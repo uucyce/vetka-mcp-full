@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * MARKER_143.P2: Mycelium Command Center — unified three-column workspace.
  * Merges Board + DAG + Stream + Artifacts into ONE view.

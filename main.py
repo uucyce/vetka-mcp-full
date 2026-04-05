@@ -85,7 +85,9 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(coro, timeout=timeout_sec)
             logger.info(f"[Shutdown] {label} stopped")
         except asyncio.TimeoutError:
-            logger.warning(f"[Shutdown] {label} timeout after {timeout_sec:.1f}s (continue)")
+            logger.warning(
+                f"[Shutdown] {label} timeout after {timeout_sec:.1f}s (continue)"
+            )
         except asyncio.CancelledError:
             logger.info(f"[Shutdown] {label} cancelled")
         except Exception as e:
@@ -122,7 +124,12 @@ async def lifespan(app: FastAPI):
         "MCC_JEPA_HTTP_URL",
         f"http://{os.environ['MCC_JEPA_HTTP_HOST']}:{os.environ['MCC_JEPA_HTTP_PORT']}/embed_texts",
     )
-    jepa_enabled = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {"1", "true", "yes", "on"}
+    jepa_enabled = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
     jepa_host = os.environ.get("MCC_JEPA_HTTP_HOST", "127.0.0.1")
     jepa_port = os.environ.get("MCC_JEPA_HTTP_PORT", "8099")
     jepa_health_url = f"http://{jepa_host}:{jepa_port}/health"
@@ -146,7 +153,9 @@ async def lifespan(app: FastAPI):
                 )
                 for _ in range(25):
                     if await _http_ok(jepa_health_url):
-                        logger.info(f"[Startup] JEPA runtime started on {jepa_host}:{jepa_port}")
+                        logger.info(
+                            f"[Startup] JEPA runtime started on {jepa_host}:{jepa_port}"
+                        )
                         break
                     await asyncio.sleep(0.2)
                 if not await _http_ok(jepa_health_url):
@@ -157,7 +166,9 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"[Startup] JEPA runtime auto-start failed: {e}")
         else:
-            logger.info(f"[Startup] JEPA runtime already active on {jepa_host}:{jepa_port}")
+            logger.info(
+                f"[Startup] JEPA runtime already active on {jepa_host}:{jepa_port}"
+            )
 
     # Initialize all components using existing initialization module
     from src.initialization import initialize_all_components
@@ -488,7 +499,9 @@ async def lifespan(app: FastAPI):
             logger.error(f"[Startup] TTS server start failed: {e}")
             app.state.tts_process = None
     else:
-        logger.info("[Startup] TTS autostart skipped (set VETKA_TTS_AUTOSTART=1 to enable)")
+        logger.info(
+            "[Startup] TTS autostart skipped (set VETKA_TTS_AUTOSTART=1 to enable)"
+        )
         app.state.tts_process = None
 
     # === MARKER_106e_2: Register async Socket.IO handlers ===
@@ -608,9 +621,17 @@ app = FastAPI(
 )
 
 # CORS Middleware
+# MARKER_196.GW-SEC: Gateway endpoints use restricted CORS; others use permissive for dev
+_gateway_origins = [
+    o.strip()
+    for o in os.environ.get("GATEWAY_ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
+_cors_origins = _gateway_origins if _gateway_origins else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

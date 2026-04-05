@@ -1,9 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { API_BASE } from './config/api.config';
-import { ReactFlowProvider } from '@xyflow/react';
-import { DAGView } from './components/mcc/DAGView';
-import { NOLAN_PALETTE } from './utils/dagLayout';
 import CutEditorLayoutV2 from './components/cut/CutEditorLayoutV2';
 import {
   buildCutSceneGraphViewportModel,
@@ -85,12 +82,6 @@ type TimelineLane = {
   }>;
 };
 
-type SceneGraphNode = {
-  node_id: string;
-  node_type: string;
-  label: string;
-};
-
 type WorkerBundleItem = {
   item_id: string;
   source_path: string;
@@ -132,55 +123,6 @@ type MusicCueSummary = {
   cue_point_count?: number;
   phrase_count?: number;
   tempo_bpm?: number | null;
-};
-
-type PlayerLabImportPreview = {
-  markers: Array<Record<string, unknown>>;
-  provisionalEvents: Array<Record<string, unknown>>;
-  kindCounts: Record<string, number>;
-  fileName: string;
-};
-
-type SliceWindow = {
-  start_sec: number;
-  end_sec: number;
-  duration_sec?: number;
-  confidence?: number;
-  method?: string;
-};
-
-type SliceBundleItem = {
-  item_id: string;
-  source_path: string;
-  method: string;
-  windows: SliceWindow[];
-  degraded_mode?: boolean;
-  degraded_reason?: string;
-};
-
-type AudioSyncResultItem = {
-  item_id: string;
-  reference_path: string;
-  source_path: string;
-  detected_offset_sec: number;
-  confidence: number;
-  method: string;
-  degraded_mode?: boolean;
-  degraded_reason?: string;
-};
-
-type TimecodeSyncResultItem = {
-  item_id: string;
-  reference_path: string;
-  source_path: string;
-  reference_timecode: string;
-  source_timecode: string;
-  fps: number;
-  detected_offset_sec: number;
-  confidence: number;
-  method: string;
-  degraded_mode?: boolean;
-  degraded_reason?: string;
 };
 
 type SyncSurfaceItem = {
@@ -232,131 +174,6 @@ function parseQuery() {
   };
 }
 
-function derivePreviewMarkerWindow(item: WorkerBundleItem): { startSec: number; endSec: number; anchorSec: number } {
-  const durationSec = Math.max(0, Number(item.duration_sec) || 0);
-  if (durationSec <= 0) {
-    return { startSec: 0, endSec: 1, anchorSec: 0.5 };
-  }
-  const windowSize = Math.min(3, Math.max(0.75, durationSec * 0.12));
-  const anchorSec = Math.min(durationSec, Math.max(0, durationSec * 0.5));
-  const halfWindow = windowSize / 2;
-  const startSec = Math.max(0, anchorSec - halfWindow);
-  const endSec = Math.min(durationSec, Math.max(startSec + 0.25, anchorSec + halfWindow));
-  return {
-    startSec: Number(startSec.toFixed(2)),
-    endSec: Number(endSec.toFixed(2)),
-    anchorSec: Number(anchorSec.toFixed(2)),
-  };
-}
-
-function deriveTranscriptMarkerWindow(
-  item: WorkerBundleItem,
-  transcriptItem?: TranscriptBundleItem
-): { startSec: number; endSec: number; anchorSec: number; mode: string } {
-  const previewWindow = derivePreviewMarkerWindow(item);
-  const segments = (transcriptItem?.transcript_normalized_json?.segments || [])
-    .map((segment) => ({
-      start: Number(segment.start ?? 0),
-      end: Number(segment.end ?? 0),
-      text: String(segment.text || ''),
-    }))
-    .filter((segment) => Number.isFinite(segment.start) && Number.isFinite(segment.end) && segment.end > segment.start);
-  if (!segments.length) {
-    return { ...previewWindow, mode: 'preview_window_v1' };
-  }
-
-  const anchorSec = previewWindow.anchorSec;
-  let index = segments.findIndex((segment) => segment.start <= anchorSec && anchorSec <= segment.end);
-  if (index < 0) {
-    index = segments.reduce((bestIndex, segment, currentIndex) => {
-      const bestMid = (segments[bestIndex].start + segments[bestIndex].end) / 2;
-      const currentMid = (segment.start + segment.end) / 2;
-      return Math.abs(currentMid - anchorSec) < Math.abs(bestMid - anchorSec) ? currentIndex : bestIndex;
-    }, 0);
-  }
-
-  let startSec = segments[index].start;
-  let endSec = segments[index].end;
-  let left = index - 1;
-  let right = index + 1;
-  while (left >= 0) {
-    const gap = startSec - segments[left].end;
-    if (gap > 0.35 || endSec - segments[left].start > 6.0) break;
-    startSec = segments[left].start;
-    left -= 1;
-  }
-  while (right < segments.length) {
-    const gap = segments[right].start - endSec;
-    if (gap > 0.35 || segments[right].end - startSec > 6.0) break;
-    endSec = segments[right].end;
-    right += 1;
-  }
-
-  return {
-    startSec: Number(startSec.toFixed(2)),
-    endSec: Number(endSec.toFixed(2)),
-    anchorSec: Number(anchorSec.toFixed(2)),
-    mode: 'transcript_pause_window_v1',
-  };
-}
-
-function deriveSliceMarkerWindow(
-  item: WorkerBundleItem,
-  sliceItem?: SliceBundleItem | null
-): { startSec: number; endSec: number; anchorSec: number; mode: string } {
-  const windows = (sliceItem?.windows || []).filter((window) => Number(window.end_sec) > Number(window.start_sec));
-  if (!windows.length) {
-    return { ...derivePreviewMarkerWindow(item), mode: 'preview_window_v1' };
-  }
-  const bestWindow = windows.reduce((best, current) => {
-    const bestDuration = Number(best.end_sec) - Number(best.start_sec);
-    const currentDuration = Number(current.end_sec) - Number(current.start_sec);
-    return currentDuration > bestDuration ? current : best;
-  });
-  const startSec = Number(Number(bestWindow.start_sec).toFixed(2));
-  const endSec = Number(Number(bestWindow.end_sec).toFixed(2));
-  return {
-    startSec,
-    endSec,
-    anchorSec: Number(((startSec + endSec) / 2).toFixed(2)),
-    mode: String(bestWindow.method || sliceItem?.method || 'energy_pause_v1'),
-  };
-}
-
-function deriveBestMarkerWindow(
-  item: WorkerBundleItem,
-  transcriptItem?: TranscriptBundleItem,
-  sliceItem?: SliceBundleItem | null
-): { startSec: number; endSec: number; anchorSec: number; mode: string } {
-  if (sliceItem?.windows?.length) {
-    return deriveSliceMarkerWindow(item, sliceItem);
-  }
-  return deriveTranscriptMarkerWindow(item, transcriptItem);
-}
-
-function findTimelineClipBySourcePath(lanes: TimelineLane[], sourcePath: string) {
-  for (const lane of lanes) {
-    for (const clip of lane.clips) {
-      if (clip.source_path === sourcePath) {
-        return { lane, clip };
-      }
-    }
-  }
-  return null;
-}
-
-function findAudioSyncMatch(items: AudioSyncResultItem[], sourcePath: string) {
-  return items.find((item) => item.source_path === sourcePath || item.reference_path === sourcePath) || null;
-}
-
-function findTimecodeSyncMatch(items: TimecodeSyncResultItem[], sourcePath: string) {
-  return items.find((item) => item.source_path === sourcePath || item.reference_path === sourcePath) || null;
-}
-
-function findSyncSurfaceMatch(items: SyncSurfaceItem[], sourcePath: string) {
-  return items.find((item) => item.source_path === sourcePath || item.reference_path === sourcePath) || null;
-}
-
 function formatMusicCueStatus(summary?: MusicCueSummary | null): string | null {
   if (!summary) return null;
   const cueCount = Number(summary.cue_point_count || 0);
@@ -370,27 +187,6 @@ function formatMusicCueStatus(summary?: MusicCueSummary | null): string | null {
   if (bpm) parts.push(`@ ${bpm} BPM`);
   if (phraseCount > 0) parts.push(`phrases ${phraseCount}`);
   return parts.join(' ');
-}
-
-function normalizePlayerLabPreview(raw: unknown, fileName: string): PlayerLabImportPreview {
-  const payload = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const markers = Array.isArray(payload.markers) ? (payload.markers as Array<Record<string, unknown>>) : [];
-  const provisionalEvents = Array.isArray(payload.provisional_events)
-    ? (payload.provisional_events as Array<Record<string, unknown>>)
-    : Array.isArray(payload.provisionalEvents)
-      ? (payload.provisionalEvents as Array<Record<string, unknown>>)
-      : [];
-  const kindCounts = markers.reduce<Record<string, number>>((acc, item) => {
-    const kind = String(item.kind || 'unknown');
-    acc[kind] = (acc[kind] || 0) + 1;
-    return acc;
-  }, {});
-  return {
-    markers,
-    provisionalEvents,
-    kindCounts,
-    fileName,
-  };
 }
 
 // MARKER_W4.3: Paths that mutate project state → mark dirty after success
@@ -423,95 +219,6 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   }
   return result;
 }
-
-const shellStyle: Record<string, CSSProperties> = {
-  root: {
-    width: '100vw',
-    height: '100vh',
-    display: 'grid',
-    gridTemplateColumns: '280px minmax(0, 1fr) 320px',
-    background: NOLAN_PALETTE.bg,
-    color: NOLAN_PALETTE.text,
-    fontFamily: 'monospace',
-  },
-  panel: {
-    borderRight: `1px solid ${NOLAN_PALETTE.borderDim}`,
-    padding: 16,
-    overflow: 'auto',
-    background: NOLAN_PALETTE.bgDim,
-  },
-  panelRight: {
-    borderLeft: `1px solid ${NOLAN_PALETTE.borderDim}`,
-    padding: 16,
-    overflow: 'auto',
-    background: NOLAN_PALETTE.bgDim,
-  },
-  title: { fontSize: 18, fontWeight: 600, marginBottom: 12, color: NOLAN_PALETTE.textAccent, letterSpacing: 0.4 },
-  label: { fontSize: 11, color: NOLAN_PALETTE.textMuted, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 },
-  input: {
-    width: '100%',
-    background: NOLAN_PALETTE.bgLight,
-    color: NOLAN_PALETTE.text,
-    border: `1px solid ${NOLAN_PALETTE.border}`,
-    borderRadius: 6,
-    padding: '10px 12px',
-    marginBottom: 10,
-  },
-  button: {
-    width: '100%',
-    background: NOLAN_PALETTE.bgLight,
-    color: NOLAN_PALETTE.text,
-    border: `1px solid ${NOLAN_PALETTE.borderLight}`,
-    borderRadius: 6,
-    padding: '10px 12px',
-    cursor: 'pointer',
-    marginBottom: 8,
-    fontWeight: 600,
-  },
-  secondaryButton: {
-    width: '100%',
-    background: NOLAN_PALETTE.bgLight,
-    color: NOLAN_PALETTE.textMuted,
-    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-    borderRadius: 6,
-    padding: '10px 12px',
-    cursor: 'pointer',
-    marginBottom: 8,
-  },
-  smallButton: {
-    background: NOLAN_PALETTE.bgLight,
-    color: NOLAN_PALETTE.textMuted,
-    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-    borderRadius: 4,
-    padding: '6px 10px',
-    cursor: 'pointer',
-    fontSize: 11,
-  },
-  card: {
-    background: NOLAN_PALETTE.bgLight,
-    border: `1px solid ${NOLAN_PALETTE.border}`,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 10,
-  },
-  code: {
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-    fontSize: 12,
-    color: NOLAN_PALETTE.textMuted,
-    wordBreak: 'break-all',
-  },
-  clip: {
-    padding: '8px 10px',
-    borderRadius: 6,
-    background: NOLAN_PALETTE.bg,
-    border: `1px solid ${NOLAN_PALETTE.borderDim}`,
-    marginBottom: 8,
-  },
-  muted: { color: NOLAN_PALETTE.textMuted, fontSize: 12 },
-  statusOk: { color: NOLAN_PALETTE.text },
-  statusWarn: { color: NOLAN_PALETTE.textMuted },
-  sectionTitle: { fontSize: 11, fontWeight: 600, marginBottom: 10, color: NOLAN_PALETTE.textAccent, textTransform: 'uppercase', letterSpacing: 0.45 },
-};
 
 const CUT_SCENE_GRAPH_PANE_MODE_STORAGE_KEY = 'cut.scene_graph.pane_mode.v1';
 
@@ -546,68 +253,21 @@ export default function CutStandalone() {
   const { checkRecovery, recoverFromSnapshot } = useCutSaveSystem();
 
   const query = useMemo(parseQuery, []);
-  const playerLabInputRef = useRef<HTMLInputElement | null>(null);
   const [sandboxRoot, setSandboxRoot] = useState(query.sandboxRoot);
-  const [sourcePath, setSourcePath] = useState(query.sourcePath);
-  const [projectName, setProjectName] = useState(query.projectName || 'VETKA CUT Demo');
+  const [sourcePath] = useState(query.sourcePath);
+  const [projectName] = useState(query.projectName || 'VETKA CUT Demo');
   const [projectId, setProjectId] = useState(query.projectId);
   const [projectState, setProjectState] = useState<CutProjectState | null>(null);
   const [status, setStatus] = useState('Idle');
-  const [busy, setBusy] = useState(false);
+  const [, setBusy] = useState(false);
   const [selectedThumbnailId, setSelectedThumbnailId] = useState('');
-  const [sceneGraphPaneMode, setSceneGraphPaneMode] = useState<'embedded' | 'peer_pane'>(() => readStoredSceneGraphPaneMode());
-  const [showNleSceneGraphDetails, setShowNleSceneGraphDetails] = useState(true);
-  const [sceneGraphEdgeFilter, setSceneGraphEdgeFilter] = useState<'all' | 'structural' | 'overlay'>('all');
-  const [showActiveMarkersOnly, setShowActiveMarkersOnly] = useState(true);
-  const [showGlobalActiveMarkersOnly, setShowGlobalActiveMarkersOnly] = useState(true);
-  const [selectedMarkerId, setSelectedMarkerId] = useState('');
-  const [playerLabPreview, setPlayerLabPreview] = useState<PlayerLabImportPreview | null>(null);
-
+  const [sceneGraphPaneMode] = useState<'embedded' | 'peer_pane'>(() => readStoredSceneGraphPaneMode());
   const timelineLanes = (projectState?.timeline_state?.lanes as TimelineLane[] | undefined) || [];
-  const selectedClipIds = ((projectState?.timeline_state?.selection as { clip_ids?: string[] } | undefined)?.clip_ids || []).map(String);
-  const sceneGraphNodes = (projectState?.scene_graph?.nodes as SceneGraphNode[] | undefined) || [];
   const sceneGraphView = (projectState?.scene_graph_view as CutSceneGraphView | undefined) || null;
   const sceneGraphViewport = useMemo(
     () => buildCutSceneGraphViewportModel(sceneGraphView),
     [sceneGraphView]
   );
-  const filteredSceneGraphViewport = useMemo(() => {
-    if (!sceneGraphViewport) return null;
-    if (sceneGraphEdgeFilter === 'all') return sceneGraphViewport;
-
-    const structuralEdgeIds = new Set(sceneGraphViewport.structuralEdgeIds);
-    const overlayEdgeIds = new Set((sceneGraphView?.overlay_edges || []).map((edge) => String((edge as { edge_id?: string }).edge_id || '')));
-    const keepEdge = (edge: { id: string }) =>
-      sceneGraphEdgeFilter === 'structural' ? structuralEdgeIds.has(edge.id) : overlayEdgeIds.has(edge.id);
-
-    const dagEdges = sceneGraphViewport.dagEdges.filter(keepEdge);
-    const structuralNodeIds = new Set(sceneGraphViewport.structuralNodeIds);
-    const nodeIdSet = new Set<string>(sceneGraphViewport.rootIds);
-    dagEdges.forEach((edge) => {
-      nodeIdSet.add(edge.source);
-      nodeIdSet.add(edge.target);
-    });
-    if (sceneGraphEdgeFilter === 'structural') {
-      sceneGraphViewport.dagNodes.forEach((node) => {
-        if (node.primaryNodeId && structuralNodeIds.has(node.primaryNodeId)) nodeIdSet.add(node.id);
-      });
-    }
-    if (sceneGraphViewport.primaryNodeId) {
-      const primaryDagId = `cut_graph:${sceneGraphViewport.primaryNodeId}`;
-      nodeIdSet.add(primaryDagId);
-    }
-    sceneGraphViewport.focusNodeIds.forEach((nodeId) => nodeIdSet.add(`cut_graph:${nodeId}`));
-
-    const dagNodes = sceneGraphViewport.dagNodes.filter((node) => nodeIdSet.has(node.id));
-    return {
-      ...sceneGraphViewport,
-      dagNodes,
-      dagEdges,
-      rootIds: sceneGraphViewport.rootIds.filter((id) => nodeIdSet.has(id)),
-      overlayEdgeCount: sceneGraphEdgeFilter === 'overlay' ? dagEdges.length : sceneGraphViewport.overlayEdgeCount,
-      structuralNodeIds: sceneGraphEdgeFilter === 'overlay' ? [] : sceneGraphViewport.structuralNodeIds,
-    };
-  }, [sceneGraphEdgeFilter, sceneGraphView?.overlay_edges, sceneGraphViewport]);
   const waveformItems = (projectState?.waveform_bundle?.items as WorkerBundleItem[] | undefined) || [];
   const transcriptItems = (projectState?.transcript_bundle?.items as TranscriptBundleItem[] | undefined) || [];
   const scriptText = useMemo(() => {
@@ -618,115 +278,19 @@ export default function CutStandalone() {
       .join(' ');
   }, [transcriptItems]);
   const thumbnailItems = (projectState?.thumbnail_bundle?.items as WorkerBundleItem[] | undefined) || [];
-  const audioSyncItems = (projectState?.audio_sync_result?.items as AudioSyncResultItem[] | undefined) || [];
-  const sliceItems = (projectState?.slice_bundle?.items as SliceBundleItem[] | undefined) || [];
-  const timecodeSyncItems = (projectState?.timecode_sync_result?.items as TimecodeSyncResultItem[] | undefined) || [];
   const syncSurfaceItems = (projectState?.sync_surface?.items as SyncSurfaceItem[] | undefined) || [];
   const timeMarkers = (projectState?.time_marker_bundle?.items as CutTimeMarker[] | undefined) || [];
 
-  const recentJobs = projectState?.recent_jobs || [];
   const activeJobs = projectState?.active_jobs || [];
-  const fallbackQuestions = (projectState?.bootstrap_state?.last_stats as Record<string, unknown> | undefined) || null;
-  const selectedThumbnail =
-    thumbnailItems.find((item) => item.item_id === selectedThumbnailId) || thumbnailItems[0] || null;
-  const selectedTimelineMatch = selectedThumbnail ? findTimelineClipBySourcePath(timelineLanes, selectedThumbnail.source_path) : null;
-  const selectedTranscriptItem =
-    selectedThumbnail ? transcriptItems.find((item) => item.source_path === selectedThumbnail.source_path) : undefined;
-  const selectedSliceItem = selectedThumbnail ? sliceItems.find((item) => item.source_path === selectedThumbnail.source_path) : undefined;
-  const selectedAudioSyncItem = selectedThumbnail ? findAudioSyncMatch(audioSyncItems, selectedThumbnail.source_path) : null;
-  const selectedTimecodeSyncItem = selectedThumbnail ? findTimecodeSyncMatch(timecodeSyncItems, selectedThumbnail.source_path) : null;
-  const selectedSyncSurfaceItem = selectedThumbnail ? findSyncSurfaceMatch(syncSurfaceItems, selectedThumbnail.source_path) : null;
-  const selectedShotMarkers = timeMarkers
-    .filter((marker) => (selectedThumbnail ? marker.media_path === selectedThumbnail.source_path : false))
-    .filter((marker) => (showActiveMarkersOnly ? String(marker.status || 'active') === 'active' : true));
-  const globalVisibleMarkers = timeMarkers.filter((marker) =>
-    showGlobalActiveMarkersOnly ? String(marker.status || 'active') === 'active' : true
-  );
-  const globalMarkerGroups = {
-    favorite: globalVisibleMarkers.filter((marker) => marker.kind === 'favorite'),
-    comment: globalVisibleMarkers.filter((marker) => marker.kind === 'comment'),
-    cam: globalVisibleMarkers.filter((marker) => marker.kind === 'cam'),
-    other: globalVisibleMarkers.filter((marker) => !['favorite', 'comment', 'cam'].includes(marker.kind)),
-  };
-  const selectedShotMarkerGroups = {
-    favorite: selectedShotMarkers.filter((marker) => marker.kind === 'favorite'),
-    comment: selectedShotMarkers.filter((marker) => marker.kind === 'comment'),
-    cam: selectedShotMarkers.filter((marker) => marker.kind === 'cam'),
-    other: selectedShotMarkers.filter((marker) => !['favorite', 'comment', 'cam'].includes(marker.kind)),
-  };
-  const selectedShotCamMarkers = selectedShotMarkers.filter((marker) => marker.kind === 'cam');
-  const selectedStoryboardGraphDagNodeIds = useMemo(() => {
-    if (!sceneGraphViewport || !selectedThumbnail?.source_path) return [];
-    return sceneGraphViewport.dagIdsBySourcePath[selectedThumbnail.source_path] || [];
-  }, [sceneGraphViewport, selectedThumbnail]);
-  const selectedTimelineGraphDagNodeIds = useMemo(() => {
-    if (!sceneGraphViewport || selectedClipIds.length === 0) return [];
-    return Array.from(
-      new Set(selectedClipIds.flatMap((clipId) => sceneGraphViewport.dagIdsByClipId[clipId] || []))
-    );
-  }, [sceneGraphViewport, selectedClipIds]);
-  const selectedSceneGraphDagNodeIds = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...(sceneGraphViewport?.focusNodeIds || []).map((id) => `cut_graph:${id}`),
-          ...selectedStoryboardGraphDagNodeIds,
-          ...selectedTimelineGraphDagNodeIds,
-        ])
-      ),
-    [sceneGraphViewport, selectedStoryboardGraphDagNodeIds, selectedTimelineGraphDagNodeIds]
-  );
-  const selectedShotGraphCards = useMemo(() => {
-    if (!sceneGraphViewport) return [];
-    return selectedSceneGraphDagNodeIds
-      .map((dagId) => sceneGraphViewport.nodeByDagId[dagId]?.node_id || '')
-      .filter(Boolean)
-      .map((nodeId) => sceneGraphViewport.cardByNodeId[nodeId])
-      .filter(Boolean);
-  }, [sceneGraphViewport, selectedSceneGraphDagNodeIds]);
-  const selectedShotPrimaryGraphCard = useMemo(() => {
-    if (!sceneGraphViewport) return null;
-    if (selectedShotGraphCards.length === 0) return null;
-    return (
-      selectedShotGraphCards.find((card) => card.nodeId === sceneGraphViewport.primaryNodeId) ||
-      selectedShotGraphCards[0] ||
-      null
-    );
-  }, [sceneGraphViewport, selectedShotGraphCards]);
-
-  const selectedShotGraphSyncBadges = useMemo(
-    () => Array.from(new Set(selectedShotGraphCards.map((card) => card.syncBadge).filter(Boolean))),
-    [selectedShotGraphCards]
-  );
-  const selectedShotGraphBuckets = useMemo(
-    () => Array.from(new Set(selectedShotGraphCards.map((card) => card.visualBucket).filter(Boolean))),
-    [selectedShotGraphCards]
-  );
-  const selectedShotInspectorNodes = useMemo(() => {
-    if (!sceneGraphViewport) return [];
-    const nodeIds = new Set(selectedShotGraphCards.map((card) => card.nodeId));
-    return sceneGraphViewport.inspectorNodes.filter((node) => nodeIds.has(node.node_id));
-  }, [sceneGraphViewport, selectedShotGraphCards]);
-  const selectedShotGraphFocusSource = useMemo(() => {
-    if (selectedTimelineGraphDagNodeIds.length) return 'timeline + storyboard crosslinks';
-    if (selectedStoryboardGraphDagNodeIds.length) return 'storyboard crosslinks';
-    if (sceneGraphViewport?.focusNodeIds.length) return 'scene graph anchor only';
-    return 'none';
-  }, [sceneGraphViewport, selectedStoryboardGraphDagNodeIds, selectedTimelineGraphDagNodeIds]);
-  const selectedShotGraphMarkerCount = useMemo(
-    () => selectedShotGraphCards.reduce((sum, card) => sum + Number(card.markerCount || 0), 0),
-    [selectedShotGraphCards]
-  );
-
-
-  const refreshProjectState = useCallback(async (currentProjectId?: string, options?: { silent?: boolean }) => {
+  const refreshProjectState = useCallback(async (currentProjectId?: string, options?: { silent?: boolean }, sandboxRootOverride?: string) => {
     const pid = String(currentProjectId || projectId || '').trim();
-    if (!sandboxRoot || !pid) return;
+    const sr = sandboxRootOverride || sandboxRoot;
+    if (!sr || !pid) return;
     if (!options?.silent) {
       setStatus('Hydrating project state...');
     }
     const payload = await jsonFetch<CutProjectState>(
-      `/cut/project-state?sandbox_root=${encodeURIComponent(sandboxRoot)}&project_id=${encodeURIComponent(pid)}`
+      `/cut/project-state?sandbox_root=${encodeURIComponent(sr)}&project_id=${encodeURIComponent(pid)}`
     );
     setProjectState(payload);
     if (payload.success) {
@@ -745,6 +309,13 @@ export default function CutStandalone() {
   useEffect(() => {
     if (sandboxRoot && projectId) {
       void refreshProjectState(projectId);
+    }
+  }, []);
+
+  // MARKER_CUT-UX-NOWELCOME: auto-bootstrap Untitled project when no sandbox_root in query
+  useEffect(() => {
+    if (!query.sandboxRoot) {
+      void handleBootstrap();
     }
   }, []);
 
@@ -879,8 +450,13 @@ export default function CutStandalone() {
         setStatus(payload.error?.message || 'Bootstrap failed');
         return;
       }
+      // MARKER_CUT-UX-NOWELCOME: capture backend-assigned sandbox_root for fresh starts
+      const effectiveSandboxRoot = payload.project.sandbox_root || sandboxRoot;
+      if (effectiveSandboxRoot && effectiveSandboxRoot !== sandboxRoot) {
+        setSandboxRoot(effectiveSandboxRoot);
+      }
       setProjectId(payload.project.project_id);
-      await refreshProjectState(payload.project.project_id);
+      await refreshProjectState(payload.project.project_id, undefined, effectiveSandboxRoot || undefined);
 
       // MARKER_W4.3: Check for crash recovery after project load
       const recovery = await checkRecovery();
@@ -1018,129 +594,8 @@ export default function CutStandalone() {
     }
   }
 
-  async function handleSyncSelectedShotToTimeline() {
-    if (!sandboxRoot || !projectId || !selectedTimelineMatch) return;
-    setBusy(true);
-    try {
-      setStatus('Syncing selected shot to timeline...');
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/timeline/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          ops: [
-            {
-              op: 'set_selection',
-              clip_ids: [selectedTimelineMatch.clip.clip_id],
-              scene_ids: selectedTimelineMatch.clip.scene_id ? [selectedTimelineMatch.clip.scene_id] : [],
-            },
-            {
-              op: 'set_view',
-              active_lane_id: selectedTimelineMatch.lane.lane_id,
-            },
-          ],
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Timeline sync failed');
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Timeline sync failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleApplySelectedSyncOffset() {
-    if (!sandboxRoot || !projectId || !selectedTimelineMatch || !selectedSyncSurfaceItem || !selectedSyncSurfaceItem.recommended_method) {
-      return;
-    }
-    setBusy(true);
-    try {
-      setStatus('Applying sync offset to timeline...');
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/timeline/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          ops: [
-            {
-              op: 'apply_sync_offset',
-              clip_id: selectedTimelineMatch.clip.clip_id,
-              offset_sec: Number(selectedSyncSurfaceItem.recommended_offset_sec || 0),
-              method: String(selectedSyncSurfaceItem.recommended_method),
-              confidence: Number(selectedSyncSurfaceItem.confidence || 0),
-              reference_path: selectedSyncSurfaceItem.reference_path,
-              source: 'sync_surface',
-              group_id: `sync_${selectedTimelineMatch.clip.clip_id}`,
-            },
-          ],
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Timeline sync apply failed');
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Timeline sync apply failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleApplyAllSyncOffsets() {
-    if (!sandboxRoot || !projectId) return;
-    const actionable = syncSurfaceItems.filter(
-      (item) => item.recommended_method && item.recommended_offset_sec !== 0
-    );
-    if (actionable.length === 0) {
-      setStatus('No actionable sync recommendations.');
-      return;
-    }
-    setBusy(true);
-    try {
-      setStatus(`Applying ${actionable.length} sync offset(s)...`);
-      const ops = actionable
-        .map((item) => {
-          const match = findTimelineClipBySourcePath(timelineLanes, item.source_path);
-          if (!match) return null;
-          return {
-            op: 'apply_sync_offset',
-            clip_id: match.clip.clip_id,
-            offset_sec: Number(item.recommended_offset_sec || 0),
-            method: String(item.recommended_method),
-            confidence: Number(item.confidence || 0),
-            reference_path: item.reference_path,
-            source: 'sync_surface',
-            group_id: `sync_${match.clip.clip_id}`,
-          };
-        })
-        .filter(Boolean);
-      if (ops.length === 0) {
-        setStatus('No clips matched sync surface items in timeline.');
-        setBusy(false);
-        return;
-      }
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/timeline/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          ops,
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Batch sync apply failed');
-      await refreshProjectState(projectId);
-      setStatus(`Applied ${ops.length} sync offset(s).`);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Batch sync apply failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleRunMetaSync() {
     if (!sandboxRoot || !projectId) return;
@@ -1167,42 +622,6 @@ export default function CutStandalone() {
     }
   }
 
-  async function handleFocusMarkerInTimeline(marker: CutTimeMarker) {
-    if (!sandboxRoot || !projectId || !selectedTimelineMatch) return;
-    setBusy(true);
-    try {
-      setStatus('Focusing marker in timeline...');
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/timeline/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          ops: [
-            {
-              op: 'set_selection',
-              clip_ids: [selectedTimelineMatch.clip.clip_id],
-              scene_ids: selectedTimelineMatch.clip.scene_id ? [selectedTimelineMatch.clip.scene_id] : [],
-            },
-            {
-              op: 'set_view',
-              active_lane_id: selectedTimelineMatch.lane.lane_id,
-              scroll_sec: Number(marker.start_sec || 0),
-              zoom: 1.5,
-            },
-          ],
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Timeline marker focus failed');
-      setSelectedMarkerId(marker.marker_id);
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Timeline marker focus failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleWaveformBuild() {
     if (!sandboxRoot || !projectId) return;
@@ -1226,33 +645,6 @@ export default function CutStandalone() {
     }
   }
 
-  async function handleTranscriptNormalize() {
-    if (!sandboxRoot || !projectId) return;
-    setBusy(true);
-    try {
-      setStatus('Normalizing transcripts...');
-      const created = await jsonFetch<CutJobEnvelope>('/cut/worker/transcript-normalize-async', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          limit: 6,
-          segments_limit: 128,
-          max_transcribe_sec: 180,
-        }),
-      });
-      if (!created.success || !created.job_id) {
-        setStatus('Transcript worker did not start');
-        return;
-      }
-      await waitForJob(created.job_id);
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Transcript normalize failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   async function handleThumbnailBuild() {
     if (!sandboxRoot || !projectId) return;
@@ -1368,193 +760,11 @@ export default function CutStandalone() {
     }
   }
 
-  async function handleCancelJob(jobId: string) {
-    if (!jobId) return;
-    setBusy(true);
-    try {
-      setStatus(`Cancelling job ${jobId.slice(0, 8)}...`);
-      await jsonFetch<{ success: boolean; job?: { state?: string } }>('/cut/job/' + encodeURIComponent(jobId) + '/cancel', {
-        method: 'POST',
-      });
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Cancel failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleCreateTimeMarker(item: WorkerBundleItem, kind: 'favorite' | 'comment' | 'cam') {
-    if (!sandboxRoot || !projectId || !item.source_path) return;
-    const text =
-      kind === 'comment'
-        ? window.prompt('Comment marker text', 'CUT note') || ''
-        : kind === 'cam'
-          ? window.prompt('CAM marker hint', 'context signal') || ''
-        : '';
-    const transcriptItem = transcriptItems.find((entry) => entry.source_path === item.source_path);
-    const sliceItem = sliceItems.find((entry) => entry.source_path === item.source_path);
-    const markerWindow = deriveBestMarkerWindow(item, transcriptItem, sliceItem);
-    setBusy(true);
-    try {
-      setStatus(
-        kind === 'favorite'
-          ? 'Creating favorite moment...'
-          : kind === 'comment'
-            ? 'Creating comment marker...'
-            : 'Creating CAM marker...'
-      );
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/time-markers/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          op: 'create',
-          media_path: item.source_path,
-          kind,
-          start_sec: markerWindow.startSec,
-          end_sec: markerWindow.endSec,
-          anchor_sec: markerWindow.anchorSec,
-          score: kind === 'favorite' ? 1.0 : kind === 'comment' ? 0.7 : 0.85,
-          text,
-          context_slice: {
-            mode: markerWindow.mode,
-            derived_from:
-              markerWindow.mode === 'energy_pause_v1'
-                ? 'slice_bundle'
-                : markerWindow.mode === 'transcript_pause_window_v1'
-                  ? 'transcript_bundle'
-                  : 'thumbnail_bundle',
-            duration_sec: Number(item.duration_sec) || 0,
-            poster_url: item.poster_url || '',
-            animated_preview_url_300ms: item.animated_preview_url_300ms || '',
-          },
-          cam_payload:
-            kind === 'cam'
-              ? {
-                  source: 'cut_shell',
-                  hint: text || 'context signal',
-                  status: 'placeholder',
-                }
-              : null,
-          source_engine: 'cut_shell',
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Time marker apply failed');
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Time marker apply failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleArchiveTimeMarker(markerId: string) {
-    if (!sandboxRoot || !projectId || !markerId) return;
-    setBusy(true);
-    try {
-      setStatus('Archiving marker...');
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/time-markers/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell',
-          op: 'archive',
-          marker_id: markerId,
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Time marker archive failed');
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Time marker archive failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleAddDirectorNote() {
-    const sceneNode = sceneGraphNodes.find((node) => node.node_type === 'scene');
-    if (!sceneNode || !sandboxRoot || !projectId) return;
-    setBusy(true);
-    try {
-      const payload = await jsonFetch<{ success: boolean; error?: { message?: string } }>('/cut/scene-graph/apply', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          graph_id: 'main',
-          author: 'cut_shell',
-          ops: [
-            {
-              op: 'add_note',
-              label: 'Director note',
-              text: 'CUT shell note',
-              target_node_id: sceneNode.node_id,
-            },
-          ],
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Scene graph apply failed');
-      await refreshProjectState(projectId);
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Scene graph apply failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
-  async function handleLoadPlayerLabFile(file: File) {
-    try {
-      const text = await file.text();
-      const parsed = JSON.parse(text) as unknown;
-      const preview = normalizePlayerLabPreview(parsed, file.name);
-      setPlayerLabPreview(preview);
-      setStatus(
-        `Player Lab preview loaded: ${preview.markers.length} markers, ${preview.provisionalEvents.length} provisional events.`
-      );
-    } catch (error) {
-      setPlayerLabPreview(null);
-      setStatus(error instanceof Error ? error.message : 'Failed to parse Player Lab JSON');
-    }
-  }
 
-  async function handleImportPlayerLab() {
-    if (!sandboxRoot || !projectId || !playerLabPreview) return;
-    setBusy(true);
-    try {
-      setStatus(`Importing Player Lab markers from ${playerLabPreview.fileName}...`);
-      const payload = await jsonFetch<{
-        success: boolean;
-        imported_count?: number;
-        skipped_duplicates?: number;
-        kind_counts?: Record<string, number>;
-        error?: { message?: string };
-      }>('/cut/markers/import-player-lab', {
-        method: 'POST',
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: 'main',
-          author: 'cut_shell_player_lab',
-          markers: playerLabPreview.markers,
-          provisional_events: playerLabPreview.provisionalEvents,
-        }),
-      });
-      if (!payload.success) throw new Error(payload.error?.message || 'Player Lab marker import failed');
-      await refreshProjectState(projectId);
-      setStatus(
-        `Imported Player Lab markers: ${Number(payload.imported_count || 0)} new, ${Number(payload.skipped_duplicates || 0)} duplicates skipped.`
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Player Lab marker import failed');
-    } finally {
-      setBusy(false);
-    }
-  }
 
   // MARKER_QA.W5.1: Expose debug handlers to store for DebugShellPanel
   useEffect(() => {

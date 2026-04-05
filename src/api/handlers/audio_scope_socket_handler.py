@@ -1,5 +1,6 @@
 """
 MARKER_B40 — SocketIO handler for real-time audio scope updates.
+MARKER_MIXER_STATE — mixer_levels_request: mixer-aware VU metering.
 
 Mirrors scope_socket_handler.py pattern for audio: client pushes playhead
 position, server computes RMS levels + optional waveform bins, emits back.
@@ -9,10 +10,18 @@ Events:
     "audio_scope_request" — { source_path, time, mode? }
       mode: "fast" (RMS only, for playback) | "full" (RMS + waveform bins)
 
+    "mixer_levels_request" — { project_id, sources: [{source_path, lane_id, time}] }
+      Computes per-lane RMS with mixer state (volume/mute/solo) applied.
+
   Server → Client:
     "audio_scope_data" — { success, source_path, time_sec,
                            rms_left, rms_right, peak_left, peak_right,
                            waveform_left?, waveform_right? }
+
+    "mixer_levels_data" — { success, project_id,
+                            lanes: {lane_id: {rms_left, rms_right, peak_left, peak_right,
+                                              effective_rms_left, effective_rms_right, muted}},
+                            master: {volume, pan} }
 
 Server-side debounce: per-client lock prevents pileup (same pattern as video scopes).
 
@@ -22,6 +31,7 @@ Server-side debounce: per-client lock prevents pileup (same pattern as video sco
 """
 from __future__ import annotations
 
+import functools
 import logging
 import threading
 import time
@@ -99,9 +109,109 @@ def register_audio_scope_socket_handlers(sio: Any) -> None:
         finally:
             lock.release()
 
+    # MARKER_MIXER_STATE: Per-client debounce for mixer levels (separate lock from scope)
+    _mixer_client_locks: dict[str, threading.Lock] = {}
+
+    @sio.on("mixer_levels_request")
+    async def handle_mixer_levels_request(sid: str, data: dict[str, Any]) -> None:
+        """
+        Client requests mixer-aware VU levels for all active lanes.
+
+        Payload: { project_id, sources: [{source_path, lane_id, time}] }
+
+        For each source: computes raw RMS via compute_audio_levels, then applies
+        mixer state (volume, mute, solo) to get effective metering levels.
+
+        Emits: mixer_levels_data → { success, project_id, lanes: {...}, master: {...} }
+        """
+        if not isinstance(data, dict):
+            return
+        sources = data.get("sources") or []
+        if not sources:
+            return
+        project_id = str(data.get("project_id") or "project")
+
+        lock = _mixer_client_locks.setdefault(sid, threading.Lock())
+        if not lock.acquire(blocking=False):
+            return  # Previous computation still running
+
+        try:
+            from src.services.cut_audio_engine import get_mixer_state, apply_mixer_levels
+            from src.services.cut_ffmpeg_waveform import compute_audio_levels
+
+            mixer = get_mixer_state(project_id)
+            any_solo = any(ls.solo for ls in mixer.lanes.values())
+
+            lane_results: dict[str, Any] = {}
+
+            loop = asyncio.get_running_loop()
+
+            async def _compute_one(entry: dict) -> None:
+                source_path = str(entry.get("source_path") or "")
+                lane_id = str(entry.get("lane_id") or "")
+                time_sec = float(entry.get("time", 0))
+                if not source_path or not lane_id:
+                    return
+                try:
+                    raw = await loop.run_in_executor(
+                        None,
+                        functools.partial(
+                            compute_audio_levels,
+                            source_path,
+                            time_sec,
+                            waveform_bins=0,
+                        ),
+                    )
+                except Exception:
+                    raw = {}
+                rms_l = float(raw.get("rms_left", 0.0))
+                rms_r = float(raw.get("rms_right", 0.0))
+                peak_l = float(raw.get("peak_left", 0.0))
+                peak_r = float(raw.get("peak_right", 0.0))
+                lane_state = mixer.lanes.get(lane_id)
+                vol = lane_state.volume if lane_state else 1.0
+                muted = lane_state.mute if lane_state else False
+                solo = lane_state.solo if lane_state else False
+                eff_l, eff_r = apply_mixer_levels(
+                    rms_l, rms_r, vol, mixer.master_volume, muted, solo, any_solo
+                )
+                lane_results[lane_id] = {
+                    "rms_left": round(rms_l, 4),
+                    "rms_right": round(rms_r, 4),
+                    "peak_left": round(peak_l, 4),
+                    "peak_right": round(peak_r, 4),
+                    "effective_rms_left": round(eff_l, 4),
+                    "effective_rms_right": round(eff_r, 4),
+                    "muted": muted or (any_solo and not solo),
+                }
+
+            # Compute all lanes concurrently
+            await asyncio.gather(*[_compute_one(entry) for entry in sources])
+
+            await sio.emit("mixer_levels_data", {
+                "success": True,
+                "project_id": project_id,
+                "lanes": lane_results,
+                "master": {
+                    "volume": mixer.master_volume,
+                    "pan": mixer.master_pan,
+                },
+            }, to=sid)
+
+        except Exception as exc:
+            logger.warning("mixer_levels_request failed for sid=%s: %s", sid, exc)
+            await sio.emit("mixer_levels_data", {
+                "success": False,
+                "error": str(exc),
+                "project_id": project_id,
+            }, to=sid)
+        finally:
+            lock.release()
+
     @sio.on("disconnect")
     async def handle_audio_scope_disconnect(sid: str) -> None:
-        """Cleanup client lock on disconnect."""
+        """Cleanup client locks on disconnect."""
         _audio_client_locks.pop(sid, None)
+        _mixer_client_locks.pop(sid, None)
 
-    logger.info("MARKER_B40: Audio scope SocketIO handlers registered")
+    logger.info("MARKER_B40/MARKER_MIXER_STATE: Audio scope + mixer SocketIO handlers registered")

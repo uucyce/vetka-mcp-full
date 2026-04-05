@@ -18,7 +18,7 @@ export default function TrimEditWindow() {
   if (!active || !clipId) return null;
 
   // Find outgoing clip (ends at editPoint) and incoming clip (starts at editPoint)
-  let outgoingClip = null, incomingClip = null;
+  let outgoingClip: any = null, incomingClip: any = null;
   for (const lane of lanes) {
     for (let i = 0; i < lane.clips.length; i++) {
       const c = lane.clips[i];

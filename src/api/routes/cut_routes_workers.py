@@ -29,7 +29,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 import numpy as np
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.services.cut_codec_probe import probe_file, probe_duration
@@ -48,9 +48,24 @@ from src.services.cut_scene_graph_taxonomy import (
     SCENE_GRAPH_NODE_TAKE,
 )
 from src.api.routes.cut_routes_bootstrap import (
+    CutBootstrapRequest,
     _build_initial_timeline_state,
+    _execute_cut_bootstrap,
     _infer_cut_media_modality,
     _utc_now_iso,
+)
+
+# Import Request models (now safe after moving import of this file in cut_routes.py)
+from src.api.routes.cut_routes import (
+    CutAudioSyncRequest,
+    CutMusicSyncRequest,
+    CutPauseSliceRequest,
+    CutScanMatrixRequest,
+    CutSceneAssemblyRequest,
+    CutThumbnailBuildRequest,
+    CutTimecodeSyncRequest,
+    CutTranscriptNormalizeRequest,
+    CutWaveformBuildRequest,
 )
 
 logger = logging.getLogger("cut.workers")
@@ -2859,7 +2874,7 @@ def _run_cut_timecode_sync_job(job_id: str, body: CutTimecodeSyncRequest) -> Non
 
 
 @worker_router.post("/bootstrap")
-async def cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
+async def cut_bootstrap(body: CutBootstrapRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.MCP.BOOTSTRAP.FLOW_V1
     MARKER_170.MCP.BOOTSTRAP.CONTRACT_V1
@@ -2868,7 +2883,7 @@ async def cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
 
 
 @worker_router.post("/bootstrap-async")
-async def cut_bootstrap_async(body: CutBootstrapRequest) -> dict[str, Any]:
+async def cut_bootstrap_async(body: CutBootstrapRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.MCP.BOOTSTRAP_ASYNC_V1
     """
@@ -2936,7 +2951,7 @@ async def cut_import_files(
 
 
 @worker_router.post("/scene-assembly-async")
-async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, Any]:
+async def cut_scene_assembly_async(body: CutSceneAssemblyRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.MCP.SCENE_ASSEMBLY_ASYNC_V1
     """
@@ -2993,7 +3008,7 @@ async def cut_scene_assembly_async(body: CutSceneAssemblyRequest) -> dict[str, A
 # moved to cut_routes_media.py (17 routes)
 
 @worker_router.post("/worker/waveform-build-async")
-async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, Any]:
+async def cut_waveform_build_async(body: CutWaveformBuildRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.WORKER.MEDIA_SUBMCP
     MARKER_170.WORKER.DEGRADED_SAFE
@@ -3040,7 +3055,7 @@ async def cut_waveform_build_async(body: CutWaveformBuildRequest) -> dict[str, A
 
 
 @worker_router.post("/worker/transcript-normalize-async")
-async def cut_transcript_normalize_async(body: CutTranscriptNormalizeRequest) -> dict[str, Any]:
+async def cut_transcript_normalize_async(body: CutTranscriptNormalizeRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.WORKER.MEDIA_SUBMCP
     MARKER_170.WORKER.TRANSCRIPT_NORMALIZE_V1
@@ -3088,7 +3103,7 @@ async def cut_transcript_normalize_async(body: CutTranscriptNormalizeRequest) ->
 
 
 @worker_router.post("/worker/thumbnail-build-async")
-async def cut_thumbnail_build_async(body: CutThumbnailBuildRequest) -> dict[str, Any]:
+async def cut_thumbnail_build_async(body: CutThumbnailBuildRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.WORKER.MEDIA_SUBMCP
     MARKER_170.UI.STORYBOARD_THUMBNAILS_V1
@@ -3136,7 +3151,7 @@ async def cut_thumbnail_build_async(body: CutThumbnailBuildRequest) -> dict[str,
 
 
 @worker_router.post("/worker/audio-sync-async")
-async def cut_audio_sync_async(body: CutAudioSyncRequest) -> dict[str, Any]:
+async def cut_audio_sync_async(body: CutAudioSyncRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.WORKER.AUDIO_SYNC_V1
     MARKER_170.WORKER.AUDIO_SYNC_BAKEOFF
@@ -3184,7 +3199,7 @@ async def cut_audio_sync_async(body: CutAudioSyncRequest) -> dict[str, Any]:
 
 
 @worker_router.post("/worker/scan-matrix-async")
-async def cut_scan_matrix_async(body: CutScanMatrixRequest) -> dict[str, Any]:
+async def cut_scan_matrix_async(body: CutScanMatrixRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_189.2.SCAN_MATRIX_ASYNC
     Run VideoScanner + AudioScanner on all media files in the project.
@@ -3233,7 +3248,7 @@ async def cut_scan_matrix_async(body: CutScanMatrixRequest) -> dict[str, Any]:
 
 
 @worker_router.post("/worker/music-sync-async")
-async def cut_music_sync_async(body: CutMusicSyncRequest) -> dict[str, Any]:
+async def cut_music_sync_async(body: CutMusicSyncRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_171.WORKER.MUSIC_SYNC_V1
     MARKER_171.WORKER.BEAT_TRACK_PROXY
@@ -3281,7 +3296,7 @@ async def cut_music_sync_async(body: CutMusicSyncRequest) -> dict[str, Any]:
 
 
 @worker_router.post("/worker/pause-slice-async")
-async def cut_pause_slice_async(body: CutPauseSliceRequest) -> dict[str, Any]:
+async def cut_pause_slice_async(body: CutPauseSliceRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.INTEL.SLICE_METHOD_BAKEOFF
     MARKER_170.INTEL.PAUSE_SLICE_V1
@@ -3332,7 +3347,7 @@ async def cut_pause_slice_async(body: CutPauseSliceRequest) -> dict[str, Any]:
 
 
 @worker_router.post("/worker/timecode-sync-async")
-async def cut_timecode_sync_async(body: CutTimecodeSyncRequest) -> dict[str, Any]:
+async def cut_timecode_sync_async(body: CutTimecodeSyncRequest = Body(...)) -> dict[str, Any]:
     """
     MARKER_170.WORKER.TIMECODE_SYNC_V1
     MARKER_170.CONTRACT.MULTI_SYNC_ALIGNMENT_V1

@@ -167,6 +167,31 @@ def build_render_plan(
                 continue
             # MARKER_B9: Extract effects from clip metadata
             effects_data = clip.get("effects") or {}
+            video_effects = list(effects_data.get("video_effects", []))
+
+            # MARKER_SEC_COLOR: Inject secondary_color EffectParam from color_correction
+            cc = clip.get("color_correction") or {}
+            sec = cc.get("secondary") if cc else None
+            if sec and sec.get("enabled"):
+                import uuid as _uuid
+                video_effects.append({
+                    "effect_id": str(_uuid.uuid4())[:8],
+                    "type": "secondary_color",
+                    "enabled": True,
+                    "params": {
+                        "hue_center": float(sec.get("hueCenter", 120.0)),
+                        "hue_width": float(sec.get("hueWidth", 30.0)),
+                        "sat_min": float(sec.get("satMin", 0.0)),
+                        "sat_max": float(sec.get("satMax", 1.0)),
+                        "luma_min": float(sec.get("lumaMin", 0.0)),
+                        "luma_max": float(sec.get("lumaMax", 1.0)),
+                        "softness": float(sec.get("softness", 0.1)),
+                        "hue_shift": float(sec.get("hueShift", 0.0)),
+                        "saturation": float(sec.get("saturation", 1.0)),
+                        "exposure": float(sec.get("exposure", 0.0)),
+                    },
+                })
+
             clips.append(RenderClip(
                 source_path=sp,
                 start_sec=float(clip.get("start_sec", 0)),
@@ -176,7 +201,7 @@ def build_render_plan(
                 speed=float(clip.get("speed", 1.0)),
                 lane_id=lane.get("lane_id", ""),
                 clip_id=clip.get("clip_id", ""),
-                video_effects=effects_data.get("video_effects", []),
+                video_effects=video_effects,
                 audio_effects=effects_data.get("audio_effects", []),
                 # MARKER_B11: Speed extensions
                 reverse=bool(clip.get("reverse", False)),
@@ -478,9 +503,22 @@ class FilterGraphBuilder:
             parts.append("asetpts=PTS-STARTPTS")
 
         # MARKER_B9: Insert audio effects between trim and speed
+        # MARKER_B13-FIX: clip.audio_effects may contain plain dicts (injected by
+        # apply_mixer_to_plan) or EffectParam objects (from effect editor).
+        # compile_audio_filters only handles EffectParam — normalize dicts first.
         if clip.audio_effects:
-            from src.services.cut_effects_engine import compile_audio_filters
-            effect_filters = compile_audio_filters(clip.audio_effects)
+            from src.services.cut_effects_engine import EffectParam, compile_audio_filters
+            normalized = [
+                e if not isinstance(e, dict)
+                else EffectParam(
+                    effect_id=e.get("effect_id", ""),
+                    type=e.get("type", ""),
+                    enabled=e.get("enabled", True),
+                    params=e.get("params", {}),
+                )
+                for e in clip.audio_effects
+            ]
+            effect_filters = compile_audio_filters(normalized)
             parts.extend(effect_filters)
 
         # MARKER_B11: Speed change with pitch control
@@ -525,28 +563,19 @@ class FilterGraphBuilder:
             t = self._transition_map.get(i - 1)
 
             if t and not is_audio:
-                # Video xfade
-                xfade_type = _map_transition_type(t.type)
-                offset = max(0, running_offset - t.duration_sec)
-                filters.append(
-                    f"{current}{next_label}xfade=transition={xfade_type}"
-                    f":duration={t.duration_sec:.3f}:offset={offset:.3f}{out_label}"
+                # MARKER_B10: Video xfade via compile_xfade_filter helper
+                xfade_str = _compile_xfade_filter(
+                    current, next_label, out_label, t.type, t.duration_sec, running_offset
                 )
-                running_offset = offset + clips[i].duration_sec
+                filters.append(xfade_str)
+                running_offset = max(0, running_offset - t.duration_sec) + clips[i].duration_sec
 
             elif t and is_audio:
-                # MARKER_B14: Audio crossfade with curve selection
-                # equal_power (+3dB) = qsin (quarter sine), sounds smooth
-                # linear (0dB) = tri (triangle), sounds dip at midpoint
-                curve = getattr(t, "audio_curve", "equal_power")
-                if curve == "linear":
-                    c1, c2 = "tri", "tri"
-                else:
-                    c1, c2 = "qsin", "qsin"  # equal_power (default, FCP7 +3dB)
-                filters.append(
-                    f"{current}{next_label}acrossfade=d={t.duration_sec:.3f}"
-                    f":c1={c1}:c2={c2}{out_label}"
+                # MARKER_B14: Audio crossfade via compile_acrossfade_filter helper
+                acrossfade_str = _compile_acrossfade_filter(
+                    current, next_label, out_label, t.duration_sec, t.audio_curve
                 )
+                filters.append(acrossfade_str)
                 running_offset = running_offset - t.duration_sec + clips[i].duration_sec
 
             else:
@@ -607,6 +636,216 @@ def _build_atempo_chain(speed: float) -> list[str]:
 
     parts.append(f"atempo={remaining:.4f}")
     return parts
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B11: Speed control compilation
+# ---------------------------------------------------------------------------
+
+def compile_video_speed_filter(speed: float) -> str:
+    """
+    Generate FFmpeg setpts filter for video speed change.
+
+    setpts scales the presentation timestamp by 1/speed.
+    Example: speed=2.0 (2x fast) → setpts=0.5*PTS (halve timestamps = play faster)
+
+    Args:
+        speed: Playback speed (0.25 to 4.0, where 1.0 = normal)
+
+    Returns:
+        FFmpeg filter string, or empty string if speed=1.0 (no-op)
+
+    Example:
+        >>> compile_video_speed_filter(2.0)
+        'setpts=0.5000*PTS'
+        >>> compile_video_speed_filter(0.5)
+        'setpts=2.0000*PTS'
+    """
+    if speed <= 0:
+        return "null"
+    if abs(speed - 1.0) < 0.001:  # Near 1.0, no-op
+        return "null"
+
+    pts_factor = 1.0 / speed
+    return f"setpts={pts_factor:.4f}*PTS"
+
+
+def compile_audio_speed_filter(speed: float, maintain_pitch: bool = True) -> str:
+    """
+    Generate FFmpeg audio filter chain for speed change.
+
+    MARKER_B11: Speed control with pitch preservation option.
+    - maintain_pitch=True: use atempo (preserves pitch, FCP7 default)
+    - maintain_pitch=False: use asetrate (shifts pitch with speed, old-school effect)
+
+    atempo supports 0.5-100.0 range. For extreme speeds, chains multiple filters.
+
+    Args:
+        speed: Playback speed (0.25 to 4.0)
+        maintain_pitch: If True, use atempo (preserve pitch). If False, use asetrate.
+
+    Returns:
+        FFmpeg filter string, or "anull" for no-op
+
+    Example:
+        >>> compile_audio_speed_filter(2.0, maintain_pitch=True)
+        'atempo=2.0000'
+        >>> compile_audio_speed_filter(0.5, maintain_pitch=False)
+        'asetrate=r=0.5000*44100'
+    """
+    if speed <= 0:
+        return "anull"
+    if abs(speed - 1.0) < 0.001:  # Near 1.0, no-op
+        return "anull"
+
+    if maintain_pitch:
+        # Use atempo: preserves pitch, handles chaining for extreme speeds
+        filters = _build_atempo_chain(speed)
+        return ",".join(filters)
+    else:
+        # Use asetrate: shifts pitch with speed (vintage effect)
+        return f"asetrate=r={speed:.4f}*44100"
+
+
+def compile_speed_filter(speed: float, is_audio: bool = False, maintain_pitch: bool = True) -> str:
+    """
+    Generate FFmpeg speed change filter (unified entry point).
+
+    MARKER_B11: Wrapper that selects video or audio filter based on is_audio flag.
+
+    Args:
+        speed: Playback speed (0.25 to 4.0)
+        is_audio: If True, return audio filter; if False, return video filter
+        maintain_pitch: Audio-only, ignored for video
+
+    Returns:
+        FFmpeg filter string ready for filter_complex
+
+    Example:
+        >>> compile_speed_filter(2.0, is_audio=False)
+        'setpts=0.5000*PTS'
+        >>> compile_speed_filter(2.0, is_audio=True)
+        'atempo=2.0000'
+    """
+    if is_audio:
+        return compile_audio_speed_filter(speed, maintain_pitch)
+    else:
+        return compile_video_speed_filter(speed)
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B10: Transition filter generation
+# ---------------------------------------------------------------------------
+
+def _compile_xfade_filter(
+    input1: str,
+    input2: str,
+    output: str,
+    trans_type: str,
+    duration_sec: float,
+    timeline_offset: float,
+) -> str:
+    """
+    Generate a single FFmpeg xfade filter string for video transitions.
+
+    Args:
+        input1: Input label (e.g. "[v0]" or "[vout0]")
+        input2: Second input label (e.g. "[v1]")
+        output: Output label (e.g. "[vout1]")
+        trans_type: Transition type ("crossfade", "dissolve", "dip_to_black", "wipe")
+        duration_sec: Transition duration in seconds
+        timeline_offset: Timeline position where transition begins
+
+    Returns:
+        FFmpeg xfade filter string
+
+    Example:
+        >>> _compile_xfade_filter("[v0]", "[v1]", "[vout1]", "crossfade", 1.0, 1.0)
+        '[v0][v1]xfade=transition=fade:duration=1.000:offset=1.000[vout1]'
+    """
+    xfade_type = _map_transition_type(trans_type)
+    return (
+        f"{input1}{input2}xfade=transition={xfade_type}"
+        f":duration={duration_sec:.3f}:offset={timeline_offset:.3f}{output}"
+    )
+
+
+def _map_audio_curve(curve_type: str) -> tuple[str, str]:
+    """
+    Map audio curve names to FFmpeg acrossfade curve parameters.
+
+    MARKER_B14: FCP7 Chapter 47 audio curve mapping.
+    FFmpeg acrossfade supports: qsin, tri, esin, qcos, hsin, log, ilog, ssin, sqrt, cbrt
+
+    Mapping:
+    - equal_power: qsin (quarter sine, +3dB at midpoint, smooth)
+    - linear: tri (triangle, 0dB at midpoint, dip feeling)
+    - exponential: esin (exponential sine, acceleration then deceleration)
+    - smooth_start: hsin (half sine, smooth entrance, sharp exit)
+    - smooth_end: qcos (quarter cosine, sharp entrance, smooth exit)
+    - log: log (logarithmic, slow start, sharp end)
+    - exponential_log: sqrt (square root, smooth acceleration)
+    - sigmoid: ilog (inverse log, sharp start, slow end)
+    - s_curve: ssin (squared sine, smooth on both ends)
+    - cubic: cbrt (cube root, gentler than sqrt)
+
+    Args:
+        curve_type: Human-readable curve name
+
+    Returns:
+        Tuple of (c1, c2) FFmpeg curve parameters (same curve applied to both channels)
+    """
+    mapping = {
+        "equal_power": ("qsin", "qsin"),      # Default, FCP7 standard
+        "linear": ("tri", "tri"),             # Straight fade, dip at midpoint
+        "exponential": ("esin", "esin"),      # Smooth acceleration/deceleration
+        "smooth_start": ("hsin", "hsin"),     # Gradual entrance, sharp exit
+        "smooth_end": ("qcos", "qcos"),       # Sharp entrance, gradual exit
+        "logarithmic": ("log", "log"),        # Slow start, sharp end
+        "exponential_log": ("sqrt", "sqrt"),  # Gentler acceleration than esin
+        "inverse_log": ("ilog", "ilog"),      # Sharp start, slow end
+        "s_curve": ("ssin", "ssin"),          # Smooth on both ends
+        "cubic": ("cbrt", "cbrt"),            # Gentler than sqrt
+    }
+    c1, c2 = mapping.get(curve_type, ("qsin", "qsin"))  # Default to equal_power
+    return c1, c2
+
+
+def _compile_acrossfade_filter(
+    input1: str,
+    input2: str,
+    output: str,
+    duration_sec: float,
+    audio_curve: str = "equal_power",
+) -> str:
+    """
+    Generate a single FFmpeg acrossfade filter string for audio transitions.
+
+    MARKER_B14: Audio crossfade curve selection (FCP7 Ch.47).
+    Supports 10+ curve types via _map_audio_curve().
+
+    Args:
+        input1: Input label (e.g. "[a0]")
+        input2: Second input label (e.g. "[a1]")
+        output: Output label (e.g. "[aout1]")
+        duration_sec: Crossfade duration in seconds
+        audio_curve: Curve type (see _map_audio_curve for options, default "equal_power")
+
+    Returns:
+        FFmpeg acrossfade filter string
+
+    Example:
+        >>> _compile_acrossfade_filter("[a0]", "[a1]", "[aout1]", 1.0, "equal_power")
+        '[a0][a1]acrossfade=d=1.000:c1=qsin:c2=qsin[aout1]'
+        >>> _compile_acrossfade_filter("[a0]", "[a1]", "[aout1]", 1.0, "exponential")
+        '[a0][a1]acrossfade=d=1.000:c1=esin:c2=esin[aout1]'
+    """
+    c1, c2 = _map_audio_curve(audio_curve)
+
+    return (
+        f"{input1}{input2}acrossfade=d={duration_sec:.3f}"
+        f":c1={c1}:c2={c2}{output}"
+    )
 
 
 # ---------------------------------------------------------------------------

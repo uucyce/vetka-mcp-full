@@ -10,8 +10,6 @@ import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 
-// MARKER_GAMMA-SPD2: Live preview via /cut/speed/compile endpoint
-
 // ─── Presets ───
 
 interface SpeedPreset {
@@ -153,50 +151,12 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
   const [speed, setSpeed] = useState(currentSpeed);
   const [reverse, setReverse] = useState(currentReverse);
   const [maintainPitch, setMaintainPitch] = useState(true);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewFilters, setPreviewFilters] = useState<{ video_filters: string; audio_filters: string } | null>(null);
 
   // Sync with selected clip
   useEffect(() => {
     setSpeed((selectedClip as any)?.speed ?? 1.0);
     setReverse((selectedClip as any)?.reverse ?? false);
   }, [selectedClipId, selectedClip]);
-
-  // Fetch live preview from /cut/speed/compile
-  useEffect(() => {
-    if (!selectedClipId || speed === 1.0) {
-      setPreviewFilters(null);
-      return;
-    }
-
-    const loadPreview = async () => {
-      setPreviewLoading(true);
-      try {
-        const res = await fetch('/cut/speed/compile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            speed,
-            maintain_pitch: maintainPitch,
-            is_audio: selectedClip && (selectedClip as any).source_path?.includes('.wav'),
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setPreviewFilters(data);
-        } else {
-          setPreviewFilters(null);
-        }
-      } catch (e) {
-        console.error('Speed preview fetch failed:', e);
-        setPreviewFilters(null);
-      } finally {
-        setPreviewLoading(false);
-      }
-    };
-
-    loadPreview();
-  }, [speed, maintainPitch, selectedClipId, selectedClip]);
 
   // Computed new duration
   const originalDuration = (selectedClip as any)?.duration_sec ?? 0;
@@ -350,59 +310,6 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
           Fit to Fill (In→Out)
         </button>
       </div>
-
-      {/* Live Preview — MARKER_GAMMA-SPD2 */}
-      {previewLoading && (
-        <div style={{ ...SECTION, color: '#555' }}>
-          <div style={SECTION_TITLE}>Preview</div>
-          <div style={{ fontSize: 10 }}>Compiling filters...</div>
-        </div>
-      )}
-      {previewFilters && !previewLoading && (
-        <div style={{ ...SECTION, borderBottom: 'none' }}>
-          <div style={SECTION_TITLE}>Preview Filters</div>
-          {previewFilters.video_filters && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ color: '#666', fontSize: 9 }}>Video</div>
-              <div
-                style={{
-                  background: '#0a0a0a',
-                  padding: '4px 6px',
-                  borderRadius: 2,
-                  fontSize: 9,
-                  color: '#777',
-                  fontFamily: '"JetBrains Mono", monospace',
-                  wordBreak: 'break-all' as const,
-                  maxHeight: 40,
-                  overflow: 'hidden',
-                }}
-              >
-                {previewFilters.video_filters}
-              </div>
-            </div>
-          )}
-          {previewFilters.audio_filters && (
-            <div>
-              <div style={{ color: '#666', fontSize: 9 }}>Audio</div>
-              <div
-                style={{
-                  background: '#0a0a0a',
-                  padding: '4px 6px',
-                  borderRadius: 2,
-                  fontSize: 9,
-                  color: '#777',
-                  fontFamily: '"JetBrains Mono", monospace',
-                  wordBreak: 'break-all' as const,
-                  maxHeight: 40,
-                  overflow: 'hidden',
-                }}
-              >
-                {previewFilters.audio_filters}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Footer */}
       <div style={FOOTER}>

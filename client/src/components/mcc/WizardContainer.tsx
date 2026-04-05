@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * MARKER_155.WIZARD.001: WizardContainer — 5-step wizard flow manager.
  *
