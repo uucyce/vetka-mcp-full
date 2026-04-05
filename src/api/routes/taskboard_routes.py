@@ -55,6 +55,7 @@ _CREATE_FIELDS = {
     "require_closure_proof",
     "closure_tests",
     "closure_files",
+    "allowed_tools",  # MARKER_201.TOOL_GUARD
 }
 
 _UPDATE_FIELDS = {
@@ -211,14 +212,26 @@ async def list_registered_projects(
     return {"success": True, "projects": result.get("projects", []), "active_project_id": result.get("active_project_id", "")}
 
 
-# MARKER_201.LOCALGUYS: Fixed path routes MUST come before /{task_id} wildcard
-# so FastAPI matches them before the parametric route.
+@router.get("/{task_id}")
+async def get_task(task_id: str, adapter: Optional[str] = Query(None)) -> Dict[str, Any]:
+    adapter_impl = _resolve_adapter(adapter)
+    task = await adapter_impl.get_task(task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
+    return {"success": True, "adapter": adapter_impl.adapter_name, "task": task}
+
+
+# ── MARKER_201.TOOL_GUARD: REST endpoints for local models (Ollama/Qwen) ──
+
 
 @router.post("/claim")
 async def claim_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Claim a task. Used by local models (Ollama) that have no MCP access.
+    """Claim a task. Used by local models (Ollama/Qwen) that have no MCP.
 
-    Body: task_id, agent_name, agent_type (claude_code|local_ollama|…)
+    Body:
+        task_id: str (required)
+        agent_name: str (required)
+        agent_type: str (required — claude_code|codex|opencode|local_ollama)
     """
     from src.orchestration.task_board import get_task_board
 
@@ -240,9 +253,13 @@ async def claim_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
 
 @router.post("/complete")
 async def complete_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
-    """Complete a task. Used by local models (Ollama) that have no MCP access.
+    """Complete a task. Used by local models (Ollama/Qwen) that have no MCP.
 
-    Body: task_id, commit_hash, commit_message (opt), branch (opt), agent_name (opt)
+    Body:
+        task_id: str (required)
+        commit_hash: str (required for worktree completion)
+        commit_message: str (optional)
+        branch: str (optional — for worktree-aware status)
     """
     from src.orchestration.task_board import get_task_board
 
@@ -259,12 +276,3 @@ async def complete_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
         closed_by=body.get("agent_name"),
     )
     return result
-
-
-@router.get("/{task_id}")
-async def get_task(task_id: str, adapter: Optional[str] = Query(None)) -> Dict[str, Any]:
-    adapter_impl = _resolve_adapter(adapter)
-    task = await adapter_impl.get_task(task_id)
-    if task is None:
-        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
-    return {"success": True, "adapter": adapter_impl.adapter_name, "task": task}

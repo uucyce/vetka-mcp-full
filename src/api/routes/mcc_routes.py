@@ -925,7 +925,7 @@ async def _build_localguys_contract(
 async def _resolve_g3_localguys_contract() -> Dict[str, Any]:
     return await _build_localguys_contract(
         workflow_family="g3_localguys",
-        roles=["coder", "verifier", "scout", "architect", "researcher", "operator"],
+        roles=["coder", "verifier"],
         steps=["recon", "plan", "execute", "verify", "review", "finalize"],
         model_policy={
             "coder": {
