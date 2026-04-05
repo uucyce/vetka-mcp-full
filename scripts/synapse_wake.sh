@@ -38,7 +38,17 @@ fi
 
 # ── Session exists? ───────────────────────────────────────────────────────────
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME' — agent offline, nothing to wake" >&2
+    # MARKER_208.WAKE_FALLBACK: No tmux session — fall back to macOS alerts
+    # Commander and other non-Synapse agents run in raw Terminal, not tmux
+    if pgrep -q WindowServer 2>/dev/null; then
+        WAKE_MSG="Agent $ROLE needs attention — check notification inbox"
+        osascript -e "display notification \"$WAKE_MSG\" with title \"[VETKA] $ROLE Wake\"" 2>/dev/null || true
+        osascript -e 'tell application "Terminal" to activate' 2>/dev/null || true
+        afplay /System/Library/Sounds/Ping.aiff &
+        echo "$LOG_PREFIX $ROLE: no tmux session — sent macOS notification + sound + Terminal activate"
+    else
+        echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME', no GUI — cannot wake" >&2
+    fi
     exit 0
 fi
 
