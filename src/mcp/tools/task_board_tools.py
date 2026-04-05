@@ -280,7 +280,6 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
-                "sherpa_status",
             ],
             "description": "Operation to perform",
         },
@@ -391,7 +390,6 @@ TASK_BOARD_SCHEMA = {
             "type": "string",
             "enum": [
                 "pending",
-                "recon_done",
                 "queued",
                 "claimed",
                 "running",
@@ -494,11 +492,11 @@ TASK_BOARD_SCHEMA = {
             "type": "boolean",
             "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
         },
-        # MARKER_201.MERGE: merge_request strategy (snapshot added)
+        # MARKER_198.MERGE: merge_request strategy
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash", "snapshot"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit. 'snapshot': overlay only allowed_paths from branch onto main (one clean commit, ignores diverged history).",
+            "enum": ["cherry-pick", "merge", "squash"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
@@ -1753,204 +1751,8 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
 
-    # MARKER_202.SHERPA_SIGNAL: Query or update Sherpa availability status.
-    # GET:  action=sherpa_status (no args) → returns current status
-    # SET:  action=sherpa_status status=busy|idle|stopped [tasks_enriched=N]
-    elif action == "sherpa_status":
-        new_status = arguments.get("status")
-        if new_status:
-            # Update Sherpa status
-            import os
-            valid = ("idle", "busy", "stopped")
-            if new_status not in valid:
-                return {"success": False, "error": f"sherpa_status must be one of {valid}"}
-            board.settings["sherpa_status"] = new_status
-            if new_status in ("idle", "busy"):
-                board.settings["sherpa_pid"] = os.getpid()
-                from datetime import datetime
-                board.settings["sherpa_last_seen"] = datetime.now().isoformat()
-            if "tasks_enriched" in arguments:
-                try:
-                    board.settings["sherpa_tasks_enriched"] = int(arguments["tasks_enriched"])
-                except (ValueError, TypeError):
-                    pass
-            if new_status == "stopped":
-                board.settings["sherpa_pid"] = None
-            board._save("sherpa_status_update")
-            return {
-                "success": True,
-                "sherpa_status": new_status,
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
-        else:
-            # Query current status
-            return {
-                "success": True,
-                "sherpa_status": board.settings.get("sherpa_status", "stopped"),
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_last_seen": board.settings.get("sherpa_last_seen"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
-
-    # MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill
-    elif action == "spawn":
-        return _handle_synapse(arguments)
-
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
-
-
-def _handle_synapse(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill.
-
-    Sub-operations via 'sub' parameter:
-      spawn  — start agent in new terminal window
-      write  — send prompt text to running agent session
-      wake   — force agent to read notification inbox
-      status — list running agent tmux sessions
-      kill   — stop agent session
-    """
-    import subprocess
-
-    sub = arguments.get("sub", "spawn")
-    role = arguments.get("role")
-    scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
-
-    if sub == "status":
-        # List all vetka-* tmux sessions
-        result = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name} #{session_created} #{session_attached}"],
-            capture_output=True, text=True,
-        )
-        sessions = []
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.startswith("vetka-"):
-                    parts = line.split()
-                    sessions.append({
-                        "session": parts[0],
-                        "role": parts[0].replace("vetka-", ""),
-                        "created": parts[1] if len(parts) > 1 else None,
-                        "attached": parts[2] if len(parts) > 2 else "0",
-                    })
-        return {"success": True, "sessions": sessions, "count": len(sessions)}
-
-    if not role:
-        return {"success": False, "error": "role is required for spawn sub-operations"}
-
-    session_name = f"vetka-{role}"
-
-    if sub == "spawn":
-        # Load agent info from registry
-        import yaml
-        registry_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "templates" / "agent_registry.yaml"
-        agent_type = "claude_code"
-        worktree = None
-        try:
-            with open(registry_path) as f:
-                data = yaml.safe_load(f)
-            for r in data.get("roles", []):
-                if r.get("callsign") == role:
-                    worktree = r.get("worktree")
-                    agent_type = r.get("agent_type", "claude_code")
-                    break
-        except Exception as exc:
-            return {"success": False, "error": f"Failed to read agent_registry.yaml: {exc}"}
-
-        if not worktree:
-            return {"success": False, "error": f"Role '{role}' not found in agent_registry.yaml or has no worktree"}
-
-        # Check if already running
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode == 0:
-            return {"success": True, "already_running": True, "session": session_name,
-                    "message": f"{role} already running in {session_name}"}
-
-        synapse_script = scripts_dir / "spawn_synapse.sh"
-        if not synapse_script.exists():
-            return {"success": False, "error": f"spawn_synapse.sh not found at {synapse_script}"}
-
-        proc = subprocess.run(
-            [str(synapse_script), role, worktree, agent_type],
-            capture_output=True, text=True, timeout=15,
-        )
-        if proc.returncode != 0:
-            return {"success": False, "error": f"Spawn failed: {proc.stderr.strip()}"}
-
-        return {"success": True, "session": session_name, "agent_type": agent_type,
-                "worktree": worktree, "message": proc.stdout.strip()}
-
-    elif sub == "write":
-        prompt = arguments.get("prompt") or arguments.get("message")
-        if not prompt:
-            return {"success": False, "error": "prompt or message is required for write"}
-
-        # Check session exists
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": False, "error": f"No active session {session_name} — spawn agent first"}
-
-        # Try synapse_write.sh first, fall back to direct tmux send-keys
-        write_script = scripts_dir / "synapse_write.sh"
-        if write_script.exists():
-            proc = subprocess.run(
-                [str(write_script), role, prompt],
-                capture_output=True, text=True, timeout=10,
-            )
-            ok = proc.returncode == 0
-        else:
-            # Direct tmux send-keys fallback
-            proc = subprocess.run(
-                ["tmux", "send-keys", "-t", session_name, prompt, "Enter"],
-                capture_output=True, text=True,
-            )
-            ok = proc.returncode == 0
-
-        return {"success": ok, "session": session_name,
-                "message": f"Sent to {role}" if ok else proc.stderr.strip()}
-
-    elif sub == "wake":
-        # Check session exists
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": False, "error": f"No active session {session_name} — agent not running"}
-
-        # Try synapse_wake.sh first, fall back to direct tmux send-keys
-        wake_script = scripts_dir / "synapse_wake.sh"
-        if wake_script.exists():
-            proc = subprocess.run(
-                [str(wake_script), role],
-                capture_output=True, text=True, timeout=10,
-            )
-            ok = proc.returncode == 0
-        else:
-            # Fallback: type /compact into agent session to trigger tool use → hook reads signal
-            proc = subprocess.run(
-                ["tmux", "send-keys", "-t", session_name,
-                 "check notifications from task board", "Enter"],
-                capture_output=True, text=True,
-            )
-            ok = proc.returncode == 0
-
-        return {"success": ok, "session": session_name,
-                "message": f"Wake sent to {role}" if ok else proc.stderr.strip()}
-
-    elif sub == "kill":
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": True, "message": f"{role} not running (no session {session_name})"}
-
-        proc = subprocess.run(
-            ["tmux", "kill-session", "-t", session_name],
-            capture_output=True, text=True,
-        )
-        return {"success": proc.returncode == 0, "session": session_name,
-                "message": f"{role} killed" if proc.returncode == 0 else proc.stderr.strip()}
-
-    else:
-        return {"success": False,
-                "error": f"Unknown sub-operation '{sub}'. Valid: spawn, write, wake, status, kill"}
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:

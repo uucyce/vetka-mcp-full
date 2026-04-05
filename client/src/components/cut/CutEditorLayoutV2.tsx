@@ -37,6 +37,8 @@ import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 import TrimEditWindow from './TrimEditWindow';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
+import { InsertTracksDialog, DeleteTracksDialog } from './panels/InsertDeleteTracksDialog';
+import { FindDialog } from './panels/FindDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
 
@@ -1327,6 +1329,10 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
+    // MARKER_GAMMA-FIND: Find dialog (⌘F)
+    findDialog: () => {
+      useCutEditorStore.getState().setShowFindDialog(true);
+    },
 
     // MARKER_GAMMA-TRIM5-WIRE: New hotkey handlers for TRIM5/SEL6 actions
     rippleTrimToPlayhead: () => {
@@ -1606,6 +1612,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <TrimEditWindow />
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
       <EditMarkerDialog />
+      {/* MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs */}
+      <InsertTracksDialog />
+      <DeleteTracksDialog />
+      {/* MARKER_GAMMA-FIND: Find dialog (⌘F) */}
+      <FindDialog />
       <TimecodeEntryOverlay />
       {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
       <PublishDialog />

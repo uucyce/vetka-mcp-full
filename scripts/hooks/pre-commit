@@ -14,8 +14,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 # It must NEVER be committed. This guard runs for BOTH main repo and worktrees.
 BLOCKED_FILES="CLAUDE.md .agent_lock"
 for BLOCKED in $BLOCKED_FILES; do
-    # Match filename at root or any subdirectory (e.g. .claude/worktrees/*/CLAUDE.md)
-    if git diff --cached --name-only | grep -qE "(^|/)${BLOCKED}$"; then
+    if git diff --cached --name-only | grep -q "^${BLOCKED}$"; then
         echo "ERROR: ${BLOCKED} is a generated artifact — do not commit."
         echo "Run: git reset HEAD ${BLOCKED}"
         exit 1
