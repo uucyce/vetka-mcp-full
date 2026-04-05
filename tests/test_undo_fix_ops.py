@@ -176,3 +176,34 @@ class TestSetTransition:
         state = _make_state([])
         with pytest.raises(ValueError, match="clip not found"):
             apply_ops(state, [{"op": "set_transition", "clip_id": "Z", "transition": None}])
+
+    def test_audio_curve_roundtrip(self):
+        """audio_curve must survive set_transition — was silently dropped (tb_1774675674_50070_1)."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "set_transition", "clip_id": "A",
+            "transition": {
+                "type": "cross_dissolve", "duration_sec": 1.0,
+                "alignment": "center", "audio_curve": "equal_power",
+            },
+        }])
+        clip = _get_clip(new_state, "A")
+        assert clip["transition_out"]["audio_curve"] == "equal_power"
+
+    def test_unknown_extra_fields_passthrough(self):
+        """Extra fields from frontend must pass through, not be silently dropped."""
+        state = _make_state([
+            {"clip_id": "A", "source_path": "/a.mp4", "start_sec": 0, "duration_sec": 5},
+        ])
+        new_state, _ = apply_ops(state, [{
+            "op": "set_transition", "clip_id": "A",
+            "transition": {
+                "type": "wipe", "duration_sec": 0.5, "alignment": "end",
+                "audio_curve": "linear",
+            },
+        }])
+        clip = _get_clip(new_state, "A")
+        assert clip["transition_out"]["audio_curve"] == "linear"
+        assert clip["transition_out"]["type"] == "wipe"

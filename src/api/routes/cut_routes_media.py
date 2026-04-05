@@ -1757,7 +1757,20 @@ async def cut_media_stream(request: Request, source_path: str) -> StreamingRespo
 # MARKER_HLS_STREAM: HLS adaptive streaming for non-browser codecs
 # ---------------------------------------------------------------------------
 
-from src.services.cut_hls_streamer import HLSStreamer
+try:
+    from src.services.cut_hls_streamer import HLSStreamer
+    _HAS_HLS = True
+except ImportError:
+    _HAS_HLS = False
+
+
+def _require_hls():
+    """Guard: raise 501 if HLS module not available."""
+    if not _HAS_HLS:
+        raise HTTPException(
+            status_code=501,
+            detail="HLS streaming not available (cut_hls_streamer module missing)",
+        )
 
 
 @media_router.get("/stream/hls")
@@ -1769,6 +1782,7 @@ async def cut_stream_hls_start(source_path: str):
 
     For browser-native files, returns redirect hint to use /cut/stream directly.
     """
+    _require_hls()
     source_path = source_path.strip()
     if not source_path or not os.path.isabs(source_path):
         raise HTTPException(status_code=400, detail="source_path must be an absolute path")
@@ -1812,6 +1826,7 @@ async def cut_stream_hls_playlist(job_id: str):
     Serve the .m3u8 playlist for an active HLS transcode job.
     Returns 404 if job not found, 202 if playlist not ready yet.
     """
+    _require_hls()
     streamer = HLSStreamer.get_instance()
     job = streamer.get_job(job_id)
     if not job:
@@ -1853,6 +1868,7 @@ async def cut_stream_hls_segment(request: Request, job_id: str, segment_name: st
     Serve a .ts segment from an HLS transcode job.
     Supports HTTP Range for seeking.
     """
+    _require_hls()
     streamer = HLSStreamer.get_instance()
     seg_path = streamer.get_segment_path(job_id, segment_name)
     if not seg_path:
@@ -1864,6 +1880,7 @@ async def cut_stream_hls_segment(request: Request, job_id: str, segment_name: st
 @media_router.get("/stream/hls/status/{job_id}")
 async def cut_stream_hls_status(job_id: str):
     """Get HLS transcode job status."""
+    _require_hls()
     streamer = HLSStreamer.get_instance()
     job = streamer.get_job(job_id)
     if not job:
@@ -1874,6 +1891,7 @@ async def cut_stream_hls_status(job_id: str):
 @media_router.get("/stream/hls/jobs")
 async def cut_stream_hls_jobs():
     """List all HLS transcode jobs."""
+    _require_hls()
     streamer = HLSStreamer.get_instance()
     return {"success": True, "jobs": streamer.list_jobs()}
 
@@ -1881,6 +1899,7 @@ async def cut_stream_hls_jobs():
 @media_router.delete("/stream/hls/{job_id}")
 async def cut_stream_hls_cancel(job_id: str):
     """Cancel an active HLS transcode job."""
+    _require_hls()
     streamer = HLSStreamer.get_instance()
     cancelled = streamer.cancel(job_id)
     if not cancelled:

@@ -179,7 +179,7 @@ def compute_vectorscope(frame_rgb: "np.ndarray", scope_size: int = 256) -> list[
     cx = np.clip((cb * scale + half).astype(int), 0, scope_size - 1)
     cy = np.clip((-cr * scale + half).astype(int), 0, scope_size - 1)
 
-    scope = np.zeros((scope_size, scope_size), dtype=np.int32)
+    scope = np.zeros((scope_size, scope_size), dtype="int32")
     np.add.at(scope, (cy, cx), 1)
 
     scope_log = np.log1p(scope.astype(np.float32))

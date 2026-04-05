@@ -11,7 +11,7 @@ import tempfile
 import json
 from pathlib import Path
 
-from src.mcp.tools.task_board import TaskBoard
+from src.orchestration.task_board import TaskBoard
 from src.mcp.tools.task_board_tools import handle_task_board
 
 
@@ -22,7 +22,7 @@ class TestDescGuardValidation:
         """Create temporary task board for each test."""
         self.temp_dir = tempfile.mkdtemp()
         self.board_path = Path(self.temp_dir) / "tasks.db"
-        self.board = TaskBoard(str(self.board_path))
+        self.board = TaskBoard(self.board_path)
 
     def test_desc_guard_p1_task_too_short_blocks(self):
         """P1 task with description < 20 chars should be rejected."""
@@ -31,7 +31,8 @@ class TestDescGuardValidation:
             "title": "Fix bug",
             "description": "Short",  # 5 chars < 20
             "phase_type": "fix",
-            "priority": 1,  # P1
+            "priority": 1,  # P1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is False
@@ -46,7 +47,8 @@ class TestDescGuardValidation:
             "title": "Implement feature",
             "description": "Do it",  # 5 chars < 20
             "phase_type": "build",
-            "priority": 2,  # P2
+            "priority": 2,  # P2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is False
@@ -61,6 +63,7 @@ class TestDescGuardValidation:
             "description": "This is a valid description with at least twenty characters for clarity",  # >20
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -73,7 +76,8 @@ class TestDescGuardValidation:
             "title": "Nice to have",
             "description": "Short",  # 5 chars < 20
             "phase_type": "build",
-            "priority": 3,  # P3
+            "priority": 3,  # P3,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True  # Accepts P3+
@@ -88,6 +92,7 @@ class TestDescGuardValidation:
             "description": "Fix",  # 3 chars < 20
             "phase_type": "build",
             "priority": 4,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -101,6 +106,7 @@ class TestDescGuardValidation:
             "description": "",  # Empty
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is False
@@ -114,6 +120,7 @@ class TestDescGuardValidation:
             "description": "   \t\n   ",  # Whitespace only
             "phase_type": "build",
             "priority": 2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is False
@@ -128,6 +135,7 @@ class TestDescGuardValidation:
             "description": desc_20,
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -140,7 +148,7 @@ class TestSoftDedupDetection:
         """Create temporary task board with existing tasks."""
         self.temp_dir = tempfile.mkdtemp()
         self.board_path = Path(self.temp_dir) / "tasks.db"
-        self.board = TaskBoard(str(self.board_path))
+        self.board = TaskBoard(self.board_path)
 
         # Add some existing tasks
         handle_task_board({
@@ -149,6 +157,7 @@ class TestSoftDedupDetection:
             "description": "Users cannot log in with OAuth tokens after session timeout",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         handle_task_board({
@@ -157,6 +166,7 @@ class TestSoftDedupDetection:
             "description": "Create POST /api/auth/register endpoint with validation",
             "phase_type": "build",
             "priority": 2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         handle_task_board({
@@ -165,6 +175,7 @@ class TestSoftDedupDetection:
             "description": "Implement connection pool for better performance",
             "phase_type": "build",
             "priority": 3,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
     def test_soft_dedup_detects_similar_title(self):
@@ -175,6 +186,7 @@ class TestSoftDedupDetection:
             "description": "Address the OAuth token issue in the authentication system",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # Should succeed
@@ -192,6 +204,7 @@ class TestSoftDedupDetection:
             "description": "Different description but same title",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -207,6 +220,7 @@ class TestSoftDedupDetection:
             "description": "Add Redis caching to improve API performance",
             "phase_type": "build",
             "priority": 2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -221,6 +235,7 @@ class TestSoftDedupDetection:
             "description": "Address special character handling",
             "phase_type": "fix",
             "priority": 2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -235,6 +250,7 @@ class TestSoftDedupDetection:
             "description": "OAuth issue reproduction and fix",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # Even with possible duplicates, task should succeed
@@ -250,15 +266,17 @@ class TestSoftDedupDetection:
                 "description": f"Auth issue {i}",
                 "phase_type": "fix",
                 "priority": 3,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
             })
 
         # Add similar task
         result = handle_task_board({
             "action": "add",
             "title": "Fix authentication bug in login flow",
-            "description": "Another auth issue",
+            "description": "Another similar auth issue to test dedup",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
@@ -274,7 +292,7 @@ class TestDescGuardAndSoftDedupInteraction:
         """Create temporary task board."""
         self.temp_dir = tempfile.mkdtemp()
         self.board_path = Path(self.temp_dir) / "tasks.db"
-        self.board = TaskBoard(str(self.board_path))
+        self.board = TaskBoard(self.board_path)
 
     def test_desc_guard_blocks_before_dedup_check(self):
         """DESC_GUARD validation should happen before SOFT_DEDUP."""
@@ -285,6 +303,7 @@ class TestDescGuardAndSoftDedupInteraction:
             "description": "This is a valid description with sufficient length",
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # Try to add similar task with invalid description (P1)
@@ -294,6 +313,7 @@ class TestDescGuardAndSoftDedupInteraction:
             "description": "Short",  # Invalid < 20 chars
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # DESC_GUARD should block before SOFT_DEDUP
@@ -310,6 +330,7 @@ class TestDescGuardAndSoftDedupInteraction:
             "description": "Optimize query performance by using better indexing",
             "phase_type": "build",
             "priority": 2,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # Add similar P3 task with short description
@@ -319,6 +340,7 @@ class TestDescGuardAndSoftDedupInteraction:
             "description": "Optimize",  # Short < 20 chars
             "phase_type": "build",
             "priority": 3,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         # Should succeed (P3+)
@@ -340,6 +362,7 @@ class TestGuardErrorMessages:
             "description": "12345678",  # 8 chars
             "phase_type": "fix",
             "priority": 1,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is False
@@ -354,6 +377,7 @@ class TestGuardErrorMessages:
             "description": "ABC",  # 3 chars
             "phase_type": "build",
             "priority": 3,
+            "architecture_docs": ["docs/92_ph/PHASE_92_TRUNCATION_INVESTIGATION_AND_FIXES.md"],
         })
 
         assert result["success"] is True
