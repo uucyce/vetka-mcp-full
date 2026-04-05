@@ -47,26 +47,9 @@ class MixerState:
     """Complete mixer state for all lanes + master."""
     lanes: dict[str, LaneMixerState] = field(default_factory=dict)
     master_volume: float = 1.0  # 0.0 - 1.5
-    master_pan: float = 0.0     # -1.0 (L) to +1.0 (R), 0.0 = center
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "lanes": {
-                lane_id: {
-                    "lane_id": ls.lane_id,
-                    "volume": ls.volume,
-                    "pan": ls.pan,
-                    "muted": ls.mute,
-                    "solo": ls.solo,
-                }
-                for lane_id, ls in self.lanes.items()
-            },
-            "master_volume": self.master_volume,
-            "master_pan": self.master_pan,
-        }
 
     @staticmethod
-    def from_dict(d: dict[str, Any]) -> "MixerState":
+    def from_dict(d: dict[str, Any]) -> MixerState:
         """Parse mixer state from API request body."""
         lanes: dict[str, LaneMixerState] = {}
         for lane_id, lane_data in (d.get("lanes") or {}).items():
@@ -74,13 +57,12 @@ class MixerState:
                 lane_id=lane_id,
                 volume=float(lane_data.get("volume", 1.0)),
                 pan=float(lane_data.get("pan", 0.0)),
-                mute=bool(lane_data.get("mute", lane_data.get("muted", False))),
+                mute=bool(lane_data.get("mute", False)),
                 solo=bool(lane_data.get("solo", False)),
             )
         return MixerState(
             lanes=lanes,
             master_volume=float(d.get("master_volume", 1.0)),
-            master_pan=float(d.get("master_pan", 0.0)),
         )
 
 
@@ -184,7 +166,7 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
         plan: RenderPlan from cut_render_engine
         mixer_state: MixerState with per-lane settings
     """
-    if not mixer_state.lanes and mixer_state.master_volume == 1.0 and mixer_state.master_pan == 0.0:
+    if not mixer_state.lanes and mixer_state.master_volume == 1.0:
         return  # Nothing to apply
 
     # Check if any lane is soloed
@@ -212,13 +194,6 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
                     "enabled": True,
                     "params": {"db": -96.0},
                 })
-            elif mixer_state.master_pan != 0.0:
-                clip.audio_effects.append({
-                    "effect_id": "_mixer_master_pan",
-                    "type": "_pan",
-                    "enabled": True,
-                    "params": {"pan": mixer_state.master_pan},
-                })
             continue
 
         effects = build_lane_audio_filters(
@@ -227,18 +202,6 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
             any_solo=any_solo,
         )
         clip.audio_effects.extend(effects)
-
-        # Master pan — applied on top of per-lane pan for all non-muted clips
-        if mixer_state.master_pan != 0.0:
-            # Only apply if clip is not going to be silent
-            is_silent = lane_state.mute or (any_solo and not lane_state.solo)
-            if not is_silent:
-                clip.audio_effects.append({
-                    "effect_id": "_mixer_master_pan",
-                    "type": "_pan",
-                    "enabled": True,
-                    "params": {"pan": mixer_state.master_pan},
-                })
 
 
 # ---------------------------------------------------------------------------
@@ -505,80 +468,3 @@ def toggle_audio_scrubbing(project_id: str) -> bool:
     new_state = not get_audio_scrubbing(project_id)
     set_audio_scrubbing(project_id, new_state)
     return new_state
-
-
-# ---------------------------------------------------------------------------
-# MARKER_MIXER_STATE: Per-project mixer state store
-# In-memory (same pattern as _audio_scrubbing_state), resets on restart.
-# ---------------------------------------------------------------------------
-
-import threading as _threading
-
-_mixer_state_store: dict[str, MixerState] = {}
-_mixer_state_lock = _threading.Lock()
-
-
-def get_mixer_state(project_id: str) -> MixerState:
-    """Return current MixerState for a project. Default: empty (all unity)."""
-    with _mixer_state_lock:
-        return _mixer_state_store.get(project_id, MixerState())
-
-
-def set_mixer_state(project_id: str, state: MixerState) -> MixerState:
-    """Replace full mixer state for a project."""
-    with _mixer_state_lock:
-        _mixer_state_store[project_id] = state
-        return state
-
-
-def update_lane_mixer(project_id: str, lane_id: str, **kwargs: Any) -> MixerState:
-    """Update a single lane's mixer params. Creates lane entry if missing."""
-    with _mixer_state_lock:
-        state = _mixer_state_store.get(project_id, MixerState())
-        lane = state.lanes.get(lane_id, LaneMixerState(lane_id=lane_id))
-        if "volume" in kwargs:
-            lane.volume = max(0.0, min(1.5, float(kwargs["volume"])))
-        if "pan" in kwargs:
-            lane.pan = max(-1.0, min(1.0, float(kwargs["pan"])))
-        if "muted" in kwargs:
-            lane.mute = bool(kwargs["muted"])
-        if "solo" in kwargs:
-            lane.solo = bool(kwargs["solo"])
-        state.lanes[lane_id] = lane
-        _mixer_state_store[project_id] = state
-        return state
-
-
-def update_master_mixer(project_id: str, **kwargs: Any) -> MixerState:
-    """Update master bus volume/pan."""
-    with _mixer_state_lock:
-        state = _mixer_state_store.get(project_id, MixerState())
-        if "volume" in kwargs:
-            state.master_volume = max(0.0, min(1.5, float(kwargs["volume"])))
-        if "pan" in kwargs:
-            state.master_pan = max(-1.0, min(1.0, float(kwargs["pan"])))
-        _mixer_state_store[project_id] = state
-        return state
-
-
-def apply_mixer_levels(
-    rms_left: float,
-    rms_right: float,
-    lane_volume: float,
-    master_volume: float,
-    muted: bool,
-    solo: bool,
-    any_solo: bool,
-) -> tuple[float, float]:
-    """
-    Apply mixer state to raw RMS levels for VU metering.
-
-    Returns (effective_rms_left, effective_rms_right) with volume applied,
-    or (0.0, 0.0) if the lane should be silent.
-    """
-    # Determine silence
-    is_silent = muted or (any_solo and not solo)
-    if is_silent:
-        return 0.0, 0.0
-    scale = lane_volume * master_volume
-    return rms_left * scale, rms_right * scale

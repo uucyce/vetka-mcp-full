@@ -24,8 +24,8 @@ import time
 import logging
 import os
 import re
-import asyncio
 import subprocess
+import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
@@ -111,72 +111,11 @@ VALID_STATUSES = {
     "verified",
     "needs_fix",
     "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
-    "scout_recon",  # MARKER_203.SCOUT: Scout found code locations, ready for Sherpa or agent
 }
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
-
-# MARKER_203.SCOUT.LAZY: Lazy-loaded Scout singleton
-_scout_instance = None
-_scout_load_attempted = False
-
-
-def _get_scout():
-    """Lazy-load Scout. Returns None if scout.py not available."""
-    global _scout_instance, _scout_load_attempted
-    if _scout_load_attempted:
-        return _scout_instance
-    _scout_load_attempted = True
-    try:
-        from src.services.scout import get_scout
-        _scout_instance = get_scout(PROJECT_ROOT)
-        logger.info("[TaskBoard] SCOUT_HOOK: Scout loaded")
-    except ImportError:
-        logger.debug("[TaskBoard] SCOUT_HOOK: scout.py not found, scouting disabled")
-    except Exception as exc:
-        logger.warning("[TaskBoard] SCOUT_HOOK: failed to load Scout: %s", exc)
-    return _scout_instance
-
-
-def _run_scout_hook(task_payload: dict, board: "TaskBoard") -> None:
-    """Run Scout on a task and update scout_context + status if markers found.
-
-    MARKER_203.SCOUT.HOOK
-    Never raises — all errors caught and logged.
-    Only runs when task has allowed_paths or domain.
-    """
-    try:
-        has_paths = bool(task_payload.get("allowed_paths"))
-        has_domain = bool(task_payload.get("domain"))
-        if not has_paths and not has_domain:
-            return
-
-        if task_payload.get("phase_type") == "research":
-            return
-
-        scout = _get_scout()
-        if scout is None:
-            return
-
-        markers = scout.analyze(task_payload)
-        if not markers:
-            return
-
-        scout_context = [m.to_dict() for m in markers]
-        task_payload["scout_context"] = scout_context
-
-        if task_payload.get("status") == "pending":
-            task_payload["status"] = "scout_recon"
-
-        logger.info(
-            "[TaskBoard] SCOUT_HOOK: %d markers for %s",
-            len(markers), task_payload.get("id", "?"),
-        )
-    except Exception as exc:
-        logger.warning("[TaskBoard] SCOUT_HOOK error (safe): %s", exc)
-
 
 # Counter for generating IDs
 # MARKER_200.DEDUPE_FIX: Use PID + monotonic counter to prevent cross-process ID collisions.
@@ -288,7 +227,6 @@ class TaskBoard:
         """
         # Determine DB path
         if board_file is not None:
-            board_file = Path(board_file)  # ensure Path, not str — hotfix for agent spawn
             if str(board_file).endswith(".json"):
                 # Legacy callers passing .json path → derive .db path
                 self.board_file = board_file
@@ -2097,12 +2035,6 @@ class TaskBoard:
         # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
         self._insert_task(task_payload)
         self._notify_board_update("added")
-
-        # MARKER_203.SCOUT.ADD_HOOK: Scout enrichment on task creation
-        _run_scout_hook(task_payload, self)
-        if task_payload.get("scout_context"):
-            self._save_task(task_payload)
-
         logger.info(
             f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})"
         )
@@ -2460,8 +2392,6 @@ class TaskBoard:
             "merge_result",  # MARKER_184.5
             "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
             "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
-            "scout_context",  # MARKER_203.SCOUT: Code markers from PULSAR Scout
-            "verify_retries", "verification_notes",  # MARKER_205: Verifier middleware fields
         }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
@@ -2504,13 +2434,6 @@ class TaskBoard:
 
         self._save_task(task)
         self._notify_board_update("updated")
-
-        # MARKER_203.SCOUT.UPDATE_HOOK: Re-scout when paths or description change
-        if "allowed_paths" in updates or "description" in updates:
-            _run_scout_hook(task, self)
-            if task.get("scout_context"):
-                self._save_task(task)
-
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
@@ -2854,6 +2777,18 @@ class TaskBoard:
             return {
                 "success": False,
                 "error": f"Task {task_id} is {task['status']}, can't claim",
+            }
+
+        # MARKER_208.SINGLE_CLAIM: Reject if agent already has an active task
+        active_row = self.db.execute(
+            "SELECT id, title FROM tasks WHERE assigned_to = ? AND status IN ('claimed', 'running')",
+            (agent_name,),
+        ).fetchone()
+        if active_row and active_row[0] != task_id:
+            return {
+                "success": False,
+                "error": f"You already have active task {active_row[0]} — complete it first",
+                "active_task_id": active_row[0],
             }
 
         # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
@@ -3484,6 +3419,17 @@ class TaskBoard:
     # ==========================================
 
     _WAKE_COOLDOWN_SECS = 30
+    _WAKE_LOG = "/tmp/synapse_wake_log.jsonl"
+
+    @staticmethod
+    def _wake_log(role: str, method: str, message: str) -> None:
+        """Append JSONL audit entry for wake verification."""
+        try:
+            entry = {"ts": time.time(), "role": role, "method": method, "message": message}
+            with open(TaskBoard._WAKE_LOG, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass  # Audit log never blocks wake
 
     def _synapse_wake(self, role: str, message: str = "") -> None:
         """MARKER_208.SYNAPSE_WAKE_NATIVE: Wake an agent via tmux or macOS notification.
@@ -3516,12 +3462,14 @@ class TaskBoard:
                 capture_output=True, timeout=3,
             )
             if has.returncode == 0:
+                # Session alive — inject session init to trigger hook + inbox read
                 subprocess.run(
                     ["tmux", "send-keys", "-t", session_name,
                      "vetka session init", "Enter"],
                     capture_output=True, timeout=3,
                 )
                 ts_file.touch()
+                self._wake_log(role, "tmux", message)
                 logger.info("[TaskBoard] SYNAPSE_WAKE: tmux poked %s", role)
                 return
         except Exception as exc:
@@ -3548,6 +3496,7 @@ class TaskBoard:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             ts_file.touch()
+            self._wake_log(role, "osascript", message)
             logger.info("[TaskBoard] SYNAPSE_WAKE: macOS notified %s (no tmux session)", role)
         except Exception as exc:
             logger.debug("[TaskBoard] SYNAPSE_WAKE macOS fallback failed for %s: %s", role, exc)
@@ -3587,8 +3536,6 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
             targets.append(("Commander", f"Task completed by {owner}: {title}"))
-            # SYNAPSE-207: auto-wake Delta for QA verification
-            targets.append(("Delta", f"QA needed — task done on worktree: {title}"))
         else:
             return  # Unknown type, skip
 
@@ -3618,13 +3565,15 @@ class TaskBoard:
                     task_id=task_id,
                 )
 
-        # MARKER_208.SYNAPSE_WAKE_NATIVE: Wake target agents
-        _wake_map = {
+        # MARKER_208.SYNAPSE_WAKE_NATIVE: Wake target agents — pure Python, no script dependency
+        _WAKE_TARGETS: Dict[str, list] = {
             self.NOTIF_TASK_COMPLETED: ["Delta"],
             self.NOTIF_TASK_VERIFIED: ["Commander"],
             self.NOTIF_READY_TO_MERGE: ["Commander"],
+            self.NOTIF_TASK_NEEDS_FIX: [],  # populated dynamically below
         }
-        wake_roles = list(_wake_map.get(ntype, []))
+        wake_roles = list(_WAKE_TARGETS.get(ntype, []))
+        # Wake task owner on needs_fix so they see the QA failure
         if ntype == self.NOTIF_TASK_NEEDS_FIX and owner:
             wake_roles.append(owner)
         for wake_target in wake_roles:
@@ -4921,6 +4870,7 @@ class TaskBoard:
             commits,
             task.get("allowed_paths") or [],
             heal_docs=_heal_docs,
+            task=task,
         )
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
@@ -5027,6 +4977,7 @@ class TaskBoard:
         commits: List[str],
         allowed_paths: List[str] = None,
         heal_docs: List[str] = None,
+        task: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """Execute git merge in a temporary worktree.
 
@@ -5041,6 +4992,7 @@ class TaskBoard:
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
         - snapshot: Overlay allowed_paths from branch onto main (one commit)
+        - smart_snapshot: Diff-based, conflict-safe, sidecar-aware (MARKER_208)
 
         Args:
             allowed_paths: Task's owned paths for snapshot strategy scoping.
@@ -5113,7 +5065,142 @@ class TaskBoard:
 
             # ---- Execute strategy (all operations in tmp_dir) ----
 
-            if strategy == "snapshot":
+            if strategy == "smart_snapshot":
+                # MARKER_208.SMART_SNAPSHOT: Diff-based, conflict-safe, sidecar-aware merge.
+                # 1. git diff main..branch --name-only → all changed files
+                # 2. Filter to scope (allowed_paths prefix match) + auto-detect sidecars
+                # 3. git merge-tree conflict check before applying
+                # 4. Abort + notify on conflict instead of silent overwrite
+
+                # Step 1: Get all files changed on branch vs main
+                rc, diff_out, _ = await _git(
+                    "diff", "--name-only", f"main..{branch}", cwd=str(PROJECT_ROOT)
+                )
+                if rc != 0 or not diff_out:
+                    return {
+                        "success": False,
+                        "error": f"smart_snapshot: git diff main..{branch} failed or empty",
+                    }
+                all_changed = set(diff_out.splitlines())
+
+                # Step 2: Filter to task scope + sidecar auto-detection
+                _closure = (task or {}).get("closure_files") or []
+                scope_prefixes = list(allowed_paths or []) + list(_closure)
+                if not scope_prefixes:
+                    # No scope restriction — take everything (same as full diff)
+                    scoped_files = all_changed
+                else:
+                    scoped_files = set()
+                    for f in all_changed:
+                        for prefix in scope_prefixes:
+                            if f == prefix or f.startswith(prefix.rstrip("/") + "/"):
+                                scoped_files.add(f)
+                                break
+
+                    # Sidecar auto-detection: for each scoped file, include related
+                    # test files and __init__.py from the diff
+                    sidecars = set()
+                    for f in scoped_files:
+                        stem = Path(f).stem  # e.g. "task_board" from "src/.../task_board.py"
+                        for candidate in all_changed - scoped_files:
+                            cand_stem = Path(candidate).stem
+                            # test_task_board.py matches task_board.py
+                            if cand_stem == f"test_{stem}" or cand_stem == stem:
+                                sidecars.add(candidate)
+                            # __init__.py in same directory
+                            if Path(candidate).name == "__init__.py" and str(Path(candidate).parent) == str(Path(f).parent):
+                                sidecars.add(candidate)
+                    if sidecars:
+                        logger.info(
+                            "[MergeRequest] smart_snapshot: auto-detected %d sidecar(s): %s",
+                            len(sidecars), sorted(sidecars),
+                        )
+                    scoped_files |= sidecars
+
+                if not scoped_files:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no scoped files changed vs main",
+                    }
+
+                # Step 3: Conflict detection via git merge-tree
+                rc_base, merge_base, _ = await _git(
+                    "merge-base", "main", branch, cwd=str(PROJECT_ROOT)
+                )
+                if rc_base == 0 and merge_base:
+                    rc_mt, mt_out, mt_err = await _git(
+                        "merge-tree", merge_base, "main", branch, cwd=str(PROJECT_ROOT)
+                    )
+                    # merge-tree outputs conflict markers — check if any scoped files conflict
+                    if mt_out:
+                        conflicting = []
+                        for sf in scoped_files:
+                            if sf in mt_out and ("<<<<<<" in mt_out or "+<<<<<<" in mt_out):
+                                conflicting.append(sf)
+                        # Also check for the general conflict pattern
+                        if not conflicting and "<<<<<<" in mt_out:
+                            # Parse which files have conflict markers
+                            for line in mt_out.splitlines():
+                                for sf in scoped_files:
+                                    if sf in line:
+                                        conflicting.append(sf)
+                                        break
+                        if conflicting:
+                            _conflict_msg = (
+                                f"smart_snapshot: {len(conflicting)} file(s) have conflicts: "
+                                f"{conflicting[:5]}. Use strategy=merge or resolve manually."
+                            )
+                            logger.warning("[MergeRequest] %s", _conflict_msg)
+                            # Notify Commander about conflict
+                            try:
+                                self._auto_notify(
+                                    task or {}, self.NOTIF_TASK_NEEDS_FIX,
+                                    extra_msg=_conflict_msg,
+                                    source_role="merge_request",
+                                )
+                            except Exception:
+                                pass
+                            return {
+                                "success": False,
+                                "error": _conflict_msg,
+                                "conflicting_files": conflicting[:10],
+                                "strategy": "smart_snapshot",
+                            }
+
+                # Step 4: Apply — checkout scoped files from branch
+                for fpath in sorted(scoped_files):
+                    rc, _, err = await _git("checkout", branch, "--", fpath)
+                    if rc != 0:
+                        logger.warning(
+                            "[MergeRequest] smart_snapshot: checkout '%s' failed: %s",
+                            fpath, err,
+                        )
+
+                # Check if anything changed
+                rc, st_out, _ = await _git("status", "--porcelain")
+                if not st_out:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no file changes vs main",
+                    }
+
+                # Stage and commit
+                await _git("add", "-A")
+                rc, _, err = await _git(
+                    "commit", "-m",
+                    f"Smart snapshot merge {branch} into main ({len(scoped_files)} files) via TaskBoard",
+                )
+                if rc != 0:
+                    return {"success": False, "error": f"smart_snapshot commit failed: {err}"}
+
+                logger.info(
+                    "[MergeRequest] smart_snapshot: merged %d files from %s",
+                    len(scoped_files), branch,
+                )
+
+            elif strategy == "snapshot":
                 # MARKER_201.SNAPSHOT: Take main as base, overlay only allowed_paths
                 # from branch. Creates one clean integration commit — no history replay,
                 # no conflicts from diverged branches, no doc deletions.
@@ -5171,7 +5258,7 @@ class TaskBoard:
                 rc, _, err = await _git(
                     "commit",
                     "-m",
-                    f"Snapshot merge {branch} into main via TaskBoard (allowed_paths only)",
+                    f"Snapshot merge {branch} into main via TaskBoard",
                 )
                 if rc != 0:
                     return {"success": False, "error": f"Snapshot commit failed: {err}"}

@@ -280,7 +280,6 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
-                "sherpa_status",
             ],
             "description": "Operation to perform",
         },
@@ -391,7 +390,6 @@ TASK_BOARD_SCHEMA = {
             "type": "string",
             "enum": [
                 "pending",
-                "recon_done",
                 "queued",
                 "claimed",
                 "running",
@@ -494,11 +492,11 @@ TASK_BOARD_SCHEMA = {
             "type": "boolean",
             "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
         },
-        # MARKER_201.MERGE: merge_request strategy (snapshot added)
+        # MARKER_198.MERGE: merge_request strategy
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash", "snapshot"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit. 'snapshot': overlay only allowed_paths from branch onto main (one clean commit, ignores diverged history).",
+            "enum": ["cherry-pick", "merge", "squash"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
@@ -1085,6 +1083,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_191.7: Auto-inject docs content for MCP agents
         docs = _load_docs_content_sync(task)
         result = {"success": True, "task": task}
+        # MARKER_191.20: Inject subtask_progress for visibility
+        from src.orchestration.task_board import TaskBoard as _TB
+        _progress = _TB.get_subtask_progress(task)
+        if _progress is not None:
+            result["subtask_progress"] = _progress
         if docs:
             result["docs_content"] = docs
         return result
@@ -1826,45 +1829,15 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
 
-    # MARKER_202.SHERPA_SIGNAL: Query or update Sherpa availability status.
-    # GET:  action=sherpa_status (no args) → returns current status
-    # SET:  action=sherpa_status status=busy|idle|stopped [tasks_enriched=N]
-    elif action == "sherpa_status":
-        new_status = arguments.get("status")
-        if new_status:
-            # Update Sherpa status
-            import os
-            valid = ("idle", "busy", "stopped")
-            if new_status not in valid:
-                return {"success": False, "error": f"sherpa_status must be one of {valid}"}
-            board.settings["sherpa_status"] = new_status
-            if new_status in ("idle", "busy"):
-                board.settings["sherpa_pid"] = os.getpid()
-                from datetime import datetime
-                board.settings["sherpa_last_seen"] = datetime.now().isoformat()
-            if "tasks_enriched" in arguments:
-                try:
-                    board.settings["sherpa_tasks_enriched"] = int(arguments["tasks_enriched"])
-                except (ValueError, TypeError):
-                    pass
-            if new_status == "stopped":
-                board.settings["sherpa_pid"] = None
-            board._save("sherpa_status_update")
-            return {
-                "success": True,
-                "sherpa_status": new_status,
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
-        else:
-            # Query current status
-            return {
-                "success": True,
-                "sherpa_status": board.settings.get("sherpa_status", "stopped"),
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_last_seen": board.settings.get("sherpa_last_seen"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
+    # MARKER_191.20: Subtask progress tracking — mark one subtask as done
+    elif action == "subtask_done":
+        task_id = arguments.get("task_id")
+        subtask_title = arguments.get("subtask_title", "").strip()
+        if not task_id:
+            return {"success": False, "error": "task_id is required for subtask_done"}
+        if not subtask_title:
+            return {"success": False, "error": "subtask_title is required for subtask_done"}
+        return board.subtask_done(task_id, subtask_title)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}

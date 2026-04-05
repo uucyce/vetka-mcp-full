@@ -1,6 +1,5 @@
 """
 MARKER_B_P2_HOTKEYS — CUT Audio sub-router.
-MARKER_MIXER_STATE — Mixer state persistence endpoints (GET/POST/PATCH).
 
 Endpoints for hotkey-driven audio features:
   POST /cut/audio/scrubbing/toggle    — Shift+S: toggle audio-during-scrub
@@ -42,31 +41,6 @@ class AudioScrubSetRequest(BaseModel):
     """Explicitly set audio scrubbing state."""
     project_id: str = "project"
     enabled: bool = True
-
-
-class MixerStateSetRequest(BaseModel):
-    """Full mixer state save — called on unmount or explicit save."""
-    project_id: str = "project"
-    lanes: dict = Field(default_factory=dict,
-                        description="Map lane_id → {volume, pan, muted, solo}")
-    master_volume: float = Field(default=1.0, ge=0.0, le=1.5)
-    master_pan: float = Field(default=0.0, ge=-1.0, le=1.0)
-
-
-class MixerTrackPatchRequest(BaseModel):
-    """Partial update for a single track."""
-    project_id: str = "project"
-    volume: float | None = Field(default=None, ge=0.0, le=1.5)
-    pan: float | None = Field(default=None, ge=-1.0, le=1.0)
-    muted: bool | None = None
-    solo: bool | None = None
-
-
-class MixerMasterPatchRequest(BaseModel):
-    """Partial update for master bus."""
-    project_id: str = "project"
-    volume: float | None = Field(default=None, ge=0.0, le=1.5)
-    pan: float | None = Field(default=None, ge=-1.0, le=1.0)
 
 
 class AudioLevelAdjustRequest(BaseModel):
@@ -227,77 +201,3 @@ async def cut_audio_level_db_display(
         "db": round(db, 1),
         "display": display,
     }
-
-
-# ---------------------------------------------------------------------------
-# MARKER_MIXER_STATE: Mixer state persistence REST endpoints
-# ---------------------------------------------------------------------------
-
-
-@audio_router.get("/audio/mixer")
-async def get_mixer_state(project_id: str = "project") -> dict[str, Any]:
-    """
-    Return full mixer state for a project.
-
-    Used by AudioMixer panel on mount to hydrate Zustand store
-    with server-side persistent state.
-    """
-    from src.services.cut_audio_engine import get_mixer_state as _get
-    state = _get(project_id)
-    return {"success": True, "project_id": project_id, **state.to_dict()}
-
-
-@audio_router.post("/audio/mixer")
-async def set_mixer_state(req: MixerStateSetRequest) -> dict[str, Any]:
-    """
-    Save full mixer state for a project (called on panel unmount or explicit save).
-
-    Replaces all per-track and master settings atomically.
-    """
-    from src.services.cut_audio_engine import MixerState, set_mixer_state as _set
-    state = MixerState.from_dict({
-        "lanes": req.lanes,
-        "master_volume": req.master_volume,
-        "master_pan": req.master_pan,
-    })
-    saved = _set(req.project_id, state)
-    return {"success": True, "project_id": req.project_id, **saved.to_dict()}
-
-
-@audio_router.patch("/audio/mixer/track/{lane_id}")
-async def patch_mixer_track(lane_id: str, req: MixerTrackPatchRequest) -> dict[str, Any]:
-    """
-    Update a single track's mixer params without touching other lanes.
-
-    Called on every fader drag, pan knob move, mute/solo button click.
-    Returns the updated full mixer state so the panel can stay in sync.
-    """
-    from src.services.cut_audio_engine import update_lane_mixer
-    kwargs: dict[str, Any] = {}
-    if req.volume is not None:
-        kwargs["volume"] = req.volume
-    if req.pan is not None:
-        kwargs["pan"] = req.pan
-    if req.muted is not None:
-        kwargs["muted"] = req.muted
-    if req.solo is not None:
-        kwargs["solo"] = req.solo
-    state = update_lane_mixer(req.project_id, lane_id, **kwargs)
-    return {"success": True, "project_id": req.project_id, "lane_id": lane_id, **state.to_dict()}
-
-
-@audio_router.patch("/audio/mixer/master")
-async def patch_mixer_master(req: MixerMasterPatchRequest) -> dict[str, Any]:
-    """
-    Update master bus volume/pan.
-
-    Called when master fader or master pan knob changes.
-    """
-    from src.services.cut_audio_engine import update_master_mixer
-    kwargs: dict[str, Any] = {}
-    if req.volume is not None:
-        kwargs["volume"] = req.volume
-    if req.pan is not None:
-        kwargs["pan"] = req.pan
-    state = update_master_mixer(req.project_id, **kwargs)
-    return {"success": True, "project_id": req.project_id, **state.to_dict()}

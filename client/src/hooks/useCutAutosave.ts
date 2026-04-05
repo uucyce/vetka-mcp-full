@@ -98,9 +98,8 @@ async function saveProjectToBackend(overrideProjectId?: string): Promise<string 
 async function autosaveToBackend(): Promise<void> {
   const state = useCutEditorStore.getState();
   const { sandboxRoot, projectId, lanes, markers, currentTime, zoom, scrollLeft,
-          timelineId, projectFramerate,
+          timelineId, selectedClipId, projectFramerate,
           sourceMarkIn, sourceMarkOut, sequenceMarkIn, sequenceMarkOut } = state;
-  const { selectedClipId } = useSelectionStore.getState();
 
   if (!sandboxRoot) return;
 

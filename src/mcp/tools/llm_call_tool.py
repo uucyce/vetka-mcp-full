@@ -43,37 +43,35 @@ from .llm_call_reflex import (
 # Safe tools that can be passed to LLM models via function calling.
 # Write tools (edit_file, git_commit) are EXCLUDED by default.
 # ═══════════════════════════════════════════════════════════════════════
-SAFE_FUNCTION_CALLING_TOOLS = extend_safe_tool_allowlist(
-    {
-        "vetka_search_semantic",
-        "vetka_read_file",
-        "vetka_list_files",
-        "vetka_get_tree",
-        "vetka_search_files",
-        "vetka_get_metrics",
-        "vetka_get_knowledge_graph",
-        "vetka_health",
-        "vetka_get_media_window_debug",
-        "vetka_get_pinned_files",
-        "vetka_get_context_dag",
-        "vetka_get_memory_summary",
-        "vetka_get_user_preferences",
-        "vetka_get_conversation_context",
-        "vetka_read_group_messages",
-        "vetka_get_chat_digest",
-        "vetka_session_init",
-        "vetka_session_status",
-        "vetka_research",
-        "vetka_review",
-        "vetka_git_status",
-        "vetka_run_tests",
-        "vetka_list_artifacts",
-        "vetka_workflow_status",
-        "vetka_arc_suggest",
-        "vetka_web_search",  # MARKER_119.7: Tavily web search
-        "vetka_library_docs",  # MARKER_119.8: Context7 library docs
-    }
-)
+SAFE_FUNCTION_CALLING_TOOLS = extend_safe_tool_allowlist({
+    "vetka_search_semantic",
+    "vetka_read_file",
+    "vetka_list_files",
+    "vetka_get_tree",
+    "vetka_search_files",
+    "vetka_get_metrics",
+    "vetka_get_knowledge_graph",
+    "vetka_health",
+    "vetka_get_media_window_debug",
+    "vetka_get_pinned_files",
+    "vetka_get_context_dag",
+    "vetka_get_memory_summary",
+    "vetka_get_user_preferences",
+    "vetka_get_conversation_context",
+    "vetka_read_group_messages",
+    "vetka_get_chat_digest",
+    "vetka_session_init",
+    "vetka_session_status",
+    "vetka_research",
+    "vetka_review",
+    "vetka_git_status",
+    "vetka_run_tests",
+    "vetka_list_artifacts",
+    "vetka_workflow_status",
+    "vetka_arc_suggest",
+    "vetka_web_search",  # MARKER_119.7: Tavily web search
+    "vetka_library_docs",  # MARKER_119.8: Context7 library docs
+})
 
 WRITE_TOOLS_REQUIRING_APPROVAL = {
     "vetka_edit_file",
@@ -126,12 +124,12 @@ class LLMCallTool(BaseMCPTool):
                         "- gemini-2.0-flash, gemini-1.5-pro (Google)\n"
                         "- llama3.1:8b, deepseek-llm:7b (Ollama local)\n"
                         "- mistralai/mistral-7b (OpenRouter)"
-                    ),
+                    )
                 },
                 "messages": {
                     "type": "array",
                     "description": (
-                        'Chat messages in format [{"role": "user"|"assistant"|"system", "content": "..."}]. '
+                        "Chat messages in format [{\"role\": \"user\"|\"assistant\"|\"system\", \"content\": \"...\"}]. "
                         "At minimum, provide one user message."
                     ),
                     "items": {
@@ -139,30 +137,34 @@ class LLMCallTool(BaseMCPTool):
                         "properties": {
                             "role": {
                                 "type": "string",
-                                "enum": ["user", "assistant", "system"],
+                                "enum": ["user", "assistant", "system"]
                             },
-                            "content": {"type": "string"},
+                            "content": {
+                                "type": "string"
+                            }
                         },
-                        "required": ["role", "content"],
-                    },
+                        "required": ["role", "content"]
+                    }
                 },
                 "temperature": {
                     "type": "number",
                     "description": "Sampling temperature (0.0-2.0, default: 0.7). Higher = more creative.",
                     "default": 0.7,
                     "minimum": 0.0,
-                    "maximum": 2.0,
+                    "maximum": 2.0
                 },
                 "max_tokens": {
                     "type": "integer",
                     "description": "Maximum tokens to generate (default: 4096)",
                     "default": 4096,
-                    "minimum": 1,
+                    "minimum": 1
                 },
                 "tools": {
                     "type": "array",
                     "description": "Optional function calling tools (OpenAI format). Only supported by some models.",
-                    "items": {"type": "object"},
+                    "items": {
+                        "type": "object"
+                    }
                 },
                 "inject_context": {
                     "type": "object",
@@ -175,44 +177,44 @@ class LLMCallTool(BaseMCPTool):
                         "files": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "File paths to read and inject (e.g., ['src/main.py', 'README.md'])",
+                            "description": "File paths to read and inject (e.g., ['src/main.py', 'README.md'])"
                         },
                         "session_id": {
                             "type": "string",
-                            "description": "MCPStateManager session ID to load state from",
+                            "description": "MCPStateManager session ID to load state from"
                         },
                         "include_prefs": {
                             "type": "boolean",
                             "description": "Include user preferences from AURA memory",
-                            "default": False,
+                            "default": False
                         },
                         "include_cam": {
                             "type": "boolean",
                             "description": "Include CAM (Context-Aware Memory) active nodes",
-                            "default": False,
+                            "default": False
                         },
                         "semantic_query": {
                             "type": "string",
-                            "description": "Semantic search query to find relevant context",
+                            "description": "Semantic search query to find relevant context"
                         },
                         "semantic_limit": {
                             "type": "integer",
                             "description": "Max results for semantic search (default: 5)",
-                            "default": 5,
+                            "default": 5
                         },
                         "compress": {
                             "type": "boolean",
                             "description": "Apply ELISION compression to injected context",
-                            "default": True,
-                        },
-                    },
+                            "default": True
+                        }
+                    }
                 },
                 "model_source": {
                     "type": "string",
                     "description": "Source provider for routing (poe, polza, openrouter, etc.)",
-                },
+                }
             },
-            "required": ["model", "messages"],
+            "required": ["model", "messages"]
         }
 
     def _detect_provider(self, model: str, source: Optional[str] = None) -> str:
@@ -239,10 +241,10 @@ class LLMCallTool(BaseMCPTool):
     def _normalize_model_name(self, model: str) -> str:
         """Normalize short model names to full versions"""
         aliases = {
-            "grok": "grok-4",
-            "gpt": "gpt-4o",
-            "claude": "claude-sonnet-4-5",
-            "gemini": "gemini-2.0-flash",
+            'grok': 'grok-4',
+            'gpt': 'gpt-4o',
+            'claude': 'claude-sonnet-4-5',
+            'gemini': 'gemini-2.0-flash',
         }
         return aliases.get(model.lower(), model)
 
@@ -256,9 +258,7 @@ class LLMCallTool(BaseMCPTool):
             if normalized == "google":
                 normalized = "gemini"
 
-            favorites_path = (
-                Path(__file__).resolve().parents[3] / "data" / "favorites.json"
-            )
+            favorites_path = Path(__file__).resolve().parents[3] / "data" / "favorites.json"
             if not favorites_path.exists():
                 return
 
@@ -283,12 +283,9 @@ class LLMCallTool(BaseMCPTool):
                 return
 
             from src.utils.unified_key_manager import get_key_manager
-
             km = get_key_manager()
             km.set_preferred_key(normalized, favorite_masked)
-            logger.info(
-                f"[MCP_FAVORITE_KEY] Preferred key applied for {normalized}/{favorite_masked[:12]}..."
-            )
+            logger.info(f"[MCP_FAVORITE_KEY] Preferred key applied for {normalized}/{favorite_masked[:12]}...")
         except Exception as e:
             logger.debug(f"[MCP_FAVORITE_KEY] Failed to apply favorite key: {e}")
 
@@ -309,27 +306,28 @@ class LLMCallTool(BaseMCPTool):
 
             socketio = get_socketio()
             if not socketio:
-                logger.debug(
-                    "[LLM_CALL_TOOL] SocketIO not available, skipping chat emit"
-                )
+                logger.debug("[LLM_CALL_TOOL] SocketIO not available, skipping chat emit")
                 return
 
             # Prepare message data
             message_data = {
-                "group_id": LIGHTNING_CHAT_ID,
-                "sender_id": sender_id,
-                "content": content,
-                "message_type": message_type,
-                "timestamp": datetime.now().isoformat(),
-                "metadata": {"source": "vetka_call_model", "mcp_tool": True},
+                'group_id': LIGHTNING_CHAT_ID,
+                'sender_id': sender_id,
+                'content': content,
+                'message_type': message_type,
+                'timestamp': datetime.now().isoformat(),
+                'metadata': {
+                    'source': 'vetka_call_model',
+                    'mcp_tool': True
+                }
             }
 
             # Emit synchronously (socket.io will handle async internally)
-            room = f"group_{LIGHTNING_CHAT_ID}"
+            room = f'group_{LIGHTNING_CHAT_ID}'
 
             # Create a simple async wrapper to emit
             async def emit_async():
-                await socketio.emit("group_message", message_data, room=room)
+                await socketio.emit('group_message', message_data, room=room)
 
             # Run in event loop if available, otherwise fallback to HTTP POST
             try:
@@ -344,39 +342,30 @@ class LLMCallTool(BaseMCPTool):
                 # MARKER_117_2A_FIX_C: Upgraded from debug to warning + HTTP fallback
                 # When called from ThreadPoolExecutor (pipeline context), event loop
                 # is not available. Fall back to HTTP POST to group chat endpoint.
-                logger.warning(
-                    f"[LLM_CALL_TOOL] SocketIO emit failed (no event loop): {e}"
-                )
+                logger.warning(f"[LLM_CALL_TOOL] SocketIO emit failed (no event loop): {e}")
                 try:
                     import httpx
-
                     with httpx.Client(timeout=5.0) as http_client:
                         http_client.post(
                             f"http://localhost:5001/api/debug/mcp/groups/{LIGHTNING_CHAT_ID}/send",
                             json={
                                 "agent_id": "vetka_internal",
                                 "content": content,
-                                "message_type": message_type,
-                            },
+                                "message_type": message_type
+                            }
                         )
                     logger.debug(f"[LLM_CALL_TOOL] HTTP fallback emit succeeded")
                 except Exception as http_err:
-                    logger.warning(
-                        f"[LLM_CALL_TOOL] HTTP fallback also failed: {http_err}"
-                    )
+                    logger.warning(f"[LLM_CALL_TOOL] HTTP fallback also failed: {http_err}")
 
         except Exception as e:
             logger.warning(f"[LLM_CALL_TOOL] Failed to emit to chat: {e}")
 
-    def _emit_request_to_chat(
-        self, model: str, messages: List[Dict], temperature: float, max_tokens: int
-    ):
+    def _emit_request_to_chat(self, model: str, messages: List[Dict], temperature: float, max_tokens: int):
         """Emit LLM request to VETKA chat"""
         # Get last user message for preview
-        user_messages = [m for m in messages if m.get("role") == "user"]
-        last_message = (
-            user_messages[-1]["content"] if user_messages else "(no user message)"
-        )
+        user_messages = [m for m in messages if m.get('role') == 'user']
+        last_message = user_messages[-1]['content'] if user_messages else '(no user message)'
 
         # Truncate long messages
         preview = last_message[:200]
@@ -388,53 +377,47 @@ class LLMCallTool(BaseMCPTool):
         content += f"Temperature: {temperature}, Max tokens: {max_tokens}\n"
         content += f"```\n{preview}\n```"
 
-        self._emit_to_chat("@user", content, "system")
+        self._emit_to_chat('@user', content, 'system')
 
-    def _emit_response_to_chat(
-        self, model: str, content: str, usage: Optional[Dict] = None
-    ):
+    def _emit_response_to_chat(self, model: str, content: str, usage: Optional[Dict] = None):
         """Emit LLM response to VETKA chat"""
         # Format usage info if available
         usage_str = ""
         if usage:
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
-            total_tokens = usage.get("total_tokens", 0)
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            total_tokens = usage.get('total_tokens', 0)
             usage_str = f"\n\n*Tokens: {prompt_tokens} → {completion_tokens} (total: {total_tokens})*"
 
         # Emit as response from the model
         response_content = content + usage_str
-        self._emit_to_chat(f"@{model}", response_content, "response")
-
+        self._emit_to_chat(f'@{model}', response_content, 'response')
     # MARKER_90.4.0_END
 
     # MARKER_126.2: Track usage in BalanceTracker
-    def _track_usage_for_balance(
-        self, provider: str, model: str, usage: Optional[Dict] = None
-    ):
+    def _track_usage_for_balance(self, provider: str, model: str, usage: Optional[Dict] = None):
         """Record usage to BalanceTracker after successful LLM call."""
         if not usage:
             return
 
         try:
             from src.services.balance_tracker import get_balance_tracker
-
             tracker = get_balance_tracker()
 
             # Normalize token field names (different providers use different names)
             tokens_in = (
-                usage.get("prompt_tokens")
-                or usage.get("input_tokens")
-                or usage.get("promptTokenCount")
-                or usage.get("prompt_eval_count")
-                or 0
+                usage.get('prompt_tokens') or
+                usage.get('input_tokens') or
+                usage.get('promptTokenCount') or
+                usage.get('prompt_eval_count') or
+                0
             )
             tokens_out = (
-                usage.get("completion_tokens")
-                or usage.get("output_tokens")
-                or usage.get("candidatesTokenCount")
-                or usage.get("eval_count")
-                or 0
+                usage.get('completion_tokens') or
+                usage.get('output_tokens') or
+                usage.get('candidatesTokenCount') or
+                usage.get('eval_count') or
+                0
             )
 
             # Get masked key
@@ -445,7 +428,7 @@ class LLMCallTool(BaseMCPTool):
                 key_masked=key_masked,
                 model=model,
                 tokens_in=tokens_in,
-                tokens_out=tokens_out,
+                tokens_out=tokens_out
             )
         except Exception as e:
             logger.debug(f"[MARKER_126.2] Usage tracking failed: {e}")
@@ -454,7 +437,6 @@ class LLMCallTool(BaseMCPTool):
         """Get masked version of current active key for provider."""
         try:
             from src.utils.unified_key_manager import get_key_manager
-
             km = get_key_manager()
             key = km.get_key(provider) if provider else None
             if key and len(key) > 8:
@@ -481,24 +463,13 @@ class LLMCallTool(BaseMCPTool):
         if files:
             try:
                 import os
-
-                project_root = os.path.dirname(
-                    os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-                )
+                project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
                 for file_path in files[:10]:  # Limit to 10 files
-                    full_path = (
-                        os.path.join(project_root, file_path)
-                        if not file_path.startswith("/")
-                        else file_path
-                    )
+                    full_path = os.path.join(project_root, file_path) if not file_path.startswith('/') else file_path
                     if os.path.exists(full_path):
-                        with open(
-                            full_path, "r", encoding="utf-8", errors="ignore"
-                        ) as f:
+                        with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
                             content = f.read()[:8000]  # Limit per file
-                        context_parts.append(
-                            f"### File: {file_path}\n```\n{content}\n```"
-                        )
+                        context_parts.append(f"### File: {file_path}\n```\n{content}\n```")
                     else:
                         context_parts.append(f"### File: {file_path}\n(file not found)")
             except Exception as e:
@@ -509,15 +480,11 @@ class LLMCallTool(BaseMCPTool):
         if session_id:
             try:
                 from src.mcp.state.mcp_state_manager import get_mcp_state_manager
-
                 state_mgr = get_mcp_state_manager()
                 state = await state_mgr.get_state(session_id)
                 if state:
                     import json
-
-                    context_parts.append(
-                        f"### Session State: {session_id}\n```json\n{json.dumps(state, indent=2, ensure_ascii=False)[:2000]}\n```"
-                    )
+                    context_parts.append(f"### Session State: {session_id}\n```json\n{json.dumps(state, indent=2, ensure_ascii=False)[:2000]}\n```")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Session state error: {e}")
 
@@ -526,16 +493,12 @@ class LLMCallTool(BaseMCPTool):
             try:
                 from src.memory.aura_store import AuraStore
                 from src.memory.qdrant_client import get_qdrant_client
-
                 qdrant = get_qdrant_client()
                 memory = AuraStore(qdrant)
                 prefs = memory.get_all_preferences("danila")  # Default user
                 if prefs:
                     import json
-
-                    context_parts.append(
-                        f"### User Preferences\n```json\n{json.dumps(prefs, indent=2, ensure_ascii=False)[:1500]}\n```"
-                    )
+                    context_parts.append(f"### User Preferences\n```json\n{json.dumps(prefs, indent=2, ensure_ascii=False)[:1500]}\n```")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] AURA error: {e}")
 
@@ -543,17 +506,11 @@ class LLMCallTool(BaseMCPTool):
         if inject_config.get("include_cam"):
             try:
                 from src.orchestration.cam_engine import get_cam_engine
-
                 cam = get_cam_engine()
-                if cam and hasattr(cam, "get_active_nodes"):
+                if cam and hasattr(cam, 'get_active_nodes'):
                     nodes = cam.get_active_nodes(limit=5)
                     if nodes:
-                        nodes_text = "\n".join(
-                            [
-                                f"- {n.get('id', 'unknown')}: {n.get('content', '')[:200]}"
-                                for n in nodes
-                            ]
-                        )
+                        nodes_text = "\n".join([f"- {n.get('id', 'unknown')}: {n.get('content', '')[:200]}" for n in nodes])
                         context_parts.append(f"### CAM Active Context\n{nodes_text}")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] CAM error: {e}")
@@ -564,28 +521,18 @@ class LLMCallTool(BaseMCPTool):
             try:
                 # FIX_114.8.2: Use singleton getter (HybridSearch class doesn't exist)
                 from src.search.hybrid_search import get_hybrid_search
-
                 search = get_hybrid_search()
                 limit = inject_config.get("semantic_limit", 5)
                 search_response = await search.search(semantic_query, limit=limit)
-                results = (
-                    search_response.get("results", [])
-                    if isinstance(search_response, dict)
-                    else search_response
-                )
+                results = search_response.get("results", []) if isinstance(search_response, dict) else search_response
                 if results:
                     search_text = []
                     for r in results[:limit]:
                         path = r.get("path", r.get("file_path", "unknown"))
                         score = r.get("score", 0)
                         snippet = r.get("content", "")[:300]
-                        search_text.append(
-                            f"**{path}** (score: {score:.2f})\n{snippet}"
-                        )
-                    context_parts.append(
-                        f"### Semantic Search: '{semantic_query}'\n"
-                        + "\n\n".join(search_text)
-                    )
+                        search_text.append(f"**{path}** (score: {score:.2f})\n{snippet}")
+                    context_parts.append(f"### Semantic Search: '{semantic_query}'\n" + "\n\n".join(search_text))
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Semantic search error: {e}")
 
@@ -594,7 +541,6 @@ class LLMCallTool(BaseMCPTool):
         if chat_id:
             try:
                 from src.chat.chat_history_manager import get_chat_history_manager
-
                 manager = get_chat_history_manager()
                 max_msgs = inject_config.get("chat_limit", 10)
                 digest = manager.get_chat_digest(chat_id, max_messages=max_msgs)
@@ -606,12 +552,8 @@ class LLMCallTool(BaseMCPTool):
                         text = m.get("content", "")[:200]
                         ts = m.get("timestamp", "")[:19]
                         msg_lines.append(f"[{ts}] {sender}: {text}")
-                    context_parts.append(
-                        f"### Recent Chat Messages\n" + "\n".join(msg_lines)
-                    )
-                    logger.debug(
-                        f"[INJECT_CONTEXT] Added {len(recent)} chat messages from {chat_id[:8]}..."
-                    )
+                    context_parts.append(f"### Recent Chat Messages\n" + "\n".join(msg_lines))
+                    logger.debug(f"[INJECT_CONTEXT] Added {len(recent)} chat messages from {chat_id[:8]}...")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Chat history error: {e}")
 
@@ -625,18 +567,14 @@ class LLMCallTool(BaseMCPTool):
         if inject_config.get("compress", True) and len(full_context) > 2000:
             try:
                 from src.memory.elision import compress_context
-
                 compressed = compress_context({"content": full_context})
                 if compressed and len(compressed) < len(full_context):
                     full_context = compressed
-                    logger.info(
-                        f"[INJECT_CONTEXT] Compressed: {len(full_context)} chars (saved {100 - len(compressed) * 100 // len(full_context)}%)"
-                    )
+                    logger.info(f"[INJECT_CONTEXT] Compressed: {len(full_context)} chars (saved {100 - len(compressed)*100//len(full_context)}%)")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Compression error: {e}")
 
         return f"<vetka_context>\n{full_context}\n</vetka_context>"
-
     # MARKER_55.2_END
 
     # MARKER_102.15_START: Synchronous OpenRouter call with key rotation
@@ -676,9 +614,7 @@ class LLMCallTool(BaseMCPTool):
 
             # Phase 111.11: Log source if provided
             source_info = f", source: {source}" if source else ""
-            logger.info(
-                f"[MCP_OPENROUTER] Calling {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries}{source_info})"
-            )
+            logger.info(f"[MCP_OPENROUTER] Calling {model} (key: ****{api_key[-4:]}, attempt {attempt + 1}/{max_retries}{source_info})")
 
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -705,9 +641,7 @@ class LLMCallTool(BaseMCPTool):
             if tools:
                 payload["tools"] = tools
                 payload["tool_choice"] = "auto"
-                logger.info(
-                    f"[MCP_OPENROUTER] Passing {len(tools)} tools for function calling"
-                )
+                logger.info(f"[MCP_OPENROUTER] Passing {len(tools)} tools for function calling")
 
             # Phase 111.11: Add source to metadata for OpenRouter
             if source:
@@ -723,25 +657,19 @@ class LLMCallTool(BaseMCPTool):
 
                     # Handle key errors with rotation
                     if response.status_code in (401, 402, 403):
-                        logger.warning(
-                            f"[MCP_OPENROUTER] Key failed ({response.status_code}), rotating..."
-                        )
+                        logger.warning(f"[MCP_OPENROUTER] Key failed ({response.status_code}), rotating...")
                         # Mark key as rate-limited
                         for record in km.keys.get(ProviderType.OPENROUTER, []):
                             if record.key == api_key:
                                 record.mark_rate_limited()
-                                logger.info(
-                                    f"[MCP_OPENROUTER] Key {record.mask()} marked rate-limited (24h)"
-                                )
+                                logger.info(f"[MCP_OPENROUTER] Key {record.mask()} marked rate-limited (24h)")
                                 break
                         km.rotate_to_next()
                         last_error = f"Key error {response.status_code}"
                         continue
 
                     if response.status_code == 429:
-                        logger.warning(
-                            f"[MCP_OPENROUTER] Rate limited (429), rotating..."
-                        )
+                        logger.warning(f"[MCP_OPENROUTER] Rate limited (429), rotating...")
                         km.rotate_to_next()
                         last_error = "Rate limited (429)"
                         continue
@@ -768,19 +696,14 @@ class LLMCallTool(BaseMCPTool):
 
             except httpx.HTTPStatusError as e:
                 if e.response.status_code in (401, 402, 403, 429):
-                    logger.warning(
-                        f"[MCP_OPENROUTER] HTTP error ({e.response.status_code}), rotating..."
-                    )
+                    logger.warning(f"[MCP_OPENROUTER] HTTP error ({e.response.status_code}), rotating...")
                     km.rotate_to_next()
                     last_error = e
                     continue
                 raise
 
         # All retries exhausted
-        raise ValueError(
-            f"All OpenRouter keys exhausted after {max_retries} attempts. Last error: {last_error}"
-        )
-
+        raise ValueError(f"All OpenRouter keys exhausted after {max_retries} attempts. Last error: {last_error}")
     # MARKER_102.15_END
 
     # MARKER_117.1_MULTI_PROVIDER_START: Sync wrapper for call_model_v2
@@ -843,19 +766,18 @@ class LLMCallTool(BaseMCPTool):
                 "provider": provider_name,
                 "usage": None,
             }
-
     # MARKER_117.1_MULTI_PROVIDER_END
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Execute LLM call through VETKA provider registry"""
 
-        model = self._normalize_model_name(arguments.get("model", ""))
-        messages = list(arguments.get("messages", []))  # Copy to avoid mutation
-        temperature = arguments.get("temperature", 0.7)
-        max_tokens = arguments.get("max_tokens", 4096)
-        tools = arguments.get("tools")
-        inject_context = arguments.get("inject_context")
-        model_source = arguments.get("model_source")  # Phase 111.11
+        model = self._normalize_model_name(arguments.get('model', ''))
+        messages = list(arguments.get('messages', []))  # Copy to avoid mutation
+        temperature = arguments.get('temperature', 0.7)
+        max_tokens = arguments.get('max_tokens', 4096)
+        tools = arguments.get('tools')
+        inject_context = arguments.get('inject_context')
+        model_source = arguments.get('model_source')  # Phase 111.11
         allow_task_board_writes = bool(arguments.get("_allow_task_board_writes"))
         allow_edit_file_writes = bool(arguments.get("_allow_edit_file_writes"))
         effective_allowed_tools = get_effective_allowed_tool_names(
@@ -867,11 +789,7 @@ class LLMCallTool(BaseMCPTool):
         if tools:
             filtered_tools = []
             for tool_def in tools:
-                tool_func_name = (
-                    tool_def.get("function", {}).get("name", "")
-                    if isinstance(tool_def, dict)
-                    else ""
-                )
+                tool_func_name = tool_def.get('function', {}).get('name', '') if isinstance(tool_def, dict) else ''
                 if tool_func_name in effective_allowed_tools:
                     filtered_tools.append(tool_def)
                 elif is_opted_in_write_tool(
@@ -880,56 +798,48 @@ class LLMCallTool(BaseMCPTool):
                 ):
                     filtered_tools.append(tool_def)
                 elif tool_func_name in WRITE_TOOLS_REQUIRING_APPROVAL:
-                    logger.warning(
-                        f"[SECURITY] Blocked write tool '{tool_func_name}' from function calling"
-                    )
+                    logger.warning(f"[SECURITY] Blocked write tool '{tool_func_name}' from function calling")
                 else:
                     # MARKER_116_SECURITY_HARDENING: Deny unknown tools by default (was: allow)
-                    logger.warning(
-                        f"[SECURITY] Blocked unknown tool '{tool_func_name}' — not in allowlist"
-                    )
+                    logger.warning(f"[SECURITY] Blocked unknown tool '{tool_func_name}' — not in allowlist")
             tools = filtered_tools if filtered_tools else None
 
         # MARKER_55.2_START: Process context injection
         if inject_context:
             try:
                 import asyncio
-
                 # Gather context from VETKA sources
                 loop = asyncio.get_event_loop()
                 if loop.is_running():
                     import concurrent.futures
-
                     with concurrent.futures.ThreadPoolExecutor() as executor:
                         future = executor.submit(
-                            asyncio.run, self._gather_inject_context(inject_context)
+                            asyncio.run,
+                            self._gather_inject_context(inject_context)
                         )
                         injected_content = future.result()
                 else:
-                    injected_content = asyncio.run(
-                        self._gather_inject_context(inject_context)
-                    )
+                    injected_content = asyncio.run(self._gather_inject_context(inject_context))
 
                 if injected_content:
                     # Prepend to system message or create one
-                    has_system = any(m.get("role") == "system" for m in messages)
+                    has_system = any(m.get('role') == 'system' for m in messages)
                     if has_system:
                         # Append to existing system message
                         for i, m in enumerate(messages):
-                            if m.get("role") == "system":
+                            if m.get('role') == 'system':
                                 messages[i] = {
-                                    "role": "system",
-                                    "content": m["content"] + "\n\n" + injected_content,
+                                    'role': 'system',
+                                    'content': m['content'] + '\n\n' + injected_content
                                 }
                                 break
                     else:
                         # Insert new system message at the beginning
-                        messages.insert(
-                            0, {"role": "system", "content": injected_content}
-                        )
-                    logger.info(
-                        f"[INJECT_CONTEXT] Added {len(injected_content)} chars to system prompt"
-                    )
+                        messages.insert(0, {
+                            'role': 'system',
+                            'content': injected_content
+                        })
+                    logger.info(f"[INJECT_CONTEXT] Added {len(injected_content)} chars to system prompt")
             except Exception as e:
                 logger.warning(f"[INJECT_CONTEXT] Failed to inject context: {e}")
         # MARKER_55.2_END
@@ -940,7 +850,6 @@ class LLMCallTool(BaseMCPTool):
         # Reset any expired cooldowns to allow retry on previously-failed keys
         try:
             from src.utils.unified_key_manager import get_key_manager
-
             km = get_key_manager()
             for provider_keys in km.keys.values():
                 for record in provider_keys:
@@ -949,36 +858,38 @@ class LLMCallTool(BaseMCPTool):
                         if record.cooldown_remaining() is None:
                             # Cooldown expired, reset the rate_limited_at timestamp
                             record.rate_limited_at = None
-                            logger.debug(
-                                f"[MCP_KEY_RESET] Key {record.mask()} cooldown expired, reset available"
-                            )
+                            logger.debug(f"[MCP_KEY_RESET] Key {record.mask()} cooldown expired, reset available")
         except Exception as e:
             logger.warning(f"[MCP_KEY_RESET] Failed to reset key cooldowns: {e}")
 
         # Validate inputs
         if not model:
-            return {"success": False, "error": "Model name is required", "result": None}
+            return {
+                'success': False,
+                'error': 'Model name is required',
+                'result': None
+            }
 
         if not messages or not isinstance(messages, list):
             return {
-                "success": False,
-                "error": "Messages must be a non-empty array",
-                "result": None,
+                'success': False,
+                'error': 'Messages must be a non-empty array',
+                'result': None
             }
 
         # Validate message format
         for i, msg in enumerate(messages):
             if not isinstance(msg, dict):
                 return {
-                    "success": False,
-                    "error": f"Message {i} must be an object with role and content",
-                    "result": None,
+                    'success': False,
+                    'error': f'Message {i} must be an object with role and content',
+                    'result': None
                 }
-            if "role" not in msg or "content" not in msg:
+            if 'role' not in msg or 'content' not in msg:
                 return {
-                    "success": False,
-                    "error": f"Message {i} missing role or content",
-                    "result": None,
+                    'success': False,
+                    'error': f'Message {i} missing role or content',
+                    'result': None
                 }
 
         try:
@@ -1003,9 +914,7 @@ class LLMCallTool(BaseMCPTool):
 
             # Phase 111.11: Log source if provided
             source_info = f" (source: {model_source})" if model_source else ""
-            logger.info(
-                f"[LLM_CALL_TOOL] Calling {model} via {provider_name}{source_info}"
-            )
+            logger.info(f"[LLM_CALL_TOOL] Calling {model} via {provider_name}{source_info}")
 
             # MARKER_93.5_MCP_DIAGNOSTIC: Log key availability before call
             # Phase 93.5: Debug MCP 429 errors by tracking which keys are used
@@ -1013,37 +922,27 @@ class LLMCallTool(BaseMCPTool):
                 km = get_key_manager()
                 openai_keys = km.keys.get(ProviderType.OPENAI, [])
                 available_count = sum(1 for k in openai_keys if k.is_available())
-                logger.info(
-                    f"[MCP_KEY_DEBUG] OpenAI: {available_count}/{len(openai_keys)} keys available"
-                )
+                logger.info(f"[MCP_KEY_DEBUG] OpenAI: {available_count}/{len(openai_keys)} keys available")
                 for i, key in enumerate(openai_keys):
-                    cooldown_info = (
-                        f", cooldown: {key.cooldown_remaining()}"
-                        if key.rate_limited_at
-                        else ""
-                    )
-                    logger.debug(
-                        f"[MCP_KEY_DEBUG]   Key {i}: {key.mask()} - available: {key.is_available()}{cooldown_info}"
-                    )
+                    cooldown_info = f", cooldown: {key.cooldown_remaining()}" if key.rate_limited_at else ""
+                    logger.debug(f"[MCP_KEY_DEBUG]   Key {i}: {key.mask()} - available: {key.is_available()}{cooldown_info}")
 
             # MARKER_90.4.0_START: Emit request to VETKA chat
             self._emit_request_to_chat(model, messages, temperature, max_tokens)
             # MARKER_90.4.0_END
 
             # MARKER_178.4.8: Universal REFLEX pre-hook for ALL LLM calls
-            messages, tools, _reflex_recs, reflex_meta = (
-                maybe_apply_reflex_to_direct_tools(
-                    arguments=arguments,
-                    messages=messages,
-                    tools=tools,
-                    provider_name=provider_name,
-                )
+            messages, tools, _reflex_recs, reflex_meta = maybe_apply_reflex_to_direct_tools(
+                arguments=arguments,
+                messages=messages,
+                tools=tools,
+                provider_name=provider_name,
             )
 
             # MARKER_117.1_START: Multi-provider routing (was: OpenRouter-only)
             # Phase 117.1: Route through correct provider, not just OpenRouter.
             # OpenRouter remains default; Polza/Poe/Mistral/etc use call_model_v2.
-            if provider_name in ("openrouter", "openai"):
+            if provider_name in ('openrouter', 'openai'):
                 # Legacy path: sync OpenRouter call with key rotation
                 response = self._call_openrouter_sync(
                     messages=messages,
@@ -1056,11 +955,8 @@ class LLMCallTool(BaseMCPTool):
             else:
                 # Phase 117.1: Universal path via call_model_v2 (async → sync)
                 # Works for: polza, poe, xai, anthropic, gemini, mistral, etc.
-                logger.info(
-                    f"[MCP_MULTI_PROVIDER] Routing {model} via {provider_name} (not OpenRouter)"
-                )
+                logger.info(f"[MCP_MULTI_PROVIDER] Routing {model} via {provider_name} (not OpenRouter)")
                 import concurrent.futures
-
                 response = self._call_provider_sync(
                     messages=messages,
                     model=model,
@@ -1073,33 +969,16 @@ class LLMCallTool(BaseMCPTool):
             # MARKER_117.1_END
 
             # Extract response content
-            message_data = response.get("message", {})
-            content = message_data.get("content", "")
-            tool_calls = message_data.get("tool_calls")
-
-            # MARKER_196.CORE_GAP_2: Auto-extract and write code blocks from response
-            files_written = []
-            if arguments.get("apply_code") and content:
-                try:
-                    from src.utils.response_applier import apply_response_code
-
-                    files_written = apply_response_code(content)
-                    if files_written:
-                        logger.info(
-                            "[LLM_CALL_TOOL] Code extraction: wrote %d files: %s",
-                            len(files_written),
-                            files_written,
-                        )
-                except Exception as _ce:
-                    logger.warning("[LLM_CALL_TOOL] Code extraction failed: %s", _ce)
+            message_data = response.get('message', {})
+            content = message_data.get('content', '')
+            tool_calls = message_data.get('tool_calls')
 
             # Build result
             result = {
-                "content": content,
-                "model": response.get("model", model),
-                "provider": response.get("provider", provider_name),
-                "usage": response.get("usage"),
-                "files_written": files_written,
+                'content': content,
+                'model': response.get('model', model),
+                'provider': response.get('provider', provider_name),
+                'usage': response.get('usage'),
             }
 
             # MARKER_116_SECURITY_HARDENING: Filter response tool_calls by allowlist
@@ -1111,63 +990,56 @@ class LLMCallTool(BaseMCPTool):
                 )
                 dropped_calls = len(tool_calls) - len(filtered_calls)
                 if dropped_calls:
-                    logger.warning(
-                        "[SECURITY] Filtered %d unsafe tool_call(s) from LLM response",
-                        dropped_calls,
-                    )
+                    logger.warning("[SECURITY] Filtered %d unsafe tool_call(s) from LLM response", dropped_calls)
                 if filtered_calls:
-                    result["tool_calls"] = filtered_calls
+                    result['tool_calls'] = filtered_calls
             if reflex_meta.get("enabled"):
                 result["reflex"] = reflex_meta
 
             # MARKER_90.4.0_START: Emit response to VETKA chat
-            self._emit_response_to_chat(model, content, result.get("usage"))
+            self._emit_response_to_chat(model, content, result.get('usage'))
             # MARKER_90.4.0_END
 
             # MARKER_126.2: Track usage in BalanceTracker
-            self._track_usage_for_balance(provider_name, model, result.get("usage"))
+            self._track_usage_for_balance(provider_name, model, result.get('usage'))
 
             # MARKER_178.4.9: Universal REFLEX post-hook for ALL LLM calls
             try:
                 from src.services.reflex_integration import reflex_post_fc, _is_enabled
-
                 if _is_enabled():
                     _tool_calls = result.get("tool_calls", [])
                     if _tool_calls:
                         _tool_execs = []
                         for tc in _tool_calls:
                             _fn = tc.get("function", {})
-                            _tool_execs.append(
-                                {
-                                    "name": _fn.get("name", "unknown"),
-                                    "success": True,
-                                    "result": {"content": "from_llm_response"},
-                                }
-                            )
+                            _tool_execs.append({
+                                "name": _fn.get("name", "unknown"),
+                                "success": True,
+                                "result": {"content": "from_llm_response"}
+                            })
                         _phase = arguments.get("_reflex_phase", "research")
                         _role = arguments.get("_reflex_role", "coder")
-                        reflex_post_fc(
-                            _tool_execs,
-                            phase_type=_phase,
-                            agent_role=_role,
-                            subtask_id="llm_call",
-                        )
+                        reflex_post_fc(_tool_execs, phase_type=_phase, agent_role=_role, subtask_id="llm_call")
             except Exception:
                 pass
 
-            return {"success": True, "result": result, "error": None}
+            return {
+                'success': True,
+                'result': result,
+                'error': None
+            }
 
         except ImportError as e:
             logger.error(f"[LLM_CALL_TOOL] Import error: {e}")
             return {
-                "success": False,
-                "error": f"Failed to import provider registry: {str(e)}",
-                "result": None,
+                'success': False,
+                'error': f'Failed to import provider registry: {str(e)}',
+                'result': None
             }
         except Exception as e:
             logger.error(f"[LLM_CALL_TOOL] Execution error: {e}")
             return {
-                "success": False,
-                "error": f"LLM call failed: {str(e)}",
-                "result": None,
+                'success': False,
+                'error': f'LLM call failed: {str(e)}',
+                'result': None
             }

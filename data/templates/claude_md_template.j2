@@ -3,28 +3,34 @@
 
 **Role:** {{ role.role_title }} | **Branch:** `{{ role.branch }}`
 
-## Init
-{%- if role.tool_type == "vibe" %}
+{% if role.tool_type == "vibe" %}
+## Init (Vibe CLI)
+Tools are exposed directly by MCP — check tool list in Vibe's UI.
+**DO NOT** use `mcp__vetka__` prefix — Vibe exposes tools without namespace prefix.
+
 ```
-1. vetka_session_init role={{ role.callsign }}
+1. vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. vetka_task_board action=list filter_status=pending
+2. vetka_task_board action=list project_id=cut filter_status=pending
 3. Claim → Work → vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
 ```
 
-`action=complete` = auto-stage + commit + close. NEVER raw git commit.
+`action=complete` = auto-commit + close. NEVER `git add`/`git commit` manually.
 
 ## Error Handling
-STOP immediately if you see:
-- "Unknown tool" → MCP not connected, restart Vibe
-- "Permission denied" → file outside owned_paths, do NOT modify
-- Any crash → notify Commander before retrying
+If any MCP tool returns an error:
+- **STOP immediately** — DO NOT retry the same call
+- Report the error text to the user
+- Ask what to do next
 
-## Signal Setup (PRETOOL_HOOK)
-Launch via: `source launch_vibe.sh` (sets VETKA_AGENT_ROLE={{ role.callsign }} + PRETOOL_HOOK=check_opencode_signals.sh)
-Check inbox: `vetka_task_board action=notifications role={{ role.callsign }}`
-Send to Commander: `vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="..."`
-{%- else %}
+## Signal Setup (run once before launching Vibe)
+```bash
+export VETKA_AGENT_ROLE={{ role.callsign }}
+export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
+```
+
+{% elif role.tool_type == "opencode" %}
+## Init (Opencode)
 ```
 1. mcp__vetka__vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
@@ -36,6 +42,26 @@ Send to Commander: `vetka_task_board action=notify source_role={{ role.callsign 
 NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
 If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
 
+## Signal Setup (run once before launching Opencode)
+```bash
+export VETKA_AGENT_ROLE={{ role.callsign }}
+export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
+```
+
+{% else %}
+## Init
+```
+1. mcp__vetka__vetka_session_init
+   → returns: role_context, tasks, docs, predecessor advice, protocol guards
+2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+3. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+```
+
+`action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
+If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
+
+{% endif %}
 ## Notifications
 Check for Commander messages: `vetka_task_board action=notifications role={{ role.callsign }}`
 After reading: `vetka_task_board action=ack_notifications role={{ role.callsign }}`
@@ -44,10 +70,16 @@ Send to another agent: `vetka_task_board action=notify source_role={{ role.calls
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.
 {%- else %}
-NEVER commit to main. NEVER merge branches to main. NEVER run `git merge`. Merge authority belongs ONLY to Commander.
-NEVER touch files outside your `role_context.owned_paths`.
-If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander instead:
+NEVER commit to main. NEVER touch files outside your `role_context.owned_paths`.
+If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander:
 `vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="Tasks ready for merge: <ids>"`
+{%- endif %}
+{%- if role.memory_path %}
+
+## Role Memory
+Your persistent memory: `{{ role.memory_path }}`
+Read at session start. Write lessons/decisions there so next session picks them up.
+Shared `MEMORY.md` in `.claude/memory/` is for all-agent rules only — do not write role-specific notes there.
 {%- endif %}
 {%- if role.key_docs %}
 
@@ -57,6 +89,7 @@ If you see done_worktree tasks from other agents — DO NOT merge them. Notify C
 {%- endfor %}
 
 Read these BEFORE acting. `session_init` provides predecessor advice from these docs.
+Also check `latest_feedback` field from session_init — it contains your newest feedback doc.
 {%- endif %}
 {%- if role.domain == "architect" %}
 
@@ -83,11 +116,4 @@ Full ownership map: `data/templates/agent_registry.yaml`
 5. vetka_task_board action=promote_to_main task_id=<id>
 6. action=stale_check limit=30  (post-merge cleanup)
 ```
-{%- endif %}
-{%- endif %}
-{%- if role.memory_path %}
-
-## Role Memory
-Your persistent memory: `{{ role.memory_path }}`
-Read at session start. Write lessons/decisions there so next session picks them up.
 {%- endif %}

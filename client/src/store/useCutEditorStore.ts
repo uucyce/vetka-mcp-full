@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { API_BASE } from '../config/api.config';
+import { usePanelSyncStore } from './usePanelSyncStore';
 import { useSelectionStore } from './useSelectionStore'; // MARKER_ARCH_4.1
 
 // MARKER_KF67: Keyframe system (FCP7 Ch.67)
@@ -12,11 +13,6 @@ export type Keyframe = {
   time_sec: number;     // time relative to clip start (0 = clip beginning)
   value: number;        // parameter value at this keypoint
   easing: 'linear' | 'ease_in' | 'ease_out' | 'bezier';
-  // MARKER_KF-BEZIER-CP: Optional bezier control points (FCP7 Ch.58-59)
-  // cp_out: [time_delta_sec, value_delta] — exit tangent from this keyframe
-  // cp_in:  [time_delta_sec, value_delta] — entry tangent into this keyframe
-  cp_out?: [number, number];
-  cp_in?: [number, number];
 };
 
 // MARKER_KF-BEZIER: Keyframe interpolation with easing curves
@@ -42,33 +38,10 @@ export function interpolateKeyframes(keyframes: Keyframe[], timeSec: number): nu
   // Apply easing (use outgoing easing from kfA)
   let eased: number;
   switch (kfA.easing) {
-    case 'ease_in':  eased = t * t; break;
-    case 'ease_out': eased = 1 - (1 - t) * (1 - t); break;
-    case 'bezier': {
-      if (kfA.cp_out || kfB.cp_in) {
-        // Real cubic bezier: P0=kfA, P1=kfA+cp_out, P2=kfB-cp_in, P3=kfB
-        // Control point X coords (normalized 0..1 within segment)
-        const x1 = kfA.cp_out ? Math.min(1, Math.max(0, kfA.cp_out[0] / dt)) : 1 / 3;
-        const x2 = kfB.cp_in  ? Math.min(1, Math.max(0, 1 - kfB.cp_in[0]  / dt)) : 2 / 3;
-        // Control point Y coords (absolute values)
-        const y1 = kfA.cp_out ? kfA.value + kfA.cp_out[1] : kfA.value + (kfB.value - kfA.value) / 3;
-        const y2 = kfB.cp_in  ? kfB.value - kfB.cp_in[1]  : kfB.value - (kfB.value - kfA.value) / 3;
-        // Bisection: find parameter s such that B_x(s) ≈ t
-        let lo = 0, hi = 1;
-        for (let n = 0; n < 14; n++) {
-          const mid = (lo + hi) * 0.5;
-          const u = 1 - mid;
-          const bx = 3 * u * u * mid * x1 + 3 * u * mid * mid * x2 + mid * mid * mid;
-          if (bx < t) lo = mid; else hi = mid;
-        }
-        const s = (lo + hi) * 0.5;
-        const u = 1 - s;
-        return u*u*u*kfA.value + 3*u*u*s*y1 + 3*u*s*s*y2 + s*s*s*kfB.value;
-      }
-      eased = t * t * (3 - 2 * t); // smooth-step fallback (no cp data)
-      break;
-    }
-    default: eased = t; // linear
+    case 'ease_in':    eased = t * t; break;
+    case 'ease_out':   eased = 1 - (1 - t) * (1 - t); break;
+    case 'bezier':     eased = t * t * (3 - 2 * t); break; // smooth step (cubic hermite)
+    default:           eased = t; // linear
   }
 
   return kfA.value + (kfB.value - kfA.value) * eased;
@@ -153,8 +126,6 @@ export type TimelineClip = {
   start_sec: number;
   duration_sec: number;
   source_path: string;
-  // MARKER_INLINE-RENAME: User-editable clip label. If set, shown in clipLabelMode=name instead of filename.
-  name?: string;
   // MARKER_W5.TRIM: source_in tracks where in the source media this clip starts.
   // Required for slip editing — changes source_in without moving clip on timeline.
   source_in?: number;
@@ -252,8 +223,9 @@ interface CutEditorState {
   duration: number;
   // MARKER_B3.2: Keyframe Record Mode (FCP7 automation)
   isRecordMode: boolean;  // true = fader/pan changes auto-write keyframes
-  // MARKER_KF-GAP: Minimum time gap (seconds) between keyframes during drag
-  kfGap: number;
+  markIn: number | null;      // legacy — mirrors sourceMarkIn for backward compat
+  markOut: number | null;     // legacy — mirrors sourceMarkOut for backward compat
+
   // === MARKER_DUAL-VIDEO: Independent Source Monitor playback state ===
   // Source monitor has its own video element and playback, decoupled from timeline
   sourceCurrentTime: number;
@@ -281,8 +253,6 @@ interface CutEditorState {
   filterClipboard: ClipEffects | null;  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste Filters clipboard
   collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
-  masterVolume: number;              // MARKER_AUDIO-MASTER: master fader 0.0–1.5 (1.0 = unity)
-  masterPan: number;                 // MARKER_AUDIO-MASTER: master pan -1.0–1.0 (0 = center)
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
   snapEnabled: boolean;
 
@@ -332,9 +302,6 @@ interface CutEditorState {
   editingMarkerId: string | null;
   // MARKER_GAMMA-LOOP: Loop playback (FCP7 Ch.8)
   loopPlayback: boolean;
-  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
-  showInsertTracksDialog: boolean;
-  showDeleteTracksDialog: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -383,8 +350,6 @@ interface CutEditorState {
   // === MARKER_W6.1: Export/Render dialog ===
   showExportDialog: boolean;
   showSpeedControl: boolean;        // MARKER_B11: Speed/Duration dialog
-  showFindDialog: boolean;          // MARKER_FCP7-FIND: Edit > Find overlay
-  findQuery: string;                // active search query for clip highlighting
   // === MARKER_TRIM_WINDOW: Trim Edit Window overlay (FCP7 Ch.45-46) ===
   trimEditActive: boolean;          // is overlay open
   trimEditClipId: string | null;    // outgoing clip at edit point
@@ -424,8 +389,6 @@ interface CutEditorState {
   showClipBorders: boolean;
   showWaveforms: boolean;
   waveformHiddenLanes: Set<string>;  // MARKER_A3.4: per-lane waveform visibility
-  // MARKER_A3.2: Per-marker-kind visibility toggles for BPM markers
-  visibleMarkerKinds: Set<string>;   // kinds in set = visible, empty = all visible (default)
   showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
@@ -459,6 +422,8 @@ interface CutEditorState {
   togglePlaySource: () => void;
   seekSource: (time: number) => void;
   setSourceDuration: (d: number) => void;
+  setMarkIn: (t: number | null) => void;
+  setMarkOut: (t: number | null) => void;
   // MARKER_W1.4: Separate marks
   setSourceMarkIn: (t: number | null) => void;
   setSourceMarkOut: (t: number | null) => void;
@@ -483,8 +448,6 @@ interface CutEditorState {
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
   toggleClipEnabled: (clipId: string) => void; // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26
   setLaneVolume: (laneId: string, volume: number) => void;
-  setMasterVolume: (volume: number) => void;       // MARKER_AUDIO-MASTER
-  setMasterPan: (pan: number) => void;             // MARKER_AUDIO-MASTER
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
   // Selection actions MOVED to useSelectionStore.ts — MARKER_ARCH_4.1
@@ -500,8 +463,6 @@ interface CutEditorState {
   extractClip: () => void;                       // Remove selected clips, close gap (ripple)
   closeGap: () => void;                          // Find and remove gaps in targeted lanes
   extendEdit: () => void;                        // Extend nearest edit to playhead
-  // MARKER_FCP7-CH15: Insert Gap (FCP7 Sequence > Insert Gap, Cmd+Shift+G)
-  insertGap: () => void;                         // Push clips at/after playhead forward by In/Out duration or 2s
   // MARKER_TD4: Numeric trim — trim selected clip's nearest edge by N frames
   numericTrimSelected: (frames: number) => void;
   // MARKER_TD2: Asymmetric trim — adjust two adjacent clips independently
@@ -510,11 +471,7 @@ interface CutEditorState {
   splitEditLCut: () => void;                     // Video ends at playhead, audio continues
   splitEditJCut: () => void;                     // Audio starts at playhead, video starts later
   // MARKER_TRANSITION: Default transition (FCP7 Ch.47 ⌘T)
-  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point (any lane)
-  addAudioTransition: () => void;               // MARKER_AUDIO_XFADE: Add crossfade at nearest audio edit point
-  // MARKER_MATCH_FRAME: FCP7 Ch.27 — Match Frame (F) + Reverse Match Frame (Shift+F)
-  matchFrame: () => void;       // playhead → find clip → open source at matching timecode
-  reverseMatchFrame: () => void; // source monitor position → seek timeline to matching clip
+  addDefaultTransition: () => void;              // Add cross dissolve at nearest edit point
   setActiveMedia: (path: string | null) => void;
   // MARKER_W1.3: Source/Program routing
   setSourceMedia: (path: string | null) => void;
@@ -540,9 +497,6 @@ interface CutEditorState {
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop: boolean) => void;
-  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
-  setShowInsertTracksDialog: (show: boolean) => void;
-  setShowDeleteTracksDialog: (show: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -552,8 +506,6 @@ interface CutEditorState {
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show: boolean) => void;
   setShowSpeedControl: (show: boolean) => void;  // MARKER_B11
-  setShowFindDialog: (show: boolean) => void;   // MARKER_FCP7-FIND
-  setFindQuery: (query: string) => void;        // MARKER_FCP7-FIND
   setRenderProgress: (p: number | null) => void;
   setRenderStatus: (s: string | null) => void;
   setRenderError: (e: string | null) => void;
@@ -601,11 +553,7 @@ interface CutEditorState {
   toggleShowClipLabels: () => void;
   toggleShowRubberBand: () => void;
   setClipLabelMode: (mode: 'name' | 'color' | 'filename') => void;
-  cycleClipLabelMode: () => void;  // MARKER_FCP7-CH45: cycles name→filename→color→name
   setTimecodeDisplayMode: (mode: 'timecode' | 'frames' | 'seconds') => void;
-  // MARKER_A3.2: Marker visibility toggles (per-kind filtering)
-  toggleMarkerKind: (kind: string) => void;
-  setVisibleMarkerKinds: (kinds: Set<string>) => void;
   toggleShowVideoTracks: () => void;
   toggleShowAudioTracks: () => void;
 
@@ -620,11 +568,6 @@ interface CutEditorState {
   // MARKER_KF67: Keyframe actions (FCP7 Ch.67)
   addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
   removeKeyframe: (clipId: string, property: string, timeSec: number) => void;
-  // MARKER_KF-BEZIER-CP: Update bezier control points on a keyframe (FCP7 Ch.58-59)
-  updateKeyframeBezier: (clipId: string, property: string, timeSec: number, cpOut?: [number, number], cpIn?: [number, number]) => void;
-  // MARKER_KF-EASING: Set easing type on a keyframe (linear/ease_in/ease_out/bezier)
-  updateKeyframeEasing: (clipId: string, property: string, timeSec: number, easing: Keyframe['easing']) => void;
-  setKfGap: (gap: number) => void;
   getKeyframeTimes: () => number[];  // all keyframe times on timeline (for navigation)
   // MARKER_B3.2: Record mode actions
   toggleRecordMode: () => void;      // Cmd+Shift+K — toggle record mode
@@ -692,8 +635,6 @@ interface CutEditorState {
   runAutoMontage: (mode: 'favorites' | 'script' | 'music') => Promise<void>;
   // MARKER_A4.8: PULSE Analysis — enrich all scenes with Camelot/McKee/energy metadata
   runPulseAnalysis: () => Promise<void>;
-  // MARKER_SCENEDET: Scene detection — split timeline at scene boundaries
-  runSceneDetection: () => Promise<void>;
   // PULSE analysis results stored here
   pulseScores: Record<string, { camelot_key?: string; energy?: number; pendulum?: number; dramatic_function?: string }>;
   montageInProgress: boolean;
@@ -715,7 +656,8 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   shuttleSpeed: 0,
   duration: 0,
   isRecordMode: false,  // MARKER_B3.2
-  kfGap: 0,
+  markIn: null,
+  markOut: null,
 
   // MARKER_W1.4: Separate marks
   sourceMarkIn: null,
@@ -738,8 +680,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   filterClipboard: null,
   collapsedTracks: new Set<string>(),
   laneVolumes: {},
-  masterVolume: 1.0,
-  masterPan: 0,
   lanePans: {},
   snapEnabled: true,
 
@@ -773,9 +713,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   editingMarkerId: null,
   // MARKER_GAMMA-LOOP: Loop playback
   loopPlayback: false,
-  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
-  showInsertTracksDialog: false,
-  showDeleteTracksDialog: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -816,8 +753,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   showExportDialog: false,
   showSpeedControl: false,          // MARKER_B11
-  showFindDialog: false,            // MARKER_FCP7-FIND
-  findQuery: '',                    // MARKER_FCP7-FIND
   // MARKER_TRIM_WINDOW: Trim Edit Window defaults
   trimEditActive: false,
   trimEditClipId: null,
@@ -858,8 +793,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipBorders: true,
   showWaveforms: true,
   waveformHiddenLanes: new Set<string>(),  // MARKER_A3.4
-  // MARKER_A3.2: All marker kinds visible by default (empty set = show all)
-  visibleMarkerKinds: new Set<string>(['bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point']),
   showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
@@ -896,19 +829,22 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   togglePlaySource: () => set((s) => ({ sourceIsPlaying: !s.sourceIsPlaying })),
   seekSource: (time) => set({ sourceCurrentTime: Math.max(0, time) }),
   setSourceDuration: (d) => set({ sourceDuration: d }),
+  setMarkIn: (t) => set({ markIn: t, sourceMarkIn: t }),
+  setMarkOut: (t) => set({ markOut: t, sourceMarkOut: t }),
   // MARKER_W1.4: Separate marks
-  setSourceMarkIn: (t) => set({ sourceMarkIn: t }),
-  setSourceMarkOut: (t) => set({ sourceMarkOut: t }),
-  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t }),
-  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t }),
+  setSourceMarkIn: (t) => set({ sourceMarkIn: t, markIn: t }),
+  setSourceMarkOut: (t) => set({ sourceMarkOut: t, markOut: t }),
+  // MARKER_MRK-FIX: Sync legacy markIn/markOut when setting sequence marks
+  // Tests and some components read markIn/markOut — keep them in sync
+  setSequenceMarkIn: (t) => set({ sequenceMarkIn: t, markIn: t }),
+  setSequenceMarkOut: (t) => set({ sequenceMarkOut: t, markOut: t }),
   setPlaybackRate: (rate) => set({ playbackRate: Math.max(0.25, Math.min(4, rate)) }),
   setShuttleSpeed: (speed) => set({ shuttleSpeed: speed }),
   setZoom: (z) => set({ zoom: Math.max(10, Math.min(300, z)) }),
-  // MARKER_A3.5: Track height constraints — 20px min (compact), 200px max (expansive)
-  setTrackHeight: (h) => set({ trackHeight: Math.max(20, Math.min(200, h)) }),
+  setTrackHeight: (h) => set({ trackHeight: Math.max(28, Math.min(180, h)) }),
   setTrackHeightForLane: (laneId, h) =>
     set((state) => ({
-      trackHeights: { ...state.trackHeights, [laneId]: Math.max(20, Math.min(200, h)) },
+      trackHeights: { ...state.trackHeights, [laneId]: Math.max(28, Math.min(180, h)) },
     })),
   cycleTrackHeights: () =>
     set((state) => {
@@ -996,10 +932,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         [laneId]: Math.max(0, Math.min(1.5, volume)),
       },
     })),
-  setMasterVolume: (volume) =>
-    set({ masterVolume: Math.max(0, Math.min(1.5, volume)) }),
-  setMasterPan: (pan) =>
-    set({ masterPan: Math.max(-1, Math.min(1, pan)) }),
   // MARKER_RECON_21: Persist pan to store (was local useState in AudioMixer)
   setLanePan: (laneId, pan) =>
     set((state) => ({
@@ -1204,25 +1136,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
     if (ops.length) void get().applyTimelineOps(ops);
   },
-  // MARKER_FCP7-CH15: Insert Gap — push all clips at or after playhead forward
-  // Duration = sequenceMarkOut - sequenceMarkIn if both set, else 2 seconds
-  insertGap: () => {
-    const { lanes, currentTime, targetedLanes, lockedLanes, sequenceMarkIn, sequenceMarkOut } = get();
-    const gapDuration = (sequenceMarkIn != null && sequenceMarkOut != null && sequenceMarkOut > sequenceMarkIn)
-      ? sequenceMarkOut - sequenceMarkIn
-      : 2.0;
-    const ops: Array<Record<string, unknown>> = [];
-    for (const lane of lanes) {
-      if (lockedLanes.has(lane.lane_id)) continue;
-      if (targetedLanes.size > 0 && !targetedLanes.has(lane.lane_id)) continue;
-      for (const clip of lane.clips) {
-        if (clip.start_sec >= currentTime) {
-          ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: clip.start_sec + gapDuration });
-        }
-      }
-    }
-    if (ops.length) void get().applyTimelineOps(ops);
-  },
   // MARKER_TD3: Extend Edit (E key) — extend nearest clip edge to playhead
   // FCP7 Ch.19 p.285: finds closest edit point, extends it to playhead
   // MARKER_UNDO-FIX: Routes through applyTimelineOps for undo support
@@ -1378,85 +1291,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }]);
   },
 
-  // MARKER_AUDIO_XFADE: Audio-specific crossfade — targets only audio lanes (acrossfade in render)
-  addAudioTransition: () => {
-    const { lanes, currentTime, lockedLanes, projectFramerate } = get();
-    const defaultDuration = 30 / (projectFramerate || 25);
-    let bestDist = Infinity;
-    let bestClipId = '';
-
-    lanes.forEach((lane) => {
-      if (lockedLanes.has(lane.lane_id)) return;
-      if (!lane.lane_type.startsWith('audio')) return;
-      lane.clips.forEach((clip) => {
-        const dist = Math.abs((clip.start_sec + clip.duration_sec) - currentTime);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestClipId = clip.clip_id;
-        }
-      });
-    });
-
-    if (!bestClipId || bestDist > 2.0) return;
-
-    void get().applyTimelineOps([{
-      op: 'set_transition',
-      clip_id: bestClipId,
-      transition: { type: 'cross_dissolve', duration_sec: defaultDuration, alignment: 'center' },
-    }]);
-  },
-
   // MARKER_DUAL-VIDEO: setActiveMedia is legacy — sets activeMediaPath only, does NOT bleed into source
-  // MARKER_MATCH_FRAME: FCP7 Ch.27 Match Frame (F) — find clip under playhead → open source at matching timecode
-  matchFrame: () => {
-    const s = get();
-    for (const lane of s.lanes) {
-      if (s.lockedLanes.has(lane.lane_id)) continue;
-      for (const clip of lane.clips) {
-        if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-          const sourceOffset = clip.source_in ?? 0;
-          const sourceTime = (s.currentTime - clip.start_sec) + sourceOffset;
-          set({ sourceMediaPath: clip.source_path, sourceCurrentTime: Math.max(0, sourceTime), focusedPanel: 'source' });
-          return;
-        }
-      }
-    }
-  },
-  // MARKER_MATCH_FRAME: Reverse Match Frame (Shift+F) — source monitor position → seek timeline to matching clip
-  reverseMatchFrame: () => {
-    const s = get();
-    const sourcePath = s.sourceMediaPath;
-    const sourceTime = s.sourceCurrentTime;
-    if (!sourcePath) return;
-    for (const lane of s.lanes) {
-      for (const clip of lane.clips) {
-        if (clip.source_path !== sourcePath) continue;
-        const clipSourceIn = clip.source_in ?? 0;
-        const clipSourceOut = clipSourceIn + clip.duration_sec;
-        if (sourceTime >= clipSourceIn && sourceTime < clipSourceOut) {
-          const timelineTime = clip.start_sec + (sourceTime - clipSourceIn);
-          set({ currentTime: timelineTime, focusedPanel: 'timeline' });
-          return;
-        }
-      }
-    }
-  },
   setActiveMedia: (path) => set({ activeMediaPath: path, mediaError: null, mediaLoading: !!path }),
-  // MARKER_W1.3: Source/Program routing — fully decoupled.
-  // Source Monitor reads sourceMediaPath, Program Monitor reads programMediaPath.
-  // setSourceMedia should ONLY be called by explicit user actions:
-  //   - double-click timeline clip
-  //   - Match Frame (F)
-  //   - DAG/Script click (via PanelSyncBridge)
-  //   - "Open in Source Monitor" menu
-  // NEVER auto-sync from timeline playback (that's the REGRESSION we fixed).
-  setSourceMedia: (path) => {
-    if (import.meta.env.DEV) {
-      const stack = new Error().stack?.split('\n').slice(2, 5).join(' | ');
-      console.log(`[CUT SourceMonitor] setSourceMedia(${path}) ← ${stack}`);
-    }
-    set({ sourceMediaPath: path });
-  },
+  // MARKER_W1.3: Source/Program routing — fully decoupled
+  setSourceMedia: (path) => set({ sourceMediaPath: path }),
   setProgramMedia: (path) => set({ programMediaPath: path }),
   setMediaError: (err) => set({ mediaError: err, mediaLoading: false }),
   setMediaLoading: (loading) => set({ mediaLoading: loading }),
@@ -1482,9 +1320,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop) => set({ loopPlayback: loop }),
-  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
-  setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
-  setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {
@@ -1500,8 +1335,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   // MARKER_W6.1: Export/Render
   setShowExportDialog: (show) => set({ showExportDialog: show }),
   setShowSpeedControl: (show) => set({ showSpeedControl: show }),  // MARKER_B11
-  setShowFindDialog: (show) => set({ showFindDialog: show, ...(show ? {} : { findQuery: '' }) }),
-  setFindQuery: (query) => set({ findQuery: query }),
   // MARKER_TRIM_WINDOW: Trim Edit Window action
   setTrimEditActive: (active, clipId, editPoint) => set({ trimEditActive: active, trimEditClipId: clipId ?? null, trimEditPoint: editPoint ?? 0 }),
   setRenderProgress: (p) => set({ renderProgress: p }),
@@ -1510,7 +1343,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
 
   // MARKER_B_P2_HOTKEYS: Render hotkey actions (Cmd+R / Alt+R)
   renderSelection: async () => {
-    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, masterPan, soloLanes, mutedLanes } = get();
+    const { sandboxRoot, projectId, timelineId, sequenceMarkIn, sequenceMarkOut, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
     if (!sandboxRoot || !projectId) {
       console.warn('[CUT] renderSelection: no project session');
       return;
@@ -1528,7 +1361,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         volume: vol,
         mute: mutedLanes.has(laneId),
         solo: soloLanes.has(laneId),
-        pan: get().lanePans[laneId] ?? 0,
+        pan: 0,
       };
     }
     try {
@@ -1542,7 +1375,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           timeline_id: timelineId || 'main',
           in_point: sequenceMarkIn,
           out_point: sequenceMarkOut,
-          mixer: { lanes: mixerLanes, master_volume: masterVolume, master_pan: masterPan },
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
         }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1561,7 +1394,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 
   renderAll: async () => {
-    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, masterPan, soloLanes, mutedLanes } = get();
+    const { sandboxRoot, projectId, timelineId, laneVolumes, masterVolume, soloLanes, mutedLanes } = get();
     if (!sandboxRoot || !projectId) {
       console.warn('[CUT] renderAll: no project session');
       return;
@@ -1573,7 +1406,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
         volume: vol,
         mute: mutedLanes.has(laneId),
         solo: soloLanes.has(laneId),
-        pan: get().lanePans[laneId] ?? 0,
+        pan: 0,
       };
     }
     try {
@@ -1585,7 +1418,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
           sandbox_root: sandboxRoot,
           project_id: projectId,
           timeline_id: timelineId || 'main',
-          mixer: { lanes: mixerLanes, master_volume: masterVolume, master_pan: masterPan },
+          mixer: { lanes: mixerLanes, master_volume: masterVolume },
         }),
       });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -1682,19 +1515,7 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
   toggleShowRubberBand: () => set((s) => ({ showRubberBand: !s.showRubberBand })),
   setClipLabelMode: (mode) => set({ clipLabelMode: mode }),
-  cycleClipLabelMode: () => set((s) => {
-    const order: Array<'name' | 'filename' | 'color'> = ['name', 'filename', 'color'];
-    const next = order[(order.indexOf(s.clipLabelMode) + 1) % order.length];
-    return { clipLabelMode: next };
-  }),
   setTimecodeDisplayMode: (mode) => set({ timecodeDisplayMode: mode }),
-  // MARKER_A3.2: Marker kind visibility
-  toggleMarkerKind: (kind: string) => set((s) => {
-    const next = new Set(s.visibleMarkerKinds);
-    if (next.has(kind)) next.delete(kind); else next.add(kind);
-    return { visibleMarkerKinds: next };
-  }),
-  setVisibleMarkerKinds: (kinds) => set({ visibleMarkerKinds: kinds }),
   toggleShowVideoTracks: () => set((s) => ({ showVideoTracks: !s.showVideoTracks })),
   toggleShowAudioTracks: () => set((s) => ({ showAudioTracks: !s.showAudioTracks })),
 
@@ -1768,49 +1589,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       op: 'remove_keyframe', clip_id: clipId, property, time_sec: timeSec,
     }]);
   },
-  // MARKER_KF-BEZIER-CP: Update bezier handles via set_prop op
-  updateKeyframeBezier: (clipId, property, timeSec, cpOut, cpIn) => {
-    const { lanes } = get();
-    for (const lane of lanes) {
-      const clip = lane.clips.find((c) => c.clip_id === clipId);
-      if (!clip || !clip.keyframes) continue;
-      const kfs = clip.keyframes[property];
-      if (!kfs) break;
-      const idx = kfs.findIndex((k) => Math.abs(k.time_sec - timeSec) < 1e-6);
-      if (idx < 0) break;
-      // Build updated keyframes array with patched cp_in/cp_out
-      const updated = kfs.map((k, i) => {
-        if (i !== idx) return k;
-        return {
-          ...k,
-          ...(cpOut !== undefined ? { cp_out: cpOut } : {}),
-          ...(cpIn !== undefined ? { cp_in: cpIn } : {}),
-        };
-      });
-      void get().applyTimelineOps([{
-        op: 'set_prop', clip_id: clipId,
-        key: `keyframes.${property}`, value: updated,
-      }]);
-      return;
-    }
-  },
-  // MARKER_KF-EASING: Set easing type on a keyframe
-  updateKeyframeEasing: (clipId, property, timeSec, easing) => {
-    const { lanes } = get();
-    for (const lane of lanes) {
-      const clip = lane.clips.find((c) => c.clip_id === clipId);
-      if (!clip || !clip.keyframes) continue;
-      const kfs = clip.keyframes[property];
-      if (!kfs) break;
-      const idx = kfs.findIndex((k) => Math.abs(k.time_sec - timeSec) < 1e-6);
-      if (idx < 0) break;
-      const updated = kfs.map((k, i) => i !== idx ? k : { ...k, easing });
-      void get().applyTimelineOps([{ op: 'set_prop', clip_id: clipId, key: `keyframes.${property}`, value: updated }]);
-      return;
-    }
-  },
-  setKfGap: (gap) => set({ kfGap: gap }),
-
   getKeyframeTimes: () => {
     const { lanes, lockedLanes } = get();
     const times = new Set<number>();
@@ -2230,29 +2008,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
     }
   },
 
-  // MARKER_SCENEDET: Scene detection — split at scene boundaries + refresh state
-  runSceneDetection: async () => {
-    const { sandboxRoot, projectId, timelineId, refreshProjectState } = get();
-    if (!sandboxRoot || !projectId) {
-      console.warn('[CUT] runSceneDetection: no project session');
-      return;
-    }
-    try {
-      await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sandbox_root: sandboxRoot,
-          project_id: projectId,
-          timeline_id: timelineId || 'main',
-        }),
-      });
-      await refreshProjectState?.();
-    } catch (err) {
-      console.error('[CUT] runSceneDetection error:', err);
-    }
-  },
-
   // MARKER_EXPORT: Export timeline to editorial format (Premiere XML, FCPXML, OTIO, EDL)
   exportTimeline: async (format) => {
     const { sandboxRoot, projectId, timelineId, projectFramerate } = get();
@@ -2309,9 +2064,19 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   },
 }));
 
-// MARKER_PW2: Panel Sync Bridge — REMOVED duplicate module-level subscription.
-// usePanelSyncBridge() hook in CutStandalone.tsx handles this (single source of truth).
-// Module-level subscribe was redundant and could cause double-fire on selectedAssetPath changes.
+// MARKER_PW2: Panel Sync Bridge — propagate Script/DAG clicks to editor store
+// Script click → activeSceneId updates → selectedSceneId → PulseInspector/ClipInspector reactive
+// DAG click → selectedAssetPath updates → setSourceMedia → Source Monitor loads clip
+usePanelSyncStore.subscribe((state, prev) => {
+  // When selectedAssetPath changes → load in Source Monitor
+  if (state.selectedAssetPath && state.selectedAssetPath !== prev.selectedAssetPath) {
+    useCutEditorStore.getState().setSourceMedia(state.selectedAssetPath);
+  }
+  // When activeSceneId changes → store it for PulseInspector/ClipInspector
+  if (state.activeSceneId && state.activeSceneId !== prev.activeSceneId) {
+    useCutEditorStore.setState({ selectedSceneId: state.activeSceneId });
+  }
+});
 
 // MARKER_PW8: Timeline ID sync — keep CutEditorStore.timelineId in sync with TimelineInstanceStore
 // DAG, StorySpace, Inspector can read useCutEditorStore(s => s.timelineId) instead of hardcoding 'main'
