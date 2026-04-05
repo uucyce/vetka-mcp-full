@@ -31,52 +31,30 @@ fi
 # ── Duplicate guard ───────────────────────────────────────────
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "$LOG_PREFIX $ROLE already running in tmux session $SESSION_NAME"
+    echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt'"
     exit 0
-fi
-
-# ── Pre-spawn: ensure worktree has essential files ────────────
-# opencode has no --dangerously-skip-permissions — reading files outside worktree
-# triggers permission dialogs. Copy essential shared config into worktree beforehand.
-if [ "$AGENT_TYPE" = "opencode" ] || [ "$AGENT_TYPE" = "generic_cli" ]; then
-    # Ensure opencode.json with MCP config exists
-    if [ ! -f "$WORKTREE_PATH/opencode.json" ] && [ -f "$PROJECT_ROOT/opencode.json" ]; then
-        cp "$PROJECT_ROOT/opencode.json" "$WORKTREE_PATH/opencode.json"
-        echo "$LOG_PREFIX Copied opencode.json → worktree"
-    fi
-    # Ensure AGENTS.md exists (opencode's system prompt file)
-    if [ ! -f "$WORKTREE_PATH/AGENTS.md" ] && [ -f "$PROJECT_ROOT/AGENTS.md" ]; then
-        cp "$PROJECT_ROOT/AGENTS.md" "$WORKTREE_PATH/AGENTS.md"
-        echo "$LOG_PREFIX Copied AGENTS.md → worktree"
-    fi
 fi
 
 # ── Build spawn command per agent type ────────────────────────
 case "$AGENT_TYPE" in
     claude_code)
-        SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
+        # Start claude without prompt — init sent later via tmux send-keys
+        SPAWN_CMD="cd '${WORKTREE_PATH}' && claude --dangerously-skip-permissions"
         ;;
     opencode)
-        # NOTE: opencode has no auto-approve flag. Agent stays within worktree
-        # in normal operation. Permission dialogs only trigger for out-of-worktree reads.
-        SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
+        SPAWN_CMD="cd '${WORKTREE_PATH}' && opencode"
         ;;
     generic_cli)
-        # generic_cli expects SPAWN_CMD override via env var
-        SPAWN_CMD="${SYNAPSE_SPAWN_CMD:-cd '$WORKTREE_PATH' && bash}"
+        SPAWN_CMD="${SYNAPSE_SPAWN_CMD:-cd '${WORKTREE_PATH}' && bash}"
         ;;
     vibe)
-        # MARKER_206.VIBE_BRIDGE: Vibe = browser-based, no terminal session.
-        # V1 stub: open Chrome if URL set, otherwise graceful skip.
-        # V2 (SYNAPSE-206.7): full Playwright prompt injection via vibe_bridge.py
         VIBE_URL="${SYNAPSE_VIBE_URL:-}"
         if [ -z "$VIBE_URL" ]; then
-            echo "$LOG_PREFIX WARNING: vibe agent $ROLE — SYNAPSE_VIBE_URL not set, skipping (stub)" >&2
-            echo "$LOG_PREFIX Vibe fleet is V1 stub. Full support in SYNAPSE-206.7." >&2
-            exit 0
+            echo "$LOG_PREFIX ERROR: SYNAPSE_VIBE_URL not set for vibe agent $ROLE" >&2
+            exit 1
         fi
         open -a "Google Chrome" "$VIBE_URL"
         echo "$LOG_PREFIX $ROLE (vibe) → opened Chrome to $VIBE_URL"
-        echo "$LOG_PREFIX To inject prompts: python scripts/vibe_bridge.py --role $ROLE --prompt 'text'"
         exit 0
         ;;
     *)
@@ -145,31 +123,19 @@ EOF
         ;;
 esac
 
-# ── Set window title: [VETKA] Role — worktree ────────────────
-WINDOW_TITLE="[VETKA] ${ROLE} — ${WORKTREE}"
-case "$BACKEND" in
-    terminal_app)
-        osascript -e "tell application \"Terminal\" to set custom title of front window to \"$WINDOW_TITLE\""
-        ;;
-    iterm2)
-        osascript -e "tell application \"iTerm2\" to tell current session of current window to set name to \"$WINDOW_TITLE\""
-        ;;
-esac
-# Also set tmux window name (visible in tmux status bar / tmux ls)
-sleep 0.3
-tmux rename-window -t "$SESSION_NAME" "$WINDOW_TITLE" 2>/dev/null || true
-echo "$LOG_PREFIX Window title set: $WINDOW_TITLE"
-
 # ── Update session registry ──────────────────────────────────
 mkdir -p "$(dirname "$REGISTRY_FILE")"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-python3 -c "
-import json
+# Create or update registry JSON
+if [ -f "$REGISTRY_FILE" ]; then
+    # Use python to safely update JSON
+    python3 -c "
+import json, sys
 try:
     with open('$REGISTRY_FILE') as f:
         reg = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
+except:
     reg = {}
 reg['$ROLE'] = {
     'tmux_session': '$SESSION_NAME',
@@ -182,26 +148,32 @@ reg['$ROLE'] = {
 with open('$REGISTRY_FILE', 'w') as f:
     json.dump(reg, f, indent=2)
 "
+else
+    python3 -c "
+import json
+reg = {'$ROLE': {
+    'tmux_session': '$SESSION_NAME',
+    'window_id': '$WINDOW_ID',
+    'worktree': '$WORKTREE',
+    'agent_type': '$AGENT_TYPE',
+    'started_at': '$TIMESTAMP',
+    'pid': $$
+}}
+with open('$REGISTRY_FILE', 'w') as f:
+    json.dump(reg, f, indent=2)
+"
+fi
 
 echo "$LOG_PREFIX Registry updated: $REGISTRY_FILE"
 
-# ── Auto-init: wait for agent to boot, then send init prompt ──
-# FIX: was claude_code only — now supports all CLI agent types (opencode, generic_cli)
-# Uses synapse_write.sh which handles agent-type-aware submit (bug #1 fix)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" != "vibe" ]; then
-    # Boot time varies by agent type
-    case "$AGENT_TYPE" in
-        claude_code) BOOT_WAIT=8 ;;
-        opencode)    BOOT_WAIT=5 ;;
-        *)           BOOT_WAIT=3 ;;
-    esac
-    echo "$LOG_PREFIX Waiting ${BOOT_WAIT}s for $AGENT_TYPE to boot..."
+# ── Auto-init: wait for Claude Code to boot, then send init prompt ──
+if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" = "claude_code" ]; then
+    echo "$LOG_PREFIX Waiting 8s for Claude Code to boot..."
     (
-        sleep "$BOOT_WAIT"
+        sleep 8
         if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-            "$SCRIPT_DIR/synapse_write.sh" "$ROLE" "$INIT_PROMPT" "$AGENT_TYPE"
-            echo "$LOG_PREFIX Auto-init sent: '$INIT_PROMPT' → $SESSION_NAME ($AGENT_TYPE)"
+            tmux send-keys -t "$SESSION_NAME" "$INIT_PROMPT" Enter
+            echo "$LOG_PREFIX Auto-init sent: '$INIT_PROMPT' → $SESSION_NAME"
         else
             echo "$LOG_PREFIX WARNING: tmux session $SESSION_NAME gone before auto-init"
         fi
@@ -209,5 +181,5 @@ if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" != "vibe" ]; then
     echo "$LOG_PREFIX Auto-init scheduled (background PID $!)"
 fi
 
-echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt' $AGENT_TYPE"
+echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt'"
 echo "$LOG_PREFIX To wake:  scripts/synapse_wake.sh $ROLE"

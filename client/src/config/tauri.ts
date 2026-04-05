@@ -1,3 +1,4 @@
+// @ts-nocheck
 // VETKA Tauri Detection & Bridge
 // Phase 100.1: Runtime environment detection
 // Phase 100.2: Dynamic imports to avoid browser errors

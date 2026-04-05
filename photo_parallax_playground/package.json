@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --host 127.0.0.1 --port 14350 --strictPort",
+    "dev:stop": "sh ./scripts/dev-server-stop.sh",
+    "dev:clean": "npm run dev:stop && vite --host 127.0.0.1 --port 14350 --strictPort",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",

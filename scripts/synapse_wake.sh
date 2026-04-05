@@ -38,17 +38,7 @@ fi
 
 # ── Session exists? ───────────────────────────────────────────────────────────
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    # MARKER_208.WAKE_FALLBACK: No tmux session — fall back to macOS alerts
-    # Commander and other non-Synapse agents run in raw Terminal, not tmux
-    if pgrep -q WindowServer 2>/dev/null; then
-        WAKE_MSG="Agent $ROLE needs attention — check notification inbox"
-        osascript -e "display notification \"$WAKE_MSG\" with title \"[VETKA] $ROLE Wake\"" 2>/dev/null || true
-        osascript -e 'tell application "Terminal" to activate' 2>/dev/null || true
-        afplay /System/Library/Sounds/Ping.aiff &
-        echo "$LOG_PREFIX $ROLE: no tmux session — sent macOS notification + sound + Terminal activate"
-    else
-        echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME', no GUI — cannot wake" >&2
-    fi
+    echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME' — agent offline, nothing to wake" >&2
     exit 0
 fi
 
@@ -63,7 +53,5 @@ if [ "$LAST_ACTIVITY" != "0" ] && [ "$DIFF" -lt "$ACTIVE_THRESHOLD_SECS" ]; then
 fi
 
 # ── Send inbox wake trigger ───────────────────────────────────────────────────
-# Use synapse_write.sh for agent-type-aware submit (opencode TUI needs split text+Enter)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"$SCRIPT_DIR/synapse_write.sh" "$ROLE" "vetka session init" "$AGENT_TYPE"
+tmux send-keys -t "$SESSION_NAME" "vetka session init" Enter
 echo "$LOG_PREFIX $ROLE ← woken (sent inbox trigger, last activity was ${DIFF}s ago)"

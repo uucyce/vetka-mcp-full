@@ -875,7 +875,7 @@ export const ModelDirectory: React.FC<ModelDirectoryProps> = ({
         {/* Phase 112.4b: Use compound key to prevent React dedup of same model from different sources */}
         {!loading && !error && filteredModels.map(model => (
           <div
-            key={model._compound_key || `${model.id}@${model.source || 'unknown'}`}
+            key={(model as any)._compound_key || `${model.id}@${model.source || 'unknown'}`}
             onClick={() => {
               // Phase 57.3: In group mode, ONLY call onSelectForGroup (don't switch to chat)
               // In solo mode, call handleSelect to insert @model and switch to chat

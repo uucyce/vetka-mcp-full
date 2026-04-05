@@ -56,6 +56,7 @@ import signal
 import uuid
 import contextvars
 import argparse
+from pathlib import Path
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -2882,6 +2883,18 @@ async def main():
 
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
+
+    # MARKER_205.UDS_AUTOSTART: Ensure UDS daemon is running (lightweight, 0 CPU idle).
+    # Every MCP bridge instance checks — first one to find it missing starts it.
+    _uds_socket = Path("/tmp/vetka-events.uds")
+    if not _uds_socket.exists():
+        _start_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "start_uds_daemon.sh"
+        if _start_script.exists():
+            import subprocess as _sp
+            _sp.Popen([str(_start_script)], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+            print("[MCP] UDS daemon not running — started via start_uds_daemon.sh", file=sys.stderr)
+        else:
+            print("[MCP] UDS daemon not running and start script not found", file=sys.stderr)
 
     # MARKER_201.MCP_NOTIFY_RECEIVER: Start cross-process notification receiver.
     # Connects to UDS daemon and buffers push events for piggyback delivery.

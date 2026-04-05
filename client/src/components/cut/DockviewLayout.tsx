@@ -54,6 +54,7 @@ import {
   MulticamPanel,
   SourceAcquirePanelDock,
   LayerStackPanel,
+  GenerationControlPanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -66,7 +67,7 @@ import ToolsPalette from './ToolsPalette';
 import StatusBar from './StatusBar';
 import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
-import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
+// WelcomeScreen removed from startup path (MARKER_CUT-UX-NOWELCOME) — repurpose via File menu only
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 import MatchSequencePopup from './MatchSequencePopup';
 
@@ -129,6 +130,8 @@ const PANEL_COMPONENTS = {
   timeline: TimelinePanel,
   multicam: MulticamPanel,
   acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
+  // MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
+  generation: GenerationControlPanelDock,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
@@ -152,10 +155,9 @@ interface DockviewLayoutProps {
 }
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
-  // MARKER_GAMMA-BUG4 + P0-FIX: Read project state (MUST be before any early return — Rules of Hooks)
+  // MARKER_CUT-UX-NOWELCOME: auto-bootstrap handles missing sandboxRoot — no Welcome gate needed
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const projectId = useCutEditorStore((s) => s.projectId);
-  const showWelcome = !sandboxRoot && !projectId;
 
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
@@ -564,30 +566,7 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     setTabMenu(null);
   }, [tabMenu, toggleMaximize]);
 
-  // MARKER_GAMMA-P0-FIX: WelcomeScreen check AFTER all hooks (Rules of Hooks compliance)
-  if (showWelcome) {
-    return (
-      <WelcomeScreen
-        onCreateProject={(name, preset) => {
-          const params = new URLSearchParams(window.location.search);
-          params.set('project_name', name);
-          params.set('preset', preset);
-          window.location.search = params.toString();
-        }}
-        onOpenProject={(id, path) => {
-          if (id && path) {
-            addRecentProject(id, id, path);
-            const params = new URLSearchParams();
-            params.set('sandbox_root', path);
-            params.set('project_id', id);
-            window.location.search = params.toString();
-          } else {
-            window.dispatchEvent(new CustomEvent('cut:import-media'));
-          }
-        }}
-      />
-    );
-  }
+
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>

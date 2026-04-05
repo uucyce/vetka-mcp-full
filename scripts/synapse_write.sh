@@ -59,38 +59,18 @@ fi
 
 LINE_COUNT=$(wc -l < "$TMPFILE")
 
-# ── Agent-type-aware submit ───────────────────────────────────────────────────
-# opencode TUI treats batched text+Enter as "text with newline" not "type then submit".
-# Fix: send text and submit key separately. Opencode needs a delay for TUI to process.
-send_submit_key() {
-    local session="$1"
-    local agent="$2"
-    case "$agent" in
-        opencode)
-            # opencode TUI needs a brief pause between text input and submit
-            sleep 0.3
-            tmux send-keys -t "$session" Enter
-            ;;
-        *)
-            # claude_code, generic_cli: Enter submits immediately
-            tmux send-keys -t "$session" Enter
-            ;;
-    esac
-}
-
 # ── Send prompt ───────────────────────────────────────────────────────────────
 if [ "$LINE_COUNT" -le 1 ]; then
-    # Single-line: send text literally, then submit separately
+    # Single-line: send-keys directly (clean, no buffer overhead)
     PROMPT_TEXT=$(cat "$TMPFILE")
-    tmux send-keys -t "$SESSION_NAME" -l "$PROMPT_TEXT"
-    send_submit_key "$SESSION_NAME" "$AGENT_TYPE"
+    tmux send-keys -t "$SESSION_NAME" "$PROMPT_TEXT" Enter
     PREVIEW="${PROMPT_TEXT:0:80}"
     [ "${#PROMPT_TEXT}" -gt 80 ] && PREVIEW="${PREVIEW}..."
-    echo "$LOG_PREFIX $ROLE ($AGENT_TYPE) ← \"$PREVIEW\""
+    echo "$LOG_PREFIX $ROLE ← \"$PREVIEW\""
 else
-    # Multi-line: load into tmux paste buffer, then paste + submit separately
+    # Multi-line: load into tmux paste buffer, then paste + Enter
     tmux load-buffer -b "$BUFFER_NAME" "$TMPFILE"
     tmux paste-buffer -b "$BUFFER_NAME" -t "$SESSION_NAME"
-    send_submit_key "$SESSION_NAME" "$AGENT_TYPE"
-    echo "$LOG_PREFIX $ROLE ($AGENT_TYPE) ← multi-line prompt injected (${LINE_COUNT} lines)"
+    tmux send-keys -t "$SESSION_NAME" "" Enter
+    echo "$LOG_PREFIX $ROLE ← multi-line prompt injected (${LINE_COUNT} lines)"
 fi
