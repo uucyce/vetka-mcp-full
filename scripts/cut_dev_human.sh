@@ -1,6 +1,9 @@
 #!/usr/bin/env zsh
 set -euo pipefail
 
+# MARKER_201.RUST_PATH: Ensure ~/.cargo/bin is in PATH for Tauri builds.
+export PATH="$HOME/.cargo/bin:$PATH"
+
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/client"
 PORT="${CUT_HUMAN_PORT:-3011}"

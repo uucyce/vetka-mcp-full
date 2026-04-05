@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DAEMON_SCRIPT="$SCRIPT_DIR/uds_daemon.py"
 PYTHON="${VETKA_PYTHON:-$(dirname "$SCRIPT_DIR")/.venv/bin/python3}"
 SOCKET_PATH="/tmp/vetka-events.uds"
-PID_FILE="/tmp/vetka-events-daemon.pid"
+PID_FILE="/tmp/vetka-uds-daemon.pid"
 
 # Pass through --stop / --status to daemon script
 if [[ "${1:-}" == "--stop" ]]; then
@@ -34,13 +34,6 @@ if [[ -f "$PID_FILE" ]]; then
         echo "[UDS] Stale PID file (process $PID dead), removing..."
         rm -f "$PID_FILE"
     fi
-fi
-
-# Kill orphaned MCP bridge zombies (detached from any terminal)
-ZOMBIES=$(ps aux | grep vetka_mcp_bridge | grep -v grep | awk '$7 == "??" {print $2}' | wc -l | tr -d ' ')
-if [[ "$ZOMBIES" -gt 0 ]]; then
-    echo "[UDS] Killing $ZOMBIES orphaned MCP bridge processes..."
-    ps aux | grep vetka_mcp_bridge | grep -v grep | awk '$7 == "??" {print $2}' | xargs kill -9 2>/dev/null || true
 fi
 
 # Clean stale socket

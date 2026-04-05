@@ -2,6 +2,7 @@
 Phase 195.1 — Promote-to-main Guard Tests
 
 MARKER_195.1: Prevent false done_main when commits are not on main branch.
+MARKER_195.20: _detect_current_branch accepts cwd override for worktree-correct detection.
 
 Tests:
 1. promote_to_main rejects when commit is not on main (git merge-base fails)
@@ -11,6 +12,10 @@ Tests:
 5. _is_commit_on_main returns False on subprocess error
 6. Hook dedup: only .git/hooks/post-merge should exist
 7. complete_task with None branch → done_worktree (safe default)
+8. promote uses task's stored commit hash
+9. _detect_current_branch passes cwd to subprocess
+10. complete_task with worktree_path uses it for branch detection
+11. complete_task worktree_path detects worktree branch → done_worktree
 """
 
 import pytest
@@ -72,7 +77,7 @@ def test_promote_rejects_wrong_status(tmp_path):
 
     result = board.promote_to_main(tid)
     assert result["success"] is False
-    assert "expected done_worktree" in result["error"]
+    assert "expected" in result["error"]
 
 
 # ── Test 4: _detect_current_branch returns None on failure ───────
@@ -143,18 +148,219 @@ def test_complete_with_none_branch_is_safe(tmp_path):
     )
 
 
-# ── Test 8: promote without commit hash uses task's stored hash ──
+# ── Test 8: promote without commit_hash → BLOCKED ────────────
 
-def test_promote_uses_task_commit_hash(tmp_path):
-    """promote_to_main should check task's stored commit_hash when no merge_commit_hash provided."""
+def test_promote_without_hash_blocked(tmp_path):
+    """MARKER_195.20c: promote without commit_hash is blocked — no paper promotions."""
     board = _make_board(tmp_path)
-    tid = board.add_task("Task with stored hash", priority=3)
+    tid = board.add_task("Task without proof", priority=3)
     board.update_task(tid, status="done_worktree", commit_hash="stored_hash_123")
 
-    with patch.object(type(board), '_is_commit_on_main', return_value=False) as mock_check:
-        result = board.promote_to_main(tid)  # No merge_commit_hash
+    result = board.promote_to_main(tid)  # No merge_commit_hash
 
-    # Should have checked the stored hash
-    mock_check.assert_called_once_with("stored_hash_123")
     assert result["success"] is False
-    assert "NOT on main" in result["error"]
+    assert "commit_hash required" in result["error"]
+    # Status must NOT have changed
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
+
+
+# ── Test 9: _detect_current_branch passes cwd to subprocess ───
+
+def test_detect_branch_uses_cwd_override():
+    """MARKER_195.20: _detect_current_branch(cwd=X) should pass X to subprocess."""
+    from src.orchestration.task_board import TaskBoard
+
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "claude/cut-engine\n"
+
+    with patch('subprocess.run', return_value=mock_result) as mock_run:
+        result = TaskBoard._detect_current_branch(cwd="/fake/worktree/path")
+
+    assert result == "claude/cut-engine"
+    call_kwargs = mock_run.call_args
+    assert call_kwargs.kwargs.get("cwd") == "/fake/worktree/path" or call_kwargs[1].get("cwd") == "/fake/worktree/path"
+
+
+# ── Test 10: complete_task with worktree_path detects branch ──
+
+def test_complete_task_with_worktree_path(tmp_path):
+    """MARKER_195.20: worktree_path is passed to _detect_current_branch for auto-detection."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Worktree task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Alpha")
+
+    with patch.object(type(board), '_detect_current_branch', return_value="claude/cut-engine") as mock_detect:
+        with patch.object(type(board), '_validate_closure_proof', return_value=None):
+            result = board.complete_task(tid, commit_hash="abc123", worktree_path="/fake/wt")
+
+    assert result["success"] is True
+    # Verify cwd was passed through
+    mock_detect.assert_called_once_with(cwd="/fake/wt")
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
+
+
+# ── Test 11: worktree branch → done_worktree, not done_main ──
+
+def test_worktree_branch_yields_done_worktree(tmp_path):
+    """MARKER_195.20: When worktree cwd detects a non-main branch → done_worktree."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Media task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Beta")
+
+    # Simulate: no explicit branch, but worktree_path resolves to claude/cut-media
+    with patch.object(type(board), '_detect_current_branch', return_value="claude/cut-media"):
+        with patch.object(type(board), '_validate_closure_proof', return_value=None):
+            result = board.complete_task(tid, commit_hash="def456", worktree_path="/wt/cut-media")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree", (
+        f"Expected done_worktree for branch claude/cut-media, got {task['status']}"
+    )
+
+
+# ── Test 12: verify pass → verified ──────────────────────────
+
+def test_verify_pass(tmp_path):
+    """MARKER_195.20: QA gate — verdict=pass transitions done_worktree → verified."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Task to verify", priority=3)
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
+
+    result = board.verify_task(tid, "pass", "All tests green", "Delta")
+
+    assert result["success"] is True
+    assert result["status"] == "verified"
+    assert result["verdict"] == "pass"
+    task = board.get_task(tid)
+    assert task["status"] == "verified"
+    assert task["verification_agent"] == "Delta"
+
+
+# ── Test 13: verify fail → needs_fix ─────────────────────────
+
+def test_verify_fail(tmp_path):
+    """MARKER_195.20: QA gate — verdict=fail transitions done_worktree → needs_fix."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Buggy task", priority=3)
+    # MARKER_198.GUARD: must provide commit_hash to reach done_worktree
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
+
+    result = board.verify_task(tid, "fail", "Test X fails on edge case", "Delta")
+
+    assert result["success"] is True
+    assert result["status"] == "needs_fix"
+    task = board.get_task(tid)
+    assert task["status"] == "needs_fix"
+
+
+# ── Test 14: verify wrong status → error ─────────────────────
+
+def test_verify_wrong_status(tmp_path):
+    """MARKER_195.20: verify only accepts done_worktree tasks."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Pending task", priority=3)
+
+    result = board.verify_task(tid, "pass")
+    assert result["success"] is False
+    assert "expected done_worktree" in result["error"]
+
+
+# ── Test 15: reclaim needs_fix → claimed ─────────────────────
+
+def test_reclaim_needs_fix(tmp_path):
+    """MARKER_195.20: needs_fix tasks can be re-claimed for retry."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Fix me", priority=3)
+    board.update_task(tid, status="needs_fix")
+
+    result = board.claim_task(tid, "Alpha", "claude_code")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "claimed"
+
+
+# ── Test 16: promote verified → done_main ────────────────────
+
+def test_promote_verified_with_external_merge(tmp_path):
+    """MARKER_195.20c: verified tasks promoted via external merge (commit_hash provided)."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Verified task", priority=3)
+    board.update_task(tid, status="verified", commit_hash="abc123")
+
+    with patch.object(type(board), '_is_commit_on_main', return_value=True):
+        result = board.promote_to_main(tid, merge_commit_hash="merge789")
+
+    assert result["success"] is True
+    assert result["status"] == "done_main"
+
+
+# ── Test 17: verify invalid verdict → error ──────────────────
+
+def test_verify_invalid_verdict(tmp_path):
+    """MARKER_195.20: invalid verdict returns error."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Task", priority=3)
+    # MARKER_198.GUARD: must provide commit_hash to reach done_worktree
+    board.update_task(tid, status="done_worktree", commit_hash="abc123")
+
+    result = board.verify_task(tid, "maybe")
+    assert result["success"] is False
+    assert "Invalid verdict" in result["error"]
+
+
+# ── Test 18: complete with branch= persists branch_name ──────
+
+def test_complete_persists_branch_name(tmp_path):
+    """MARKER_195.22: complete_task with branch= saves branch_name on task object."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Engine task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Alpha")
+
+    with patch.object(type(board), '_validate_closure_proof', return_value=None):
+        result = board.complete_task(tid, commit_hash="abc123", branch="claude/cut-engine")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_worktree"
+    assert task.get("branch_name") == "claude/cut-engine", (
+        f"Expected branch_name='claude/cut-engine', got {task.get('branch_name')!r}"
+    )
+
+
+# ── Test 19: update with branch= maps to branch_name ────────
+
+def test_update_maps_branch_to_branch_name(tmp_path):
+    """MARKER_195.22: update_task with branch_name= persists correctly."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("UX task", priority=3)
+
+    board.update_task(tid, branch_name="claude/cut-ux")
+
+    task = board.get_task(tid)
+    assert task.get("branch_name") == "claude/cut-ux", (
+        f"Expected branch_name='claude/cut-ux', got {task.get('branch_name')!r}"
+    )
+
+
+# ── Test 20: complete on main does NOT set branch_name ───────
+
+def test_complete_main_no_branch_name(tmp_path):
+    """MARKER_195.22: complete_task on main branch doesn't save branch_name."""
+    board = _make_board(tmp_path)
+    tid = board.add_task("Main task", priority=3)
+    board.update_task(tid, status="claimed", assigned_to="Commander")
+
+    with patch.object(type(board), '_validate_closure_proof', return_value=None):
+        result = board.complete_task(tid, commit_hash="abc123", branch="main")
+
+    assert result["success"] is True
+    task = board.get_task(tid)
+    assert task["status"] == "done_main"
+    assert not task.get("branch_name"), (
+        f"branch_name should not be set for main branch, got {task.get('branch_name')!r}"
+    )

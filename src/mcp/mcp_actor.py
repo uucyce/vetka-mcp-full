@@ -239,6 +239,25 @@ class MCPSessionDispatcher:
             cls._instance._health_task: Optional[asyncio.Task] = None
         return cls._instance
 
+    @classmethod
+    def reset(cls):
+        """MARKER_196.FIX: Reset singleton for importlib.reload() safety.
+
+        Cancels health task, clears actor pool, nulls instance.
+        Must be called BEFORE importlib.reload(mcp_actor).
+        """
+        if cls._instance is not None:
+            inst = cls._instance
+            # Cancel health monitoring task
+            if hasattr(inst, '_health_task') and inst._health_task and not inst._health_task.done():
+                inst._health_task.cancel()
+            # Clear actor pool (sync — actors will be GC'd)
+            if hasattr(inst, '_actors'):
+                inst._actors.clear()
+            if hasattr(inst, '_last_access'):
+                inst._last_access.clear()
+            cls._instance = None
+
     async def get_or_create(self, session_id: str) -> MCPActor:
         """Get existing actor or create new one"""
         async with self._lock:

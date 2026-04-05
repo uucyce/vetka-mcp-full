@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * MARKER_WEBCODECS: useVideoDecoder — Client-side frame decode via WebCodecs API.
  *

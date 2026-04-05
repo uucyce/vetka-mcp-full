@@ -55,6 +55,7 @@ class MontageClip:
     pendulum: float = 0.0
     confidence: float = 0.5
     reason: str = ""      # why this clip was placed here
+    transition_out: Optional[Dict[str, Any]] = None  # suggested transition to next clip
 
     @property
     def duration(self) -> float:
@@ -75,6 +76,7 @@ class MontageClip:
             "pendulum": round(self.pendulum, 3),
             "confidence": round(self.confidence, 3),
             "reason": self.reason,
+            "transition_out": self.transition_out,
         }
 
 
@@ -291,6 +293,10 @@ class PulseAutoMontage:
 
         total_duration = timeline_cursor
 
+        # Apply Camelot-aware transitions between adjacent clips
+        self._apply_camelot_transitions(clips)
+        smoothness = self._compute_camelot_smoothness(clips)
+
         return MontageResult(
             timeline_id=tid,
             timeline_label=label,
@@ -300,6 +306,7 @@ class PulseAutoMontage:
             clip_count=len(clips),
             created_at=time.time(),
             sync_points_hit=sync_hits,
+            camelot_smoothness=smoothness,
             warnings=warnings,
         )
 
@@ -395,7 +402,8 @@ class PulseAutoMontage:
             clips.append(clip)
             timeline_cursor += out_pt
 
-        # Compute Camelot smoothness
+        # Apply Camelot-aware transitions between adjacent clips
+        self._apply_camelot_transitions(clips)
         smoothness = self._compute_camelot_smoothness(clips)
 
         return MontageResult(
@@ -532,6 +540,8 @@ class PulseAutoMontage:
             clips.append(clip)
 
         total_duration = max((c.timeline_end for c in clips), default=0.0)
+        # Apply Camelot-aware transitions between adjacent clips
+        self._apply_camelot_transitions(clips)
         smoothness = self._compute_camelot_smoothness(clips)
 
         return MontageResult(
@@ -629,6 +639,17 @@ class PulseAutoMontage:
 
         return best_mat
 
+    def _apply_camelot_transitions(self, clips: List[MontageClip]) -> None:
+        """
+        Set transition_out on each clip based on Camelot distance to the next clip.
+        Mutates clips in place. Last clip gets no transition.
+        """
+        for i in range(len(clips) - 1):
+            key_a = clips[i].camelot_key
+            key_b = clips[i + 1].camelot_key
+            if key_a and key_b:
+                clips[i].transition_out = self._camelot.suggest_transition(key_a, key_b)
+
     def _compute_camelot_smoothness(self, clips: List[MontageClip]) -> float:
         """
         Compute how smooth the Camelot transitions are across clips.
@@ -667,3 +688,23 @@ def get_auto_montage() -> PulseAutoMontage:
     if _instance is None:
         _instance = PulseAutoMontage()
     return _instance
+
+
+# MARKER_198.STUB: Assembly runner stubs — imported by cut_routes_pulse.py
+# TODO: Implement actual assembly logic (Alpha/Beta domain)
+async def run_favorites_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage from favorite-marked clips."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="favorites")
+
+
+async def run_script_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage following script/subtitle timing."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="script")
+
+
+async def run_music_assembly(project_id: str, **kwargs) -> MontageResult:
+    """Stub: assemble montage synced to music beats."""
+    engine = get_auto_montage()
+    return MontageResult(clips=[], duration_sec=0.0, strategy="music")

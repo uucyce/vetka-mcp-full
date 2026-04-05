@@ -606,3 +606,127 @@ def probe_duration(path: str | Path) -> float:
     """Quick probe — returns duration in seconds, 0.0 on failure."""
     r = probe_file(path, timeout=10.0)
     return r.duration_sec if r.ok else 0.0
+
+
+# ---------------------------------------------------------------------------
+# MARKER_B24: Camera Log Profile Detection
+# ---------------------------------------------------------------------------
+
+# color_transfer value → log profile mapping
+_LOG_TRANSFER_MAP: dict[str, dict[str, Any]] = {
+    # Exact matches from ffprobe color_transfer field
+    "arib-std-b67": {"profile": "HLG", "gamut": "Rec.2020", "camera": "HLG broadcast"},
+    "smpte2084": {"profile": "PQ", "gamut": "Rec.2020", "camera": "HDR10/Dolby Vision"},
+}
+
+# Substring matches in color_transfer (camera-specific strings)
+_LOG_TRANSFER_SUBSTR: list[tuple[str, dict[str, Any]]] = [
+    ("slog", {"profile": "S-Log3", "gamut": "S-Gamut3.Cine", "camera": "Sony"}),
+    ("vlog", {"profile": "V-Log", "gamut": "V-Gamut", "camera": "Panasonic"}),
+    ("logc", {"profile": "ARRI LogC3", "gamut": "ARRI Wide Gamut 3", "camera": "ARRI Alexa"}),
+    ("clog", {"profile": "Canon Log 3", "gamut": None, "camera": "Canon"}),
+    ("log3g10", {"profile": "Log3G10", "gamut": "REDWideGamutRGB", "camera": "RED"}),
+    ("dlog", {"profile": "D-Log", "gamut": None, "camera": "DJI"}),
+    ("nlog", {"profile": "N-Log", "gamut": None, "camera": "Nikon"}),
+    ("flog", {"profile": "F-Log", "gamut": None, "camera": "Fujifilm"}),
+    ("bmdfilm", {"profile": "BMDFilm", "gamut": None, "camera": "Blackmagic"}),
+]
+
+# Heuristic: camera model keywords in format tags → log profile
+_TAG_CAMERA_HINTS: list[tuple[str, dict[str, Any]]] = [
+    ("panasonic", {"profile": "V-Log", "gamut": "V-Gamut", "camera": "Panasonic"}),
+    ("gh5", {"profile": "V-Log", "gamut": "V-Gamut", "camera": "Panasonic GH5"}),
+    ("gh6", {"profile": "V-Log", "gamut": "V-Gamut", "camera": "Panasonic GH6"}),
+    ("lumix", {"profile": "V-Log", "gamut": "V-Gamut", "camera": "Panasonic Lumix"}),
+    ("sony", {"profile": "S-Log3", "gamut": "S-Gamut3.Cine", "camera": "Sony"}),
+    ("fx6", {"profile": "S-Log3", "gamut": "S-Gamut3.Cine", "camera": "Sony FX6"}),
+    ("fx3", {"profile": "S-Log3", "gamut": "S-Gamut3.Cine", "camera": "Sony FX3"}),
+    ("a7s", {"profile": "S-Log3", "gamut": "S-Gamut3.Cine", "camera": "Sony A7S"}),
+    ("arri", {"profile": "ARRI LogC3", "gamut": "ARRI Wide Gamut 3", "camera": "ARRI"}),
+    ("alexa", {"profile": "ARRI LogC3", "gamut": "ARRI Wide Gamut 3", "camera": "ARRI Alexa"}),
+    ("canon", {"profile": "Canon Log 3", "gamut": None, "camera": "Canon"}),
+    ("eos r5", {"profile": "Canon Log 3", "gamut": None, "camera": "Canon EOS R5"}),
+    ("c300", {"profile": "Canon Log 3", "gamut": None, "camera": "Canon C300"}),
+    ("red", {"profile": "Log3G10", "gamut": "REDWideGamutRGB", "camera": "RED"}),
+    ("dji", {"profile": "D-Log", "gamut": None, "camera": "DJI"}),
+    ("mavic", {"profile": "D-Log", "gamut": None, "camera": "DJI Mavic"}),
+    ("nikon", {"profile": "N-Log", "gamut": None, "camera": "Nikon"}),
+    ("fuji", {"profile": "F-Log", "gamut": None, "camera": "Fujifilm"}),
+    ("blackmagic", {"profile": "BMDFilm", "gamut": None, "camera": "Blackmagic"}),
+    ("bmpcc", {"profile": "BMDFilm", "gamut": None, "camera": "Blackmagic Pocket"}),
+]
+
+
+def detect_log_profile(probe_result: ProbeResult) -> dict[str, Any]:
+    """Detect camera log profile from ProbeResult.
+
+    Returns:
+        {
+            "detected": bool,
+            "profile": str | None,
+            "gamut": str | None,
+            "camera": str | None,
+            "confidence": float (0-1),
+            "method": "color_transfer" | "tags" | "heuristic" | None,
+            "raw_transfer": str,
+            "raw_primaries": str,
+        }
+    """
+    if not probe_result.ok or not probe_result.video:
+        return {"detected": False, "profile": None, "confidence": 0.0, "method": None,
+                "raw_transfer": "", "raw_primaries": ""}
+
+    v = probe_result.video
+    trc = (v.color_transfer or "").lower()
+    pri = (v.color_primaries or "").lower()
+
+    result: dict[str, Any] = {
+        "detected": False, "profile": None, "gamut": None, "camera": None,
+        "confidence": 0.0, "method": None,
+        "raw_transfer": trc, "raw_primaries": pri,
+    }
+
+    # Method 1: Exact color_transfer match
+    if trc in _LOG_TRANSFER_MAP:
+        entry = _LOG_TRANSFER_MAP[trc]
+        result.update({"detected": True, "confidence": 0.95, "method": "color_transfer", **entry})
+        return result
+
+    # Method 2: Substring match in color_transfer
+    for substr, entry in _LOG_TRANSFER_SUBSTR:
+        if substr in trc:
+            result.update({"detected": True, "confidence": 0.9, "method": "color_transfer", **entry})
+            return result
+
+    # Method 3: bt2020 transfer + 10-bit → likely log (camera footage)
+    if "bt2020" in trc and v.bit_depth >= 10:
+        # Check format tags for camera hints
+        # (probe_file doesn't expose format tags in ProbeResult, use heuristic)
+        result.update({
+            "detected": True, "profile": "unknown_log",
+            "confidence": 0.4, "method": "heuristic",
+            "camera": f"Unknown ({v.codec} {v.bit_depth}-bit bt2020)",
+        })
+        return result
+
+    # Standard Rec.709 — no log
+    if trc in ("bt709", "iec61966-2-1", ""):
+        result["confidence"] = 0.0
+
+    return result
+
+
+def probe_and_detect_log(path: str | Path) -> dict[str, Any]:
+    """Full probe + log detection in one call."""
+    probe = probe_file(path)
+    if not probe.ok:
+        return {"success": False, "error": probe.error, "source_path": str(path)}
+
+    detection = detect_log_profile(probe)
+
+    return {
+        "success": True,
+        "source_path": str(path),
+        "metadata": probe.to_dict(),
+        "log_detection": detection,
+    }

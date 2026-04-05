@@ -39,8 +39,7 @@ export default function StatusBar() {
   const markOut = useCutEditorStore((s) => s.sequenceMarkOut);
   const lanes = useCutEditorStore((s) => s.lanes);
   const duration = useCutEditorStore((s) => s.duration);
-  // MARKER_GAMMA-SB-MULTISELECT: use Set size for accurate multi-select count
-  const selectedClipCount = useSelectionStore((s) => s.selectedClipIds.size);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const activePreset = useDockviewStore((s) => s.activePreset);
   const renderProgress = useCutEditorStore((s) => s.renderProgress);
   // MARKER_GAMMA-SB2: Sequence name from timelineId
@@ -131,10 +130,10 @@ export default function StatusBar() {
         </>
       )}
 
-      {selectedClipCount > 0 && (
+      {selectedClipId && (
         <>
           <span style={SEP}>|</span>
-          <span style={{ color: '#aaa' }}>{selectedClipCount} selected</span>
+          <span style={{ color: '#aaa' }}>1 selected</span>
         </>
       )}
 

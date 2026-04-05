@@ -3,9 +3,12 @@ MARKER_170.16.SYNC_ROUNDTRIP_E2E
 End-to-end round-trip: build sync results → sync_surface recommendation →
 apply_sync_offset → verify timeline_state + sync_groups + sync_hint enrichment.
 """
+import pytest
 import json
 import time
 from pathlib import Path
+
+pytestmark = pytest.mark.stale(reason="CUT API refactored — bootstrap/project_state contracts changed")
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient

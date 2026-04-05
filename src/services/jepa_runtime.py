@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import subprocess
@@ -276,8 +277,15 @@ def _fit_whitening(vectors: List[List[float]]) -> Tuple[List[List[float]], Dict[
     """
     Lightweight whitening + component clipping for runtime robustness.
     """
-    if np is None or not vectors:
+    if not vectors:
         return vectors, {"enabled": 0.0}
+    if np is None:
+        # MARKER_199.JEPA_WHITENING: Log warning when numpy unavailable
+        # Embeddings still work without whitening, just slightly less normalized.
+        logging.getLogger(__name__).warning(
+            "[JEPA] numpy unavailable — whitening skipped, using identity transform"
+        )
+        return vectors, {"enabled": 0.0, "reason": "numpy_unavailable"}
 
     X = np.array(vectors, dtype=float)
     if X.ndim != 2 or X.shape[0] < 3 or X.shape[1] < 4:

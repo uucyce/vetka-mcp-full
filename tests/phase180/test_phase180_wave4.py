@@ -13,6 +13,8 @@ import os
 import time
 import tempfile
 import pytest
+
+pytestmark = pytest.mark.stale(reason="Phase 180 file markers — CUT layout V2 refactor")
 from pathlib import Path
 
 

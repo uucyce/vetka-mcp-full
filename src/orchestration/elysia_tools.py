@@ -1,8 +1,21 @@
 """
-VETKA Elysia Code Tools — Weaviate Elysia integration for code operations
+ELYSIA Tools — Weaviate elysia-ai wrapper for tool selection.
+Status: DORMANT (zero callers since Phase 75.2)
+
+MARKER_198.P1.4: This wrapper misuses ELYSIA for filesystem/git operations
+(read_file, write_file, git_commit) — these are deterministic ops that don't
+benefit from LLM-driven decision trees.
+
+ELYSIA's real value = Weaviate collection retrieval (semantic queries against
+stored tool descriptions, clip metadata, agent memory). This is NOT currently
+needed but is the planned path for REFLEX Signal 9 (see ARCHITECTURE_198).
+
+Do NOT delete — revive when Weaviate collections store tool/artifact data.
+See: docs/73_ph/THE_LEGENDARY_ELISYA_MISHAP.md for full history.
+See: task 198.P3.2 for REFLEX Signal 9 integration plan.
 
 @file elysia_tools.py
-@status ACTIVE
+@status DORMANT
 @phase Phase 75.2 — Hybrid Architecture
 @calledBy langgraph_nodes.py (dev_qa_parallel_node)
 @lastAudit 2026-01-20

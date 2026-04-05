@@ -26,3 +26,24 @@ export { default as AutoMontagePanelDock } from './AutoMontagePanelDock';
 
 // MARKER_B13: Audio Mixer panel
 export { default as AudioMixerPanelDock } from './AudioMixerPanelDock';
+
+// MARKER_GAMMA-MKL1: Marker List panel
+export { default as MarkerListPanel } from './MarkerListPanel';
+
+// MARKER_GAMMA-C12.2: Timeline Instance panel (multi-timeline navigator)
+export { default as TimelineInstancePanel } from './TimelineInstancePanel';
+
+// MARKER_GAMMA-W6.3: Social Crosspost / Publish panel
+export { default as PublishPanel } from './PublishPanel';
+
+// MARKER_GAMMA-MULTICAM-PANEL: Multicam angle grid panel (FCP7 Ch.42)
+export { default as MulticamPanel } from './MulticamPanel';
+
+// MARKER_SOURCE_ACQUIRE: Source Acquire panel (FCP7 Log & Capture)
+export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';
+
+// MARKER_GAMMA-LAYERUI: Layer Stack & Depth Inspector panel
+export { default as LayerStackPanel } from './LayerStackPanel';
+
+// MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
+export { default as GenerationControlPanelDock } from './GenerationControlPanelDock';

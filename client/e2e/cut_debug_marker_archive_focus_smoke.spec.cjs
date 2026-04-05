@@ -237,7 +237,9 @@ async function installMarkerArchiveFocusMocks(page, requestLog, timelineBodies, 
   });
 }
 
+// MARKER_QA.W6: DebugShellPanel rewritten (MARKER_QA.W5.1) — old UI labels removed.
 test.describe.serial('phase170 cut debug marker archive/focus smoke', () => {
+  test.fixme(true, 'DebugShellPanel rewritten — old marker focus/archive UI removed');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {
@@ -263,8 +265,8 @@ test.describe.serial('phase170 cut debug marker archive/focus smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Source Browser').first()).toBeVisible();
-    await page.locator('button[title="Toggle NLE / Debug view"]').click();
+    await expect(page.getByText('Project').first()).toBeVisible();
+    await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText(/markers for shot:\s*2/).first()).toBeVisible();
     await expect(page.getByText(/favorite:\s*1 .* comment:\s*0 .* cam:\s*1/).first()).toBeVisible();

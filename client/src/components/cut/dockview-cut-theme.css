@@ -16,230 +16,678 @@
  *
  * ZERO blue (#4a9eff / rgb(0,12,24)) anywhere.
  * All colors from tokens.css only.
+ *
+ * MARKER_GAMMA-32: @layer cascade strategy
+ * - Dockview CSS is in @layer dockview (via dockview-layers.css)
+ * - This file is UN-LAYERED → automatically wins over any layered CSS
+ * - Single-class selectors are sufficient (no double-class needed)
+ * - !important ONLY for: pointer-events (Tauri)
  */
 
-/* ═══ CSS Custom Properties (vars) ══════════════════════════════════ */
+/* ═══ CSS Custom Properties (vars) — synced with tokens.css ═════════ */
 .dockview-theme-dark {
-  --dv-background-color: #000;
-  --dv-paneview-header-border-color: #222;
-  --dv-tabs-and-actions-container-background-color: #0a0a0a;
-  --dv-activegroup-visiblepanel-tab-background-color: #1a1a1a;
-  --dv-activegroup-hiddenpanel-tab-background-color: #0a0a0a;
-  --dv-inactivegroup-visiblepanel-tab-background-color: #111;
-  --dv-inactivegroup-hiddenpanel-tab-background-color: #0a0a0a;
-  --dv-tab-divider-color: #222;
-  --dv-activegroup-visiblepanel-tab-color: #ccc;
-  --dv-activegroup-hiddenpanel-tab-color: #555;
-  --dv-inactivegroup-visiblepanel-tab-color: #888;
-  --dv-inactivegroup-hiddenpanel-tab-color: #555;
-  --dv-separator-border: #222;
-  --dv-group-view-background-color: #000;
+  --dv-background-color: var(--bg-primary);
+  --dv-paneview-header-border-color: var(--border-dim);
+  --dv-tabs-and-actions-container-background-color: var(--bg-secondary);
+  --dv-activegroup-visiblepanel-tab-background-color: var(--bg-hover);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--bg-secondary);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--bg-tertiary);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--bg-secondary);
+  --dv-tab-divider-color: var(--border-dim);
+  --dv-activegroup-visiblepanel-tab-color: var(--text-secondary);
+  --dv-activegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--text-muted);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--text-dim);
+  --dv-separator-border: var(--border-dim);
+  --dv-group-view-background-color: var(--bg-primary);
   --dv-drag-over-background-color: rgba(255, 255, 255, 0.05);
   --dv-drag-over-border-color: rgba(255, 255, 255, 0.15);
-  --dv-active-sash-color: #333;
-  --dv-icon-hover-background-color: #222;
+  --dv-active-sash-color: var(--border-default);
+  --dv-icon-hover-background-color: var(--bg-active);
+  /* MARKER_GAMMA-31: Kill dodgerblue/purple active outline — grey only */
+  --dv-paneview-active-outline-color: #505050;
 }
 
-/* ═══ Hard overrides (dockview ignores vars in some places) ═════════ */
+/* ═══ Structural overrides ══════════════════════════════════════════ */
+/* Single-class selectors now sufficient — @layer gives us priority. */
 
-/* Grid container — kills the rgb(0,12,24) blue default */
+/* Grid container */
 .dockview-theme-dark .dv-grid-view,
 .dockview-theme-dark .dv-dockview {
-  background-color: #000 !important;
+  background-color: var(--bg-primary);
 }
 
 /* Group views — active and inactive */
 .dockview-theme-dark .dv-groupview {
-  background-color: #000 !important;
+  background-color: var(--bg-primary);
 }
-
-.dockview-theme-dark .dv-active-group {
-  background-color: #000 !important;
+/* MARKER_FOCUS4: Monochrome focus indicator — FCP7-style thin border on active group */
+.dockview-theme-dark.dockview-theme-dark .dv-active-group {
+  background-color: var(--bg-primary);
+  box-shadow: inset 0 0 0 1px var(--border-bright);
 }
-
 .dockview-theme-dark .dv-inactive-group {
-  background-color: #000 !important;
+  background-color: var(--bg-primary);
 }
 
 /* Content area */
 .dockview-theme-dark .dv-content-container {
-  background-color: #000 !important;
+  background-color: var(--bg-primary);
 }
 
 /* Void / empty space */
 .dockview-theme-dark .dv-void-container {
-  background-color: #000 !important;
+  background-color: var(--bg-primary);
 }
 
 /* Watermark */
 .dockview-theme-dark .dv-watermark {
-  background-color: #000 !important;
-  color: #333 !important;
+  background-color: var(--bg-primary);
+  color: var(--text-disabled);
 }
 
 /* ═══ Tab bar — 18px thin ═══════════════════════════════════════════ */
+/* MARKER_GAMMA-P1: Hardcoded hex + !important to guarantee grey tabs.
+   var() fallbacks fail when dockview CSS loads after tokens.css. */
 
 .dockview-theme-dark .dv-tabs-and-actions-container {
-  height: 18px !important;
-  min-height: 18px !important;
+  height: 18px;
+  min-height: 18px;
   background-color: #0a0a0a !important;
   border-bottom: 1px solid #222 !important;
 }
 
 .dockview-theme-dark .dv-tab {
-  height: 16px !important;
-  font-size: 9px !important;
-  font-family: system-ui, -apple-system, sans-serif !important;
-  padding: 0 6px !important;
+  height: 16px;
+  font-size: 9px;
+  font-family: system-ui, -apple-system, sans-serif;
+  padding: 0 6px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
+  background-color: #111 !important;
 }
 
-/* Active tab — tokens: bg-hover + border-bright + text-secondary */
+/* Active tab — MARKER_GAMMA-FIX: Kill ALL colored underlines/accents */
 .dockview-theme-dark .dv-tab.dv-active-tab {
   border-bottom: 1px solid #555 !important;
+  border-top: none !important;
   background-color: #1a1a1a !important;
-  color: #ccc !important;
+  color: #ccc;
+}
+/* Kill pseudo-element underlines (dracula/vs theme ::after indicators) */
+.dockview-theme-dark .dv-tab.dv-active-tab::after,
+.dockview-theme-dark .dv-tab.dv-active-tab::before,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::after,
+.dockview-theme-dark .dv-tab.dv-inactive-tab::before {
+  display: none;
+}
+/* Active group tab container — no colored bottom border */
+.dockview-theme-dark .dv-groupview.dv-active-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+.dockview-theme-dark .dv-groupview.dv-inactive-group > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--border-dim);
+}
+/* Active group tabs — no colored top border (kills vs-theme 2px indicator) */
+.dockview-theme-dark .dv-groupview .dv-tab.dv-active-tab {
+  border-top: none;
+}
+.dockview-theme-dark .dv-groupview .dv-tab.dv-inactive-tab {
+  border-top: none;
 }
 
-/* Inactive tab — tokens: bg-secondary + text-dim */
+/* Inactive tab */
 .dockview-theme-dark .dv-tab.dv-inactive-tab {
   border-bottom: 1px solid transparent !important;
+  border-top: none !important;
   background-color: #0a0a0a !important;
-  color: #555 !important;
+  color: #555;
 }
 
 /* ═══ Tab close button — hidden until hover ═════════════════════════ */
 
 .dockview-theme-dark .dv-default-tab-action {
-  opacity: 0 !important;
-  width: 12px !important;
-  height: 12px !important;
+  opacity: 0;
+  width: 12px;
+  height: 12px;
   transition: opacity 0.1s;
 }
 .dockview-theme-dark .dv-tab:hover .dv-default-tab-action {
-  opacity: 0.4 !important;
+  opacity: 0.4;
 }
 .dockview-theme-dark .dv-default-tab-action:hover {
-  opacity: 0.8 !important;
+  opacity: 0.8;
 }
 
 /* ═══ Tab overflow dropdown ═════════════════════════════════════════ */
 
 .dockview-theme-dark .dv-tabs-overflow-dropdown-root {
-  height: 18px !important;
-  font-size: 9px !important;
+  height: 18px;
+  font-size: 9px;
 }
 
 /* ═══ Group header actions ══════════════════════════════════════════ */
 
 .dockview-theme-dark .dv-right-actions-container {
-  font-size: 9px !important;
+  font-size: 9px;
 }
 
 /* ═══ Drop targets — subtle white, NO blue ══════════════════════════ */
 
 .dockview-theme-dark .dv-drop-target-dropzone,
 .dockview-theme-dark [class*="drop-target"] {
-  background-color: rgba(255, 255, 255, 0.05) !important;
-  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-/* ═══ Resize sash — invisible until hover ═══════════════════════════ */
+/* ═══ Resize sash — MARKER_DOCK-FIX-3 ══════════════════════════════ */
+/* !important REQUIRED: pointer-events + z-index critical for Tauri drag */
 
 .dockview-theme-dark .dv-sash {
-  background-color: transparent !important;
+  background-color: transparent;
+  pointer-events: auto !important;
+  min-width: 4px;
+  min-height: 4px;
+  z-index: 10 !important;
 }
 .dockview-theme-dark .dv-sash:hover,
 .dockview-theme-dark .dv-sash.dv-active {
-  background-color: #333 !important;
+  background-color: var(--border-default);
   transition: background-color 0.15s;
+  border-color: transparent;
 }
 
 /* ═══ Single-tab group — minimal header ═════════════════════════════ */
 
 .dockview-theme-dark .dv-single-tab .dv-tabs-and-actions-container {
-  height: 14px !important;
-  min-height: 14px !important;
+  height: 14px;
+  min-height: 14px;
 }
 .dockview-theme-dark .dv-single-tab .dv-tab {
-  font-size: 8px !important;
-  height: 12px !important;
-  padding: 0 4px !important;
+  font-size: 8px;
+  height: 12px;
+  padding: 0 4px;
 }
 
-/* ═══ Kill ALL remaining blue — nuclear override ════════════════════ */
-/* MARKER_DOCK-FIX-2: Dockview uses #4a9eff / rgb(0,12,24) internally.
-   Previous *:not() missed pseudo-elements and deeply nested internals. */
+/* ═══ Kill remaining blue — targeted overrides ══════════════════════ */
 
-.dockview-theme-dark *:not(.lane-clip):not(.marker-dot) {
-  border-color: #222 !important;
-}
-
-/* Dockview group header border (active panel indicator) */
+/* Dockview group header border */
 .dockview-theme-dark .dv-tabs-container {
-  border-bottom-color: #222 !important;
+  border-bottom-color: var(--border-dim);
 }
 
-/* Panel highlight border when dragging over */
+/* MARKER_GAMMA-25: Kill ALL active group blue indicators */
+.dockview-theme-dark .dv-active-group .dv-tabs-and-actions-container {
+  border-color: var(--border-dim);
+  border-bottom-color: var(--border-dim);
+}
+.dockview-theme-dark .dv-active-group .dv-tabs-container {
+  border-bottom-color: var(--border-dim);
+}
+
+/* Panel highlight when dragging — !important for pointer-events (Tauri) */
 .dockview-theme-dark .dv-drop-target-content,
 .dockview-theme-dark .dv-overlay-render-container,
 .dockview-theme-dark .dv-render-overlay {
-  border-color: rgba(255, 255, 255, 0.1) !important;
-  outline: none !important;
+  border-color: rgba(255, 255, 255, 0.1);
+  outline: none;
+  pointer-events: auto !important;
 }
 
-/* Active group outline — dockview adds blue outline on focus */
+/* Active group outline — kill focus outlines */
 .dockview-theme-dark .dv-groupview:focus,
 .dockview-theme-dark .dv-groupview:focus-within,
 .dockview-theme-dark .dv-content-container:focus,
 .dockview-theme-dark .dv-content-container:focus-within {
-  outline: none !important;
-  border-color: #222 !important;
+  outline: none;
+  border-color: var(--border-dim);
 }
 
 /* Pane header borders */
 .dockview-theme-dark .dv-pane-header {
-  border-color: #222 !important;
-  background-color: #0a0a0a !important;
+  border-color: var(--border-dim);
+  background-color: var(--bg-secondary);
 }
 
 /* Split view internal borders */
 .dockview-theme-dark .dv-split-view-container,
 .dockview-theme-dark .dv-grid-branch-node {
-  border-color: #222 !important;
+  border-color: var(--border-dim);
 }
 
 /* Floating panels — no blue ring */
 .dockview-theme-dark .dv-floating-container,
 .dockview-theme-dark .dv-popout-window {
-  border-color: #333 !important;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
+  border-color: var(--border-default);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
 }
 
-/* Tab drag indicator / ghost */
+/* Tab drag ghost — !important for pointer-events only */
 .dockview-theme-dark .dv-tab-drag-ghost,
 .dockview-theme-dark .dv-tab-ghost {
-  border-color: #555 !important;
-  background-color: #1a1a1a !important;
+  border-color: var(--border-bright);
+  background-color: var(--bg-hover);
+  pointer-events: none !important;
 }
 
-/* Restore specific borders that need different colors */
+/* Active tab border */
 .dockview-theme-dark .dv-tab.dv-active-tab {
-  border-bottom-color: #555 !important;
-}
-.dockview-theme-dark .dv-tabs-and-actions-container {
-  border-bottom-color: #222 !important;
-}
-.dockview-theme-dark .dv-sash:hover,
-.dockview-theme-dark .dv-sash.dv-active {
-  border-color: transparent !important;
+  border-bottom-color: var(--border-bright);
 }
 
-/* Final insurance: any element with inline blue style */
-.dockview-theme-dark [style*="border-color: rgb(0, 12, 24)"],
-.dockview-theme-dark [style*="border-color: #4a9eff"],
-.dockview-theme-dark [style*="outline-color: #4a9eff"] {
-  border-color: #222 !important;
-  outline-color: transparent !important;
+/* Tabs container border */
+.dockview-theme-dark .dv-tabs-and-actions-container {
+  border-bottom-color: var(--border-dim);
+}
+
+/* MARKER_FOCUS: Subtle focus indicator on active panel group */
+.dockview-theme-dark .dv-groupview[data-focused] {
+  outline: 1px solid var(--border-bright);
+  outline-offset: -1px;
+}
+
+/* MARKER_GAMMA-TAB1: Active tab differentiation — focused group gets brighter tab accent */
+.dockview-theme-dark .dv-groupview[data-focused] .dv-tab.dv-active-tab {
+  border-bottom: 2px solid #888 !important;
+  color: #eee;
+  background-color: #1e1e1e !important;
+}
+/* Inactive group active tab — subtler */
+.dockview-theme-dark .dv-groupview:not([data-focused]) .dv-tab.dv-active-tab {
+  border-bottom: 1px solid #444 !important;
+  color: #999;
+  background-color: #141414 !important;
+}
+/* Focused group tab container — slightly brighter bottom border */
+.dockview-theme-dark .dv-groupview[data-focused] > .dv-tabs-and-actions-container {
+  border-bottom: 1px solid #333 !important;
+}
+
+/* ═══ MARKER_GAMMA-35: NUCLEAR — kill ALL remaining colored borders ══════ */
+/* Exhaustive override of every dockview element that could show color.     */
+
+/* Separator lines between split views (::before pseudo-element) */
+.dockview-theme-dark .dv-split-view-container .dv-view::before {
+  background-color: var(--border-dim) !important;
+}
+
+/* Pane active outline — override dodgerblue var at usage point */
+.dockview-theme-dark .dv-pane-container .dv-pane.dv-pane-active,
+.dockview-theme-dark .dv-pane-container .dv-pane:focus-within {
+  outline-color: #505050;
+}
+
+/* Tab focus ring */
+.dockview-theme-dark .dv-tab:focus {
+  outline: none;
+}
+.dockview-theme-dark .dv-tab:focus-visible {
+  outline: 1px solid var(--border-bright);
+  outline-offset: -1px;
+}
+
+/* Floating/resize container */
+.dockview-theme-dark .dv-resize-container {
+  border-color: var(--border-dim);
+}
+
+/* MARKER_GAMMA-CSS1: Narrowed from wildcard * to direct children only */
+.dockview-theme-dark .dv-groupview {
+  outline-color: #505050;
+}
+
+/* Force all borders inside dockview to gray palette */
+.dockview-theme-dark .dv-tabs-and-actions-container,
+.dockview-theme-dark .dv-tabs-container,
+.dockview-theme-dark .dv-tab {
+  border-color: var(--border-dim);
+}
+
+/* ═══ MARKER_GAMMA-B3: Professional NLE details ═════════════════════════ */
+
+/* ── MARKER_GAMMA-CSS1: Tool cursors — scoped to .dockview-theme-dark to prevent global bleed ── */
+.dockview-theme-dark [data-active-tool="selection"] { cursor: default; }
+.dockview-theme-dark [data-active-tool="razor"] { cursor: crosshair; }
+.dockview-theme-dark [data-active-tool="hand"] { cursor: grab; }
+.dockview-theme-dark [data-active-tool="hand"]:active { cursor: grabbing; }
+.dockview-theme-dark [data-active-tool="zoom"] { cursor: zoom-in; }
+.dockview-theme-dark [data-active-tool="zoom"].zoom-out { cursor: zoom-out; }
+.dockview-theme-dark [data-active-tool="ripple"] { cursor: col-resize; }
+.dockview-theme-dark [data-active-tool="roll"] { cursor: col-resize; }
+.dockview-theme-dark [data-active-tool="slip"] { cursor: ew-resize; }
+.dockview-theme-dark [data-active-tool="slide"] { cursor: ew-resize; }
+
+/* ── MARKER_GAMMA-CSS1: Tooltip — scoped to .dockview-theme-dark ── */
+.dockview-theme-dark [data-tooltip] {
+  position: relative;
+}
+.dockview-theme-dark [data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #333;
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.dockview-theme-dark [data-tooltip]:hover::after {
+  opacity: 1;
+}
+
+/* ── Loading skeleton animation (for media import) ── */
+@keyframes cut-skeleton-pulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.6; }
+}
+.dockview-theme-dark [data-testid="cut-loading-skeleton"] {
+  background: #1a1a1a;
+  border-radius: 3px;
+  animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
+}
+.dockview-theme-dark [data-testid="cut-loading-skeleton-row"] {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+}
+.dockview-theme-dark [data-testid="cut-loading-skeleton-block"] {
+  background: #222;
+  border-radius: 2px;
+  animation: cut-skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+/* ── Empty state panels (monochrome, professional) ── */
+.dockview-theme-dark [data-testid="cut-empty-state"] {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #555;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  text-align: center;
+  user-select: none;
+  gap: 8px;
+}
+.dockview-theme-dark [data-testid="cut-empty-state"] svg {
+  opacity: 0.3;
+  width: 48px;
+  height: 48px;
+}
+.dockview-theme-dark [data-testid="cut-empty-state"] span {
+  color: #444;
+  font-size: 11px;
+}
+
+/* ═══ MARKER_GAMMA-B2: Panel sizing + responsive ════════════════════════ */
+
+/* Monitor panels: maintain 16:9 aspect ratio */
+.dockview-theme-dark [data-testid="cut-panel-source"] > div:first-child,
+.dockview-theme-dark [data-testid="cut-panel-program"] > div:first-child {
+  aspect-ratio: 16 / 9;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+/* Minimum panel sizes — prevent collapse to 0 */
+.dockview-theme-dark .dv-groupview {
+  min-width: 120px;
+  min-height: 80px;
+}
+
+/* Tab overflow: horizontal scroll when too many tabs */
+.dockview-theme-dark .dv-tabs-container {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #333 transparent;
+}
+.dockview-theme-dark .dv-tabs-container::-webkit-scrollbar {
+  height: 3px;
+}
+.dockview-theme-dark .dv-tabs-container::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 2px;
+}
+.dockview-theme-dark .dv-tabs-container::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Timeline panel: stretch full width, no min-height constraint override */
+.dockview-theme-dark [data-testid="cut-panel-timeline"] {
+  min-height: 120px;
+}
+
+/* ═══ MARKER_GAMMA-23: Monochrome range inputs (kill blue slider thumb) ═══ */
+
+.dockview-theme-dark input[type="range"] {
+  accent-color: #999;
+}
+.dockview-theme-dark input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #999;
+  border: none;
+  cursor: pointer;
+  margin-top: -3.5px; /* center 10px thumb on 3px track */
+}
+.dockview-theme-dark input[type="range"]::-webkit-slider-runnable-track {
+  background: #333;
+  height: 3px;
+  border-radius: 2px;
+}
+
+/* ═══ MARKER_GAMMA-B1: Timeline clip visual polish (professional NLE look) ═══ */
+
+/* ── Clip blocks: name, duration, truncation ── */
+.dockview-theme-dark [data-testid="cut-timeline-clip"] {
+  border-radius: 2px;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 10px;
+  color: #ccc;
+  transition: box-shadow 0.1s;
+}
+.dockview-theme-dark [data-testid="cut-timeline-clip"]:hover {
+  box-shadow: inset 0 0 0 1px #555;
+}
+
+/* Clip name label — truncate with ellipsis */
+.dockview-theme-dark [data-testid="cut-clip-label"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 1px 4px;
+  font-size: 9px;
+  color: #bbb;
+  pointer-events: none;
+  position: relative;
+  z-index: 2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+
+/* Clip duration badge — tiny pill in corner */
+.dockview-theme-dark [data-testid="cut-clip-duration"] {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 8px;
+  font-family: "JetBrains Mono", "SF Mono", monospace;
+  color: #888;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 0 3px;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Selected clip highlight (monochrome) ── */
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-selected="true"] {
+  box-shadow: inset 0 0 0 1.5px #666;
+}
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-selected="true"]:hover {
+  box-shadow: inset 0 0 0 1.5px #888;
+}
+
+/* ── Audio clip waveform overlay ── */
+.dockview-theme-dark [data-testid="cut-clip-waveform"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0.6;
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Playhead (monochrome grey — FCP7 style) ── */
+.dockview-theme-dark [data-testid="cut-playhead"] {
+  background: #999999;
+  width: 1px;
+  z-index: 20;
+  pointer-events: none;
+}
+.dockview-theme-dark [data-testid="cut-playhead"]::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -4px;
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid #999999;
+}
+
+/* ── Video clip: thumbnail behind name ── */
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-lane-type="video"] {
+  background: #1a1a1a;
+}
+/* Audio clip: darker background */
+.dockview-theme-dark [data-testid="cut-timeline-clip"][data-lane-type="audio"] {
+  background: #0f0f0f;
+}
+
+/* ── Transition handle (edit point) ── */
+.dockview-theme-dark [data-testid="cut-transition-handle"] {
+  background: #444;
+  border-radius: 1px;
+  cursor: col-resize;
+  transition: background 0.1s;
+}
+.dockview-theme-dark [data-testid="cut-transition-handle"]:hover {
+  background: #888;
+}
+
+/* ═══ MARKER_GAMMA-TIMELINE: ThumbnailStrip + Timeline visual polish ═══ */
+
+/* ThumbnailStrip inside timeline clips — filmstrip look */
+.dockview-theme-dark [data-testid="thumbnail-strip"] {
+  border-radius: 2px;
+  opacity: 0.85;
+  transition: opacity 0.15s;
+}
+.dockview-theme-dark [data-testid="thumbnail-strip"]:hover {
+  opacity: 1;
+}
+/* Filmstrip frame borders — subtle separator between frames */
+.dockview-theme-dark [data-testid="thumbnail-strip"] img {
+  border-right: 1px solid rgba(0, 0, 0, 0.5);
+  image-rendering: auto;
+}
+.dockview-theme-dark [data-testid="thumbnail-strip"] img:last-child {
+  border-right: none;
+}
+
+/* Timeline ruler — FCP7 monochrome */
+.dockview-theme-dark [data-testid="cut-timeline-ruler"] {
+  background: #111;
+  border-bottom: 1px solid #333;
+  user-select: none;
+}
+.dockview-theme-dark [data-testid="cut-timeline-ruler"] [data-ruler-label] {
+  font-family: "JetBrains Mono", "SF Mono", monospace;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Track header area — consistent with NLE dark theme */
+.dockview-theme-dark [data-testid^="cut-track-header"] {
+  background: #0d0d0d;
+  border-bottom: 1px solid #1a1a1a;
+  border-right: 1px solid #222;
+  user-select: none;
+}
+
+/* Track resize handle (when Alpha integrates TrackResizeHandle.tsx) */
+.dockview-theme-dark [data-testid="track-resize-handle"] {
+  background: transparent;
+  cursor: row-resize;
+  transition: background-color 0.1s;
+}
+.dockview-theme-dark [data-testid="track-resize-handle"]:hover {
+  background: #333;
+}
+.dockview-theme-dark [data-testid="track-resize-handle"][data-dragging="true"] {
+  background: #555;
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Context menu consistent styling ════════════════ */
+
+.dockview-theme-dark [data-testid="cut-clip-context-menu"],
+.dockview-theme-dark [data-testid="cut-context-menu"] {
+  background: #0b0b0b !important;
+  border: 1px solid #2a2a2a !important;
+  border-radius: 6px !important;
+  box-shadow: 0 12px 30px rgba(0,0,0,0.45) !important;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 11px;
+  color: #ccc;
+}
+
+.dockview-theme-dark [data-testid="cut-clip-context-menu"] button:hover,
+.dockview-theme-dark [data-testid="cut-context-menu"] button:hover {
+  background: #1a1a1a !important;
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Playhead monochrome accent (visible through all tracks) ════ */
+
+/* Override playhead for visibility — monochrome grey */
+.dockview-theme-dark [data-testid="cut-playhead"] {
+  background: #999999 !important;
+  z-index: 100;
+}
+.dockview-theme-dark [data-testid="cut-playhead-head"] {
+  border-top-color: #999999 !important;
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Selected clip highlight ═══════════════════════ */
+
+.dockview-theme-dark [data-testid^="cut-timeline-clip-"][data-selected="true"] {
+  border: 1px solid #888 !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.1);
+}
+
+/* ═══ MARKER_GAMMA-POLISH1: Empty panel state ═════════════════════════════ */
+
+.dockview-theme-dark .dv-content-container:empty::after {
+  content: 'No content';
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #333;
+  font-size: 10px;
+  font-family: system-ui, -apple-system, sans-serif;
 }

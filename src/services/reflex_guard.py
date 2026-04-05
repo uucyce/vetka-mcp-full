@@ -326,7 +326,14 @@ class FeedbackGuard:
             from src.services.reflex_feedback import get_reflex_feedback
             fb = get_reflex_feedback()
             summary = fb.get_feedback_summary()
-            self._cortex_cache = summary.get("per_tool", {})
+            per_tool = summary.get("per_tool", {})
+            # Replace raw success_rate with epoch-discounted score so pre-fix
+            # failure history doesn't carry full weight (MARKER_199.REFLEX_GUARD).
+            discounted = fb.get_scores_bulk()
+            for tool_id, stats in per_tool.items():
+                if tool_id in discounted:
+                    stats["success_rate"] = discounted[tool_id]
+            self._cortex_cache = per_tool
             self._cortex_cache_ts = now
         except Exception as e:
             logger.debug("[GUARD] Failed to refresh CORTEX cache: %s", e)
@@ -375,8 +382,21 @@ class FeedbackGuard:
         """Get all CORTEX-derived danger rules (tools with high failure rate)."""
         self._refresh_cortex_cache()
 
+        # MARKER_195.5.GUARD: Import freshness checker once outside the loop
+        try:
+            from src.services.tool_source_watch import get_tool_source_watch
+            _source_watch = get_tool_source_watch()
+        except ImportError:
+            _source_watch = None
+
         rules: List[DangerRule] = []
         for tool_id, stats in self._cortex_cache.items():
+            # MARKER_195.5.GUARD: Skip DangerRule for recently-updated tools
+            if _source_watch is not None:
+                freshness = _source_watch.get(tool_id)
+                if freshness and freshness.is_recently_updated(hours=48):
+                    continue
+
             count = stats.get("count", 0)
             success_rate = stats.get("success_rate", 1.0)
 

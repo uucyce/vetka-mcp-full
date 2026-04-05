@@ -55,6 +55,7 @@ _CREATE_FIELDS = {
     "require_closure_proof",
     "closure_tests",
     "closure_files",
+    "allowed_tools",  # MARKER_201.TOOL_GUARD
 }
 
 _UPDATE_FIELDS = {
@@ -218,3 +219,60 @@ async def get_task(task_id: str, adapter: Optional[str] = Query(None)) -> Dict[s
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found")
     return {"success": True, "adapter": adapter_impl.adapter_name, "task": task}
+
+
+# ── MARKER_201.TOOL_GUARD: REST endpoints for local models (Ollama/Qwen) ──
+
+
+@router.post("/claim")
+async def claim_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Claim a task. Used by local models (Ollama/Qwen) that have no MCP.
+
+    Body:
+        task_id: str (required)
+        agent_name: str (required)
+        agent_type: str (required — claude_code|codex|opencode|local_ollama)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    task_id = body.get("task_id")
+    agent_name = body.get("agent_name")
+    agent_type = body.get("agent_type", "unknown")
+
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+    if not agent_name:
+        raise HTTPException(status_code=400, detail="agent_name is required")
+
+    board = get_task_board()
+    result = board.claim_task(task_id, agent_name, agent_type)
+    if not result.get("success") and result.get("tool_isolation_rejected"):
+        raise HTTPException(status_code=403, detail=result.get("error", "tool isolation rejected"))
+    return result
+
+
+@router.post("/complete")
+async def complete_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Complete a task. Used by local models (Ollama/Qwen) that have no MCP.
+
+    Body:
+        task_id: str (required)
+        commit_hash: str (required for worktree completion)
+        commit_message: str (optional)
+        branch: str (optional — for worktree-aware status)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    task_id = body.get("task_id")
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+
+    board = get_task_board()
+    result = board.complete_task(
+        task_id,
+        commit_hash=body.get("commit_hash"),
+        commit_message=body.get("commit_message"),
+        branch=body.get("branch"),
+        closed_by=body.get("agent_name"),
+    )
+    return result

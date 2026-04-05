@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 
 // ─── Presets ───
 
@@ -99,9 +100,9 @@ const PRESET_BTN: CSSProperties = {
 
 const PRESET_BTN_ACTIVE: CSSProperties = {
   ...PRESET_BTN,
-  border: '1px solid #4a9eff',
-  background: '#1a1a2a',
-  color: '#4a9eff',
+  border: '1px solid #999',
+  background: '#1a1a1a',
+  color: '#999',
 };
 
 const SLIDER_ROW: CSSProperties = {
@@ -126,7 +127,7 @@ const BTN: CSSProperties = {
   fontFamily: 'system-ui',
 };
 
-const BTN_PRIMARY: CSSProperties = { ...BTN, background: '#4a9eff', color: '#fff' };
+const BTN_PRIMARY: CSSProperties = { ...BTN, background: '#999', color: '#fff' };
 const BTN_SECONDARY: CSSProperties = { ...BTN, background: '#333', color: '#ccc' };
 
 // ─── Component ───
@@ -136,7 +137,7 @@ interface SpeedControlProps {
 }
 
 export default function SpeedControl({ onClose }: SpeedControlProps) {
-  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
+  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
   // Find selected clip
@@ -217,7 +218,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
         </div>
       </div>
 
-      {/* Custom speed slider */}
+      {/* Custom speed — slider + direct % input */}
       <div style={SECTION}>
         <div style={SECTION_TITLE}>Custom Speed</div>
         <div style={SLIDER_ROW}>
@@ -230,7 +231,23 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
             onChange={(e) => setSpeed(Number(e.target.value))}
             style={{ flex: 1 }}
           />
-          <span style={{ ...VALUE, width: 44, textAlign: 'right' }}>{speed.toFixed(2)}x</span>
+          <input
+            type="number"
+            min={10}
+            max={400}
+            step={5}
+            value={Math.round(speed * 100)}
+            onChange={(e) => {
+              const pct = parseInt(e.target.value);
+              if (!isNaN(pct) && pct >= 10 && pct <= 400) setSpeed(pct / 100);
+            }}
+            style={{
+              width: 48, textAlign: 'right', background: '#0a0a0a', border: '1px solid #333',
+              borderRadius: 3, color: '#ccc', fontSize: 11, padding: '2px 4px',
+              fontFamily: '"JetBrains Mono", monospace', outline: 'none',
+            }}
+          />
+          <span style={{ color: '#555', fontSize: 10 }}>%</span>
         </div>
       </div>
 
@@ -243,13 +260,13 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
         </div>
         <div style={ROW}>
           <span style={LABEL}>New Duration</span>
-          <span style={{ ...VALUE, color: speed !== 1 ? '#4a9eff' : '#ccc' }}>
+          <span style={{ ...VALUE, color: speed !== 1 ? '#999' : '#ccc' }}>
             {newDuration.toFixed(2)}s
           </span>
         </div>
         <div style={ROW}>
           <span style={LABEL}>Speed Change</span>
-          <span style={{ ...VALUE, color: speed > 1 ? '#4ade80' : speed < 1 ? '#facc15' : '#ccc' }}>
+          <span style={{ ...VALUE, color: speed !== 1 ? '#fff' : '#ccc' }}>
             {speed > 1 ? `${((speed - 1) * 100).toFixed(0)}% faster` :
              speed < 1 ? `${((1 - speed) * 100).toFixed(0)}% slower` : 'Normal'}
           </span>
@@ -267,7 +284,7 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
           />
           <span style={{ color: '#ccc', fontSize: 11 }}>Reverse playback</span>
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 8 }}>
           <input
             type="checkbox"
             checked={maintainPitch}
@@ -275,6 +292,23 @@ export default function SpeedControl({ onClose }: SpeedControlProps) {
           />
           <span style={{ color: '#ccc', fontSize: 11 }}>Maintain audio pitch</span>
         </label>
+        {/* MARKER_GAMMA-SPD1: Fit to Fill — adjust speed so clip fills mark in/out region */}
+        <button
+          style={{ ...BTN_SECONDARY, width: '100%', marginTop: 4 }}
+          title="Set speed so clip duration matches the In-Out marked region"
+          onClick={() => {
+            const s = useCutEditorStore.getState();
+            const markIn = s.sequenceMarkIn;
+            const markOut = s.sequenceMarkOut;
+            if (markIn != null && markOut != null && markOut > markIn && originalDuration > 0) {
+              const targetDuration = markOut - markIn;
+              const fitSpeed = originalDuration / targetDuration;
+              setSpeed(Math.max(0.25, Math.min(4, fitSpeed)));
+            }
+          }}
+        >
+          Fit to Fill (In→Out)
+        </button>
       </div>
 
       {/* Footer */}

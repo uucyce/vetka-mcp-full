@@ -69,7 +69,7 @@ const SIZE_BTN: CSSProperties = {
 
 function CheckMark({ checked }: { checked: boolean }) {
   return (
-    <span style={{ width: 14, textAlign: 'center', color: checked ? '#4a9eff' : '#444' }}>
+    <span style={{ width: 14, textAlign: 'center', color: checked ? '#999' : '#444' }}>
       {checked ? '✓' : ''}
     </span>
   );
@@ -90,6 +90,8 @@ export default function TimelineDisplayControls() {
   const showVideoTracks = useCutEditorStore((s) => s.showVideoTracks);
   const showAudioTracks = useCutEditorStore((s) => s.showAudioTracks);
   const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
+  const proxyMode = useCutEditorStore((s) => s.proxyMode);
+  const setProxyMode = useCutEditorStore((s) => s.setProxyMode);
 
   const toggleShowClipNames = useCutEditorStore((s) => s.toggleShowClipNames);
   const toggleShowClipBorders = useCutEditorStore((s) => s.toggleShowClipBorders);
@@ -180,9 +182,9 @@ export default function TimelineDisplayControls() {
                   key={preset}
                   style={{
                     ...SIZE_BTN,
-                    background: trackHeightPreset === preset ? '#4a9eff33' : '#111',
-                    borderColor: trackHeightPreset === preset ? '#4a9eff' : '#444',
-                    color: trackHeightPreset === preset ? '#4a9eff' : '#aaa',
+                    background: trackHeightPreset === preset ? '#222' : '#111',
+                    borderColor: trackHeightPreset === preset ? '#999' : '#444',
+                    color: trackHeightPreset === preset ? '#999' : '#aaa',
                   }}
                   onClick={() => {
                     // Cycle until we reach the target preset
@@ -221,6 +223,24 @@ export default function TimelineDisplayControls() {
               <CheckMark checked={timecodeDisplayMode === mode} />
               <span>
                 {mode === 'timecode' ? 'Timecode (HH:MM:SS:FF)' : mode === 'frames' ? 'Frames' : 'Seconds'}
+              </span>
+            </div>
+          ))}
+
+          <div style={SEPARATOR} />
+
+          {/* MARKER_B72: Group D: Playback Quality / Proxy toggle */}
+          <div style={GROUP_LABEL}>Playback Quality</div>
+          {(['full', 'proxy', 'auto'] as const).map((mode) => (
+            <div
+              key={mode}
+              style={TOGGLE_ROW}
+              onClick={() => setProxyMode(mode)}
+              data-testid={`proxy-mode-${mode}`}
+            >
+              <CheckMark checked={proxyMode === mode} />
+              <span>
+                {mode === 'full' ? 'Full Resolution' : mode === 'proxy' ? 'Proxy (Performance)' : 'Auto (Proxy if needed)'}
               </span>
             </div>
           ))}

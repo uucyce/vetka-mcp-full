@@ -4,9 +4,10 @@
  * Click entry → revert to that state. Entries above current = grayed (redo-able).
  * Mounted in Analysis tab group (left_bottom).
  */
-import { useState, useEffect, useCallback, type CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
+import { API_BASE, getSocketUrl } from '../../config/api.config';
+import { io, type Socket } from 'socket.io-client';
 
 type HistoryEntry = {
   index: number;
@@ -21,7 +22,7 @@ type UndoStackResponse = {
   can_undo: boolean;
   can_redo: boolean;
   max_depth: number;
-  labels: string[];
+  labels: Array<string | { index: number; label: string; timestamp?: string }>;
 };
 
 const CONTAINER: CSSProperties = {
@@ -89,9 +90,10 @@ export default function HistoryPanel() {
       const res = await fetch(`${API_BASE}/cut/undo-stack?${params}`);
       if (!res.ok) return;
       const data: UndoStackResponse = await res.json();
-      const items: HistoryEntry[] = data.labels.map((label, i) => ({
+      const items: HistoryEntry[] = data.labels.map((entry, i) => ({
         index: i,
-        label,
+        label: typeof entry === 'string' ? entry : entry.label,
+        timestamp: typeof entry === 'object' ? entry.timestamp : undefined,
       }));
       // Always add "Open Project" as base entry
       if (items.length === 0) {
@@ -107,12 +109,29 @@ export default function HistoryPanel() {
     }
   }, [projectId, sandboxRoot, timelineId]);
 
-  // Poll undo stack periodically (every 3s when visible)
+  // MARKER_GAMMA-HISTORY-WS: WebSocket for instant undo/redo refresh + 10s fallback poll
+  const socketRef = useRef<Socket | null>(null);
   useEffect(() => {
     fetchStack();
-    const interval = setInterval(fetchStack, 3000);
-    return () => clearInterval(interval);
-  }, [fetchStack]);
+    // WebSocket: listen for timeline undo/redo events
+    const socket = io(getSocketUrl(), { transports: ['websocket', 'polling'], reconnection: true });
+    socketRef.current = socket;
+    const onTimelineEvent = (data: { event_type?: string; timeline_id?: string }) => {
+      if (data.timeline_id && data.timeline_id !== timelineId) return;
+      if (data.event_type === 'timeline_undo' || data.event_type === 'timeline_redo' || data.event_type === 'timeline_edited') {
+        fetchStack();
+      }
+    };
+    socket.on('cut_timeline_event', onTimelineEvent);
+    // Fallback poll every 10s (in case socket misses an event)
+    const interval = setInterval(fetchStack, 10000);
+    return () => {
+      socket.off('cut_timeline_event', onTimelineEvent);
+      socket.disconnect();
+      socketRef.current = null;
+      clearInterval(interval);
+    };
+  }, [fetchStack, timelineId]);
 
   const handleUndoTo = useCallback(async (targetIndex: number) => {
     if (!projectId || !sandboxRoot || !timelineId) return;
@@ -193,8 +212,8 @@ export default function HistoryPanel() {
                 style={{
                   ...ENTRY_BASE,
                   color: isRedoable ? '#3a3a3a' : isCurrent ? '#e0e0e0' : '#888',
-                  background: isCurrent ? '#1a2a3a' : 'transparent',
-                  borderLeft: isCurrent ? '2px solid #4a9eff' : '2px solid transparent',
+                  background: isCurrent ? '#1a1a1a' : 'transparent',
+                  borderLeft: isCurrent ? '2px solid #999' : '2px solid transparent',
                 }}
               >
                 <span style={{
@@ -211,7 +230,7 @@ export default function HistoryPanel() {
                   {entry.label}
                 </span>
                 {isCurrent && (
-                  <span style={{ color: '#4a9eff', fontSize: 9, marginLeft: 6, flexShrink: 0 }}>
+                  <span style={{ color: '#999', fontSize: 9, marginLeft: 6, flexShrink: 0 }}>
                     current
                   </span>
                 )}

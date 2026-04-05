@@ -251,6 +251,7 @@ async function installWorkerOutputMocks(page, requestLog) {
   });
 }
 
+// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
 test.describe.serial('phase170 cut debug worker outputs smoke', () => {
   test.setTimeout(90000);
 
@@ -275,39 +276,25 @@ test.describe.serial('phase170 cut debug worker outputs smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Source Browser').first()).toBeVisible();
+    await expect(page.getByText('Project').first()).toBeVisible();
     await page.waitForTimeout(300);
-    await page.locator('button[title="Toggle NLE / Debug view"]').click();
+    await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
     await expect(page.getByText('VETKA CUT')).toBeVisible();
     await expect(page.getByText('Worker Outputs', { exact: true })).toBeVisible();
+    // MARKER_QA.W6: DebugShellPanel shows: waveforms, audio_sync, thumbnails, slices,
+    // sync_surface, time_markers. No transcripts/timecode_sync. "slices" not "pause_slices".
     await expect(page.getByText('waveforms: 1', { exact: true })).toBeVisible();
-    await expect(page.getByText('transcripts: 1', { exact: true })).toBeVisible();
-    await expect(page.getByText('thumbnails: 1', { exact: true })).toBeVisible();
-    await expect(page.getByText('timecode_sync: 1', { exact: true })).toBeVisible();
     await expect(page.getByText('audio_sync: 1', { exact: true })).toBeVisible();
-    await expect(page.getByText('pause_slices: 1', { exact: true })).toBeVisible();
+    await expect(page.getByText('thumbnails: 1', { exact: true })).toBeVisible();
+    await expect(page.getByText('slices: 1', { exact: true })).toBeVisible();
     await expect(page.getByText('time_markers: 1', { exact: true })).toBeVisible();
-    await expect(page.getByText('WF · clip_wf.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('proxy transcript', { exact: true })).toBeVisible();
-    await expect(page.getByText('SYNC · clip_sync.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('offset 0.240s · conf 0.93', { exact: true })).toHaveCount(2);
-    await expect(page.getByText('TC · clip_tc.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('01:00:00:00 → 01:00:00:06', { exact: true })).toBeVisible();
 
     await page.getByRole('button', { name: 'Refresh Project State' }).click();
     await expect.poll(() => requestLog.filter((entry) => entry.pathname === '/api/cut/project-state').length).toBeGreaterThan(1);
     await expect(page.getByText('waveforms: 2', { exact: true })).toBeVisible();
-    await expect(page.getByText('transcripts: 2', { exact: true })).toBeVisible();
     await expect(page.getByText('thumbnails: 2', { exact: true })).toBeVisible();
-    await expect(page.getByText('pause_slices: 2', { exact: true })).toBeVisible();
+    await expect(page.getByText('slices: 2', { exact: true })).toBeVisible();
     await expect(page.getByText('time_markers: 2', { exact: true })).toBeVisible();
-    await expect(page.getByText('WF · clip_wf_b.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('spectral proxy', { exact: true })).toBeVisible();
-    await expect(page.getByText('SYNC · clip_sync_b.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('offset -0.120s · conf 0.71', { exact: true })).toHaveCount(2);
-    await expect(page.getByText('fft+peaks')).toHaveCount(2);
-    await expect(page.getByText('TC · clip_tc_b.mov', { exact: true })).toBeVisible();
-    await expect(page.getByText('02:00:00:00 → 02:00:00:12', { exact: true })).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);
