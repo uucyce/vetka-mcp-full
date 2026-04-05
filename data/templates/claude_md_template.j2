@@ -89,6 +89,7 @@ Shared `MEMORY.md` in `.claude/memory/` is for all-agent rules only — do not w
 {%- endfor %}
 
 Read these BEFORE acting. `session_init` provides predecessor advice from these docs.
+Also check `latest_feedback` field from session_init — it contains your newest feedback doc.
 {%- endif %}
 {%- if role.domain == "architect" %}
 
