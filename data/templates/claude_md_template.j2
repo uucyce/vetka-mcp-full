@@ -78,7 +78,8 @@ If you see done_worktree tasks from other agents — DO NOT merge them. Notify C
 
 ## Role Memory
 Your persistent memory: `{{ role.memory_path }}`
-Read on init, update after key decisions. Stores: lessons, patterns, anti-patterns, role-specific context.
+Read at session start. Write lessons/decisions there so next session picks them up.
+Shared `MEMORY.md` in `.claude/memory/` is for all-agent rules only — do not write role-specific notes there.
 {%- endif %}
 {%- if role.key_docs %}
 
