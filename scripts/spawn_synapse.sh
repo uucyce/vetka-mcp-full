@@ -16,6 +16,24 @@ WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}
 AGENT_TYPE="${3:-claude_code}"
 INIT_PROMPT="${4:-vetka session init}"
 
+# ── MARKER_209.POLARIS: Model routing from registry ───────
+# If SYNAPSE_MODEL_ID is set, use it. Otherwise, look up from agent_registry.yaml.
+MODEL_ID="${SYNAPSE_MODEL_ID:-}"
+if [ -z "$MODEL_ID" ]; then
+    MODEL_ID=$(python3 -c "
+import yaml, pathlib
+reg = pathlib.Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
+if not reg.exists():
+    reg = pathlib.Path('${WORKTREE_PATH}/data/templates/agent_registry.yaml')
+if reg.exists():
+    data = yaml.safe_load(reg.read_text())
+    for r in data.get('roles', []):
+        if r.get('callsign') == '$ROLE':
+            print(r.get('model_id', ''))
+            break
+" 2>/dev/null || echo "")
+fi
+
 PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
 WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
 SESSION_NAME="vetka-$ROLE"
@@ -40,7 +58,12 @@ case "$AGENT_TYPE" in
         SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
         ;;
     opencode)
-        SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
+        # MARKER_209.POLARIS: pass model_id if available (e.g. openrouter/qwen/qwen3-235b-a22b:free)
+        if [ -n "$MODEL_ID" ]; then
+            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode -m '$MODEL_ID'"
+        else
+            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
+        fi
         ;;
     generic_cli)
         # generic_cli expects SPAWN_CMD override via env var
@@ -147,11 +170,25 @@ data['$ROLE'] = {
     'tmux_session': '$SESSION_NAME',
     'worktree': '$WORKTREE',
     'agent_type': '$AGENT_TYPE',
+    'model_id': '$MODEL_ID' or None,
+    'fleet': None,
     'backend': '$BACKEND',
     'spawned_at': $ts,
     'last_activity': $ts,
     'compacting': False,
 }
+# MARKER_209.POLARIS: detect fleet from registry
+try:
+    import yaml
+    reg_path = __import__('pathlib').Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
+    if reg_path.exists():
+        reg = yaml.safe_load(reg_path.read_text())
+        for r in reg.get('roles', []):
+            if r.get('callsign') == '$ROLE':
+                data['$ROLE']['fleet'] = r.get('fleet')
+                break
+except Exception:
+    pass
 p.parent.mkdir(parents=True, exist_ok=True)
 p.write_text(json.dumps(data, indent=2))
 " 2>/dev/null || true
