@@ -135,3 +135,47 @@ And create repo: `gh repo create danilagoleen/vetka-sherpa --public --descriptio
 ---
 
 *Recon completed by Eta, 2026-04-02*
+
+---
+
+## UPD 2026-04-05 — Разоблачение мифов: что реально сломало зеркала
+
+### Миф 1: "Токен истёк — обнови токен"
+**Реальность:** Токен обновили трижды (Fine-grained PAT × 2, Classic PAT × 1) — каждый раз те же 403.
+
+**Почему не помогало:** `actions/checkout@v4` без `persist-credentials: false` устанавливает глобальный git credential helper, который **перехватывает все git push** и подменяет любые credentials на `GITHUB_TOKEN`. Скрипт честно прописывал `https://x-access-token:${TOKEN}@github.com/...` в remote URL, но credential helper это игнорировал — всё равно подставлял `GITHUB_TOKEN` (read-only). Ошибка `denied to github-actions[bot]` — подпись именно GITHUB_TOKEN, не PAT.
+
+**Реальный фикс:** одна строка в workflow:
+```yaml
+- uses: actions/checkout@v4
+  with:
+    persist-credentials: false  # ← вот это
+```
+
+### Миф 2: "Submodule lama — это warning, не блокирует"
+**Реальность:** После фикса с credentials checkout упал с exit 128 именно на submodule scan.
+
+**Реальная цепочка багов:**
+1. `persist-credentials: false` → теперь PAT доходит до push
+2. Но checkout с `fetch-depth: 0` сканирует весь history и натыкается на gitlink-записи без `.gitmodules`
+3. Упало на `photo_parallax_playground/vendor/lama` → исправили
+4. Упало на `photo_parallax_playground_codex` → нашли ещё 4 стальных gitlink записи
+5. Удалили все → зеркала заработали
+
+**Итого:** 5 коммитов вместо одного, потому что изначальная гипотеза была верна лишь частично.
+
+### Ключевой сигнал который нужно читать первым
+```
+remote: Permission to X.git denied to github-actions[bot].
+```
+`github-actions[bot]` в ошибке = работает GITHUB_TOKEN, а не PAT.
+`danilagoleen` в ошибке = PAT дошёл, но у него нет прав на конкретный репо.
+
+Если видишь `github-actions[bot]` — смотри credential helper, не токен.
+
+### Что добавлено в репо
+- `.github/workflows/public-mirror-publish.yml` → `persist-credentials: false`
+- Удалены 5 стальных gitlink из git index (файлы на диске не тронуты)
+- `docker-compose.yml` → `qdrant_data: external: true, name: qdrant_storage`
+
+*UPD написан Eta, 2026-04-05*

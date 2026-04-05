@@ -4,6 +4,27 @@
 **Role:** {{ role.role_title }} | **Branch:** `{{ role.branch }}`
 
 ## Init
+{%- if role.tool_type == "vibe" %}
+```
+1. vetka_session_init role={{ role.callsign }}
+   → returns: role_context, tasks, docs, predecessor advice, protocol guards
+2. vetka_task_board action=list filter_status=pending
+3. Claim → Work → vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
+```
+
+`action=complete` = auto-stage + commit + close. NEVER raw git commit.
+
+## Error Handling
+STOP immediately if you see:
+- "Unknown tool" → MCP not connected, restart Vibe
+- "Permission denied" → file outside owned_paths, do NOT modify
+- Any crash → notify Commander before retrying
+
+## Signal Setup (PRETOOL_HOOK)
+Launch via: `source launch_vibe.sh` (sets VETKA_AGENT_ROLE={{ role.callsign }} + PRETOOL_HOOK=check_opencode_signals.sh)
+Check inbox: `vetka_task_board action=notifications role={{ role.callsign }}`
+Send to Commander: `vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="..."`
+{%- else %}
 ```
 1. mcp__vetka__vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
@@ -63,67 +84,6 @@ Full ownership map: `data/templates/agent_registry.yaml`
 6. action=stale_check limit=30  (post-merge cleanup)
 ```
 {%- endif %}
-
-## Synapse — Agent Fleet Commands
-{%- if role.domain == "architect" %}
-
-### Spawn agent (new Terminal window + auto-init)
-```bash
-scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
-# Example: scripts/spawn_synapse.sh Alpha cut-engine claude_code "vetka session init"
-```
-
-### Write to running agent
-```bash
-scripts/synapse_write.sh ROLE "prompt text"
-# Example: scripts/synapse_write.sh Alpha "claim tb_xxx and start working"
-```
-
-### Wake sleeping agent
-```bash
-scripts/synapse_wake.sh ROLE
-```
-
-### Check who's alive / Kill agent
-```bash
-tmux list-sessions          # list all
-tmux kill-session -t vetka-ROLE   # kill one
-```
-
-Agents run in own process, own tokens. Orchestrate via TaskBoard + synapse_write.
-{%- elif role.domain == "harness" %}
-
-### Spawn agent (infra maintenance)
-```bash
-scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
-```
-
-### Write to / Wake agent
-```bash
-scripts/synapse_write.sh ROLE "prompt text"
-scripts/synapse_wake.sh ROLE
-```
-
-### Fleet status
-```bash
-tmux list-sessions
-cat data/synapse_sessions.json
-```
-{%- else %}
-
-### Auto-notifications (passive — no action needed)
-- **On claim:** Commander is auto-notified you claimed a task.
-- **On done_worktree:** Delta (QA) is auto-notified for verification.
-- **On verified:** Commander is auto-notified for merge.
-
-### Wake (if idle)
-Commander may wake you via `synapse_wake.sh {{ role.callsign }}`.
-Your inbox hook (`check_agent_inbox.sh`) auto-reads notifications between tool calls.
-
-### Dilemma escalation
-If stuck on a protocol decision (conflicting rules, ambiguous scope, missing dependency):
-`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander ntype=dilemma_escalation message="<describe dilemma>"`
-Commander will wake, approve/reject, and you continue.
 {%- endif %}
 {%- if role.memory_path %}
 
