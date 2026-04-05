@@ -249,11 +249,6 @@ export default function ExportDialog() {
   const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
   const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
   const lanes = useCutEditorStore((s) => s.lanes);
-  // MARKER_A3.7: Export mixer state (lane volumes, master volume, solo/mute)
-  const laneVolumes = useCutEditorStore((s) => s.laneVolumes);
-  const masterVolume = useCutEditorStore((s) => s.masterVolume);
-  const soloLanes = useCutEditorStore((s) => s.soloLanes ?? new Set<string>());
-  const mutedLanes = useCutEditorStore((s) => s.mutedLanes ?? new Set<string>());
 
   const [tab, setTab] = useState<ExportTab>('master');
   const [codec, setCodec] = useState<VideoCodec>('h264');
@@ -398,14 +393,6 @@ export default function ExportDialog() {
     setRenderError(null);
 
     try {
-      // MARKER_A3.7: Build mixer state with lane volumes and mute/solo
-      const mixerLanes = Object.entries(laneVolumes).map(([laneId, volume]) => ({
-        lane_id: laneId,
-        volume,
-        muted: mutedLanes.has(laneId),
-        solo: soloLanes.has(laneId),
-      }));
-
       const res = await fetch(`${API_BASE}/cut/render/master`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -425,8 +412,6 @@ export default function ExportDialog() {
           bitrate_mode: bitrateMode,
           target_bitrate: bitrateMode !== 'crf' ? targetBitrate : '',
           max_bitrate: bitrateMode === 'vbr' ? maxBitrate : '',
-          // MARKER_A3.7: Export mixer state
-          mixer: { lanes: mixerLanes, master_volume: masterVolume },
         }),
       });
 
@@ -534,14 +519,6 @@ export default function ExportDialog() {
     setExportResult(null);
 
     try {
-      // MARKER_A3.7: Build mixer state with lane volumes and mute/solo
-      const mixerLanes = Object.entries(laneVolumes).map(([laneId, volume]) => ({
-        lane_id: laneId,
-        volume,
-        muted: mutedLanes.has(laneId),
-        solo: soloLanes.has(laneId),
-      }));
-
       const res = await fetch(`${API_BASE}/cut/render/master`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -557,8 +534,6 @@ export default function ExportDialog() {
           range_in: selectionOnly && hasSelection ? sequenceMarkIn : null,
           range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
           audio_stems: false,
-          // MARKER_A3.7: Export mixer state
-          mixer: { lanes: mixerLanes, master_volume: masterVolume },
         }),
       });
 

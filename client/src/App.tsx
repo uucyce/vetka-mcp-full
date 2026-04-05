@@ -623,7 +623,7 @@ export default function App() {
     isDevPanelOpen,
     isContextMenuOpen: nodeContextMenu.visible,
     treeViewMode,
-  } as any);
+  });
 
   const startMediaModeStartup = useCallback(async (scopePath: string) => {
     setMediaStartup({
@@ -1185,7 +1185,7 @@ export default function App() {
           jarvis.speakText(text, {
             agentRole: role ?? 'myco',
             autoListenAfter: options?.autoListenAfter,
-          } as any);
+          });
         }}
         voiceState={jarvis.state}
         voiceLevel={jarvis.audioLevel}
@@ -1284,7 +1284,7 @@ export default function App() {
                 jarvis.speakText(text, {
                   agentRole: role ?? 'myco',
                   autoListenAfter: options?.autoListenAfter,
-                } as any);
+                });
               }}
               voiceState={jarvis.state}
               voiceLevel={jarvis.audioLevel}

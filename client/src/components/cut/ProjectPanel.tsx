@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
-import { isTauri, openFolderDialog } from '../../config/tauri';
 import DAGProjectPanel from './DAGProjectPanel';
 import { setDragPreview } from './utils/dragPreview';
 
@@ -305,23 +304,10 @@ export default function ProjectPanel() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // MARKER_DOCK-FIX-TAURI-IMPORT: ref for startImport (defined later) so
-  // openFilePicker can call it without forward-reference TS errors.
-  const startImportRef = useRef<((path: string) => Promise<void>) | null>(null);
-
   // ─── Open file picker ───
-  // MARKER_DOCK-FIX-TAURI-IMPORT: Use native Tauri dialog when available.
-  // WKWebView silently ignores input.click() when called outside a direct
-  // user gesture (e.g. via CustomEvent dispatch from Cmd+I hotkey).
   const openFilePicker = useCallback(() => {
     if (importing) return;
-    if (isTauri()) {
-      void openFolderDialog('Select media folder to import').then((folderPath) => {
-        if (folderPath) startImportRef.current?.(folderPath);
-      });
-    } else {
-      fileInputRef.current?.click();
-    }
+    fileInputRef.current?.click();
   }, [importing]);
 
   // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
@@ -472,9 +458,6 @@ export default function ProjectPanel() {
       setImporting(false);
     }
   }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
-
-  // MARKER_DOCK-FIX-TAURI-IMPORT: Keep ref in sync for openFilePicker
-  startImportRef.current = startImport;
 
   // ─── Upload files to backend (browser mode — no native paths) ───
   const uploadAndImport = useCallback(async (files: FileList) => {

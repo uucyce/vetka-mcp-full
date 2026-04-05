@@ -190,7 +190,7 @@ function ReflexInsightComponent({ message }: Props) {
         <Icon size={12} color={statusColor} />
         <span style={{ ...labelStyle, color: statusColor }}>{statusLabel}</span>
         {(reflex.tools || []).slice(0, 3).map((id) => (
-          <span key={typeof id === 'string' ? id : String(id)} style={pillStyle(statusColor)}>
+          <span key={typeof id === 'string' ? id : id} style={pillStyle(statusColor)}>
             {(typeof id === 'string' ? id : '').replace('vetka_', '')}
           </span>
         ))}

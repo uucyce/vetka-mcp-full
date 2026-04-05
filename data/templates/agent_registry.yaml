@@ -18,7 +18,6 @@ roles:
     worktree: "cut-engine"
     branch: "claude/cut-engine"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
-    tmux_color: "bg=colour1,fg=white"  # red
     owned_paths:
       - "client/src/store/useTimelineInstanceStore.ts"
       - "client/src/store/useCutEditorStore.ts"           # timeline fields ONLY
@@ -50,7 +49,6 @@ roles:
     worktree: "cut-media"
     branch: "claude/cut-media"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
-    tmux_color: "bg=colour3,fg=colour0"  # yellow, dark text
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
       - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
@@ -88,7 +86,6 @@ roles:
     worktree: "cut-ux"
     branch: "claude/cut-ux"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
-    tmux_color: "bg=colour2,fg=colour0"  # green, dark text
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
       - "client/src/components/cut/DockviewLayout.tsx"
@@ -116,7 +113,6 @@ roles:
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
-    tmux_color: "bg=colour6,fg=colour0"  # cyan, dark text
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -143,7 +139,6 @@ roles:
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
-    tmux_color: "bg=colour5,fg=white"  # magenta
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -171,7 +166,6 @@ roles:
     worktree: "harness"
     branch: "claude/harness"
     model_tier: "opus"  # MARKER_200.MODEL_TIER — infra needs deep reasoning
-    tmux_color: "bg=colour15,fg=colour0,bold"  # white/bold, dark text
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -205,7 +199,6 @@ roles:
     role_title: "Harness Engineer 2 / Infrastructure"
     worktree: "harness-eta"
     branch: "claude/harness-eta"
-    tmux_color: "bg=colour208,fg=colour0"  # orange, dark text
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -240,7 +233,6 @@ roles:
     worktree: "pedantic-bell"
     branch: "claude/pedantic-bell"
     model_tier: "opus"  # MARKER_200.MODEL_TIER — Commander needs full reasoning
-    tmux_color: "bg=colour4,fg=white"  # blue
     owned_paths:
       - "docs/"
       - "CLAUDE.md"
@@ -253,6 +245,158 @@ roles:
     key_docs:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md"
       - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
+    roadmap: ""
+
+  # ═══════════════════════════════════════════════════════════
+  # POLARIS FLEET — Free-Model Agents (Phase 209.2)
+  # MARKER_209.POLARIS: 6 agents under Commander dispatch
+  # 3x Qwen 3.6 via opencode + 3x Vibe Mistral
+  # ═══════════════════════════════════════════════════════════
+
+  # ── Theta: Polaris Opencode #1 (Qwen 3.6) ──────────────
+  - callsign: "Theta"
+    domain: "engine"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Polaris Engine Coder (Qwen)"
+    worktree: "polaris-theta"
+    branch: "claude/polaris-theta"
+    model_tier: "free"  # MARKER_209.POLARIS — free-tier model
+    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
+    fleet: "polaris"
+    owned_paths:
+      - "client/src/store/useTimelineInstanceStore.ts"
+      - "client/src/hooks/useCutHotkeys.ts"
+      - "client/src/components/cut/TimelineTrackView.tsx"
+      - "client/src-tauri/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/components/cut/panels/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ALPHA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Iota: Polaris Opencode #2 (Qwen 3.6) ───────────────
+  - callsign: "Iota"
+    domain: "media"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Polaris Media Coder (Qwen)"
+    worktree: "polaris-iota"
+    branch: "claude/polaris-iota"
+    model_tier: "free"
+    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
+    fleet: "polaris"
+    owned_paths:
+      - "src/services/cut_codec_probe.py"
+      - "src/services/cut_render_engine.py"
+      - "src/services/cut_effects_engine.py"
+      - "src/services/cut_color_pipeline.py"
+      - "src/api/routes/cut_routes.py"
+    blocked_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/hooks/useCutHotkeys.ts"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_BETA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Kappa: Polaris Opencode #3 (Qwen 3.6) ──────────────
+  - callsign: "Kappa"
+    domain: "harness"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Polaris Infra Coder (Qwen)"
+    worktree: "polaris-kappa"
+    branch: "claude/polaris-kappa"
+    model_tier: "free"
+    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
+    fleet: "polaris"
+    owned_paths:
+      - "scripts/"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ZETA_*.md"
+    key_docs:
+      - "docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md"
+    roadmap: ""
+
+  # ── Lambda: Polaris Vibe #1 (Mistral) ───────────────────
+  - callsign: "Lambda"
+    domain: "ux"
+    pipeline_stage: "coder"
+    tool_type: "vibe"
+    role_title: "Polaris UX Designer (Mistral)"
+    worktree: "polaris-lambda"
+    branch: "claude/polaris-lambda"
+    model_tier: "free"
+    model_id: "mistral/mistral-small-latest"
+    fleet: "polaris"
+    owned_paths:
+      - "client/src/components/cut/panels/*.tsx"
+      - "client/src/components/cut/VideoPreview.tsx"
+      - "client/src/components/cut/dockview-cut-theme.css"
+    blocked_paths:
+      - "src/services/"
+      - "src/orchestration/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Mu: Polaris Vibe #2 (Mistral) ───────────────────────
+  - callsign: "Mu"
+    domain: "ux"
+    pipeline_stage: "coder"
+    tool_type: "vibe"
+    role_title: "Polaris UX Prototyper (Mistral)"
+    worktree: "polaris-mu"
+    branch: "claude/polaris-mu"
+    model_tier: "free"
+    model_id: "mistral/mistral-small-latest"
+    fleet: "polaris"
+    owned_paths:
+      - "client/src/components/cut/MenuBar.tsx"
+      - "client/src/components/cut/DockviewLayout.tsx"
+      - "client/src/store/useDockviewStore.ts"
+    blocked_paths:
+      - "src/services/"
+      - "src/orchestration/"
+      - "e2e/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
+    roadmap: ""
+
+  # ── Nu: Polaris Vibe #3 (Mistral) ───────────────────────
+  - callsign: "Nu"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "vibe"
+    role_title: "Polaris QA Verifier (Mistral)"
+    worktree: "polaris-nu"
+    branch: "claude/polaris-nu"
+    model_tier: "free"
+    model_id: "mistral/mistral-small-latest"
+    fleet: "polaris"
+    owned_paths:
+      - "e2e/*.spec.cjs"
+      - "e2e/playwright.config.ts"
+      - "tests/test_*.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "src/services/"
+    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
+    key_docs:
+      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
 # ── Shared Zones ────────────────────────────────────────────

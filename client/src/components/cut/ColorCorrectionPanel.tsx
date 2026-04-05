@@ -1,16 +1,14 @@
 /**
  * MARKER_B16: Color Correction Panel — 3-way color corrector + curves.
- * MARKER_SEC_COLOR: Secondary Color Correction with HSL qualifier (FCP7 Ch.28).
  *
  * Sections:
  * 1. Basic: Exposure, White Balance, Saturation, Hue
  * 2. Lift/Gamma/Gain: Per-channel RGB sliders for shadows/mids/highlights
- * 3. Curves: Preset selector + custom luminance curves
- * 4. Secondary: HSL qualifier + masked hue/sat/exposure correction
+ * 3. Curves: Preset selector + custom luminance curves (future: per-channel)
  *
- * color_correction persisted via set_prop (applyTimelineOps) — reaches render pipeline.
- * Preview via POST /cut/preview/frame with EffectParam objects.
- * Render via FFmpeg lut3d= with generated .cube LUT (secondary_color EffectParam).
+ * Stores color effects in clip.effects.video_effects via effects engine.
+ * Preview via CSS filters (brightness/contrast/saturate/hue-rotate).
+ * Render via FFmpeg eq/colorbalance/curves filters.
  */
 import { useState, useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
@@ -21,22 +19,6 @@ import ColorWheel from './ColorWheel';
 import CurveEditor, { createDefaultCurveData, curveDataToFFmpegStrings, type CurveData } from './CurveEditor';
 
 // ─── Types ───
-
-interface SecondaryState {
-  enabled: boolean;
-  // HSL qualifier
-  hueCenter: number;   // 0..360 degrees
-  hueWidth: number;    // degrees half-width
-  satMin: number;      // 0..1
-  satMax: number;      // 0..1
-  lumaMin: number;     // 0..1
-  lumaMax: number;     // 0..1
-  softness: number;    // 0..1 feathering
-  // Correction
-  hueShift: number;    // -180..180
-  saturation: number;  // 0..3
-  exposure: number;    // -4..4
-}
 
 interface ColorState {
   exposure: number;      // stops: -4..+4
@@ -54,18 +36,7 @@ interface ColorState {
   // Curves
   curvesPreset: string;
   curveData: CurveData;
-  // Secondary color correction (HSL qualifier)
-  secondary: SecondaryState;
 }
-
-const DEFAULT_SECONDARY: SecondaryState = {
-  enabled: false,
-  hueCenter: 120, hueWidth: 30,
-  satMin: 0, satMax: 1,
-  lumaMin: 0, lumaMax: 1,
-  softness: 0.15,
-  hueShift: 0, saturation: 1.0, exposure: 0,
-};
 
 const DEFAULT_COLOR: ColorState = {
   exposure: 0, temperature: 6500, tint: 0, saturation: 1.0, hue: 0, contrast: 1.0,
@@ -74,7 +45,6 @@ const DEFAULT_COLOR: ColorState = {
   gainR: 0, gainG: 0, gainB: 0,
   curvesPreset: 'none',
   curveData: createDefaultCurveData(),
-  secondary: { ...DEFAULT_SECONDARY },
 };
 
 const CURVE_PRESETS = [
@@ -171,33 +141,20 @@ export default function ColorCorrectionPanel() {
     .find((c) => c.clip_id === selectedClipId);
 
   const clipColor = (selectedClip as any)?.color_correction as Partial<ColorState> | undefined;
-  const [color, setColor] = useState<ColorState>({
-    ...DEFAULT_COLOR,
-    ...clipColor,
-    secondary: { ...DEFAULT_SECONDARY, ...(clipColor?.secondary ?? {}) },
-  });
+  const [color, setColor] = useState<ColorState>({ ...DEFAULT_COLOR, ...clipColor });
 
   useEffect(() => {
     const cc = (selectedClip as any)?.color_correction;
-    setColor({
-      ...DEFAULT_COLOR,
-      ...(cc || {}),
-      secondary: { ...DEFAULT_SECONDARY, ...(cc?.secondary ?? {}) },
-    });
+    setColor({ ...DEFAULT_COLOR, ...(cc || {}) });
   }, [selectedClipId, selectedClip]);
 
   const updateField = useCallback((field: keyof ColorState, value: number | string) => {
     setColor((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  const updateSecondary = useCallback((field: keyof SecondaryState, value: number | boolean) => {
-    setColor((prev) => ({ ...prev, secondary: { ...prev.secondary, [field]: value } }));
-  }, []);
-
   const applyColor = useCallback(() => {
     if (!selectedClipId) return;
     const store = useCutEditorStore.getState();
-    // Local store update (immediate UI feedback)
     const updatedLanes = store.lanes.map((lane) => ({
       ...lane,
       clips: (lane.clips || []).map((clip) => {
@@ -206,13 +163,6 @@ export default function ColorCorrectionPanel() {
       }),
     }));
     store.setLanes(updatedLanes);
-    // Persist to backend — reaches render pipeline (set_prop is in paste-safe whitelist)
-    void store.applyTimelineOps([{
-      op: 'set_prop',
-      clip_id: selectedClipId,
-      key: 'color_correction',
-      value: color,
-    }]);
   }, [selectedClipId, color]);
 
   const resetColor = useCallback(() => {
@@ -302,27 +252,6 @@ export default function ColorCorrectionPanel() {
           }
         } else if (color.curvesPreset !== 'none') {
           effects.push({ type: 'curves', params: { preset: color.curvesPreset }, enabled: true });
-        }
-
-        // MARKER_SEC_COLOR: Secondary color correction (HSL qualifier)
-        const sec = color.secondary;
-        if (sec.enabled && (sec.hueShift !== 0 || sec.saturation !== 1.0 || sec.exposure !== 0)) {
-          effects.push({
-            type: 'secondary_color',
-            params: {
-              hue_center: sec.hueCenter,
-              hue_width: sec.hueWidth,
-              sat_min: sec.satMin,
-              sat_max: sec.satMax,
-              luma_min: sec.lumaMin,
-              luma_max: sec.lumaMax,
-              softness: sec.softness,
-              hue_shift: sec.hueShift,
-              saturation: sec.saturation,
-              exposure: sec.exposure,
-            },
-            enabled: true,
-          });
         }
 
         const resp = await fetch(`${API_BASE}/cut/preview/frame`, {
@@ -620,130 +549,6 @@ export default function ColorCorrectionPanel() {
             ))}
           </select>
         </div>
-      </div>
-
-      {/* MARKER_SEC_COLOR: Secondary Color Correction — HSL qualifier (FCP7 Ch.28) */}
-      <div style={SECTION}>
-        <div style={SECTION_TITLE}>
-          <span>Secondary</span>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={color.secondary.enabled}
-              onChange={(e) => updateSecondary('enabled', e.target.checked)}
-              style={{ cursor: 'pointer' }}
-            />
-            <span style={{ fontSize: 9 }}>Enable</span>
-          </label>
-        </div>
-
-        {color.secondary.enabled && (
-          <>
-            {/* Color range indicator */}
-            <div style={{ marginBottom: 8 }}>
-              <div
-                style={{
-                  height: 6,
-                  borderRadius: 3,
-                  background: `linear-gradient(to right, hsl(${color.secondary.hueCenter - color.secondary.hueWidth}deg,70%,45%) 0%, hsl(${color.secondary.hueCenter}deg,85%,55%) 50%, hsl(${color.secondary.hueCenter + color.secondary.hueWidth}deg,70%,45%) 100%)`,
-                  opacity: 0.85,
-                  border: '1px solid #333',
-                }}
-              />
-            </div>
-
-            {/* Qualifier */}
-            <div style={{ ...SECTION_TITLE, fontSize: 9, color: '#444', marginBottom: 6 }}>
-              <span>Qualifier</span>
-            </div>
-
-            <div style={ROW}>
-              <span style={LABEL}>Hue</span>
-              <input type="range" style={SLIDER} min={0} max={359} step={1}
-                value={color.secondary.hueCenter}
-                onChange={(e) => updateSecondary('hueCenter', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.hueCenter}&deg;</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Hue Width</span>
-              <input type="range" style={SLIDER} min={1} max={180} step={1}
-                value={color.secondary.hueWidth}
-                onChange={(e) => updateSecondary('hueWidth', Number(e.target.value))} />
-              <span style={VALUE}>&plusmn;{color.secondary.hueWidth}&deg;</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Sat Min</span>
-              <input type="range" style={SLIDER} min={0} max={1} step={0.01}
-                value={color.secondary.satMin}
-                onChange={(e) => updateSecondary('satMin', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.satMin.toFixed(2)}</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Sat Max</span>
-              <input type="range" style={SLIDER} min={0} max={1} step={0.01}
-                value={color.secondary.satMax}
-                onChange={(e) => updateSecondary('satMax', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.satMax.toFixed(2)}</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Luma Min</span>
-              <input type="range" style={SLIDER} min={0} max={1} step={0.01}
-                value={color.secondary.lumaMin}
-                onChange={(e) => updateSecondary('lumaMin', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.lumaMin.toFixed(2)}</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Luma Max</span>
-              <input type="range" style={SLIDER} min={0} max={1} step={0.01}
-                value={color.secondary.lumaMax}
-                onChange={(e) => updateSecondary('lumaMax', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.lumaMax.toFixed(2)}</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Softness</span>
-              <input type="range" style={SLIDER} min={0} max={1} step={0.01}
-                value={color.secondary.softness}
-                onChange={(e) => updateSecondary('softness', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.softness.toFixed(2)}</span>
-            </div>
-
-            {/* Correction */}
-            <div style={{ ...SECTION_TITLE, fontSize: 9, color: '#444', marginTop: 10, marginBottom: 6 }}>
-              <span>Correction</span>
-              <button
-                style={RESET_BTN}
-                onClick={() => setColor((prev) => ({
-                  ...prev,
-                  secondary: { ...prev.secondary, hueShift: 0, saturation: 1.0, exposure: 0 },
-                }))}
-              >
-                Reset
-              </button>
-            </div>
-
-            <div style={ROW}>
-              <span style={LABEL}>Hue Shift</span>
-              <input type="range" style={SLIDER} min={-180} max={180} step={1}
-                value={color.secondary.hueShift}
-                onChange={(e) => updateSecondary('hueShift', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.hueShift > 0 ? '+' : ''}{color.secondary.hueShift}&deg;</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Saturation</span>
-              <input type="range" style={SLIDER} min={0} max={3} step={0.01}
-                value={color.secondary.saturation}
-                onChange={(e) => updateSecondary('saturation', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.saturation.toFixed(2)}</span>
-            </div>
-            <div style={ROW}>
-              <span style={LABEL}>Exposure</span>
-              <input type="range" style={SLIDER} min={-4} max={4} step={0.1}
-                value={color.secondary.exposure}
-                onChange={(e) => updateSecondary('exposure', Number(e.target.value))} />
-              <span style={VALUE}>{color.secondary.exposure > 0 ? '+' : ''}{color.secondary.exposure.toFixed(1)}</span>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );
