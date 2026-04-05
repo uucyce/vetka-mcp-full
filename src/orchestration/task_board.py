@@ -3487,14 +3487,26 @@ class TaskBoard:
             self.NOTIF_TASK_NEEDS_FIX: [],  # owner already notified, no wake needed
         }
         wake_roles = _WAKE_TARGETS.get(ntype, [])
+        _WAKE_COOLDOWN_SECS = 30
         for role in wake_roles:
             try:
+                # MARKER_208.DEBOUNCE: Skip if already woken within cooldown
+                ts_file = Path(f"/tmp/synapse_wake_{role}.ts")
+                if ts_file.exists():
+                    age = time.time() - ts_file.stat().st_mtime
+                    if age < _WAKE_COOLDOWN_SECS:
+                        logger.debug(
+                            "[TaskBoard] SYNAPSE_WAKE debounce: %s woken %ds ago, skip",
+                            role, int(age),
+                        )
+                        continue
                 subprocess.run(
                     ["bash", "scripts/synapse_wake.sh", role],
                     cwd=str(PROJECT_ROOT),
                     timeout=5,
                     capture_output=True,
                 )
+                ts_file.touch()
                 logger.info("[TaskBoard] SYNAPSE_WAKE: poked %s for %s", role, ntype)
             except Exception as exc:
                 logger.warning("[TaskBoard] SYNAPSE_WAKE failed for %s: %s", role, exc)
