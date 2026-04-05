@@ -2747,6 +2747,9 @@ class TaskBoard:
     NOTIF_TASK_COMPLETED = "task_completed"
     NOTIF_TASK_CLAIMED = "task_claimed"          # MARKER_207.NOTIFY_CLAIM
     NOTIF_TASK_DONE_WORKTREE = "task_done_worktree"  # MARKER_207.NOTIFY_QA
+    NOTIF_TASK_DONE_MAIN = "task_done_main"      # MARKER_207.NOTIFY_NEXT
+    NOTIF_AGENT_COMPACTING = "agent_compacting"  # MARKER_207.COMPACTING
+    NOTIF_DILEMMA = "dilemma_escalation"         # MARKER_207.DILEMMA
     NOTIF_CUSTOM = "custom"
 
     def notify(
@@ -2957,6 +2960,27 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_DONE_WORKTREE:
             # MARKER_207.NOTIFY_QA: Route done_worktree to Delta for QA verification
             targets.append(("Delta", f"Ready for QA: {title} [{task_id}] by {owner}"))
+        elif ntype == self.NOTIF_TASK_DONE_MAIN:
+            # MARKER_207.NOTIFY_NEXT: After merge to main, wake next agent with pending tasks
+            # Find next role with pending tasks to wake
+            try:
+                pending = [t for t in self.tasks.values()
+                           if t.get("status") == "pending" and t.get("role")]
+                if pending:
+                    # Group by role, pick first role with oldest pending task
+                    next_task = min(pending, key=lambda t: t.get("created_at", ""))
+                    next_role = next_task.get("role", "")
+                    if next_role:
+                        targets.append((next_role, f"Slot open — merge complete for {title}. You have pending tasks."))
+            except Exception:
+                pass  # Non-critical
+            targets.append(("Commander", f"Task merged to main: {title} [{task_id}]"))
+        elif ntype == self.NOTIF_AGENT_COMPACTING:
+            # MARKER_207.COMPACTING: Agent lost context, Commander should prepare replacement
+            targets.append(("Commander", f"COMPACTING: agent {owner} lost context on {title} [{task_id}]. Prepare replacement."))
+        elif ntype == self.NOTIF_DILEMMA:
+            # MARKER_207.DILEMMA: Agent stuck on protocol decision, needs Commander approval
+            targets.append(("Commander", f"DILEMMA: {owner} needs decision on {title} [{task_id}]. {extra_msg}"))
         else:
             return  # Unknown type, skip
 
@@ -2966,6 +2990,187 @@ class TaskBoard:
                     target, msg,
                     ntype=ntype, source_role=source_role, task_id=task_id,
                 )
+
+    # ==========================================
+    # MARKER_207.HEARTBEAT: Synapse Heartbeat Monitor
+    # ==========================================
+
+    HEARTBEAT_SILENT_THRESHOLD_SEC = 180  # 3 minutes
+
+    def synapse_heartbeat_check(self) -> Dict[str, Any]:
+        """MARKER_207.HEARTBEAT: Check for silent agents and ping them.
+
+        Reads synapse_sessions.json for last_activity timestamps.
+        If an agent has been silent > 3 min and has a claimed task, sends
+        'status report' via synapse_write.sh and notifies Commander.
+
+        Returns:
+            {silent_agents: [...], pinged: [...], compacting: [...]}
+        """
+        import json as _json_hb
+
+        sessions_file = PROJECT_ROOT / "data" / "synapse_sessions.json"
+        if not sessions_file.exists():
+            return {"silent_agents": [], "pinged": [], "compacting": []}
+
+        try:
+            sessions = _json_hb.loads(sessions_file.read_text(encoding="utf-8"))
+        except Exception:
+            return {"silent_agents": [], "pinged": [], "error": "Failed to read synapse_sessions.json"}
+
+        now = time.time()
+        silent = []
+        pinged = []
+        compacting = []
+
+        for role_name, session_info in sessions.items():
+            if not isinstance(session_info, dict):
+                continue
+            last_activity = session_info.get("last_activity", 0)
+            is_compacting = session_info.get("compacting", False)
+            tmux_session = session_info.get("tmux_session", f"vetka-{role_name}")
+
+            if is_compacting:
+                # Agent reported context compacting — notify Commander
+                compacting.append(role_name)
+                # Find their claimed task
+                claimed_task = self._find_claimed_task_for_role(role_name)
+                if claimed_task:
+                    self._auto_notify(
+                        claimed_task, self.NOTIF_AGENT_COMPACTING,
+                        source_role=role_name,
+                    )
+                continue
+
+            idle_sec = now - last_activity if last_activity else 0
+            if idle_sec > self.HEARTBEAT_SILENT_THRESHOLD_SEC and last_activity > 0:
+                silent.append({"role": role_name, "idle_sec": int(idle_sec)})
+
+                # Try to ping via synapse_write
+                try:
+                    import subprocess
+                    subprocess.Popen(
+                        ["bash", str(PROJECT_ROOT / "scripts" / "synapse_write.sh"),
+                         role_name, "status report — you have been silent for 3+ minutes"],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    pinged.append(role_name)
+                except Exception:
+                    pass  # Non-critical
+
+        return {"silent_agents": silent, "pinged": pinged, "compacting": compacting}
+
+    def report_compacting(self, role: str) -> Dict[str, Any]:
+        """MARKER_207.COMPACTING: Agent reports context window compacting.
+
+        Called when an agent detects its context is being compressed.
+        Notifies Commander to prepare a replacement agent.
+
+        Args:
+            role: Agent callsign reporting compacting
+
+        Returns:
+            {success: True, notified: "Commander"}
+        """
+        claimed_task = self._find_claimed_task_for_role(role)
+        if claimed_task:
+            self._auto_notify(
+                claimed_task, self.NOTIF_AGENT_COMPACTING,
+                source_role=role,
+            )
+        else:
+            # No claimed task — still notify Commander
+            self.notify(
+                "Commander",
+                f"COMPACTING: agent {role} lost context (no active task). May need respawn.",
+                ntype=self.NOTIF_AGENT_COMPACTING,
+                source_role=role,
+            )
+        return {"success": True, "notified": "Commander"}
+
+    def _find_claimed_task_for_role(self, role: str) -> Optional[Dict[str, Any]]:
+        """Find the currently claimed/running task for a given role."""
+        for task in self.tasks.values():
+            if (task.get("status") in ("claimed", "running")
+                    and (task.get("assigned_to") == role or task.get("role") == role)):
+                return task
+        return None
+
+    # ==========================================
+    # MARKER_207.SCOUT_MERGE: Pre-merge Scout Manifest
+    # ==========================================
+
+    def _scout_pre_merge_manifest(self, task: Dict[str, Any], branch: str) -> Optional[Dict[str, Any]]:
+        """MARKER_207.SCOUT_MERGE: Generate Scout pre-merge manifest.
+
+        Before merging, Scout scans the branch diff to build a manifest of:
+        - Files changed (with line counts)
+        - Functions/classes modified
+        - Potential conflicts with other pending tasks
+
+        Args:
+            task: Task being merged
+            branch: Branch to analyze
+
+        Returns:
+            Manifest dict or None if Scout unavailable
+        """
+        try:
+            import subprocess
+            # Get diff stat for the branch
+            result = subprocess.run(
+                ["git", "diff", "--stat", f"main...{branch}"],
+                capture_output=True, text=True, timeout=10,
+                cwd=str(PROJECT_ROOT),
+            )
+            if result.returncode != 0:
+                return None
+
+            diff_stat = result.stdout.strip()
+
+            # Get changed files list
+            result_files = subprocess.run(
+                ["git", "diff", "--name-only", f"main...{branch}"],
+                capture_output=True, text=True, timeout=10,
+                cwd=str(PROJECT_ROOT),
+            )
+            changed_files = result_files.stdout.strip().split("\n") if result_files.returncode == 0 else []
+
+            # Check for overlap with other claimed/running tasks' allowed_paths
+            overlap_risks = []
+            for other_task in self.tasks.values():
+                if other_task.get("id") == task.get("id"):
+                    continue
+                if other_task.get("status") not in ("claimed", "running", "done_worktree"):
+                    continue
+                other_paths = other_task.get("allowed_paths", [])
+                for changed_file in changed_files:
+                    for op in other_paths:
+                        if changed_file.startswith(op.rstrip("/")):
+                            overlap_risks.append({
+                                "file": changed_file,
+                                "conflicting_task": other_task.get("id"),
+                                "conflicting_role": other_task.get("role", ""),
+                            })
+
+            manifest = {
+                "branch": branch,
+                "task_id": task.get("id"),
+                "diff_stat": diff_stat,
+                "changed_files": changed_files[:50],  # Cap at 50
+                "file_count": len(changed_files),
+                "overlap_risks": overlap_risks[:10],  # Cap at 10
+            }
+
+            logger.info(
+                "[TaskBoard] SCOUT_MERGE: manifest for %s — %d files, %d overlap risks",
+                branch, len(changed_files), len(overlap_risks),
+            )
+            return manifest
+
+        except Exception as e:
+            logger.debug(f"[TaskBoard] SCOUT_MERGE manifest failed (non-fatal): {e}")
+            return None
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
@@ -3177,6 +3382,13 @@ class TaskBoard:
             _history_reason="merge verified on main",
         )
         logger.info(f"[TaskBoard] Task {task_id} promoted: → done_main (commit {merge_commit_hash[:8]} verified on main)")
+
+        # MARKER_207.NOTIFY_NEXT: After done_main, notify next queued agent if any pending tasks exist
+        self._auto_notify(
+            task, self.NOTIF_TASK_DONE_MAIN,
+            source_role=role or "Commander",
+        )
+
         return {"success": True, "task_id": task_id, "status": "done_main"}
 
     async def run_closure_protocol(
@@ -3806,6 +4018,14 @@ class TaskBoard:
             except Exception:
                 pass
 
+        # MARKER_207.SCOUT_MERGE: Generate pre-merge manifest for conflict detection
+        scout_manifest = self._scout_pre_merge_manifest(task, branch)
+        if scout_manifest and scout_manifest.get("overlap_risks"):
+            logger.warning(
+                "[MergeRequest] SCOUT detected %d overlap risks for %s — proceeding with caution",
+                len(scout_manifest["overlap_risks"]), task_id,
+            )
+
         if not commits:
             return {"success": False, "error": f"No commits found on '{branch}' ahead of main"}
 
@@ -4001,6 +4221,9 @@ class TaskBoard:
         if _qa_skipped:
             result["qa_skipped"] = True
             result["qa_warning"] = "Task was not verified by QA before merge. Check merge carefully."
+        # MARKER_207.SCOUT_MERGE: Include Scout manifest in result
+        if scout_manifest:
+            result["scout_manifest"] = scout_manifest
         return result
 
     async def _execute_merge(

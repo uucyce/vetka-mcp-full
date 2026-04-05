@@ -119,6 +119,11 @@ cat data/synapse_sessions.json
 ### Wake (if idle)
 Commander may wake you via `synapse_wake.sh {{ role.callsign }}`.
 Your inbox hook (`check_agent_inbox.sh`) auto-reads notifications between tool calls.
+
+### Dilemma escalation
+If stuck on a protocol decision (conflicting rules, ambiguous scope, missing dependency):
+`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander ntype=dilemma_escalation message="<describe dilemma>"`
+Commander will wake, approve/reject, and you continue.
 {%- endif %}
 {%- if role.memory_path %}
 

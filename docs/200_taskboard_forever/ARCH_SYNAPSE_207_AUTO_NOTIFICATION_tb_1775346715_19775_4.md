@@ -1,4 +1,4 @@
-# ARCHITECTURE: SYNAPSE-207 — Auto-Notification Routing
+# ARCHITECTURE: SYNAPSE-207 — Auto-Notification Routing (Expanded)
 **Date:** 2026-04-05 | **Author:** Zeta (Harness) | **Status:** IMPLEMENTED
 **Task:** tb_1775346715_19775_4 | **Marker:** MARKER_207
 
@@ -6,106 +6,123 @@
 
 ## Overview
 
-Auto-notification routing makes the fleet self-coordinating. When agents change
-task status, the TaskBoard automatically notifies the right participants without
-manual `action=notify` calls.
+SYNAPSE-207 is the capstone infrastructure task that makes the fleet self-coordinating.
+Seven subsystems work together: auto-notification chain, per-role CLAUDE.md, heartbeat
+monitor, compacting detection, dilemma escalation, Scout pre-merge manifests, and
+REFLEX tool registration.
 
-## Notification Routing Table
+## 1. Notification Routing Table
 
 | Trigger Event | Source | Target | ntype | Wake? | Purpose |
 |---------------|--------|--------|-------|-------|---------|
-| Task claimed | Any agent | Commander | `task_claimed` | Inform | Commander tracks who's working on what |
+| Task claimed | Any agent | Commander | `task_claimed` | Inform | Commander tracks who's working |
 | Task completed (done_worktree) | Any agent | Commander | `task_completed` | Inform | Commander knows work is done |
 | Task completed (done_worktree) | Any agent | Delta | `task_done_worktree` | Wake | QA gate — Delta starts verification |
 | Task verified (pass) | Delta/Epsilon | Owner + Commander | `task_verified` | Inform | Ready for merge |
 | Task verified (fail) | Delta/Epsilon | Owner | `task_needs_fix` | Wake | Agent must fix and resubmit |
+| Task merged (done_main) | Commander | Next queued agent | `task_done_main` | Wake | Slot open, next agent can start |
+| Agent compacting | Any agent | Commander | `agent_compacting` | Wake | Prepare replacement agent |
+| Dilemma escalation | Any agent | Commander | `dilemma_escalation` | Wake | Agent stuck, needs Commander decision |
 
 ### Wake vs Inform
 
-- **Wake** = file signal + UDS event + tmux send-keys `/inbox`. Used when the
-  target agent needs to act immediately (e.g., Delta must verify, agent must fix).
-- **Inform** = file signal only. Agent reads on next tool call via PostToolUse
-  hook. Used for awareness (e.g., Commander tracking claims).
+- **Wake** = file signal + UDS event + tmux send-keys `/inbox`. Target must act now.
+- **Inform** = file signal only. Agent reads on next tool call via PostToolUse hook.
 
-Currently both paths use the same `notify()` mechanism (file signal + EventBus).
-The UDS daemon handles wake escalation: if target agent's tmux session exists
-but is idle, it sends `/inbox` via send-keys.
+## 2. Heartbeat Monitor
 
-## Implementation Points
+**Method:** `TaskBoard.synapse_heartbeat_check()`
 
-### 1. TaskBoard (`src/orchestration/task_board.py`)
+- Reads `data/synapse_sessions.json` for per-agent `last_activity` timestamps
+- If agent silent > 3 min with claimed task → `synapse_write.sh ROLE "status report"`
+- If agent reports `compacting: true` → notify Commander to prepare replacement
+- Designed to be called by cron/loop or Commander manually
 
-New constants:
-```python
-NOTIF_TASK_CLAIMED = "task_claimed"          # MARKER_207.NOTIFY_CLAIM
-NOTIF_TASK_DONE_WORKTREE = "task_done_worktree"  # MARKER_207.NOTIFY_QA
+**Session Registry:** `data/synapse_sessions.json`
+```json
+{
+  "Alpha": {
+    "tmux_session": "vetka-Alpha",
+    "worktree": "cut-engine",
+    "agent_type": "claude_code",
+    "backend": "iterm2",
+    "spawned_at": 1775347000,
+    "last_activity": 1775347180,
+    "compacting": false
+  }
+}
 ```
 
-Hook points:
-- `claim_task()` → `_auto_notify(task, NOTIF_TASK_CLAIMED)` — informs Commander
-- `complete_task()` → `_auto_notify(task, NOTIF_TASK_DONE_WORKTREE)` — wakes Delta
-  (only when `final_status == "done_worktree"`)
-- `complete_task()` → `_auto_notify(task, NOTIF_TASK_COMPLETED)` — informs Commander
-  (pre-existing)
-- `verify_task()` → `_auto_notify(task, NOTIF_TASK_VERIFIED)` — informs owner + Commander
-  (pre-existing)
-- `verify_task()` → `_auto_notify(task, NOTIF_TASK_NEEDS_FIX)` — wakes owner
-  (pre-existing)
+## 3. Compacting Detection
 
-### 2. CLAUDE.md Template (`data/templates/claude_md_template.j2`)
+**Method:** `TaskBoard.report_compacting(role)`
 
-Synapse section varies by domain:
-- **architect**: Full spawn/write/wake/kill commands + fleet check
-- **harness**: spawn/write/wake + fleet status (infra maintainers)
-- **engine/media/ux/qa**: Passive auto-notification summary + wake info
+When an agent detects its context window is being compressed:
+1. Agent calls `action=notify ntype=agent_compacting` (or future `action=report_compacting`)
+2. TaskBoard finds agent's claimed task
+3. Notifies Commander: "COMPACTING: agent X lost context on task Y. Prepare replacement."
+4. Commander spawns fresh agent via `spawn_synapse.sh` to pick up the task
 
-### 3. REFLEX Tool Catalog (`data/reflex/tool_catalog.json`)
+## 4. Dilemma Escalation
 
-Three new entries registered:
+Agents stuck on protocol decisions (conflicting rules, ambiguous scope) can escalate:
+```
+vetka_task_board action=notify source_role=Alpha target_role=Commander
+    ntype=dilemma_escalation message="Conflicting ownership on shared_zone file X"
+```
+
+Routing: `_auto_notify` sends to Commander with DILEMMA prefix + extra_msg context.
+Commander wakes, approves/rejects via reply notification, agent continues.
+
+## 5. Scout Pre-Merge Manifest
+
+**Method:** `TaskBoard._scout_pre_merge_manifest(task, branch)`
+
+Called automatically in `merge_request()` before executing cherry-pick/merge:
+- Runs `git diff --stat main...branch` + `git diff --name-only`
+- Checks changed files against `allowed_paths` of other active tasks
+- Produces overlap risk report included in merge_request result
+
+```json
+{
+  "branch": "claude/cut-engine",
+  "changed_files": ["client/src/store/useTimelineInstanceStore.ts", ...],
+  "file_count": 5,
+  "overlap_risks": [
+    {"file": "client/src/store/useCutEditorStore.ts",
+     "conflicting_task": "tb_xxx", "conflicting_role": "Gamma"}
+  ]
+}
+```
+
+## 6. spawn_synapse.sh v2
+
+Enhanced with:
+- **INIT_PROMPT** parameter (4th arg, default: "vetka session init")
+- **Session registry** writes to `data/synapse_sessions.json` on spawn
+- **Auto-init** sends INIT_PROMPT to tmux session after 8s boot delay
+- All 4 agent types supported: `claude_code`, `opencode`, `vibe`, `generic_cli`
+
+## 7. REFLEX Tool Catalog
+
+Three tools registered in `data/reflex/tool_catalog.json`:
 - `synapse_spawn` — spawn agent in new Terminal window
 - `synapse_write` — inject prompt into running agent's tmux session
 - `synapse_wake` — wake sleeping agent via `/inbox` send-keys
 
-All three restricted to roles: Commander, Zeta, Eta.
+Restricted to roles: Commander, Zeta, Eta.
 
-## Notification Flow Diagram
+## 8. CLAUDE.md Per Role
 
-```
-Agent claims task
-  └─→ TaskBoard.claim_task()
-       └─→ _auto_notify(NOTIF_TASK_CLAIMED)
-            └─→ notify("Commander", "Task claimed by Alpha: ...")
-                 ├─→ SQLite notifications table
-                 ├─→ ~/.claude/signals/Commander.json (file signal)
-                 └─→ EventBus → UDS daemon (if running)
-
-Agent completes task (worktree branch)
-  └─→ TaskBoard.complete_task()
-       ├─→ _auto_notify(NOTIF_TASK_COMPLETED)
-       │    └─→ notify("Commander", "Task completed by Alpha: ...")
-       └─→ _auto_notify(NOTIF_TASK_DONE_WORKTREE)
-            └─→ notify("Delta", "Ready for QA: ...")
-                 ├─→ ~/.claude/signals/Delta.json
-                 └─→ UDS daemon → spawn_synapse.sh Delta (if offline)
-
-Delta verifies task (pass)
-  └─→ TaskBoard.verify_task()
-       └─→ _auto_notify(NOTIF_TASK_VERIFIED)
-            ├─→ notify(owner, "Task verified: ...")
-            └─→ notify("Commander", "Task verified, ready to merge: ...")
-```
+Template at `data/templates/claude_md_template.j2` generates role-specific Synapse sections:
+- **architect** (Commander): Full spawn/write/wake/kill + fleet management
+- **harness** (Zeta/Eta): Spawn/write/wake + fleet status
+- **engine/media/ux/qa** (Alpha/Beta/Gamma/Delta/Epsilon): Passive auto-notification + wake + dilemma escalation
 
 ## Design Decisions
 
-1. **Delta as primary QA target**: All done_worktree tasks route to Delta.
-   If Delta is overloaded, Commander can re-route to Epsilon manually.
-
-2. **No claim→owner notification**: When an agent claims their own task,
-   notifying themselves would be noise. Only Commander is notified.
-
-3. **Idempotent notifications**: `_auto_notify` may fire multiple times
-   (e.g., on retry). Each creates a new notification — agents must handle
-   deduplication via `ack_notifications`.
-
-4. **Never block on notification failure**: All notify calls are wrapped
-   in try/except. Task status changes succeed even if notification fails.
+1. **Delta as primary QA target**: All done_worktree → Delta. Commander re-routes to Epsilon if overloaded.
+2. **done_main → next agent wake**: After merge, find oldest pending task by role, wake that agent.
+3. **Heartbeat is pull-based**: Commander/cron calls `synapse_heartbeat_check()`, not push-based timer.
+4. **Scout manifest is advisory**: Overlap risks are logged and returned but don't block merge.
+5. **Never block on notification failure**: All notify calls wrapped in try/except.

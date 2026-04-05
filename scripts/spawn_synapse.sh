@@ -1,22 +1,25 @@
 #!/bin/bash
-# scripts/spawn_synapse.sh — SYNAPSE: multi-backend agent spawn in real terminal windows
-# Phase 206.1 | ARCH: docs/200_taskboard_forever/ROADMAP_SYNAPSE_206.md
-# MARKER_206.SYNAPSE_SPAWN
+# scripts/spawn_synapse.sh — SYNAPSE v2: multi-backend agent spawn with auto-init
+# Phase 206.1+ | ARCH: docs/200_taskboard_forever/ROADMAP_SYNAPSE_206.md
+# MARKER_206.SYNAPSE_SPAWN_V2
 #
-# Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE]
-#   ROLE       — agent callsign (Alpha, Beta, etc.)
-#   WORKTREE   — worktree directory name under .claude/worktrees/
-#   AGENT_TYPE — claude_code (default) | opencode | vibe | generic_cli
+# Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
+#   ROLE         — agent callsign (Alpha, Beta, Zeta, etc.)
+#   WORKTREE     — worktree directory name under .claude/worktrees/
+#   AGENT_TYPE   — claude_code (default) | opencode | vibe | generic_cli
+#   INIT_PROMPT  — auto-sent after boot (default: "vetka session init")
 
 set -euo pipefail
 
-ROLE="${1:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE]}"
-WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE]}"
+ROLE="${1:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}"
+WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}"
 AGENT_TYPE="${3:-claude_code}"
+INIT_PROMPT="${4:-vetka session init}"
 
 PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
 WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
 SESSION_NAME="vetka-$ROLE"
+REGISTRY_FILE="$PROJECT_ROOT/data/synapse_sessions.json"
 LOG_PREFIX="[SYNAPSE]"
 
 # ── Validate ──────────────────────────────────────────────────
@@ -126,3 +129,48 @@ APPLESCRIPT
         exit 1
         ;;
 esac
+
+# ── Register session ────────────────────────────────────────
+# MARKER_207.SESSION_REGISTRY: Track spawned agents in synapse_sessions.json
+_register_session() {
+    local ts
+    ts=$(date +%s)
+    # Use python3 for atomic JSON update (jq not guaranteed)
+    python3 -c "
+import json, pathlib, sys
+p = pathlib.Path('$REGISTRY_FILE')
+data = {}
+if p.exists():
+    try: data = json.loads(p.read_text())
+    except: pass
+data['$ROLE'] = {
+    'tmux_session': '$SESSION_NAME',
+    'worktree': '$WORKTREE',
+    'agent_type': '$AGENT_TYPE',
+    'backend': '$BACKEND',
+    'spawned_at': $ts,
+    'last_activity': $ts,
+    'compacting': False,
+}
+p.parent.mkdir(parents=True, exist_ok=True)
+p.write_text(json.dumps(data, indent=2))
+" 2>/dev/null || true
+}
+_register_session
+echo "$LOG_PREFIX Registered $ROLE in $REGISTRY_FILE"
+
+# ── Auto-init after boot delay ──────────────────────────────
+# MARKER_207.AUTO_INIT: Send init prompt after agent boots (8s delay)
+if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" != "vibe" ]; then
+    (
+        sleep 8
+        if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+            tmux send-keys -t "$SESSION_NAME" "$INIT_PROMPT" Enter
+            echo "$LOG_PREFIX Auto-init sent to $ROLE: $INIT_PROMPT"
+        fi
+    ) &
+    echo "$LOG_PREFIX Auto-init scheduled (background PID $!)"
+fi
+
+echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt'"
+echo "$LOG_PREFIX To wake:  scripts/synapse_wake.sh $ROLE"
