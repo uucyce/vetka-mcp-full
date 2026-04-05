@@ -2778,6 +2778,18 @@ class TaskBoard:
                 "error": f"Task {task_id} is {task['status']}, can't claim",
             }
 
+        # MARKER_208.SINGLE_CLAIM: Reject if agent already has an active task
+        active_row = self.db.execute(
+            "SELECT id, title FROM tasks WHERE assigned_to = ? AND status IN ('claimed', 'running')",
+            (agent_name,),
+        ).fetchone()
+        if active_row and active_row[0] != task_id:
+            return {
+                "success": False,
+                "error": f"You already have active task {active_row[0]} — complete it first",
+                "active_task_id": active_row[0],
+            }
+
         # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
         task_allowed = task.get("allowed_tools") or []
         if task_allowed and agent_type not in task_allowed:
