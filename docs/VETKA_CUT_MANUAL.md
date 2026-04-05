@@ -662,11 +662,11 @@ Single click sets `selectedClipId`. `Cmd+Click` toggles multi-select via `toggle
 
 ### 3.12 Match Frame
 **Status:** IMPLEMENTED
-**Hotkey:** `F` Match Frame / `Shift+F` Reverse Match Frame (both presets)
+**Hotkey:** `F` (both presets)
 
-Match Frame (`F`): finds the clip under the playhead, calculates `sourceTime = (currentTime - clip.start_sec) + clip.source_in`, sets the Source Monitor to that frame and focuses the Source panel. Implemented in `useCutEditorStore.matchFrame()`.
+Finds the clip under the playhead, calculates `sourceTime = (currentTime - clip.start_sec) + clip.source_in`, sets the Source Monitor to that frame and focuses the Source panel.
 
-Reverse Match Frame (`Shift+F`): from Source Monitor position + active source path, finds the matching clip on timeline and seeks the program monitor to `clip.start_sec + (sourceTime - clip.source_in)`. Implemented in `useCutEditorStore.reverseMatchFrame()`.
+**Differs from FCP7:** Only timeline → source direction. Reverse match frame is not implemented.
 
 ---
 
@@ -1024,13 +1024,9 @@ No voice-over recording, microphone input, or record-to-timeline feature.
 ---
 
 ### 6.10 Audio Analysis (BPM, Key Detection)
-**Status:** IMPLEMENTED
+**Status:** PARTIAL (backend only)
 
-`cut_audio_analyzer.py`: BPM (spectral flux + autocorrelation), musical key (Krumhansl-Kessler profiles), Camelot key, energy contour (64 bins), onset times.
-
-**API:** `POST /api/cut/pulse/analyze-clip` — `{source_path}` → `{bpm, key, camelot_key, energy_contour[], onset_times[], duration_sec}`. Backed by librosa if available, else FFmpeg + scipy/numpy fallback.
-
-**UI:** "Audio Analysis" section in `ClipInspector.tsx` — on-demand per-clip (Analyze button). Displays BPM / Key / Camelot / onset count + SVG energy sparkline (64 bins). Resets when different clip is selected.
+`cut_audio_analyzer.py`: BPM (spectral flux + autocorrelation), musical key (Krumhansl-Kessler profiles), Camelot key, energy contour, onset times. No dedicated UI panel. Triggered via `Cmd+Shift+P` (Run PULSE Analysis).
 
 **Differs from FCP7:** FCP7 has no BPM/key detection. VETKA CUT exclusive via PULSE system.
 
@@ -1058,7 +1054,7 @@ _FCP7 Reference: Ch.67-72_
 - **No selection:** Searchable effects browser. 4 categories: Video Filters (10 effects), Audio Filters (8 effects), Transitions, Generators (5 types). Drag or double-click to apply.
 - **Clip selected:** Effect Controls sliders — Color (brightness/contrast/saturation/gamma), Blur/Sharpen, Transform (vignette/crop/flip), Time (fade), Opacity.
 
-All 17 ClipEffects fields persist to render pipeline via `set_effects` op → `clip_effects_dict_to_effect_params()` → `compile_video_filters()` → FFmpeg. Extended effects (gamma, sharpen, denoise, vignette, fade_in/out, hflip/vflip, crop) are fully rendered. Fractional crop (crop_top/bottom/left/right) compiles to `crop=iw*w:ih*h:iw*x:ih*y` FFmpeg expression.
+Core 5 effects (brightness, contrast, saturation, blur, opacity) persist to render pipeline. Extended effects (gamma, sharpen, denoise, vignette, fade, flip) are UI-only, not yet in render plan.
 
 **Differs from FCP7:** FCP7 has separate Effect Controls window. CUT merges browser + controls into one panel.
 
@@ -1098,26 +1094,9 @@ All 17 ClipEffects fields persist to render pipeline via `set_effects` op → `c
 ### 7.5 Color Correction Panel
 **Status:** IMPLEMENTED
 
-`ColorCorrectionPanel.tsx`: Exposure (-4 to +4 stops), White Balance (2000–12000K), Contrast/Saturation (0–3), Hue (-180°–180°). Three-way corrector: `ColorWheel.tsx` (Shadows/Midtones/Highlights) with R/B correction, G derived. 9 curve presets + interactive spline editor (`CurveEditor.tsx`). Graded preview thumbnail via `POST /cut/preview/frame`.
+`ColorCorrectionPanel.tsx`: Exposure (-4 to +4 stops), White Balance (2000–12000K), Contrast/Saturation (0–3), Hue (-180°–180°). Three-way corrector: `ColorWheel.tsx` (Shadows/Midtones/Highlights) with R/B correction, G derived. 9 curve presets (no interactive spline editor). Graded preview thumbnail via `POST /cut/preview/frame`.
 
-Color correction persisted to backend via `set_prop(key='color_correction')` — reaches render pipeline.
-
-#### 7.5.1 Secondary Color Correction (FCP7 Ch.28)
-**Status:** IMPLEMENTED
-
-HSL qualifier + masked secondary correction. Enable via "Secondary" section toggle in `ColorCorrectionPanel.tsx`.
-
-**Qualifier controls:**
-- Hue center (0°–360°) + Hue width (±degrees) — circular hue range
-- Sat Min / Sat Max (0–1)
-- Luma Min / Luma Max (0–1)
-- Softness (0–1) — feathered edges around selection
-
-**Correction controls:** Hue Shift (−180°–+180°), Saturation multiplier (0–3), Exposure (stops)
-
-**Implementation:** Backend `cut_color_pipeline.py` — `rgb_to_hsl()` + `hsl_to_rgb()` + `build_hsl_mask()` + `apply_secondary_correction()`. Render path: `write_secondary_lut_cube()` generates a 17³ .cube LUT, applied via FFmpeg `lut3d=` filter. Preview path: `secondary_color` EffectParam sent to `POST /cut/preview/frame`. Timeline persistence: stored in `clip.color_correction.secondary` via `set_prop`.
-
-**Differs from FCP7:** No eyedropper picker. No matte view (visualize mask overlay).
+**Differs from FCP7:** No master luminance sliders per wheel. No interactive spline curves editor.
 
 ---
 

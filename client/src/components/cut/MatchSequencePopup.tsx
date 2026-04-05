@@ -10,7 +10,6 @@
 import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE } from '../../config/api.config';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 // --- Styles (monochrome, consistent with SequenceSettingsDialog) ---
 
@@ -145,8 +144,6 @@ export default function MatchSequencePopup() {
     }
     useCutEditorStore.getState().setShowMatchSequencePopup(false);
   }, [dontAsk]);
-  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
-  useOverlayEscapeClose(close);
 
   const handleMatch = useCallback(async () => {
     if (!probeData) { close(); return; }
@@ -190,7 +187,7 @@ export default function MatchSequencePopup() {
   const fileName = clipPath?.split('/').pop() ?? 'Unknown';
 
   return (
-    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div style={OVERLAY} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div style={DIALOG} data-testid="match-sequence-popup">
         <div style={{ fontSize: 14, fontWeight: 600, color: '#fff', marginBottom: 12 }}>
           Match Sequence Settings

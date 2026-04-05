@@ -406,21 +406,22 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
       const resolved = resolveMap(loadPresetName(), loadCustomOverrides());
       const focusedPanel = useCutEditorStore.getState().focusedPanel ?? 'timeline';
 
-      // MARKER_GAMMA-TOAST-FIX: Iterate parsedList (multi-bind) instead of single parsed
-      let eventKey = e.key.toLowerCase();
-      if (e.code === 'Space') eventKey = 'space';
+      for (const [action, parsed] of resolved) {
+        const wantCmd = parsed.cmd;
+        const wantCtrl = parsed.ctrl;
+        const hasMetaOrCtrl = e.metaKey || e.ctrlKey;
+        if (wantCmd && !hasMetaOrCtrl) continue;
+        if (!wantCmd && !wantCtrl && hasMetaOrCtrl) continue;
+        if (wantCtrl && !e.ctrlKey) continue;
+        if (parsed.shift !== e.shiftKey) continue;
+        if (parsed.alt !== e.altKey) continue;
 
-      for (const [action, parsedList] of resolved) {
-        const matched = parsedList.some((p) => {
-          const hasMetaOrCtrl = e.metaKey || e.ctrlKey;
-          if (p.cmd && !hasMetaOrCtrl) return false;
-          if (!p.cmd && !p.ctrl && hasMetaOrCtrl) return false;
-          if (p.ctrl && !e.ctrlKey) return false;
-          if (p.shift !== e.shiftKey) return false;
-          if (p.alt !== e.altKey) return false;
-          return eventKey === p.key;
-        });
-        if (!matched) continue;
+        // Normalize key
+        let eventKey = e.key.toLowerCase();
+        if (e.code === 'Space') eventKey = 'space';
+        else if (e.key.startsWith('Arrow')) eventKey = e.key.toLowerCase();
+
+        if (eventKey !== parsed.key) continue;
 
         // Check scope
         const scope = ACTION_SCOPE[action];

@@ -28,11 +28,6 @@
 - continuity идёт через `HANDOFF_TO_FRESH_CHAT_RC1_2026-03-19.md`;
 - contract changes сначала отражаются в `photo_parallax_playground/CONTRACTS_V1.md`.
 
-Дополнительная continuity note после `2026-03-29`:
-
-- product-facing UI reset и pro-app mental model correction зафиксированы в `PARALLAX_PRODUCT_UI_RESET_PROJECT_2026-03-29.md`;
-- viewer-first refactor остаётся валидным, но теперь должен оцениваться не только по структуре, а по operator readability against pro-tool references.
-
 ## 3. Current State
 
 На момент `2026-03-19`:
@@ -119,16 +114,6 @@ Canonical artifacts:
 
 - интегрировать `Qwen-Image-Layered` как compare/backend lane;
 - не трогать current release path как default.
-- держать открытой future comparative lane для candidate matting backends, если они понадобятся для cleanup/refinement:
-  - `SAM 2 + PyMatting`
-  - `BiRefNet`
-  - `RMBG`
-
-Важно:
-
-- это не принятый стек;
-- это candidate lane для последующего recon на наших hard samples;
-- сравнение должно идти как controlled bakeoff, а не как silent roadmap pivot.
 
 ### Track D. Refactor And Separation
 
@@ -365,11 +350,6 @@ Done criteria:
 - выбрать `3-6` complex scenes;
 - прогнать layered output side-by-side против current stack;
 - не смешивать bakeoff samples с release smoke verdict без отдельной метки.
-- если cleanup quality снова станет bottleneck, завести отдельный sub-lane для matting candidates:
-  - `SAM 2 + PyMatting`
-  - `BiRefNet`
-  - `RMBG`
-  и сравнивать их только на сложных cleanup/alpha cases, а не объявлять заменой default path заранее.
 
 Done criteria:
 
@@ -523,7 +503,6 @@ Bakeoff считается завершённым, когда:
 4. Запустить `layer-space recovery` и вернуть upstream decomposition в центр системы.
 5. Проверить, не держится ли `pass` на слишком synthetic/proxy-like layer generation.
 6. После этого открыть adapter-first track для `Qwen-Image-Layered`.
-7. Когда дойдём до cleanup/backend recon, отдельно оценить candidate matting lane (`SAM 2 + PyMatting`, `BiRefNet`, `RMBG`) на hard alpha samples без преждевременного выбора победителя.
 
 ## 14. Fresh Chat Rule
 

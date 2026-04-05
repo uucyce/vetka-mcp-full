@@ -1,24 +1,5 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 3.0 | **Дата:** 2026-03-29 (Phase 200 — Sonnet fleet update)
-
----
-
-## Модели: Opus vs Sonnet
-
-Не все роли требуют Opus. Sonnet справляется с 90% задач и его лимит практически неисчерпаем.
-
-| Роль | Модель | Почему |
-|------|--------|--------|
-| **Commander** | **Opus** | Стратегические решения, merge conflicts, координация |
-| **Zeta** | **Opus** | Инфра/архитектура, сложный debugging |
-| **Alpha** | Sonnet | Endpoints, ops, паттерны — формульная работа |
-| **Beta** | Sonnet | FFmpeg pipelines, тесты — техничная но шаблонная |
-| **Gamma** | Sonnet | UI компоненты, CSS, wiring — sweet spot Sonnet |
-| **Delta** | Sonnet | Верификация, тест-раны — не требует глубокого reasoning |
-| **Epsilon** | Sonnet | Contract tests — аналогично Delta |
-| **Eta** | Sonnet | Инфра-помощник Zeta — шаблонные таски |
-
-**Экономия:** ~3x по Opus лимиту. 7 Opus агентов выжигают лимит за 2-3 часа. 2 Opus + 6 Sonnet — хватает на полный рабочий день.
+**Версия:** 2.0 | **Дата:** 2026-03-24 (Phase 198 update)
 
 ---
 
@@ -27,7 +8,7 @@
 ```bash
 # 1. Запустить агента в worktree (роль загрузится автоматически)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine
-claude --dangerously-skip-permissions --model sonnet
+claude
 
 # 2. Перегенерировать CLAUDE.md для всех ролей (после merge/experience reports)
 cd ~/Documents/VETKA_Project/vetka_live_03
@@ -40,39 +21,50 @@ vetka_task_board action=active_agents
 
 ---
 
-## Команды запуска
+## Worktrees и роли
 
-### Sonnet-флот (рекомендуемый — экономит Opus лимит)
+**Базовый путь:** `~/Documents/VETKA_Project/vetka_live_03` (далее `$VETKA`)
 
+| Команда терминала | Роль | Домен | Что делает |
+|---|---|---|---|
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude` | **Alpha** | Engine | Store, timeline, hotkeys, playback, Tauri |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude` | **Beta** | Media | Codecs, color, scopes, render, effects |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude` | **Gamma** | UX | Panels, menus, layout, dockview |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude` | **Delta** | QA | E2E тесты, TDD, FCP7 compliance |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude` | **Epsilon** | QA2 | E2E тесты, дополнительная QA capacity |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude` | **Zeta** | Harness | Memory, pipeline, task_board, REFLEX |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude` | **Eta** | Harness | Zeta's partner — infra, tests, recon |
+| `cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude` | **Commander** | Architect | Координация, merge, dispatch |
+
+Или одной строкой (копируй целиком):
 ```bash
-# Alpha (Engine) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
+# Alpha
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude
 
-# Beta (Media) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model sonnet
+# Beta
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude
 
-# Gamma (UX) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model sonnet
+# Gamma
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude
 
-# Delta (QA) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model sonnet
+# Delta
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude
 
-# Epsilon (QA2) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model sonnet
+# Epsilon (QA2)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude
 
-# Eta (Harness 2) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
+# Zeta (Harness)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude
 
-# Zeta (Harness) — Opus (нужен для инфра-решений)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+# Eta (Harness 2 — Zeta's partner)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude
 
-# Commander (Architect) — Opus (координация, merge)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
+# Commander (Architect)
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude
 ```
 
-### Полный Opus-флот (когда лимиты не проблема)
 
-```bash
+
 # Alpha (Engine)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions
 
@@ -88,32 +80,14 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --
 # Epsilon (QA2)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions
 
-# Zeta (Harness)
+# Zeta (Harness / Memory / Infrastructure)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
 
-# Eta (Harness 2)
+# Eta (Harness 2 — Zeta's partner)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions
 
-# Commander (Architect)
+# Commander (Architect / Coordinator)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
-```
-
----
-
-## Worktrees и роли
-
-**Базовый путь:** `~/Documents/VETKA_Project/vetka_live_03` (далее `$VETKA`)
-
-| Роль | Worktree | Домен | Модель | Что делает |
-|------|----------|-------|--------|------------|
-| **Alpha** | `cut-engine` | Engine | Sonnet | Store, timeline, hotkeys, playback, Tauri |
-| **Beta** | `cut-media` | Media | Sonnet | Codecs, color, scopes, render, effects |
-| **Gamma** | `cut-ux` | UX | Sonnet | Panels, menus, layout, dockview |
-| **Delta** | `cut-qa` | QA | Sonnet | E2E тесты, TDD, FCP7 compliance |
-| **Epsilon** | `cut-qa-2` | QA2 | Sonnet | E2E тесты, дополнительная QA capacity |
-| **Zeta** | `harness` | Harness | **Opus** | Memory, pipeline, task_board, REFLEX |
-| **Eta** | `harness-eta` | Harness | Sonnet | Zeta's partner — infra, tests, recon |
-| **Commander** | `pedantic-bell` | Architect | **Opus** | Координация, merge, dispatch |
 
 
 

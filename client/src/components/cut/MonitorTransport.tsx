@@ -126,9 +126,6 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
   const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
   const dropFrame = useCutEditorStore((s) => s.dropFrame);
-  // MARKER_GAMMA-LOOP: Loop playback toggle (program feed only)
-  const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
-  const setLoopPlayback = useCutEditorStore((s) => s.setLoopPlayback);
 
   const togglePlay = useCutEditorStore((s) => isSource ? s.togglePlaySource : s.togglePlay);
   const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
@@ -293,21 +290,6 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
           <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)" data-testid="match-frame" aria-label="match frame">
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="2" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="2" x2="4" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="7" y1="2" x2="7" y2="8" stroke="currentColor" strokeWidth="0.8"/></svg>
           </button>
-          {/* MARKER_GAMMA-LOOP: Loop toggle (program monitor only) */}
-          {!isSource && (
-            <button
-              style={{ ...IO_BTN, color: loopPlayback ? '#ccc' : '#444', borderColor: loopPlayback ? '#555' : '#333' }}
-              onClick={() => setLoopPlayback(!loopPlayback)}
-              title="Loop Playback"
-              data-testid="loop-playback-btn"
-              aria-label="loop playback"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M2 3H7a2 2 0 010 4H3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                <path d="M3 2L2 3l1 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
-          )}
         </div>
       </div>
     </div>

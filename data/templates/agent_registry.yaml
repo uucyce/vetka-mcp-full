@@ -13,7 +13,6 @@ roles:
   - callsign: "Alpha"
     domain: "engine"
     pipeline_stage: "coder"
-    tool_type: "claude_code"
     role_title: "Engine Architect"
     worktree: "cut-engine"
     branch: "claude/cut-engine"
@@ -44,7 +43,6 @@ roles:
   - callsign: "Beta"
     domain: "media"
     pipeline_stage: "coder"
-    tool_type: "claude_code"
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
@@ -81,7 +79,6 @@ roles:
   - callsign: "Gamma"
     domain: "ux"
     pipeline_stage: "coder"
-    tool_type: "claude_code"
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
@@ -108,7 +105,6 @@ roles:
   - callsign: "Delta"
     domain: "qa"
     pipeline_stage: "verifier"
-    tool_type: "claude_code"
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
@@ -134,7 +130,6 @@ roles:
   - callsign: "Epsilon"
     domain: "qa"
     pipeline_stage: "verifier"
-    tool_type: "claude_code"
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
@@ -145,7 +140,6 @@ roles:
       - "client/e2e/"
       - "tests/test_*.py"
       - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_*.md"
-      - "scripts/detect_*.py"                           # detect_merge_regressions.py + detect_xpass_drift.py (session E6)
     blocked_paths:
       - "client/src/components/"
       - "client/src/store/"
@@ -161,7 +155,6 @@ roles:
   - callsign: "Zeta"
     domain: "harness"
     pipeline_stage: null
-    tool_type: "claude_code"
     role_title: "Harness Engineer / Infrastructure"
     worktree: "harness"
     branch: "claude/harness"
@@ -195,7 +188,6 @@ roles:
   - callsign: "Eta"
     domain: "harness"
     pipeline_stage: null
-    tool_type: "claude_code"
     role_title: "Harness Engineer 2 / Infrastructure"
     worktree: "harness-eta"
     branch: "claude/harness-eta"
@@ -228,7 +220,6 @@ roles:
   - callsign: "Commander"
     domain: "architect"
     pipeline_stage: "architect"
-    tool_type: "claude_code"
     role_title: "Architect-Commander"
     worktree: "pedantic-bell"
     branch: "claude/pedantic-bell"
@@ -245,158 +236,6 @@ roles:
     key_docs:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/COMMANDER_ROLE_PROMPT.md"
       - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
-    roadmap: ""
-
-  # ═══════════════════════════════════════════════════════════
-  # POLARIS FLEET — Free-Model Agents (Phase 209.2)
-  # MARKER_209.POLARIS: 6 agents under Commander dispatch
-  # 3x Qwen 3.6 via opencode + 3x Vibe Mistral
-  # ═══════════════════════════════════════════════════════════
-
-  # ── Theta: Polaris Opencode #1 (Qwen 3.6) ──────────────
-  - callsign: "Theta"
-    domain: "engine"
-    pipeline_stage: "coder"
-    tool_type: "opencode"
-    role_title: "Polaris Engine Coder (Qwen)"
-    worktree: "polaris-theta"
-    branch: "claude/polaris-theta"
-    model_tier: "free"  # MARKER_209.POLARIS — free-tier model
-    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
-    fleet: "polaris"
-    owned_paths:
-      - "client/src/store/useTimelineInstanceStore.ts"
-      - "client/src/hooks/useCutHotkeys.ts"
-      - "client/src/components/cut/TimelineTrackView.tsx"
-      - "client/src-tauri/"
-      - "tests/test_*.py"
-    blocked_paths:
-      - "client/src/components/cut/MenuBar.tsx"
-      - "client/src/components/cut/panels/"
-      - "e2e/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ALPHA_*.md"
-    key_docs:
-      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
-    roadmap: ""
-
-  # ── Iota: Polaris Opencode #2 (Qwen 3.6) ───────────────
-  - callsign: "Iota"
-    domain: "media"
-    pipeline_stage: "coder"
-    tool_type: "opencode"
-    role_title: "Polaris Media Coder (Qwen)"
-    worktree: "polaris-iota"
-    branch: "claude/polaris-iota"
-    model_tier: "free"
-    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
-    fleet: "polaris"
-    owned_paths:
-      - "src/services/cut_codec_probe.py"
-      - "src/services/cut_render_engine.py"
-      - "src/services/cut_effects_engine.py"
-      - "src/services/cut_color_pipeline.py"
-      - "src/api/routes/cut_routes.py"
-    blocked_paths:
-      - "client/src/components/cut/MenuBar.tsx"
-      - "client/src/hooks/useCutHotkeys.ts"
-      - "e2e/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_BETA_*.md"
-    key_docs:
-      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
-    roadmap: ""
-
-  # ── Kappa: Polaris Opencode #3 (Qwen 3.6) ──────────────
-  - callsign: "Kappa"
-    domain: "harness"
-    pipeline_stage: "coder"
-    tool_type: "opencode"
-    role_title: "Polaris Infra Coder (Qwen)"
-    worktree: "polaris-kappa"
-    branch: "claude/polaris-kappa"
-    model_tier: "free"
-    model_id: "openrouter/qwen/qwen3-235b-a22b:free"
-    fleet: "polaris"
-    owned_paths:
-      - "scripts/"
-      - "tests/test_*.py"
-    blocked_paths:
-      - "client/src/"
-      - "e2e/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_ZETA_*.md"
-    key_docs:
-      - "docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md"
-    roadmap: ""
-
-  # ── Lambda: Polaris Vibe #1 (Mistral) ───────────────────
-  - callsign: "Lambda"
-    domain: "ux"
-    pipeline_stage: "coder"
-    tool_type: "vibe"
-    role_title: "Polaris UX Designer (Mistral)"
-    worktree: "polaris-lambda"
-    branch: "claude/polaris-lambda"
-    model_tier: "free"
-    model_id: "mistral/mistral-small-latest"
-    fleet: "polaris"
-    owned_paths:
-      - "client/src/components/cut/panels/*.tsx"
-      - "client/src/components/cut/VideoPreview.tsx"
-      - "client/src/components/cut/dockview-cut-theme.css"
-    blocked_paths:
-      - "src/services/"
-      - "src/orchestration/"
-      - "e2e/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_*.md"
-    key_docs:
-      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
-    roadmap: ""
-
-  # ── Mu: Polaris Vibe #2 (Mistral) ───────────────────────
-  - callsign: "Mu"
-    domain: "ux"
-    pipeline_stage: "coder"
-    tool_type: "vibe"
-    role_title: "Polaris UX Prototyper (Mistral)"
-    worktree: "polaris-mu"
-    branch: "claude/polaris-mu"
-    model_tier: "free"
-    model_id: "mistral/mistral-small-latest"
-    fleet: "polaris"
-    owned_paths:
-      - "client/src/components/cut/MenuBar.tsx"
-      - "client/src/components/cut/DockviewLayout.tsx"
-      - "client/src/store/useDockviewStore.ts"
-    blocked_paths:
-      - "src/services/"
-      - "src/orchestration/"
-      - "e2e/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_GAMMA_*.md"
-    key_docs:
-      - "docs/190_ph_CUT_WORKFLOW_ARCH/CUT_TARGET_ARCHITECTURE.md"
-    roadmap: ""
-
-  # ── Nu: Polaris Vibe #3 (Mistral) ───────────────────────
-  - callsign: "Nu"
-    domain: "qa"
-    pipeline_stage: "verifier"
-    tool_type: "vibe"
-    role_title: "Polaris QA Verifier (Mistral)"
-    worktree: "polaris-nu"
-    branch: "claude/polaris-nu"
-    model_tier: "free"
-    model_id: "mistral/mistral-small-latest"
-    fleet: "polaris"
-    owned_paths:
-      - "e2e/*.spec.cjs"
-      - "e2e/playwright.config.ts"
-      - "tests/test_*.py"
-    blocked_paths:
-      - "client/src/components/"
-      - "client/src/store/"
-      - "src/services/"
-    predecessor_docs: "docs/190_ph_CUT_WORKFLOW_ARCH/feedback/EXPERIENCE_DELTA*_*.md"
-    key_docs:
-      - "docs/190_ph_CUT_WORKFLOW_ARCH/RECON_CUT_E2E_TEST_ARCHITECTURE.md"
     roadmap: ""
 
 # ── Shared Zones ────────────────────────────────────────────
@@ -425,23 +264,3 @@ shared_zones:
     owners:
       Beta: "color/*, scopes/*, lut/*, probe/* endpoints"
     protocol: "Consider splitting per-domain route files"
-
-  # MARKER_201.SHARED_ZONES: High-cardinality files touched by many agents — suppress overlap warning
-  - file: "photo_parallax_playground/src/App.tsx"
-    owners:
-      Codex: "all sections"
-    protocol: "Declare scope in task description before touching"
-
-  - file: "src/orchestration/task_board.py"
-    owners:
-      Eta: "harness/infra sections (MARKER_201.*)"
-      Zeta: "harness/infra sections (MARKER_200.*)"
-    protocol: "Coordinate via task description; don't edit same function"
-
-  - file: "client/package.json"
-    owners: {}
-    protocol: "Any agent may add dependencies — declare in task"
-
-  - file: "package.json"
-    owners: {}
-    protocol: "Any agent may add dependencies — declare in task"

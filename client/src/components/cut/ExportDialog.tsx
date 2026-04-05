@@ -14,7 +14,6 @@ import { useState, useCallback, useRef, useEffect, type CSSProperties } from 're
 import { io, type Socket } from 'socket.io-client';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { API_BASE, getSocketUrl } from '../../config/api.config';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 // ─── Types ───
 
@@ -383,9 +382,6 @@ export default function ExportDialog() {
     setRenderError(null);
   }, [renderProgress, setShow, setRenderError]);
 
-  // MARKER_GAMMA-ESC-HOOK: Escape closes dialog + data-overlay prevents escapeContext from firing
-  useOverlayEscapeClose(close);
-
   // ─── Master render ───
   const startRender = useCallback(async () => {
     setRenderProgress(0);
@@ -605,7 +601,7 @@ export default function ExportDialog() {
   const isRendering = renderProgress !== null;
 
   return (
-    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div style={OVERLAY} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div style={DIALOG} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={HEADER}>

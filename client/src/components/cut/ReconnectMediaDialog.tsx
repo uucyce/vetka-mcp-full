@@ -11,7 +11,6 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 // ─── Types ───
 
@@ -125,10 +124,6 @@ export default function ReconnectMediaDialog({
   const [loading, setLoading] = useState(false);
   const [relinking, setRelinking] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const close = useCallback(() => onClose(), [onClose]);
-  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
-  useOverlayEscapeClose(close);
 
   // Run conform check on open
   const runCheck = useCallback(async () => {
@@ -275,7 +270,7 @@ export default function ReconnectMediaDialog({
   const remapCount = Object.keys(remap).filter((k) => remap[k] && remap[k] !== k).length;
 
   return (
-    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div style={OVERLAY} onClick={onClose}>
       <div style={DIALOG} onClick={(e) => e.stopPropagation()}>
         <div style={TITLE}>Reconnect Media</div>
 
@@ -376,7 +371,7 @@ export default function ReconnectMediaDialog({
           >
             {relinking ? 'Relinking...' : `Relink ${remapCount} file${remapCount !== 1 ? 's' : ''}`}
           </button>
-          <button style={BTN} onClick={close}>Close</button>
+          <button style={BTN} onClick={onClose}>Close</button>
         </div>
       </div>
     </div>

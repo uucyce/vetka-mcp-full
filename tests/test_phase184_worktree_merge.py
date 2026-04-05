@@ -110,9 +110,14 @@ async def test_execute_merge_cherry_pick(tmp_path):
         proc = AsyncMock()
         if "rev-parse" in args and "HEAD" in args:
             proc.communicate = AsyncMock(return_value=(b"abc123def456\n", b""))
+            proc.returncode = 0
+        elif "merge-base" in args and "--is-ancestor" in args:
+            # rc=1 means NOT an ancestor → cherry-pick should proceed
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 1
         else:
             proc.communicate = AsyncMock(return_value=(b"ok\n", b""))
-        proc.returncode = 0
+            proc.returncode = 0
         return proc
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec):
@@ -122,7 +127,7 @@ async def test_execute_merge_cherry_pick(tmp_path):
     assert result["commit_hash"] == "abc123def456"
 
     git_cmds = [a[1] for a in call_args]
-    assert "worktree" in git_cmds  # MARKER_201: temp worktree instead of checkout
+    assert "checkout" in git_cmds
     assert "cherry-pick" in git_cmds
 
 
@@ -173,7 +178,7 @@ async def test_execute_merge_squash(tmp_path):
 
     assert result["success"] is True
     git_cmds = [a[1] for a in call_args]
-    assert "worktree" in git_cmds  # MARKER_201: temp worktree instead of checkout
+    assert "checkout" in git_cmds
     assert "commit" in git_cmds
 
 
@@ -210,13 +215,20 @@ async def test_merge_request_full_flow(tmp_path):
         proc = AsyncMock()
         if "rev-parse" in args and "--verify" in args:
             proc.communicate = AsyncMock(return_value=(b"abc123\n", b""))
+            proc.returncode = 0
         elif "rev-parse" in args and "HEAD" in args:
             proc.communicate = AsyncMock(return_value=(b"final_hash_abc123\n", b""))
+            proc.returncode = 0
+        elif "merge-base" in args and "--is-ancestor" in args:
+            # rc=1 means NOT an ancestor → cherry-pick proceeds
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 1
         elif "pytest" in str(args):
             proc.communicate = AsyncMock(return_value=(b"50 tests collected\n", b""))
+            proc.returncode = 0
         else:
             proc.communicate = AsyncMock(return_value=(b"ok\n", b""))
-        proc.returncode = 0
+            proc.returncode = 0
         return proc
 
     with patch("asyncio.create_subprocess_exec", side_effect=mock_exec), \
@@ -260,6 +272,9 @@ async def test_merge_request_closure_tests_fail(tmp_path):
         if "rev-parse" in args and "--verify" in args:
             proc.communicate = AsyncMock(return_value=(b"def456\n", b""))
             proc.returncode = 0
+        elif "merge-base" in args and "--is-ancestor" in args:
+            proc.communicate = AsyncMock(return_value=(b"", b""))
+            proc.returncode = 1  # NOT an ancestor
         elif "pytest" in str(args) and "--co" not in args:
             # Closure test run fails
             proc.communicate = AsyncMock(return_value=(b"FAILED\n", b""))

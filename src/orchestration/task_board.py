@@ -77,32 +77,7 @@ PRIORITY_SOMEDAY = 5
 #   verified = QA gate passed (MARKER_195.20), ready for merge
 #   needs_fix = QA gate failed, needs re-work
 # MARKER_196.QA: Added "need_qa" — explicit QA gate request between done_worktree and verified
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix", "recon_done", "scout_recon"}
-
-# MARKER_205.VERIFIER_MIDDLEWARE: Lazy-loaded TaskVerifier for status transition gates.
-# If verifier.py (Phase 203 V1) is not yet deployed, all transitions pass through.
-_task_verifier = None
-_verifier_load_attempted = False
-VERIFIER_MAX_RETRIES = 3
-# Roles that bypass verifier checks (e.g. Commander correcting task state)
-VERIFIER_BYPASS_ROLES = {"Commander"}
-
-
-def _get_task_verifier():
-    """Lazy-load TaskVerifier. Returns None if verifier.py not available."""
-    global _task_verifier, _verifier_load_attempted
-    if _verifier_load_attempted:
-        return _task_verifier
-    _verifier_load_attempted = True
-    try:
-        from verifier import TaskVerifier
-        _task_verifier = TaskVerifier()
-        logger.info("[TaskBoard] VERIFIER_MIDDLEWARE: TaskVerifier loaded")
-    except ImportError:
-        logger.debug("[TaskBoard] VERIFIER_MIDDLEWARE: verifier.py not found, gate disabled")
-    except Exception as exc:
-        logger.warning("[TaskBoard] VERIFIER_MIDDLEWARE: failed to load TaskVerifier: %s", exc)
-    return _task_verifier
+VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -222,12 +197,7 @@ class TaskBoard:
         self.settings: Dict[str, Any] = {
             "max_concurrent": 2,
             "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
-            "default_preset": "dragon_silver",
-            # MARKER_202.SHERPA_SIGNAL: Sherpa availability status (queryable by any agent)
-            "sherpa_status": "stopped",  # idle | busy | stopped
-            "sherpa_pid": None,
-            "sherpa_last_seen": None,
-            "sherpa_tasks_enriched": 0,
+            "default_preset": "dragon_silver"
         }
         self.integrity_warning: str = ""
 
@@ -247,14 +217,6 @@ class TaskBoard:
         # MARKER_200.FOREVER: Module backfill removed from init path.
         # Bulk writes in init cause lock storms with 14 concurrent MCP processes.
         # Use action=backfill_modules for on-demand backfill (same pattern as FTS5).
-
-        # MARKER_201.EVENT_BUS: Initialize unified event bus with default subscribers.
-        # Audit log uses same DB path. init_event_bus is idempotent.
-        try:
-            from src.orchestration.event_bus import init_event_bus
-            self.event_bus = init_event_bus(db_path=self.db_path)
-        except Exception:
-            self.event_bus = None
 
         atexit.register(self.close)
 
@@ -493,39 +455,6 @@ class TaskBoard:
                 except Exception as e:
                     logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
 
-        if current < 2:
-            # Migration 2: Agent notifications table (MARKER_201.NOTIFY)
-            notif_exists = self.db.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='notifications'"
-            ).fetchone()
-            if notif_exists:
-                self._set_schema_version(2)
-            else:
-                try:
-                    self.db.executescript("""
-                        CREATE TABLE IF NOT EXISTS notifications (
-                            id TEXT PRIMARY KEY,
-                            source_role TEXT NOT NULL,
-                            target_role TEXT NOT NULL,
-                            message TEXT NOT NULL,
-                            ntype TEXT DEFAULT 'custom',
-                            task_id TEXT DEFAULT '',
-                            created_at TEXT NOT NULL,
-                            read_at TEXT DEFAULT '',
-                            is_read INTEGER DEFAULT 0
-                        );
-                        CREATE INDEX IF NOT EXISTS idx_notif_target ON notifications(target_role, is_read);
-                    """)
-                    self._set_schema_version(2)
-                    logger.info("[TaskBoard] Migration 2: notifications table created")
-                except sqlite3.OperationalError as e:
-                    if "locked" in str(e).lower():
-                        logger.warning("[TaskBoard] Migration 2 deferred — database locked")
-                        return
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
-                except Exception as e:
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
-
         # MARKER_199.DDL_FAST: _backfill_fts() removed from init path.
         # It inserted 1648 rows on every init when schema_version failed to write,
         # causing 14 MCP processes to deadlock on the same write lock.
@@ -723,138 +652,6 @@ class TaskBoard:
             logger.debug(f"[Debrief] Skipped query failed: {e}")
             return []
 
-    # ==========================================
-    # MARKER_201.NOTIFY: Agent-to-Agent Notifications
-    # ==========================================
-
-    def send_notification(
-        self,
-        source_role: str,
-        target_role: str,
-        message: str,
-        ntype: str = "custom",
-        task_id: str = "",
-    ) -> Dict[str, Any]:
-        """Send a notification from one agent to another.
-
-        Writes to SQLite (persistent) AND to file inbox (hook trigger).
-        """
-        import random
-        notif_id = f"notif_{int(time.time())}_{random.randint(10000, 99999)}"
-        now = datetime.now().isoformat()
-
-        try:
-            self.db.execute(
-                "INSERT INTO notifications (id, source_role, target_role, message, ntype, task_id, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (notif_id, source_role, target_role, message[:1000], ntype, task_id, now),
-            )
-            self.db.commit()
-        except Exception as e:
-            logger.warning(f"[Notify] DB write failed: {e}")
-            return {"success": False, "error": f"DB write failed: {e}"}
-
-        # Write to file inbox for hook-based real-time delivery
-        self._write_inbox(target_role, source_role, message, notif_id)
-
-        logger.info(f"[Notify] {source_role} → {target_role}: {message[:80]}")
-        return {"success": True, "notification_id": notif_id, "target_role": target_role}
-
-    def get_notifications(
-        self,
-        target_role: str,
-        unread_only: bool = True,
-        limit: int = 20,
-    ) -> List[Dict[str, Any]]:
-        """Get notifications for a specific agent role."""
-        try:
-            if unread_only:
-                cursor = self.db.execute(
-                    "SELECT id, source_role, target_role, message, ntype, task_id, created_at "
-                    "FROM notifications WHERE target_role = ? AND is_read = 0 "
-                    "ORDER BY created_at DESC LIMIT ?",
-                    (target_role, limit),
-                )
-            else:
-                cursor = self.db.execute(
-                    "SELECT id, source_role, target_role, message, ntype, task_id, created_at "
-                    "FROM notifications WHERE target_role = ? "
-                    "ORDER BY created_at DESC LIMIT ?",
-                    (target_role, limit),
-                )
-            return [
-                {
-                    "id": row[0], "from": row[1], "to": row[2],
-                    "message": row[3], "ntype": row[4],
-                    "task_id": row[5], "created_at": row[6],
-                }
-                for row in cursor
-            ]
-        except Exception as e:
-            logger.debug(f"[Notify] Read failed for {target_role}: {e}")
-            return []
-
-    def ack_notifications(
-        self,
-        target_role: str,
-        notification_ids: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
-        """Mark notifications as read. If no IDs given, marks all unread for role."""
-        now = datetime.now().isoformat()
-        try:
-            if notification_ids:
-                placeholders = ",".join("?" for _ in notification_ids)
-                self.db.execute(
-                    f"UPDATE notifications SET is_read = 1, read_at = ? "
-                    f"WHERE id IN ({placeholders}) AND target_role = ?",
-                    [now] + notification_ids + [target_role],
-                )
-            else:
-                self.db.execute(
-                    "UPDATE notifications SET is_read = 1, read_at = ? "
-                    "WHERE target_role = ? AND is_read = 0",
-                    (now, target_role),
-                )
-            self.db.commit()
-            return {"success": True, "acknowledged": True}
-        except Exception as e:
-            logger.warning(f"[Notify] Ack failed: {e}")
-            return {"success": False, "error": str(e)}
-
-    def _write_inbox(self, target_role: str, source_role: str, message: str, notif_id: str):
-        """Write notification to file inbox for hook-triggered delivery.
-
-        File: .claude/worktrees/<worktree>/.inbox
-        Format: one JSON line per notification (append mode).
-        """
-        try:
-            from src.services.agent_registry import get_agent_registry
-            registry = get_agent_registry()
-            role = registry.get_by_callsign(target_role)
-            if not role or not role.worktree:
-                logger.debug(f"[Notify] No worktree for role {target_role}, inbox skipped")
-                return
-
-            # Resolve inbox path: project_root/.claude/worktrees/<worktree>/.inbox
-            project_root = Path(self.board_file).parent.parent  # data/ → project root
-            inbox_path = project_root / ".claude" / "worktrees" / role.worktree / ".inbox"
-
-            if not inbox_path.parent.exists():
-                logger.debug(f"[Notify] Worktree dir missing: {inbox_path.parent}")
-                return
-
-            entry = json.dumps({
-                "id": notif_id,
-                "from": source_role,
-                "message": message[:500],
-                "at": datetime.now().strftime("%H:%M:%S"),
-            })
-            with open(inbox_path, "a") as f:
-                f.write(entry + "\n")
-
-        except Exception as e:
-            logger.debug(f"[Notify] Inbox write failed for {target_role}: {e}")
-
     @staticmethod
     def _task_to_row(task: dict) -> dict:
         """Convert in-memory task dict to DB row dict.
@@ -931,50 +728,6 @@ class TaskBoard:
             self._index_task_fts_inner(task)
         # MARKER_200.FOREVER: Cache coherence — write-through
         self.tasks[task["id"]] = task
-
-    def _insert_task(self, task: dict):
-        """Strict INSERT (no OR REPLACE) for new task creation.
-
-        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
-        _save_task keeps INSERT OR REPLACE for update paths.
-        Raises sqlite3.IntegrityError if task_id already exists in DB.
-        """
-        row = self._task_to_row(task)
-        row["updated_at"] = datetime.now().isoformat()
-        columns = list(row.keys())
-        placeholders = ", ".join("?" for _ in columns)
-        col_names = ", ".join(columns)
-        values = [row[c] for c in columns]
-        with self.db:
-            self.db.execute(
-                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
-                values,
-            )
-        # Cache coherence — write-through
-        self.tasks[task["id"]] = task
-        self._index_task_fts(task)
-
-    def _insert_task(self, task: dict):
-        """Strict INSERT (no OR REPLACE) for new task creation.
-
-        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
-        _save_task keeps INSERT OR REPLACE for update paths.
-        Raises sqlite3.IntegrityError if task_id already exists in DB.
-        """
-        row = self._task_to_row(task)
-        row["updated_at"] = datetime.now().isoformat()
-        columns = list(row.keys())
-        placeholders = ", ".join("?" for _ in columns)
-        col_names = ", ".join(columns)
-        values = [row[c] for c in columns]
-        with self.db:
-            self.db.execute(
-                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
-                values,
-            )
-        # Cache coherence — write-through
-        self.tasks[task["id"]] = task
-        self._index_task_fts(task)
 
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
@@ -1367,7 +1120,7 @@ class TaskBoard:
         return results
 
     # MARKER_192.2: Infer execution_mode from agent_type
-    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex", "opencode", "local_ollama"}
+    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex"}
     # MARKER_191.8: Also match by agent_name when agent_type is unknown
     _MANUAL_AGENT_NAMES = {"opus", "cursor", "codex", "grok", "claude-code", "opencode"}
 
@@ -1491,56 +1244,21 @@ class TaskBoard:
         return None
 
     def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
-        """MARKER_124.3D / MARKER_201.EVENT_BUS: Emit event via unified Event Bus.
+        """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
+        MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
 
-        Routes through EventBus → subscribers (AuditSubscriber, HTTPNotifySubscriber,
-        PiggybackCollector). Replaces direct httpx POST with subscriber-based fan-out.
-
-        Backward compatible: all existing call sites continue to work unchanged.
+        Uses fire-and-forget HTTP POST to our own REST endpoint which has sio access.
+        Falls back silently if server isn't running.
 
         Args:
             action: Event action type (update, task_claimed, task_completed, etc.)
             event_data: Optional extra data to include in event (task_id, assigned_to, etc.)
         """
         try:
-            # Build payload from event_data + board summary
-            payload = {}
-            if event_data:
-                payload.update(event_data)
-
-            # Extract source_agent from event_data if available
-            source_agent = ""
-            if event_data:
-                source_agent = event_data.get("assigned_to", "")
-
-            # Build tags for routing
-            tags = []
-            if action in ("task_completed", "task_claimed", "task_needs_fix", "task_verified"):
-                tags.append("notify_commander")
-            if action in ("task_completed",):
-                tags.append("persist")
-
-            # Emit via Event Bus if available
-            if self.event_bus is not None:
-                from src.orchestration.event_bus import AgentEvent
-                event = AgentEvent(
-                    event_type=action,
-                    source_agent=source_agent,
-                    payload=payload,
-                    tags=tags,
-                )
-                self.event_bus.emit(event)
-            else:
-                # Fallback: direct HTTP POST (legacy path)
-                self._notify_board_update_legacy(action, event_data)
-        except Exception:
-            pass  # Never block save on notification failure
-
-    def _notify_board_update_legacy(self, action: str, event_data: Optional[Dict[str, Any]] = None):
-        """Legacy HTTP notification path — used only when Event Bus is not available."""
-        try:
             import asyncio
             summary = self.get_board_summary()
+
+            # MARKER_130.C18C: Build payload with optional event_data
             payload = {"action": action, "summary": summary}
             if event_data:
                 payload.update(event_data)
@@ -1560,9 +1278,9 @@ class TaskBoard:
                 loop = asyncio.get_running_loop()
                 loop.create_task(_emit())
             except RuntimeError:
-                pass
+                pass  # No event loop (sync context)
         except Exception:
-            pass
+            pass  # Never block save on notification failure
 
     # MARKER_137.S1_1_EVENT_DISPATCH: Update board settings (auto_dispatch, max_concurrent, etc.)
     def update_settings(self, **kwargs) -> Dict[str, Any]:
@@ -1577,111 +1295,6 @@ class TaskBoard:
             self._save_settings()
             self._notify_board_update("settings_updated")
         return {"updated": updated, "settings": self.settings}
-
-    # ==========================================
-    # CONTEXT CHECKPOINT — MARKER_209.CONTEXT_RESTART
-    # ==========================================
-
-    def save_context_checkpoint(self, role: str, reason: str = "context_exhaustion",
-                                extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Save agent context checkpoint for restart recovery.
-
-        Called when context exhaustion is detected. Persists current task state
-        so a restarted agent can resume from where it left off.
-
-        Args:
-            role: Agent callsign (Alpha, Beta, etc.)
-            reason: Why checkpoint was created (context_exhaustion, manual, etc.)
-            extra: Additional context to persist
-
-        Returns:
-            Dict with checkpoint path and contents
-        """
-        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
-
-        checkpoint = {
-            "role": role,
-            "reason": reason,
-            "checkpoint_time": datetime.now().isoformat(),
-        }
-
-        # Find current claimed task for this role
-        try:
-            cursor = self.db.execute(
-                "SELECT id, title, extra FROM tasks WHERE status = 'claimed' "
-                "AND (json_extract(extra, '$.assigned_to') = ? OR json_extract(extra, '$.owner_agent') = ?) "
-                "ORDER BY json_extract(extra, '$.assigned_at') DESC LIMIT 1",
-                (role, role)
-            )
-            row = cursor.fetchone()
-            if row:
-                checkpoint["task_id"] = row[0]
-                checkpoint["task_title"] = row[1]
-                task_extra = json.loads(row[2]) if row[2] else {}
-                checkpoint["branch"] = task_extra.get("branch_name", "")
-                checkpoint["allowed_paths"] = task_extra.get("allowed_paths", [])
-        except Exception as e:
-            checkpoint["task_lookup_error"] = str(e)
-
-        if extra:
-            checkpoint.update(extra)
-
-        cp_path = checkpoint_dir / f"{role}_checkpoint.json"
-        cp_path.write_text(json.dumps(checkpoint, indent=2))
-        logger.info(f"MARKER_209.CHECKPOINT: Saved checkpoint for {role} -> {cp_path}")
-
-        return {"success": True, "checkpoint_path": str(cp_path), "checkpoint": checkpoint}
-
-    def load_context_checkpoint(self, role: str, consume: bool = True) -> Dict[str, Any]:
-        """Load and optionally consume agent context checkpoint.
-
-        Called by session_init when a restarted agent boots up.
-
-        Args:
-            role: Agent callsign
-            consume: If True, rename checkpoint to .consumed after reading
-
-        Returns:
-            Dict with checkpoint data, or empty dict if no checkpoint exists
-        """
-        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
-        cp_path = checkpoint_dir / f"{role}_checkpoint.json"
-
-        if not cp_path.exists():
-            return {"has_checkpoint": False}
-
-        try:
-            checkpoint = json.loads(cp_path.read_text())
-        except (json.JSONDecodeError, OSError) as e:
-            return {"has_checkpoint": False, "error": str(e)}
-
-        result = {"has_checkpoint": True, "checkpoint": checkpoint}
-
-        if consume:
-            consumed_path = checkpoint_dir / f"{role}_checkpoint.consumed.json"
-            cp_path.rename(consumed_path)
-            result["consumed"] = True
-
-        logger.info(f"MARKER_209.CHECKPOINT: Loaded checkpoint for {role} (consume={consume})")
-        return result
-
-    def list_checkpoints(self) -> Dict[str, Any]:
-        """List all active checkpoints across agents."""
-        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
-        if not checkpoint_dir.exists():
-            return {"checkpoints": []}
-
-        checkpoints = []
-        for cp_file in checkpoint_dir.glob("*_checkpoint.json"):
-            try:
-                data = json.loads(cp_file.read_text())
-                data["_file"] = cp_file.name
-                checkpoints.append(data)
-            except Exception:
-                pass
-
-        return {"checkpoints": checkpoints}
 
     # ==========================================
     # CRUD OPERATIONS
@@ -1741,7 +1354,6 @@ class TaskBoard:
         execution_mode: Optional[str] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
         role: Optional[str] = None,    # MARKER_ZETA.D4: Agent callsign (Alpha/Beta/Gamma/Delta/Commander)
         domain: Optional[str] = None,  # MARKER_ZETA.D4: Domain (engine/media/ux/qa/architect)
-        allowed_tools: Optional[List[str]] = None,  # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim
     ) -> str:
         """Add a new task to the board.
 
@@ -1764,7 +1376,6 @@ class TaskBoard:
         """
         task_id = _generate_task_id()
         # MARKER_200.DEDUPE_FIX: Collision guard — if ID already exists, regenerate
-        # MARKER_201.DEDUPE_RAISE: Raise after max retries instead of silently continuing
         _collision_attempts = 0
         while task_id in self.tasks and _collision_attempts < 10:
             logger.warning(
@@ -1772,11 +1383,6 @@ class TaskBoard:
             )
             task_id = _generate_task_id()
             _collision_attempts += 1
-        if task_id in self.tasks:
-            raise RuntimeError(
-                f"[TaskBoard] ID collision unresolved after 10 retries: {task_id}. "
-                "This indicates a clock skew or PID collision — check system time."
-            )
         priority = max(1, min(5, priority))  # Clamp 1-5
         phase_type = self._normalize_phase_type(phase_type)
         protocol_fields = self._normalize_protocol_fields(
@@ -1874,9 +1480,6 @@ class TaskBoard:
             "closed_by": None,
             "closed_at": None,
             "closure_proof": None,
-            # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim this task
-            # Empty list = unrestricted (any tool_type can claim)
-            "allowed_tools": allowed_tools or [],
             "status_history": [],
         }
         self._append_history(
@@ -1894,8 +1497,7 @@ class TaskBoard:
             },
         )
         self.tasks[task_id] = task_payload
-        # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
-        self._insert_task(task_payload)
+        self._save_task(task_payload)
         self._notify_board_update("added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id
@@ -2098,51 +1700,6 @@ class TaskBoard:
                 if not has_commit:
                     logger.warning(f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash")
                     return False
-
-            # MARKER_205.VERIFIER_MIDDLEWARE: Gate on status transitions.
-            # Lazy-loads TaskVerifier (V1). If not available, passes through.
-            # Commander bypass: skip_verification or VERIFIER_BYPASS_ROLES.
-            skip_verification = updates.pop("skip_verification", False)
-            if new_status != old_status and not skip_verification:
-                caller_role = history_agent_name or str(task.get("assigned_to") or "")
-                if caller_role not in VERIFIER_BYPASS_ROLES:
-                    try:
-                        verifier = _get_task_verifier()
-                        if verifier is not None:
-                            verdict = verifier.check_transition(task, old_status, new_status)
-                            if not verdict.accepted:
-                                retries = (task.get("verify_retries") or 0) + 1
-                                rollback_status = verdict.rollback_to or old_status
-                                if retries >= VERIFIER_MAX_RETRIES:
-                                    rollback_status = "needs_fix"
-                                    verdict_reason = f"{verdict.reason} [MAX_RETRIES={VERIFIER_MAX_RETRIES}]"
-                                else:
-                                    verdict_reason = verdict.reason
-                                task["status"] = rollback_status
-                                task["verification_notes"] = verdict_reason
-                                task["verify_retries"] = retries
-                                self._save_task(task)
-                                self._append_history(
-                                    task,
-                                    event="verifier_rejected",
-                                    status=rollback_status,
-                                    agent_name=caller_role,
-                                    agent_type=str(task.get("agent_type") or ""),
-                                    source="verifier_middleware",
-                                    reason=verdict_reason,
-                                )
-                                logger.warning(
-                                    "[TaskBoard] VERIFIER rejected %s->%s for %s: %s (retries=%d)",
-                                    old_status, new_status, task_id, verdict_reason, retries,
-                                )
-                                return False
-                            # Accepted — reset retries
-                            if task.get("verify_retries"):
-                                updates["verify_retries"] = 0
-                    except Exception as exc:
-                        # Verifier must NEVER crash the task board
-                        logger.warning("[TaskBoard] VERIFIER_MIDDLEWARE error (passthrough): %s", exc)
-
         if "phase_type" in updates:
             try:
                 updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
@@ -2192,7 +1749,6 @@ class TaskBoard:
                           "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
                           "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
                           "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
-                          "verify_retries", "verification_notes", "scout_context",  # MARKER_205: Verifier + Scout fields
                           }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
@@ -2416,23 +1972,6 @@ class TaskBoard:
                     except Exception:
                         pass
 
-            # Check 4 (MARKER_201.CHERRY_PICK_STALE): branch_name with no commits ahead of main.
-            # When cherry-pick lands all branch commits on main without closing the task,
-            # branch becomes empty ahead of main → strong stale signal.
-            branch_name = task.get("branch_name")
-            if branch_name and score < 0.9:
-                try:
-                    branch_check = subprocess.run(
-                        ["git", "log", "--oneline", f"main..{branch_name}", "-1"],
-                        cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
-                    )
-                    # returncode 0 + empty stdout = branch exists but has nothing ahead of main
-                    if branch_check.returncode == 0 and not branch_check.stdout.strip():
-                        evidence.append(f"branch_empty_ahead_of_main: {branch_name} (all commits already on main)")
-                        score += 0.9
-                except Exception:
-                    pass
-
             # Check 3: allowed_paths have commits newer than task creation
             if score < 0.5:
                 allowed = task.get("allowed_paths") or []
@@ -2504,21 +2043,8 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued", "needs_fix", "recon_done"):
+        if task["status"] not in ("pending", "queued", "needs_fix"):
             return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
-
-        # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
-        task_allowed = task.get("allowed_tools") or []
-        if task_allowed and agent_type not in task_allowed:
-            logger.warning(
-                "[TaskBoard] TOOL_GUARD rejected claim: %s (%s) not in allowed_tools %s for task %s",
-                agent_name, agent_type, task_allowed, task_id,
-            )
-            return {
-                "success": False,
-                "error": f"Tool isolation: agent_type '{agent_type}' not in allowed_tools {task_allowed}",
-                "tool_isolation_rejected": True,
-            }
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
         inferred_mode = self._infer_execution_mode(agent_type, agent_name)
@@ -2550,12 +2076,6 @@ class TaskBoard:
             "assigned_to": agent_name,
             "agent_type": agent_type,
         })
-
-        # MARKER_207.NOTIFY_CLAIM: Auto-notify Commander when any agent claims a task
-        self._auto_notify(
-            task, self.NOTIF_TASK_CLAIMED,
-            source_role=agent_name,
-        )
 
         # MARKER_ZETA.D4: Warn-mode domain validation via AgentRegistry
         domain_warning = None
@@ -2621,20 +2141,6 @@ class TaskBoard:
         if task.get("status", "").startswith("done") or task.get("status") == "verified":
             return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
 
-        # MARKER_203.DOC_GATE_COMPLETE: Warn on completion if task has no docs attached.
-        # Soft gate: logs warning + injects doc_gate_warning in result.
-        # Hard block only for fix/build tasks (research/test are doc-exempt).
-        _has_docs = bool(task.get("architecture_docs")) or bool(task.get("recon_docs"))
-        _phase = task.get("phase_type", "")
-        _doc_exempt = _phase in ("research", "test")
-        _doc_gate_warning = None
-        if not _has_docs and not _doc_exempt:
-            _doc_gate_warning = (
-                f"DOC_GATE_COMPLETE: task {task_id} ({_phase}) has no architecture_docs or recon_docs. "
-                "Consider attaching docs before closing."
-            )
-            logger.warning(f"[TaskBoard] {_doc_gate_warning}")
-
         # MARKER_192.2: Allow execution_mode override at close time
         if execution_mode and execution_mode in ("pipeline", "manual"):
             task["execution_mode"] = execution_mode
@@ -2668,24 +2174,6 @@ class TaskBoard:
             logger.info(f"[TaskBoard] QA_GATE: git_auto_close → need_qa (not done_main) for {task_id}")
         else:
             final_status = "done_worktree" if is_worktree else "done_main"
-
-        # MARKER_201.BRANCH_GUARD: Warn if detected branch doesn't match role's expected branch
-        # Phase 1: warn-mode only (log warning, do not reject)
-        # Phase 2 (after TB_201.E validation): upgrade to reject
-        task_role = task.get("role", "")
-        if task_role and branch and branch != "main":
-            try:
-                from src.services.agent_registry import get_agent_registry
-                registry = get_agent_registry()
-                role_entry = registry.get_by_callsign(task_role)
-                if role_entry and role_entry.branch and role_entry.branch != branch:
-                    logger.warning(
-                        f"[TaskBoard] BRANCH_GUARD: task {task_id} role={task_role} "
-                        f"expects branch={role_entry.branch} but completing on branch={branch}. "
-                        f"Warn-mode — allowing completion."
-                    )
-            except Exception as e:
-                logger.debug(f"[TaskBoard] BRANCH_GUARD check skipped (non-fatal): {e}")
 
         # MARKER_198.GUARD: Require commit_hash for done_worktree — prevent phantom task closures
         if final_status == "done_worktree" and not commit_hash and not manual_override:
@@ -2749,13 +2237,6 @@ class TaskBoard:
             source_role=str(task.get("assigned_to") or ""),
         )
 
-        # MARKER_207.NOTIFY_QA: Auto-notify Delta (QA) when task goes to done_worktree
-        if final_status == "done_worktree":
-            self._auto_notify(
-                task, self.NOTIF_TASK_DONE_WORKTREE,
-                source_role=str(task.get("assigned_to") or ""),
-            )
-
         # MARKER_ZETA.D4: Warn-mode allowed_paths validation on complete
         ownership_warnings = []
         try:
@@ -2777,8 +2258,6 @@ class TaskBoard:
         logger.info(f"[TaskBoard] Task {task_id} → {final_status}{branch_info}" +
                     (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
         result = {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
-        if _doc_gate_warning:
-            result["doc_gate_warning"] = _doc_gate_warning
         if ownership_warnings:
             result["ownership_warnings"] = ownership_warnings
 
@@ -2850,11 +2329,6 @@ class TaskBoard:
     NOTIF_TASK_NEEDS_FIX = "task_needs_fix"
     NOTIF_READY_TO_MERGE = "ready_to_merge"
     NOTIF_TASK_COMPLETED = "task_completed"
-    NOTIF_TASK_CLAIMED = "task_claimed"          # MARKER_207.NOTIFY_CLAIM
-    NOTIF_TASK_DONE_WORKTREE = "task_done_worktree"  # MARKER_207.NOTIFY_QA
-    NOTIF_TASK_DONE_MAIN = "task_done_main"      # MARKER_207.NOTIFY_NEXT
-    NOTIF_AGENT_COMPACTING = "agent_compacting"  # MARKER_207.COMPACTING
-    NOTIF_DILEMMA = "dilemma_escalation"         # MARKER_207.DILEMMA
     NOTIF_CUSTOM = "custom"
 
     def notify(
@@ -2893,58 +2367,6 @@ class TaskBoard:
                 "[TaskBoard] NOTIFY: %s → %s [%s] %s",
                 source_role or "system", target_role, ntype, message[:80],
             )
-
-            # MARKER_204.FILE_SIGNAL: Write file signal for hook-based delivery
-            try:
-                import json as _json_signal
-                signals_dir = Path.home() / ".claude" / "signals"
-                signals_dir.mkdir(parents=True, exist_ok=True)
-                signal_file = signals_dir / f"{target_role}.json"
-                signal_entry = {
-                    "id": notif_id,
-                    "from": source_role or "system",
-                    "message": message[:500],
-                    "ntype": ntype,
-                    "task_id": task_id,
-                    "ts": now,
-                }
-                # Append to existing array (don't overwrite)
-                existing = []
-                if signal_file.exists():
-                    try:
-                        existing = _json_signal.loads(signal_file.read_text(encoding="utf-8"))
-                        if not isinstance(existing, list):
-                            existing = []
-                    except Exception:
-                        existing = []
-                existing.append(signal_entry)
-                signal_file.write_text(_json_signal.dumps(existing, ensure_ascii=False), encoding="utf-8")
-                logger.debug("[TaskBoard] FILE_SIGNAL: wrote %s (%d entries)", signal_file.name, len(existing))
-            except Exception as sig_err:
-                logger.debug("[TaskBoard] FILE_SIGNAL write failed (non-fatal): %s", sig_err)
-
-            # MARKER_205.NOTIFY_BUS: Emit notify event through EventBus → UDS daemon
-            # This enables autospawn: daemon receives notify, checks tmux, spawns offline agent.
-            try:
-                if hasattr(self, 'event_bus') and self.event_bus:
-                    from src.orchestration.event_bus import AgentEvent
-                    event = AgentEvent(
-                        event_type="notify",
-                        source_agent="task_board",
-                        payload={
-                            "action": "notify",
-                            "target_role": target_role,
-                            "source_role": source_role,
-                            "message": message[:500],
-                            "ntype": ntype,
-                            "task_id": task_id,
-                            "notification_id": notif_id,
-                        },
-                    )
-                    self.event_bus.emit(event)
-            except Exception as bus_err:
-                logger.debug("[TaskBoard] NOTIFY_BUS emit failed (non-fatal): %s", bus_err)
-
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")
@@ -3059,33 +2481,6 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
             targets.append(("Commander", f"Task completed by {owner}: {title}"))
-        elif ntype == self.NOTIF_TASK_CLAIMED:
-            # MARKER_207.NOTIFY_CLAIM: Inform Commander when agent claims work
-            targets.append(("Commander", f"Task claimed by {owner}: {title} [{task_id}]"))
-        elif ntype == self.NOTIF_TASK_DONE_WORKTREE:
-            # MARKER_207.NOTIFY_QA: Route done_worktree to Delta for QA verification
-            targets.append(("Delta", f"Ready for QA: {title} [{task_id}] by {owner}"))
-        elif ntype == self.NOTIF_TASK_DONE_MAIN:
-            # MARKER_207.NOTIFY_NEXT: After merge to main, wake next agent with pending tasks
-            # Find next role with pending tasks to wake
-            try:
-                pending = [t for t in self.tasks.values()
-                           if t.get("status") == "pending" and t.get("role")]
-                if pending:
-                    # Group by role, pick first role with oldest pending task
-                    next_task = min(pending, key=lambda t: t.get("created_at", ""))
-                    next_role = next_task.get("role", "")
-                    if next_role:
-                        targets.append((next_role, f"Slot open — merge complete for {title}. You have pending tasks."))
-            except Exception:
-                pass  # Non-critical
-            targets.append(("Commander", f"Task merged to main: {title} [{task_id}]"))
-        elif ntype == self.NOTIF_AGENT_COMPACTING:
-            # MARKER_207.COMPACTING: Agent lost context, Commander should prepare replacement
-            targets.append(("Commander", f"COMPACTING: agent {owner} lost context on {title} [{task_id}]. Prepare replacement."))
-        elif ntype == self.NOTIF_DILEMMA:
-            # MARKER_207.DILEMMA: Agent stuck on protocol decision, needs Commander approval
-            targets.append(("Commander", f"DILEMMA: {owner} needs decision on {title} [{task_id}]. {extra_msg}"))
         else:
             return  # Unknown type, skip
 
@@ -3095,187 +2490,6 @@ class TaskBoard:
                     target, msg,
                     ntype=ntype, source_role=source_role, task_id=task_id,
                 )
-
-    # ==========================================
-    # MARKER_207.HEARTBEAT: Synapse Heartbeat Monitor
-    # ==========================================
-
-    HEARTBEAT_SILENT_THRESHOLD_SEC = 180  # 3 minutes
-
-    def synapse_heartbeat_check(self) -> Dict[str, Any]:
-        """MARKER_207.HEARTBEAT: Check for silent agents and ping them.
-
-        Reads synapse_sessions.json for last_activity timestamps.
-        If an agent has been silent > 3 min and has a claimed task, sends
-        'status report' via synapse_write.sh and notifies Commander.
-
-        Returns:
-            {silent_agents: [...], pinged: [...], compacting: [...]}
-        """
-        import json as _json_hb
-
-        sessions_file = PROJECT_ROOT / "data" / "synapse_sessions.json"
-        if not sessions_file.exists():
-            return {"silent_agents": [], "pinged": [], "compacting": []}
-
-        try:
-            sessions = _json_hb.loads(sessions_file.read_text(encoding="utf-8"))
-        except Exception:
-            return {"silent_agents": [], "pinged": [], "error": "Failed to read synapse_sessions.json"}
-
-        now = time.time()
-        silent = []
-        pinged = []
-        compacting = []
-
-        for role_name, session_info in sessions.items():
-            if not isinstance(session_info, dict):
-                continue
-            last_activity = session_info.get("last_activity", 0)
-            is_compacting = session_info.get("compacting", False)
-            tmux_session = session_info.get("tmux_session", f"vetka-{role_name}")
-
-            if is_compacting:
-                # Agent reported context compacting — notify Commander
-                compacting.append(role_name)
-                # Find their claimed task
-                claimed_task = self._find_claimed_task_for_role(role_name)
-                if claimed_task:
-                    self._auto_notify(
-                        claimed_task, self.NOTIF_AGENT_COMPACTING,
-                        source_role=role_name,
-                    )
-                continue
-
-            idle_sec = now - last_activity if last_activity else 0
-            if idle_sec > self.HEARTBEAT_SILENT_THRESHOLD_SEC and last_activity > 0:
-                silent.append({"role": role_name, "idle_sec": int(idle_sec)})
-
-                # Try to ping via synapse_write
-                try:
-                    import subprocess
-                    subprocess.Popen(
-                        ["bash", str(PROJECT_ROOT / "scripts" / "synapse_write.sh"),
-                         role_name, "status report — you have been silent for 3+ minutes"],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                    pinged.append(role_name)
-                except Exception:
-                    pass  # Non-critical
-
-        return {"silent_agents": silent, "pinged": pinged, "compacting": compacting}
-
-    def report_compacting(self, role: str) -> Dict[str, Any]:
-        """MARKER_207.COMPACTING: Agent reports context window compacting.
-
-        Called when an agent detects its context is being compressed.
-        Notifies Commander to prepare a replacement agent.
-
-        Args:
-            role: Agent callsign reporting compacting
-
-        Returns:
-            {success: True, notified: "Commander"}
-        """
-        claimed_task = self._find_claimed_task_for_role(role)
-        if claimed_task:
-            self._auto_notify(
-                claimed_task, self.NOTIF_AGENT_COMPACTING,
-                source_role=role,
-            )
-        else:
-            # No claimed task — still notify Commander
-            self.notify(
-                "Commander",
-                f"COMPACTING: agent {role} lost context (no active task). May need respawn.",
-                ntype=self.NOTIF_AGENT_COMPACTING,
-                source_role=role,
-            )
-        return {"success": True, "notified": "Commander"}
-
-    def _find_claimed_task_for_role(self, role: str) -> Optional[Dict[str, Any]]:
-        """Find the currently claimed/running task for a given role."""
-        for task in self.tasks.values():
-            if (task.get("status") in ("claimed", "running")
-                    and (task.get("assigned_to") == role or task.get("role") == role)):
-                return task
-        return None
-
-    # ==========================================
-    # MARKER_207.SCOUT_MERGE: Pre-merge Scout Manifest
-    # ==========================================
-
-    def _scout_pre_merge_manifest(self, task: Dict[str, Any], branch: str) -> Optional[Dict[str, Any]]:
-        """MARKER_207.SCOUT_MERGE: Generate Scout pre-merge manifest.
-
-        Before merging, Scout scans the branch diff to build a manifest of:
-        - Files changed (with line counts)
-        - Functions/classes modified
-        - Potential conflicts with other pending tasks
-
-        Args:
-            task: Task being merged
-            branch: Branch to analyze
-
-        Returns:
-            Manifest dict or None if Scout unavailable
-        """
-        try:
-            import subprocess
-            # Get diff stat for the branch
-            result = subprocess.run(
-                ["git", "diff", "--stat", f"main...{branch}"],
-                capture_output=True, text=True, timeout=10,
-                cwd=str(PROJECT_ROOT),
-            )
-            if result.returncode != 0:
-                return None
-
-            diff_stat = result.stdout.strip()
-
-            # Get changed files list
-            result_files = subprocess.run(
-                ["git", "diff", "--name-only", f"main...{branch}"],
-                capture_output=True, text=True, timeout=10,
-                cwd=str(PROJECT_ROOT),
-            )
-            changed_files = result_files.stdout.strip().split("\n") if result_files.returncode == 0 else []
-
-            # Check for overlap with other claimed/running tasks' allowed_paths
-            overlap_risks = []
-            for other_task in self.tasks.values():
-                if other_task.get("id") == task.get("id"):
-                    continue
-                if other_task.get("status") not in ("claimed", "running", "done_worktree"):
-                    continue
-                other_paths = other_task.get("allowed_paths", [])
-                for changed_file in changed_files:
-                    for op in other_paths:
-                        if changed_file.startswith(op.rstrip("/")):
-                            overlap_risks.append({
-                                "file": changed_file,
-                                "conflicting_task": other_task.get("id"),
-                                "conflicting_role": other_task.get("role", ""),
-                            })
-
-            manifest = {
-                "branch": branch,
-                "task_id": task.get("id"),
-                "diff_stat": diff_stat,
-                "changed_files": changed_files[:50],  # Cap at 50
-                "file_count": len(changed_files),
-                "overlap_risks": overlap_risks[:10],  # Cap at 10
-            }
-
-            logger.info(
-                "[TaskBoard] SCOUT_MERGE: manifest for %s — %d files, %d overlap risks",
-                branch, len(changed_files), len(overlap_risks),
-            )
-            return manifest
-
-        except Exception as e:
-            logger.debug(f"[TaskBoard] SCOUT_MERGE manifest failed (non-fatal): {e}")
-            return None
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
@@ -3487,13 +2701,6 @@ class TaskBoard:
             _history_reason="merge verified on main",
         )
         logger.info(f"[TaskBoard] Task {task_id} promoted: → done_main (commit {merge_commit_hash[:8]} verified on main)")
-
-        # MARKER_207.NOTIFY_NEXT: After done_main, notify next queued agent if any pending tasks exist
-        self._auto_notify(
-            task, self.NOTIF_TASK_DONE_MAIN,
-            source_role=role or "Commander",
-        )
-
         return {"success": True, "task_id": task_id, "status": "done_main"}
 
     async def run_closure_protocol(
@@ -4050,25 +3257,21 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        # MARKER_201.QA_WARN: Warn (not block) if task was not verified by QA.
-        # Commander may legitimately skip QA — we log it and flag the result.
-        _qa_skipped = task.get("status") != "verified"
-        if _qa_skipped:
-            self._append_history(
-                task,
-                event="qa_skipped_warning",
-                status=task.get("status", ""),
-                agent_name="merge_request",
-                agent_type="system",
-                source="merge_request",
-                reason=f"merge_request called without QA verification (status={task.get('status')}). "
-                       "Commander override — proceeding.",
+        # MARKER_200.QA_GATE: Warn (don't block) if task hasn't been through QA
+        # merge_request is the actual merge — after this, code is on main.
+        # We warn but don't block because Commander may need to merge urgently.
+        _task_status = task.get("status", "")
+        if _task_status == "done_worktree":
+            _history = task.get("status_history", [])
+            _was_verified = any(
+                h.get("status") == "verified" or h.get("event") == "verified"
+                for h in _history
             )
-            self._save_task(task)
-            logger.warning(
-                "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
-                task_id, task.get("status"),
-            )
+            if not _was_verified:
+                logger.warning(
+                    f"[MergeRequest] QA_GATE WARNING: Task {task_id} merging without QA verification. "
+                    f"Recommended flow: done_worktree → request_qa → verified → merge_request"
+                )
 
         branch = task.get("branch_name")
         # MARKER_195.21: Auto-infer branch from role via AgentRegistry
@@ -4123,14 +3326,6 @@ class TaskBoard:
             except Exception:
                 pass
 
-        # MARKER_207.SCOUT_MERGE: Generate pre-merge manifest for conflict detection
-        scout_manifest = self._scout_pre_merge_manifest(task, branch)
-        if scout_manifest and scout_manifest.get("overlap_risks"):
-            logger.warning(
-                "[MergeRequest] SCOUT detected %d overlap risks for %s — proceeding with caution",
-                len(scout_manifest["overlap_risks"]), task_id,
-            )
-
         if not commits:
             return {"success": False, "error": f"No commits found on '{branch}' ahead of main"}
 
@@ -4165,32 +3360,6 @@ class TaskBoard:
                     pass
                 filtered_commits.append(_ch)
             if not filtered_commits:
-                # MARKER_200.MERGE_AUTO_FIX: Update task status + log before returning
-                # QA fix: early-return was skipping status update → task stuck in limbo
-                try:
-                    from src.orchestration.action_registry import ActionRegistry
-                    registry = ActionRegistry()
-                    registry.log_action(
-                        run_id=f"merge_{task_id}",
-                        agent="opus",
-                        action="merge_skip",
-                        file=f"{branch}→main",
-                        result="noop",
-                        session_id=task.get("session_id"),
-                        task_id=task_id,
-                        metadata={"reason": "all_commits_already_on_main", "strategy": strategy},
-                    )
-                    registry.flush()
-                except Exception as e:
-                    logger.debug(f"[MergeRequest] ActionRegistry log failed (non-fatal): {e}")
-                self.update_task(
-                    task_id,
-                    status="done_main",
-                    merge_result={"status": "noop", "note": "All commits already on main"},
-                    _history_event="merged_to_main",
-                    _history_source="merge_request",
-                    _history_reason=f"{branch} → main: all commits already present (noop)",
-                )
                 return {"success": True, "note": "All commits already on main", "commits_merged": 0}
             commits = filtered_commits
 
@@ -4214,37 +3383,8 @@ class TaskBoard:
                     "closure_results": closure_results,
                 }
 
-        # MARKER_201.DOC_GUARD_HEAL: Detect deleted docs, auto-restore after merge.
-        # Root cause: agents doing git add . or checkout --theirs during rebase mark
-        # new-on-main docs as deleted, destroying them on merge.
-        # Policy: main wins unless task explicitly owns the doc via allowed_paths.
-        _heal_docs = []
-        try:
-            doc_check_proc = await asyncio.create_subprocess_exec(
-                "git", "diff", "--diff-filter=D", "--name-only", f"main..{branch}", "--", "docs/",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            doc_out, _ = await doc_check_proc.communicate()
-            deleted_docs = [f for f in doc_out.decode().strip().split("\n") if f.strip()]
-            if deleted_docs:
-                _owned = set(task.get("allowed_paths") or [])
-                _heal_docs = [d for d in deleted_docs if d not in _owned]
-                if _heal_docs:
-                    logger.warning(
-                        "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) — will auto-restore from main.",
-                        branch, len(_heal_docs),
-                    )
-        except Exception as _doc_guard_err:
-            logger.debug(f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}")
-
-        # Step 5: Execute merge in temp worktree (never touches root checkout)
-        merge_result = await self._execute_merge(
-            branch, strategy, commits,
-            task.get("allowed_paths") or [],
-            heal_docs=_heal_docs,
-        )
+        # Step 5: Execute merge
+        merge_result = await self._execute_merge(branch, strategy, commits)
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
             return merge_result
@@ -4322,223 +3462,207 @@ class TaskBoard:
         result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
         if stale_hint:
             result["stale_hint"] = stale_hint
-        # MARKER_201.QA_WARN: Surface qa_skipped flag in result for Commander visibility
-        if _qa_skipped:
-            result["qa_skipped"] = True
-            result["qa_warning"] = "Task was not verified by QA before merge. Check merge carefully."
-        # MARKER_207.SCOUT_MERGE: Include Scout manifest in result
-        if scout_manifest:
-            result["scout_manifest"] = scout_manifest
         return result
 
     async def _execute_merge(
-        self, branch: str, strategy: str, commits: List[str],
-        allowed_paths: List[str] = None,
-        heal_docs: List[str] = None,
+        self, branch: str, strategy: str, commits: List[str]
     ) -> Dict[str, Any]:
-        """Execute git merge in a temporary worktree.
-
-        MARKER_201.TEMP_WORKTREE: All merge operations happen in a temp worktree.
-        Root checkout stays untouched — no stash, no checkout, no dirty state.
-
-        MARKER_201.SNAPSHOT: New strategy — overlay only allowed_paths from branch
-        onto main, creating one clean integration commit.
+        """Execute the actual git merge operation.
 
         Strategies:
         - cherry-pick: Cherry-pick each commit (default, safest)
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
-        - snapshot: Overlay allowed_paths from branch onto main (one commit)
-
-        Args:
-            allowed_paths: Task's owned paths for snapshot strategy scoping.
-            heal_docs: Docs deleted by branch to auto-restore from main after merge.
         """
-        import tempfile
-
-        tmp_dir = None
-        tmp_branch = f"_vtk_merge_{os.getpid()}"
-
-        async def _git(*args, cwd=None):
-            """Helper: run git command, return (returncode, stdout, stderr)."""
-            proc = await asyncio.create_subprocess_exec(
-                "git", *args,
-                cwd=cwd or tmp_dir,
+        try:
+            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
+            # Stash any uncommitted changes first to prevent checkout failure
+            stash_proc = await asyncio.create_subprocess_exec(
+                "git", "stash", "--include-untracked",
+                cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            out, err = await proc.communicate()
-            return proc.returncode, out.decode().strip(), err.decode().strip()
+            stash_out, _ = await stash_proc.communicate()
+            did_stash = b"No local changes" not in stash_out
 
-        try:
-            # MARKER_201.TEMP_WORKTREE: Create temp worktree for merge.
-            # Uses a temporary branch at main's tip — root checkout is never touched.
-
-            # Prune stale worktrees
-            await _git("worktree", "prune", cwd=str(PROJECT_ROOT))
-
-            # Delete leftover temp branch from previous failed run (if any)
-            await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
-
-            # Create temp branch at main
-            rc, _, err = await _git("branch", tmp_branch, "main", cwd=str(PROJECT_ROOT))
-            if rc != 0:
-                return {"success": False, "error": f"Failed to create temp branch: {err}"}
-
-            # Create temp worktree directory
-            tmp_dir = tempfile.mkdtemp(prefix="vetka-merge-")
-            # git worktree needs the dir to not exist — remove the empty one mkdtemp created
-            os.rmdir(tmp_dir)
-
-            rc, _, err = await _git("worktree", "add", tmp_dir, tmp_branch, cwd=str(PROJECT_ROOT))
-            if rc != 0:
-                return {"success": False, "error": f"Failed to create temp worktree: {err}"}
-
-            logger.info(f"[MergeRequest] Temp worktree created at {tmp_dir} on {tmp_branch}")
+            proc = await asyncio.create_subprocess_exec(
+                "git", "checkout", "main",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            co_stdout, co_stderr = await proc.communicate()
+            if proc.returncode != 0:
+                # Restore stash if we stashed
+                if did_stash:
+                    await (await asyncio.create_subprocess_exec(
+                        "git", "stash", "pop",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )).communicate()
+                return {
+                    "success": False,
+                    "error": f"git checkout main failed (rc={proc.returncode}): {co_stderr.decode().strip()}",
+                }
 
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
-            claude_md_path = Path(tmp_dir) / "CLAUDE.md"
+            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
+            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
+            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
             claude_md_backup = None
             if claude_md_path.exists():
                 claude_md_backup = claude_md_path.read_text()
 
-            # ---- Execute strategy (all operations in tmp_dir) ----
-
-            if strategy == "snapshot":
-                # MARKER_201.SNAPSHOT: Take main as base, overlay only allowed_paths
-                # from branch. Creates one clean integration commit — no history replay,
-                # no conflicts from diverged branches, no doc deletions.
-                if not allowed_paths:
-                    return {"success": False, "error": "strategy=snapshot requires allowed_paths"}
-
-                for fpath in allowed_paths:
-                    rc, _, err = await _git("checkout", branch, "--", fpath)
-                    if rc != 0:
-                        logger.debug(f"[MergeRequest] snapshot: '{fpath}' not on {branch}, skipping")
-
-                # Check if anything changed
-                rc, st_out, _ = await _git("status", "--porcelain")
-                if not st_out:
-                    return {"success": True, "commit_hash": "noop", "note": "snapshot: no file changes vs main"}
-
-                # Stage and commit
-                await _git("add", "-A")
-                rc, _, err = await _git(
-                    "commit", "-m",
-                    f"Snapshot merge {branch} into main via TaskBoard (allowed_paths only)",
-                )
-                if rc != 0:
-                    return {"success": False, "error": f"Snapshot commit failed: {err}"}
-
-            elif strategy == "cherry-pick":
-                # MARKER_200.IS_ANCESTOR: Cherry-pick commits oldest-first,
-                # skipping any already on main (prevents replay conflicts)
+            if strategy == "cherry-pick":
+                # MARKER_200.IS_ANCESTOR: Cherry-pick commits in order (oldest first),
+                # skipping any that are already on main (prevents replay conflicts)
                 skipped_ancestors = []
-                for _ch in reversed(commits):
-                    rc, _, _ = await _git("merge-base", "--is-ancestor", _ch, tmp_branch)
-                    if rc == 0:
-                        skipped_ancestors.append(_ch)
-                        logger.info(f"[MergeRequest] Skipped {_ch} — already ancestor of main")
+                for commit_hash in reversed(commits):
+                    # Check if commit is already an ancestor of main
+                    ancestor_proc = await asyncio.create_subprocess_exec(
+                        "git", "merge-base", "--is-ancestor", commit_hash, "main",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await ancestor_proc.communicate()
+                    if ancestor_proc.returncode == 0:
+                        # Already on main — skip
+                        skipped_ancestors.append(commit_hash)
+                        logger.info(f"[MergeRequest] Skipped {commit_hash} — already ancestor of main")
                         continue
 
-                    rc, _, err = await _git("cherry-pick", _ch)
-                    if rc != 0:
-                        if "empty" in err or "nothing to commit" in err:
-                            await _git("cherry-pick", "--skip")
-                            skipped_ancestors.append(_ch)
-                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {_ch}")
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "cherry-pick", commit_hash,
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout, stderr = await proc.communicate()
+                    if proc.returncode != 0:
+                        stderr_text = stderr.decode().strip()
+                        # MARKER_198.P1.MERGE: Handle empty cherry-pick (commit already on main)
+                        if "empty" in stderr_text or "nothing to commit" in stderr_text:
+                            skip_proc = await asyncio.create_subprocess_exec(
+                                "git", "cherry-pick", "--skip",
+                                cwd=str(PROJECT_ROOT),
+                                stdout=asyncio.subprocess.PIPE,
+                                stderr=asyncio.subprocess.PIPE,
+                            )
+                            await skip_proc.communicate()
+                            skipped_ancestors.append(commit_hash)
+                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
                             continue
                         # Abort cherry-pick on real conflict
-                        await _git("cherry-pick", "--abort")
+                        abort_proc = await asyncio.create_subprocess_exec(
+                            "git", "cherry-pick", "--abort",
+                            cwd=str(PROJECT_ROOT),
+                            stdout=asyncio.subprocess.PIPE,
+                            stderr=asyncio.subprocess.PIPE,
+                        )
+                        await abort_proc.communicate()
                         return {
                             "success": False,
-                            "error": f"Cherry-pick failed for {_ch}: {err}",
-                            "conflicting_commit": _ch,
+                            "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
+                            "conflicting_commit": commit_hash,
                             "skipped_ancestors": skipped_ancestors,
                         }
 
             elif strategy == "merge":
-                rc, _, err = await _git(
-                    "merge", "--no-ff", branch,
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", "--no-ff", branch,
                     "-m", f"Merge {branch} into main via TaskBoard",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                if rc != 0:
-                    await _git("merge", "--abort")
-                    return {"success": False, "error": f"Merge failed: {err}"}
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    # Abort merge
+                    abort_proc = await asyncio.create_subprocess_exec(
+                        "git", "merge", "--abort",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await abort_proc.communicate()
+                    return {
+                        "success": False,
+                        "error": f"Merge failed: {stderr.decode().strip()}",
+                    }
 
             elif strategy == "squash":
-                rc, _, err = await _git("merge", "--squash", branch)
-                if rc != 0:
-                    return {"success": False, "error": f"Squash failed: {err}"}
-
-                rc, _, err = await _git(
-                    "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "merge", "--squash", branch,
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
                 )
-                if rc != 0:
-                    return {"success": False, "error": f"Squash commit failed: {err}"}
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Squash failed: {stderr.decode().strip()}"}
 
+                # Commit the squash
+                proc = await asyncio.create_subprocess_exec(
+                    "git", "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout, stderr = await proc.communicate()
+                if proc.returncode != 0:
+                    return {"success": False, "error": f"Squash commit failed: {stderr.decode().strip()}"}
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
-            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if changed by merge
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
             if claude_md_backup is not None and claude_md_path.exists():
                 current_content = claude_md_path.read_text()
                 if current_content != claude_md_backup:
                     claude_md_path.write_text(claude_md_backup)
-                    await _git("add", "CLAUDE.md")
-                    await _git("commit", "--amend", "--no-edit")
-                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md")
+                    # Stage the restoration
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "add", "CLAUDE.md",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    # Amend the last commit to exclude the agent's CLAUDE.md change
+                    proc = await asyncio.create_subprocess_exec(
+                        "git", "commit", "--amend", "--no-edit",
+                        cwd=str(PROJECT_ROOT),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    await proc.communicate()
+                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
 
-            # MARKER_201.DOC_HEAL: Restore docs deleted by branch after merge.
-            # Uses main ref (pre-merge state) as source — tmp_branch started at main,
-            # so 'main' still points to the pre-merge commit.
-            if heal_docs:
-                healed = []
-                for doc_path in heal_docs:
-                    rc, _, err = await _git("checkout", "main", "--", doc_path)
-                    if rc == 0:
-                        healed.append(doc_path)
-                    else:
-                        logger.warning(f"[MergeRequest] DOC_HEAL: could not restore {doc_path}: {err[:100]}")
-                if healed:
-                    await _git("add", *healed)
-                    await _git("commit", "--amend", "--no-edit")
-                    logger.info(f"[MergeRequest] DOC_HEAL: auto-restored {len(healed)} doc(s): {healed}")
+            # Get resulting commit hash
+            proc = await asyncio.create_subprocess_exec(
+                "git", "rev-parse", "HEAD",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await proc.communicate()
+            commit_hash = stdout.decode().strip()[:12]
 
-            # Get resulting commit hash (full for update-ref, short for return)
-            rc, full_hash, _ = await _git("rev-parse", "HEAD")
-            commit_hash = full_hash[:12]
+            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
+            if did_stash:
+                await (await asyncio.create_subprocess_exec(
+                    "git", "stash", "pop",
+                    cwd=str(PROJECT_ROOT),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )).communicate()
 
-            # MARKER_201.TEMP_WORKTREE: Advance main ref to merge result.
-            # Uses update-ref (plumbing) — works regardless of what's checked out in root.
-            rc, _, err = await _git("update-ref", "refs/heads/main", full_hash, cwd=str(PROJECT_ROOT))
-            if rc != 0:
-                return {
-                    "success": False,
-                    "error": f"Failed to advance main ref: {err}",
-                    "merge_commit": commit_hash,
-                    "hint": f"Merge succeeded in temp worktree but main ref not updated. "
-                            f"Manual fix: git update-ref refs/heads/main {full_hash}",
-                }
-
-            logger.info(f"[MergeRequest] main advanced to {commit_hash} via temp worktree")
             return {"success": True, "commit_hash": commit_hash}
 
         except Exception as e:
             return {"success": False, "error": f"Merge execution failed: {e}"}
-
-        finally:
-            # MARKER_201.TEMP_WORKTREE: Cleanup temp worktree and branch.
-            # Always runs — even on error paths.
-            if tmp_dir and Path(tmp_dir).exists():
-                try:
-                    await _git("worktree", "remove", "--force", tmp_dir, cwd=str(PROJECT_ROOT))
-                except Exception:
-                    logger.warning(f"[MergeRequest] Failed to remove temp worktree {tmp_dir}")
-            try:
-                await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
-            except Exception:
-                pass
 
     async def _count_tests(self) -> int:
         """Run pytest --co -q to count available tests. Returns count or 0."""

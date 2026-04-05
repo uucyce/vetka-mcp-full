@@ -5,8 +5,7 @@
  * Allows pasting video/audio attributes from one clip to one or more target clips.
  * All state is local. Calls onApply(config) with selected attributes.
  */
-import { useState, type CSSProperties } from 'react';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
+import { useState, useEffect, useCallback, type CSSProperties } from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -220,8 +219,18 @@ export default function PasteAttributesDialog({
   const [videoOpen, setVideoOpen] = useState(true);
   const [audioOpen, setAudioOpen] = useState(true);
 
-  // MARKER_GAMMA-ESC-HOOK: Escape key closes overlay
-  useOverlayEscapeClose(onClose);
+  // Escape key closes
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    },
+    [onClose]
+  );
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   // Toggle single attribute
   const toggleAttr = (key: keyof PasteAttributesConfig) => {
@@ -267,7 +276,7 @@ export default function PasteAttributesDialog({
   };
 
   return (
-    <div style={styles.overlay} onClick={onClose} data-overlay="1">{/* MARKER_GAMMA-ESC-GUARD: guard escapeContext when dialog open */}
+    <div style={styles.overlay} onClick={onClose}>
       <div
         data-testid="paste-attributes-dialog"
         style={styles.dialog}

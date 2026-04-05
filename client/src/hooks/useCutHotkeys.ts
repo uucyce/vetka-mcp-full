@@ -950,17 +950,8 @@ export function useCutHotkeys(options: UseCutHotkeysOptions): UseCutHotkeysRetur
           const scope = ACTION_SCOPE[action];
           if (scope !== 'global') {
             if (!scope.includes(focusedPanel as FocusPanelId)) {
-              continue; // MARKER_GAMMA-SCOPE-FIX: was `return` — killed all subsequent actions in loop
+              return; // action not allowed in this panel — swallow silently
             }
-          }
-
-          // MARKER_GAMMA-ESC-GUARD: Don't fire escapeContext while a menu/overlay is open —
-          // let the component's own Esc handler handle it (preserving clip selection)
-          if (action === 'escapeContext' && (
-            document.querySelector('[data-menu-open="1"]') ||   // MenuBar dropdown
-            document.querySelector('[data-overlay="1"]')        // full-screen overlay (HotkeyEditor etc.)
-          )) {
-            return;
           }
 
           const handler = handlersRef.current[action];

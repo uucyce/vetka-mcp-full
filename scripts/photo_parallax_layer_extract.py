@@ -107,51 +107,8 @@ def bbox_mask(shape: tuple[int, int], bbox: dict, feather_px: int = 12) -> np.nd
 
 
 def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None, None]:
-    """Return the best connected component from a boolean mask.
-    Uses scipy.ndimage.label when available (O(N)), falls back to cv2,
-    then to pure-Python BFS with a pixel-count guard for safety."""
+    """Return the best connected component from a boolean mask."""
     h, w = mask.shape
-
-    # Fast path: scipy or cv2 for connected components
-    try:
-        from scipy.ndimage import label as _scipy_label
-        labeled, num_features = _scipy_label(mask.astype(np.uint8))
-        if num_features == 0:
-            return None, None
-        # Find largest by pixel count
-        comp_sizes = np.bincount(labeled.ravel())
-        comp_sizes[0] = 0  # ignore background
-        best_label = int(comp_sizes.argmax())
-        best_comp_mask = labeled == best_label
-        ys, xs = np.where(best_comp_mask)
-        area = len(ys)
-        x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-        expected_cx = w * 0.45
-        expected_cy = h * 0.62
-        comp_h = y1 - y0 + 1
-        comp_w = x1 - x0 + 1
-        cx = (x0 + x1) / 2
-        cy = (y0 + y1) / 2
-        score = min(area / 3000, 1.5) + min((comp_h / max(1, comp_w)) / 3, 1.5)
-        score += 1.2 * (1 - min(abs(cx - expected_cx) / max(1, w * 0.5), 1))
-        score += 1.2 * (1 - min(abs(cy - expected_cy) / max(1, h * 0.5), 1))
-        return best_comp_mask, {
-            "score": score, "area": area,
-            "bbox": {"x": x0, "y": y0, "width": comp_w, "height": comp_h},
-        }
-    except ImportError:
-        pass
-
-    # Guard: pure-Python BFS on >4M pixels will be too slow
-    if h * w > 4_000_000:
-        # Fallback: return entire mask as single component
-        ys, xs = np.where(mask)
-        if len(ys) == 0:
-            return None, None
-        x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-        return mask, {"score": 0.0, "area": int(mask.sum()),
-                      "bbox": {"x": x0, "y": y0, "width": x1 - x0 + 1, "height": y1 - y0 + 1}}
-
     visited = np.zeros((h, w), dtype=bool)
     best_mask: np.ndarray | None = None
     best_meta: dict | None = None
@@ -327,57 +284,6 @@ def vehicle_mask_from_clean_diff(
     }
 
 
-def atmospheric_mask_from_color_depth(
-    source_img: Image.Image,
-    depth: np.ndarray,
-    bbox: dict,
-) -> tuple[np.ndarray | None, dict]:
-    """Build a soft atmospheric mask from color statistics + depth inside a search window."""
-    w, h = source_img.size
-    x0 = max(0, int(bbox["x"] * w))
-    y0 = max(0, int(bbox["y"] * h))
-    x1 = min(w, int((bbox["x"] + bbox["width"]) * w))
-    y1 = min(h, int((bbox["y"] + bbox["height"]) * h))
-    if x1 <= x0 or y1 <= y0:
-        return None, {"reason": "empty_bbox"}
-
-    rgb = np.array(source_img, dtype=np.float32)[y0:y1, x0:x1]
-    win_depth = depth[y0:y1, x0:x1]
-    lum = rgb.mean(axis=2)
-    mx = rgb.max(axis=2)
-    mn = rgb.min(axis=2)
-    sat = (mx - mn) / np.maximum(mx, 1e-3)
-    blue = rgb[:, :, 2]
-
-    seed = (
-        (lum > np.percentile(lum, 65))
-        & (sat < np.percentile(sat, 40))
-        & (blue > np.percentile(blue, 60))
-        & (win_depth < np.percentile(win_depth, 75))
-    )
-    seed_img = (
-        Image.fromarray((seed.astype(np.uint8) * 255), "L")
-        .filter(ImageFilter.MaxFilter(5))
-        .filter(ImageFilter.GaussianBlur(5.0))
-    )
-    alpha_local = np.array(seed_img, dtype=np.float32) / 255.0
-
-    out = np.zeros((h, w), dtype=np.float32)
-    out[y0:y1, x0:x1] = alpha_local
-    cover = float(np.mean(out > 0.06))
-    if cover < 0.01 or cover > 0.08:
-        return None, {"reason": "coverage_rejected", "coverage": round(cover, 4)}
-
-    return out, {"reason": "ok", "coverage": round(cover, 4)}
-
-
-def expanded_mask(mask: np.ndarray, max_filter_size: int = 31, blur_radius: float = 10.0) -> np.ndarray:
-    """Expand a mask for soft local compositing."""
-    img = Image.fromarray((np.clip(mask, 0, 1) * 255).astype(np.uint8), "L")
-    img = img.filter(ImageFilter.MaxFilter(max_filter_size)).filter(ImageFilter.GaussianBlur(blur_radius))
-    return np.array(img, dtype=np.float32) / 255.0
-
-
 # ---------------------------------------------------------------------------
 # Layer extraction
 # ---------------------------------------------------------------------------
@@ -421,9 +327,6 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
     w, h = source_img.size
     source = np.array(source_img)
     print(f"[load] source: {w}x{h}")
-    lama_clean_img = None
-    if paths["lama_clean"].exists():
-        lama_clean_img = Image.open(paths["lama_clean"]).convert("RGB").resize((w, h), Image.LANCZOS)
     clean_no_vehicle_img = None
     if paths["clean_no_vehicle"].exists():
         clean_no_vehicle_img = Image.open(paths["clean_no_vehicle"]).convert("RGB").resize((w, h), Image.LANCZOS)
@@ -542,42 +445,22 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
                 canonical_ready = False
                 print(f"  [{pid}] {label}: walker diff rejected ({walker_meta.get('reason')})")
 
-        elif role == "environment-mid" and bbox:
-            steam_alpha, steam_meta = atmospheric_mask_from_color_depth(source_img, depth, bbox)
-            if steam_alpha is not None:
-                alpha = np.clip(steam_alpha, 0, 1)
-                mask_method = "atmospheric_color_depth"
-                canonical_ready = False
-                print(f"  [{pid}] {label}: atmospheric soft mask (coverage={steam_meta['coverage']})")
-            else:
-                mask_method = "depth_band+bbox"
-                canonical_ready = False
-                print(f"  [{pid}] {label}: atmospheric path rejected ({steam_meta.get('reason')})")
-
         elif role == "background-far":
-            if lama_clean_img is not None:
-                alpha = np.ones((h, w), dtype=np.float32)
-                mask_method = "lama_clean_fullframe"
-                canonical_ready = True
-                print(f"  [{pid}] {label}: LaMa clean full-frame background")
+            # Background = complement of all foreground alphas
+            if layer_alphas:
+                union = np.maximum.reduce(layer_alphas)
+                alpha = np.clip(1.0 - union * 0.92, 0.08, 1.0)
             else:
-                # Fallback only when no clean background exists.
-                if layer_alphas:
-                    union = np.maximum.reduce(layer_alphas)
-                    alpha = np.clip(1.0 - union * 0.92, 0.08, 1.0)
-                else:
-                    alpha = np.ones((h, w), dtype=np.float32)
-                mask_method = "complement"
-                canonical_ready = False
-                print(f"  [{pid}] {label}: complement alpha (hole-fill candidate)")
+                alpha = np.ones((h, w), dtype=np.float32)
+            mask_method = "complement"
+            canonical_ready = False
+            print(f"  [{pid}] {label}: complement alpha (hole-fill candidate)")
         else:
             mask_method = "depth_band+bbox"
             canonical_ready = False
             print(f"  [{pid}] {label}: depth band [{depth_lo:.4f}, {depth_hi:.4f}] + bbox, coverage={float(np.mean(alpha)):.4f}")
 
         layer_data = extract_layer(source, depth, alpha, (depth_lo, depth_hi))
-        if role == "background-far" and lama_clean_img is not None:
-            layer_data["rgba"][:, :, :3] = np.array(lama_clean_img)
 
         # Save layer files (canonical: mask not alpha)
         layer_prefix = f"layer_{pid}_{label.replace(' ', '_').lower()}"
@@ -599,7 +482,7 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             key=lambda ip: (-ip[1].get("z", 0), ip[0]),  # descending z, then original index
         )
         order_idx = next(
-            (rank for rank, (_, p) in enumerate(sorted_plates_by_z) if p.get("id") == pid),
+            (rank for rank, (_, p) in enumerate(sorted_plates_by_z) if p["id"] == pid),
             0,
         )
 
@@ -615,7 +498,7 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             "order": order_idx,
             "depthPriority": round(depth_priority, 3),
             "z": z,
-            "visible": True,  # always visible in layer_space.json; canonicalReady tracks validation
+            "visible": canonical_ready,
             "rgba": rgba_path.name,
             "mask": mask_path.name,
             "depth": depth_path.name,
@@ -632,8 +515,6 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
             "holeFilled": False,
             "maskMethod": mask_method,
             "canonicalReady": canonical_ready,
-            "cleanupScope": "no_vehicle_only" if role == "background-far" and mask_method == "lama_clean_fullframe" else "n/a",
-            "foregroundUnionCleared": False if role == "background-far" and mask_method == "lama_clean_fullframe" else None,
         })
 
         # Track non-background alphas for complement computation
@@ -650,46 +531,15 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
     bg_proto = next((p for p in proto_layers if p["id"] == (bg_layer or {}).get("id")), None)
     holefill_done = False
     if bg_layer and paths["lama_clean"].exists():
-        print("[hole-fill] Using union-clean background assembly")
+        print("[hole-fill] Using LaMa clean plate for background")
         lama = Image.open(paths["lama_clean"]).convert("RGB").resize((w, h), Image.LANCZOS)
-        lama_arr = np.array(lama, dtype=np.float32)
-        bg_rgb = lama_arr.copy()
-        bg_cleanup_scope = "lama_only"
-        foreground_union_cleared = False
-
-        vehicle_layer = next((l for l in layers_out if "vehicle" in l["id"]), None)
-        vehicle_proto = next((p for p in proto_layers if "vehicle" in p["id"]), None)
-        if paths["clean_no_vehicle"].exists() and vehicle_layer and vehicle_proto and vehicle_proto.get("canonicalReady"):
-            vehicle_mask = np.array(Image.open(outdir / vehicle_layer["mask"]), dtype=np.float32) / 255.0
-            vehicle_blend = expanded_mask(vehicle_mask, max_filter_size=35, blur_radius=12.0)
-            no_vehicle = Image.open(paths["clean_no_vehicle"]).convert("RGB").resize((w, h), Image.LANCZOS)
-            no_vehicle_arr = np.array(no_vehicle, dtype=np.float32)
-            bg_rgb = bg_rgb * (1.0 - vehicle_blend[:, :, None]) + no_vehicle_arr * vehicle_blend[:, :, None]
-            bg_cleanup_scope = "vehicle_partial"
-            if bg_proto:
-                bg_proto["vehicleBlendMask"] = vehicle_layer["mask"]
-
-        walker_proto = next((p for p in proto_layers if "walker" in p["id"]), None)
-        walker_layer = next((l for l in layers_out if "walker" in l["id"]), None)
-        if paths["clean_no_people"].exists() and walker_proto and walker_proto.get("canonicalReady") and walker_layer:
-            walker_mask = np.array(Image.open(outdir / walker_layer["mask"]), dtype=np.float32) / 255.0
-            walker_blend = expanded_mask(walker_mask, max_filter_size=31, blur_radius=10.0)
-            no_people = Image.open(paths["clean_no_people"]).convert("RGB").resize((w, h), Image.LANCZOS)
-            no_people_arr = np.array(no_people, dtype=np.float32)
-            bg_rgb = bg_rgb * (1.0 - walker_blend[:, :, None]) + no_people_arr * walker_blend[:, :, None]
-            bg_cleanup_scope = "vehicle_and_walker_partial"
-            if bg_proto:
-                bg_proto["walkerBlendMask"] = walker_layer["mask"]
-
-        if bg_proto:
-            bg_proto["cleanupScope"] = bg_cleanup_scope
-            bg_proto["foregroundUnionCleared"] = foreground_union_cleared
+        lama_arr = np.array(lama)
 
         bg_mask_path = outdir / bg_layer["mask"]
         bg_alpha = np.array(Image.open(bg_mask_path), dtype=np.float32) / 255.0
 
         bg_rgba = np.zeros((h, w, 4), dtype=np.uint8)
-        bg_rgba[:, :, :3] = np.clip(bg_rgb, 0, 255).astype(np.uint8)
+        bg_rgba[:, :, :3] = lama_arr
         bg_rgba[:, :, 3] = (bg_alpha * 255).astype(np.uint8)
 
         holefill_path = outdir / f"{bg_layer['id']}_holefill_rgba.png"
@@ -698,9 +548,6 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
         if bg_proto:
             bg_proto["holeFilled"] = True
             bg_proto["holefillRgba"] = holefill_path.name
-            if bg_proto.get("maskMethod") == "lama_clean_fullframe":
-                bg_proto.setdefault("cleanupScope", "lama_only")
-                bg_proto.setdefault("foregroundUnionCleared", False)
         print(f"  background hole-fill saved: {holefill_path.name}")
     elif bg_layer:
         print("[hole-fill] SKIP: no LaMa clean plate available")
@@ -753,10 +600,9 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
         "layers": proto_layers,
         "qualityCaveats": [
             "walker silhouette uses clean_no_people diff when available; fallback bbox+depth still needs SAM-quality segmentation",
-            "vehicle mask is constrained by clean_no_vehicle diff, reducing building spill but still not SAM-quality at fine edges",
-            "street steam uses atmospheric color+depth soft mask when available; still provisional and not a stable semantic cutout",
-            "background city is now assembled from LaMa plus clean-no-vehicle and clean-no-people blends, but suspended cables and other foreground residue can still remain",
+            "vehicle mask has building geometry spill on left side (subject_mask bakeoff, not pixel-perfect)",
             "hole-fill is LaMa-only, no generative inpaint for complex occlusions",
+            "steam/vehicle depth bands overlap ([0.005,0.053] vs [0.005,0.056]) — potential double-compositing",
             "layers with canonicalReady=false are provisional debug layers, not clean semantic cutouts",
         ],
     }

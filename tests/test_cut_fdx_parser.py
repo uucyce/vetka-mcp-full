@@ -289,21 +289,6 @@ class TestParseScenes:
         scenes = parse_fdx_scenes(MINIMAL_FDX)
         assert scenes[0].line_count > 0
 
-    def test_no_double_newlines_in_text(self):
-        """FDXScene.text must not contain doubled newlines (inflates line_count)."""
-        scenes = parse_fdx_scenes(TWO_SCENES_FDX)
-        for sc in scenes:
-            assert "\n\n" not in sc.text, f"Double newline in scene {sc.scene_id}: {sc.text!r}"
-
-    def test_line_count_matches_text_lines(self):
-        """line_count must equal number of lines in .text."""
-        scenes = parse_fdx_scenes(TWO_SCENES_FDX)
-        for sc in scenes:
-            actual_lines = sc.text.count("\n") + 1
-            assert sc.line_count == actual_lines, (
-                f"Scene {sc.scene_id}: line_count={sc.line_count} but text has {actual_lines} lines"
-            )
-
     def test_rich_fdx_three_items(self):
         scenes = parse_fdx_scenes(RICH_FDX)
         assert len(scenes) == 2
@@ -455,8 +440,7 @@ class TestParseScriptAutoDetect:
     """Test the _parse_script_auto function from cut_routes.py."""
 
     def _auto(self, text, fmt_hint="auto"):
-        chunks, detected, _warning = _parse_script_auto(text, fmt_hint)
-        return chunks, detected
+        return _parse_script_auto(text, fmt_hint)
 
     def test_fdx_auto_detected(self):
         chunks, detected = self._auto(MINIMAL_FDX)

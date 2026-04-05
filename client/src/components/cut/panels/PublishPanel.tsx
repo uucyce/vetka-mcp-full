@@ -169,14 +169,12 @@ export default function PublishPanel() {
         <>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
             <span
-              data-testid="publish-select-all"
               style={{ color: '#666', cursor: 'pointer', fontSize: 10, textDecoration: 'underline' }}
               onClick={selectAll}
             >
               Select All
             </span>
             <span
-              data-testid="publish-select-none"
               style={{ color: '#666', cursor: 'pointer', fontSize: 10, textDecoration: 'underline' }}
               onClick={selectNone}
             >
@@ -190,7 +188,6 @@ export default function PublishPanel() {
             return (
               <div
                 key={id}
-                data-testid={`publish-platform-checkbox-${id}`}
                 style={{
                   ...PLATFORM_ROW,
                   background: isOn ? '#1a1a1a' : 'transparent',
@@ -198,6 +195,7 @@ export default function PublishPanel() {
                 onClick={() => toggle(id)}
               >
                 <input
+                  data-testid={`publish-platform-checkbox-${id}`}
                   type="checkbox"
                   checked={isOn}
                   readOnly

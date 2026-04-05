@@ -22,7 +22,6 @@ import {
   savePresetName,
   getShortcutLabel,
 } from '../../hooks/useCutHotkeys';
-import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
@@ -199,37 +198,9 @@ export default function MenuBar() {
   // Store actions
   const store = useCutEditorStore;
   const dockStore = useDockviewStore;
-  // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
-  const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
 
-  // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
-  const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'cut_hotkey_preset' && e.newValue) {
-        setPresetName(e.newValue as HotkeyPresetName);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  // MARKER_GAMMA-RECENT-PROJECTS: Reactive recent projects list from localStorage
-  // Refresh on StorageEvent (other tab) and on File menu open (same tab)
-  const [recentProjects, setRecentProjects] = useState(loadRecent);
-  useEffect(() => {
-    if (openMenu === 'File') setRecentProjects(loadRecent());
-  }, [openMenu]);
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === 'cut_recent_projects') setRecentProjects(loadRecent());
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (reactive via presetName state)
-  const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, presetName);
+  // MARKER_GAMMA-SHORTLABEL: Preset-aware shortcut labels (updates when preset changes)
+  const sc = (action: Parameters<typeof getShortcutLabel>[0]) => getShortcutLabel(action, loadPresetName());
 
   // Close on Esc or outside click
   useEffect(() => {
@@ -252,13 +223,6 @@ export default function MenuBar() {
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
-  // MARKER_GAMMA-ESC-GUARD: Sync open state to DOM attribute so useCutHotkeys can skip escapeContext
-  useEffect(() => {
-    if (barRef.current) {
-      barRef.current.dataset.menuOpen = openMenu ? '1' : '';
-    }
-  }, [openMenu]);
-
   // MARKER_GAMMA-MENU-WIRE: Set transition alignment on selected clip
   const setTransitionAlignment = (alignment: 'center' | 'start' | 'end') => {
     const s = store.getState();
@@ -267,11 +231,11 @@ export default function MenuBar() {
     // Find existing transition on selected clip
     for (const lane of s.lanes) {
       const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
-      if (clip?.transition_out) {
+      if (clip?.transition) {
         void s.applyTimelineOps([{
           op: 'set_transition',
           clip_id: selectedClipId,
-          transition: { ...clip.transition_out, alignment },
+          transition: { ...clip.transition, alignment },
         }]);
         return;
       }
@@ -302,18 +266,9 @@ export default function MenuBar() {
         { label: 'Open Project...', shortcut: '⌘O', action: () => {
           window.dispatchEvent(new CustomEvent('cut:import-media'));
         }},
-        { label: 'Recent Projects', submenu: recentProjects.length === 0
-          ? [{ label: '(no recent projects)', disabled: true }]
-          : recentProjects.map((proj) => ({
-              label: proj.name || proj.id,
-              action: () => {
-                const params = new URLSearchParams();
-                params.set('sandbox_root', proj.path);
-                params.set('project_id', proj.id);
-                window.location.search = params.toString();
-              },
-            })),
-        },
+        { label: 'Recent Projects', submenu: [
+          { label: '(no recent projects)', disabled: true },
+        ]},
         { separator: true },
         { label: 'Close Tab', shortcut: '⌘W', action: () => {
           const s = store.getState();
@@ -452,10 +407,9 @@ export default function MenuBar() {
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
           { separator: true },
           ...(['premiere', 'fcp7', 'custom'] as HotkeyPresetName[]).map((p) => ({
-            label: `${presetName === p ? '\u2713 ' : '  '}${{ premiere: 'Premiere Pro', fcp7: 'Final Cut Pro 7', custom: 'Custom' }[p]}`,
+            label: `${loadPresetName() === p ? '\u2713 ' : '  '}${{ premiere: 'Premiere Pro', fcp7: 'Final Cut Pro 7', custom: 'Custom' }[p]}`,
             action: () => {
               savePresetName(p);
-              setPresetName(p);
               window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: p }));
             },
           })),
@@ -674,27 +628,17 @@ export default function MenuBar() {
           // TODO: requires per-clip transform state
         }, disabled: true },
         { separator: true },
-        { label: (() => {
-          // MARKER_GAMMA-CLIP-ENABLE: show checkmark when clip is enabled (not disabled)
-          const clipId = useSelectionStore.getState().selectedClipId;
-          const isDisabled = clipId ? store.getState().disabledClips?.has(clipId) : false;
-          return `${clipId && !isDisabled ? '\u2713 ' : '  '}Clip Enable`;
-        })(), action: () => {
-          const clipId = useSelectionStore.getState().selectedClipId;
-          if (clipId) store.getState().toggleClipEnabled(clipId);
-        }, disabled: !useSelectionStore.getState().selectedClipId },
+        { label: `${useSelectionStore.getState().selectedClipId ? '' : '  '}Clip Enable`, action: () => {
+          // TODO: toggle clip enabled/disabled state
+        }, disabled: true },
         { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
         { separator: true },
-        // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove clip effects
-        { label: 'Copy Filters', action: () => store.getState().copyFilters(),
-          disabled: !useSelectionStore.getState().selectedClipId },
-        { label: 'Paste Filters', action: () => store.getState().pasteFilters(),
-          disabled: !store.getState().filterClipboard || !useSelectionStore.getState().selectedClipId },
-        { label: 'Remove Filters', action: () => store.getState().removeFilters(),
-          disabled: !useSelectionStore.getState().selectedClipId },
+        { label: 'Copy Filters', disabled: true },
+        { label: 'Paste Filters', disabled: true },
+        { label: 'Remove Filters', disabled: true },
         { separator: true },
         { label: 'Composite Mode', submenu: [
           { label: 'Normal', disabled: true },
@@ -710,10 +654,8 @@ export default function MenuBar() {
     {
       label: 'Sequence',
       items: [
-        { label: 'Render In to Out', shortcut: '⌥R', action: () => store.getState().setShowExportDialog(true) },
+        { label: 'Render In to Out', shortcut: '⌥R', disabled: true },
         { label: 'Render All', disabled: true },
-        { separator: true },
-        { label: loopPlayback ? '✓ Loop' : 'Loop', action: () => store.getState().setLoopPlayback(!store.getState().loopPlayback) },
         { separator: true },
         { label: 'Add Edit', shortcut: '⌘K', action: () => {
           // MARKER_GAMMA-2: Routes through applyTimelineOps for undo support
@@ -784,7 +726,7 @@ export default function MenuBar() {
           const sel = useSelectionStore.getState();
           const ids = [...sel.selectedClipIds];
           if (ids.length !== 2) return;
-          void store.getState().applyTimelineOps([{ op: 'swap_clips', clip_a_id: ids[0], clip_b_id: ids[1] }]);
+          void store.getState().applyTimelineOps([{ op: 'swap_clips', clip_id_a: ids[0], clip_id_b: ids[1] }]);
         }},
         { separator: true },
         { label: 'Trim Edit', shortcut: 'T', disabled: true },

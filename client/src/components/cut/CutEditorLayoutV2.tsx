@@ -22,7 +22,6 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
 import { useCutHotkeys, type CutHotkeyHandlers } from '../../hooks/useCutHotkeys';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 import { useCutAutosave } from '../../hooks/useCutAutosave';
 import { useThreePointEdit } from '../../hooks/useThreePointEdit';
 import { useAudioPlayback, type AudioClipInfo } from '../../hooks/useAudioPlayback';
@@ -76,10 +75,8 @@ function SpeedControlModal() {
   const show = useCutEditorStore((s) => s.showSpeedControl);
   if (!show) return null;
   const close = () => useCutEditorStore.getState().setShowSpeedControl(false);
-  // MARKER_GAMMA-ESC-HOOK: Escape closes modal + data-overlay prevents escapeContext from firing
-  useOverlayEscapeClose(close);
   return (
-    <div data-testid="speed-control-overlay" data-overlay="1" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
+    <div data-testid="speed-control-overlay" role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}
          onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div data-testid="speed-control">
         <SpeedControl onClose={close} />
@@ -1327,86 +1324,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
-
-    // MARKER_GAMMA-TRIM5-WIRE: New hotkey handlers for TRIM5/SEL6 actions
-    rippleTrimToPlayhead: () => {
-      const sel = useSelectionStore.getState();
-      const s = useCutEditorStore.getState();
-      if (!sel.selectedClipId) return;
-      void s.applyTimelineOps([{
-        op: 'ripple_trim_to_playhead', clip_id: sel.selectedClipId, playhead: s.currentTime,
-      }]);
-    },
-    swapClips: () => {
-      const ids = [...useSelectionStore.getState().selectedClipIds];
-      if (ids.length !== 2) return;
-      void useCutEditorStore.getState().applyTimelineOps([{
-        op: 'swap_clips', clip_a_id: ids[0], clip_b_id: ids[1],
-      }]);
-    },
-    deleteMarker: () => {
-      const s = useCutEditorStore.getState();
-      const marker = s.markers.find((m) => Math.abs(m.start_sec - s.currentTime) < 0.1);
-      if (marker) {
-        void s.applyTimelineOps([{ op: 'delete_marker', marker_id: marker.marker_id }]);
-      }
-    },
-    pasteAttributes: () => useCutEditorStore.getState().pasteAttributes(),
-    selectClipAtPlayhead: () => {
-      const s = useCutEditorStore.getState();
-      for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            useSelectionStore.getState().setSelectedClip(clip.clip_id);
-            return;
-          }
-        }
-      }
-    },
-    selectAllOnTrack: () => {
-      const sel = useSelectionStore.getState();
-      const s = useCutEditorStore.getState();
-      if (!sel.selectedClipId) return;
-      let targetLaneId = '';
-      for (const lane of s.lanes) {
-        if (lane.clips.some((c) => c.clip_id === sel.selectedClipId)) { targetLaneId = lane.lane_id; break; }
-      }
-      if (!targetLaneId) return;
-      const ids = new Set<string>();
-      for (const lane of s.lanes) {
-        if (lane.lane_id === targetLaneId) { for (const c of lane.clips) ids.add(c.clip_id); }
-      }
-      useSelectionStore.setState({ selectedClipIds: ids });
-    },
-    selectForward: () => {
-      const s = useCutEditorStore.getState();
-      const sel = useSelectionStore.getState();
-      const ids = new Set(sel.selectedClipIds);
-      for (const lane of s.lanes) {
-        for (const c of lane.clips) { if (c.start_sec >= s.currentTime) ids.add(c.clip_id); }
-      }
-      useSelectionStore.setState({ selectedClipIds: ids });
-    },
-    toggleAVSelection: () => {
-      const s = useCutEditorStore.getState();
-      const targets = s.targetedLanes ?? new Set<string>();
-      if (targets.size === 0) return;
-      for (const laneId of targets) { s.toggleTarget(laneId); }
-    },
-    linkUnlinkClips: () => {
-      useSelectionStore.getState().toggleLinkedSelection();
-    },
-    focusSourceAcquire: () => useCutEditorStore.getState().setFocusedPanel('source'),
-    runPulseAnalysis: () => {
-      void useCutEditorStore.getState().applyTimelineOps([{ op: 'run_pulse_analysis' }]);
-    },
-    runAutoMontageFavorites: () => {
-      void useCutEditorStore.getState().applyTimelineOps([{ op: 'run_automontage_favorites' }]);
-    },
-    exportTimeline: () => {
-      useCutEditorStore.getState().setShowExportDialog(true);
-    },
-  }), [saveProject, threePointInsert, threePointOverwrite]);
+  }), [saveProject, saveProjectAs, performInsert, performOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
@@ -1452,13 +1370,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       }
       const doSeek = isSourceFocused ? s.seekSource : s.seek;
       const newTime = curTime + dt * shuttleSpeed;
-      // MARKER_GAMMA-LOOP: If loop playback is on and we've reached the end, wrap back
-      if (!isSourceFocused && s.loopPlayback && maxDur > 0 && newTime >= maxDur) {
-        const loopStart = s.sequenceMarkIn ?? 0;
-        doSeek(loopStart);
-      } else {
-        doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
-      }
+      doSeek(Math.max(0, maxDur > 0 ? Math.min(newTime, maxDur) : newTime));
 
       shuttleRafRef.current = requestAnimationFrame(step);
     };

@@ -65,13 +65,13 @@ _SECTION_TIERS: Dict[str, int] = {
     "persisted": 1, "user_preferences": 1,
     # T2: Important context
     "task_board_summary": 2, "engram_learnings": 2, "next_steps": 2,
-    "my_focus": 2, "project_digest": 2, "role_memory": 2,
+    "my_focus": 2, "project_digest": 2,
     # T3: Enrichment
     "reflex_recommendations": 3, "reflex_warnings": 3, "blocked_tools": 3,
     "semantic_lessons": 3, "jepa_session_lens": 3, "capabilities": 3,
     "context_hints": 3,
     # T4: Specialist / diagnostic
-    "digest": 4, "memory_health": 4, "agent_metrics": 4, "reflex_report": 4,
+    "digest": 4, "memory_health": 4, "reflex_report": 4,
     "freshness_events": 4, "other_agents": 4,
 }
 
@@ -1346,22 +1346,6 @@ class SessionInitTool(BaseMCPTool):
             if my_focus:
                 context["my_focus"] = my_focus
 
-        # MARKER_203.ROLE_MEMORY: Inject per-role experiential memory
-        _callsign = role_context.get("callsign") if role_context else None
-        if _callsign:
-            try:
-                from src.memory.role_memory_writer import load_recent
-                _recent = load_recent(_callsign, last_n=3)
-                if _recent:
-                    context["role_memory"] = {
-                        "callsign": _callsign,
-                        "last_sessions": _recent,
-                        "file": f"memory/roles/{_callsign}/MEMORY.md",
-                        "count": len(_recent),
-                    }
-            except Exception:
-                pass  # never fatal — write side may not exist yet
-
         # MARKER_194.1: Claimed tasks overlay — show other agents' active work
         try:
             from src.orchestration.task_board import get_task_board
@@ -1538,9 +1522,45 @@ class SessionInitTool(BaseMCPTool):
                         "available_roles": _reg.list_callsigns(),
                     }
 
-            # MARKER_196.4.1: VETKA_MCP_CWD branch detection chain REMOVED.
-            # All agents now use session_init(role=X) explicitly via CLAUDE.md template.
-            # If no role= provided, task board is READ_ONLY — agent must pass role=.
+            # Fallback: branch detection (backward-compatible, no role= provided)
+            if not _role and not role_name:
+                import os
+
+                _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
+                _branch_result = _sp.run(
+                    ["git", "branch", "--show-current"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                    cwd=_detect_cwd,
+                )
+                _current_branch = (
+                    _branch_result.stdout.strip()
+                    if _branch_result.returncode == 0
+                    else ""
+                )
+
+                if _current_branch == "main" or not _current_branch:
+                    _toplevel = _sp.run(
+                        ["git", "rev-parse", "--show-toplevel"],
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                        cwd=_detect_cwd,
+                    )
+                    _toplevel_path = (
+                        _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
+                    )
+                    if _toplevel_path and "worktrees" in _toplevel_path:
+                        _wt_name = Path(_toplevel_path).name
+                        for _r in _reg.roles:
+                            if _r.worktree == _wt_name:
+                                _current_branch = _r.branch
+                                break
+
+                _role = _reg.get_by_branch(_current_branch) if _current_branch else None
+                if _role:
+                    _role_source = "branch_detection"
 
             # MARKER_200.AUTO_PROVISION: Auto-provision if no role found
             if not _role:
@@ -1959,66 +1979,6 @@ class SessionInitTool(BaseMCPTool):
             get_stm_buffer().save_to_disk()
         except Exception:
             pass  # STM save errors never block session init
-
-        # MARKER_203.AGENT_METRICS: Task velocity, merge lag, active agents
-        try:
-            from src.orchestration.task_board import get_task_board
-            from datetime import datetime as _dt, timedelta as _td
-
-            _board = get_task_board()
-            _all_tasks = _board.get_queue()
-            _now = _dt.now()
-            _7d_ago = (_now - _td(days=7)).isoformat()
-
-            # Task velocity: completed in last 7 days, per agent
-            _velocity: dict = {}
-            for _t in _all_tasks:
-                _ca = _t.get("completed_at", "")
-                if _ca and _ca >= _7d_ago:
-                    _agent = _t.get("assigned_to") or "unknown"
-                    _velocity[_agent] = _velocity.get(_agent, 0) + 1
-
-            # Merge lag: avg hours from done_worktree → done_main (last 20 merged)
-            _lags = []
-            for _t in _all_tasks:
-                if _t.get("status") != "done_main":
-                    continue
-                _hist = _t.get("status_history") or []
-                _wt_ts = None
-                _dm_ts = None
-                for _ev in _hist:
-                    if _ev.get("status") == "done_worktree" and not _wt_ts:
-                        _wt_ts = _ev.get("ts", "")
-                    if _ev.get("status") == "done_main" and not _dm_ts:
-                        _dm_ts = _ev.get("ts", "")
-                if _wt_ts and _dm_ts and _dm_ts > _wt_ts:
-                    try:
-                        _lag_h = (_dt.fromisoformat(_dm_ts) - _dt.fromisoformat(_wt_ts)).total_seconds() / 3600
-                        _lags.append(round(_lag_h, 1))
-                    except Exception:
-                        pass
-            _lags = _lags[-20:]  # last 20
-
-            # Active agents: currently claimed tasks
-            _active = {}
-            for _t in _all_tasks:
-                if _t.get("status") == "claimed":
-                    _agent = _t.get("assigned_to") or "unknown"
-                    _active[_agent] = _active.get(_agent, 0) + 1
-
-            context["agent_metrics"] = {
-                "velocity_7d": _velocity,
-                "total_completed_7d": sum(_velocity.values()),
-                "merge_lag_hours": {
-                    "avg": round(sum(_lags) / len(_lags), 1) if _lags else None,
-                    "min": min(_lags) if _lags else None,
-                    "max": max(_lags) if _lags else None,
-                    "sample_size": len(_lags),
-                },
-                "active_agents": _active,
-            }
-        except Exception:
-            pass  # Metrics never block session_init
 
         # MARKER_198.MEM_HEALTH: Memory subsystem health dashboard
         try:

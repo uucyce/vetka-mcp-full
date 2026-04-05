@@ -110,16 +110,6 @@ export type ClipTransition = {
   audio_curve?: 'equal_power' | 'linear';
 };
 
-// MARKER_GAMMA-LAYERUI-P1: Layer manifest meta (lightweight pointer stored on clip by Beta)
-export interface LayerManifestMeta {
-  manifest_path: string;
-  format: string;
-  layer_count: number;
-  has_foreground: boolean;
-  has_background: boolean;
-  sample_id: string;
-}
-
 export type TimelineClip = {
   clip_id: string;
   scene_id?: string;
@@ -142,8 +132,15 @@ export type TimelineClip = {
     confidence?: number;
     reference_path?: string;
   };
-  // MARKER_GAMMA-LAYERUI-P1: Layer manifest reference (populated by Beta on depth map generation)
-  layer_manifest?: LayerManifestMeta;
+  // MARKER_LAYERFX: Layer manifest metadata (§6 of canonical spec)
+  layer_manifest?: {
+    manifest_path: string;
+    format: string; // "layer_space" | "plate_export"
+    layer_count: number;
+    has_foreground: boolean;
+    has_background: boolean;
+    sample_id: string;
+  };
 };
 
 export type TimelineLane = {
@@ -249,8 +246,6 @@ interface CutEditorState {
   lockedLanes: Set<string>;      // MARKER_W2.1: locked lanes (no edits allowed)
   targetedLanes: Set<string>;    // MARKER_W2.1: targeted lanes (insert/overwrite destination)
   hiddenLanes: Set<string>;      // MARKER_FIX-TIMELINE-2: hidden lanes (not rendered in playback/export)
-  disabledClips: Set<string>;    // MARKER_GAMMA-CLIP-ENABLE: disabled clips (FCP7 Ch.26 — ghosted, excluded from export)
-  filterClipboard: ClipEffects | null;  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste Filters clipboard
   collapsedTracks: Set<string>;  // MARKER_FCP7FIX: collapsed track lane IDs (height → 16px)
   laneVolumes: Record<string, number>;
   lanePans: Record<string, number>;    // MARKER_RECON_21: -1 (full left) to +1 (full right), 0 = center
@@ -263,7 +258,7 @@ interface CutEditorState {
   renamingClipId: string | null; // MARKER_FCP7FIX: clip currently being inline-renamed
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
-  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | 'generation' | null;
+  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null;
 
   // === MARKER_W3.6: Tool State Machine ===
   // MARKER_W5.TRIM: Extended tool state machine (FCP7 Ch.44)
@@ -297,11 +292,6 @@ interface CutEditorState {
   audioSampleRate: 48000 | 44100 | 96000;
   audioBitDepth: 16 | 24 | 32;
   showProjectSettings: boolean;         // dialog visibility
-  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
-  showEditMarkerDialog: boolean;
-  editingMarkerId: string | null;
-  // MARKER_GAMMA-LOOP: Loop playback (FCP7 Ch.8)
-  loopPlayback: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -388,7 +378,6 @@ interface CutEditorState {
   showClipNames: boolean;
   showClipBorders: boolean;
   showWaveforms: boolean;
-  waveformHiddenLanes: Set<string>;  // MARKER_A3.4: per-lane waveform visibility
   showThumbnails: boolean;           // MARKER_B57: filmstrip thumbnails on video clips
   showThroughEdits: boolean;
   showClipLabels: boolean;
@@ -446,7 +435,6 @@ interface CutEditorState {
   toggleTarget: (laneId: string) => void;    // MARKER_W2.1
   setExclusiveTarget: (laneId: string) => void; // MARKER_TL3: Exclusive lane target
   toggleVisibility: (laneId: string) => void; // MARKER_FIX-TIMELINE-2: eye icon
-  toggleClipEnabled: (clipId: string) => void; // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26
   setLaneVolume: (laneId: string, volume: number) => void;
   setLanePan: (laneId: string, pan: number) => void;  // MARKER_RECON_21
   toggleSnap: () => void;
@@ -482,7 +470,7 @@ interface CutEditorState {
   setViewMode: (mode: 'nle' | 'debug') => void;
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
   // MARKER_W1.2: Panel Focus
-  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | 'generation' | null) => void;
+  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null) => void;
   // MARKER_W3.6: Tool State Machine
   setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom' | 'slip' | 'slide' | 'ripple' | 'roll') => void;
   // MARKER_W4.5: Project Settings
@@ -493,10 +481,6 @@ interface CutEditorState {
   setAudioSampleRate: (rate: 48000 | 44100 | 96000) => void;
   setAudioBitDepth: (bits: 16 | 24 | 32) => void;
   setShowProjectSettings: (show: boolean) => void;
-  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
-  setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
-  // MARKER_GAMMA-LOOP: Loop playback
-  setLoopPlayback: (loop: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -548,7 +532,6 @@ interface CutEditorState {
   toggleShowClipNames: () => void;
   toggleShowClipBorders: () => void;
   toggleShowWaveforms: () => void;
-  toggleLaneWaveform: (laneId: string) => void;  // MARKER_A3.4
   toggleShowThroughEdits: () => void;
   toggleShowClipLabels: () => void;
   toggleShowRubberBand: () => void;
@@ -560,10 +543,6 @@ interface CutEditorState {
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
   resetClipEffects: (clipId: string) => void;
-  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters
-  copyFilters: () => void;
-  pasteFilters: () => void;
-  removeFilters: () => void;
 
   // MARKER_KF67: Keyframe actions (FCP7 Ch.67)
   addKeyframe: (clipId: string, property: string, timeSec: number, value: number) => void;
@@ -676,8 +655,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   lockedLanes: new Set<string>(),
   targetedLanes: new Set<string>(),
   hiddenLanes: new Set<string>(),
-  disabledClips: new Set<string>(),
-  filterClipboard: null,
   collapsedTracks: new Set<string>(),
   laneVolumes: {},
   lanePans: {},
@@ -708,11 +685,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   audioSampleRate: 48000,
   audioBitDepth: 24,
   showProjectSettings: false,
-  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
-  showEditMarkerDialog: false,
-  editingMarkerId: null,
-  // MARKER_GAMMA-LOOP: Loop playback
-  loopPlayback: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -792,7 +764,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   showClipNames: true,
   showClipBorders: true,
   showWaveforms: true,
-  waveformHiddenLanes: new Set<string>(),  // MARKER_A3.4
   showThumbnails: true,  // MARKER_B57: video filmstrip on by default
   showThroughEdits: false,
   showClipLabels: false,
@@ -916,14 +887,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       if (hiddenLanes.has(laneId)) hiddenLanes.delete(laneId);
       else hiddenLanes.add(laneId);
       return { hiddenLanes };
-    }),
-  // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — disable/enable individual clips
-  toggleClipEnabled: (clipId) =>
-    set((state) => {
-      const disabledClips = new Set(state.disabledClips);
-      if (disabledClips.has(clipId)) disabledClips.delete(clipId);
-      else disabledClips.add(clipId);
-      return { disabledClips };
     }),
   setLaneVolume: (laneId, volume) =>
     set((state) => ({
@@ -1316,10 +1279,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setAudioSampleRate: (rate) => set({ audioSampleRate: rate }),
   setAudioBitDepth: (bits) => set({ audioBitDepth: bits }),
   setShowProjectSettings: (show) => set({ showProjectSettings: show }),
-  // MARKER_GAMMA-MARKER-EDIT: Edit Marker dialog
-  setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
-  // MARKER_GAMMA-LOOP: Loop playback
-  setLoopPlayback: (loop) => set({ loopPlayback: loop }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {
@@ -1504,12 +1463,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   toggleShowClipNames: () => set((s) => ({ showClipNames: !s.showClipNames })),
   toggleShowClipBorders: () => set((s) => ({ showClipBorders: !s.showClipBorders })),
   toggleShowWaveforms: () => set((s) => ({ showWaveforms: !s.showWaveforms })),
-  // MARKER_A3.4: Per-lane waveform toggle
-  toggleLaneWaveform: (laneId: string) => set((s) => {
-    const next = new Set(s.waveformHiddenLanes);
-    if (next.has(laneId)) next.delete(laneId); else next.add(laneId);
-    return { waveformHiddenLanes: next };
-  }),
   toggleShowThumbnails: () => set((s) => ({ showThumbnails: !s.showThumbnails })),
   toggleShowThroughEdits: () => set((s) => ({ showThroughEdits: !s.showThroughEdits })),
   toggleShowClipLabels: () => set((s) => ({ showClipLabels: !s.showClipLabels })),
@@ -1547,35 +1500,6 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       })),
     }));
     void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
-  },
-
-  // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters
-  copyFilters: () => {
-    const { lanes } = get();
-    const { selectedClipId } = useSelectionStore.getState();
-    if (!selectedClipId) return;
-    for (const lane of lanes) {
-      const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
-      if (clip) {
-        set({ filterClipboard: { ...(clip.effects ?? DEFAULT_CLIP_EFFECTS) } });
-        return;
-      }
-    }
-  },
-  pasteFilters: () => {
-    const { filterClipboard } = get();
-    const { selectedClipIds } = useSelectionStore.getState();
-    if (!filterClipboard || selectedClipIds.size === 0) return;
-    for (const clipId of selectedClipIds) {
-      get().setClipEffects(clipId, filterClipboard);
-    }
-  },
-  removeFilters: () => {
-    const { selectedClipIds } = useSelectionStore.getState();
-    if (selectedClipIds.size === 0) return;
-    for (const clipId of selectedClipIds) {
-      get().resetClipEffects(clipId);
-    }
   },
 
   // MARKER_UNDO_KF: Keyframe actions via applyTimelineOps

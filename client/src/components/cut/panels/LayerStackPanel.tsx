@@ -19,11 +19,21 @@
  * @owner Gamma
  */
 import { useState, useMemo, useEffect, type CSSProperties } from 'react';
-import { useCutEditorStore, type LayerManifestMeta } from '../../../store/useCutEditorStore';
+import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import { useSelectionStore } from '../../../store/useSelectionStore';
 import { API_BASE } from '../../../config/api.config';
 
-// LayerManifestMeta is defined in useCutEditorStore (imported above)
+// ─── Types: Beta canonical contract (camelCase = JSON wire format) ────
+
+/** Stored on clip as clip.layer_manifest (lightweight meta, no async needed) */
+export interface LayerManifestMeta {
+  manifest_path: string;
+  format: string;           // "layer_space" | "plate_export"
+  layer_count: number;
+  has_foreground: boolean;
+  has_background: boolean;
+  sample_id: string;
+}
 
 /**
  * Full manifest loaded via GET /cut/layers/manifest?path=...
@@ -101,7 +111,6 @@ interface LayerUIState {
   visible: boolean;
   solo: boolean;
   locked: boolean;
-  alphaPreview: boolean;
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────
@@ -200,7 +209,7 @@ export default function LayerStackPanel() {
     for (const lane of lanes) {
       const found = lane.clips.find((c) => c.clip_id === selectedClipId);
       if (found) {
-        const m = found.layer_manifest;
+        const m = (found as any).layer_manifest as LayerManifestMeta | undefined;
         return { clip: found, meta: m ?? null };
       }
     }
@@ -247,7 +256,7 @@ export default function LayerStackPanel() {
   const [layerState, setLayerState] = useState<Record<string, LayerUIState>>({});
 
   const getState = (id: string): LayerUIState =>
-    layerState[id] ?? { visible: true, solo: false, locked: false, alphaPreview: false };
+    layerState[id] ?? { visible: true, solo: false, locked: false };
 
   const toggleVisible = (id: string) => {
     const cur = getState(id);
@@ -262,11 +271,6 @@ export default function LayerStackPanel() {
   const toggleLock = (id: string) => {
     const cur = getState(id);
     setLayerState((prev) => ({ ...prev, [id]: { ...cur, locked: !cur.locked } }));
-  };
-
-  const toggleAlphaPreview = (id: string) => {
-    const cur = getState(id);
-    setLayerState((prev) => ({ ...prev, [id]: { ...cur, alphaPreview: !cur.alphaPreview } }));
   };
 
   const hasSolo = manifest?.layers.some((l) => getState(l.layer_id).solo) ?? false;
@@ -411,26 +415,6 @@ export default function LayerStackPanel() {
           </div>
         )}
 
-        {/* Depth map minimap — global depth map preview (grayscale) */}
-        {manifest.depth_path && (
-          <img
-            src={`${API_BASE}/cut/media/file?path=${encodeURIComponent(manifest.depth_path)}`}
-            alt="depth map"
-            data-testid="cut-depth-map-preview"
-            style={{
-              width: '100%',
-              height: 32,
-              objectFit: 'cover',
-              borderRadius: 2,
-              filter: 'grayscale(100%)',
-              marginTop: 6,
-              marginBottom: 4,
-              display: 'block',
-              background: '#1a1a1a',
-            }}
-          />
-        )}
-
         {/* Depth range bar — near (white) to far (dark), layers positioned by depth_priority */}
         <div style={{ marginTop: 6 }}>
           <div style={{
@@ -487,12 +471,10 @@ export default function LayerStackPanel() {
               }}
               data-testid={`cut-layer-row-${layer.layer_id}`}
             >
-              {/* RGBA / alpha mask thumbnail — switches based on alphaPreview toggle */}
-              {(layer.rgba_path || layer.mask_path) && (
+              {/* RGBA thumbnail */}
+              {layer.rgba_path && (
                 <img
-                  src={`${API_BASE}/cut/media/file?path=${encodeURIComponent(
-                    st.alphaPreview && layer.mask_path ? layer.mask_path : layer.rgba_path
-                  )}`}
+                  src={`${API_BASE}/cut/media/file?path=${encodeURIComponent(layer.rgba_path)}`}
                   alt={layer.label}
                   style={{
                     width: 28,
@@ -545,20 +527,6 @@ export default function LayerStackPanel() {
                 onClick={() => toggleLock(layer.layer_id)}
               >
                 L
-              </button>
-
-              {/* Alpha mask preview toggle */}
-              <button
-                data-testid={`cut-layer-alpha-${layer.layer_id}`}
-                style={{
-                  ...ICON_BTN,
-                  color: st.alphaPreview ? '#ccc' : '#333',
-                  fontWeight: st.alphaPreview ? 700 : 400,
-                }}
-                title={st.alphaPreview ? 'Show RGBA' : 'Show alpha mask'}
-                onClick={() => toggleAlphaPreview(layer.layer_id)}
-              >
-                A
               </button>
 
               {/* Depth priority mini bar */}
