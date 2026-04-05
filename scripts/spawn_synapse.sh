@@ -34,12 +34,30 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     exit 0
 fi
 
+# ── Pre-spawn: ensure worktree has essential files ────────────
+# opencode has no --dangerously-skip-permissions — reading files outside worktree
+# triggers permission dialogs. Copy essential shared config into worktree beforehand.
+if [ "$AGENT_TYPE" = "opencode" ] || [ "$AGENT_TYPE" = "generic_cli" ]; then
+    # Ensure opencode.json with MCP config exists
+    if [ ! -f "$WORKTREE_PATH/opencode.json" ] && [ -f "$PROJECT_ROOT/opencode.json" ]; then
+        cp "$PROJECT_ROOT/opencode.json" "$WORKTREE_PATH/opencode.json"
+        echo "$LOG_PREFIX Copied opencode.json → worktree"
+    fi
+    # Ensure AGENTS.md exists (opencode's system prompt file)
+    if [ ! -f "$WORKTREE_PATH/AGENTS.md" ] && [ -f "$PROJECT_ROOT/AGENTS.md" ]; then
+        cp "$PROJECT_ROOT/AGENTS.md" "$WORKTREE_PATH/AGENTS.md"
+        echo "$LOG_PREFIX Copied AGENTS.md → worktree"
+    fi
+fi
+
 # ── Build spawn command per agent type ────────────────────────
 case "$AGENT_TYPE" in
     claude_code)
         SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
         ;;
     opencode)
+        # NOTE: opencode has no auto-approve flag. Agent stays within worktree
+        # in normal operation. Permission dialogs only trigger for out-of-worktree reads.
         SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
         ;;
     generic_cli)
