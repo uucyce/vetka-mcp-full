@@ -9,7 +9,7 @@
  *
  * Categories: Video Filters, Audio Filters, Transitions, Generators.
  */
-import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, type CSSProperties } from 'react';
 import { useCutEditorStore, DEFAULT_CLIP_EFFECTS, type ClipEffects } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import MotionControls from './MotionControls';
@@ -69,14 +69,6 @@ const RESET_BTN: CSSProperties = {
   cursor: 'pointer',
 };
 
-const EMPTY: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  height: '100%',
-  color: '#555',
-  fontSize: 10,
-};
 
 const TOGGLE_BTN = (active: boolean): CSSProperties => ({
   padding: '2px 8px',
@@ -203,7 +195,7 @@ export default function EffectsPanel() {
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
 
   // Find selected clip
-  let selectedClip = null;
+  let selectedClip: any = null;
   if (selectedClipId) {
     for (const lane of lanes) {
       const found = lane.clips.find((c) => c.clip_id === selectedClipId);
@@ -323,251 +315,6 @@ export default function EffectsPanel() {
           </div>
         );
       })}
-
-      {/* MARKER_GAMMA-B10: Transitions editor section */}
-      <TransitionsSection clip={selectedClip} />
-    </div>
-  );
-}
-
-// ═══ MARKER_GAMMA-B10: Transitions Editor ══════════════════════════════════
-
-type TransitionOption = {
-  value: 'cross_dissolve' | 'dip_to_black' | 'wipe';
-  label: string;
-};
-
-const TRANSITION_TYPES: TransitionOption[] = [
-  { value: 'cross_dissolve', label: 'Cross Dissolve' },
-  { value: 'dip_to_black', label: 'Dip to Black' },
-  { value: 'wipe', label: 'Wipe' },
-];
-
-const SELECT: CSSProperties = {
-  flex: 1,
-  padding: '4px 6px',
-  background: '#111',
-  border: '1px solid #333',
-  borderRadius: 3,
-  color: '#ccc',
-  fontSize: 9,
-  cursor: 'pointer',
-};
-
-const REMOVE_BTN: CSSProperties = {
-  padding: '3px 8px',
-  border: '1px solid #555',
-  borderRadius: 3,
-  background: '#1a0a0a',
-  color: '#888',
-  fontSize: 9,
-  cursor: 'pointer',
-};
-
-function TransitionsSection({ clip }: { clip: any }) {
-  const [preview, setPreview] = useState<string>('');
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const updateClipTransition = useCutEditorStore((s) => s.updateClipTransition || (() => {}));
-
-  if (!clip) return null;
-
-  const trans = clip.transition_out;
-  const hasTransition = !!trans;
-
-  // Fetch live preview of compiled transition filter from Beta's endpoint
-  const loadPreview = useCallback(async () => {
-    if (!hasTransition || !trans) return;
-    setPreviewLoading(true);
-    try {
-      // Wire to Beta's /cut/transitions/compile endpoint (commit 263163)
-      const lanes = useCutEditorStore.getState().lanes;
-      const currentClips = lanes.flatMap(lane => lane.clips);
-
-      const res = await fetch('/cut/transitions/compile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          clips: currentClips.map(c => ({
-            source_path: c.source_path,
-            start_sec: c.start_sec,
-            duration_sec: c.duration_sec,
-          })),
-          transitions: [trans],
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        // Show both video and audio filters from compile response
-        const filters = [data.video_filters, data.audio_filters].filter(Boolean).join('\n');
-        setPreview(filters || '(no filter generated)');
-      } else {
-        setPreview(`(Error: ${res.status})`);
-      }
-    } catch (err) {
-      setPreview(`(API error: ${err instanceof Error ? err.message : 'unknown'})`);
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [hasTransition, trans]);
-
-  const handleTypeChange = (newType: string) => {
-    if (clip.clip_id) {
-      updateClipTransition(clip.clip_id, { ...trans, type: newType });
-    }
-  };
-
-  const handleDurationChange = (newDuration: number) => {
-    if (clip.clip_id) {
-      updateClipTransition(clip.clip_id, { ...trans, duration_sec: newDuration });
-    }
-  };
-
-  const handleAlignmentChange = (newAlignment: string) => {
-    if (clip.clip_id) {
-      updateClipTransition(clip.clip_id, { ...trans, alignment: newAlignment });
-    }
-  };
-
-  const handleAudioCurveChange = (newCurve: string) => {
-    if (clip.clip_id) {
-      updateClipTransition(clip.clip_id, { ...trans, audio_curve: newCurve });
-    }
-  };
-
-  const handleRemoveTransition = () => {
-    if (clip.clip_id) {
-      updateClipTransition(clip.clip_id, null);
-    }
-  };
-
-  const handleAddTransition = () => {
-    if (clip.clip_id && !hasTransition) {
-      updateClipTransition(clip.clip_id, {
-        type: 'cross_dissolve',
-        duration_sec: 1.0,
-        alignment: 'center',
-        audio_curve: 'equal_power',
-      });
-    }
-  };
-
-  // Load preview when transition changes
-  useEffect(() => {
-    if (hasTransition && trans) {
-      void loadPreview();
-    } else {
-      setPreview('');
-    }
-  }, [hasTransition, trans, loadPreview]);
-
-  return (
-    <div>
-      <CategoryHeader
-        name="Transitions (Out)"
-        open={hasTransition}
-        onToggle={handleAddTransition}
-      />
-      {hasTransition && trans && (
-        <>
-          <div style={ROW}>
-            <span style={LABEL}>Type</span>
-            <select
-              value={trans.type || 'cross_dissolve'}
-              onChange={(e) => handleTypeChange(e.target.value)}
-              style={SELECT}
-            >
-              {TRANSITION_TYPES.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div style={ROW}>
-            <span style={LABEL}>Duration</span>
-            <input
-              type="range"
-              min={0.1}
-              max={3.0}
-              step={0.1}
-              value={trans.duration_sec || 1.0}
-              onChange={(e) => handleDurationChange(parseFloat(e.target.value))}
-              style={SLIDER}
-            />
-            <span style={VALUE}>{(trans.duration_sec || 1.0).toFixed(1)}s</span>
-          </div>
-
-          <div style={ROW}>
-            <span style={LABEL}>Align</span>
-            <select
-              value={trans.alignment || 'center'}
-              onChange={(e) => handleAlignmentChange(e.target.value)}
-              style={SELECT}
-            >
-              <option value="center">Center</option>
-              <option value="start">Start</option>
-              <option value="end">End</option>
-            </select>
-          </div>
-
-          <div style={ROW}>
-            <span style={LABEL}>Audio Curve</span>
-            <select
-              value={trans.audio_curve || 'equal_power'}
-              onChange={(e) => handleAudioCurveChange(e.target.value)}
-              style={SELECT}
-            >
-              <option value="equal_power">Equal Power (smooth)</option>
-              <option value="exponential">Exponential</option>
-              <option value="smooth_start">Smooth Start</option>
-              <option value="smooth_end">Smooth End</option>
-              <option value="linear">Linear (dip)</option>
-              <option value="logarithmic">Logarithmic</option>
-              <option value="inverse_log">Inverse Log</option>
-              <option value="s_curve">S-Curve</option>
-              <option value="cubic">Cubic</option>
-              <option value="exponential_log">Exponential Log</option>
-            </select>
-          </div>
-
-          {/* MARKER_GAMMA-B10: Live FFmpeg filter preview */}
-          {preview && (
-            <div style={{ padding: '6px 0', marginTop: 4, borderTop: '1px solid #1a1a1a' }}>
-              <span style={{ ...LABEL, fontSize: 8, color: '#555', textTransform: 'uppercase' }}>
-                {previewLoading ? 'Loading...' : 'FFmpeg Filter'}
-              </span>
-              <div style={{
-                fontSize: 8,
-                color: '#666',
-                fontFamily: '"JetBrains Mono", monospace',
-                padding: '4px 6px',
-                background: '#050505',
-                borderRadius: 2,
-                marginTop: 2,
-                maxHeight: 40,
-                overflow: 'auto',
-                wordBreak: 'break-all',
-              }}>
-                {preview}
-              </div>
-            </div>
-          )}
-
-          <div style={{ display: 'flex', gap: 4, padding: '4px 0', justifyContent: 'flex-end' }}>
-            <button
-              style={REMOVE_BTN}
-              onClick={handleRemoveTransition}
-              title="Remove transition"
-            >
-              Remove
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
     </div>
   );
 }

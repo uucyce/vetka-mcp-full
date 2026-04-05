@@ -1522,45 +1522,9 @@ class SessionInitTool(BaseMCPTool):
                         "available_roles": _reg.list_callsigns(),
                     }
 
-            # Fallback: branch detection (backward-compatible, no role= provided)
-            if not _role and not role_name:
-                import os
-
-                _detect_cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
-                _branch_result = _sp.run(
-                    ["git", "branch", "--show-current"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    cwd=_detect_cwd,
-                )
-                _current_branch = (
-                    _branch_result.stdout.strip()
-                    if _branch_result.returncode == 0
-                    else ""
-                )
-
-                if _current_branch == "main" or not _current_branch:
-                    _toplevel = _sp.run(
-                        ["git", "rev-parse", "--show-toplevel"],
-                        capture_output=True,
-                        text=True,
-                        timeout=5,
-                        cwd=_detect_cwd,
-                    )
-                    _toplevel_path = (
-                        _toplevel.stdout.strip() if _toplevel.returncode == 0 else ""
-                    )
-                    if _toplevel_path and "worktrees" in _toplevel_path:
-                        _wt_name = Path(_toplevel_path).name
-                        for _r in _reg.roles:
-                            if _r.worktree == _wt_name:
-                                _current_branch = _r.branch
-                                break
-
-                _role = _reg.get_by_branch(_current_branch) if _current_branch else None
-                if _role:
-                    _role_source = "branch_detection"
+            # MARKER_196.4.1: VETKA_MCP_CWD branch detection chain REMOVED.
+            # All agents now use session_init(role=X) explicitly via CLAUDE.md template.
+            # If no role= provided, task board is READ_ONLY — agent must pass role=.
 
             # MARKER_200.AUTO_PROVISION: Auto-provision if no role found
             if not _role:

@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
-import { isTauri, openFileDialog, openFolderDialog } from '../../config/tauri';
 import DAGProjectPanel from './DAGProjectPanel';
 import { setDragPreview } from './utils/dragPreview';
 
@@ -305,6 +304,24 @@ export default function ProjectPanel() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
+  // ─── Open file picker ───
+  const openFilePicker = useCallback(() => {
+    if (importing) return;
+    fileInputRef.current?.click();
+  }, [importing]);
+
+  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
+  useEffect(() => {
+    const handler = () => openFilePicker();
+    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
+    window.addEventListener('cut:import-media', handler);
+    window.addEventListener('cut:trigger-import', handler);
+    return () => {
+      window.removeEventListener('cut:import-media', handler);
+      window.removeEventListener('cut:trigger-import', handler);
+    };
+  }, [openFilePicker]);
+
   // ─── Job polling — returns the completed job result ───
   const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
     for (let attempt = 0; attempt < 80; attempt++) {
@@ -441,58 +458,6 @@ export default function ProjectPanel() {
       setImporting(false);
     }
   }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
-
-  // ─── Open file picker ───
-  // MARKER_CUT-IMPORT-FIX: In Tauri, use native dialog for real filesystem paths.
-  // HTML <input type="file"> doesn't expose file.path in Tauri 2.x WebView.
-  const openFilePicker = useCallback(async () => {
-    if (importing) return;
-
-    if (isTauri()) {
-      // Tauri native: use native file dialog which returns real filesystem paths
-      const paths = await openFileDialog({
-        title: 'Import Media Files',
-        multiple: true,
-        filters: [
-          {
-            name: 'Media',
-            extensions: [
-              'mov', 'mp4', 'avi', 'mkv', 'webm',
-              'm4a', 'wav', 'mp3', 'flac', 'aac', 'ogg',
-              'jpg', 'jpeg', 'png', 'tiff', 'bmp', 'webp',
-            ],
-          },
-        ],
-      });
-
-      if (paths && paths.length > 0) {
-        // Derive folder from first file's parent directory
-        const firstPath = paths[0];
-        const folderPath = firstPath.replace(/[\\/][^\\/]+$/, '');
-        if (folderPath) {
-          void startImport(folderPath);
-          return;
-        }
-      }
-      // User cancelled — no fallback
-      return;
-    }
-
-    // Browser mode: use HTML file input
-    fileInputRef.current?.click();
-  }, [importing, startImport]);
-
-  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
-  useEffect(() => {
-    const handler = () => { void openFilePicker(); };
-    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
-    window.addEventListener('cut:import-media', handler);
-    window.addEventListener('cut:trigger-import', handler);
-    return () => {
-      window.removeEventListener('cut:import-media', handler);
-      window.removeEventListener('cut:trigger-import', handler);
-    };
-  }, [openFilePicker]);
 
   // ─── Upload files to backend (browser mode — no native paths) ───
   const uploadAndImport = useCallback(async (files: FileList) => {

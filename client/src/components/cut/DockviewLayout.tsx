@@ -54,6 +54,7 @@ import {
   MulticamPanel,
   SourceAcquirePanelDock,
   LayerStackPanel,
+  GenerationControlPanelDock,
 } from './panels';
 import EffectsPanel from './EffectsPanel';
 import VideoScopes from './VideoScopes';
@@ -66,9 +67,10 @@ import ToolsPalette from './ToolsPalette';
 import StatusBar from './StatusBar';
 import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
-import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
+// WelcomeScreen removed from startup path (MARKER_CUT-UX-NOWELCOME) — repurpose via File menu only
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 import MatchSequencePopup from './MatchSequencePopup';
+import KeyframeGraphEditor from './KeyframeGraphEditor';
 
 // ─── Component registry ─────────────────────────────────────────────
 // Keys = component names used in addPanel({ component: 'xxx' })
@@ -102,6 +104,8 @@ const LutBrowserPanelDock = withErrorBoundary('LUTs', LutBrowserPanel);
 // SpeedControl mounted as Suspense modal in MenuBar.tsx (line 800+)
 // MARKER_GAMMA-LAYOUT1: TransitionsPanel removed — Transitions = category inside EffectsPanel
 const ToolsPaletteDock = withErrorBoundary('Tools', ToolsPalette);
+// MARKER_KF58: KeyframeGraphEditor panel (FCP7 Ch.58-59)
+const KeyframeGraphEditorDock = withErrorBoundary('Keyframes', KeyframeGraphEditor);
 
 const PANEL_COMPONENTS = {
   project: ProjectPanelDock,
@@ -129,6 +133,10 @@ const PANEL_COMPONENTS = {
   timeline: TimelinePanel,
   multicam: MulticamPanel,
   acquire: SourceAcquirePanelDock,  // MARKER_SOURCE_ACQUIRE: Cmd+8
+  // MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
+  generation: GenerationControlPanelDock,
+  // MARKER_KF58: Keyframe Graph Editor panel (FCP7 Ch.58-59)
+  keyframes: KeyframeGraphEditorDock,
 };
 
 // ─── Panel ID → focusedPanel mapping ────────────────────────────────
@@ -145,10 +153,6 @@ const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'proje
 
 // MARKER_GAMMA-28: Preset builders extracted to presetBuilders.ts (shared with MenuBar)
 
-// MARKER_GAMMA-CRITICAL: Increment when localStorage layout schema changes incompatibly
-const DOCKVIEW_LAYOUT_VERSION = 3;
-const DOCKVIEW_VERSION_KEY = 'cut_dockview_schema_version';
-
 // ─── Main component ─────────────────────────────────────────────────
 
 interface DockviewLayoutProps {
@@ -156,26 +160,15 @@ interface DockviewLayoutProps {
 }
 
 export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps) {
-  // MARKER_GAMMA-BUG4 + P0-FIX: Read project state (MUST be before any early return — Rules of Hooks)
+  // MARKER_CUT-UX-NOWELCOME: auto-bootstrap handles missing sandboxRoot — no Welcome gate needed
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const projectId = useCutEditorStore((s) => s.projectId);
-  const showWelcome = !sandboxRoot && !projectId;
 
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 
-  // MARKER_GAMMA-CRITICAL: One-time cleanup of stale/corrupt saved layouts on mount
+  // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
-    // Version-gate: clear ALL preset layouts when schema version changes
-    const storedVersion = Number(localStorage.getItem(DOCKVIEW_VERSION_KEY) ?? 0);
-    if (storedVersion !== DOCKVIEW_LAYOUT_VERSION) {
-      console.info(`[CUT] Dockview layout version changed (${storedVersion}→${DOCKVIEW_LAYOUT_VERSION}), clearing stale presets`);
-      for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom']) {
-        try { localStorage.removeItem('cut_dockview_' + preset); } catch { /* ok */ }
-      }
-      localStorage.setItem(DOCKVIEW_VERSION_KEY, String(DOCKVIEW_LAYOUT_VERSION));
-      return; // already clean — skip duplicate-check below
-    }
     for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom'] as const) {
       try {
         const raw = localStorage.getItem('cut_dockview_' + preset);
@@ -578,34 +571,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     setTabMenu(null);
   }, [tabMenu, toggleMaximize]);
 
-  // MARKER_GAMMA-P0-FIX: WelcomeScreen check AFTER all hooks (Rules of Hooks compliance)
-  if (showWelcome) {
-    return (
-      <WelcomeScreen
-        onCreateProject={(name, preset) => {
-          const params = new URLSearchParams(window.location.search);
-          params.set('project_name', name);
-          params.set('preset', preset);
-          window.location.search = params.toString();
-        }}
-        onOpenProject={(id, path) => {
-          if (id && path) {
-            addRecentProject(id, id, path);
-            const params = new URLSearchParams();
-            params.set('sandbox_root', path);
-            params.set('project_id', id);
-            window.location.search = params.toString();
-          } else {
-            window.dispatchEvent(new CustomEvent('cut:import-media'));
-          }
-        }}
-      />
-    );
-  }
+
 
   return (
-    // MARKER_GAMMA-CRITICAL: flex:1 required — parent CutEditorLayoutV2 ROOT is flex-column; height:100% collapses to 0 without explicit flex allocation
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
       {/* MARKER_GAMMA-25: WorkspacePresets removed from top bar (FCP7: Window menu only) */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
