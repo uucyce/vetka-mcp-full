@@ -5090,26 +5090,46 @@ class TaskBoard:
                     # No scope restriction — take everything (same as full diff)
                     scoped_files = all_changed
                 else:
+                    import fnmatch as _fnmatch
+
                     scoped_files = set()
                     for f in all_changed:
                         for prefix in scope_prefixes:
-                            if f == prefix or f.startswith(prefix.rstrip("/") + "/"):
+                            # MARKER_209.3: Support glob patterns (e.g. "tests/*.py")
+                            if "*" in prefix or "?" in prefix:
+                                if _fnmatch.fnmatch(f, prefix):
+                                    scoped_files.add(f)
+                                    break
+                            elif f == prefix or f.startswith(prefix.rstrip("/") + "/"):
                                 scoped_files.add(f)
                                 break
 
                     # Sidecar auto-detection: for each scoped file, include related
-                    # test files and __init__.py from the diff
+                    # test files, __init__.py, and format variants from the diff.
+                    # MARKER_209.3: Extended sidecar patterns:
+                    #   - test_{stem}.py / {stem}_test.py (both conventions)
+                    #   - .json ↔ .jsonl variants
+                    #   - Cross-directory: src/x.py → tests/test_x.py
+                    #   - __init__.py in same directory
                     sidecars = set()
+                    remaining = all_changed - scoped_files
                     for f in scoped_files:
-                        stem = Path(f).stem  # e.g. "task_board" from "src/.../task_board.py"
-                        for candidate in all_changed - scoped_files:
-                            cand_stem = Path(candidate).stem
-                            # test_task_board.py matches task_board.py
-                            if cand_stem == f"test_{stem}" or cand_stem == stem:
+                        fp = Path(f)
+                        stem = fp.stem  # e.g. "task_board" from "src/.../task_board.py"
+                        suffix = fp.suffix  # e.g. ".py"
+                        for candidate in remaining:
+                            cp = Path(candidate)
+                            cand_stem = cp.stem
+                            # test_task_board.py or task_board_test.py matches task_board.py
+                            if cand_stem == f"test_{stem}" or cand_stem == f"{stem}_test" or cand_stem == stem:
                                 sidecars.add(candidate)
                             # __init__.py in same directory
-                            if Path(candidate).name == "__init__.py" and str(Path(candidate).parent) == str(Path(f).parent):
+                            elif cp.name == "__init__.py" and str(cp.parent) == str(fp.parent):
                                 sidecars.add(candidate)
+                            # .json ↔ .jsonl variant matching
+                            elif suffix in (".json", ".jsonl") and cp.suffix in (".json", ".jsonl"):
+                                if cand_stem == stem:
+                                    sidecars.add(candidate)
                     if sidecars:
                         logger.info(
                             "[MergeRequest] smart_snapshot: auto-detected %d sidecar(s): %s",
@@ -5125,27 +5145,45 @@ class TaskBoard:
                     }
 
                 # Step 3: Conflict detection via git merge-tree
+                # MARKER_209.3: Improved conflict detection —
+                #   - Handle merge-base failure gracefully (warn, don't skip silently)
+                #   - Section-based parsing: split merge-tree output by file sections
+                #   - Deduplicate conflicting list
                 rc_base, merge_base, _ = await _git(
                     "merge-base", "main", branch, cwd=str(PROJECT_ROOT)
                 )
+                if rc_base != 0 or not merge_base:
+                    logger.warning(
+                        "[MergeRequest] smart_snapshot: merge-base failed (rc=%d), "
+                        "skipping conflict pre-check — conflicts may surface at checkout",
+                        rc_base,
+                    )
                 if rc_base == 0 and merge_base:
                     rc_mt, mt_out, mt_err = await _git(
-                        "merge-tree", merge_base, "main", branch, cwd=str(PROJECT_ROOT)
+                        "merge-tree", merge_base.strip(), "main", branch, cwd=str(PROJECT_ROOT)
                     )
-                    # merge-tree outputs conflict markers — check if any scoped files conflict
+                    # merge-tree outputs conflict markers — check if any scoped files conflict.
+                    # Parse section-by-section: each file's section typically starts with its path.
                     if mt_out:
-                        conflicting = []
-                        for sf in scoped_files:
-                            if sf in mt_out and ("<<<<<<" in mt_out or "+<<<<<<" in mt_out):
-                                conflicting.append(sf)
-                        # Also check for the general conflict pattern
-                        if not conflicting and "<<<<<<" in mt_out:
-                            # Parse which files have conflict markers
-                            for line in mt_out.splitlines():
-                                for sf in scoped_files:
-                                    if sf in line:
-                                        conflicting.append(sf)
-                                        break
+                        conflicting_set: set = set()
+                        # Split output into per-file sections and check each for conflict markers
+                        lines = mt_out.splitlines()
+                        current_file = None
+                        for line in lines:
+                            # Detect file path lines (merge-tree format varies)
+                            for sf in scoped_files:
+                                if sf in line:
+                                    current_file = sf
+                                    break
+                            # If we see conflict markers, attribute to current file
+                            if current_file and ("<<<<<<" in line or "+<<<<<<" in line):
+                                conflicting_set.add(current_file)
+                        # Fallback: if no section-based hits but global conflict exists
+                        if not conflicting_set and ("<<<<<<" in mt_out or "+<<<<<<" in mt_out):
+                            for sf in scoped_files:
+                                if sf in mt_out:
+                                    conflicting_set.add(sf)
+                        conflicting = sorted(conflicting_set)
                         if conflicting:
                             _conflict_msg = (
                                 f"smart_snapshot: {len(conflicting)} file(s) have conflicts: "
