@@ -18,7 +18,6 @@
         "MYCELIUM_WS_PORT": "8082",
         "VETKA_MAIN_REPO": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
       }
-    }
     },
     "playwright": {
       "command": "npx",
