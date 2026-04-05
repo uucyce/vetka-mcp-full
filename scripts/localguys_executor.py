@@ -290,13 +290,9 @@ class StepExecutor:
         return result.get("run", result)
 
     def create_run(self, task_id: str, method: str) -> Optional[dict]:
-        # MARKER_201.CREATE_RUN: send workflow_family so server can resolve the contract.
-        # Previously sent {"method": method} which the server ignores — causing
-        # "Workflow contract core_library not found" when task has no workflow_family field.
-        family = method if method.endswith("_localguys") else f"{method}_localguys"
         result = _http_post(
             f"{self.mcc_url}/tasks/{task_id}/localguys-run",
-            {"workflow_family": family},
+            {"method": method},
         )
         if "error" in result or not result.get("success"):
             logger.error("Failed to create run: %s", result)
@@ -329,18 +325,8 @@ class StepExecutor:
         )
         if "error" in result:
             return result
-        raw = result.get("response", "")
-        # MARKER_201.THINK_STRIP: deepseek-r1 and other thinking models wrap output
-        # in <think>...</think> tags. Extract content after </think> first;
-        # if empty (pure thinking mode), fall back to the content inside <think>.
-        import re as _re
-        _think_match = _re.search(r"<think>(.*?)</think>(.*)", raw, _re.DOTALL)
-        if _think_match:
-            after = _think_match.group(2).strip()
-            inside = _think_match.group(1).strip()
-            raw = after if after else inside
         return {
-            "response": raw,
+            "response": result.get("response", ""),
             "model": result.get("model", model),
             "duration_s": round(result.get("total_duration", 0) / 1e9, 1),
         }

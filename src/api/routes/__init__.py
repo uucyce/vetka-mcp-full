@@ -41,7 +41,6 @@ _ROUTER_SPECS: List[Tuple[str, str, str]] = [
     ("cam_router", ".cam_routes", "router"),
     ("activity_router", ".activity_routes", "router"),
     ("task_router", ".task_routes", "router"),
-    ("taskboard_router", ".taskboard_routes", "router"),  # MARKER_201.LOCALGUYS: register /api/taskboard/* routes
     ("tracker_router", ".task_tracker_routes", "router"),
     ("feedback_router", ".feedback_routes", "router"),
     ("dag_router", ".dag_routes", "router"),

@@ -19,11 +19,5 @@
         "VETKA_MAIN_REPO": "/Users/danilagulin/Documents/VETKA_Project/vetka_live_03"
       }
     }
-    },
-    "playwright": {
-      "command": "npx",
-      "args": ["@playwright/mcp@latest", "--isolated"],
-      "env": {}
-    }
   }
 }
