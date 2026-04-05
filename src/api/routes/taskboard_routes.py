@@ -55,6 +55,7 @@ _CREATE_FIELDS = {
     "require_closure_proof",
     "closure_tests",
     "closure_files",
+    "allowed_tools",  # MARKER_201.TOOL_GUARD
 }
 
 _UPDATE_FIELDS = {
@@ -123,8 +124,7 @@ def _check_project_known(project_id: str) -> bool:
         return True
     result = list_projects(include_hidden=True)
     return any(
-        str(p.get("project_id", "")) == project_id
-        for p in result.get("projects", [])
+        str(p.get("project_id", "")) == project_id for p in result.get("projects", [])
     )
 
 
@@ -144,7 +144,11 @@ async def create_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
     # MARKER_189.5A: Hint if project_id is unknown — let client prompt user to create it
     project_id = str(payload.get("project_id") or "").strip()
     project_known = _check_project_known(project_id)
-    result: Dict[str, Any] = {"success": True, "adapter": adapter.adapter_name, "task": task}
+    result: Dict[str, Any] = {
+        "success": True,
+        "adapter": adapter.adapter_name,
+        "task": task,
+    }
     if project_id and not project_known:
         result["project_unknown"] = True
         result["suggested_action"] = "create_project"
@@ -169,7 +173,9 @@ async def list_tasks(
 
 
 @router.post("/dispatch")
-async def dispatch_task(body: Optional[Dict[str, Any]] = Body(default=None)) -> Dict[str, Any]:
+async def dispatch_task(
+    body: Optional[Dict[str, Any]] = Body(default=None),
+) -> Dict[str, Any]:
     body = body or {}
     adapter = _resolve_adapter(body.get("adapter"))
     result = await adapter.dispatch_task(
@@ -208,11 +214,70 @@ async def list_registered_projects(
 ) -> Dict[str, Any]:
     """Return registered MCC projects for task→project binding autocomplete."""
     result = list_projects(include_hidden=include_hidden)
-    return {"success": True, "projects": result.get("projects", []), "active_project_id": result.get("active_project_id", "")}
+    return {
+        "success": True,
+        "projects": result.get("projects", []),
+        "active_project_id": result.get("active_project_id", ""),
+    }
+
+
+# MARKER_201.LOCALGUYS: Fixed path routes MUST come before /{task_id} wildcard
+# so FastAPI matches them before the parametric route.
+
+
+@router.post("/claim")
+async def claim_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Claim a task. Used by local models (Ollama) that have no MCP access.
+
+    Body: task_id, agent_name, agent_type (claude_code|local_ollama|…)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    task_id = body.get("task_id")
+    agent_name = body.get("agent_name")
+    agent_type = body.get("agent_type", "unknown")
+
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+    if not agent_name:
+        raise HTTPException(status_code=400, detail="agent_name is required")
+
+    board = get_task_board()
+    result = board.claim_task(task_id, agent_name, agent_type)
+    if not result.get("success") and result.get("tool_isolation_rejected"):
+        raise HTTPException(
+            status_code=403, detail=result.get("error", "tool isolation rejected")
+        )
+    return result
+
+
+@router.post("/complete")
+async def complete_task(body: Dict[str, Any] = Body(...)) -> Dict[str, Any]:
+    """Complete a task. Used by local models (Ollama) that have no MCP access.
+
+    Body: task_id, commit_hash, commit_message (opt), branch (opt), agent_name (opt)
+    """
+    from src.orchestration.task_board import get_task_board
+
+    task_id = body.get("task_id")
+    if not task_id:
+        raise HTTPException(status_code=400, detail="task_id is required")
+
+    board = get_task_board()
+    result = board.complete_task(
+        task_id,
+        commit_hash=body.get("commit_hash"),
+        commit_message=body.get("commit_message"),
+        branch=body.get("branch"),
+        closed_by=body.get("agent_name"),
+    )
+    return result
 
 
 @router.get("/{task_id}")
-async def get_task(task_id: str, adapter: Optional[str] = Query(None)) -> Dict[str, Any]:
+async def get_task(
+    task_id: str, adapter: Optional[str] = Query(None)
+) -> Dict[str, Any]:
     adapter_impl = _resolve_adapter(adapter)
     task = await adapter_impl.get_task(task_id)
     if task is None:

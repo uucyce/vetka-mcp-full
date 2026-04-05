@@ -430,34 +430,6 @@ def get_piggyback_collector() -> PiggybackCollector:
     return _piggyback
 
 
-def reset_event_bus() -> None:
-    """Close all subscriber connections and reset singletons.
-
-    MARKER_205.HOT_RELOAD: Call before importlib.reload(event_bus) to avoid
-    leaked SQLite connections and stale UDS sockets.
-    """
-    global _bus, _piggyback
-    if _bus is not None:
-        for sub in list(_bus._subscribers):
-            # Close AuditSubscriber SQLite connection
-            conn = getattr(sub, '_conn', None)
-            if conn is not None:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-            # Close UDSPublisher socket
-            if hasattr(sub, 'close'):
-                try:
-                    sub.close()
-                except Exception:
-                    pass
-        _bus._subscribers.clear()
-        _bus = None
-    _piggyback = None
-    logger.info("EventBus: reset complete (singletons cleared, connections closed)")
-
-
 def init_event_bus(db_path: Optional[Path] = None, enable_uds: bool = True) -> EventBus:
     """Initialize the event bus with default subscribers.
 

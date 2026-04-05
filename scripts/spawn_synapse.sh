@@ -16,24 +16,6 @@ WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}
 AGENT_TYPE="${3:-claude_code}"
 INIT_PROMPT="${4:-vetka session init}"
 
-# ── MARKER_209.POLARIS: Model routing from registry ───────
-# If SYNAPSE_MODEL_ID is set, use it. Otherwise, look up from agent_registry.yaml.
-MODEL_ID="${SYNAPSE_MODEL_ID:-}"
-if [ -z "$MODEL_ID" ]; then
-    MODEL_ID=$(python3 -c "
-import yaml, pathlib
-reg = pathlib.Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
-if not reg.exists():
-    reg = pathlib.Path('${WORKTREE_PATH}/data/templates/agent_registry.yaml')
-if reg.exists():
-    data = yaml.safe_load(reg.read_text())
-    for r in data.get('roles', []):
-        if r.get('callsign') == '$ROLE':
-            print(r.get('model_id', ''))
-            break
-" 2>/dev/null || echo "")
-fi
-
 PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
 WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
 SESSION_NAME="vetka-$ROLE"
@@ -49,28 +31,23 @@ fi
 # ── Duplicate guard ───────────────────────────────────────────
 if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     echo "$LOG_PREFIX $ROLE already running in tmux session $SESSION_NAME"
+    echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt'"
     exit 0
 fi
 
 # ── Build spawn command per agent type ────────────────────────
 case "$AGENT_TYPE" in
     claude_code)
-        SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
+        # Start claude without prompt — init sent later via tmux send-keys
+        SPAWN_CMD="cd '${WORKTREE_PATH}' && claude --dangerously-skip-permissions"
         ;;
     opencode)
-        # MARKER_209.POLARIS: pass model_id if available (e.g. openrouter/qwen/qwen3-235b-a22b:free)
-        if [ -n "$MODEL_ID" ]; then
-            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode -m '$MODEL_ID'"
-        else
-            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
-        fi
+        SPAWN_CMD="cd '${WORKTREE_PATH}' && opencode"
         ;;
     generic_cli)
-        # generic_cli expects SPAWN_CMD override via env var
-        SPAWN_CMD="${SYNAPSE_SPAWN_CMD:-cd '$WORKTREE_PATH' && bash}"
+        SPAWN_CMD="${SYNAPSE_SPAWN_CMD:-cd '${WORKTREE_PATH}' && bash}"
         ;;
     vibe)
-        # Vibe = browser-based, no terminal session needed
         VIBE_URL="${SYNAPSE_VIBE_URL:-}"
         if [ -z "$VIBE_URL" ]; then
             echo "$LOG_PREFIX ERROR: SYNAPSE_VIBE_URL not set for vibe agent $ROLE" >&2
@@ -87,63 +64,56 @@ case "$AGENT_TYPE" in
 esac
 
 # ── Detect best terminal backend ─────────────────────────────
-# Priority: iTerm2 (if running) > Terminal.app (GUI) > tmux headless
 detect_backend() {
-    # Check if we have a GUI (macOS with WindowServer)
     if ! pgrep -q WindowServer 2>/dev/null; then
         echo "tmux"
         return
     fi
-
-    # Check SYNAPSE_TERMINAL override
     if [ -n "${SYNAPSE_TERMINAL:-}" ]; then
         echo "$SYNAPSE_TERMINAL"
         return
     fi
-
-    # Prefer iTerm2 if it's installed
-    if [ -d "/Applications/iTerm.app" ]; then
-        echo "iterm2"
-        return
-    fi
-
-    # Terminal.app is always available on macOS with GUI
+    # Always use Terminal.app — iTerm2 AppleScript is unreliable
     echo "terminal_app"
 }
 
 BACKEND=$(detect_backend)
 
 # ── Spawn via detected backend ────────────────────────────────
-# All backends create a tmux session INSIDE the window for programmatic access
-TMUX_CMD="tmux new-session -s '$SESSION_NAME' \"$SPAWN_CMD\""
+# tmux inside terminal window = programmatic send-keys access without focus
+TMUX_INNER="tmux new-session -s ${SESSION_NAME} '${SPAWN_CMD}'"
 
 case "$BACKEND" in
+    terminal_app)
+        # do script without target = always creates NEW window
+        WINDOW_ID=$(osascript <<EOF
+tell application "Terminal"
+    activate
+    do script "${TMUX_INNER}"
+    return id of front window
+end tell
+EOF
+)
+        echo "$LOG_PREFIX $ROLE spawned via Terminal.app (window $WINDOW_ID) → tmux $SESSION_NAME"
+        ;;
+
     iterm2)
-        osascript <<APPLESCRIPT
+        osascript <<EOF
 tell application "iTerm2"
     activate
     set newWindow to (create window with default profile)
     tell current session of newWindow
-        write text "$TMUX_CMD"
+        write text "${TMUX_INNER}"
     end tell
 end tell
-APPLESCRIPT
-        echo "$LOG_PREFIX $ROLE spawned via iTerm2 → tmux session $SESSION_NAME"
-        ;;
-
-    terminal_app)
-        osascript <<APPLESCRIPT
-tell application "Terminal"
-    activate
-    do script "$TMUX_CMD"
-end tell
-APPLESCRIPT
-        echo "$LOG_PREFIX $ROLE spawned via Terminal.app → tmux session $SESSION_NAME"
+EOF
+        WINDOW_ID="iterm2-$$"
+        echo "$LOG_PREFIX $ROLE spawned via iTerm2 → tmux $SESSION_NAME"
         ;;
 
     tmux)
-        # Headless fallback — detached tmux session, no GUI window
-        tmux new-session -d -s "$SESSION_NAME" "$SPAWN_CMD"
+        eval "tmux new-session -d -s '${SESSION_NAME}' '${SPAWN_CMD}'"
+        WINDOW_ID="headless"
         echo "$LOG_PREFIX $ROLE spawned headless → tmux attach -t $SESSION_NAME"
         ;;
 
@@ -153,57 +123,59 @@ APPLESCRIPT
         ;;
 esac
 
-# ── Register session ────────────────────────────────────────
-# MARKER_207.SESSION_REGISTRY: Track spawned agents in synapse_sessions.json
-_register_session() {
-    local ts
-    ts=$(date +%s)
-    # Use python3 for atomic JSON update (jq not guaranteed)
+# ── Update session registry ──────────────────────────────────
+mkdir -p "$(dirname "$REGISTRY_FILE")"
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+# Create or update registry JSON
+if [ -f "$REGISTRY_FILE" ]; then
+    # Use python to safely update JSON
     python3 -c "
-import json, pathlib, sys
-p = pathlib.Path('$REGISTRY_FILE')
-data = {}
-if p.exists():
-    try: data = json.loads(p.read_text())
-    except: pass
-data['$ROLE'] = {
+import json, sys
+try:
+    with open('$REGISTRY_FILE') as f:
+        reg = json.load(f)
+except:
+    reg = {}
+reg['$ROLE'] = {
     'tmux_session': '$SESSION_NAME',
+    'window_id': '$WINDOW_ID',
     'worktree': '$WORKTREE',
     'agent_type': '$AGENT_TYPE',
-    'model_id': '$MODEL_ID' or None,
-    'fleet': None,
-    'backend': '$BACKEND',
-    'spawned_at': $ts,
-    'last_activity': $ts,
-    'compacting': False,
+    'started_at': '$TIMESTAMP',
+    'pid': $$
 }
-# MARKER_209.POLARIS: detect fleet from registry
-try:
-    import yaml
-    reg_path = __import__('pathlib').Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
-    if reg_path.exists():
-        reg = yaml.safe_load(reg_path.read_text())
-        for r in reg.get('roles', []):
-            if r.get('callsign') == '$ROLE':
-                data['$ROLE']['fleet'] = r.get('fleet')
-                break
-except Exception:
-    pass
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(data, indent=2))
-" 2>/dev/null || true
-}
-_register_session
-echo "$LOG_PREFIX Registered $ROLE in $REGISTRY_FILE"
+with open('$REGISTRY_FILE', 'w') as f:
+    json.dump(reg, f, indent=2)
+"
+else
+    python3 -c "
+import json
+reg = {'$ROLE': {
+    'tmux_session': '$SESSION_NAME',
+    'window_id': '$WINDOW_ID',
+    'worktree': '$WORKTREE',
+    'agent_type': '$AGENT_TYPE',
+    'started_at': '$TIMESTAMP',
+    'pid': $$
+}}
+with open('$REGISTRY_FILE', 'w') as f:
+    json.dump(reg, f, indent=2)
+"
+fi
 
-# ── Auto-init after boot delay ──────────────────────────────
-# MARKER_207.AUTO_INIT: Send init prompt after agent boots (8s delay)
-if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" != "vibe" ]; then
+echo "$LOG_PREFIX Registry updated: $REGISTRY_FILE"
+
+# ── Auto-init: wait for Claude Code to boot, then send init prompt ──
+if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" = "claude_code" ]; then
+    echo "$LOG_PREFIX Waiting 8s for Claude Code to boot..."
     (
         sleep 8
         if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
             tmux send-keys -t "$SESSION_NAME" "$INIT_PROMPT" Enter
-            echo "$LOG_PREFIX Auto-init sent to $ROLE: $INIT_PROMPT"
+            echo "$LOG_PREFIX Auto-init sent: '$INIT_PROMPT' → $SESSION_NAME"
+        else
+            echo "$LOG_PREFIX WARNING: tmux session $SESSION_NAME gone before auto-init"
         fi
     ) &
     echo "$LOG_PREFIX Auto-init scheduled (background PID $!)"

@@ -30,6 +30,14 @@ const RULER_STYLE: CSSProperties = {
 
 // ─── Timecode formatting ───
 
+function formatFrames(seconds: number, fps: number): string {
+  return String(Math.round(seconds * fps));
+}
+
+function formatSeconds(seconds: number): string {
+  return seconds % 1 === 0 ? `${seconds}s` : `${seconds.toFixed(1)}s`;
+}
+
 function formatSMPTE(seconds: number, fps: number): string {
   const totalFrames = Math.round(seconds * fps);
   const f = totalFrames % Math.round(fps);
@@ -112,6 +120,7 @@ function generateTicks(
   scrollLeft: number,
   totalWidth: number,
   fps: number,
+  timecodeDisplayMode: 'timecode' | 'frames' | 'seconds' = 'timecode',
 ): Tick[] {
   const levels = getTickLevels(zoom, fps);
   const ticks: Tick[] = [];
@@ -135,7 +144,14 @@ function generateTicks(
 
       let label = '';
       if (level.label) {
-        label = showSMPTE ? formatSMPTE(time, fps) : formatMMSS(time);
+        if (timecodeDisplayMode === 'frames') {
+          label = formatFrames(time, fps);
+        } else if (timecodeDisplayMode === 'seconds') {
+          label = formatSeconds(time);
+        } else {
+          // 'timecode' — SMPTE at high zoom, MM:SS at low zoom
+          label = showSMPTE ? formatSMPTE(time, fps) : formatMMSS(time);
+        }
       }
 
       ticks.push({ x, height: level.height, color: level.color, label });
@@ -152,6 +168,7 @@ export interface TimelineRulerProps {
   scrollLeft: number;
   totalWidth: number;
   fps?: number;
+  timecodeDisplayMode?: 'timecode' | 'frames' | 'seconds';
   rulerRef?: RefObject<HTMLDivElement | null>;
   onSeek?: (timeSec: number) => void;
   onScrubStart?: (event: MouseEvent<HTMLDivElement>) => void;
@@ -163,6 +180,7 @@ function TimelineRulerInner({
   scrollLeft,
   totalWidth,
   fps = 25,
+  timecodeDisplayMode = 'timecode',
   rulerRef,
   onSeek,
   onScrubStart,
@@ -178,7 +196,7 @@ function TimelineRulerInner({
     [onSeek, scrollLeft, zoom],
   );
 
-  const ticks = generateTicks(zoom, scrollLeft, totalWidth, fps);
+  const ticks = generateTicks(zoom, scrollLeft, totalWidth, fps, timecodeDisplayMode);
 
   return (
     <div

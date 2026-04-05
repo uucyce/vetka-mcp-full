@@ -453,3 +453,230 @@ def apply_color_pipeline(
 
     # Convert back to uint8
     return (np.clip(frame, 0, 1) * 255).astype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# Secondary Color Correction — HSL Qualifier + masked correction
+# MARKER_SEC_COLOR: FCP7 Ch.28 — isolate color range, apply correction only there
+# ---------------------------------------------------------------------------
+
+def rgb_to_hsl(frame: np.ndarray) -> np.ndarray:
+    """Convert float32 RGB [0,1] → HSL [0,1].
+
+    H in [0,1] (0=red, 1/3=green, 2/3=blue), S and L in [0,1].
+    Works on any shape (…, 3).
+    """
+    r, g, b = frame[..., 0], frame[..., 1], frame[..., 2]
+    c_max = np.maximum(np.maximum(r, g), b)
+    c_min = np.minimum(np.minimum(r, g), b)
+    delta = c_max - c_min
+
+    # Lightness
+    l_val = (c_max + c_min) * 0.5
+
+    # Saturation
+    denom = 1.0 - np.abs(2.0 * l_val - 1.0)
+    s_val = np.where(denom < 1e-8, 0.0, np.clip(delta / (denom + 1e-8), 0.0, 1.0))
+
+    # Hue in [0,1]
+    nz = delta > 1e-8
+    h_r = np.where(nz & (c_max == r), ((g - b) / (delta + 1e-8)) % 6.0 / 6.0, 0.0)
+    h_g = np.where(nz & (c_max == g), ((b - r) / (delta + 1e-8) + 2.0) / 6.0, 0.0)
+    h_b = np.where(nz & (c_max == b), ((r - g) / (delta + 1e-8) + 4.0) / 6.0, 0.0)
+    h_val = (h_r + h_g + h_b) % 1.0
+
+    return np.stack([h_val, s_val, l_val], axis=-1).astype(np.float32)
+
+
+def hsl_to_rgb(frame: np.ndarray) -> np.ndarray:
+    """Convert float32 HSL [0,1] → RGB [0,1]. Works on any shape (…, 3)."""
+    h, s, l = frame[..., 0], frame[..., 1], frame[..., 2]
+    c = (1.0 - np.abs(2.0 * l - 1.0)) * s
+    h6 = h * 6.0
+    x = c * (1.0 - np.abs(h6 % 2.0 - 1.0))
+    m = l - c * 0.5
+
+    r = np.zeros_like(h)
+    g_ch = np.zeros_like(h)
+    b = np.zeros_like(h)
+
+    for i, (rc, gc, bc) in enumerate([
+        (c, x, 0), (x, c, 0), (0, c, x),
+        (0, x, c), (x, 0, c), (c, 0, x),
+    ]):
+        mask = (h6 >= i) & (h6 < i + 1)
+        r = np.where(mask, rc if isinstance(rc, (int, float)) else rc, r)
+        g_ch = np.where(mask, gc if isinstance(gc, (int, float)) else gc, g_ch)
+        b = np.where(mask, bc if isinstance(bc, (int, float)) else bc, b)
+
+    return np.clip(np.stack([r + m, g_ch + m, b + m], axis=-1), 0.0, 1.0).astype(np.float32)
+
+
+def build_hsl_mask(
+    hsl_frame: np.ndarray,
+    hue_center: float = 120.0,
+    hue_width: float = 30.0,
+    sat_min: float = 0.0,
+    sat_max: float = 1.0,
+    luma_min: float = 0.0,
+    luma_max: float = 1.0,
+    softness: float = 0.1,
+) -> np.ndarray:
+    """Compute soft HSL qualifier mask. Returns float32 [0..1] array (...).
+
+    Soft edges extend OUTWARD from selection boundaries (zone qualifier model):
+      - Hue: fully selected within ±hue_width; soft falloff extends ±(hue_width * softness) beyond.
+      - Sat/Luma: fully inside [min, max]; soft falloff in [min-soft, min] and [max, max+soft].
+    """
+    h_norm = hsl_frame[..., 0]  # 0..1
+    s = hsl_frame[..., 1]
+    l = hsl_frame[..., 2]
+
+    # ── Hue (circular) ──
+    hc_norm = (hue_center % 360.0) / 360.0
+    hw_norm = max(hue_width, 0.5) / 360.0
+    soft_h = hw_norm * max(softness, 0.0)
+
+    diff = np.abs(h_norm - hc_norm)
+    diff = np.minimum(diff, 1.0 - diff)  # circular wrap
+
+    # Fully selected: diff <= hw_norm; soft zone: hw_norm < diff <= hw_norm + soft_h
+    h_mask = np.where(
+        diff <= hw_norm,
+        1.0,
+        np.where(
+            diff <= hw_norm + soft_h,
+            np.clip(1.0 - (diff - hw_norm) / (soft_h + 1e-8), 0.0, 1.0),
+            0.0,
+        ),
+    )
+
+    # ── Saturation ──  fully in [sat_min, sat_max]; soft fade below sat_min and above sat_max
+    s_range = max(sat_max - sat_min, 1e-4)
+    s_soft = s_range * max(softness, 0.0)
+    s_mask = np.where(
+        (s >= sat_min) & (s <= sat_max),
+        1.0,
+        np.where(
+            s < sat_min,
+            np.clip((s - (sat_min - s_soft)) / (s_soft + 1e-8), 0.0, 1.0),
+            np.clip(((sat_max + s_soft) - s) / (s_soft + 1e-8), 0.0, 1.0),
+        ),
+    )
+
+    # ── Luma ──  same zone model
+    l_range = max(luma_max - luma_min, 1e-4)
+    l_soft = l_range * max(softness, 0.0)
+    l_mask = np.where(
+        (l >= luma_min) & (l <= luma_max),
+        1.0,
+        np.where(
+            l < luma_min,
+            np.clip((l - (luma_min - l_soft)) / (l_soft + 1e-8), 0.0, 1.0),
+            np.clip(((luma_max + l_soft) - l) / (l_soft + 1e-8), 0.0, 1.0),
+        ),
+    )
+
+    return (h_mask * s_mask * l_mask).astype(np.float32)
+
+
+def apply_secondary_correction(
+    frame: np.ndarray,
+    qualifier: "dict[str, Any]",
+    correction: "dict[str, Any]",
+) -> np.ndarray:
+    """Apply secondary color correction using HSL qualifier mask.
+
+    Args:
+        frame: float32 [0,1], shape (H, W, 3) or (N, 1, 3)
+        qualifier: {hue_center, hue_width, sat_min, sat_max, luma_min, luma_max, softness}
+        correction: {hue_shift, saturation, exposure}
+
+    Returns:
+        Corrected frame, same shape, float32 [0,1]
+    """
+    hsl = rgb_to_hsl(frame)
+    mask = build_hsl_mask(
+        hsl,
+        hue_center=float(qualifier.get("hue_center", 120.0)),
+        hue_width=float(qualifier.get("hue_width", 30.0)),
+        sat_min=float(qualifier.get("sat_min", 0.0)),
+        sat_max=float(qualifier.get("sat_max", 1.0)),
+        luma_min=float(qualifier.get("luma_min", 0.0)),
+        luma_max=float(qualifier.get("luma_max", 1.0)),
+        softness=float(qualifier.get("softness", 0.1)),
+    )
+    mask3 = mask[..., np.newaxis]  # broadcast to RGB
+
+    result = frame.copy()
+
+    # Hue shift
+    hue_shift = float(correction.get("hue_shift", 0.0))
+    if abs(hue_shift) > 0.01:
+        h_new = (hsl[..., 0] + hue_shift / 360.0) % 1.0
+        hsl_shifted = np.stack([h_new, hsl[..., 1], hsl[..., 2]], axis=-1)
+        rgb_shifted = hsl_to_rgb(hsl_shifted)
+        result = result * (1.0 - mask3) + rgb_shifted * mask3
+        hsl = rgb_to_hsl(result)
+
+    # Saturation
+    sat_adj = float(correction.get("saturation", 1.0))
+    if abs(sat_adj - 1.0) > 0.01:
+        s_new = np.clip(hsl[..., 1] * sat_adj, 0.0, 1.0)
+        hsl_adj = np.stack([hsl[..., 0], s_new, hsl[..., 2]], axis=-1)
+        rgb_adj = hsl_to_rgb(hsl_adj)
+        result = result * (1.0 - mask3) + rgb_adj * mask3
+        hsl = rgb_to_hsl(result)
+
+    # Exposure (stops)
+    exposure = float(correction.get("exposure", 0.0))
+    if abs(exposure) > 0.01:
+        factor = 2.0 ** exposure
+        result = result * (1.0 - mask3) + (result * factor) * mask3
+
+    return np.clip(result, 0.0, 1.0).astype(np.float32)
+
+
+def write_secondary_lut_cube(
+    qualifier: "dict[str, Any]",
+    correction: "dict[str, Any]",
+    size: int = 17,
+) -> "str | None":
+    """Generate a .cube 3D LUT implementing HSL-qualified secondary correction.
+
+    Returns path to temp .cube file, or None if correction is trivial / error.
+    .cube format: LUT_3D_SIZE N, R varies fastest (outer B, mid G, inner R).
+    """
+    import tempfile
+
+    hue_shift = float(correction.get("hue_shift", 0.0))
+    sat_adj = float(correction.get("saturation", 1.0))
+    exposure = float(correction.get("exposure", 0.0))
+    if abs(hue_shift) < 0.01 and abs(sat_adj - 1.0) < 0.01 and abs(exposure) < 0.01:
+        return None  # Identity — skip
+
+    try:
+        s = size
+        vals = np.linspace(0.0, 1.0, s, dtype=np.float32)
+        # .cube order: R fastest → meshgrid gives entries for all (B,G,R) combos
+        # Store as (s^3, 1, 3) to feed into apply_secondary_correction
+        b_idx, g_idx, r_idx = np.meshgrid(np.arange(s), np.arange(s), np.arange(s), indexing="ij")
+        colors = np.stack(
+            [vals[r_idx.ravel()], vals[g_idx.ravel()], vals[b_idx.ravel()]],
+            axis=-1,
+        ).reshape(s * s * s, 1, 3)
+
+        corrected = apply_secondary_correction(colors, qualifier, correction)
+        corrected = corrected.reshape(s * s * s, 3)
+
+        fd, path = tempfile.mkstemp(suffix=".cube", prefix="vetka_sec_")
+        with os.fdopen(fd, "w") as f:
+            f.write('TITLE "vetka_secondary_correction"\n')
+            f.write(f"LUT_3D_SIZE {s}\n\n")
+            for i in range(s * s * s):
+                rv, gv, bv = corrected[i]
+                f.write(f"{rv:.6f} {gv:.6f} {bv:.6f}\n")
+        return path
+    except Exception as e:
+        logger.error("write_secondary_lut_cube failed: %s", e)
+        return None

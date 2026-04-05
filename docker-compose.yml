@@ -69,7 +69,8 @@ volumes:
   weaviate_data:
     driver: local
   qdrant_data:
-    driver: local
+    external: true
+    name: qdrant_storage
   ollama_data:
     driver: local
 

@@ -28,6 +28,11 @@ from src.services.cut_color_pipeline import (
     _decode_slog3,
     _decode_logc3,
     _decode_clog3,
+    rgb_to_hsl,
+    hsl_to_rgb,
+    build_hsl_mask,
+    apply_secondary_correction,
+    write_secondary_lut_cube,
     _decode_srgb,
 )
 
@@ -253,3 +258,100 @@ class TestColorPipeline:
         )
         assert result.dtype == np.uint8
         assert result.shape == gradient_frame_uint8.shape
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MARKER_SEC_COLOR: Secondary Color Correction tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSecondaryColor:
+    """HSL qualifier + apply_secondary_correction + LUT generation."""
+
+    def test_rgb_hsl_round_trip(self):
+        """RGB → HSL → RGB should be identity (within float32 precision)."""
+        rng = np.random.default_rng(42)
+        frame = rng.random((4, 4, 3)).astype(np.float32)
+        hsl = rgb_to_hsl(frame)
+        back = hsl_to_rgb(hsl)
+        assert np.allclose(frame, back, atol=1e-5), "Round-trip error too large"
+
+    def test_known_hue_values(self):
+        """Pure red/green/blue map to expected hue values."""
+        red = np.array([[[1, 0, 0]]], dtype=np.float32)
+        green = np.array([[[0, 1, 0]]], dtype=np.float32)
+        blue = np.array([[[0, 0, 1]]], dtype=np.float32)
+        assert abs(rgb_to_hsl(red)[0, 0, 0] * 360 - 0) < 1e-3
+        assert abs(rgb_to_hsl(green)[0, 0, 0] * 360 - 120) < 1e-3
+        assert abs(rgb_to_hsl(blue)[0, 0, 0] * 360 - 240) < 1e-3
+
+    def test_mask_selects_green(self):
+        """HSL mask fully selects pure green at hue_center=120."""
+        green = np.array([[[0, 1, 0]]], dtype=np.float32)
+        mask = build_hsl_mask(rgb_to_hsl(green), hue_center=120, hue_width=30, softness=0.0)
+        assert mask[0, 0] > 0.99
+
+    def test_mask_excludes_blue(self):
+        """HSL mask excludes pure blue when qualifying for green (120°)."""
+        blue = np.array([[[0, 0, 1]]], dtype=np.float32)
+        mask = build_hsl_mask(rgb_to_hsl(blue), hue_center=120, hue_width=30, softness=0.0)
+        assert mask[0, 0] < 0.01
+
+    def test_mask_excludes_grey(self):
+        """Grey (zero saturation) excluded by non-zero sat_min qualifier."""
+        grey = np.array([[[0.5, 0.5, 0.5]]], dtype=np.float32)
+        mask = build_hsl_mask(rgb_to_hsl(grey), hue_center=120, hue_width=60, sat_min=0.2, softness=0.0)
+        assert mask[0, 0] < 0.01
+
+    def test_mask_soft_falloff(self):
+        """Soft edges produce values between 0 and 1 near boundaries."""
+        # pixel at exact hue boundary
+        # Hue 150° is exactly at the edge of [120 ± 30]
+        r, g, b = 0.0, 0.5, 0.5  # hue ≈ 180 — just outside with soft fade
+        pix = np.array([[[r, g, b]]], dtype=np.float32)
+        mask_hard = build_hsl_mask(rgb_to_hsl(pix), hue_center=120, hue_width=30, softness=0.0)
+        mask_soft = build_hsl_mask(rgb_to_hsl(pix), hue_center=120, hue_width=30, softness=0.5)
+        # With softness, boundary pixel should have higher mask value
+        assert mask_soft[0, 0] >= mask_hard[0, 0]
+
+    def test_apply_correction_hue_shift(self):
+        """Hue shift moves the hue of selected color."""
+        green_frame = np.array([[[0.0, 0.8, 0.1]]], dtype=np.float32)
+        qualifier = dict(hue_center=120, hue_width=40, sat_min=0, sat_max=1, luma_min=0, luma_max=1, softness=0.1)
+        correction = dict(hue_shift=90, saturation=1.0, exposure=0.0)
+        result = apply_secondary_correction(green_frame, qualifier, correction)
+        assert not np.allclose(green_frame, result, atol=0.01), "Hue shift should change frame"
+
+    def test_apply_correction_neutral_unchanged(self):
+        """Pixels outside qualifier range are unchanged."""
+        grey = np.array([[[0.5, 0.5, 0.5]]], dtype=np.float32)
+        qualifier = dict(hue_center=120, hue_width=30, sat_min=0.3, sat_max=1, luma_min=0, luma_max=1, softness=0.0)
+        correction = dict(hue_shift=180, saturation=0.1, exposure=-2.0)
+        result = apply_secondary_correction(grey, qualifier, correction)
+        assert np.allclose(grey, result, atol=1e-4), "Grey (s=0) outside sat qualifier should be unchanged"
+
+    def test_apply_correction_output_in_range(self):
+        """Output is always in [0, 1]."""
+        rng = np.random.default_rng(7)
+        frame = rng.random((8, 8, 3)).astype(np.float32)
+        qualifier = dict(hue_center=60, hue_width=45, sat_min=0, sat_max=1, luma_min=0, luma_max=1, softness=0.2)
+        correction = dict(hue_shift=120, saturation=2.0, exposure=2.0)
+        result = apply_secondary_correction(frame, qualifier, correction)
+        assert result.min() >= 0.0 and result.max() <= 1.0
+
+    def test_write_secondary_lut_cube_trivial_returns_none(self):
+        """Identity correction returns None (no LUT needed)."""
+        path = write_secondary_lut_cube({}, dict(hue_shift=0, saturation=1.0, exposure=0.0), size=5)
+        assert path is None
+
+    def test_write_secondary_lut_cube_creates_valid_cube(self):
+        """Non-trivial correction produces a valid .cube file."""
+        qualifier = dict(hue_center=120, hue_width=30, sat_min=0, sat_max=1, luma_min=0, luma_max=1, softness=0.1)
+        correction = dict(hue_shift=45, saturation=0.5, exposure=-0.5)
+        path = write_secondary_lut_cube(qualifier, correction, size=5)
+        assert path is not None
+        assert path.endswith(".cube")
+        lines = open(path).readlines()
+        # 5^3 = 125 data lines + header lines
+        data_lines = [l for l in lines if l.strip() and not l.startswith("TITLE") and not l.startswith("LUT_3D")]
+        assert len(data_lines) == 5 ** 3
+        os.unlink(path)

@@ -2,10 +2,11 @@
  * MARKER_170.NLE.INSPECTOR: Right-side inspector panel showing selected clip properties.
  * Displays: filename, timing, sync info, waveform mini, transcript excerpt, markers.
  */
-import { useMemo, useCallback, type CSSProperties } from 'react';
+import { useMemo, useCallback, useState, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import WaveformCanvas from './WaveformCanvas';
+import { API_BASE } from '../../config/api.config';
 // MARKER_GAMMA-FX1: MotionControls moved to EffectsPanel (unified Effect Controls)
 
 // ─── Styles ───
@@ -88,6 +89,107 @@ const MARKER_COLORS: Record<string, string> = {
   cam: '#777',
   insight: '#bbb',
 };
+
+// ─── Audio Analysis ───
+
+interface AudioAnalysisData {
+  bpm: number;
+  key: string;
+  camelot_key: string;
+  energy_contour: number[];
+  onset_times: number[];
+  duration_sec: number;
+  method?: string;
+  error?: string;
+}
+
+function EnergySpark({ contour }: { contour: number[] }) {
+  if (!contour.length) return null;
+  const W = 240, H = 28;
+  const max = Math.max(...contour, 0.001);
+  const pts = contour.map((v, i) => {
+    const x = (i / (contour.length - 1)) * W;
+    const y = H - (v / max) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  return (
+    <svg width={W} height={H} style={{ display: 'block', background: '#080808', borderRadius: 2 }}>
+      <polyline points={pts} fill="none" stroke="#666" strokeWidth={1} />
+    </svg>
+  );
+}
+
+function AudioAnalysisSection({ sourcePath }: { sourcePath: string }) {
+  const [data, setData] = useState<AudioAnalysisData | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleAnalyze = useCallback(() => {
+    setLoading(true);
+    fetch(`${API_BASE}/cut/pulse/analyze-clip`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_path: sourcePath }),
+    })
+      .then((r) => r.json())
+      .then((json) => setData(json))
+      .catch((e) => setData({ bpm: 0, key: '', camelot_key: '', energy_contour: [], onset_times: [], duration_sec: 0, error: e.message }))
+      .finally(() => setLoading(false));
+  }, [sourcePath]);
+
+  return (
+    <div style={SECTION}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <div style={HEADER}>Audio Analysis</div>
+        {!data && (
+          <button
+            onClick={handleAnalyze}
+            disabled={loading}
+            style={{
+              background: 'none',
+              border: '1px solid #333',
+              color: loading ? '#444' : '#777',
+              fontSize: 9,
+              padding: '2px 6px',
+              borderRadius: 2,
+              cursor: loading ? 'default' : 'pointer',
+              letterSpacing: 0.5,
+              textTransform: 'uppercase',
+            }}
+          >
+            {loading ? '...' : 'Analyze'}
+          </button>
+        )}
+      </div>
+      {data?.error && !data.bpm && (
+        <div style={{ color: '#555', fontSize: 9 }}>{data.error}</div>
+      )}
+      {data && (
+        <>
+          {data.bpm > 0 && (
+            <div style={ROW}><span style={LABEL}>BPM</span><span style={VALUE}>{data.bpm.toFixed(1)}</span></div>
+          )}
+          {data.key && (
+            <div style={ROW}><span style={LABEL}>Key</span><span style={VALUE}>{data.key}</span></div>
+          )}
+          {data.camelot_key && (
+            <div style={ROW}><span style={LABEL}>Camelot</span><span style={VALUE}>{data.camelot_key}</span></div>
+          )}
+          {data.onset_times.length > 0 && (
+            <div style={ROW}><span style={LABEL}>Onsets</span><span style={VALUE}>{data.onset_times.length}</span></div>
+          )}
+          {data.energy_contour.length > 0 && (
+            <div style={{ marginTop: 4 }}>
+              <EnergySpark contour={data.energy_contour} />
+            </div>
+          )}
+          {data.method && (
+            <div style={{ ...ROW, marginTop: 3 }}><span style={LABEL}>Method</span><span style={{ ...VALUE, color: '#444', fontSize: 9 }}>{data.method}</span></div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function ClipInspector() {
   const selectedClipId = useSelectionStore((s) => s.selectedClipId);
@@ -218,7 +320,7 @@ export default function ClipInspector() {
         <div style={SECTION}>
           <div style={HEADER}>Effects</div>
           {Object.entries(clip.effects).map(([key, val]) => {
-            if (val === undefined || val === 1 || val === 0 || val === false) return null;
+            if (val === undefined || val === 1 || val === 0) return null;
             return (
               <div key={key} style={ROW}>
                 <span style={LABEL}>{key}</span>
@@ -341,6 +443,9 @@ export default function ClipInspector() {
           <WaveformCanvas bins={waveformBins} width={240} height={40} color="#999" bgColor="#080808" />
         </div>
       )}
+
+      {/* MARKER_AUDIO_ANALYSIS: Per-clip BPM / key / energy — section 6.10 */}
+      <AudioAnalysisSection sourcePath={clip.source_path} />
 
       {/* Thumbnail */}
       {thumb?.poster_url && (

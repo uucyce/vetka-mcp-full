@@ -1,69 +1,57 @@
 #!/bin/bash
-# scripts/synapse_wake.sh — Wake Synapse agent with dual alert (visual + tmux)
-# Phase 209.4 | MARKER_209.DUAL_WAKE
+# scripts/synapse_wake.sh — SYNAPSE: force idle agent to read its notification inbox
+# Phase 206.5 | ARCH: docs/200_taskboard_forever/ROADMAP_SYNAPSE_206.md
+# MARKER_206.SYNAPSE_WAKE
 #
-# Usage: synapse_wake.sh ROLE [AGENT_TYPE] [MESSAGE]
+# Usage: synapse_wake.sh ROLE [AGENT_TYPE]
+#   ROLE        — agent callsign (Alpha, Beta, Eta, ...)
+#   AGENT_TYPE  — claude_code (default) | opencode | vibe | generic_cli
 #
-# ALWAYS sends macOS notification (visual alert for human operator).
-# If agent is idle (> WAKE_THRESHOLD), also injects tmux text poke.
-# This ensures Commander sees the alert even when mid-conversation.
+# How it works:
+#   Phase 204 already writes a signal file on notify(). If the agent is idle
+#   (no tool calls happening), the PreToolUse hook never fires, so the signal
+#   is never read. synapse_wake.sh nudges the agent by injecting "/inbox" into
+#   its tmux session, which forces a tool call → hook fires → signal read.
+#
+# No-op conditions (safe to skip wake):
+#   - Session does not exist (agent offline)
+#   - Agent was recently active (pane activity within ACTIVE_THRESHOLD_SECS)
 
 set -euo pipefail
 
-ROLE="${1:?Usage: synapse_wake.sh ROLE [AGENT_TYPE] [MESSAGE]}"
+ROLE="${1:?Usage: synapse_wake.sh ROLE [AGENT_TYPE]}"
 AGENT_TYPE="${2:-claude_code}"
-MESSAGE="${3:-Agent $ROLE has pending notifications}"
 
 SESSION_NAME="vetka-$ROLE"
-WAKE_THRESHOLD="${SYNAPSE_WAKE_THRESHOLD:-30}"
-LOG_PREFIX="[SYNAPSE-WAKE]"
+LOG_PREFIX="[SYNAPSE.WAKE]"
 
-# ── macOS notification (ALWAYS fires — visual interrupt) ──
-# This is the critical fix: even if agent is mid-conversation,
-# the human operator sees the notification banner.
-_send_notification() {
-    local title="$1"
-    local body="$2"
-    if pgrep -q WindowServer 2>/dev/null; then
-        osascript -e "display notification \"$body\" with title \"$title\" sound name \"Ping\"" 2>/dev/null || true
-        echo "$LOG_PREFIX macOS notification sent: $title"
-    fi
-}
+# How recently (seconds) a pane must have been active to be considered busy.
+# tmux #{pane_activity} is updated on every byte of output — tool calls produce output.
+ACTIVE_THRESHOLD_SECS="${SYNAPSE_WAKE_THRESHOLD:-30}"
 
-# ── Vibe agents: signal file + notification ───────────────
+# ── Vibe stub ─────────────────────────────────────────────────────────────────
 if [ "$AGENT_TYPE" = "vibe" ]; then
-    SIGNAL_DIR="$HOME/.vetka/signals"
-    mkdir -p "$SIGNAL_DIR"
-    SIGNAL_FILE="$SIGNAL_DIR/${ROLE}_wake_$(date +%s).json"
-    echo "{\"role\": \"$ROLE\", \"action\": \"wake\", \"ts\": $(date +%s), \"message\": \"$MESSAGE\"}" > "$SIGNAL_FILE"
-    _send_notification "SYNAPSE: $ROLE" "$MESSAGE"
-    echo "$LOG_PREFIX $ROLE (vibe) wake signal + notification sent"
+    echo "$LOG_PREFIX WARNING: vibe agent wake not implemented — Playwright bridge in 206.7" >&2
+    echo "$LOG_PREFIX Role=$ROLE skipped." >&2
     exit 0
 fi
 
-# ── Validate tmux session exists ──────────────────────────
+# ── Session exists? ───────────────────────────────────────────────────────────
 if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    # Agent not running — still send notification so operator knows
-    _send_notification "SYNAPSE: $ROLE OFFLINE" "$ROLE is not running — needs spawn"
-    echo "$LOG_PREFIX $ROLE not running (no tmux session '$SESSION_NAME')"
-    exit 1
+    echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME' — agent offline, nothing to wake" >&2
+    exit 0
 fi
 
-# ── ALWAYS send macOS notification ────────────────────────
-_send_notification "SYNAPSE: Wake $ROLE" "$MESSAGE"
-
-# ── Check if agent is idle for tmux poke ──────────────────
+# ── Activity check — no-op if recently active ─────────────────────────────────
 LAST_ACTIVITY=$(tmux display-message -p -t "$SESSION_NAME" '#{pane_activity}' 2>/dev/null || echo "0")
 NOW=$(date +%s)
-IDLE_SEC=$(( NOW - LAST_ACTIVITY ))
+DIFF=$((NOW - LAST_ACTIVITY))
 
-if [ "$IDLE_SEC" -lt "$WAKE_THRESHOLD" ]; then
-    # Agent is active — notification already sent above, skip tmux poke
-    # (typing into active conversation would corrupt the prompt)
-    echo "$LOG_PREFIX $ROLE is active (idle ${IDLE_SEC}s) — notification sent, tmux poke skipped"
+if [ "$LAST_ACTIVITY" != "0" ] && [ "$DIFF" -lt "$ACTIVE_THRESHOLD_SECS" ]; then
+    echo "$LOG_PREFIX $ROLE is active (pane activity ${DIFF}s ago, threshold=${ACTIVE_THRESHOLD_SECS}s) — no-op"
     exit 0
 fi
 
-# ── Idle agent: also inject tmux text to trigger inbox read ─
+# ── Send inbox wake trigger ───────────────────────────────────────────────────
 tmux send-keys -t "$SESSION_NAME" "vetka session init" Enter
-echo "$LOG_PREFIX Woke $ROLE (idle ${IDLE_SEC}s) — notification + tmux poke sent"
+echo "$LOG_PREFIX $ROLE ← woken (sent inbox trigger, last activity was ${DIFF}s ago)"

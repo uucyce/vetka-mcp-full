@@ -2,9 +2,9 @@
   "vetka_search_semantic": {
     "tool_id": "vetka_search_semantic",
     "curiosity": 0.00020342697805520653,
-    "trust": 0.7359953390625,
-    "caution": 0.1,
-    "mood_label": "confident",
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "cautious",
     "usage_count": 22,
     "success_count": 22,
     "failure_count": 0,
@@ -1365,25 +1365,25 @@
   },
   "vetka_search_files": {
     "tool_id": "vetka_search_files",
-    "curiosity": 0.04742587317756678,
-    "trust": 0.004375391587004396,
+    "curiosity": 0.01798620996209156,
+    "trust": 0.2806612204216107,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 11,
-    "success_count": 0,
+    "usage_count": 13,
+    "success_count": 2,
     "failure_count": 11,
-    "last_updated": 1774404901.1533282
+    "last_updated": 1774969576.92374
   },
   "vetka_read_file": {
     "tool_id": "vetka_read_file",
-    "curiosity": 4.599055376537186e-10,
-    "trust": 1.3540607380455595e-07,
+    "curiosity": 3.7751345441365816e-11,
+    "trust": 1.571103980034844e-08,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 48,
+    "usage_count": 53,
     "success_count": 6,
-    "failure_count": 42,
-    "last_updated": 1774613713.3922062
+    "failure_count": 47,
+    "last_updated": 1774980777.625776
   },
   "vetka_search_code": {
     "tool_id": "vetka_search_code",
@@ -1398,21 +1398,21 @@
   },
   "vetka_list_files": {
     "tool_id": "vetka_list_files",
+    "curiosity": 0.6224593312018546,
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "cautious",
+    "usage_count": 4,
+    "success_count": 2,
+    "failure_count": 2,
+    "last_updated": 1774969576.924907
+  },
+  "mycelium_call_model": {
+    "tool_id": "mycelium_call_model",
     "curiosity": 0.9241418199787566,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
-    "usage_count": 0,
-    "success_count": 0,
-    "failure_count": 0,
-    "last_updated": 1773908002.900822
-  },
-  "mycelium_call_model": {
-    "tool_id": "mycelium_call_model",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.0,
-    "mood_label": "neutral",
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
@@ -1552,10 +1552,10 @@
   },
   "mycelium_review": {
     "tool_id": "mycelium_review",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.0,
-    "mood_label": "neutral",
+    "curiosity": 0.9241418199787566,
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "curious",
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
@@ -2025,7 +2025,7 @@
   },
   "vetka_get_metrics": {
     "tool_id": "vetka_get_metrics",
-    "curiosity": 1.0,
+    "curiosity": 0.9372618199787566,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2036,7 +2036,7 @@
   },
   "vetka_get_knowledge_graph": {
     "tool_id": "vetka_get_knowledge_graph",
-    "curiosity": 1.0,
+    "curiosity": 0.9372618199787566,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2333,7 +2333,7 @@
   },
   "vetka_review": {
     "tool_id": "vetka_review",
-    "curiosity": 0.9241418199787566,
+    "curiosity": 1.0,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2377,25 +2377,25 @@
   },
   "task_board": {
     "tool_id": "task_board",
-    "curiosity": 1.0530617357553813e-20,
-    "trust": 0.1664123706518631,
+    "curiosity": 8.644057113036095e-22,
+    "trust": 0.05202573850287302,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 97,
-    "success_count": 16,
-    "failure_count": 81,
-    "last_updated": 1774613713.41081
+    "usage_count": 102,
+    "success_count": 17,
+    "failure_count": 85,
+    "last_updated": 1775327215.106743
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 3.2632478610144014e-32,
-    "trust": 0.9999999999870637,
+    "curiosity": 3.6187428827657366e-72,
+    "trust": 0.9999999999999997,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 150,
-    "success_count": 150,
+    "usage_count": 334,
+    "success_count": 334,
     "failure_count": 0,
-    "last_updated": 1774673801.8352818
+    "last_updated": 1775409287.671492
   },
   "Read": {
     "tool_id": "Read",
@@ -2421,10 +2421,10 @@
   },
   "vetka_screenshot": {
     "tool_id": "vetka_screenshot",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.3,
-    "mood_label": "neutral",
+    "curiosity": 0.9241418199787566,
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "curious",
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
@@ -2432,24 +2432,57 @@
   },
   "__debrief_bug__": {
     "tool_id": "__debrief_bug__",
-    "curiosity": 2.7894680920908113e-10,
-    "trust": 3.401923002985485e-10,
+    "curiosity": 1.2004817995138824e-32,
+    "trust": 1.827259439298164e-29,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 49,
+    "usage_count": 152,
     "success_count": 0,
-    "failure_count": 49,
-    "last_updated": 1774673802.081738
+    "failure_count": 152,
+    "last_updated": 1775409288.163774
   },
   "session_init": {
     "tool_id": "session_init",
-    "curiosity": 0.6224593312018546,
-    "trust": 0.385503125,
+    "curiosity": 0.02931223075135632,
+    "trust": 0.41706449126114126,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 4,
-    "success_count": 2,
+    "usage_count": 12,
+    "success_count": 7,
+    "failure_count": 5,
+    "last_updated": 1775407493.300119
+  },
+  "Write": {
+    "tool_id": "Write",
+    "curiosity": 0.8807970779778823,
+    "trust": 0.325,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 1,
+    "success_count": 0,
+    "failure_count": 1,
+    "last_updated": 1775220515.4820852
+  },
+  "vetka_mcp_bridge": {
+    "tool_id": "vetka_mcp_bridge",
+    "curiosity": 0.7310585786300049,
+    "trust": 0.3295625,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 3,
+    "success_count": 1,
     "failure_count": 2,
-    "last_updated": 1774617315.7513118
+    "last_updated": 1775403111.000979
+  },
+  "Glob": {
+    "tool_id": "Glob",
+    "curiosity": 0.8807970779778823,
+    "trust": 0.575,
+    "caution": 0.1,
+    "mood_label": "curious",
+    "usage_count": 1,
+    "success_count": 1,
+    "failure_count": 0,
+    "last_updated": 1775356430.5550148
   }
 }

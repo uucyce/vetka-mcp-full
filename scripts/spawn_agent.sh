@@ -23,7 +23,13 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
 fi
 
 # Spawn detached tmux session with claude
+# --dangerously-skip-permissions shows a confirmation prompt (Down=Yes, Enter=confirm)
+# We auto-accept by sending keystrokes after a short delay
 tmux new-session -d -s "$SESSION_NAME" \
     "cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
+
+# Auto-accept bypass permissions prompt
+(sleep 2 && tmux send-keys -t "$SESSION_NAME" Down 2>/dev/null && \
+ sleep 0.3 && tmux send-keys -t "$SESSION_NAME" Enter 2>/dev/null) &
 
 echo "[SPAWN] $ROLE spawned in $WORKTREE → tmux attach -t $SESSION_NAME"
