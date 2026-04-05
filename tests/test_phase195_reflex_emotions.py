@@ -1,17 +1,14 @@
 """
-Phase 195.2 — REFLEX Emotions test suite (36+ tests).
+Phase 195.2 — REFLEX Emotions test suite (25 tests).
 
 W1 (MARKER_195.3): 15 core unit tests — curiosity, trust, caution, modifier.
 W2 (MARKER_195.6): 10 integration tests — persistence, engine, scenarios.
-W3 (MARKER_195.2.2): Additional tests — mood_label, ENGRAM, feature flag, workflow.
 """
 
 import json
 import math
-import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 from src.services.reflex_emotions import (
     EmotionState,
@@ -21,13 +18,8 @@ from src.services.reflex_emotions import (
     compute_trust,
     compute_caution,
     compute_emotion_modifier,
-    get_mood_label,
     get_reflex_emotions,
     reset_reflex_emotions,
-    REFLEX_EMOTIONS_ENABLED,
-    _COLD_CURIOSITY,
-    _COLD_TRUST,
-    _COLD_CAUTION,
 )
 
 
@@ -66,14 +58,6 @@ def engine(tmp_path):
     return EmotionEngine(data_dir=str(tmp_path))
 
 
-@pytest.fixture(autouse=True)
-def cleanup_singleton():
-    """Reset the singleton before/after each test."""
-    reset_reflex_emotions()
-    yield
-    reset_reflex_emotions()
-
-
 # ════════════════════════════════════════════════════════════════
 # W1 — Cat 1: Curiosity (5 tests)                MARKER_195.3
 # ════════════════════════════════════════════════════════════════
@@ -88,12 +72,14 @@ class TestReflexEmotionsW1:
         c = compute_curiosity(usage_count=0, freshness_score=0.0)
         # novelty = 1/(1+exp(0.5*(0-5))) = 1/(1+exp(-2.5)) ≈ 0.924
         assert c >= 0.6, f"Expected curiosity >= 0.6 for novel tool, got {c}"
+        print("✅ test_01: novel tool curiosity >= 0.6")
 
     def test_02_curiosity_heavy_use(self):
         """Heavily-used tool (usage=10) has low curiosity < 0.3."""
         c = compute_curiosity(usage_count=10, freshness_score=0.0)
         # novelty = 1/(1+exp(0.5*(10-5))) = 1/(1+exp(2.5)) ≈ 0.076
         assert c < 0.3, f"Expected curiosity < 0.3 for heavy use, got {c}"
+        print("✅ test_02: heavy-use curiosity < 0.3")
 
     def test_03_curiosity_freshness_boost(self):
         """Freshness boost increases curiosity for stale tools."""
@@ -102,11 +88,13 @@ class TestReflexEmotionsW1:
         assert c_fresh > c_no_fresh, (
             f"Freshness should boost curiosity: {c_fresh} > {c_no_fresh}"
         )
+        print("✅ test_03: freshness boosts curiosity")
 
     def test_04_curiosity_floor_zero(self):
         """Curiosity never goes below 0 even with extreme usage."""
         c = compute_curiosity(usage_count=1000, freshness_score=0.0)
         assert c >= 0.0, f"Curiosity must be >= 0, got {c}"
+        print("✅ test_04: curiosity floor at 0")
 
     def test_05_curiosity_capped_at_one(self):
         """Curiosity capped at 1.0 even with max freshness + novelty."""
@@ -116,37 +104,46 @@ class TestReflexEmotionsW1:
         assert c == 1.0 or abs(c - 1.0) < 1e-9, (
             f"Expected curiosity capped at 1.0, got {c}"
         )
+        print("✅ test_05: curiosity capped at 1.0")
 
     # ── Cat 2: Trust ──
 
     def test_06_trust_cold_start(self, cold_state):
         """Cold-start trust is 0.5."""
         assert cold_state.trust == 0.5, f"Expected trust=0.5, got {cold_state.trust}"
+        print("✅ test_06: cold-start trust = 0.5")
 
     def test_07_trust_three_successes(self):
-        """Three consecutive successes from 0.5 push trust above 0.65."""
+        """Three consecutive successes from 0.5 push trust above 0.7."""
         trust = 0.5
         for _ in range(3):
             trust = compute_trust(trust, success=True, guard_warnings=[])
         assert trust > 0.65, f"Expected trust > 0.65 after 3 successes, got {trust}"
+        print("✅ test_07: 3 successes → trust > 0.65")
 
     def test_08_trust_single_failure_drop(self):
-        """Single failure from 0.8 drops trust significantly."""
+        """Single failure from 0.8 drops trust significantly (×0.65 → ~0.52)."""
         trust = compute_trust(0.8, success=False, guard_warnings=[])
         assert trust < 0.6, f"Expected trust < 0.6 after failure from 0.8, got {trust}"
+        print("✅ test_08: failure from 0.8 drops significantly")
 
     def test_09_trust_asymmetry(self):
         """Recovery is slower than drop — asymmetric dynamics."""
+        # Start at 0.8, fail once, then recover with 1 success
         after_fail = compute_trust(0.8, success=False, guard_warnings=[])
         after_recover = compute_trust(after_fail, success=True, guard_warnings=[])
+        # Recovery should NOT fully restore — still below original
         assert after_recover < 0.8, (
             f"Expected trust < 0.8 after fail+recover, got {after_recover}"
         )
+        print("✅ test_09: trust asymmetry — recovery slower than drop")
 
     def test_10_trust_guard_warning_cap(self):
         """Guard warnings cap trust at 0.3, even if computed higher."""
+        # Start high
         trust = compute_trust(0.9, success=True, guard_warnings=["security_risk"])
         assert trust <= 0.3, f"Expected trust <= 0.3 with guard warning, got {trust}"
+        print("✅ test_10: guard warning caps trust at 0.3")
 
     def test_11_trust_range(self):
         """Trust always stays in [0, 1]."""
@@ -161,6 +158,7 @@ class TestReflexEmotionsW1:
         for _ in range(50):
             trust = compute_trust(trust, success=True, guard_warnings=[])
         assert 0.0 <= trust <= 1.0, f"Trust out of range: {trust}"
+        print("✅ test_11: trust stays in [0, 1]")
 
     # ── Cat 3: Caution ──
 
@@ -173,6 +171,7 @@ class TestReflexEmotionsW1:
             guard_warnings=[],
         )
         assert c >= 0.7, f"Expected caution >= 0.7 for WRITE, got {c}"
+        print("✅ test_12: WRITE → caution >= 0.7")
 
     def test_13_caution_read_safe(self):
         """READ permission with no flags → caution <= 0.1."""
@@ -183,6 +182,7 @@ class TestReflexEmotionsW1:
             guard_warnings=[],
         )
         assert c <= 0.1, f"Expected caution <= 0.1 for safe READ, got {c}"
+        print("✅ test_13: safe READ → caution <= 0.1")
 
     def test_14_caution_foreign_file(self):
         """Foreign file → caution >= 0.8."""
@@ -193,6 +193,7 @@ class TestReflexEmotionsW1:
             guard_warnings=[],
         )
         assert c >= 0.8, f"Expected caution >= 0.8 for foreign file, got {c}"
+        print("✅ test_14: foreign file → caution >= 0.8")
 
     def test_15_caution_no_recon(self):
         """No recon → caution >= 0.5."""
@@ -203,6 +204,7 @@ class TestReflexEmotionsW1:
             guard_warnings=[],
         )
         assert c >= 0.5, f"Expected caution >= 0.5 without recon, got {c}"
+        print("✅ test_15: no recon → caution >= 0.5")
 
     def test_16_caution_guard_warnings(self):
         """Guard warnings → caution >= 0.7."""
@@ -213,6 +215,7 @@ class TestReflexEmotionsW1:
             guard_warnings=["suspicious_pattern"],
         )
         assert c >= 0.7, f"Expected caution >= 0.7 with guard warnings, got {c}"
+        print("✅ test_16: guard warnings → caution >= 0.7")
 
     # ── Cat 4: Modifier ──
 
@@ -233,27 +236,31 @@ class TestReflexEmotionsW1:
                 f"Modifier {m} out of [0.3, 1.5] for "
                 f"c={curiosity}, t={trust}, caut={caution}"
             )
+        print("✅ test_17: modifier always in [0.3, 1.5]")
 
     def test_18_modifier_high_caution_dominates(self):
         """High caution dominates — pulls modifier low."""
         m = compute_emotion_modifier(curiosity=0.5, trust=1.0, caution=1.0)
+        # (0.5+0.5)*(1.0+0.15)*(1.0-0.4) = 1.0*1.15*0.6 = 0.69
         assert m <= 0.75, f"Expected modifier <= 0.75 with max caution, got {m}"
+        print("✅ test_18: high caution dominates")
 
     def test_19_modifier_low_trust_gates(self):
         """Low trust gates modifier — even with high curiosity."""
         m = compute_emotion_modifier(curiosity=1.0, trust=0.0, caution=0.0)
         # (0.5+0.0)*(1.0+0.3)*(1.0-0.0) = 0.5*1.3*1.0 = 0.65
         assert abs(m - 0.65) < 0.05, f"Expected modifier ≈ 0.65, got {m}"
+        print("✅ test_19: low trust gates modifier")
 
     def test_20_modifier_cold_start(self):
-        """Cold-start default values produce a reasonable modifier."""
-        m = compute_emotion_modifier(
-            curiosity=_COLD_CURIOSITY,
-            trust=_COLD_TRUST,
-            caution=_COLD_CAUTION,
+        """Cold-start values → modifier ≈ 0.779."""
+        m = compute_emotion_modifier(curiosity=0.6, trust=0.5, caution=0.3)
+        # (0.5+0.25)*(1.0+0.18)*(1.0-0.12) = 0.75*1.18*0.88 ≈ 0.779
+        expected = 0.75 * 1.18 * 0.88
+        assert abs(m - expected) < 0.05, (
+            f"Expected modifier ≈ {expected:.3f}, got {m}"
         )
-        # Should produce something reasonable in [0.5, 1.0]
-        assert 0.3 <= m <= 1.5, f"Cold start modifier out of range: {m}"
+        print("✅ test_20: cold-start modifier ≈ 0.779")
 
 
 # ════════════════════════════════════════════════════════════════
@@ -285,17 +292,25 @@ class TestReflexEmotionsW2:
         assert abs(state_after.trust - state_before.trust) < 1e-6, (
             f"Trust mismatch: {state_after.trust} vs {state_before.trust}"
         )
+        print("✅ test_21: save/load roundtrip preserves state")
 
     def test_22_reset_singleton(self, tmp_path):
         """reset_reflex_emotions clears the engine singleton."""
+        # Get engine via singleton
         engine1 = get_reflex_emotions(data_dir=str(tmp_path))
         ctx = EmotionContext(agent_id="a1")
         engine1.record_outcome("tool_x", success=True, context=ctx)
 
+        # Reset
         reset_reflex_emotions()
 
+        # Get again — should be fresh
         engine2 = get_reflex_emotions(data_dir=str(tmp_path))
+        state = engine2.get_emotion_state("tool_x")
+        # After reset, the engine reloads from disk OR starts fresh
+        # The key contract: singleton was cleared
         assert engine1 is not engine2, "Reset should create new engine instance"
+        print("✅ test_22: reset clears singleton")
 
     # ── Cat 6: Integration scenarios ──
 
@@ -312,6 +327,7 @@ class TestReflexEmotionsW2:
         assert mod_fresh > mod_stale, (
             f"Fresh tool modifier ({mod_fresh}) should exceed stale ({mod_stale})"
         )
+        print("✅ test_23: fresh tool → higher modifier")
 
     def test_24_failing_tool_lower_modifier(self, tmp_path):
         """Tool that keeps failing gets progressively lower modifier."""
@@ -320,6 +336,7 @@ class TestReflexEmotionsW2:
 
         mod_before = engine.compute_modifier("tool_flaky", ctx)
 
+        # Record several failures
         for _ in range(5):
             engine.record_outcome("tool_flaky", success=False, context=ctx)
 
@@ -328,6 +345,7 @@ class TestReflexEmotionsW2:
         assert mod_after < mod_before, (
             f"Failing tool modifier should decrease: {mod_after} < {mod_before}"
         )
+        print("✅ test_24: failing tool → lower modifier")
 
     def test_25_risky_edit_low_modifier(self, tmp_path):
         """WRITE + foreign + no recon → low modifier (safety mode)."""
@@ -342,239 +360,141 @@ class TestReflexEmotionsW2:
         )
 
         mod = engine.compute_modifier("dangerous_tool", risky)
+
+        # With max caution (0.9 from guard warnings), cold trust (0.5),
+        # modifier = (0.75)*(1+c*0.3)*(1-0.9*0.4) = 0.75*~1.28*0.64 ≈ 0.61
         assert mod < 0.7, f"Risky edit modifier should be < 0.7, got {mod}"
+        print("✅ test_25: risky edit → low modifier (safety mode)")
 
 
 # ════════════════════════════════════════════════════════════════
-# W3 — Mood Label Tests                          MARKER_195.2.2
+# W2 — Cat 7: IP-E4 Session Display + Pipeline Integration   MARKER_195.2.4
 # ════════════════════════════════════════════════════════════════
 
-class TestMoodLabel:
-    """Tests for get_mood_label() function."""
+class TestReflexEmotionsSessionDisplay:
+    """Wave 2 (195.2.4): Emotion display in session_init + integration tests."""
 
-    def test_26_mood_curious(self):
-        """High curiosity dominant → 'curious'."""
-        label = get_mood_label(curiosity=0.8, trust=0.5, caution=0.3)
-        assert label == "curious", f"Expected 'curious', got '{label}'"
+    def test_26_mood_label_exploratory(self):
+        """avg curiosity > 0.6 → exploratory."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        emotions = {
+            "tool_a": {"curiosity": 0.8, "trust": 0.5, "caution": 0.1},
+            "tool_b": {"curiosity": 0.7, "trust": 0.5, "caution": 0.2},
+        }
+        assert _compute_mood_label(emotions) == "exploratory"
+        print("✅ test_26: avg curiosity > 0.6 → exploratory")
 
-    def test_27_mood_confident(self):
-        """High trust dominant → 'confident'."""
-        label = get_mood_label(curiosity=0.3, trust=0.8, caution=0.2)
-        assert label == "confident", f"Expected 'confident', got '{label}'"
+    def test_27_mood_label_cautious(self):
+        """avg caution > 0.6 → cautious (overrides others)."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        emotions = {
+            "tool_a": {"curiosity": 0.9, "trust": 0.9, "caution": 0.7},
+            "tool_b": {"curiosity": 0.8, "trust": 0.8, "caution": 0.8},
+        }
+        assert _compute_mood_label(emotions) == "cautious"
+        print("✅ test_27: avg caution > 0.6 → cautious")
 
-    def test_28_mood_cautious(self):
-        """High caution dominant → 'cautious'."""
-        label = get_mood_label(curiosity=0.3, trust=0.4, caution=0.7)
-        assert label == "cautious", f"Expected 'cautious', got '{label}'"
+    def test_28_mood_label_confident(self):
+        """avg trust > 0.7, caution low → confident."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        emotions = {
+            "tool_a": {"curiosity": 0.3, "trust": 0.9, "caution": 0.1},
+            "tool_b": {"curiosity": 0.2, "trust": 0.8, "caution": 0.1},
+        }
+        assert _compute_mood_label(emotions) == "confident"
+        print("✅ test_28: avg trust > 0.7 → confident")
 
-    def test_29_mood_neutral(self):
-        """All moderate → 'neutral'."""
-        label = get_mood_label(curiosity=0.5, trust=0.5, caution=0.3)
-        assert label == "neutral", f"Expected 'neutral', got '{label}'"
+    def test_29_mood_label_wary(self):
+        """avg trust < 0.3 → wary."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        emotions = {
+            "tool_a": {"curiosity": 0.3, "trust": 0.1, "caution": 0.3},
+            "tool_b": {"curiosity": 0.2, "trust": 0.2, "caution": 0.4},
+        }
+        assert _compute_mood_label(emotions) == "wary"
+        print("✅ test_29: avg trust < 0.3 → wary")
 
-    def test_30_mood_neutral_all_low(self):
-        """All low values → 'neutral'."""
-        label = get_mood_label(curiosity=0.2, trust=0.2, caution=0.2)
-        assert label == "neutral", f"Expected 'neutral', got '{label}'"
+    def test_30_mood_label_balanced(self):
+        """Middle-of-road values → balanced."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        emotions = {
+            "tool_a": {"curiosity": 0.5, "trust": 0.5, "caution": 0.3},
+        }
+        assert _compute_mood_label(emotions) == "balanced"
+        print("✅ test_30: balanced default")
 
+    def test_31_mood_label_empty(self):
+        """Empty emotions → balanced."""
+        from src.mcp.tools.session_tools import _compute_mood_label
+        assert _compute_mood_label({}) == "balanced"
+        print("✅ test_31: empty → balanced")
 
-# ════════════════════════════════════════════════════════════════
-# W3 — ENGRAM Persistence Tests                  MARKER_195.2.2
-# ════════════════════════════════════════════════════════════════
+    def test_32_emotion_summary_generation(self):
+        """Summary mentions high-curiosity and low-trust tools."""
+        from src.mcp.tools.session_tools import _generate_emotion_summary
+        emotions = {
+            "tool_fresh": {"curiosity": 0.9, "trust": 0.5, "caution": 0.1},
+            "tool_broken": {"curiosity": 0.2, "trust": 0.1, "caution": 0.3},
+            "tool_safe": {"curiosity": 0.4, "trust": 0.8, "caution": 0.1},
+        }
+        summary = _generate_emotion_summary(emotions)
+        assert "curiosity" in summary.lower(), f"Summary should mention curiosity: {summary}"
+        assert "trust" in summary.lower(), f"Summary should mention trust: {summary}"
+        print(f"✅ test_32: summary = {summary!r}")
 
-class TestEngramPersistence:
-    """Tests for ENGRAM save/load of emotion states."""
-
-    def test_31_engram_save_load_roundtrip(self, tmp_path):
-        """Save to ENGRAM and load back preserves state."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        # Mock the engram cache with a simple in-memory dict
-        mock_store = {}
-
-        def mock_put(key, value, category="default"):
-            mock_store[key] = {"key": key, "value": value, "category": category}
-
-        def mock_get_all():
-            return mock_store
-
-        mock_cache = MagicMock()
-        mock_cache.put = mock_put
-        mock_cache.get_all = mock_get_all
-
-        with patch("src.memory.engram_cache.get_engram_cache", return_value=mock_cache):
-            # Record outcome which triggers ENGRAM save
-            ctx = EmotionContext(agent_id="opus")
-            engine.record_outcome("tool_a", success=True, context=ctx)
-            engine.record_outcome("tool_a", success=True, context=ctx)
-
-            # Load from ENGRAM
-            loaded = engine.get_state_from_engram("opus", "tool_a")
-            assert loaded is not None, "Should load state from ENGRAM"
-            assert loaded.usage_count == 2, f"Expected usage_count=2, got {loaded.usage_count}"
-            assert loaded.trust > 0.5, f"Expected trust > 0.5, got {loaded.trust}"
-
-    def test_32_engram_load_missing_key(self, tmp_path):
-        """Loading non-existent key from ENGRAM returns None."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        mock_cache = MagicMock()
-        mock_cache.get_all.return_value = {}
-
-        with patch("src.memory.engram_cache.get_engram_cache", return_value=mock_cache):
-            loaded = engine.get_state_from_engram("agent_x", "nonexistent_tool")
-            assert loaded is None, "Should return None for missing key"
-
-    def test_33_engram_save_failure_nonfatal(self, tmp_path):
-        """ENGRAM save failure is non-fatal — engine continues."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        with patch("src.memory.engram_cache.get_engram_cache", side_effect=ImportError("no engram")):
-            # Should not raise
-            ctx = EmotionContext(agent_id="a1")
-            state = engine.record_outcome("tool_y", success=True, context=ctx)
-            assert state.usage_count == 1, "Engine should still work despite ENGRAM failure"
-
-
-# ════════════════════════════════════════════════════════════════
-# W3 — Feature Flag Tests                        MARKER_195.2.2
-# ════════════════════════════════════════════════════════════════
-
-class TestFeatureFlag:
-    """Tests for REFLEX_EMOTIONS_ENABLED feature flag."""
-
-    def test_34_flag_disabled_modifier_is_one(self, tmp_path):
-        """When REFLEX_EMOTIONS_ENABLED=false, compute_modifier returns 1.0."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        with patch("src.services.reflex_emotions.REFLEX_EMOTIONS_ENABLED", False):
-            mod = engine.compute_modifier("any_tool", EmotionContext())
-            assert mod == 1.0, f"Expected modifier=1.0 when disabled, got {mod}"
-
-    def test_35_flag_disabled_record_outcome_noop(self, tmp_path):
-        """When disabled, record_outcome does not update counters."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        with patch("src.services.reflex_emotions.REFLEX_EMOTIONS_ENABLED", False):
-            state = engine.record_outcome("tool_z", success=True, context=EmotionContext())
-            # Usage count should remain 0 since flag is off
-            assert state.usage_count == 0, f"Expected no update when disabled, got usage={state.usage_count}"
-
-    def test_36_flag_disabled_breakdown_neutral(self, tmp_path):
-        """When disabled, get_modifier_breakdown returns neutral values."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        with patch("src.services.reflex_emotions.REFLEX_EMOTIONS_ENABLED", False):
-            bd = engine.get_modifier_breakdown("tool_x")
-            assert bd["modifier"] == 1.0, f"Expected modifier=1.0, got {bd['modifier']}"
-            assert bd["mood_label"] == "neutral", f"Expected neutral, got {bd['mood_label']}"
-
-    def test_37_flag_disabled_compute_emotions_defaults(self, tmp_path):
-        """When disabled, compute_emotions returns default state."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        with patch("src.services.reflex_emotions.REFLEX_EMOTIONS_ENABLED", False):
-            state = engine.compute_emotions("tool_x")
-            assert state.curiosity == _COLD_CURIOSITY
-            assert state.trust == _COLD_TRUST
-            assert state.caution == _COLD_CAUTION
-
-
-# ════════════════════════════════════════════════════════════════
-# W3 — Full Workflow Tests                       MARKER_195.2.2
-# ════════════════════════════════════════════════════════════════
-
-class TestFullWorkflow:
-    """End-to-end workflow: context → emotions → modifier → applied to score."""
-
-    def test_38_workflow_context_to_score(self, tmp_path):
-        """Full flow: build context, compute emotions, get modifier, apply to score."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        # Build context
-        ctx = EmotionContext(
-            agent_id="opus",
-            phase_type="build",
-            tool_permission="READ",
-            freshness_score=0.5,
-        )
-
-        # Step 1: Compute emotions
-        state = engine.compute_emotions("vetka_read_file", ctx)
-        assert 0.0 <= state.curiosity <= 1.0
-        assert 0.0 <= state.trust <= 1.0
-        assert 0.0 <= state.caution <= 1.0
-        assert state.mood_label in ("curious", "confident", "cautious", "neutral")
-
-        # Step 2: Get modifier
-        modifier = engine.compute_modifier("vetka_read_file", ctx)
-        assert 0.3 <= modifier <= 1.5
-
-        # Step 3: Apply to hypothetical base score
-        base_score = 0.75
-        final_score = max(0.0, min(1.0, base_score * modifier))
-        assert 0.0 <= final_score <= 1.0
-
-    def test_39_workflow_trust_recovery_after_failures(self, tmp_path):
-        """Trust drops on failures, partially recovers on successes."""
+    def test_33_emotion_modifier_applied_to_score(self, tmp_path):
+        """Engine modifier applied to base score changes the result."""
         engine = EmotionEngine(data_dir=str(tmp_path))
         ctx = EmotionContext(agent_id="a1")
 
-        # Initial trust
-        initial = engine.get_emotion_state("tool_x").trust
+        # Cold start modifier
+        mod_cold = engine.compute_modifier("new_tool", ctx)
+        assert 0.3 <= mod_cold <= 1.5, f"Cold modifier out of range: {mod_cold}"
 
-        # 3 failures
-        for _ in range(3):
-            engine.record_outcome("tool_x", success=False, context=ctx)
-        after_fail = engine.get_emotion_state("tool_x").trust
-        assert after_fail < initial, "Trust should drop after failures"
-
-        # 3 successes
-        for _ in range(3):
-            engine.record_outcome("tool_x", success=True, context=ctx)
-        after_recover = engine.get_emotion_state("tool_x").trust
-        assert after_recover > after_fail, "Trust should recover after successes"
-        assert after_recover < initial, "Trust should not fully recover (asymmetric)"
-
-    def test_40_workflow_mood_changes_with_outcomes(self, tmp_path):
-        """Mood label changes as outcomes shift emotional state."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-        ctx = EmotionContext(agent_id="a1")
-
-        # Cold start mood
-        state = engine.compute_emotions("tool_x", ctx)
-        initial_mood = state.mood_label
-
-        # Many successes should shift toward confident (trust grows)
-        for _ in range(10):
-            engine.record_outcome("tool_x", success=True, context=ctx)
-        state = engine.compute_emotions("tool_x", ctx)
-        # After many successes, trust should be high
-        assert state.trust > 0.7, f"Expected high trust after 10 successes, got {state.trust}"
-
-    def test_41_workflow_guard_warning_dampens_everything(self, tmp_path):
-        """Guard warning raises caution and caps trust, dampening final modifier."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-
-        # Build up trust first
-        safe_ctx = EmotionContext(agent_id="a1")
+        # After failures, modifier should drop
         for _ in range(5):
-            engine.record_outcome("tool_y", success=True, context=safe_ctx)
-        mod_safe = engine.compute_modifier("tool_y", safe_ctx)
+            engine.record_outcome("new_tool", success=False, context=ctx)
+        mod_after_fail = engine.compute_modifier("new_tool", ctx)
 
-        # Now with guard warning
-        warn_ctx = EmotionContext(
-            agent_id="a1",
-            guard_warnings=["danger_zone"],
+        base_score = 0.8
+        assert base_score * mod_after_fail < base_score * mod_cold, (
+            f"Failing modifier should reduce score: {mod_after_fail} vs {mod_cold}"
         )
-        mod_warned = engine.compute_modifier("tool_y", warn_ctx)
+        print("✅ test_33: modifier changes score after failures")
 
-        assert mod_warned < mod_safe, (
-            f"Guard warning should reduce modifier: {mod_warned} < {mod_safe}"
+    def test_34_emotion_updated_on_feedback(self, tmp_path):
+        """record_outcome updates trust correctly."""
+        engine = EmotionEngine(data_dir=str(tmp_path))
+        ctx = EmotionContext(agent_id="a1")
+
+        state_before = engine.get_emotion_state("tool_x")
+        trust_before = state_before.trust  # 0.5 cold start
+
+        engine.record_outcome("tool_x", success=True, context=ctx)
+        state_after = engine.get_emotion_state("tool_x")
+
+        assert state_after.trust > trust_before, (
+            f"Trust should increase on success: {state_after.trust} > {trust_before}"
         )
+        assert state_after.usage_count == 1
+        print("✅ test_34: record_outcome updates trust on success")
 
-    def test_42_corrupted_state_file_recovery(self, tmp_path):
+    def test_35_emotion_backward_compatible(self, tmp_path):
+        """When emotion engine has no data, modifier is still valid."""
+        engine = EmotionEngine(data_dir=str(tmp_path))
+        # No recorded outcomes — cold start
+        mod = engine.compute_modifier("unknown_tool")
+        assert 0.3 <= mod <= 1.5, f"Cold modifier should be in range: {mod}"
+        # Should be roughly the cold-start value (~0.78)
+        expected_cold = compute_emotion_modifier(0.6, 0.5, 0.0)
+        assert abs(mod - expected_cold) < 0.1, (
+            f"Cold modifier {mod} should be close to default {expected_cold}"
+        )
+        print("✅ test_35: backward compatible — cold start modifier valid")
+
+    def test_36_emotion_failure_doesnt_break_engine(self, tmp_path):
         """Engine survives corrupted state file gracefully."""
+        # Write garbage to state file
         data_dir = tmp_path / "emotions"
         data_dir.mkdir(parents=True)
         (data_dir / "emotion_states.json").write_text("{invalid json!!!")
@@ -583,31 +503,4 @@ class TestFullWorkflow:
         engine = EmotionEngine(data_dir=str(data_dir))
         mod = engine.compute_modifier("any_tool")
         assert 0.3 <= mod <= 1.5, f"Should return valid modifier even with corrupt state: {mod}"
-
-    def test_43_emotion_state_has_mood_label(self, cold_state):
-        """EmotionState dataclass includes mood_label field."""
-        assert hasattr(cold_state, "mood_label"), "EmotionState should have mood_label field"
-        assert cold_state.mood_label == "neutral", f"Default mood_label should be 'neutral', got '{cold_state.mood_label}'"
-
-    def test_44_cold_start_defaults(self, cold_state):
-        """Cold start defaults match spec: curiosity=0.6, trust=0.5, caution=0.3."""
-        assert cold_state.curiosity == _COLD_CURIOSITY, f"Expected curiosity={_COLD_CURIOSITY}, got {cold_state.curiosity}"
-        assert cold_state.trust == _COLD_TRUST, f"Expected trust={_COLD_TRUST}, got {cold_state.trust}"
-        assert cold_state.caution == _COLD_CAUTION, f"Expected caution={_COLD_CAUTION}, got {cold_state.caution}"
-
-    def test_45_multiple_tools_independent(self, tmp_path):
-        """Emotion states for different tools are independent."""
-        engine = EmotionEngine(data_dir=str(tmp_path))
-        ctx = EmotionContext(agent_id="a1")
-
-        # Fail tool_a, succeed tool_b
-        for _ in range(5):
-            engine.record_outcome("tool_a", success=False, context=ctx)
-            engine.record_outcome("tool_b", success=True, context=ctx)
-
-        state_a = engine.get_emotion_state("tool_a")
-        state_b = engine.get_emotion_state("tool_b")
-
-        assert state_a.trust < state_b.trust, (
-            f"Failing tool should have lower trust: {state_a.trust} < {state_b.trust}"
-        )
+        print("✅ test_36: engine survives corrupted state file")

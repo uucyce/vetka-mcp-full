@@ -12,7 +12,6 @@ Run: pytest tests/test_phase75_hybrid.py -v
 import pytest
 from datetime import datetime, timezone
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 75 contracts changed")
 
 # ═══════════════════════════════════════════════════════════════════
 # Phase 75.1: CAM Tool Memory Tests

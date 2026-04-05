@@ -269,7 +269,7 @@ function SceneDots({ points, activeSceneIndex, onDotClick }: SceneDotsProps) {
               <mesh>
                 <ringGeometry args={[radius + 0.04, radius + 0.08, 16]} />
                 <meshBasicMaterial
-                  color="#999"
+                  color="#4a9eff"
                   side={THREE.DoubleSide}
                   opacity={0.6}
                   transparent

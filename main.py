@@ -181,9 +181,6 @@ async def lifespan(app: FastAPI):
 
     # === MARKER_131.C20A: Heartbeat daemon (60s loop) ===
     # MARKER_133.C33E: Load config from disk
-    # MARKER_198.HEARTBEAT: Event-driven wake instead of 5s poll
-    _heartbeat_wake_event = asyncio.Event()
-
     async def heartbeat_daemon():
         """Run heartbeat tick every N seconds to process @dragon/@doctor tasks."""
         from src.orchestration.mycelium_heartbeat import heartbeat_tick
@@ -212,10 +209,8 @@ async def lifespan(app: FastAPI):
                 enabled = config.get("enabled", False)
 
                 if not enabled:
-                    # MARKER_198.HEARTBEAT: Sleep until settings endpoint fires wake event
-                    # No more 5s poll — daemon is fully dormant until triggered
-                    _heartbeat_wake_event.clear()
-                    await _heartbeat_wake_event.wait()
+                    # Check every 5s if user toggled ON — responsive to MCC button
+                    await asyncio.sleep(5)
                     continue
 
                 # MARKER_140: monitor_all=True scans ALL active groups + recent solo chats
@@ -366,9 +361,7 @@ async def lifespan(app: FastAPI):
     else:
         heartbeat_task = asyncio.create_task(heartbeat_daemon())
         app.state.heartbeat_task = heartbeat_task
-        # MARKER_198.HEARTBEAT: Expose wake event so settings endpoint can trigger it
-        app.state.heartbeat_wake_event = _heartbeat_wake_event
-        logger.info("[Startup] Heartbeat daemon started (event-driven when disabled)")
+        logger.info("[Startup] Heartbeat daemon started (60s interval)")
 
     # === PHASE 56: Start model health checks ===
     # === PHASE 60.4: Auto-discover Ollama models ===

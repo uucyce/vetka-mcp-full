@@ -2471,8 +2471,8 @@ async def notify_task_board_update(request: Request, body: Dict[str, Any] = None
         # MARKER_137.S1_1_EVENT_DISPATCH: Auto-dispatch on new task
         if action == "added":
             try:
-                from src.orchestration.task_board import get_task_board
-                board = get_task_board()
+                from src.orchestration.task_board import TaskBoard
+                board = TaskBoard()
                 if board.settings.get("auto_dispatch", False):
                     async def _auto_dispatch():
                         try:
@@ -2976,21 +2976,6 @@ def _effective_heartbeat_profile(config: Dict[str, Any]) -> Dict[str, str]:
     }
 
 
-def _wake_heartbeat_daemon():
-    """MARKER_198.HEARTBEAT: Signal dormant heartbeat daemon to re-check config."""
-    try:
-        import sys
-        _main = sys.modules.get("main")
-        if _main:
-            _event = getattr(getattr(_main, "app", None), "state", None)
-            if _event:
-                _event = getattr(_event, "heartbeat_wake_event", None)
-            if _event:
-                _event.set()
-    except Exception:
-        pass  # Non-fatal
-
-
 def _load_heartbeat_config() -> Dict[str, Any]:
     """Load heartbeat config from disk, with env var fallback."""
     if HEARTBEAT_CONFIG_FILE.exists():
@@ -3133,9 +3118,6 @@ async def update_heartbeat_settings(body: Dict[str, Any]) -> Dict[str, Any]:
         "localguys_action": localguys_action,
     })
     _save_heartbeat_config(config)
-
-    # MARKER_198.HEARTBEAT: Wake dormant daemon when settings change
-    _wake_heartbeat_daemon()
 
     return {
         "success": True,

@@ -31,7 +31,6 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> TestClient:
     tb_file.write_text("[]", encoding="utf-8")
     import src.orchestration.task_board as tb_module
     monkeypatch.setattr(tb_module, "TASK_BOARD_FILE", tb_file)
-    monkeypatch.setattr(tb_module, "TASK_BOARD_DB", tmp_path / "task_board.db")
     monkeypatch.setattr(tb_module, "PROJECT_ROOT", tmp_path)
 
     # Isolate project registry

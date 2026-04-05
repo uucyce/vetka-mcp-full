@@ -87,10 +87,9 @@ Listed in cognitive processing order (input → output):
   - Feeds into: REFLEX signal #7 (weight 0.05), STM truncation.
 
 ### Media
-- CUT: Cognitive Universal Timeline.
-  - Narrative graph navigator: Script Spine → DAG Project → Timeline Projections.
-  - Two-circuit architecture: Circuit A (symbolic/editorial) + Circuit B (learnable/JEPA).
-  - Timeline = projection of DAG multiverse. PULSE AI assembles rough cuts from enriched graph.
+- CUT: Cinema Utility Tools.
+  - Video editing cognition: scene graph, montage, audio sync.
+  - Separate subsystem for media processing.
 
 ## Project state (not cognitive, but memory-adjacent)
 

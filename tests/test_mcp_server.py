@@ -6,10 +6,6 @@ Run: python -m pytest tests/test_mcp_server.py -v
 Or:  python tests/test_mcp_server.py (standalone)
 """
 
-import pytest
-
-pytestmark = pytest.mark.stale(reason="MCP audit sanitize — server refactored")
-
 import json
 import time
 import sys

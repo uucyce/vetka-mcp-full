@@ -105,34 +105,6 @@ ELISION_MAP = {
     "vetka_staging": "vs",
     "vetka_mycelium_pipeline": "vmp",
     "surprise_detector": "sd",
-
-    # MARKER_198.P0.5: Task board + agent field abbreviations
-    "task_id": "tid",
-    "assigned_to": "at",
-    "priority": "pri",
-    "session_id": "sid",
-    "reflex_recommendations": "rr",
-    "engram_learnings": "el",
-    "jepa_session_lens": "jsl",
-    "task_board_summary": "tbs",
-    "predecessor_advice": "pa",
-    "protocol_status": "ps",
-
-    # MARKER_200.ELISION_LIST: Task board list response abbreviations
-    "title": "t",
-    "status": "s",
-    "phase_type": "pt",
-    "complexity": "cx",
-    "project_id": "pid",
-    "assigned_tier": "tier",
-    "project_resolve": "pr",
-    "returned": "ret",
-    "truncated": "trunc",
-    "my_tasks": "mine",
-    "other_tasks": "others",
-    "my_count": "mc",
-    "other_count": "oc",
-    "my_role": "mr",
 }
 
 # Reverse map for expansion

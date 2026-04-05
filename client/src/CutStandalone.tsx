@@ -10,9 +10,7 @@ import {
   type CutSceneGraphView,
 } from './components/cut/sceneGraphViewportAdapter';
 import { useCutEditorStore } from './store/useCutEditorStore';
-import { useTimelineInstanceStore } from './store/useTimelineInstanceStore';
 import { usePanelSyncBridge } from './hooks/usePanelSyncBridge';
-import { useCutSaveSystem } from './hooks/useCutSaveSystem';
 
 type CutProject = {
   project_id: string;
@@ -393,18 +391,6 @@ function normalizePlayerLabPreview(raw: unknown, fileName: string): PlayerLabImp
   };
 }
 
-// MARKER_W4.3: Paths that mutate project state → mark dirty after success
-const DIRTY_PATHS = new Set([
-  '/cut/timeline/apply',
-  '/cut/timeline/apply-with-markers',
-  '/cut/time-markers/apply',
-  '/cut/scene-graph/apply',
-  '/cut/undo',
-  '/cut/redo',
-  '/cut/scene-detect-and-apply',
-  '/cut/montage/promote-marker',
-]);
-
 async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -416,12 +402,7 @@ async function jsonFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
-  const result = (await response.json()) as T;
-  // Auto-mark dirty for mutation endpoints
-  if (init?.method === 'POST' && DIRTY_PATHS.has(path)) {
-    useCutEditorStore.getState().markDirty();
-  }
-  return result;
+  return (await response.json()) as T;
 }
 
 const shellStyle: Record<string, CSSProperties> = {
@@ -533,17 +514,8 @@ function persistSceneGraphPaneMode(mode: 'embedded' | 'peer_pane') {
 }
 
 export default function CutStandalone() {
-  // MARKER_QA.STORE_EXPOSURE: Expose store on window for E2E tests and Chrome DevTools.
-  // useEffect guarantees this runs after React mount, when all ESM modules are fully
-  // resolved — avoids circular dependency issues with top-level module side-effects.
-  useEffect(() => {
-    (window as unknown as Record<string, unknown>).__CUT_STORE__ = useCutEditorStore;
-  }, []);
-
   // MARKER_W1.1: Bridge PanelSyncStore → EditorStore (script/DAG clicks → source monitor + playhead)
   usePanelSyncBridge();
-  // MARKER_W4.3: Save system (Cmd+S, beforeunload guard, recovery check)
-  const { checkRecovery, recoverFromSnapshot } = useCutSaveSystem();
 
   const query = useMemo(parseQuery, []);
   const playerLabInputRef = useRef<HTMLInputElement | null>(null);
@@ -761,14 +733,6 @@ export default function CutStandalone() {
   useEffect(() => {
     persistSceneGraphPaneMode(sceneGraphPaneMode);
   }, [sceneGraphPaneMode]);
-
-  // MARKER_W4.3: Document title with dirty indicator
-  const editorIsDirty = useCutEditorStore((s) => s.isDirty);
-  const editorIsSaving = useCutEditorStore((s) => s.isSaving);
-  useEffect(() => {
-    const prefix = editorIsSaving ? '(saving...) ' : editorIsDirty ? '* ' : '';
-    document.title = `${prefix}${projectName} — CUT`;
-  }, [projectName, editorIsDirty, editorIsSaving]);
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const api = {
@@ -802,25 +766,10 @@ export default function CutStandalone() {
   const editorSetMarkers = useCutEditorStore((s) => s.setMarkers);
   const editorSetSession = useCutEditorStore((s) => s.setEditorSession);
   const editorSetSceneGraphSurfaceMode = useCutEditorStore((s) => s.setSceneGraphSurfaceMode);
-  // MARKER_W6.STORE: Also sync to instance store for multi-timeline
-  const instanceRefresh = useTimelineInstanceStore((s) => s.onProjectStateRefresh);
 
   useEffect(() => {
     editorSetLanes(timelineLanes);
-    // MARKER_W6.STORE: Mirror to instance store
-    instanceRefresh({
-      lanes: timelineLanes,
-      waveforms: waveformItems as any,
-      thumbnails: thumbnailItems as any,
-      duration: timelineLanes.reduce((max, lane) => {
-        for (const clip of lane.clips) {
-          const end = clip.start_sec + clip.duration_sec;
-          if (end > max) max = end;
-        }
-        return max;
-      }, 0),
-    });
-  }, [timelineLanes, editorSetLanes, instanceRefresh]);
+  }, [timelineLanes, editorSetLanes]);
   useEffect(() => {
     editorSetWaveforms(waveformItems as Array<{ item_id: string; source_path: string; waveform_bins?: number[]; degraded_mode?: boolean }>);
   }, [waveformItems, editorSetWaveforms]);
@@ -849,17 +798,6 @@ export default function CutStandalone() {
     editorSetSceneGraphSurfaceMode(sceneGraphPaneMode === 'peer_pane' ? 'nle_ready' : 'shell_only');
   }, [sceneGraphPaneMode, editorSetSceneGraphSurfaceMode]);
 
-  // MARKER_QA.W5.1: Sync debug shell state → editor store for DebugShellPanel
-  const editorSetDebugState = useCutEditorStore((s) => s.setDebugProjectState);
-  const editorSetDebugStatus = useCutEditorStore((s) => s.setDebugStatus);
-  const editorSetDebugHandlers = useCutEditorStore((s) => s.setDebugHandlers);
-  useEffect(() => {
-    editorSetDebugState(projectState as Record<string, unknown> | null);
-  }, [projectState, editorSetDebugState]);
-  useEffect(() => {
-    editorSetDebugStatus(status);
-  }, [status, editorSetDebugStatus]);
-
   async function handleBootstrap() {
     setBusy(true);
     try {
@@ -881,23 +819,6 @@ export default function CutStandalone() {
       }
       setProjectId(payload.project.project_id);
       await refreshProjectState(payload.project.project_id);
-
-      // MARKER_W4.3: Check for crash recovery after project load
-      const recovery = await checkRecovery();
-      if (recovery?.recovery_available && recovery.snapshot_dir) {
-        const doRecover = window.confirm(
-          `Autosave found from ${recovery.autosave_at || 'unknown time'}.\n` +
-          `Last explicit save: ${recovery.last_save_at || 'never'}.\n\n` +
-          'Recover from autosave?'
-        );
-        if (doRecover) {
-          const ok = await recoverFromSnapshot(recovery.snapshot_dir);
-          if (ok) {
-            await refreshProjectState(payload.project.project_id);
-            setStatus('Recovered from autosave');
-          }
-        }
-      }
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Bootstrap failed');
     } finally {
@@ -1555,22 +1476,6 @@ export default function CutStandalone() {
       setBusy(false);
     }
   }
-
-  // MARKER_QA.W5.1: Expose debug handlers to store for DebugShellPanel
-  useEffect(() => {
-    editorSetDebugHandlers({
-      bootstrap: handleBootstrap,
-      sceneAssembly: handleSceneAssembly,
-      selectFirstClip: handleSelectFirstClip,
-      waveformBuild: handleWaveformBuild,
-      audioSyncBuild: handleAudioSyncBuild,
-      timecodeSyncBuild: handleTimecodeSyncBuild,
-      pauseSliceBuild: handlePauseSliceBuild,
-      thumbnailBuild: handleThumbnailBuild,
-      metaSync: handleRunMetaSync,
-      refreshProjectState: () => refreshProjectState(projectId),
-    });
-  });
 
   return <CutEditorLayoutV2 scriptText={scriptText} />;
 }

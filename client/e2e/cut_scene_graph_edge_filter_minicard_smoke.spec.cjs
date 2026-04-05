@@ -109,10 +109,7 @@ async function cleanupServer() {
   });
 }
 
-// MARKER_QA.W6: "Graph Ready", "edge filter:", "Primary Graph Mini Card" UI elements removed.
-// GraphPanelDock was refactored — scene graph detail overlay no longer renders these labels.
 test.describe.serial('phase170 scene graph edge filter + mini-card smoke', () => {
-  test.skip(true, 'Scene graph detail overlay UI removed — needs test rewrite');
   test.setTimeout(90000);
 
   test.beforeAll(async ({}, testInfo) => {

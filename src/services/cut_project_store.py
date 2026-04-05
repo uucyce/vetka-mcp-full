@@ -161,15 +161,6 @@ class CutProjectPaths:
     def media_index_path(self) -> str:
         return os.path.join(self.runtime_state_dir, "media_index.latest.json")
 
-    # MARKER_W4.3: Autosave directory for crash recovery
-    @property
-    def autosave_dir(self) -> str:
-        return os.path.join(self.sandbox_root, ".autosave")
-
-    @property
-    def last_save_timestamp_path(self) -> str:
-        return os.path.join(self.config_dir, "last_save_timestamp.json")
-
 
 class CutProjectStore:
     """
@@ -178,27 +169,9 @@ class CutProjectStore:
     File-backed persistence for standalone CUT sandbox bootstrap state.
     """
 
-    # MARKER_B69: Singleton for active project (used by PULSE endpoints)
-    _current_instance: "CutProjectStore | None" = None
-
     def __init__(self, sandbox_root: str) -> None:
         self.sandbox_root = _norm_abs(sandbox_root)
         self.paths = CutProjectPaths(self.sandbox_root)
-
-    @classmethod
-    def current(cls) -> "CutProjectStore | None":
-        """Return the currently active project store (set at bootstrap time)."""
-        return cls._current_instance
-
-    @classmethod
-    def get_instance(cls) -> "CutProjectStore | None":
-        """Alias for current() — used by PULSE and render endpoints."""
-        return cls._current_instance
-
-    @classmethod
-    def set_current(cls, store: "CutProjectStore | None") -> None:
-        """Register the active project store (called after bootstrap)."""
-        cls._current_instance = store
 
     def load_project(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.project_path, expected_schema="cut_project_v1")
@@ -237,81 +210,6 @@ class CutProjectStore:
         if not self._validate_timeline_state_payload(payload):
             raise ValueError("Invalid cut_timeline_state_v1 payload")
         self._atomic_write_json(self.paths.timeline_state_path, payload)
-
-    # ------------------------------------------------------------------
-    # MARKER_198.MULTI_TL: Per-timeline-id storage
-    # ------------------------------------------------------------------
-
-    def _timelines_dir(self) -> str:
-        """Directory for per-timeline-id state files."""
-        d = os.path.join(self.paths.runtime_state_dir, "timelines")
-        os.makedirs(d, exist_ok=True)
-        return d
-
-    def _timeline_path(self, timeline_id: str) -> str:
-        """Sanitized path for a specific timeline state file."""
-        safe_id = timeline_id.replace("/", "_").replace("..", "_")
-        return os.path.join(self._timelines_dir(), f"{safe_id}.json")
-
-    def load_timeline_by_id(self, timeline_id: str) -> dict[str, Any] | None:
-        """Load a single timeline's state by ID."""
-        path = self._timeline_path(timeline_id)
-        return self._load_json(path, expected_schema="cut_timeline_state_v1")
-
-    def save_timeline_by_id(self, timeline_id: str, state: dict[str, Any]) -> None:
-        """Save a single timeline's state by ID."""
-        payload = dict(state or {})
-        payload["timeline_id"] = timeline_id
-        if not self._validate_timeline_state_payload(payload):
-            raise ValueError(f"Invalid timeline state for {timeline_id}")
-        self._atomic_write_json(self._timeline_path(timeline_id), payload)
-
-    def list_timelines(self) -> list[dict[str, Any]]:
-        """List all timeline IDs and their metadata (without full lane data)."""
-        tl_dir = self._timelines_dir()
-        result = []
-        if not os.path.isdir(tl_dir):
-            return result
-        for fname in sorted(os.listdir(tl_dir)):
-            if not fname.endswith(".json"):
-                continue
-            path = os.path.join(tl_dir, fname)
-            data = self._load_json(path, expected_schema="cut_timeline_state_v1")
-            if data:
-                result.append({
-                    "timeline_id": data.get("timeline_id", fname.replace(".json", "")),
-                    "revision": data.get("revision", 0),
-                    "fps": data.get("fps", 25),
-                    "lane_count": len(data.get("lanes", [])),
-                    "updated_at": data.get("updated_at", ""),
-                })
-        return result
-
-    def delete_timeline(self, timeline_id: str) -> bool:
-        """Delete a timeline state file. Returns True if deleted."""
-        path = self._timeline_path(timeline_id)
-        if os.path.exists(path):
-            os.remove(path)
-            return True
-        return False
-
-    def clone_timeline(self, source_id: str, new_id: str) -> dict[str, Any] | None:
-        """Clone a timeline from source_id to new_id."""
-        from datetime import datetime, timezone
-
-        source = self.load_timeline_by_id(source_id)
-        if source is None:
-            # Try loading from legacy single-timeline file
-            source = self.load_timeline_state()
-        if source is None:
-            return None
-
-        clone = dict(source)
-        clone["timeline_id"] = new_id
-        clone["revision"] = 0
-        clone["updated_at"] = datetime.now(timezone.utc).isoformat()
-        self.save_timeline_by_id(new_id, clone)
-        return clone
 
     def load_scene_graph(self) -> dict[str, Any] | None:
         payload = self._load_json(self.paths.scene_graph_path, expected_schema="cut_scene_graph_v1")
@@ -539,127 +437,6 @@ class CutProjectStore:
         with open(self.paths.time_marker_edit_log_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(payload, ensure_ascii=False))
             f.write("\n")
-
-    # ── MARKER_W4.3: Save All / Autosave / Recovery ──────────────────
-
-    def save_all(self) -> dict[str, Any]:
-        """Explicit ⌘S — stamp last_save_timestamp. Data is already persisted
-        incrementally by timeline/apply, scene-graph/apply, markers/apply etc.
-        This writes a checkpoint timestamp so we can compare against autosave."""
-        now = _utc_now_iso()
-        project = self.load_project()
-        if project:
-            project["updated_at"] = now
-            self.save_project(project)
-        stamp = {"schema_version": "cut_save_stamp_v1", "saved_at": now}
-        self._atomic_write_json(self.paths.last_save_timestamp_path, stamp)
-        return {"saved_at": now, "project_id": project.get("project_id") if project else None}
-
-    def autosave_snapshot(self) -> dict[str, Any]:
-        """Write lightweight autosave snapshot to .autosave/ directory.
-        Keep last 20 snapshots, delete older ones."""
-        import glob as _glob
-        import shutil
-
-        autosave_dir = self.paths.autosave_dir
-        os.makedirs(autosave_dir, exist_ok=True)
-
-        now_iso = _utc_now_iso()
-        ts_slug = now_iso.replace(":", "-").replace("+", "_")
-        snap_dir = os.path.join(autosave_dir, f"snap_{ts_slug}")
-        os.makedirs(snap_dir, exist_ok=True)
-
-        # Copy mutable state files (timeline, scene_graph, markers, project)
-        state_files = [
-            self.paths.project_path,
-            self.paths.timeline_state_path,
-            self.paths.scene_graph_path,
-            self.paths.time_marker_bundle_path,
-            self.paths.montage_state_path,
-        ]
-        copied = 0
-        for src in state_files:
-            if os.path.isfile(src):
-                shutil.copy2(src, os.path.join(snap_dir, os.path.basename(src)))
-                copied += 1
-
-        # Write autosave metadata
-        meta = {"schema_version": "cut_autosave_v1", "saved_at": now_iso, "files_copied": copied}
-        self._atomic_write_json(os.path.join(snap_dir, "_autosave_meta.json"), meta)
-
-        # Prune: keep last 20 snapshots
-        all_snaps = sorted(_glob.glob(os.path.join(autosave_dir, "snap_*")))
-        max_keep = 20
-        while len(all_snaps) > max_keep:
-            oldest = all_snaps.pop(0)
-            shutil.rmtree(oldest, ignore_errors=True)
-
-        return {"snapshot_dir": snap_dir, "saved_at": now_iso, "files_copied": copied}
-
-    def recovery_check(self) -> dict[str, Any]:
-        """Check if there is an autosave newer than the last explicit save.
-        Returns recovery info if crash recovery is needed."""
-        import glob as _glob
-
-        # Get last explicit save timestamp
-        last_save = self._load_json(self.paths.last_save_timestamp_path)
-        last_save_at = str(last_save.get("saved_at") or "") if last_save else ""
-
-        # Find newest autosave
-        autosave_dir = self.paths.autosave_dir
-        all_snaps = sorted(_glob.glob(os.path.join(autosave_dir, "snap_*")))
-        if not all_snaps:
-            return {"recovery_available": False, "reason": "no_autosaves"}
-
-        newest_snap = all_snaps[-1]
-        meta_path = os.path.join(newest_snap, "_autosave_meta.json")
-        meta = self._load_json(meta_path) if os.path.isfile(meta_path) else None
-        autosave_at = str(meta.get("saved_at") or "") if meta else ""
-
-        if not autosave_at:
-            return {"recovery_available": False, "reason": "no_autosave_meta"}
-
-        # Compare: if autosave is newer than last save → recovery available
-        if not last_save_at or autosave_at > last_save_at:
-            return {
-                "recovery_available": True,
-                "autosave_at": autosave_at,
-                "last_save_at": last_save_at or None,
-                "snapshot_dir": newest_snap,
-                "files": [f for f in os.listdir(newest_snap) if not f.startswith("_")],
-            }
-
-        return {"recovery_available": False, "reason": "save_is_newer", "last_save_at": last_save_at}
-
-    def recover_from_autosave(self, snapshot_dir: str) -> dict[str, Any]:
-        """Restore state files from an autosave snapshot directory."""
-        import shutil
-
-        if not os.path.isdir(snapshot_dir):
-            return {"success": False, "error": "snapshot_dir_not_found"}
-
-        restored = []
-        # Map snapshot files back to their target locations
-        target_map = {
-            "cut_project.json": self.paths.project_path,
-            "timeline_state.latest.json": self.paths.timeline_state_path,
-            "scene_graph.latest.json": self.paths.scene_graph_path,
-            "time_marker_bundle.latest.json": self.paths.time_marker_bundle_path,
-            "montage_state.latest.json": self.paths.montage_state_path,
-        }
-        for filename, target_path in target_map.items():
-            src = os.path.join(snapshot_dir, filename)
-            if os.path.isfile(src):
-                os.makedirs(os.path.dirname(target_path), exist_ok=True)
-                shutil.copy2(src, target_path)
-                restored.append(filename)
-
-        # Stamp save timestamp after recovery
-        now = _utc_now_iso()
-        stamp = {"schema_version": "cut_save_stamp_v1", "saved_at": now}
-        self._atomic_write_json(self.paths.last_save_timestamp_path, stamp)
-
-        return {"success": True, "restored_files": restored, "recovered_at": now}
 
     def resolve_create_or_open(self, source_path: str) -> tuple[str, dict[str, Any] | None]:
         project = self.load_project()

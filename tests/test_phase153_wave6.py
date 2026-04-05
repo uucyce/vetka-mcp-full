@@ -16,8 +16,6 @@ import os
 import re
 import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 153 contracts changed")
-
 # ── Paths ──
 CLIENT_DIR = os.path.join(os.path.dirname(__file__), '..', 'client', 'src')
 MCC_DIR = os.path.join(CLIENT_DIR, 'components', 'mcc')

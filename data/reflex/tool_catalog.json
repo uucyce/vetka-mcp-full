@@ -4,10 +4,10 @@
   "generator": "scripts/generate_reflex_catalog.py",
   "marker": "MARKER_172.P1.CATALOG",
   "stats": {
-    "total_tools": 99,
+    "total_tools": 94,
     "by_namespace": {
-      "vetka": 41,
-      "internal": 13,
+      "vetka": 40,
+      "internal": 10,
       "mycelium": 24,
       "cut": 20
     },
@@ -17,8 +17,8 @@
       "media": 20,
       "reasoning": 2,
       "keys": 4,
-      "visualization": 2,
-      "orchestration": 20,
+      "visualization": 1,
+      "orchestration": 17,
       "system": 5,
       "other": 15,
       "context": 4,
@@ -3665,130 +3665,6 @@
       "deprecated_aliases": [],
       "active": true,
       "source": "mcp__Claude_in_Chrome__computer"
-    },
-    {
-      "tool_id": "vetka_screenshot",
-      "namespace": "vetka",
-      "kind": "visualization",
-      "description": "Capture screen + OCR text from display. Non-interactive for agent use.",
-      "intent_tags": [
-        "screenshot",
-        "ocr",
-        "screen-capture",
-        "vision",
-        "observe",
-        "read",
-        "inspect"
-      ],
-      "trigger_patterns": {
-        "file_types": [
-          "*"
-        ],
-        "phase_types": [
-          "research",
-          "fix",
-          "build"
-        ],
-        "keywords": [
-          "screenshot",
-          "screen",
-          "ocr",
-          "capture",
-          "vision"
-        ]
-      },
-      "cost": {
-        "latency_ms": 800,
-        "tokens": 0,
-        "risk_level": "read_only"
-      },
-      "permission": "READ",
-      "roles": [
-        "all"
-      ],
-      "deprecated_aliases": [],
-      "active": true,
-      "source": "static_extra_tools",
-      "typical_use": "Get text content from user's screen for context analysis",
-      "overlay_hints": {}
-    },
-    {
-      "tool_id": "synapse_spawn",
-      "namespace": "internal",
-      "kind": "orchestration",
-      "description": "Spawn a new agent in a separate Terminal window with auto-init. Creates tmux session inside window for send-keys access.",
-      "intent_tags": ["spawn", "agent", "terminal", "fleet", "start"],
-      "trigger_patterns": {
-        "file_types": [],
-        "phase_types": ["build", "fix"],
-        "keywords": ["spawn", "agent", "start", "launch", "fleet"]
-      },
-      "cost": {
-        "latency_ms": 5000,
-        "tokens": 0,
-        "risk_level": "write"
-      },
-      "permission": "EXECUTE",
-      "roles": ["Commander", "Zeta", "Eta"],
-      "deprecated_aliases": [],
-      "active": true,
-      "source": "scripts/spawn_synapse.sh",
-      "typical_use": "Commander spawns agent: spawn_synapse.sh Alpha cut-engine claude_code",
-      "overlay_hints": {
-        "marker": "MARKER_206.SYNAPSE_SPAWN_V2"
-      }
-    },
-    {
-      "tool_id": "synapse_write",
-      "namespace": "internal",
-      "kind": "orchestration",
-      "description": "Inject a prompt into a running agent's tmux session via send-keys. Works without window focus.",
-      "intent_tags": ["write", "prompt", "inject", "send", "agent"],
-      "trigger_patterns": {
-        "file_types": [],
-        "phase_types": ["build", "fix"],
-        "keywords": ["write", "send", "prompt", "inject"]
-      },
-      "cost": {
-        "latency_ms": 500,
-        "tokens": 0,
-        "risk_level": "write"
-      },
-      "permission": "EXECUTE",
-      "roles": ["Commander", "Zeta", "Eta"],
-      "deprecated_aliases": [],
-      "active": true,
-      "source": "scripts/synapse_write.sh",
-      "typical_use": "Commander writes to agent: synapse_write.sh Alpha 'claim tb_xxx'",
-      "overlay_hints": {
-        "marker": "MARKER_206.SYNAPSE_WRITE"
-      }
-    },
-    {
-      "tool_id": "synapse_wake",
-      "namespace": "internal",
-      "kind": "orchestration",
-      "description": "Wake a sleeping agent by sending /inbox command to its tmux session, forcing notification read.",
-      "intent_tags": ["wake", "notify", "resume", "agent"],
-      "trigger_patterns": {
-        "file_types": [],
-        "phase_types": ["build", "fix"],
-        "keywords": ["wake", "resume", "activate"]
-      },
-      "cost": {
-        "latency_ms": 500,
-        "tokens": 0,
-        "risk_level": "write"
-      },
-      "permission": "EXECUTE",
-      "roles": ["Commander", "Zeta", "Eta"],
-      "deprecated_aliases": [],
-      "active": true,
-      "source": "scripts/synapse_wake.sh",
-      "typical_use": "Commander wakes idle agent: synapse_wake.sh Alpha",
-      "overlay_hints": {
-        "marker": "MARKER_206.SYNAPSE_WAKE"
-      }
     }
   ]
 }

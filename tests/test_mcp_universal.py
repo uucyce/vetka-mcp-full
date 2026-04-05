@@ -9,10 +9,6 @@ Tests for VETKA Universal MCP Server (Phase 65.2)
 Tests stdio, HTTP, and SSE transports with 13 tools (8 read + 5 write).
 """
 
-import pytest
-
-pytestmark = pytest.mark.stale(reason="MCP backward compat — subprocess test broken")
-
 import subprocess
 import json
 import sys

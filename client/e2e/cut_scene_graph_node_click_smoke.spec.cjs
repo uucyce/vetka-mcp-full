@@ -97,9 +97,7 @@ async function cleanupServer() {
   });
 }
 
-// MARKER_QA.W6: "Graph Ready" / "Scene Graph Surface" UI text removed from GraphPanelDock.
 test.describe.serial('phase170 scene graph node-click smoke', () => {
-  test.skip(true, 'Scene graph overlay UI removed — needs test rewrite');
   test.setTimeout(30000);
 
   test.beforeAll(async () => {

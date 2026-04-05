@@ -12,7 +12,6 @@
  * Mount: as modal overlay or dockview panel.
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 import {
   type CutHotkeyAction,
   type HotkeyPresetName,
@@ -198,8 +197,6 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   const [search, setSearch] = useState('');
   const [capturing, setCapturing] = useState<CutHotkeyAction | null>(null);
   const [conflict, setConflict] = useState<{ action: CutHotkeyAction; binding: string } | null>(null);
-  // MARKER_GAMMA-HK2: Collapsible groups
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const captureRef = useRef<HTMLDivElement>(null);
 
   // Get effective binding for an action
@@ -217,9 +214,6 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
     }
     return null;
   }, [getBinding]);
-
-  // MARKER_GAMMA-ESC-OVERLAY: Escape closes editor when not in capture mode (standard modal UX)
-  useOverlayEscapeClose(onClose, !capturing);
 
   // Key capture handler
   useEffect(() => {
@@ -297,16 +291,6 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
     }));
   }, []);
 
-  // MARKER_GAMMA-HK2: Reset all custom overrides in a specific group
-  const resetGroup = useCallback((groupName: string) => {
-    const groupActions = ALL_ACTIONS.filter((a) => a.group === groupName).map((a) => a.action);
-    const next = { ...customOverrides };
-    for (const action of groupActions) delete next[action];
-    setCustomOverrides(next);
-    saveCustomOverrides(next);
-    window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_custom', newValue: JSON.stringify(next) }));
-  }, [customOverrides]);
-
   // Filter actions by search
   const searchLower = search.toLowerCase();
   const filtered = search
@@ -324,7 +308,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
   })).filter((g) => g.actions.length > 0);
 
   return (
-    <div style={OVERLAY} onClick={onClose} data-overlay="1">
+    <div style={OVERLAY} onClick={onClose}>
       <div style={PANEL} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={HEADER}>
@@ -361,29 +345,6 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
           </div>
         </div>
 
-        {/* MARKER_GAMMA-P3.4: Preset selector */}
-        <div style={{ padding: '4px 12px', borderBottom: '1px solid #222', display: 'flex', gap: 4, alignItems: 'center' }}>
-          <span style={{ fontSize: 8, color: '#555', marginRight: 4 }}>PRESET:</span>
-          {(['premiere', 'fcp7', 'custom'] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => { setPresetName(p); savePresetName(p); window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: p })); }}
-              style={{
-                background: presetName === p ? '#222' : 'none',
-                border: '1px solid ' + (presetName === p ? '#555' : '#333'),
-                borderRadius: 3,
-                color: presetName === p ? '#ccc' : '#666',
-                fontSize: 8,
-                padding: '2px 8px',
-                cursor: 'pointer',
-                textTransform: 'uppercase',
-              }}
-            >
-              {p === 'premiere' ? 'Premiere' : p === 'fcp7' ? 'FCP7' : 'Custom'}
-            </button>
-          ))}
-        </div>
-
         {/* Search */}
         <div style={{ padding: '6px 12px', borderBottom: '1px solid #222' }}>
           <input
@@ -407,35 +368,10 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
 
         {/* Action list */}
         <div style={{ flex: 1, overflowY: 'auto' }}>
-          {grouped.map(({ group, actions }) => {
-            const isCollapsed = collapsedGroups.has(group);
-            const hasCustomInGroup = actions.some((a) => !!customOverrides[a.action]);
-            return (
+          {grouped.map(({ group, actions }) => (
             <div key={group}>
-              {/* MARKER_GAMMA-HK2: Collapsible group header + per-group reset */}
-              <div
-                style={{ ...GROUP_HEADER, display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                onClick={() => setCollapsedGroups((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(group)) next.delete(group); else next.add(group);
-                  return next;
-                })}
-              >
-                <span>
-                  <span style={{ fontSize: 7, marginRight: 4 }}>{isCollapsed ? '\u25B8' : '\u25BE'}</span>
-                  {group} ({actions.length})
-                </span>
-                {hasCustomInGroup && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); resetGroup(group); }}
-                    style={{ background: 'none', border: '1px solid #333', borderRadius: 2, color: '#666', fontSize: 7, padding: '0 4px', cursor: 'pointer' }}
-                    title={`Reset all ${group} bindings to preset defaults`}
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-              {!isCollapsed && actions.map((def) => {
+              <div style={GROUP_HEADER}>{group}</div>
+              {actions.map((def) => {
                 const binding = getBinding(def.action);
                 const isCustom = !!customOverrides[def.action];
                 const isCapturing = capturing === def.action;
@@ -445,7 +381,7 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                     key={def.action}
                     style={{
                       ...ROW,
-                      background: isCapturing ? '#222' : undefined,
+                      background: isCapturing ? '#1a2a1a' : undefined,
                     }}
                     onClick={() => {
                       setCapturing(def.action);
@@ -454,13 +390,13 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                   >
                     <span style={{ flex: 1, color: '#ccc' }}>{def.label}</span>
                     {isCapturing ? (
-                      <span style={{ ...BINDING_BADGE, borderColor: '#999', color: '#999' }}>
+                      <span style={{ ...BINDING_BADGE, borderColor: '#4a9eff', color: '#4a9eff' }}>
                         Press key...
                       </span>
                     ) : (
                       <span style={{
                         ...BINDING_BADGE,
-                        color: isCustom ? '#fff' : '#ccc',
+                        color: isCustom ? '#7ecf7e' : '#ccc',
                       }}>
                         {binding || '—'}
                       </span>
@@ -489,46 +425,25 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
                 );
               })}
             </div>
-          );
-          })}
+          ))}
         </div>
 
         {/* Conflict warning */}
-        {/* MARKER_GAMMA-P3.5: Conflict detection + resolution */}
         {conflict && (
           <div style={{
             padding: '4px 12px',
-            background: '#1a1a1a',
+            background: '#2a1a1a',
             borderTop: '1px solid #333',
             fontSize: 9,
-            color: '#999',
+            color: '#e88',
             fontFamily: 'monospace',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
           }}>
-            <span>
-              Conflict: "{conflict.binding}" also assigned to{' '}
-              {ALL_ACTIONS.find((a) => a.action === conflict.action)?.label || conflict.action}
-            </span>
-            <button
-              onClick={() => {
-                resetBinding(conflict.action);
-                setConflict(null);
-              }}
-              style={{
-                background: 'none', border: '1px solid #555', borderRadius: 2,
-                color: '#ccc', fontSize: 8, padding: '1px 8px', cursor: 'pointer',
-                marginLeft: 8, flexShrink: 0,
-              }}
-              title={`Unbind "${conflict.binding}" from ${ALL_ACTIONS.find((a) => a.action === conflict.action)?.label}`}
-            >
-              Unbind Other
-            </button>
+            Conflict: "{conflict.binding}" already assigned to{' '}
+            {ALL_ACTIONS.find((a) => a.action === conflict.action)?.label || conflict.action}
           </div>
         )}
 
-        {/* MARKER_GAMMA-P3.6: Footer with export/import + preset info */}
+        {/* Footer: current preset */}
         <div style={{
           padding: '4px 12px',
           borderTop: '1px solid #222',
@@ -538,66 +453,9 @@ export default function HotkeyEditor({ onClose }: HotkeyEditorProps) {
           fontFamily: 'monospace',
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'center',
         }}>
-          <span>Preset: {presetName} | {ALL_ACTIONS.length} actions</span>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button
-              onClick={() => {
-                const json = JSON.stringify({ preset: presetName, overrides: customOverrides }, null, 2);
-                const blob = new Blob([json], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `cut-hotkeys-${presetName}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-              }}
-              style={{
-                background: 'none', border: '1px solid #333', borderRadius: 2,
-                color: '#888', fontSize: 8, padding: '1px 6px', cursor: 'pointer',
-              }}
-              title="Export hotkey configuration as JSON"
-            >
-              Export
-            </button>
-            <button
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = () => {
-                  const file = input.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => {
-                    try {
-                      const data = JSON.parse(reader.result as string) as { preset?: string; overrides?: HotkeyMap };
-                      if (data.preset && (data.preset === 'premiere' || data.preset === 'fcp7' || data.preset === 'custom')) {
-                        setPresetName(data.preset as HotkeyPresetName);
-                        savePresetName(data.preset as HotkeyPresetName);
-                      }
-                      if (data.overrides && typeof data.overrides === 'object') {
-                        setCustomOverrides(data.overrides);
-                        saveCustomOverrides(data.overrides);
-                      }
-                      window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_custom', newValue: JSON.stringify(data.overrides ?? {}) }));
-                      window.dispatchEvent(new StorageEvent('storage', { key: 'cut_hotkey_preset', newValue: data.preset ?? 'premiere' }));
-                    } catch { /* invalid JSON */ }
-                  };
-                  reader.readAsText(file);
-                };
-                input.click();
-              }}
-              style={{
-                background: 'none', border: '1px solid #333', borderRadius: 2,
-                color: '#888', fontSize: 8, padding: '1px 6px', cursor: 'pointer',
-              }}
-              title="Import hotkey configuration from JSON file"
-            >
-              Import
-            </button>
-          </div>
+          <span>Preset: {presetName}</span>
+          <span>{ALL_ACTIONS.length} actions</span>
         </div>
       </div>
     </div>

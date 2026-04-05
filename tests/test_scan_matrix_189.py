@@ -19,8 +19,6 @@ from src.scanners.scan_types import (
     TranscriptSegment,
 )
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 189 contracts changed")
-
 
 # ── scan_types tests ──
 

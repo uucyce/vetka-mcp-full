@@ -104,17 +104,14 @@ def test_complete_task_stores_commit_and_emits_truncated_event(tmp_path):
 
 
 def test_complete_task_without_commit_metadata(tmp_path):
-    """MARKER_198.GUARD: On worktree branch without commit_hash, guard rejects.
-    With branch=main (or None resolving to main), done_main still works."""
     board = _create_board(tmp_path)
     task_id = board.add_task(title="Complete without commit metadata")
 
-    # On main branch, no commit_hash is fine → done_main
-    result = board.complete_task(task_id, branch="main")
+    result = board.complete_task(task_id)
 
     assert result["success"] is True
     task = board.get_task(task_id)
-    assert task["status"] == "done_main"
+    assert task["status"] in ("done", "done_main", "done_worktree")
     assert task["commit_hash"] is None
     assert task["commit_message"] is None
 

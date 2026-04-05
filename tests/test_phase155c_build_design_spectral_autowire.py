@@ -4,9 +4,7 @@ Phase 155C recon guard: build-design auto-includes spectral diagnostics for arch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155c contracts changed")
 
 def _client() -> TestClient:
     from src.api.routes.mcc_routes import router

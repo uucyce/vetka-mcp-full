@@ -1,7 +1,3 @@
-import pytest
-
-pytestmark = pytest.mark.stale(reason="Voice JEPA — deterministic fallback logic changed")
-
 import os
 from types import SimpleNamespace
 

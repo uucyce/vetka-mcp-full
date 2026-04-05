@@ -3,8 +3,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.stale(reason="CUT API refactored — bootstrap/project_state contracts changed")
-
 from src.services.cut_project_store import CutProjectStore, build_cut_bootstrap_profile, build_cut_source_manifest
 
 

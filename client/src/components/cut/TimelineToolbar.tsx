@@ -15,14 +15,9 @@
  *   - Export button → File menu (future task)
  *   - Undo was never here (Cmd+Z)
  */
-import { type CSSProperties, type ReactNode } from 'react';
+import { type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { useSelectionStore } from '../../store/useSelectionStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
-import {
-  SelectionIcon, RazorIcon, RippleIcon, RollIcon,
-  SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
-} from './icons/ToolIcons';
 
 const ROOT: CSSProperties = {
   display: 'flex',
@@ -77,76 +72,21 @@ const ZOOM_SLIDER: CSSProperties = {
   appearance: 'none' as const,
   background: '#222',
   borderRadius: 2,
-  accentColor: '#999',
   outline: 'none',
   cursor: 'pointer',
 };
 
-// MARKER_GAMMA-ICON1: SVG tool icons — no Unicode, no emoji, pure monochrome
-type ToolId = 'selection' | 'razor' | 'slip' | 'slide' | 'ripple' | 'roll' | 'hand' | 'zoom';
-
-const TOOL_SVG: Record<ToolId, (color: string) => ReactNode> = {
-  selection: (c) => <SelectionIcon color={c} size={14} />,
-  razor:     (c) => <RazorIcon color={c} size={14} />,
-  ripple:    (c) => <RippleIcon color={c} size={14} />,
-  roll:      (c) => <RollIcon color={c} size={14} />,
-  slip:      (c) => <SlipIcon color={c} size={14} />,
-  slide:     (c) => <SlideIcon color={c} size={14} />,
-  hand:      (c) => <HandIcon color={c} size={14} />,
-  zoom:      (c) => <ZoomIcon color={c} size={14} />,
-};
-
-const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string }[] = [
-  { id: 'selection', label: 'Selection', shortcut: 'V' },
-  { id: 'razor',     label: 'Razor',     shortcut: 'C' },
-  { id: 'ripple',    label: 'Ripple',    shortcut: 'B' },
-  { id: 'roll',      label: 'Roll',      shortcut: 'N' },
-  { id: 'slip',      label: 'Slip',      shortcut: 'Y' },
-  { id: 'slide',     label: 'Slide',     shortcut: 'U' },
-  { id: 'hand',      label: 'Hand',      shortcut: 'H' },
-  { id: 'zoom',      label: 'Zoom',      shortcut: 'Z' },
-];
-
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
-  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
-  const toggleLinkedSelection = useSelectionStore((s) => s.toggleLinkedSelection);
-  const activeTool = useCutEditorStore((s) => s.activeTool);
-  const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
+  const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
+  const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
 
   return (
     <div style={ROOT}>
-      {/* MARKER_GAMMA-TT2: Clickable tool buttons */}
-      {PRIMARY_TOOLS.map((tool) => {
-        const isActive = activeTool === tool.id;
-        return (
-          <button
-            key={tool.id}
-            onClick={() => setActiveTool(tool.id)}
-            title={`${tool.label} (${tool.shortcut})`}
-            style={{
-              ...TOGGLE_BTN,
-              background: isActive ? '#222' : 'none',
-              border: isActive ? '1px solid #555' : '1px solid transparent',
-              color: isActive ? '#ccc' : '#555',
-              fontSize: 10,
-              fontFamily: '"JetBrains Mono", monospace',
-              minWidth: 20,
-              height: 18,
-              justifyContent: 'center',
-            }}
-          >
-            {TOOL_SVG[tool.id](isActive ? '#ccc' : '#555')}
-          </button>
-        );
-      })}
-
-      <div style={{ width: 1, height: 14, background: '#222' }} />
-
       {/* Snap toggle */}
       <button
         style={{
@@ -174,8 +114,6 @@ export default function TimelineToolbar() {
         }}
         onClick={toggleLinkedSelection}
         title={`Linked Selection ${linkedSelection ? 'ON' : 'OFF'}`}
-        data-testid="linked-selection-btn"
-        aria-label="Linked Selection"
       >
         <ChainIcon active={linkedSelection} />
       </button>

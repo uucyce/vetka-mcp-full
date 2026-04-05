@@ -9,8 +9,6 @@ import os
 from unittest.mock import Mock, patch, MagicMock
 import json
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 63 contracts changed")
-
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -235,7 +233,6 @@ class TestMetrics:
 def run_tests():
     """Run all tests with pytest"""
     import subprocess
-
     result = subprocess.run(
         ["python3", "-m", "pytest", __file__, "-v", "--tb=short"],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

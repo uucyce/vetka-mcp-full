@@ -1,8 +1,4 @@
 # MARKER_138.S2_2_ENGRAM_BRIDGE_TEST
-import pytest
-
-pytestmark = pytest.mark.stale(reason="Jarvis ENGRAM bridge — context collection API changed")
-
 import asyncio
 
 from src.jarvis.engram_bridge import JarvisEngramBridge

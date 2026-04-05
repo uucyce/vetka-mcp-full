@@ -1,18 +1,16 @@
 """
-Phase 195 -- Protocol Guard Layer test suite (24 + 6 tests).
+Phase 195 -- Protocol Guard Layer test suite (24 tests).
 
 Cat 1: SessionActionTracker (8 tests) -- record/reset/defaults
 Cat 2: ProtocolGuard Rules (8 tests) -- 6 rules enforcement
 Cat 3: Path Exemptions (3 tests) -- docs/tests/data exempt from read_before_edit
 Cat 4: Full Workflow (3 tests) -- happy path, worst case, partial compliance
 Cat 5: Singleton & Config (2 tests) -- get_* singletons, config overrides
-Cat 6: Recon Relevance Rule (3 tests) -- MARKER_SC_C.D6
-Cat 7: Auto-Debrief Phase Closure (3 tests) -- MARKER_SC_C.D5
 """
 
 import time
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from src.services.session_tracker import (
     SessionActions,
@@ -448,205 +446,9 @@ class TestSingletonAndConfig:
         s = tracker.get_session(SID)
         s.claimed_task_has_recon_docs = True
 
-        # Mock trust modulation so REFLEX emotions don't downgrade severity
-        from unittest.mock import patch, MagicMock
-        mock_emo = MagicMock()
-        mock_emo.get_emotion_state.return_value = MagicMock(trust=0.5)
-        with patch("src.services.reflex_emotions.get_reflex_emotions", return_value=mock_emo):
-            violations = guard.check(s, "Edit", {"file_path": "src/services/foo.py"})
+        violations = guard.check(s, "Edit", {"file_path": "src/services/foo.py"})
         read_violations = [v for v in violations if v.rule_id == "read_before_edit"]
 
         assert len(read_violations) == 1
         assert read_violations[0].severity == "block"
         print("  test_config_override_severity")
-
-
-# ════════════════════════════════════════════════════════════════
-# Cat 6 -- Recon Relevance Rule (3 tests) MARKER_SC_C.D6
-# ════════════════════════════════════════════════════════════════
-
-def _mock_session_for_recon(task_claimed=True, claimed_task_id="tb_recon_1"):
-    """Helper: build a mock session with recon-relevance-friendly defaults."""
-    s = MagicMock()
-    s.task_claimed = task_claimed
-    s.claimed_task_id = claimed_task_id
-    s.claimed_task_has_recon_docs = True
-    s.files_read = {"src/services/foo.py"}
-    s.task_board_checked = True
-    s.session_init_called = True
-    s.roadmap_exists = True
-    s.tasks_completed = 0
-    s.experience_report_submitted = False
-    return s
-
-
-class TestReconRelevance:
-    """Category 6: recon_relevance rule — warn when recon_docs are irrelevant."""
-
-    # -- 25. Irrelevant doc warns --
-    def test_recon_relevance_warns_on_irrelevant_doc(self, guard, tmp_path):
-        """Doc doesn't mention phase number or task keywords -> warn."""
-        doc_file = tmp_path / "irrelevant_doc.md"
-        doc_file.write_text("# Generic Architecture\nThis is about nothing specific.\n")
-
-        mock_task = {
-            "title": "195.2.1: Implement debrief capture",
-            "recon_docs": [str(doc_file)],
-        }
-        session = _mock_session_for_recon()
-
-        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
-            MockBoard.return_value.get_task.return_value = mock_task
-            violation = guard._check_recon_relevance(
-                session, "Edit", {"file_path": "src/foo.py"}
-            )
-
-        assert violation is not None
-        assert violation.rule_id == "recon_relevance"
-        assert violation.severity == "warn"
-        assert "195" in violation.message
-        print("  test_recon_relevance_warns_on_irrelevant_doc")
-
-    # -- 26. Relevant doc (mentions phase number) -> no warn --
-    def test_recon_relevance_ok_when_doc_mentions_phase(self, guard, tmp_path):
-        """Doc mentions phase number -> no warn."""
-        doc_file = tmp_path / "relevant_doc.md"
-        doc_file.write_text("# Phase 195 Architecture\nThis covers phase 195 debrief.\n")
-
-        mock_task = {
-            "title": "195.2.1: Implement debrief capture",
-            "recon_docs": [str(doc_file)],
-        }
-        session = _mock_session_for_recon()
-
-        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
-            MockBoard.return_value.get_task.return_value = mock_task
-            violation = guard._check_recon_relevance(
-                session, "Edit", {"file_path": "src/foo.py"}
-            )
-
-        assert violation is None
-        print("  test_recon_relevance_ok_when_doc_mentions_phase")
-
-    # -- 27. Unreadable doc -> no warn (graceful) --
-    def test_recon_relevance_skips_when_doc_unreadable(self, guard):
-        """File not found -> no warn (graceful skip). All-unreadable = non-fatal pass."""
-        mock_task = {
-            "title": "195.2.1: Implement debrief capture",
-            "recon_docs": ["/nonexistent/path/doc_that_does_not_exist.md"],
-        }
-        session = _mock_session_for_recon()
-
-        with patch("src.orchestration.task_board.TaskBoard") as MockBoard:
-            MockBoard.return_value.get_task.return_value = mock_task
-            violation = guard._check_recon_relevance(
-                session, "Edit", {"file_path": "src/foo.py"}
-            )
-
-        # All docs unreadable -> graceful skip -> no violation
-        assert violation is None
-        print("  test_recon_relevance_skips_when_doc_unreadable")
-
-
-# ════════════════════════════════════════════════════════════════
-# Cat 7 -- Auto-Debrief Phase Closure (3 tests) MARKER_SC_C.D5
-# ════════════════════════════════════════════════════════════════
-
-class TestPhaseClosureDebrief:
-    """Category 7: _extract_phase_prefix, _count_pending_for_phase, _generate_debrief_prompt."""
-
-    # -- 28. Extract numeric phase prefix --
-    def test_extract_phase_prefix_numeric(self):
-        """'195.2.1: Some title' -> '195'; '42.3: Task' -> '42'."""
-        from src.orchestration.task_board import TaskBoard
-        assert TaskBoard._extract_phase_prefix("195.2.1: Some title") == "195"
-        assert TaskBoard._extract_phase_prefix("42.3: Another task") == "42"
-        print("  test_extract_phase_prefix_numeric")
-
-    # -- 29. Non-numeric prefix returns None --
-    def test_extract_phase_prefix_non_numeric(self):
-        """'D4: Non-numeric' -> None; '' -> None."""
-        from src.orchestration.task_board import TaskBoard
-        assert TaskBoard._extract_phase_prefix("D4: Non-numeric") is None
-        assert TaskBoard._extract_phase_prefix("") is None
-        assert TaskBoard._extract_phase_prefix("No prefix here") is None
-        print("  test_extract_phase_prefix_non_numeric")
-
-    # -- 30. Generate debrief prompt contains 3 questions --
-    def test_generate_debrief_prompt(self):
-        """Debrief prompt includes phase number, task title, and 3 questions."""
-        from src.orchestration.task_board import TaskBoard
-        task = {"title": "195.2.1: Final task"}
-        prompt = TaskBoard._generate_debrief_prompt("195", task)
-        assert "Phase 195 complete" in prompt
-        assert "pain point" in prompt
-        assert "discovery" in prompt
-        assert "change" in prompt
-        assert "195.2.1: Final task" in prompt
-        print("  test_generate_debrief_prompt")
-
-
-# ════════════════════════════════════════════════════════════════
-# Cat 8 -- No Raw Git Merge Rule (4 tests) 198.P1.8
-# ════════════════════════════════════════════════════════════════
-
-def _mock_session_full():
-    """Helper: a fully compliant mock session (all flags green)."""
-    s = MagicMock()
-    s.task_claimed = True
-    s.claimed_task_id = "tb_merge_test"
-    s.claimed_task_has_recon_docs = True
-    s.files_read = set()
-    s.task_board_checked = True
-    s.session_init_called = True
-    s.roadmap_exists = True
-    s.tasks_completed = 0
-    s.experience_report_submitted = False
-    return s
-
-
-class TestNoRawGitMerge:
-    """Category 8: no_raw_git_merge rule — blocks raw git merge via Bash."""
-
-    # -- 31. Raw git merge on Bash is blocked --
-    def test_git_merge_blocked(self, guard):
-        """Bash tool with 'git merge feature-branch' -> violation returned."""
-        session = _mock_session_full()
-        violation = guard._check_no_raw_git_merge(
-            session, "Bash", {"command": "git merge feature-branch"}
-        )
-        assert violation is not None
-        assert violation.rule_id == "no_raw_git_merge"
-        assert violation.severity == "block"
-        assert "merge_request" in violation.message
-        print("  test_git_merge_blocked")
-
-    # -- 32. git merge --abort is allowed --
-    def test_git_merge_abort_allowed(self, guard):
-        """'git merge --abort' -> no violation (safe variant)."""
-        session = _mock_session_full()
-        violation = guard._check_no_raw_git_merge(
-            session, "Bash", {"command": "git merge --abort"}
-        )
-        assert violation is None
-        print("  test_git_merge_abort_allowed")
-
-    # -- 33. git merge-base is allowed --
-    def test_git_merge_base_allowed(self, guard):
-        """'git merge-base main HEAD' -> no violation (different subcommand)."""
-        session = _mock_session_full()
-        violation = guard._check_no_raw_git_merge(
-            session, "Bash", {"command": "git merge-base main HEAD"}
-        )
-        assert violation is None
-        print("  test_git_merge_base_allowed")
-
-    # -- 34. Non-Bash tool with merge in args is ignored --
-    def test_non_bash_ignored(self, guard):
-        """vetka_git_commit with 'merge' in args -> no violation (only Bash is checked)."""
-        session = _mock_session_full()
-        violation = guard._check_no_raw_git_merge(
-            session, "vetka_git_commit", {"command": "git merge main"}
-        )
-        assert violation is None
-        print("  test_non_bash_ignored")

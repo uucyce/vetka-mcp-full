@@ -31,9 +31,9 @@ export default function SaveIndicator() {
   let text = '';
   let color = '#888';
   if (saveStatus === 'saving') { text = 'Saving...'; color = '#ccc'; }
-  else if (saveStatus === 'saved') { text = 'Saved'; color = '#aaa'; }
-  else if (saveStatus === 'error') { text = saveError || 'Save failed'; color = '#777'; }
-  else if (hasUnsavedChanges) { text = 'Unsaved'; color = '#888'; }
+  else if (saveStatus === 'saved') { text = 'Saved'; color = '#4a4'; }
+  else if (saveStatus === 'error') { text = saveError || 'Save failed'; color = '#c44'; }
+  else if (hasUnsavedChanges) { text = 'Unsaved'; color = '#886'; }
 
   if (!text) return null;
 
@@ -52,5 +52,5 @@ export default function SaveIndicator() {
     pointerEvents: 'none',
   };
 
-  return <div data-testid="save-indicator" style={style}>{text}</div>;
+  return <div style={style}>{text}</div>;
 }
