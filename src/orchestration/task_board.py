@@ -3454,6 +3454,22 @@ class TaskBoard:
 
         for target, msg in targets:
             if target:
+                # MARKER_208.DEDUP: Skip if identical notification exists within last 10s
+                try:
+                    recent = self.db.execute(
+                        "SELECT COUNT(*) FROM notifications "
+                        "WHERE target_role = ? AND task_id = ? AND ntype = ? "
+                        "AND created_at > datetime('now', '-10 seconds')",
+                        (target, task_id, ntype),
+                    ).fetchone()
+                    if recent and recent[0] > 0:
+                        logger.debug(
+                            "[TaskBoard] DEDUP: skipping duplicate %s → %s for task %s",
+                            ntype, target, task_id,
+                        )
+                        continue
+                except Exception:
+                    pass  # Dedup is best-effort — never block notifications
                 self.notify(
                     target,
                     msg,
