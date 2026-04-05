@@ -263,7 +263,7 @@ interface CutEditorState {
   renamingClipId: string | null; // MARKER_FCP7FIX: clip currently being inline-renamed
 
   // === MARKER_W1.2: Panel Focus (Premiere-style panel-scoped hotkeys) ===
-  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | 'generation' | null;
+  focusedPanel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null;
 
   // === MARKER_W3.6: Tool State Machine ===
   // MARKER_W5.TRIM: Extended tool state machine (FCP7 Ch.44)
@@ -302,6 +302,11 @@ interface CutEditorState {
   editingMarkerId: string | null;
   // MARKER_GAMMA-LOOP: Loop playback (FCP7 Ch.8)
   loopPlayback: boolean;
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  showInsertTracksDialog: boolean;
+  showDeleteTracksDialog: boolean;
+  // MARKER_GAMMA-FIND: Find dialog (⌘F)
+  showFindDialog: boolean;
   // === MARKER_B3: Sequence Settings — resolution, color space, proxy mode ===
   sequenceResolution: '4K' | '1080p' | '720p' | 'custom';
   sequenceWidth: number;                // custom resolution width
@@ -482,7 +487,7 @@ interface CutEditorState {
   setViewMode: (mode: 'nle' | 'debug') => void;
   setSceneGraphSurfaceMode: (mode: 'shell_only' | 'nle_ready') => void;
   // MARKER_W1.2: Panel Focus
-  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | 'generation' | null) => void;
+  setFocusedPanel: (panel: 'source' | 'program' | 'timeline' | 'project' | 'script' | 'dag' | 'effects' | null) => void;
   // MARKER_W3.6: Tool State Machine
   setActiveTool: (tool: 'selection' | 'razor' | 'hand' | 'zoom' | 'slip' | 'slide' | 'ripple' | 'roll') => void;
   // MARKER_W4.5: Project Settings
@@ -497,6 +502,11 @@ interface CutEditorState {
   setShowEditMarkerDialog: (show: boolean, markerId?: string) => void;
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop: boolean) => void;
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  setShowInsertTracksDialog: (show: boolean) => void;
+  setShowDeleteTracksDialog: (show: boolean) => void;
+  // MARKER_GAMMA-FIND: Find dialog
+  setShowFindDialog: (show: boolean) => void;
   // MARKER_B3: Sequence Settings
   setSequenceResolution: (res: '4K' | '1080p' | '720p' | 'custom') => void;
   setSequenceWidth: (w: number) => void;
@@ -560,6 +570,8 @@ interface CutEditorState {
   // MARKER_W10.6: Per-clip effects
   setClipEffects: (clipId: string, effects: Partial<ClipEffects>) => void;
   resetClipEffects: (clipId: string) => void;
+  // MARKER_GAMMA-B10: Per-clip transitions
+  updateClipTransition: (clipId: string, transition: ClipTransition | null) => void;
   // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters
   copyFilters: () => void;
   pasteFilters: () => void;
@@ -713,6 +725,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   editingMarkerId: null,
   // MARKER_GAMMA-LOOP: Loop playback
   loopPlayback: false,
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  showInsertTracksDialog: false,
+  showDeleteTracksDialog: false,
+  showFindDialog: false,
   // MARKER_B3: Sequence Settings defaults
   sequenceResolution: '1080p',
   sequenceWidth: 1920,
@@ -1320,6 +1336,10 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
   setShowEditMarkerDialog: (show, markerId) => set({ showEditMarkerDialog: show, editingMarkerId: markerId ?? null }),
   // MARKER_GAMMA-LOOP: Loop playback
   setLoopPlayback: (loop) => set({ loopPlayback: loop }),
+  // MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs
+  setShowInsertTracksDialog: (show) => set({ showInsertTracksDialog: show }),
+  setShowDeleteTracksDialog: (show) => set({ showDeleteTracksDialog: show }),
+  setShowFindDialog: (show) => set({ showFindDialog: show }),
   // MARKER_B3: Sequence Settings setters
   setSequenceResolution: (res) => {
     const dims: Record<string, [number, number]> = {
@@ -1547,6 +1567,20 @@ export const useCutEditorStore = create<CutEditorState>((set, get) => ({
       })),
     }));
     void get().applyTimelineOps([{ op: 'reset_effects', clip_id: clipId }]);
+  },
+
+  // MARKER_GAMMA-B10: Update transition on clip
+  updateClipTransition: (clipId, transition) => {
+    // Local optimistic: set/clear transition_out
+    set((s) => ({
+      lanes: s.lanes.map((lane) => ({
+        ...lane,
+        clips: lane.clips.map((c) =>
+          c.clip_id === clipId ? { ...c, transition_out: transition || undefined } : c
+        ),
+      })),
+    }));
+    void get().applyTimelineOps([{ op: 'set_transition', clip_id: clipId, transition }]);
   },
 
   // MARKER_GAMMA-FILTER-COPY: FCP7 Ch.41 — Copy/Paste/Remove Filters

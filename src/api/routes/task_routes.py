@@ -165,22 +165,13 @@ async def update_task(task_id: str, body: Dict[str, Any]) -> Dict[str, Any]:
         "title", "description", "priority", "phase_type", "preset", "status", "tags",
         "project_id", "project_lane", "parent_task_id", "architecture_docs", "recon_docs",
         "protocol_version", "require_closure_proof", "closure_tests", "closure_files",
-        "implementation_hints",  # MARKER_202: Sherpa enrichment needs this
     }
     updates = {k: v for k, v in body.items() if k in allowed_fields}
 
     if not updates:
         return {"success": False, "error": "No valid fields to update"}
 
-    # MARKER_202.RECON_DONE: Ensure VALID_STATUSES is up-to-date at runtime.
-    # Fixes stale server cache when recon_done was added after server start.
-    from src.orchestration.task_board import VALID_STATUSES
-    if "recon_done" not in VALID_STATUSES:
-        VALID_STATUSES.add("recon_done")
-
     ok = board.update_task(task_id, **updates)
-    if not ok and "status" in updates:
-        return {"success": False, "error": f"update_task returned False for status={updates['status']}", "task_id": task_id}
     return {"success": ok, "task_id": task_id}
 
 
