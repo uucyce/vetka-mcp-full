@@ -3414,6 +3414,80 @@ class TaskBoard:
             logger.warning(f"[TaskBoard] ack_notifications failed: {e}")
             return {"success": False, "error": str(e)}
 
+    # ==========================================
+    # MARKER_208.SYNAPSE_WAKE_NATIVE
+    # ==========================================
+
+    _WAKE_COOLDOWN_SECS = 30
+
+    def _synapse_wake(self, role: str, message: str = "") -> None:
+        """MARKER_208.SYNAPSE_WAKE_NATIVE: Wake an agent via tmux or macOS notification.
+
+        Pure Python — no external script dependency. Replaces synapse_wake.sh
+        for the _auto_notify path so wake works from main without worktree merge.
+
+        Flow:
+        1. Debounce: skip if woken < 30s ago (/tmp/synapse_wake_{role}.ts)
+        2. tmux has-session → send-keys "vetka session init" if session alive
+        3. Fallback: macOS notification + Terminal activate + sound
+        """
+        ts_file = Path(f"/tmp/synapse_wake_{role}.ts")
+        try:
+            if ts_file.exists():
+                age = time.time() - ts_file.stat().st_mtime
+                if age < self._WAKE_COOLDOWN_SECS:
+                    logger.debug(
+                        "[TaskBoard] SYNAPSE_WAKE debounce: %s woken %ds ago, skip",
+                        role, int(age),
+                    )
+                    return
+        except Exception:
+            pass  # stat failure — proceed with wake
+
+        session_name = f"vetka-{role}"
+        try:
+            has = subprocess.run(
+                ["tmux", "has-session", "-t", session_name],
+                capture_output=True, timeout=3,
+            )
+            if has.returncode == 0:
+                # Session alive — inject session init to trigger hook + inbox read
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name,
+                     "vetka session init", "Enter"],
+                    capture_output=True, timeout=3,
+                )
+                ts_file.touch()
+                logger.info("[TaskBoard] SYNAPSE_WAKE: tmux poked %s", role)
+                return
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE tmux failed for %s: %s", role, exc)
+
+        # Fallback: macOS notification (for Commander in raw terminal)
+        try:
+            subprocess.run(
+                ["pgrep", "-q", "WindowServer"],
+                capture_output=True, timeout=2,
+            )
+            wake_msg = message or f"Agent {role} needs attention"
+            subprocess.Popen(
+                ["osascript", "-e",
+                 f'display notification "{wake_msg}" with title "[VETKA] {role} Wake"'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["osascript", "-e", 'tell application "Terminal" to activate'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["afplay", "/System/Library/Sounds/Ping.aiff"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            ts_file.touch()
+            logger.info("[TaskBoard] SYNAPSE_WAKE: macOS notified %s (no tmux session)", role)
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE macOS fallback failed for %s: %s", role, exc)
+
     def _auto_notify(
         self,
         task: Dict[str, Any],
@@ -3478,38 +3552,19 @@ class TaskBoard:
                     task_id=task_id,
                 )
 
-        # MARKER_208.SYNAPSE_WAKE: Actually wake target agents via tmux
-        # synapse_wake.sh handles session-exists check and activity threshold internally
-        _WAKE_TARGETS = {
+        # MARKER_208.SYNAPSE_WAKE_NATIVE: Wake target agents — pure Python, no script dependency
+        _WAKE_TARGETS: Dict[str, list] = {
             self.NOTIF_TASK_COMPLETED: ["Delta"],
             self.NOTIF_TASK_VERIFIED: ["Commander"],
             self.NOTIF_READY_TO_MERGE: ["Commander"],
-            self.NOTIF_TASK_NEEDS_FIX: [],  # owner already notified, no wake needed
+            self.NOTIF_TASK_NEEDS_FIX: [],  # populated dynamically below
         }
-        wake_roles = _WAKE_TARGETS.get(ntype, [])
-        _WAKE_COOLDOWN_SECS = 30
-        for role in wake_roles:
-            try:
-                # MARKER_208.DEBOUNCE: Skip if already woken within cooldown
-                ts_file = Path(f"/tmp/synapse_wake_{role}.ts")
-                if ts_file.exists():
-                    age = time.time() - ts_file.stat().st_mtime
-                    if age < _WAKE_COOLDOWN_SECS:
-                        logger.debug(
-                            "[TaskBoard] SYNAPSE_WAKE debounce: %s woken %ds ago, skip",
-                            role, int(age),
-                        )
-                        continue
-                subprocess.run(
-                    ["bash", "scripts/synapse_wake.sh", role],
-                    cwd=str(PROJECT_ROOT),
-                    timeout=5,
-                    capture_output=True,
-                )
-                ts_file.touch()
-                logger.info("[TaskBoard] SYNAPSE_WAKE: poked %s for %s", role, ntype)
-            except Exception as exc:
-                logger.warning("[TaskBoard] SYNAPSE_WAKE failed for %s: %s", role, exc)
+        wake_roles = list(_WAKE_TARGETS.get(ntype, []))
+        # Wake task owner on needs_fix so they see the QA failure
+        if ntype == self.NOTIF_TASK_NEEDS_FIX and owner:
+            wake_roles.append(owner)
+        for wake_target in wake_roles:
+            self._synapse_wake(wake_target, message=f"{ntype}: {title}")
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
