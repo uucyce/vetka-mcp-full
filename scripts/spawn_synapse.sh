@@ -22,6 +22,46 @@ SESSION_NAME="vetka-$ROLE"
 REGISTRY_FILE="$PROJECT_ROOT/data/synapse_sessions.json"
 LOG_PREFIX="[SYNAPSE]"
 
+# ── MARKER_209.UX: Color from agent_registry.yaml ────────────
+# Each role has a tmux_color field in the registry. Fallback: grey.
+REGISTRY_YAML="$PROJECT_ROOT/data/templates/agent_registry.yaml"
+
+_get_role_color() {
+    local role="$1"
+    local color=""
+    # Parse tmux_color for matching callsign from YAML (no python dep for speed)
+    if [ -f "$REGISTRY_YAML" ]; then
+        color=$(python3 -c "
+import yaml, sys
+try:
+    with open('$REGISTRY_YAML') as f:
+        reg = yaml.safe_load(f)
+    for r in reg.get('roles', []):
+        if r.get('callsign') == '$role':
+            print(r.get('tmux_color', ''))
+            sys.exit(0)
+except Exception:
+    pass
+" 2>/dev/null)
+    fi
+    echo "${color:-bg=colour244,fg=white}"  # fallback: grey
+}
+
+_apply_tmux_color() {
+    local session="$1" role="$2"
+    local style
+    style=$(_get_role_color "$role")
+    tmux set-option -t "$session" status-style "$style" 2>/dev/null || return 0
+    tmux set-option -t "$session" status-left " [$role] " 2>/dev/null || true
+    tmux set-option -t "$session" status-right " %H:%M " 2>/dev/null || true
+    # Extract bg color for pane border
+    local bg_color
+    bg_color=$(echo "$style" | grep -o 'bg=[^,]*' | cut -d= -f2)
+    if [ -n "$bg_color" ]; then
+        tmux set-option -t "$session" pane-active-border-style "fg=$bg_color" 2>/dev/null || true
+    fi
+}
+
 # ── Validate ──────────────────────────────────────────────────
 if [ "$AGENT_TYPE" != "vibe" ] && [ ! -d "$WORKTREE_PATH" ]; then
     echo "$LOG_PREFIX ERROR: worktree not found: $WORKTREE_PATH" >&2
@@ -160,6 +200,10 @@ sleep 0.3
 tmux rename-window -t "$SESSION_NAME" "$WINDOW_TITLE" 2>/dev/null || true
 echo "$LOG_PREFIX Window title set: $WINDOW_TITLE"
 
+# ── MARKER_209.UX: Apply role color to tmux status bar ───────
+_apply_tmux_color "$SESSION_NAME" "$ROLE"
+echo "$LOG_PREFIX Color applied: $ROLE → $(_get_role_color "$ROLE")"
+
 # ── Update session registry ──────────────────────────────────
 mkdir -p "$(dirname "$REGISTRY_FILE")"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -211,3 +255,11 @@ fi
 
 echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt' $AGENT_TYPE"
 echo "$LOG_PREFIX To wake:  scripts/synapse_wake.sh $ROLE"
+
+# ── MARKER_209.UX: Recolor all running vetka-* sessions ──────
+# Apply colors to any already-running sessions that may lack them
+for existing_session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^vetka-'); do
+    existing_role="${existing_session#vetka-}"
+    _apply_tmux_color "$existing_session" "$existing_role"
+done
+echo "$LOG_PREFIX Recolor pass complete for all vetka-* sessions"
