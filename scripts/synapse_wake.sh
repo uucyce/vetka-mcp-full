@@ -53,5 +53,7 @@ if [ "$LAST_ACTIVITY" != "0" ] && [ "$DIFF" -lt "$ACTIVE_THRESHOLD_SECS" ]; then
 fi
 
 # ── Send inbox wake trigger ───────────────────────────────────────────────────
-tmux send-keys -t "$SESSION_NAME" "vetka session init" Enter
+# Use synapse_write.sh for agent-type-aware submit (opencode TUI needs split text+Enter)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+"$SCRIPT_DIR/synapse_write.sh" "$ROLE" "vetka session init" "$AGENT_TYPE"
 echo "$LOG_PREFIX $ROLE ← woken (sent inbox trigger, last activity was ${DIFF}s ago)"

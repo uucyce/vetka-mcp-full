@@ -66,11 +66,13 @@ case "$AGENT_TYPE" in
         ;;
     vibe)
         # MARKER_206.VIBE_BRIDGE: Vibe = browser-based, no terminal session.
-        # V1: open Chrome to vibe_url. V2 prompt injection: scripts/vibe_bridge.py
+        # V1 stub: open Chrome if URL set, otherwise graceful skip.
+        # V2 (SYNAPSE-206.7): full Playwright prompt injection via vibe_bridge.py
         VIBE_URL="${SYNAPSE_VIBE_URL:-}"
         if [ -z "$VIBE_URL" ]; then
-            echo "$LOG_PREFIX ERROR: SYNAPSE_VIBE_URL not set for vibe agent $ROLE" >&2
-            exit 1
+            echo "$LOG_PREFIX WARNING: vibe agent $ROLE — SYNAPSE_VIBE_URL not set, skipping (stub)" >&2
+            echo "$LOG_PREFIX Vibe fleet is V1 stub. Full support in SYNAPSE-206.7." >&2
+            exit 0
         fi
         open -a "Google Chrome" "$VIBE_URL"
         echo "$LOG_PREFIX $ROLE (vibe) → opened Chrome to $VIBE_URL"
