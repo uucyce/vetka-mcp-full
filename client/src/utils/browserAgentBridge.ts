@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * VETKA Browser Agent Bridge
  *

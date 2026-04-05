@@ -24,6 +24,7 @@ import time
 import logging
 import os
 import re
+import subprocess
 import asyncio
 from pathlib import Path
 from datetime import datetime
@@ -110,72 +111,11 @@ VALID_STATUSES = {
     "verified",
     "needs_fix",
     "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
-    "scout_recon",  # MARKER_203.SCOUT: Scout found code locations, ready for Sherpa or agent
 }
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
 AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
-
-# MARKER_203.SCOUT.LAZY: Lazy-loaded Scout singleton
-_scout_instance = None
-_scout_load_attempted = False
-
-
-def _get_scout():
-    """Lazy-load Scout. Returns None if scout.py not available."""
-    global _scout_instance, _scout_load_attempted
-    if _scout_load_attempted:
-        return _scout_instance
-    _scout_load_attempted = True
-    try:
-        from src.services.scout import get_scout
-        _scout_instance = get_scout(PROJECT_ROOT)
-        logger.info("[TaskBoard] SCOUT_HOOK: Scout loaded")
-    except ImportError:
-        logger.debug("[TaskBoard] SCOUT_HOOK: scout.py not found, scouting disabled")
-    except Exception as exc:
-        logger.warning("[TaskBoard] SCOUT_HOOK: failed to load Scout: %s", exc)
-    return _scout_instance
-
-
-def _run_scout_hook(task_payload: dict, board: "TaskBoard") -> None:
-    """Run Scout on a task and update scout_context + status if markers found.
-
-    MARKER_203.SCOUT.HOOK
-    Never raises — all errors caught and logged.
-    Only runs when task has allowed_paths or domain.
-    """
-    try:
-        has_paths = bool(task_payload.get("allowed_paths"))
-        has_domain = bool(task_payload.get("domain"))
-        if not has_paths and not has_domain:
-            return
-
-        if task_payload.get("phase_type") == "research":
-            return
-
-        scout = _get_scout()
-        if scout is None:
-            return
-
-        markers = scout.analyze(task_payload)
-        if not markers:
-            return
-
-        scout_context = [m.to_dict() for m in markers]
-        task_payload["scout_context"] = scout_context
-
-        if task_payload.get("status") == "pending":
-            task_payload["status"] = "scout_recon"
-
-        logger.info(
-            "[TaskBoard] SCOUT_HOOK: %d markers for %s",
-            len(markers), task_payload.get("id", "?"),
-        )
-    except Exception as exc:
-        logger.warning("[TaskBoard] SCOUT_HOOK error (safe): %s", exc)
-
 
 # Counter for generating IDs
 # MARKER_200.DEDUPE_FIX: Use PID + monotonic counter to prevent cross-process ID collisions.
@@ -287,7 +227,6 @@ class TaskBoard:
         """
         # Determine DB path
         if board_file is not None:
-            board_file = Path(board_file)  # ensure Path, not str — hotfix for agent spawn
             if str(board_file).endswith(".json"):
                 # Legacy callers passing .json path → derive .db path
                 self.board_file = board_file
@@ -2096,12 +2035,6 @@ class TaskBoard:
         # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
         self._insert_task(task_payload)
         self._notify_board_update("added")
-
-        # MARKER_203.SCOUT.ADD_HOOK: Scout enrichment on task creation
-        _run_scout_hook(task_payload, self)
-        if task_payload.get("scout_context"):
-            self._save_task(task_payload)
-
         logger.info(
             f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})"
         )
@@ -2459,8 +2392,6 @@ class TaskBoard:
             "merge_result",  # MARKER_184.5
             "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
             "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
-            "scout_context",  # MARKER_203.SCOUT: Code markers from PULSAR Scout
-            "verify_retries", "verification_notes",  # MARKER_205: Verifier middleware fields
         }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
@@ -2503,13 +2434,6 @@ class TaskBoard:
 
         self._save_task(task)
         self._notify_board_update("updated")
-
-        # MARKER_203.SCOUT.UPDATE_HOOK: Re-scout when paths or description change
-        if "allowed_paths" in updates or "description" in updates:
-            _run_scout_hook(task, self)
-            if task.get("scout_context"):
-                self._save_task(task)
-
         logger.debug(f"[TaskBoard] Updated {task_id}: {list(updates.keys())}")
         return True
 
@@ -2853,6 +2777,18 @@ class TaskBoard:
             return {
                 "success": False,
                 "error": f"Task {task_id} is {task['status']}, can't claim",
+            }
+
+        # MARKER_208.SINGLE_CLAIM: Reject if agent already has an active task
+        active_row = self.db.execute(
+            "SELECT id, title FROM tasks WHERE assigned_to = ? AND status IN ('claimed', 'running')",
+            (agent_name,),
+        ).fetchone()
+        if active_row and active_row[0] != task_id:
+            return {
+                "success": False,
+                "error": f"You already have active task {active_row[0]} — complete it first",
+                "active_task_id": active_row[0],
             }
 
         # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
@@ -3478,6 +3414,80 @@ class TaskBoard:
             logger.warning(f"[TaskBoard] ack_notifications failed: {e}")
             return {"success": False, "error": str(e)}
 
+    # ==========================================
+    # MARKER_208.SYNAPSE_WAKE_NATIVE
+    # ==========================================
+
+    _WAKE_COOLDOWN_SECS = 30
+
+    def _synapse_wake(self, role: str, message: str = "") -> None:
+        """MARKER_208.SYNAPSE_WAKE_NATIVE: Wake an agent via tmux or macOS notification.
+
+        Pure Python — no external script dependency. Replaces synapse_wake.sh
+        for the _auto_notify path so wake works from main without worktree merge.
+
+        Flow:
+        1. Debounce: skip if woken < 30s ago (/tmp/synapse_wake_{role}.ts)
+        2. tmux has-session → send-keys "vetka session init" if session alive
+        3. Fallback: macOS notification + Terminal activate + sound
+        """
+        ts_file = Path(f"/tmp/synapse_wake_{role}.ts")
+        try:
+            if ts_file.exists():
+                age = time.time() - ts_file.stat().st_mtime
+                if age < self._WAKE_COOLDOWN_SECS:
+                    logger.debug(
+                        "[TaskBoard] SYNAPSE_WAKE debounce: %s woken %ds ago, skip",
+                        role, int(age),
+                    )
+                    return
+        except Exception:
+            pass  # stat failure — proceed with wake
+
+        session_name = f"vetka-{role}"
+        try:
+            has = subprocess.run(
+                ["tmux", "has-session", "-t", session_name],
+                capture_output=True, timeout=3,
+            )
+            if has.returncode == 0:
+                # Session alive — inject session init to trigger hook + inbox read
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name,
+                     "vetka session init", "Enter"],
+                    capture_output=True, timeout=3,
+                )
+                ts_file.touch()
+                logger.info("[TaskBoard] SYNAPSE_WAKE: tmux poked %s", role)
+                return
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE tmux failed for %s: %s", role, exc)
+
+        # Fallback: macOS notification (for Commander in raw terminal)
+        try:
+            subprocess.run(
+                ["pgrep", "-q", "WindowServer"],
+                capture_output=True, timeout=2,
+            )
+            wake_msg = message or f"Agent {role} needs attention"
+            subprocess.Popen(
+                ["osascript", "-e",
+                 f'display notification "{wake_msg}" with title "[VETKA] {role} Wake"'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["osascript", "-e", 'tell application "Terminal" to activate'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["afplay", "/System/Library/Sounds/Ping.aiff"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            ts_file.touch()
+            logger.info("[TaskBoard] SYNAPSE_WAKE: macOS notified %s (no tmux session)", role)
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE macOS fallback failed for %s: %s", role, exc)
+
     def _auto_notify(
         self,
         task: Dict[str, Any],
@@ -3518,6 +3528,22 @@ class TaskBoard:
 
         for target, msg in targets:
             if target:
+                # MARKER_208.DEDUP: Skip if identical notification exists within last 10s
+                try:
+                    recent = self.db.execute(
+                        "SELECT COUNT(*) FROM notifications "
+                        "WHERE target_role = ? AND task_id = ? AND ntype = ? "
+                        "AND created_at > datetime('now', '-10 seconds')",
+                        (target, task_id, ntype),
+                    ).fetchone()
+                    if recent and recent[0] > 0:
+                        logger.debug(
+                            "[TaskBoard] DEDUP: skipping duplicate %s → %s for task %s",
+                            ntype, target, task_id,
+                        )
+                        continue
+                except Exception:
+                    pass  # Dedup is best-effort — never block notifications
                 self.notify(
                     target,
                     msg,
@@ -3525,6 +3551,20 @@ class TaskBoard:
                     source_role=source_role,
                     task_id=task_id,
                 )
+
+        # MARKER_208.SYNAPSE_WAKE_NATIVE: Wake target agents — pure Python, no script dependency
+        _WAKE_TARGETS: Dict[str, list] = {
+            self.NOTIF_TASK_COMPLETED: ["Delta"],
+            self.NOTIF_TASK_VERIFIED: ["Commander"],
+            self.NOTIF_READY_TO_MERGE: ["Commander"],
+            self.NOTIF_TASK_NEEDS_FIX: [],  # populated dynamically below
+        }
+        wake_roles = list(_WAKE_TARGETS.get(ntype, []))
+        # Wake task owner on needs_fix so they see the QA failure
+        if ntype == self.NOTIF_TASK_NEEDS_FIX and owner:
+            wake_roles.append(owner)
+        for wake_target in wake_roles:
+            self._synapse_wake(wake_target, message=f"{ntype}: {title}")
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
@@ -5067,7 +5107,7 @@ class TaskBoard:
                 rc, _, err = await _git(
                     "commit",
                     "-m",
-                    f"Snapshot merge {branch} into main via TaskBoard (allowed_paths only)",
+                    f"Snapshot merge {branch} into main via TaskBoard",
                 )
                 if rc != 0:
                     return {"success": False, "error": f"Snapshot commit failed: {err}"}

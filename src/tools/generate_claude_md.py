@@ -261,27 +261,23 @@ def generate_all(dry_run: bool = False, output_base: Optional[Path] = None) -> d
 
 
 # MARKER_201.NOTIFY: Settings.json generation for agent inbox hooks
-# MARKER_204.FIX: Correct nested format — Claude Code rejects flat {"matcher","command"} entries
-_INBOX_HOOK_ENTRY = {
-    "matcher": "",
-    "hooks": [{"type": "command", "command": "bash scripts/check_agent_inbox.sh 2>/dev/null || true"}],
+_AGENT_SETTINGS = {
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": ".*",
+                "command": "bash scripts/check_agent_inbox.sh",
+            }
+        ]
+    }
 }
-
-
-def _hook_has_inbox(hook: dict) -> bool:
-    """Detect inbox hook in both old flat format and new nested format."""
-    if "check_agent_inbox" in hook.get("command", ""):
-        return True
-    for inner in hook.get("hooks", []):
-        if "check_agent_inbox" in inner.get("command", ""):
-            return True
-    return False
 
 
 def _write_settings_json(worktree_dir: Path):
     """Write or merge .claude/settings.json with inbox hook for a worktree.
 
-    Always removes stale flat-format entries and ensures correct nested format exists.
+    If settings.json already exists, merges hooks (preserves existing hooks).
+    If not, creates fresh with inbox hook only.
     """
     settings_dir = worktree_dir / ".claude"
     settings_path = settings_dir / "settings.json"
@@ -291,25 +287,26 @@ def _write_settings_json(worktree_dir: Path):
         if settings_path.exists():
             existing = json.loads(settings_path.read_text(encoding="utf-8"))
 
+        # Merge hooks — don't overwrite existing hooks
         hooks = existing.get("hooks", {})
         post_hooks = hooks.get("PostToolUse", [])
 
-        # Remove all stale flat-format entries (missing "hooks" array)
-        post_hooks = [h for h in post_hooks if "hooks" in h]
-
-        # Add correct inbox hook if not already present
-        if not any(_hook_has_inbox(h) for h in post_hooks):
-            post_hooks.append(_INBOX_HOOK_ENTRY)
-
-        hooks["PostToolUse"] = post_hooks
-        existing["hooks"] = hooks
-
-        settings_dir.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(
-            json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
+        # Check if inbox hook already present
+        inbox_present = any(
+            "check_agent_inbox" in h.get("command", "")
+            for h in post_hooks
         )
-        logger.info("[generate_claude_md] Wrote %s (inbox hook)", settings_path)
+        if not inbox_present:
+            post_hooks.append(_AGENT_SETTINGS["hooks"]["PostToolUse"][0])
+            hooks["PostToolUse"] = post_hooks
+            existing["hooks"] = hooks
+
+            settings_dir.mkdir(parents=True, exist_ok=True)
+            settings_path.write_text(
+                json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
+                encoding="utf-8",
+            )
+            logger.info("[generate_claude_md] Wrote %s (inbox hook)", settings_path)
     except Exception as e:
         logger.debug(f"[generate_claude_md] Settings.json write failed: {e}")
 

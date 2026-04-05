@@ -38,7 +38,7 @@ interface HotkeyStoreState {
   /** Clear all custom overrides */
   clearOverrides: () => void;
   /** Get resolved binding for an action (custom override > preset default) */
-  getBinding: (action: CutHotkeyAction) => string | string[] | undefined;
+  getBinding: (action: CutHotkeyAction) => string | undefined;
   /** Get all resolved bindings (preset merged with custom overrides) */
   getResolvedMap: () => HotkeyMap;
   /** Find conflicts: actions sharing the same key binding */
@@ -94,13 +94,10 @@ export const useHotkeyStore = create<HotkeyStoreState>((set, get) => ({
     const byKey = new Map<string, CutHotkeyAction[]>();
     for (const [action, binding] of Object.entries(resolved)) {
       if (!binding) continue;
-      const keys = Array.isArray(binding) ? binding : [binding];
-      for (const k of keys) {
-        const key = k.toLowerCase();
-        const existing = byKey.get(key) ?? [];
-        existing.push(action as CutHotkeyAction);
-        byKey.set(key, existing);
-      }
+      const key = binding.toLowerCase();
+      const existing = byKey.get(key) ?? [];
+      existing.push(action as CutHotkeyAction);
+      byKey.set(key, existing);
     }
     // Only return entries with >1 action (actual conflicts)
     const conflicts = new Map<string, CutHotkeyAction[]>();

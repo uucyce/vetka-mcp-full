@@ -677,7 +677,7 @@ export const useMCCStore = create<MCCState>((set, get) => ({
           get().pushStreamEvent({
             role: 'system',
             content: `Project "${data.suggested_project_id || activeProjectId}" not found in registry. Consider creating it in MCC Settings.`,
-          } as any);
+          });
         }
         get().fetchTasks();
         return data.task_id || null;

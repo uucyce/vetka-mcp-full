@@ -52,16 +52,7 @@ class CutBootstrapRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _bootstrap_error(
-    code: str,
-    message: str,
-    *,
-    degraded_reason: str,
-    recoverable: bool = True,
-    failed_files: list[str] | None = None,
-) -> dict[str, Any]:
-    # MARKER_B_DEGRADE: error_message + failed_files let frontend show
-    # actionable notification instead of silently showing empty timeline.
+def _bootstrap_error(code: str, message: str, *, degraded_reason: str, recoverable: bool = True) -> dict[str, Any]:
     return {
         "success": False,
         "schema_version": "cut_bootstrap_v1",
@@ -70,8 +61,6 @@ def _bootstrap_error(
             "message": message,
             "recoverable": recoverable,
         },
-        "error_message": message,          # top-level alias for frontend toast
-        "failed_files": failed_files or [],  # paths that failed probe/import
         "degraded_mode": True,
         "degraded_reason": degraded_reason,
     }
@@ -460,9 +449,6 @@ def _execute_cut_bootstrap(body: CutBootstrapRequest) -> dict[str, Any]:
         ],
         "degraded_mode": degraded_mode,
         "degraded_reason": degraded_reason,
-        # MARKER_B_DEGRADE: error_message + failed_files for frontend notification
-        "error_message": degraded_reason if degraded_mode else "",
-        "failed_files": [],  # populated by scan phase when file probing fails
         # Extra fields for auto-scan orchestration (used by route handler)
         "_media_count": media_count,
         "_project_id": str(project.get("project_id") or ""),
