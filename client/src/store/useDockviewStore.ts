@@ -42,7 +42,6 @@ interface DockviewStoreState {
 const LS_PREFIX = 'cut_dockview_';
 const LS_ACTIVE = 'cut_dockview_active';
 const LS_FOCUS = 'cut_focus_per_preset';
-const LS_MARKERS = 'cut_visible_marker_kinds';
 
 export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   activePreset: (() => {
@@ -166,21 +165,25 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
   },
   getFocusForPreset: (preset) => get().focusPerPreset[preset],
 
-  // MARKER_GAMMA-20: Marker kind filter (all visible by default, persisted to localStorage)
-  visibleMarkerKinds: (() => {
-    const defaults = ['favorite', 'comment', 'cam', 'insight', 'chat', 'bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point'];
-    try {
-      const raw = localStorage.getItem(LS_MARKERS);
-      if (raw) return new Set(JSON.parse(raw) as string[]);
-    } catch { /* ignore */ }
-    return new Set(defaults);
-  })(),
+  // MARKER_GAMMA-20: Marker kind filter (all visible by default)
+  visibleMarkerKinds: new Set([
+    'favorite', 'comment', 'cam', 'insight', 'chat',
+    'bpm_audio', 'bpm_visual', 'bpm_script', 'sync_point',
+  ]),
   toggleMarkerKind: (kind) => {
     const current = new Set(get().visibleMarkerKinds);
     if (current.has(kind)) current.delete(kind);
     else current.add(kind);
     set({ visibleMarkerKinds: current });
-    try { localStorage.setItem(LS_MARKERS, JSON.stringify([...current])); } catch { /* ignore */ }
   },
   isMarkerKindVisible: (kind) => get().visibleMarkerKinds.has(kind),
+
+  // MARKER_A3.4: Per-lane waveform toggle (all visible by default)
+  waveformHiddenLanes: new Set<string>(),
+  toggleLaneWaveform: (laneId: string) => {
+    const current = new Set(get().waveformHiddenLanes);
+    if (current.has(laneId)) current.delete(laneId);
+    else current.add(laneId);
+    set({ waveformHiddenLanes: current });
+  },
 }));

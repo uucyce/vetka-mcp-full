@@ -62,6 +62,9 @@ export function EditMarkerDialog() {
   const show = useCutEditorStore((s) => s.showEditMarkerDialog);
   const editingMarkerId = useCutEditorStore((s) => s.editingMarkerId);
   const markers = useCutEditorStore((s) => s.markers);
+  // MARKER_GAMMA-EDITMARKER-TC: use actual fps + respect timecodeDisplayMode
+  const fps = useCutEditorStore((s) => s.projectFramerate ?? 25);
+  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
 
   const marker = markers.find((m) => m.marker_id === editingMarkerId);
 
@@ -122,7 +125,7 @@ export function EditMarkerDialog() {
           <div>
             <div style={LABEL}>Timecode</div>
             <div style={{ fontSize: 12, fontFamily: 'monospace', color: '#888', padding: '4px 0' }}>
-              {formatTimecode(marker.start_sec)}
+              {fmtTime(marker.start_sec, fps, timecodeDisplayMode)}
             </div>
           </div>
           <div>
@@ -145,10 +148,19 @@ export function EditMarkerDialog() {
   );
 }
 
-function formatTimecode(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  const s = Math.floor(sec % 60);
-  const f = Math.floor((sec % 1) * 30);
+// MARKER_GAMMA-EDITMARKER-TC: fmtTime — respects timecodeDisplayMode + actual fps
+function fmtTC(sec: number, fps: number): string {
+  const totalFrames = Math.round(sec * fps);
+  const f = totalFrames % Math.round(fps);
+  const totalSec = Math.floor(totalFrames / Math.round(fps));
+  const s = totalSec % 60;
+  const m = Math.floor(totalSec / 60) % 60;
+  const h = Math.floor(totalSec / 3600);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
+}
+
+function fmtTime(sec: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
+  if (mode === 'frames') return `${Math.round(sec * fps)}f`;
+  if (mode === 'seconds') return `${sec.toFixed(2)}s`;
+  return fmtTC(sec, fps);
 }

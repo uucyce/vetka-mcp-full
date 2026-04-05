@@ -1,4 +1,3 @@
-// @ts-nocheck
 // VETKA Tauri Detection & Bridge
 // Phase 100.1: Runtime environment detection
 // Phase 100.2: Dynamic imports to avoid browser errors
@@ -840,6 +839,42 @@ export async function openExternalWebWindow(url: string, title?: string): Promis
   } catch (e) {
     console.warn('[Tauri] Failed to open external web window:', e);
     return false;
+  }
+}
+
+/**
+ * Open native file selection dialog for media import (Tauri only).
+ * Returns selected file paths or null if cancelled/browser mode.
+ * MARKER_CUT-IMPORT-FIX: Used by ProjectPanel for media import.
+ */
+export async function openFileDialog(options?: {
+  title?: string;
+  multiple?: boolean;
+  directory?: boolean;
+  filters?: Array<{ name: string; extensions: string[] }>;
+}): Promise<string[] | null> {
+  const open = await getOpen();
+  if (!open) return null;
+
+  try {
+    const selected = await open({
+      directory: options?.directory ?? false,
+      multiple: options?.multiple ?? true,
+      title: options?.title ?? 'Select files',
+      filters: options?.filters,
+    });
+    if (!selected) return null;
+    if (Array.isArray(selected)) {
+      const paths = selected.map(String).filter(Boolean);
+      return paths.length > 0 ? paths : null;
+    }
+    if (typeof selected === 'string' && selected.trim()) {
+      return [selected];
+    }
+    return null;
+  } catch (e) {
+    console.warn('[Tauri] Native file dialog failed:', e);
+    return null;
   }
 }
 

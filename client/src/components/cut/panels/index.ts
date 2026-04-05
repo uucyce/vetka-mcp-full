@@ -44,6 +44,3 @@ export { default as SourceAcquirePanelDock } from './SourceAcquirePanelDock';
 
 // MARKER_GAMMA-LAYERUI: Layer Stack & Depth Inspector panel
 export { default as LayerStackPanel } from './LayerStackPanel';
-
-// MARKER_GEN-DOCK: Generation Control panel (AI generation, FCP7 Deck Control equiv)
-export { default as GenerationControlPanelDock } from './GenerationControlPanelDock';

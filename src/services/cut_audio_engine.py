@@ -47,7 +47,6 @@ class MixerState:
     """Complete mixer state for all lanes + master."""
     lanes: dict[str, LaneMixerState] = field(default_factory=dict)
     master_volume: float = 1.0  # 0.0 - 1.5
-    master_pan: float = 0.0    # -1.0 (L) to +1.0 (R), 0.0 = center
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> MixerState:
@@ -64,7 +63,6 @@ class MixerState:
         return MixerState(
             lanes=lanes,
             master_volume=float(d.get("master_volume", 1.0)),
-            master_pan=float(d.get("master_pan", 0.0)),
         )
 
 
@@ -168,7 +166,7 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
         plan: RenderPlan from cut_render_engine
         mixer_state: MixerState with per-lane settings
     """
-    if not mixer_state.lanes and mixer_state.master_volume == 1.0 and mixer_state.master_pan == 0.0:
+    if not mixer_state.lanes and mixer_state.master_volume == 1.0:
         return  # Nothing to apply
 
     # Check if any lane is soloed
@@ -196,13 +194,6 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
                     "enabled": True,
                     "params": {"db": -96.0},
                 })
-            elif mixer_state.master_pan != 0.0:
-                clip.audio_effects.append({
-                    "effect_id": "_mixer_master_pan",
-                    "type": "_pan",
-                    "enabled": True,
-                    "params": {"pan": mixer_state.master_pan},
-                })
             continue
 
         effects = build_lane_audio_filters(
@@ -211,18 +202,6 @@ def apply_mixer_to_plan(plan: Any, mixer_state: MixerState) -> None:
             any_solo=any_solo,
         )
         clip.audio_effects.extend(effects)
-
-        # Master pan — applied on top of per-lane pan for all non-muted clips
-        if mixer_state.master_pan != 0.0:
-            # Only apply if clip is not going to be silent
-            is_silent = lane_state.mute or (any_solo and not lane_state.solo)
-            if not is_silent:
-                clip.audio_effects.append({
-                    "effect_id": "_mixer_master_pan",
-                    "type": "_pan",
-                    "enabled": True,
-                    "params": {"pan": mixer_state.master_pan},
-                })
 
 
 # ---------------------------------------------------------------------------
@@ -489,86 +468,3 @@ def toggle_audio_scrubbing(project_id: str) -> bool:
     new_state = not get_audio_scrubbing(project_id)
     set_audio_scrubbing(project_id, new_state)
     return new_state
-
-
-# ---------------------------------------------------------------------------
-# MARKER_B14: Audio transition compilation (crossfade → acrossfade filter)
-# ---------------------------------------------------------------------------
-
-# Curve name mapping for FFmpeg acrossfade filter
-# FCP7 Ch.47: equal_power (+3dB at midpoint) is default; linear dips at midpoint
-_AUDIO_CURVE_MAP: dict[str, str] = {
-    "equal_power": "qsin",   # quarter sine — +3dB at midpoint, smooth
-    "linear": "tri",         # triangle — 0dB at midpoint, perceptual dip
-    "qsin": "qsin",          # pass-through for explicit FFmpeg names
-    "tri": "tri",
-    "esin": "esin",          # exponential sine — steeper than qsin
-    "hsin": "hsin",          # half sine
-    "exp": "exp",            # exponential — abrupt
-    "log": "log",            # logarithmic — abrupt
-    "par": "par",            # parabola
-    "cub": "cub",            # cubic
-    "squ": "squ",            # square root
-    "dese": "dese",          # double exponential sigmoid
-    "desi": "desi",          # double exponential interpolation
-}
-
-
-def _audio_curve(curve: str) -> str:
-    """Resolve audio curve name to FFmpeg acrossfade curve identifier."""
-    return _AUDIO_CURVE_MAP.get(curve, "qsin")
-
-
-def compile_audio_transition(transition: Any) -> str:
-    """
-    Compile a single Transition to an FFmpeg acrossfade filter parameter string.
-
-    Returns the filter string WITHOUT input/output labels, e.g.:
-        'acrossfade=d=1.500:c1=qsin:c2=qsin'
-
-    The caller (FilterGraphBuilder) is responsible for attaching
-    input/output labels when building the full filter_complex graph.
-
-    Args:
-        transition: Transition dataclass with duration_sec and audio_curve fields.
-
-    Returns:
-        FFmpeg acrossfade filter string, or empty string for non-audio transitions.
-    """
-    tr_type = getattr(transition, "type", "crossfade")
-    if tr_type not in ("crossfade", "dissolve"):
-        # Non-audio transitions (dip_to_black, wipe) have no audio crossfade
-        return ""
-
-    duration = float(getattr(transition, "duration_sec", 1.0))
-    curve = str(getattr(transition, "audio_curve", "equal_power"))
-    c = _audio_curve(curve)
-    return f"acrossfade=d={duration:.3f}:c1={c}:c2={c}"
-
-
-def compile_audio_transitions(transitions: list[Any]) -> list[str]:
-    """
-    Compile a list of Transitions to FFmpeg acrossfade filter strings.
-
-    Only transitions with type 'crossfade' or 'dissolve' produce audio filters.
-    Used by the render pipeline audio filter chain (after mixer, before effects).
-
-    Args:
-        transitions: List of Transition objects (from RenderPlan).
-
-    Returns:
-        List of acrossfade filter strings, one per audio transition.
-        Non-audio transitions produce no entry (they are skipped).
-
-    Example:
-        >>> from src.services.cut_render_pipeline import Transition
-        >>> t = Transition(type="crossfade", duration_sec=1.5, audio_curve="equal_power")
-        >>> compile_audio_transitions([t])
-        ['acrossfade=d=1.500:c1=qsin:c2=qsin']
-    """
-    result: list[str] = []
-    for t in transitions:
-        f = compile_audio_transition(t)
-        if f:
-            result.append(f)
-    return result

@@ -894,28 +894,6 @@ class TaskBoard:
         # MARKER_200.FOREVER: Cache coherence — write-through
         self.tasks[task["id"]] = task
 
-    def _insert_task(self, task: dict):
-        """Strict INSERT (no OR REPLACE) for new task creation.
-
-        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
-        _save_task keeps INSERT OR REPLACE for update paths.
-        Raises sqlite3.IntegrityError if task_id already exists in DB.
-        """
-        row = self._task_to_row(task)
-        row["updated_at"] = datetime.now().isoformat()
-        columns = list(row.keys())
-        placeholders = ", ".join("?" for _ in columns)
-        col_names = ", ".join(columns)
-        values = [row[c] for c in columns]
-        with self.db:
-            self.db.execute(
-                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
-                values,
-            )
-        # Cache coherence — write-through
-        self.tasks[task["id"]] = task
-        self._index_task_fts(task)
-
     def _delete_task(self, task_id: str):
         """DELETE a single task row from SQLite.
 
@@ -1563,7 +1541,6 @@ class TaskBoard:
         """
         task_id = _generate_task_id()
         # MARKER_200.DEDUPE_FIX: Collision guard — if ID already exists, regenerate
-        # MARKER_201.DEDUPE_RAISE: Raise after max retries instead of silently continuing
         _collision_attempts = 0
         while task_id in self.tasks and _collision_attempts < 10:
             logger.warning(
@@ -1571,11 +1548,6 @@ class TaskBoard:
             )
             task_id = _generate_task_id()
             _collision_attempts += 1
-        if task_id in self.tasks:
-            raise RuntimeError(
-                f"[TaskBoard] ID collision unresolved after 10 retries: {task_id}. "
-                "This indicates a clock skew or PID collision — check system time."
-            )
         priority = max(1, min(5, priority))  # Clamp 1-5
         phase_type = self._normalize_phase_type(phase_type)
         protocol_fields = self._normalize_protocol_fields(
@@ -1690,8 +1662,7 @@ class TaskBoard:
             },
         )
         self.tasks[task_id] = task_payload
-        # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
-        self._insert_task(task_payload)
+        self._save_task(task_payload)
         self._notify_board_update("added")
         logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
         return task_id

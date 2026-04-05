@@ -12,11 +12,6 @@
 ```
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
-
-## Notifications
-Check for Commander messages: `vetka_task_board action=notifications role={{ role.callsign }}`
-After reading: `vetka_task_board action=ack_notifications role={{ role.callsign }}`
-Send to another agent: `vetka_task_board action=notify source_role={{ role.callsign }} target_role=<name> message="..."`
 {%- if role.domain == "architect" %}
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.

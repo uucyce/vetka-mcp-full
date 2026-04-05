@@ -15,6 +15,7 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { PRESET_BUILDERS } from './presetBuilders';
+import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
   loadPresetName,
@@ -24,6 +25,8 @@ import {
 import { loadRecent } from './WelcomeScreen';
 
 const HotkeyEditor = lazy(() => import('./HotkeyEditor'));
+const SequenceSettingsDialog = lazy(() => import('./SequenceSettingsDialog'));
+const ReconnectMediaDialog = lazy(() => import('./ReconnectMediaDialog'));
 // SpeedControl removed — rendered in CutEditorLayoutV2 via store.showSpeedControl
 // MARKER_GAMMA-25: WorkspacePresets removed from menubar — switching via Window menu only
 
@@ -193,6 +196,10 @@ function MenuItemRow({
 export default function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [hotkeyEditorOpen, setHotkeyEditorOpen] = useState(false);
+  const [showSeqSettings, setShowSeqSettings] = useState(false);
+  const [showReconnectMedia, setShowReconnectMedia] = useState(false);
+  const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
+  const projectId = useCutEditorStore((s) => s.projectId);
   const barRef = useRef<HTMLDivElement>(null);
 
   // Store actions
@@ -200,6 +207,20 @@ export default function MenuBar() {
   const dockStore = useDockviewStore;
   // MARKER_GAMMA-LOOP: Reactive loop state for Sequence > Loop menu item
   const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
+  // MARKER_GAMMA-WS-CHECKMARK: Reactive active workspace preset for Window > Workspaces checkmarks
+  const activeWorkspacePreset = useDockviewStore((s) => s.activePreset);
+  // MARKER_GAMMA-MENU-REACTIVE: Reactive selectors for menu checkmarks that toggle independently
+  const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
+  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
+  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
+  // MARKER_GAMMA-MENU-REACTIVE2: View menu overlay + monitor zoom reactive selectors
+  const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
+  const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
+  const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
+  const monitorZoom = useCutEditorStore((s) => s.monitorZoom);
+  // MARKER_GAMMA-MENU-REACTIVE3: Window menu reactive selectors
+  const activeTimelineId = useCutEditorStore((s) => s.timelineId);
+  const visibleMarkerKinds = useDockviewStore((s) => s.visibleMarkerKinds);
 
   // MARKER_GAMMA-PRESET-REACT: Reactive preset name — re-renders MenuBar on preset switch
   const [presetName, setPresetName] = useState<HotkeyPresetName>(loadPresetName);
@@ -393,6 +414,9 @@ export default function MenuBar() {
         { label: 'Publish...', shortcut: '⌘⇧P', action: () => store.getState().setShowPublishDialog(true) },
         { separator: true },
         { label: 'Project Settings...', shortcut: '⌘;', action: () => store.getState().setShowProjectSettings(true) },
+        { separator: true },
+        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.25 — relink offline clips
+        { label: 'Reconnect Media...', action: () => setShowReconnectMedia(true) },
       ],
     },
     {
@@ -445,7 +469,7 @@ export default function MenuBar() {
           useSelectionStore.setState({ selectedClipIds: ids });
         }},
         { separator: true },
-        { label: 'Find...', shortcut: '⌘F', disabled: true },
+        { label: 'Find...', shortcut: '⌘F', action: () => store.getState().setShowFindDialog(true) },
         { separator: true },
         { label: 'Keyboard Shortcuts', shortcut: '⌘⌥K', submenu: [
           { label: 'Edit Shortcuts...', shortcut: '⌘⌥K', action: () => setHotkeyEditorOpen(true) },
@@ -498,21 +522,21 @@ export default function MenuBar() {
           }
         }},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snapping`, shortcut: sc('toggleSnap'), action: () => {
           store.getState().toggleSnap();
         }},
         { separator: true },
         { label: 'Monitor Zoom', submenu: [
           ...([0, 50, 75, 100, 150, 200] as const).map((z) => ({
-            label: `${store.getState().monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
+            label: `${monitorZoom === z ? '\u2713 ' : '  '}${z === 0 ? 'Fit' : `${z}%`}`,
             action: () => store.getState().setMonitorZoom(z),
           })),
         ]},
         { label: 'Overlays', submenu: [
-          { label: `${store.getState().showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
-          { label: `${store.getState().showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
+          { label: `${showTitleSafe ? '\u2713 ' : '  '}Title Safe`, action: () => store.getState().toggleTitleSafe() },
+          { label: `${showActionSafe ? '\u2713 ' : '  '}Action Safe`, action: () => store.getState().toggleActionSafe() },
           { separator: true },
-          { label: `${store.getState().showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
+          { label: `${showMonitorOverlays ? '\u2713 ' : '  '}Timecode Overlay`, action: () => store.getState().toggleMonitorOverlays() },
           { label: 'Marker Overlay', submenu: [
             ...([
               ['favorite', 'Favorites'],
@@ -524,10 +548,16 @@ export default function MenuBar() {
               ['bpm_script', 'BPM Script'],
               ['sync_point', 'Sync Points'],
             ] as const).map(([kind, label]) => ({
-              label: `${dockStore.getState().isMarkerKindVisible(kind) ? '\u2713 ' : '  '}${label}`,
+              label: `${visibleMarkerKinds.has(kind) ? '\u2713 ' : '  '}${label}`,
               action: () => dockStore.getState().toggleMarkerKind(kind),
             })),
           ]},
+        ]},
+        // MARKER_GAMMA-CLIP-LABEL-MODE: FCP7 #45 — cycle clip display (Name/Filename/Color)
+        { label: 'Clip Label', submenu: [
+          { label: `${clipLabelMode === 'name' ? '\u2713 ' : '  '}Name`, action: () => store.getState().setClipLabelMode('name') },
+          { label: `${clipLabelMode === 'filename' ? '\u2713 ' : '  '}Filename`, action: () => store.getState().setClipLabelMode('filename') },
+          { label: `${clipLabelMode === 'color' ? '\u2713 ' : '  '}Color`, action: () => store.getState().setClipLabelMode('color') },
         ]},
         { separator: true },
         { label: 'Show Source Monitor', shortcut: '⌘1', action: () => focusPanel('source') },
@@ -562,8 +592,8 @@ export default function MenuBar() {
           for (const lane of s.lanes) {
             const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
             if (clip) {
-              s.setSequenceMarkIn(clip.start_sec);
-              s.setSequenceMarkOut(clip.start_sec + clip.duration_sec);
+              s.setMarkIn(clip.start_sec);
+              s.setMarkOut(clip.start_sec + clip.duration_sec);
               return;
             }
           }
@@ -611,6 +641,14 @@ export default function MenuBar() {
             s.play();
           }},
         ]},
+        { separator: true },
+        // MARKER_GAMMA-MATCHFRAME: FCP7 Ch.50 — Match Frame / Reverse Match Frame
+        { label: 'Match Frame', shortcut: 'F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f' }));
+        }},
+        { label: 'Reveal Master Clip', shortcut: '⇧F', action: () => {
+          document.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', shiftKey: true }));
+        }},
         { separator: true },
         { label: 'Add Marker', shortcut: 'M', action: () => {
           document.dispatchEvent(new KeyboardEvent('keydown', { key: 'm' }));
@@ -682,7 +720,7 @@ export default function MenuBar() {
           const clipId = useSelectionStore.getState().selectedClipId;
           if (clipId) store.getState().toggleClipEnabled(clipId);
         }, disabled: !useSelectionStore.getState().selectedClipId },
-        { label: `${useSelectionStore.getState().linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
+        { label: `${linkedSelection ? '\u2713 ' : '  '}Link/Unlink`, shortcut: sc('toggleLinkedSelection'), action: () => {
           useSelectionStore.getState().toggleLinkedSelection();
         }},
         { label: 'Group', shortcut: '⌘G', disabled: true },
@@ -719,7 +757,7 @@ export default function MenuBar() {
           const s = store.getState();
           const t = s.currentTime;
           const selectedLane = s.lanes.find((lane) =>
-            lane.clips.some((c) => c.clip_id === useSelectionStore.getState().selectedClipId)
+            lane.clips.some((c) => c.clip_id === s.selectedClipId)
           );
           if (!selectedLane) return;
           const clipsToSplit = selectedLane.clips.filter(
@@ -796,18 +834,10 @@ export default function MenuBar() {
           { label: 'End on Edit', action: () => setTransitionAlignment('end') },
         ]},
         { separator: true },
-        { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
+        { label: `${snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
-        { label: 'Insert Tracks', submenu: [
-          { label: 'Add Video Track', action: () => store.getState().addLane('video') },
-          { label: 'Add Audio Track', action: () => store.getState().addLane('audio') },
-        ]},
-        { label: 'Delete Track', action: () => {
-          // Remove the first empty lane (video or audio) — prefer focused panel lane
-          const s = store.getState();
-          const emptyLane = s.lanes.find((l) => l.clips.length === 0);
-          if (emptyLane) { s.removeLane(emptyLane.lane_id); }
-        }},
+        { label: 'Insert Tracks...', action: () => store.getState().setShowInsertTracksDialog(true) },
+        { label: 'Delete Tracks...', action: () => store.getState().setShowDeleteTracksDialog(true) },
         { separator: true },
         { label: 'Nest Item(s)', disabled: true },
         { label: 'Solo Selected Item(s)', action: () => {
@@ -823,19 +853,35 @@ export default function MenuBar() {
         }},
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
-          void store.getState().runSceneDetection();
+          // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
+          // TODO: Replace with store.getState().runSceneDetection() when Alpha adds store action
+          const s = store.getState();
+          if (!s.sandboxRoot || !s.projectId) return;
+          void (async () => {
+            await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
+              }),
+            });
+            await s.refreshProjectState?.();
+          })();
         }},
+        { separator: true },
+        // MARKER_GAMMA-WIRE-DIALOGS: FCP7 Ch.115 — sequence resolution/fps/audio settings
+        { label: 'Sequence Settings...', shortcut: '⌘0', action: () => setShowSeqSettings(true) },
       ],
     },
     {
       label: 'Window',
       items: [
         { label: 'Workspaces', submenu: [
-          { label: 'Editing', shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
-          { label: 'Color', shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
-          { label: 'Audio', shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
-          { label: 'Multicam', shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
-          { label: 'Custom', shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
+          { label: `${activeWorkspacePreset === 'editing' ? '\u2713 ' : '  '}Editing`, shortcut: '⌥⇧1', action: () => switchWorkspace('editing') },
+          { label: `${activeWorkspacePreset === 'color' ? '\u2713 ' : '  '}Color`, shortcut: '⌥⇧2', action: () => switchWorkspace('color') },
+          { label: `${activeWorkspacePreset === 'audio' ? '\u2713 ' : '  '}Audio`, shortcut: '⌥⇧3', action: () => switchWorkspace('audio') },
+          { label: `${activeWorkspacePreset === 'multicam' ? '\u2713 ' : '  '}Multicam`, shortcut: '⌥⇧4', action: () => switchWorkspace('multicam') },
+          { label: `${activeWorkspacePreset === 'custom' ? '\u2713 ' : '  '}Custom`, shortcut: '⌥⇧5', action: () => switchWorkspace('custom') },
           { separator: true },
           { label: 'Save Workspace...', action: () => {
             const api = dockStore.getState().apiRef;
@@ -878,6 +924,10 @@ export default function MenuBar() {
         { label: 'Source Monitor', shortcut: '⇧2', action: () => togglePanel('source', 'source', 'SOURCE') },
         { label: 'Timeline', shortcut: '⇧3', action: () => togglePanel('timeline', 'timeline', 'Timeline') },
         { label: 'Program Monitor', shortcut: '⇧4', action: () => togglePanel('program', 'program', 'PROGRAM') },
+        // MARKER_ACQUIRE-WINDOW: FCP7 Log & Capture equivalent (4-tab ingest panel)
+        { label: 'Log & Capture', action: () => togglePanel('acquire', 'acquire', 'Acquire') },
+        // MARKER_GAMMA-MULTICAM-WINDOW: Multicam Viewer direct toggle (FCP7 Ch.42)
+        { label: 'Multicam Viewer', action: () => togglePanel('multicam', 'multicam', 'Multicam') },
         { separator: true },
         { label: 'Inspector', shortcut: '⇧5', action: () => togglePanel('inspector', 'inspector', 'Inspector') },
         { label: 'Clip Inspector', action: () => togglePanel('clip', 'clip', 'Clip') },
@@ -895,6 +945,8 @@ export default function MenuBar() {
         // Speed Control removed from panels — it's a modal dialog (Clip → Speed/Duration ⌘R)
         // Transitions removed from panels — it's a category inside Effects (GAMMA-LAYOUT1)
         { label: 'Montage', action: () => togglePanel('montage', 'montage', 'Montage') },
+        // MARKER_GEN-WINDOW: AI Generation Control panel (Runway, Kling)
+        { label: 'Generation Control', action: () => togglePanel('generation', 'generation', 'Generation') },
         { label: 'Marker List', action: () => togglePanel('markers', 'markers', 'Markers') },
         { label: 'Timeline Navigator', action: () => togglePanel('timelines', 'timelines', 'Timelines') },
         { label: 'Publish / Crosspost', action: () => togglePanel('publish', 'publish', 'Publish') },
@@ -929,7 +981,7 @@ export default function MenuBar() {
         { label: 'Timelines', submenu: (() => {
           const tabs = store.getState().timelineTabs || [];
           return tabs.map((t: { id: string; label: string }) => ({
-            label: `${store.getState().timelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
+            label: `${activeTimelineId === t.id ? '\u2713 ' : '  '}${t.label || t.id}`,
             action: () => {
               const s = store.getState();
               const idx = s.timelineTabs.findIndex((tab: { id: string }) => tab.id === t.id);
@@ -1055,6 +1107,27 @@ export default function MenuBar() {
       {hotkeyEditorOpen && (
         <Suspense fallback={null}>
           <HotkeyEditor onClose={() => setHotkeyEditorOpen(false)} />
+        </Suspense>
+      )}
+      {/* MARKER_GAMMA-WIRE-DIALOGS: Orphaned dialogs now mounted via local state */}
+      {showSeqSettings && sandboxRoot && projectId && (
+        <Suspense fallback={null}>
+          <SequenceSettingsDialog
+            open={showSeqSettings}
+            onClose={() => setShowSeqSettings(false)}
+            sandboxRoot={sandboxRoot}
+            projectId={projectId}
+          />
+        </Suspense>
+      )}
+      {showReconnectMedia && sandboxRoot && projectId && (
+        <Suspense fallback={null}>
+          <ReconnectMediaDialog
+            open={showReconnectMedia}
+            onClose={() => setShowReconnectMedia(false)}
+            sandboxRoot={sandboxRoot}
+            projectId={projectId}
+          />
         </Suspense>
       )}
     </>
