@@ -1,13 +1,8 @@
 # CUT NLE — Unified Vision v2
-
-> **SUPERSEDED:** This was the single source of truth until 2026-03-25.
-> The new canonical document is **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)** — verified from actual code, not specs.
-> This file remains as historical design intent reference.
-
 **Date:** 2026-03-19 (updated)
 **Sources:** CUT_TARGET_ARCHITECTURE.md, CUT_DATA_MODEL.md, CUT_COGNITIVE_MODEL.md, ROADMAP_CUT_FULL.md, CUT_HOTKEY_ARCHITECTURE.md, RECON_192_ARCH_VS_CODE_2026-03-18.md, ChatGPT NLE review 2026-03-19
-**Purpose:** ONE document that defines ALL panels, ALL functions, ALL hotkeys, ALL NLE baseline contracts.
-**Status:** SUPERSEDED by VETKA_CUT_MANUAL.md (2026-03-25)
+**Purpose:** ONE document that defines ALL panels, ALL functions, ALL hotkeys, ALL NLE baseline contracts. Single source of truth.
+**Status:** CANONICAL v2 — replaces scattered definitions across 6+ docs
 
 ---
 

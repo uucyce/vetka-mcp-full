@@ -27,10 +27,10 @@ const MODES: { mode: MontageMode; label: string; desc: string }[] = [
 
 const btnStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
   flex: 1,
-  background: active ? '#222' : '#1a1a1a',
-  border: `1px solid ${active ? '#888' : '#333'}`,
+  background: active ? '#1a2a1a' : '#1a1a1a',
+  border: `1px solid ${active ? '#4a9' : '#333'}`,
   borderRadius: 3,
-  color: disabled ? '#444' : active ? '#fff' : '#ccc',
+  color: disabled ? '#444' : active ? '#7ecf7e' : '#ccc',
   fontSize: 10,
   fontFamily: 'system-ui, sans-serif',
   padding: '6px 4px',
@@ -87,8 +87,9 @@ export default function AutoMontagePanel() {
       }
 
       const data = await res.json();
-      setProgress('Applying clips to timeline...');
-      setMontageProgress('Applying...');
+      setProgress(null);
+      setMontageProgress(null);
+      setMontageRunning(false);
 
       // Create new timeline instance + dockview panel
       const newLabel = data.timeline_label || `${mode} cut`;
@@ -97,32 +98,7 @@ export default function AutoMontagePanel() {
         mode,
       });
       addTimelinePanel(newId, newLabel);
-
-      // MARKER_GAMMA-PW4: Convert montage clips[] to timeline_ops and apply
-      const clips = data.clips || data.result?.clips || [];
-      if (clips.length > 0) {
-        const ops = clips.map((clip: { source_path?: string; start_sec?: number; duration_sec?: number; lane_id?: string }) => ({
-          op: 'insert_at',
-          lane_id: clip.lane_id || 'video_main',
-          start_sec: clip.start_sec ?? 0,
-          duration_sec: clip.duration_sec ?? 5,
-          source_path: clip.source_path || '',
-        }));
-        try {
-          const applyOps = useCutEditorStore.getState().applyTimelineOps;
-          if (applyOps) {
-            await applyOps(ops);
-          }
-        } catch {
-          // Best effort — timeline tab created, ops may fail on backend
-        }
-      }
-
-      setProgress(null);
-      setMontageProgress(null);
-      setMontageRunning(false);
-      const clipCount = clips.length;
-      setLastResult(`${newLabel} — ${clipCount} clip${clipCount !== 1 ? 's' : ''} assembled`);
+      setLastResult(`Created: ${newLabel}`);
 
       // Refresh project state to load new timeline data
       if (refreshProjectState) {
@@ -145,7 +121,7 @@ export default function AutoMontagePanel() {
   const noProject = !sandboxRoot;
 
   return (
-    <div data-testid="auto-montage-panel" style={{
+    <div style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
@@ -164,7 +140,6 @@ export default function AutoMontagePanel() {
         {MODES.map(({ mode, label, desc }) => (
           <button
             key={mode}
-            data-testid={`montage-btn-${mode}`}
             style={btnStyle(false, running || noProject)}
             disabled={running || noProject}
             onClick={() => runMontage(mode)}
@@ -175,62 +150,37 @@ export default function AutoMontagePanel() {
         ))}
       </div>
 
-      {/* MARKER_GAMMA-PW4: Progress bar + status text */}
+      {/* Progress */}
       {running && progress && (
-        <div data-testid="montage-progress" style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          <div style={{
-            fontSize: 9,
-            color: '#999',
-            fontFamily: 'monospace',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-          }}>
-            <span style={{
-              display: 'inline-block',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#999',
-              animation: 'pulse 1s infinite',
-            }} />
-            {progress}
-          </div>
-          {/* Indeterminate progress bar */}
-          <div style={{
-            width: '100%',
-            height: 2,
-            background: '#222',
-            borderRadius: 1,
-            overflow: 'hidden',
-            position: 'relative',
-          }}>
-            <div style={{
-              position: 'absolute',
-              width: '30%',
-              height: '100%',
-              background: '#666',
-              borderRadius: 1,
-              animation: 'montage-progress 1.5s ease-in-out infinite',
-            }} />
-          </div>
-          <style>{`
-            @keyframes montage-progress {
-              0% { left: -30%; }
-              100% { left: 100%; }
-            }
-          `}</style>
+        <div style={{
+          fontSize: 9,
+          color: '#4a9eff',
+          fontFamily: 'monospace',
+          padding: '4px 0',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+        }}>
+          <span style={{
+            display: 'inline-block',
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: '#4a9eff',
+            animation: 'pulse 1s infinite',
+          }} />
+          {progress}
         </div>
       )}
 
       {/* Error */}
       {error && (
-        <div data-testid="montage-error" style={{
+        <div style={{
           fontSize: 9,
-          color: '#999',
+          color: '#e88',
           fontFamily: 'monospace',
           padding: '4px 6px',
-          background: '#1a1a1a',
+          background: '#1a1111',
           borderRadius: 3,
           border: '1px solid #333',
         }}>
@@ -240,14 +190,14 @@ export default function AutoMontagePanel() {
 
       {/* Result */}
       {lastResult && !running && (
-        <div data-testid="montage-result" style={{
+        <div style={{
           fontSize: 9,
-          color: '#ccc',
+          color: '#7ecf7e',
           fontFamily: 'monospace',
           padding: '4px 6px',
-          background: '#1a1a1a',
+          background: '#111a11',
           borderRadius: 3,
-          border: '1px solid #333',
+          border: '1px solid #2a3a2a',
         }}>
           {lastResult}
         </div>

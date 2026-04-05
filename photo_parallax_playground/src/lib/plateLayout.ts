@@ -8,14 +8,12 @@ export type PlateRole =
   | "special-clean";
 
 export type PlateSource = "auto" | "manual" | "special-clean" | "qwen-plan";
-export type PlateAuthority = "system" | "draft" | "object";
 
 export type PlateLike = {
   id: string;
   label: string;
   role: PlateRole;
   source: PlateSource;
-  authority?: PlateAuthority;
   x: number;
   y: number;
   width: number;
@@ -51,7 +49,6 @@ export type PlateExportAssetsContract = {
     label: string;
     role: PlateRole;
     source: PlateSource;
-    authority?: PlateAuthority;
     visible: boolean;
     z: number;
     depthPriority: number;
@@ -145,7 +142,6 @@ export type PlateAwareLayoutContract = {
     label: string;
     role: PlateRole;
     source: PlateSource;
-    authority?: PlateAuthority;
     order: number;
     visible: boolean;
     z: number;
@@ -283,7 +279,6 @@ export function buildPlateLayoutContract(params: {
       label: plate.label,
       role: plate.role,
       source: plate.source,
-      authority: plate.authority,
       order: index,
       visible: plate.visible,
       z: plate.z,
@@ -508,7 +503,6 @@ export function buildPlateExportAssetsContract(params: {
         label: plate.label,
         role: plate.role,
         source: plate.source,
-        authority: layoutPlate?.authority ?? plate.authority,
         visible: plate.visible,
         z: layoutPlate?.z ?? plate.z,
         depthPriority: layoutPlate?.depthPriority ?? Number(plate.depthPriority.toFixed(3)),

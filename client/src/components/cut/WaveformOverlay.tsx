@@ -5,7 +5,7 @@
  * Renders WaveformCanvas inside clip rect. Caches peaks per source_path.
  * Works for both video clips (audio track) and audio-only clips.
  *
- * Usage: <WaveformOverlay sourcePath={clip.source_path} width={px} height={px} color="#999" />
+ * Usage: <WaveformOverlay sourcePath={clip.source_path} width={px} height={px} color="#4a9eff" />
  */
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';

@@ -180,12 +180,6 @@ def test_cut_timeline_apply_returns_recoverable_error_when_timeline_missing(tmp_
     )
     project_id = bootstrap.json()["project"]["project_id"]
 
-    # B65 now creates timeline_state during bootstrap.
-    # Remove it to test the timeline_not_ready guard path.
-    timeline_file = sandbox_root / "cut_runtime" / "state" / "timeline_state.latest.json"
-    if timeline_file.exists():
-        timeline_file.unlink()
-
     response = client.post(
         "/api/cut/timeline/apply",
         json={
@@ -196,7 +190,6 @@ def test_cut_timeline_apply_returns_recoverable_error_when_timeline_missing(tmp_
     )
     assert response.status_code == 200
     payload = response.json()
-    # After bootstrap fix (timeline_id field added), bootstrap now creates the timeline
-    # successfully, so apply should succeed (not return timeline_not_ready)
-    assert payload["success"] is True
+    assert payload["success"] is False
     assert payload["schema_version"] == "cut_timeline_apply_v1"
+    assert payload["error"]["code"] == "timeline_not_ready"

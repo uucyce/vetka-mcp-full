@@ -10,9 +10,6 @@ Tests HTTP transport, session isolation, actor pools, and load handling.
 """
 
 import pytest
-
-pytestmark = pytest.mark.stale(reason="MCP server concurrency contracts — server refactored")
-
 import asyncio
 import httpx
 import json

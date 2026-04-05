@@ -19,7 +19,6 @@ export default function ProgramMonitorPanel(_props: IDockviewPanelProps) {
   return (
     <div
       style={PANEL_STYLE}
-      data-testid="cut-panel-program"
       onMouseDown={() => useCutEditorStore.getState().setFocusedPanel('program')}
     >
       <div style={{ flex: 1, overflow: 'hidden' }}>

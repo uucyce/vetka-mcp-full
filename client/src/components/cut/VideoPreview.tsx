@@ -3,17 +3,12 @@
  * Reads activeMediaPath from useCutEditorStore, syncs currentTime.
  * Displays poster from thumbnail_bundle when paused.
  * MARKER_170.PLAYBACK.A2: Error overlay + loading indicator (Opus Sprint).
- * MARKER_B26: Zebra overlay for out-of-range pixel detection.
  */
 import { useRef, useEffect, useCallback, useState, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { useSelectionStore } from '../../store/useSelectionStore';
 import AudioLevelMeter from './AudioLevelMeter';
 import TranscriptOverlay from './TranscriptOverlay';
-import FrameViewerSplit from './FrameViewerSplit';
-import ZebraOverlay from './ZebraOverlay';
-import { useAudioScrubbing } from '../../hooks/useAudioScrubbing';
 
 const CONTAINER_STYLE: CSSProperties = {
   position: 'relative',
@@ -60,8 +55,8 @@ const ERROR_OVERLAY_STYLE: CSSProperties = {
   position: 'absolute',
   left: 12,
   top: 12,
-  background: 'rgba(80,80,80,0.9)',
-  border: '1px solid #666',
+  background: 'rgba(180,40,40,0.85)',
+  border: '1px solid #c44',
   color: '#fff',
   fontSize: 11,
   fontFamily: 'system-ui',
@@ -136,10 +131,6 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [sourceHint, setSourceHint] = useState<string>('');
 
-  // MARKER_B5.SCRUB: Audio scrubbing — hear audio during timeline drag (program monitor only).
-  // Safe to call from any feed — the hook only watches program currentTime from store.
-  useAudioScrubbing();
-
   // MARKER_W1.3: Select media path based on feed prop
   const sourceMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   const programMediaPath = useCutEditorStore((s) => s.programMediaPath);
@@ -147,69 +138,24 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const activeMediaPath = feed === 'source' ? sourceMediaPath
     : feed === 'program' ? programMediaPath
     : legacyMediaPath;
-  // MARKER_DUAL-VIDEO: Source monitor uses its own playback state, program uses timeline's
-  const isSource = feed === 'source';
-  const isPlaying = useCutEditorStore((s) => isSource ? s.sourceIsPlaying : s.isPlaying);
-  const currentTime = useCutEditorStore((s) => isSource ? s.sourceCurrentTime : s.currentTime);
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
   const playbackRate = useCutEditorStore((s) => s.playbackRate);
   const thumbnails = useCutEditorStore((s) => s.thumbnails);
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const mediaError = useCutEditorStore((s) => s.mediaError);
   const mediaLoading = useCutEditorStore((s) => s.mediaLoading);
-  const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
-  const setDuration = useCutEditorStore((s) => isSource ? s.setSourceDuration : s.setDuration);
-  const play = useCutEditorStore((s) => isSource ? s.playSource : s.play);
-  const pause = useCutEditorStore((s) => isSource ? s.pauseSource : s.pause);
+  const seek = useCutEditorStore((s) => s.seek);
+  const setDuration = useCutEditorStore((s) => s.setDuration);
+  const play = useCutEditorStore((s) => s.play);
+  const pause = useCutEditorStore((s) => s.pause);
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
-
-  // MARKER_FRAME_SPLIT: Frame viewer split toggle (local state, toggled via CustomEvent)
-  const [showFrameSplit, setShowFrameSplit] = useState(false);
-  useEffect(() => {
-    const handler = () => setShowFrameSplit((v) => !v);
-    document.addEventListener('cut:toggle-frame-split', handler);
-    return () => document.removeEventListener('cut:toggle-frame-split', handler);
-  }, []);
 
   // MARKER_W5.2: Monitor overlay state
   const showTitleSafe = useCutEditorStore((s) => s.showTitleSafe);
   const showActionSafe = useCutEditorStore((s) => s.showActionSafe);
   const showMonitorOverlays = useCutEditorStore((s) => s.showMonitorOverlays);
-  // MARKER_B26: Zebra overlay state
-  const showZebra = useCutEditorStore((s) => s.showZebra);
-  const toggleZebra = useCutEditorStore((s) => s.toggleZebra);
-
-  // MARKER_B22: Live grading — read color_correction from selected clip for CSS filter preview
-  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
-  const ccForCssFilter = useCutEditorStore((s) => {
-    if (!selectedClipId) return null;
-    for (const lane of s.lanes) {
-      for (const clip of lane.clips || []) {
-        if (clip.clip_id === selectedClipId) {
-          return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
-        }
-      }
-    }
-    return null;
-  });
-
-  const videoCssFilter = (() => {
-    if (!ccForCssFilter) return undefined;
-    const parts: string[] = [];
-    if (ccForCssFilter.exposure && ccForCssFilter.exposure !== 0) {
-      parts.push(`brightness(${Math.pow(2, ccForCssFilter.exposure).toFixed(3)})`);
-    }
-    if (ccForCssFilter.contrast !== undefined && ccForCssFilter.contrast !== 1) {
-      parts.push(`contrast(${ccForCssFilter.contrast.toFixed(3)})`);
-    }
-    if (ccForCssFilter.saturation !== undefined && ccForCssFilter.saturation !== 1) {
-      parts.push(`saturate(${ccForCssFilter.saturation.toFixed(3)})`);
-    }
-    if (ccForCssFilter.hue && ccForCssFilter.hue !== 0) {
-      parts.push(`hue-rotate(${ccForCssFilter.hue}deg)`);
-    }
-    return parts.length > 0 ? parts.join(' ') : undefined;
-  })();
 
   const extension = (activeMediaPath?.split('.').pop() || '').toLowerCase();
 
@@ -255,9 +201,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         return;
       }
       const sourceUrl = `${API_BASE}/files/raw?path=${encodeURIComponent(activeMediaPath)}`;
-      // MARKER_B52: Respect proxyMode from store
-      const proxyMode = useCutEditorStore.getState().proxyMode || 'auto';
-      const wantsProxy = proxyMode === 'proxy' || (proxyMode === 'auto' && (HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension)));
+      const wantsProxy = HEAVY_CODEC_EXT.has(extension) || !NATIVE_PLAYABLE_VIDEO_EXT.has(extension);
       if (!sandboxRoot || !wantsProxy) {
         setResolvedSrc(activeThumbnail?.source_url || sourceUrl);
         setSourceHint(wantsProxy ? 'proxy unavailable, trying source' : '');
@@ -364,30 +308,13 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   }, [activeMediaPath]);
 
   // No active media — show empty state
-  // MARKER_GAMMA-FCP7: FCP7-style empty states per monitor type
   if (!activeMediaPath) {
     return (
       <div style={CONTAINER_STYLE}>
         <div style={EMPTY_STYLE}>
-          {feed === 'source' ? (
-            <>
-              <span style={{ fontSize: 11, color: '#666', letterSpacing: 1, textTransform: 'uppercase' }}>SOURCE</span>
-              <br />
-              <span style={{ marginTop: 8, display: 'inline-block' }}>Double-click clip in Browser</span>
-              <br />
-              <span style={{ fontSize: 11, color: '#444' }}>or drag to Source monitor</span>
-            </>
-          ) : feed === 'program' ? (
-            <>
-              <span style={{ fontSize: 11, color: '#666', letterSpacing: 1, textTransform: 'uppercase' }}>PROGRAM</span>
-              <br />
-              <span style={{ marginTop: 8, display: 'inline-block' }}>No active sequence</span>
-              <br />
-              <span style={{ fontSize: 11, color: '#444' }}>Edit clips in timeline to see playback</span>
-            </>
-          ) : (
-            <>Select a clip to preview</>
-          )}
+          {feed === 'source' ? 'Select a clip to preview' : feed === 'program' ? 'No timeline playback' : 'Select a clip to preview'}
+          <br />
+          <span style={{ fontSize: 11, color: '#333' }}>{feed === 'source' ? 'SOURCE' : feed === 'program' ? 'PROGRAM' : 'Monitor'}</span>
         </div>
       </div>
     );
@@ -397,9 +324,9 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
     <div style={CONTAINER_STYLE}>
       <video
         ref={videoRef}
-        src={resolvedSrc || undefined}
+        src={resolvedSrc}
         poster={activeThumbnail?.poster_url || undefined}
-        style={{ ...VIDEO_STYLE, filter: videoCssFilter }}
+        style={VIDEO_STYLE}
         onLoadedMetadata={handleLoadedMetadata}
         onError={handleError}
         onEnded={handleEnded}
@@ -441,39 +368,6 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         </div>
       )}
       <TranscriptOverlay />
-      {/* MARKER_B26: Zebra overlay for broadcast safe monitoring */}
-      {showZebra && activeMediaPath && (
-        <ZebraOverlay
-          mediaPath={activeMediaPath}
-          currentTime={currentTime}
-        />
-      )}
-      {/* MARKER_B26: Zebra toggle button — bottom-left corner, monochrome */}
-      {activeMediaPath && (
-        <button
-          onClick={(e) => { e.stopPropagation(); toggleZebra(); }}
-          data-testid="zebra-toggle"
-          title={showZebra ? 'Zebra overlay ON (click to disable)' : 'Enable zebra overlay (broadcast safe)'}
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            left: 8,
-            background: showZebra ? 'rgba(200,200,200,0.15)' : 'rgba(0,0,0,0.5)',
-            border: `1px solid ${showZebra ? '#888' : '#444'}`,
-            color: showZebra ? '#ddd' : '#666',
-            fontSize: 9,
-            fontFamily: 'system-ui',
-            borderRadius: 3,
-            padding: '2px 6px',
-            cursor: 'pointer',
-            zIndex: 10,
-            letterSpacing: 0.5,
-            userSelect: 'none',
-          }}
-        >
-          ZEBRA
-        </button>
-      )}
       {/* MARKER_W5.2: Safe margins overlay */}
       {(showTitleSafe || showActionSafe) && (
         <svg
@@ -514,14 +408,6 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
         barWidth={6}
         style={METER_STRIP_STYLE}
       />
-      {/* MARKER_FRAME_SPLIT: Split viewer overlay — original vs graded */}
-      {showFrameSplit && resolvedSrc && (
-        <FrameViewerSplit
-          videoSrc={resolvedSrc}
-          gradedFilter={videoCssFilter}
-          poster={activeThumbnail?.poster_url}
-        />
-      )}
       <div style={TIMECODE_STYLE}>{formatTimecode(currentTime)}</div>
     </div>
   );

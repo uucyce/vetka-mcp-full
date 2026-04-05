@@ -87,7 +87,6 @@ temp/
 *.tmp
 
 # Local runtime/tool noise (git cleanliness)
-.agent_lock
 .media_cache/
 .ocr_cache/
 .playwright-cli/
@@ -115,10 +114,6 @@ _trash/
 .claude/worktrees/
 .vetka-playground-pg_*
 config/runtime.env
-
-# CLAUDE.md — compiled artifact, auto-regen on session_init + post-merge hook
-# Zero merge conflicts: never tracked, always generated from agent_registry.yaml
-/CLAUDE.md
 
 # Runtime data (keep only minimal templates/placeholders tracked)
 data/**

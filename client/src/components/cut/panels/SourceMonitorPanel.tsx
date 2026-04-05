@@ -7,7 +7,6 @@ import type { IDockviewPanelProps } from 'dockview-react';
 import { useCutEditorStore } from '../../../store/useCutEditorStore';
 import VideoPreview from '../VideoPreview';
 import MonitorTransport from '../MonitorTransport';
-import SourceMonitorButtons from '../SourceMonitorButtons';
 
 const PANEL_STYLE: React.CSSProperties = {
   display: 'flex',
@@ -20,14 +19,12 @@ export default function SourceMonitorPanel(_props: IDockviewPanelProps) {
   return (
     <div
       style={PANEL_STYLE}
-      data-testid="cut-panel-source"
       onMouseDown={() => useCutEditorStore.getState().setFocusedPanel('source')}
     >
       <div style={{ flex: 1, overflow: 'hidden' }}>
         <VideoPreview feed="source" />
       </div>
       <MonitorTransport feed="source" />
-      <SourceMonitorButtons />
     </div>
   );
 }

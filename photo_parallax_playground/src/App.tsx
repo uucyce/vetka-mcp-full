@@ -132,7 +132,6 @@ type HintStroke = {
   id: string;
   mode: BrushMode;
   size: number;
-  targetPlateId?: string;
   points: HintPoint[];
 };
 
@@ -166,14 +165,12 @@ type PlateRole =
   | "special-clean";
 
 type PlateSource = "auto" | "manual" | "special-clean" | "qwen-plan";
-type PlateAuthority = "system" | "draft" | "object";
 
 type Plate = {
   id: string;
   label: string;
   role: PlateRole;
   source: PlateSource;
-  authority?: PlateAuthority;
   x: number;
   y: number;
   width: number;
@@ -195,7 +192,6 @@ type PlateLayoutLayer = {
   label: string;
   role: PlateRole;
   source: PlateSource;
-  authority?: PlateAuthority;
   order: number;
   visible: boolean;
   z: number;
@@ -333,7 +329,6 @@ type PlateExportAsset = {
   label: string;
   role: PlateRole;
   source: PlateSource;
-  authority?: PlateAuthority;
   visible: boolean;
   z: number;
   depthPriority: number;
@@ -394,7 +389,6 @@ type MatteSettings = {
 type MatteSeed = {
   id: string;
   mode: MatteSeedMode;
-  targetPlateId?: string;
   x: number;
   y: number;
   depth: number;
@@ -456,48 +450,6 @@ type AiAssistSuggestion = {
 };
 
 type AiCompareMode = "manual" | "ai" | "blend";
-type SceneType = "portrait_close" | "single_subject" | "group_midshot" | "wide_scene" | "synthetic_ai_scene";
-type AssistAction = "protect" | "silhouette" | "widen-depth" | "narrow-depth" | "reassign-role" | "promote-layer";
-
-type AssistRecommendation = {
-  title: string;
-  detail: string;
-  action: AssistAction;
-  tone: "good" | "mid" | "bad";
-};
-
-type AssistPlan = {
-  summary: string;
-  focusAction: AssistAction;
-  recommendations: AssistRecommendation[];
-  roleSuggestion: PlateRole | null;
-};
-
-type GuidePlateSuggestion = {
-  guideMode: Exclude<GroupMode, "erase-group">;
-  plateId: string;
-  plateLabel: string;
-  overlapScore: number;
-};
-
-type MissingObjectCandidate = {
-  id: string;
-  label: string;
-  suggestedRole: PlateRole;
-  reason: string;
-};
-
-type ProvisionalObjectCandidate = MissingObjectCandidate & {
-  x: number;
-  y: number;
-};
-
-type DraftPlatePreset = {
-  width: number;
-  height: number;
-  z: number;
-  depthPriority: number;
-};
 
 type QwenPlatePlan = {
   sample_id: string;
@@ -554,300 +506,6 @@ function findSample(sampleId: string): SampleMeta {
 
 function formatPct(value: number) {
   return `${value.toFixed(2)}%`;
-}
-
-function formatRoleLabel(role: PlateRole) {
-  return role.replace(/-/g, " ");
-}
-
-function formatGroupModeLabel(mode: GroupMode) {
-  switch (mode) {
-    case "foreground-group":
-      return "discover subject";
-    case "midground-group":
-      return "discover mid layer";
-    case "erase-group":
-      return "clear guide";
-  }
-}
-
-function getBoxOverlapArea(
-  first: { x: number; y: number; width: number; height: number },
-  second: { x: number; y: number; width: number; height: number },
-) {
-  const left = Math.max(first.x, second.x);
-  const top = Math.max(first.y, second.y);
-  const right = Math.min(first.x + first.width, second.x + second.width);
-  const bottom = Math.min(first.y + first.height, second.y + second.height);
-  return Math.max(0, right - left) * Math.max(0, bottom - top);
-}
-
-function getMissingObjectCandidates(sampleId: string, plates: PlateLayoutLayer[]): MissingObjectCandidate[] {
-  const labels = plates.map((plate) => plate.label.toLowerCase());
-  const isRepresented = (keywords: string[]) => keywords.some((keyword) => labels.some((label) => label.includes(keyword)));
-
-  if (sampleId === "hover-politsia") {
-    const candidates: MissingObjectCandidate[] = [];
-    if (!isRepresented(["cat", "kitten"])) {
-      candidates.push({
-        id: "hover-cat-right",
-        label: "right-side cat",
-        suggestedRole: "secondary-subject",
-        reason: "Visible foreground detail at the curb, but no dedicated object plate currently tracks it.",
-      });
-    }
-    if (!isRepresented(["parked car", "rust car", "right car"])) {
-      candidates.push({
-        id: "hover-rust-car-right",
-        label: "right-side parked car",
-        suggestedRole: "environment-mid",
-        reason: "Background vehicle shape is visible behind the cat, but the current stack folds it into broader scene plates.",
-      });
-    }
-    return candidates;
-  }
-
-  return [];
-}
-
-function getDraftPlateId(candidateId: string) {
-  return `draft-${candidateId}`;
-}
-
-function getAuthoritativePlateId(candidateId: string) {
-  return `object-${candidateId}`;
-}
-
-function parseCandidateIdFromPlateId(plateId: string) {
-  if (plateId.startsWith("draft-")) return plateId.slice("draft-".length);
-  if (plateId.startsWith("object-")) return plateId.slice("object-".length);
-  return null;
-}
-
-function getPlateAuthority(plate: { id: string; authority?: PlateAuthority }) {
-  if (plate.authority === "draft" || plate.authority === "object" || plate.authority === "system") {
-    return plate.authority;
-  }
-  if (plate.id.startsWith("object-")) return "object";
-  if (plate.id.startsWith("draft-")) return "draft";
-  return "system";
-}
-
-function isDraftPlate(plate: { id: string }) {
-  return getPlateAuthority(plate) === "draft";
-}
-
-function formatPlateAuthorityLabel(authority: PlateAuthority) {
-  switch (authority) {
-    case "draft":
-      return "draft pick";
-    case "object":
-      return "object layer";
-    case "system":
-    default:
-      return "base layer";
-  }
-}
-
-function getDraftPlatePreset(candidate: MissingObjectCandidate): DraftPlatePreset {
-  switch (candidate.id) {
-    case "hover-cat-right":
-      return {
-        width: 0.14,
-        height: 0.18,
-        z: 12,
-        depthPriority: 0.56,
-      };
-    case "hover-rust-car-right":
-      return {
-        width: 0.24,
-        height: 0.18,
-        z: -6,
-        depthPriority: 0.34,
-      };
-    default:
-      if (candidate.suggestedRole === "foreground-subject") {
-        return { width: 0.24, height: 0.28, z: 18, depthPriority: 0.72 };
-      }
-      if (candidate.suggestedRole === "secondary-subject") {
-        return { width: 0.16, height: 0.2, z: 10, depthPriority: 0.54 };
-      }
-      if (candidate.suggestedRole === "background-far") {
-        return { width: 0.38, height: 0.28, z: -22, depthPriority: 0.18 };
-      }
-      return { width: 0.24, height: 0.18, z: -6, depthPriority: 0.34 };
-  }
-}
-
-function buildDraftPlate(candidate: MissingObjectCandidate, point: HintPoint): Plate {
-  const preset = getDraftPlatePreset(candidate);
-  const width = preset.width;
-  const height = preset.height;
-  const x = clamp(point.x - width / 2, 0.01, 0.99 - width);
-  const y = clamp(point.y - height / 2, 0.01, 0.99 - height);
-  return buildPlate(
-    getDraftPlateId(candidate.id),
-    `draft: ${candidate.label}`,
-    candidate.suggestedRole,
-    "manual",
-    { x, y, width, height },
-    preset.z,
-    preset.depthPriority,
-    undefined,
-    "draft",
-  );
-}
-
-function refineDraftPlateBox(plate: Plate, mode: "tighten" | "widen"): Plate {
-  const scale = mode === "tighten" ? 0.88 : 1.14;
-  const centerX = plate.x + plate.width / 2;
-  const centerY = plate.y + plate.height / 2;
-  const nextWidth = clamp(plate.width * scale, 0.08, 0.42);
-  const nextHeight = clamp(plate.height * scale, 0.08, 0.38);
-  return {
-    ...plate,
-    x: clamp(centerX - nextWidth / 2, 0.01, 0.99 - nextWidth),
-    y: clamp(centerY - nextHeight / 2, 0.01, 0.99 - nextHeight),
-    width: nextWidth,
-    height: nextHeight,
-    source: "manual",
-  };
-}
-
-function inferSceneType(sample: SampleMeta, routingMode: "portrait-base" | "multi-plate"): SceneType {
-  const tags = sample.tags.join(" ").toLowerCase();
-  const title = `${sample.title} ${sample.scenario}`.toLowerCase();
-  if (tags.includes("ai") || title.includes("synthetic")) return "synthetic_ai_scene";
-  if (tags.includes("portrait") || title.includes("close-up")) return "portrait_close";
-  if (tags.includes("group")) return "group_midshot";
-  if (tags.includes("wide") || tags.includes("street") || routingMode === "multi-plate") return "wide_scene";
-  return "single_subject";
-}
-
-function buildAssistPlan(params: {
-  sceneType: SceneType;
-  plate: PlateLayoutLayer | null;
-  transitionRisk: number | null;
-  workflowRouting: PlateAwareLayoutContract["routing"];
-  cameraSafe: PlateAwareLayoutContract["cameraSafe"];
-}): AssistPlan {
-  const { sceneType, plate, transitionRisk, workflowRouting, cameraSafe } = params;
-  if (!plate) {
-    return {
-      summary: "Select a visible plate to get cleanup guidance.",
-      focusAction: "protect",
-      recommendations: [],
-      roleSuggestion: null,
-    };
-  }
-
-  const recommendations: AssistRecommendation[] = [];
-  let roleSuggestion: PlateRole | null = null;
-  const plateAuthority = plate.authority ?? "system";
-
-  if (plateAuthority === "draft") {
-    recommendations.push({
-      title: "Promote the draft into an object layer",
-      detail: "This stage pick is still a draft box. Promote it first so silhouette and depth cleanup attach to a real object layer.",
-      action: "promote-layer",
-      tone: "mid",
-    });
-  }
-
-  if (plate.cleanVariant || plate.role === "special-clean" || plate.source === "special-clean") {
-    recommendations.push({
-      title: "Protect the cleanup island",
-      detail: plate.targetPlate
-        ? `This plate targets ${plate.targetPlate}, so lock the protected region before changing depth or role.`
-        : "Keep this cleanup plate isolated before changing depth or role.",
-      action: "protect",
-      tone: "bad",
-    });
-  }
-
-  if (plateAuthority === "object" && ((transitionRisk ?? 0) >= 45 || plate.risk.disocclusionRisk >= 45)) {
-    recommendations.push({
-      title: "Refine the plate silhouette",
-      detail:
-        (transitionRisk ?? 0) >= 45
-          ? `Neighbor transition risk is ${transitionRisk}, so edge cleanup is the next high-leverage move.`
-          : `Disocclusion risk is ${plate.risk.disocclusionRisk}, so silhouette cleanup should come before deeper routing changes.`,
-      action: "silhouette",
-      tone: (transitionRisk ?? plate.risk.disocclusionRisk) >= 60 ? "bad" : "mid",
-    });
-  }
-
-  if (plateAuthority === "object" && (cameraSafe.riskyPlateIds.includes(plate.id) || !plate.risk.cameraSafe)) {
-    const shouldWiden = plate.role === "foreground-subject" || plate.role === "secondary-subject";
-    recommendations.push({
-      title: shouldWiden ? "Widen the active depth band" : "Narrow the depth band",
-      detail: shouldWiden
-        ? "This plate is part of the camera-safe risk set, so give the subject a softer depth transition before export."
-        : "This plate sits in the camera-safe risk set, so tighten the background band to reduce travel conflicts.",
-      action: shouldWiden ? "widen-depth" : "narrow-depth",
-      tone: "mid",
-    });
-  }
-
-  if (sceneType === "portrait_close" && plate.role === "environment-mid" && plate.risk.plateCoverage <= 0.18) {
-    roleSuggestion = "secondary-subject";
-  } else if (
-    (sceneType === "group_midshot" || sceneType === "wide_scene") &&
-    plate.role === "foreground-subject" &&
-    plate.risk.plateCoverage <= 0.12
-  ) {
-    roleSuggestion = "secondary-subject";
-  } else if (
-    sceneType === "single_subject" &&
-    plate.role === "secondary-subject" &&
-    plate.risk.plateCoverage >= 0.28
-  ) {
-    roleSuggestion = "foreground-subject";
-  }
-
-  if (plateAuthority === "object" && roleSuggestion) {
-    recommendations.push({
-      title: "Re-check the plate role",
-      detail: `Current scene class suggests ${formatRoleLabel(roleSuggestion)} for this coverage and routing profile.`,
-      action: "reassign-role",
-      tone: workflowRouting.mode === "multi-plate" ? "mid" : "good",
-    });
-  }
-
-  if (
-    plateAuthority === "object" &&
-    sceneType === "synthetic_ai_scene" &&
-    !recommendations.some((item) => item.action === "protect")
-  ) {
-    recommendations.push({
-      title: "Anchor the synthetic edge first",
-      detail: "AI-generated scenes tend to drift at object boundaries, so protect the region before depth tuning.",
-      action: "protect",
-      tone: "mid",
-    });
-  }
-
-  if (recommendations.length === 0) {
-    recommendations.push({
-      title: plateAuthority === "object" ? "Routing looks stable" : "Draft fit looks stable",
-      detail:
-        plateAuthority === "object"
-          ? `No extra cleanup trigger fired for this object layer. Keep the current ${workflowRouting.mode} route and review camera-safe export.`
-          : "The draft box is readable. Promote it into an object layer before you spend cleanup effort.",
-      action: plateAuthority === "object" ? "narrow-depth" : "promote-layer",
-      tone: "good",
-    });
-  }
-
-  return {
-    summary:
-      plateAuthority === "object"
-        ? `${plate.label} is now an authoritative ${formatRoleLabel(plate.role)} object layer in ${workflowRouting.mode} mode.`
-        : `${plate.label} is still a ${formatRoleLabel(plate.role)} draft in ${workflowRouting.mode} mode.`,
-    focusAction: recommendations[0]?.action ?? "protect",
-    recommendations: recommendations.slice(0, 3),
-    roleSuggestion,
-  };
 }
 
 function smoothstep(edge0: number, edge1: number, value: number) {
@@ -1091,14 +749,12 @@ function buildPlate(
   z: number,
   depthPriority: number,
   cleanVariant?: string,
-  authority: PlateAuthority = "system",
 ): Plate {
   return {
     id,
     label,
     role,
     source,
-    authority,
     x: box.x,
     y: box.y,
     width: box.width,
@@ -1180,13 +836,11 @@ function normalizeImportedPlateStack(plates: Plate[] | undefined, fallback: Plat
       plate.role === "special-clean"
         ? plate.role
         : "environment-mid";
-    const authority = getPlateAuthority(plate);
     return {
       id: plate.id || `plate_${String(index + 1).padStart(2, "0")}`,
       label: plate.label || `plate ${index + 1}`,
       role,
       source,
-      authority,
       x: clamp(Number(plate.x) || 0.02, 0, 0.98),
       y: clamp(Number(plate.y) || 0.02, 0, 0.98),
       width: clamp(Number(plate.width) || 0.4, 0.02, 0.98),
@@ -1399,12 +1053,7 @@ function buildPlateCompositeMaps(
         } else if (plate.role === "secondary-subject") {
           roleAlpha = Math.max(selection * 0.82, remapped * 0.68);
         } else if (plate.role === "environment-mid") {
-          // Keep atmospheric plates driven by actual midground/depth signal,
-          // not by a broad soft box that turns the whole region into a proxy slab.
-          const midSignal = clamp((midground - 0.18) / 0.55, 0, 1);
-          const depthBand = clamp(1 - Math.abs(remapped - 0.42) * 3.6, 0, 1);
-          const atmospheric = Math.max(midSignal, depthBand * 0.45);
-          roleAlpha = atmospheric * atmospheric;
+          roleAlpha = Math.max(midground, (1 - Math.abs(remapped - 0.5) * 1.6) * 0.55);
         }
 
         const alpha = clamp(roleAlpha * boxMask, 0, 1);
@@ -1566,9 +1215,8 @@ function buildGroupOverlay(groupBoxes: GroupBox[], width: number, height: number
     const y = box.y * height;
     const w = box.width * width;
     const h = box.height * height;
-    ctx.setLineDash([10, 6]);
-    ctx.fillStyle = box.mode === "foreground-group" ? "rgba(241, 88, 72, 0.1)" : "rgba(65, 152, 255, 0.1)";
-    ctx.strokeStyle = box.mode === "foreground-group" ? "rgba(241, 88, 72, 0.74)" : "rgba(65, 152, 255, 0.72)";
+    ctx.fillStyle = box.mode === "foreground-group" ? "rgba(241, 88, 72, 0.18)" : "rgba(65, 152, 255, 0.18)";
+    ctx.strokeStyle = box.mode === "foreground-group" ? "rgba(241, 88, 72, 0.88)" : "rgba(65, 152, 255, 0.88)";
     ctx.lineWidth = 2;
     ctx.fillRect(x, y, w, h);
     ctx.strokeRect(x, y, w, h);
@@ -1713,13 +1361,13 @@ function buildProxyMaps(
       midground = clamp(midground + fartherHint * 0.36 - closerHint * 0.26, 0, 1);
 
       if (forceForeground) {
-        selection = Math.max(selection, 0.74);
-        midground = Math.min(midground, 0.18);
-        remapped = Math.max(remapped, clamp(manual.targetDepth + halfRange * 0.38, 0, 1));
+        selection = Math.max(selection, 0.96);
+        midground = Math.min(midground, 0.04);
+        remapped = Math.max(remapped, clamp(manual.targetDepth + halfRange * 0.7, 0, 1));
       }
       if (forceMidground) {
-        selection = Math.min(selection, 0.34);
-        midground = Math.max(midground, 0.7);
+        selection = Math.min(selection, 0.18);
+        midground = Math.max(midground, 0.88);
       }
 
       let addMatte = 0;
@@ -1858,12 +1506,8 @@ function buildProxyMaps(
 
 function App() {
   const initialQuery = useMemo(readQuery, []);
-  const initialSample = useMemo(() => findSample(initialQuery.sampleId), [initialQuery.sampleId]);
   const [sampleId, setSampleId] = useState(initialQuery.sampleId);
   const [debugOpen, setDebugOpen] = useState(initialQuery.debugOpen);
-  const [cleanupOpen, setCleanupOpen] = useState(false);
-  const [exportStatus, setExportStatus] = useState<string | null>(null);
-  const [assistStatus, setAssistStatus] = useState<string | null>(null);
   const [focus, setFocus] = useState<FocusSettings>(() => getDefaultFocus(initialQuery.sampleId));
   const [motion, setMotion] = useState<MotionSettings>(() => getDefaultMotion(initialQuery.sampleId));
   const [manual, setManual] = useState<ManualSettings>(() => getDefaultManual(initialQuery.sampleId));
@@ -1890,24 +1534,9 @@ function App() {
   const [qwenPlatePlan, setQwenPlatePlan] = useState<QwenPlatePlan | null>(null);
   const [qwenPlateGate, setQwenPlateGate] = useState<QwenPlateGate | null>(null);
   const [aiAssistVisible, setAiAssistVisible] = useState(false);
+  const [manualGroupBaseline, setManualGroupBaseline] = useState<GroupBox[]>([]);
   const [aiCompareMode, setAiCompareMode] = useState<AiCompareMode>("manual");
   const [guidedHintsVisible, setGuidedHintsVisible] = useState(false);
-  const [sceneType, setSceneType] = useState<SceneType>(() => inferSceneType(initialSample, "multi-plate"));
-  const [foregroundOverscalePct, setForegroundOverscalePct] = useState(4);
-  const [depthIsolateOpen, setDepthIsolateOpen] = useState(false);
-  const [depthRefineOpen, setDepthRefineOpen] = useState(false);
-  const [depthAdvancedOpen, setDepthAdvancedOpen] = useState(false);
-  const [cameraTuningOpen, setCameraTuningOpen] = useState(false);
-  const [activeEffectPanel, setActiveEffectPanel] = useState<"depth" | "extract" | "camera" | null>(null);
-  const [exportPanelOpen, setExportPanelOpen] = useState(false);
-  const [activeCleanupTool, setActiveCleanupTool] = useState<"focus" | "hints" | "stage" | "matte" | "brushes" | null>(null);
-  const [inspectorQueuesOpen, setInspectorQueuesOpen] = useState(false);
-  const [inspectorDetailsOpen, setInspectorDetailsOpen] = useState(false);
-  const [assistDetailsOpen, setAssistDetailsOpen] = useState(false);
-  const [supportPanelsOpen, setSupportPanelsOpen] = useState(false);
-  const [selectedInspectorPlateId, setSelectedInspectorPlateId] = useState<string | null>(null);
-  const [armedMissingCandidateId, setArmedMissingCandidateId] = useState<string | null>(null);
-  const [provisionalObjectCandidates, setProvisionalObjectCandidates] = useState<ProvisionalObjectCandidate[]>([]);
   const [realDepth, setRealDepth] = useState<RealDepthRaster | null>(null);
   const [sourceRaster, setSourceRaster] = useState<SourceRaster | null>(null);
   const [stageSize, setStageSize] = useState({ width: 1180, height: 760 });
@@ -1915,7 +1544,6 @@ function App() {
   const drawingStrokeIdRef = useRef<string | null>(null);
 
   const sample = useMemo(() => findSample(sampleId), [sampleId]);
-  const stageEditingActive = cleanupOpen || armedMissingCandidateId !== null;
   const visiblePlates = useMemo(() => plateStack.filter((plate) => plate.visible), [plateStack]);
   const visibleRenderablePlates = useMemo(
     () => visiblePlates.filter((plate) => plate.role !== "special-clean"),
@@ -1935,15 +1563,6 @@ function App() {
     }),
     [motion, visibleRenderablePlates.length, plateZSpan],
   );
-  useEffect(() => {
-    setSceneType(inferSceneType(sample, workflowRouting.mode));
-  }, [sample, workflowRouting.mode]);
-  useEffect(() => {
-    const nextVisiblePlate = plateStack.find((plate) => plate.visible)?.id ?? plateStack[0]?.id ?? null;
-    if (!selectedInspectorPlateId || !plateStack.some((plate) => plate.id === selectedInspectorPlateId)) {
-      setSelectedInspectorPlateId(nextVisiblePlate);
-    }
-  }, [plateStack, selectedInspectorPlateId]);
   useEffect(() => {
     let cancelled = false;
     const image = new Image();
@@ -2054,16 +1673,6 @@ function App() {
     });
   }, [sampleId, snapshot.previewScore, snapshot.overscanPct]);
 
-  useEffect(() => {
-    if (!exportStatus) return;
-    const timeoutId = window.setTimeout(() => setExportStatus(null), 2200);
-    return () => window.clearTimeout(timeoutId);
-  }, [exportStatus]);
-  useEffect(() => {
-    if (!assistStatus) return;
-    const timeoutId = window.setTimeout(() => setAssistStatus(null), 2200);
-    return () => window.clearTimeout(timeoutId);
-  }, [assistStatus]);
   useEffect(() => {
     let cancelled = false;
     setAiAssistSuggestion(null);
@@ -2295,6 +1904,7 @@ function App() {
     );
     const nextGroups = jobState.groupBoxes || [];
     setGroupBoxes(nextGroups);
+    setManualGroupBaseline(nextGroups.filter((box) => !box.id.startsWith("ai-")));
     setGroupDraft(null);
     setGuidedHintsVisible(Boolean(jobState.guidedHintsVisible));
     setAiAssistVisible(Boolean(jobState.aiAssistVisible));
@@ -2313,6 +1923,7 @@ function App() {
     setGroupDraft(null);
     setMatteSeedMode("add");
     setMatteSeeds([]);
+    setManualGroupBaseline([]);
     setAiCompareMode("manual");
     return nextSample.id;
   };
@@ -2349,6 +1960,7 @@ function App() {
   const applyAiAssistSuggestion = (mode: AiCompareMode = "blend") => {
     if (!aiAssistSuggestion) return 0;
     const manualBoxes = groupBoxes.filter((box) => !box.id.startsWith("ai-"));
+    setManualGroupBaseline(manualBoxes);
     const nextBoxes: GroupBox[] = [];
     for (const box of aiAssistSuggestion.accepted_foreground_groups) {
       nextBoxes.push({
@@ -2398,6 +2010,14 @@ function App() {
     return nextPlates.length;
   };
 
+  const restoreManualGroups = () => {
+    const fallbackManual = groupBoxes.filter((box) => !box.id.startsWith("ai-"));
+    const nextManual = manualGroupBaseline.length > 0 ? manualGroupBaseline : fallbackManual;
+    setGroupBoxes(nextManual);
+    setAiCompareMode("manual");
+    return nextManual.length;
+  };
+
   const applyRecommendedPreset = () => {
     setMotion((prev) => ({
       ...prev,
@@ -2442,24 +2062,11 @@ function App() {
   };
 
   const beginStroke = (clientX: number, clientY: number) => {
-    if (!selectedAuthoritativeObjectPlate) {
-      setAssistStatus("Select an authoritative object layer before brush cleanup.");
-      return;
-    }
     const point = pointerToNormalized(clientX, clientY);
     if (!point) return;
     const id = `stroke-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     drawingStrokeIdRef.current = id;
-    setHintStrokes((prev) => [
-      ...prev,
-      {
-        id,
-        mode: brushMode,
-        size: brushSize,
-        targetPlateId: selectedAuthoritativeObjectPlate.id,
-        points: [point],
-      },
-    ]);
+    setHintStrokes((prev) => [...prev, { id, mode: brushMode, size: brushSize, points: [point] }]);
   };
 
   const extendStroke = (clientX: number, clientY: number) => {
@@ -2482,59 +2089,19 @@ function App() {
     drawingStrokeIdRef.current = null;
   };
 
-  const appendMatteSeed = (
-    point: HintPoint,
-    mode: MatteSeedMode = matteSeedMode,
-    targetPlateId: string | null = selectedAuthoritativeObjectPlate?.id ?? null,
-  ) => {
-    if (!targetPlateId) {
-      setAssistStatus("Select an authoritative object layer before matte cleanup.");
-      return;
-    }
+  const appendMatteSeed = (point: HintPoint, mode: MatteSeedMode = matteSeedMode) => {
     const depth = computeResolvedDepth(sample, focus, manual, point.x, point.y, realDepth);
     setMatteSeeds((prev) => [
       ...prev,
-      {
-        id: `matte-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        mode,
-        targetPlateId,
-        x: point.x,
-        y: point.y,
-        depth,
-      },
+      { id: `matte-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, mode, x: point.x, y: point.y, depth },
     ]);
     setMatteSettings((prev) => ({ ...prev, visible: true }));
   };
 
   const addMatteSeed = (clientX: number, clientY: number) => {
-    if (!selectedAuthoritativeObjectPlate) {
-      setAssistStatus("Select an authoritative object layer before matte cleanup.");
-      return;
-    }
     const point = pointerToNormalized(clientX, clientY);
     if (!point) return;
     appendMatteSeed(point);
-  };
-
-  const placeMissingCandidate = (clientX: number, clientY: number) => {
-    if (!armedMissingCandidateId) return false;
-    const point = pointerToNormalized(clientX, clientY);
-    if (!point) return false;
-    const candidate = missingObjectCandidates.find((item) => item.id === armedMissingCandidateId);
-    if (!candidate) return false;
-    const draftPlate = buildDraftPlate(candidate, point);
-    setProvisionalObjectCandidates((prev) => [
-      ...prev.filter((item) => item.id !== candidate.id),
-      { ...candidate, x: point.x, y: point.y },
-    ]);
-    setPlateStack((prev) => {
-      const withoutCurrentDraft = prev.filter((plate) => plate.id !== draftPlate.id);
-      return [...withoutCurrentDraft, draftPlate];
-    });
-    setSelectedInspectorPlateId(draftPlate.id);
-    setArmedMissingCandidateId(null);
-    setAssistStatus(`${candidate.label} placed as a draft plate.`);
-    return true;
   };
 
   const beginGroupDraft = (clientX: number, clientY: number) => {
@@ -2684,16 +2251,8 @@ function App() {
         return mode;
       },
       clearManualHints: () => {
-        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
-        const nextCount = targetPlateId
-          ? hintStrokes.filter((stroke) => stroke.targetPlateId === targetPlateId).length
-          : 0;
-        setHintStrokes((prev) =>
-          targetPlateId
-            ? prev.filter((stroke) => stroke.targetPlateId !== targetPlateId)
-            : [],
-        );
-        return nextCount;
+        setHintStrokes([]);
+        return 0;
       },
       exportManualHints: () => buildManualHintsContract(),
       importManualHints: (payload: string | ManualHintsContract) => {
@@ -2764,43 +2323,16 @@ function App() {
       movePlate: (plateId: string, direction: -1 | 1) => movePlate(plateId, direction),
       nudgePlateZ: (plateId: string, delta: number) => nudgePlateZ(plateId, delta),
       clearMatteSeeds: () => {
-        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
-        const nextCount = targetPlateId
-          ? matteSeeds.filter((seed) => seed.targetPlateId === targetPlateId).length
-          : 0;
-        setMatteSeeds((prev) =>
-          targetPlateId
-            ? prev.filter((seed) => seed.targetPlateId !== targetPlateId)
-            : [],
-        );
-        return nextCount;
+        setMatteSeeds([]);
+        return 0;
       },
       appendMatteSeed: (x: number, y: number, mode = matteSeedMode) => {
-        const beforeCount = matteSeeds.length;
-        appendMatteSeed({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) }, mode, selectedAuthoritativeObjectPlate?.id ?? null);
-        return selectedAuthoritativeObjectPlate ? beforeCount + 1 : beforeCount;
+        appendMatteSeed({ x: clamp(x, 0, 1), y: clamp(y, 0, 1) }, mode);
+        return matteSeeds.length + 1;
       },
       removeLastMatteSeed: () => {
-        const targetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
-        let removed = false;
-        let nextCount = 0;
-        setMatteSeeds((prev) => {
-          const next: MatteSeed[] = [];
-          for (let index = prev.length - 1; index >= 0; index -= 1) {
-            const seed = prev[index];
-            if (removed || (targetPlateId && seed.targetPlateId !== targetPlateId)) {
-              next.push(seed);
-              continue;
-            }
-            removed = true;
-          }
-          const ordered = next.reverse();
-          nextCount = targetPlateId
-            ? ordered.filter((seed) => seed.targetPlateId === targetPlateId).length
-            : ordered.length;
-          return removed ? ordered : prev;
-        });
-        return nextCount;
+        setMatteSeeds((prev) => prev.slice(0, -1));
+        return Math.max(0, matteSeeds.length - 1);
       },
       toggleMatteOverlay: () => {
         setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }));
@@ -2897,7 +2429,6 @@ function App() {
   const backgroundOffsetY = Number((-snapshot.travelYPct * motion.phase * 0.22).toFixed(3));
   const foregroundOffsetX = Number((snapshot.travelXPct * motion.phase * 0.78).toFixed(3));
   const foregroundOffsetY = Number((snapshot.travelYPct * motion.phase * 0.84).toFixed(3));
-  const backgroundScale = Number((1 + motion.overscanPct / 220).toFixed(3));
   const foregroundFrame = {
     left: `${(focus.x - focus.width / 2) * 100}%`,
     top: `${(focus.y - focus.height / 2) * 100}%`,
@@ -2981,545 +2512,24 @@ function App() {
   const effectivePreviewPlateLayers = previewPlateLayers.filter(
     (plate) => (plateCompositeMaps.plateCoverage[plate.id] || 0) > 0.002,
   );
-  const inspectorPlates = plateLayout.plates.filter((plate) => plate.visible).sort((a, b) => a.order - b.order);
-  const plateStateById = useMemo(
-    () => new Map(plateStack.map((plate) => [plate.id, plate] as const)),
-    [plateStack],
-  );
-  const missingObjectCandidates = useMemo(
-    () => getMissingObjectCandidates(sampleId, inspectorPlates),
-    [sampleId, inspectorPlates],
-  );
-  const draftInspectorPlates = useMemo(
-    () => inspectorPlates.filter((plate) => isDraftPlate(plateStateById.get(plate.id) ?? plate)),
-    [inspectorPlates, plateStateById],
-  );
-  const selectedInspectorPlate =
-    inspectorPlates.find((plate) => plate.id === selectedInspectorPlateId) ?? inspectorPlates[0] ?? null;
-  const selectedPlateState = selectedInspectorPlate ? plateStateById.get(selectedInspectorPlate.id) ?? null : null;
-  const selectedPlateAuthority = selectedInspectorPlate
-    ? getPlateAuthority(selectedPlateState ?? selectedInspectorPlate)
-    : "system";
-  const selectedDraftPlate = selectedInspectorPlate && selectedPlateAuthority === "draft" ? selectedInspectorPlate : null;
-  const selectedAuthoritativeObjectPlate =
-    selectedInspectorPlate && selectedPlateAuthority === "object" ? selectedInspectorPlate : null;
-  const selectedCleanupTargetPlateId = selectedAuthoritativeObjectPlate?.id ?? null;
-  const selectedTargetHintStrokeCount = useMemo(
-    () =>
-      selectedCleanupTargetPlateId
-        ? hintStrokes.filter((stroke) => stroke.targetPlateId === selectedCleanupTargetPlateId).length
-        : 0,
-    [hintStrokes, selectedCleanupTargetPlateId],
-  );
-  const selectedTargetMatteSeedCount = useMemo(
-    () =>
-      selectedCleanupTargetPlateId
-        ? matteSeeds.filter((seed) => seed.targetPlateId === selectedCleanupTargetPlateId).length
-        : 0,
-    [matteSeeds, selectedCleanupTargetPlateId],
-  );
-  const guidePlateSuggestion = useMemo<GuidePlateSuggestion | null>(() => {
-    if (groupBoxes.length === 0 || inspectorPlates.length === 0) return null;
-
-    let bestMatch: GuidePlateSuggestion | null = null;
-    for (const guide of groupBoxes) {
-      const guideArea = Math.max(0.0001, guide.width * guide.height);
-      for (const plate of inspectorPlates) {
-        const overlapArea = getBoxOverlapArea(guide, plate.box);
-        if (overlapArea <= 0) continue;
-        const overlapScore = overlapArea / guideArea;
-        if (!bestMatch || overlapScore > bestMatch.overlapScore) {
-          bestMatch = {
-            guideMode: guide.mode,
-            plateId: plate.id,
-            plateLabel: plate.label,
-            overlapScore: Number(overlapScore.toFixed(2)),
-          };
-        }
-      }
-    }
-    return bestMatch;
-  }, [groupBoxes, inspectorPlates]);
-  const selectedInspectorTransition = selectedInspectorPlate
-    ? plateLayout.transitions.find(
-        (transition) =>
-          transition.fromId === selectedInspectorPlate.id || transition.toId === selectedInspectorPlate.id,
-      ) ?? null
-    : null;
-  const assistPlan = useMemo(
-    () =>
-      buildAssistPlan({
-        sceneType,
-        plate: selectedInspectorPlate,
-        transitionRisk: selectedInspectorTransition?.transitionRisk ?? null,
-        workflowRouting,
-        cameraSafe: plateLayout.cameraSafe,
-      }),
-    [sceneType, selectedInspectorPlate, selectedInspectorTransition, workflowRouting, plateLayout.cameraSafe],
-  );
-  const downloadJson = (fileName: string, payload: unknown) => {
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 0);
-  };
-
-  const handleExportLayout = () => {
-    downloadJson(`${sampleId}-plate-layout.json`, exportLayout);
-    setExportStatus("Layout JSON downloaded.");
-  };
-
-  const handleExportAssets = () => {
-    downloadJson(`${sampleId}-plate-assets.json`, buildPlateExportAssetsContract());
-    setExportStatus("Plate assets contract downloaded.");
-  };
-
-  const handleExportJobState = async () => {
-    const payload = JSON.stringify(buildJobState(), null, 2);
-    try {
-      await navigator.clipboard.writeText(payload);
-      setExportStatus("Job state copied to clipboard.");
-    } catch {
-      downloadJson(`${sampleId}-job-state.json`, buildJobState());
-      setExportStatus("Clipboard unavailable. Job state downloaded.");
-    }
-  };
-
-  const updateSelectedPlateRole = (role: PlateRole) => {
-    if (!selectedInspectorPlateId) return;
-    setPlateStack((current) =>
-      current.map((plate) =>
-        plate.id === selectedInspectorPlateId
-          ? {
-              ...plate,
-              role,
-              source: "manual",
-            }
-          : plate,
-      ),
-    );
-  };
-
-  const refineSelectedDraftPlate = (mode: "tighten" | "widen") => {
-    if (!selectedDraftPlate) return;
-    let nextLabel = selectedDraftPlate.label;
-    setPlateStack((current) =>
-      current.map((plate) => {
-        if (plate.id !== selectedDraftPlate.id) return plate;
-        const nextPlate = refineDraftPlateBox(plate, mode);
-        nextLabel = nextPlate.label;
-        return nextPlate;
-      }),
-    );
-    setAssistStatus(
-      `${nextLabel.replace(/^draft:\s*/i, "")} ${mode === "tighten" ? "tightened" : "widened"} as a draft fit.`,
-    );
-  };
-
-  const promoteSelectedDraftPlate = () => {
-    if (!selectedDraftPlate) return;
-    const nextId = getAuthoritativePlateId(parseCandidateIdFromPlateId(selectedDraftPlate.id) ?? selectedDraftPlate.id);
-    const nextLabel = selectedDraftPlate.label.replace(/^draft:\s*/i, "");
-    setPlateStack((current) =>
-      current.map((plate) =>
-        plate.id === selectedDraftPlate.id
-          ? {
-              ...plate,
-              id: nextId,
-              label: nextLabel,
-              source: "manual",
-              authority: "object",
-            }
-          : plate,
-      ),
-    );
-    const candidateId = parseCandidateIdFromPlateId(selectedDraftPlate.id);
-    if (candidateId) {
-      setProvisionalObjectCandidates((prev) => prev.filter((candidate) => candidate.id !== candidateId));
-    }
-    setSelectedInspectorPlateId(nextId);
-    setAssistStatus(`${nextLabel} promoted into an authoritative object layer.`);
-  };
-
-  const openProtectRegionAssist = () => {
-    setCleanupOpen(true);
-    setActiveCleanupTool("brushes");
-    setStageTool("brush");
-    setBrushMode("protect");
-    setGuidedHintsVisible(true);
-  };
-
-  const openSilhouetteAssist = () => {
-    setCleanupOpen(true);
-    setActiveCleanupTool("matte");
-    setStageTool("matte");
-    setMatteSeedMode("protect");
-    setMatteSettings((prev) => ({ ...prev, visible: true, view: "rgb" }));
-  };
-
-  const adjustDepthBand = (delta: number) => {
-    setManual((prev) => ({
-      ...prev,
-      range: clamp(prev.range + delta, 0.08, 0.6),
-    }));
-  };
-
-  const applyAssistRecommendation = () => {
-    switch (assistPlan.focusAction) {
-      case "protect":
-        openProtectRegionAssist();
-        setAssistStatus("Protect-region assist armed.");
-        return;
-      case "silhouette":
-        openSilhouetteAssist();
-        setAssistStatus("Silhouette refinement opened.");
-        return;
-      case "widen-depth":
-        adjustDepthBand(0.04);
-        setAssistStatus("Depth band widened for the selected plate.");
-        return;
-      case "narrow-depth":
-        adjustDepthBand(-0.04);
-        setAssistStatus("Depth band narrowed for the selected plate.");
-        return;
-      case "reassign-role":
-        if (assistPlan.roleSuggestion && selectedInspectorPlate) {
-          setSelectedInspectorPlateId(selectedInspectorPlate.id);
-          updateSelectedPlateRole(assistPlan.roleSuggestion);
-          setAssistStatus(`Plate role moved to ${formatRoleLabel(assistPlan.roleSuggestion)}.`);
-          return;
-        }
-        setAssistStatus("No role reassignment suggested for this plate.");
-        return;
-      case "promote-layer":
-        promoteSelectedDraftPlate();
-        return;
-    }
-  };
-
-  const focusGuideSuggestion = () => {
-    if (!guidePlateSuggestion) return;
-    setSelectedInspectorPlateId(guidePlateSuggestion.plateId);
-    setAssistStatus(
-      `${formatGroupModeLabel(guidePlateSuggestion.guideMode)} now focused on ${guidePlateSuggestion.plateLabel}.`,
-    );
-  };
-
-  const focusStagePlate = (plateId: string) => {
-    const plate = inspectorPlates.find((item) => item.id === plateId);
-    setSelectedInspectorPlateId(plateId);
-    if (plate) {
-      setAssistStatus(`${plate.label.replace(/^draft:\s*/i, "")} selected on the stage.`);
-    }
-  };
-
-  const focusGuideBox = (guide: GroupBox) => {
-    let bestPlate: PlateLayoutLayer | null = null;
-    let bestOverlap = 0;
-    const guideArea = Math.max(0.0001, guide.width * guide.height);
-    for (const plate of inspectorPlates) {
-      const overlapArea = getBoxOverlapArea(guide, plate.box);
-      if (overlapArea <= 0) continue;
-      const overlapScore = overlapArea / guideArea;
-      if (!bestPlate || overlapScore > bestOverlap) {
-        bestPlate = plate;
-        bestOverlap = overlapScore;
-      }
-    }
-    if (!bestPlate) {
-      setAssistStatus(`${formatGroupModeLabel(guide.mode)} has no routed plate under this guide yet.`);
-      return;
-    }
-    setSelectedInspectorPlateId(bestPlate.id);
-    setAssistStatus(
-      `${formatGroupModeLabel(guide.mode)} focused on ${bestPlate.label} from the stage guide.`,
-    );
-  };
-
-  const armMissingCandidate = (candidateId: string) => {
-    setArmedMissingCandidateId(candidateId);
-    setAssistStatus("Click the scene to place a provisional object candidate.");
-  };
-
-  const focusPlacedCandidate = (candidateId: string) => {
-    const nextPlateId = [getAuthoritativePlateId(candidateId), getDraftPlateId(candidateId)].find((plateId) =>
-      inspectorPlates.some((plate) => plate.id === plateId),
-    );
-    if (!nextPlateId) return;
-    const plate = inspectorPlates.find((item) => item.id === nextPlateId);
-    setSelectedInspectorPlateId(nextPlateId);
-    if (plate) {
-      const authority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
-      setAssistStatus(
-        authority === "object"
-          ? `${plate.label.replace(/^draft:\s*/i, "")} selected as an authoritative object layer.`
-          : `${plate.label.replace(/^draft:\s*/i, "")} selected as a draft layer.`,
-      );
-    }
-  };
-
-  const openPlateSilhouetteAssist = (plateId: string) => {
-    const plate = inspectorPlates.find((item) => item.id === plateId);
-    const plateAuthority = plate ? getPlateAuthority(plateStateById.get(plate.id) ?? plate) : "system";
-    setSelectedInspectorPlateId(plateId);
-    if (plateAuthority !== "object") {
-      setAssistStatus(
-        plate
-          ? `${plate.label.replace(/^draft:\s*/i, "")} is still a draft. Promote it into an object layer before silhouette cleanup.`
-          : "Promote the draft into an object layer before silhouette cleanup.",
-      );
-      return;
-    }
-    openSilhouetteAssist();
-    setAssistStatus(
-      plate
-        ? `Silhouette cleanup opened for authoritative layer ${plate.label.replace(/^draft:\s*/i, "")}.`
-        : "Silhouette cleanup opened for the selected layer.",
-    );
-  };
-
-  const stageAspectRatio = sample.width / sample.height;
-  const stageShellStyle = {
-    width: `min(100%, calc(min(78vh, 920px) * ${stageAspectRatio}))`,
-    aspectRatio: `${sample.width} / ${sample.height}`,
-  } as const;
-  const cleanupToolOptions = [
-    { id: "focus", label: "focus proxy" },
-    { id: "hints", label: "guided hints" },
-    { id: "stage", label: "stage tools" },
-    { id: "matte", label: "algorithmic matte" },
-    { id: "brushes", label: "hint brushes" },
-  ] as const;
-  const activeCleanupToolLabel =
-    cleanupToolOptions.find((tool) => tool.id === activeCleanupTool)?.label ?? null;
-  const closeCleanupContext = () => {
-    setActiveCleanupTool(null);
-    setCleanupOpen(false);
-  };
-
-  const renderCleanupContextPanel = () => {
-    if (!cleanupOpen || activeCleanupTool === null) return null;
-
-    switch (activeCleanupTool) {
-      case "focus":
-        return (
-          <section className="panel panel-compact cleanup-context-panel">
-            <div className="panel-header cleanup-context-header">
-              <div>
-                <h2>Focus Proxy</h2>
-                <div className="panel-subtitle">Rescue focus framing when depth fallback is still too loose</div>
-              </div>
-              <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                done
-              </button>
-            </div>
-            <RangeControl label="focus x" value={focus.x} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, x: value }))} />
-            <RangeControl label="focus y" value={focus.y} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, y: value }))} />
-            <RangeControl label="focus width" value={focus.width} min={0.15} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, width: value }))} />
-            <RangeControl label="focus height" value={focus.height} min={0.2} max={0.9} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, height: value }))} />
-            <RangeControl label="focus feather" value={focus.feather} min={0.02} max={0.35} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, feather: value }))} />
-            <div className="panel-copy">
-              Depth preview prefers real baked depth when available. Samples without baked depth still fall back to the focus-driven proxy map.
-            </div>
-          </section>
-        );
-      case "hints":
-        return (
-          <section className="panel panel-compact cleanup-context-panel">
-            <div className="panel-header cleanup-context-header">
-              <div>
-                <h2>Guided Hints</h2>
-                <div className="panel-subtitle">Show hint overlay only while rescue guidance is needed</div>
-              </div>
-              <div className="panel-header-actions">
-                <button className="ghost-button" type="button" onClick={() => setGuidedHintsVisible((value) => !value)}>
-                  {guidedHintsVisible ? "hide hints" : "show hints"}
-                </button>
-                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                  done
-                </button>
-              </div>
-            </div>
-            <p className="guided-note">
-              `mask_hint.png` contract for assisted mode. Red marks closer subject regions, blue pushes background, green protects ambiguous detail.
-            </p>
-            <div className="chip-row">
-              <span className="chip hint-chip hint-red">closer</span>
-              <span className="chip hint-chip hint-blue">farther</span>
-              <span className="chip hint-chip hint-green">protect</span>
-            </div>
-          </section>
-        );
-      case "stage":
-        return (
-          <section className="panel panel-compact cleanup-context-panel">
-            <div className="panel-header cleanup-context-header">
-              <div>
-                <h2>Stage Tools</h2>
-                <div className="panel-subtitle">Pick the stage interaction you want to use on the image</div>
-              </div>
-              <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                done
-              </button>
-            </div>
-            <SegmentedControl
-              label="tool"
-              value={stageTool}
-              options={[
-                { label: "brush", value: "brush" },
-                { label: "group", value: "group" },
-                { label: "matte", value: "matte" },
-              ]}
-              onChange={(value) => setStageTool(value as StageTool)}
-            />
-            <div className="panel-copy">
-              `brush` nudges local depth. `group` locks a whole region into foreground or midground. `matte` drops click seeds and grows a roto-style matte.
-            </div>
-          </section>
-        );
-      case "matte":
-        return (
-          <section className="panel panel-compact cleanup-context-panel">
-            <div className="panel-header cleanup-context-header">
-              <div>
-                <h2>Algorithmic Matte</h2>
-                <div className="panel-subtitle">Seed add/subtract/protect regions directly on the stage</div>
-              </div>
-              <div className="panel-header-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() =>
-                    setMatteSeeds((prev) =>
-                      selectedCleanupTargetPlateId
-                        ? prev.filter((seed) => seed.targetPlateId !== selectedCleanupTargetPlateId)
-                        : [],
-                    )
-                  }
-                >
-                  {selectedCleanupTargetPlateId ? "clear target" : "clear"}
-                </button>
-                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                  done
-                </button>
-              </div>
-            </div>
-            <SegmentedControl
-              label="matte mode"
-              value={matteSeedMode}
-              options={[
-                { label: "add", value: "add" },
-                { label: "subtract", value: "subtract" },
-                { label: "protect", value: "protect" },
-              ]}
-              onChange={(value) => setMatteSeedMode(value as MatteSeedMode)}
-            />
-            <SegmentedControl
-              label="matte view"
-              value={matteSettings.view}
-              options={[
-                { label: "rgb", value: "rgb" },
-                { label: "depth", value: "depth" },
-              ]}
-              onChange={(value) => setMatteSettings((prev) => ({ ...prev, view: value as MatteView }))}
-            />
-            <ToggleButton active={matteSettings.visible} label="show matte overlay" onClick={() => setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }))} />
-            <RangeControl label="grow radius" value={matteSettings.growRadius} min={0.05} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, growRadius: value }))} />
-            <RangeControl label="edge snap" value={matteSettings.edgeSnap} min={0.04} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, edgeSnap: value }))} />
-            <RangeControl label="matte opacity" value={matteSettings.opacity} min={0.2} max={0.95} step={0.01} onChange={(value) => setMatteSettings((prev) => ({ ...prev, opacity: value }))} />
-            {selectedAuthoritativeObjectPlate ? (
-              <div className="panel-copy">
-                Cleanup target: authoritative object layer <strong>{selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")}</strong>.
-              </div>
-            ) : selectedDraftPlate ? (
-              <div className="panel-copy">
-                Drafts are placement-only. Promote <strong>{selectedDraftPlate.label.replace(/^draft:\s*/i, "")}</strong> into an object layer before matte cleanup.
-              </div>
-            ) : null}
-            <div className="mini-stat-grid">
-              <MiniStat label="seeds" value={`${selectedCleanupTargetPlateId ? selectedTargetMatteSeedCount : matteSeeds.length}`} />
-              <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
-              <MiniStat label="mode" value={matteSeedMode} />
-            </div>
-          </section>
-        );
-      case "brushes":
-        return (
-          <section className="panel panel-compact cleanup-context-panel">
-            <div className="panel-header cleanup-context-header">
-              <div>
-                <h2>Hint Brushes</h2>
-                <div className="panel-subtitle">Paint closer, farther, protect, or erase directly on the stage</div>
-              </div>
-              <div className="panel-header-actions">
-                <button
-                  className="ghost-button"
-                  type="button"
-                  onClick={() =>
-                    setHintStrokes((prev) =>
-                      selectedCleanupTargetPlateId
-                        ? prev.filter((stroke) => stroke.targetPlateId !== selectedCleanupTargetPlateId)
-                        : [],
-                    )
-                  }
-                >
-                  {selectedCleanupTargetPlateId ? "clear target" : "clear"}
-                </button>
-                <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                  done
-                </button>
-              </div>
-            </div>
-            <SegmentedControl
-              label="brush"
-              value={brushMode}
-              options={[
-                { label: "closer", value: "closer" },
-                { label: "farther", value: "farther" },
-                { label: "protect", value: "protect" },
-                { label: "erase", value: "erase" },
-              ]}
-              onChange={(value) => setBrushMode(value as BrushMode)}
-            />
-            <RangeControl label="brush size" value={brushSize} min={0.01} max={0.12} step={0.005} onChange={(value) => setBrushSize(value)} />
-            {selectedAuthoritativeObjectPlate ? (
-              <div className="panel-copy">
-                Cleanup target: authoritative object layer <strong>{selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")}</strong>.
-              </div>
-            ) : selectedDraftPlate ? (
-              <div className="panel-copy">
-                Keep draft edits to placement only. Promote <strong>{selectedDraftPlate.label.replace(/^draft:\s*/i, "")}</strong> before brush cleanup.
-              </div>
-            ) : null}
-            <div className="mini-stat-grid">
-              <MiniStat label="strokes" value={`${selectedCleanupTargetPlateId ? selectedTargetHintStrokeCount : hintStrokes.length}`} />
-              <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
-              <MiniStat label="farther" value={formatPct(proxyMaps.fartherCoverage * 100)} />
-              <MiniStat label="protect" value={formatPct(proxyMaps.protectCoverage * 100)} />
-            </div>
-          </section>
-        );
-      default:
-        return null;
-    }
-  };
-  const cleanupContextPanel = renderCleanupContextPanel();
-
   return (
-    <div className="parallax-app">
+    <div className={`parallax-app ${debugOpen ? "debug-open" : ""}`}>
       <aside className="left-rail">
         <div className="brand-card">
           <div className="brand-topline">
             <div>
               <div className="eyebrow">VETKA / MCC / PARALLAX</div>
               <h1>Photo Parallax Lab</h1>
-              <div className="brand-caption">Parallax workspace</div>
             </div>
+            <button className="ghost-button" type="button" onClick={() => setDebugOpen((value) => !value)}>
+              {debugOpen ? "hide debug" : "show debug"}
+            </button>
+          </div>
+          <p>Depth-first monochrome control surface for photo-to-parallax shots.</p>
+          <div className="brand-metrics">
+            <span className="chip">25 fps base</span>
+            <span className="chip">50 internal</span>
+            <span className="chip">tmix 3</span>
           </div>
         </div>
 
@@ -3533,20 +2543,16 @@ function App() {
               </div>
             </div>
           </div>
-          <div className="sample-list">
+          <div className="sample-grid">
             {SAMPLE_LIBRARY.map((entry) => (
               <button
                 key={entry.id}
-                className={`sample-row ${entry.id === sample.id ? "active" : ""}`}
+                className={`sample-button ${entry.id === sample.id ? "active" : ""}`}
                 type="button"
                 onClick={() => loadSample(entry.id)}
               >
                 <img src={`/samples/${entry.fileName}`} alt={entry.title} />
-                <span className="sample-row-copy">
-                  <strong>{entry.title}</strong>
-                  <span>{entry.tags.slice(0, 2).join(" / ")}</span>
-                </span>
-                <span className="sample-row-meta">{entry.width} × {entry.height}</span>
+                <span>{entry.title}</span>
               </button>
             ))}
           </div>
@@ -3560,414 +2566,252 @@ function App() {
           </div>
         </section>
 
-        <section className="panel panel-compact accordion-section support-shell rail-support-shell">
-          <button className="accordion-toggle" type="button" onClick={() => setSupportPanelsOpen((value) => !value)}>
+        <section className="panel panel-compact">
+          <div className="panel-header">
             <div className="panel-title-wrap">
               <Icon name="preview" />
               <div>
-                <h2>Objects and Route Notes</h2>
-                <div className="panel-subtitle">Open only if you need object checks or route detail</div>
+                <h2>View</h2>
+                <div className="panel-subtitle">Preview mode and render path</div>
               </div>
             </div>
-            <div className="accordion-actions">
-              <span className="accordion-chevron">{supportPanelsOpen ? "−" : "+"}</span>
-            </div>
-          </button>
-          <div className="panel-copy">
-            Contains object review and route notes. It stays folded so the first screen can stay focused on preview, depth, camera, and export.
           </div>
-          <div className="utility-summary support-summary-copy">
-            <span>{plateLayout.metrics.visiblePlateCount} visible objects</span>
-            <span>
-              {plateLayout.cameraSafe.riskyPlateIds.length > 0
-                ? `${plateLayout.cameraSafe.riskyPlateIds.length} object risks still need review.`
-                : "No object risk is currently flagged."}
-              {missingObjectCandidates.length > 0 ? ` ${missingObjectCandidates.length} possible missing objects are waiting in the watchlist.` : ""}
-            </span>
-          </div>
-          {supportPanelsOpen ? (
-            <section className="inspector-shell">
-              <article className="panel panel-compact inspector-card">
-                <div className="panel-header">
-                  <div className="panel-title-wrap">
-                    <Icon name="preview" />
-                    <div>
-                      <h2>Objects</h2>
-                      <div className="panel-subtitle">click a frame on the image to inspect and route it</div>
-                    </div>
-                  </div>
-                  <div className="panel-header-actions">
-                    <button className="ghost-button" type="button" onClick={() => setInspectorDetailsOpen((value) => !value)}>
-                      {inspectorDetailsOpen ? "hide details" : "show details"}
-                    </button>
-                    <button className="ghost-button" type="button" onClick={() => setInspectorQueuesOpen((value) => !value)}>
-                      {inspectorQueuesOpen ? "hide watchlist" : "open watchlist"}
-                    </button>
-                  </div>
-                </div>
-                <div className="assist-focus-strip">
-                  <span className="chip">visible {plateLayout.metrics.visiblePlateCount}</span>
-                  <span className="chip">risk {plateLayout.cameraSafe.riskyPlateIds.length}</span>
-                  {draftInspectorPlates.length > 0 ? <span className="chip">drafts {draftInspectorPlates.length}</span> : null}
-                  {missingObjectCandidates.length > 0 ? <span className="chip">watchlist {missingObjectCandidates.length}</span> : null}
-                </div>
-                {selectedInspectorPlate ? (
-                  <div className="selected-plate-summary">
-                    <strong>{selectedInspectorPlate.label}</strong>
-                    <span>{formatRoleLabel(selectedInspectorPlate.role)}</span>
-                    <span className={`plate-authority-tag ${selectedPlateAuthority}`}>{formatPlateAuthorityLabel(selectedPlateAuthority)}</span>
-                    <span>{selectedInspectorPlate.source}</span>
-                  </div>
-                ) : null}
-                <div className="plate-chip-list">
-                  {inspectorPlates.map((plate) => {
-                    const plateAuthority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
-                    return (
-                    <button
-                      key={plate.id}
-                      className={`plate-chip-button ${selectedInspectorPlate?.id === plate.id ? "active" : ""} ${plateAuthority === "draft" ? "draft" : ""} ${plateAuthority === "object" ? "authoritative" : ""}`}
-                      type="button"
-                      onClick={() => setSelectedInspectorPlateId(plate.id)}
-                    >
-                      <strong>{plate.label}</strong>
-                      <span>{formatRoleLabel(plate.role)}</span>
-                      <span>{formatPlateAuthorityLabel(plateAuthority)}</span>
-                      <span>risk {plate.risk.disocclusionRisk}</span>
-                    </button>
-                    );
-                  })}
-                </div>
-                {selectedInspectorPlate ? (
-                  <>
-                    <div className="mini-stat-grid mini-stat-grid-compact">
-                      <MiniStat label="coverage" value={formatPct(selectedInspectorPlate.risk.plateCoverage * 100)} />
-                      <MiniStat label="safe overscan" value={formatPct(selectedInspectorPlate.risk.minSafeOverscanPct)} />
-                    </div>
-                    <SegmentedControl
-                      label="layer role"
-                      value={selectedInspectorPlate.role}
-                      valueLabel={formatRoleLabel(selectedInspectorPlate.role)}
-                      options={[
-                        { label: "fg", value: "foreground-subject" },
-                        { label: "secondary", value: "secondary-subject" },
-                        { label: "mid", value: "environment-mid" },
-                        { label: "back", value: "background-far" },
-                        { label: "clean", value: "special-clean" },
-                      ]}
-                      onChange={(value) => updateSelectedPlateRole(value as PlateRole)}
-                    />
-                    <div className="panel-copy compact-note">
-                      Click a frame on the image to pick an object. The stage box is only a handle; the actual cut follows the silhouette and depth mask.
-                    </div>
-                    {inspectorDetailsOpen ? (
-                      <>
-                        <div className="inspector-detail-grid">
-                          <MiniStat label="parallax" value={selectedInspectorPlate.parallaxStrength.toFixed(3)} />
-                          <MiniStat label="damping" value={selectedInspectorPlate.motionDamping.toFixed(3)} />
-                          <MiniStat label="source" value={selectedInspectorPlate.source} />
-                          <MiniStat label="transition" value={selectedInspectorTransition ? `${selectedInspectorTransition.transitionRisk}` : "none"} />
-                        </div>
-                        <div className="panel-copy">
-                          {selectedInspectorPlate.cleanVariant
-                            ? `Cleanup variant: ${selectedInspectorPlate.cleanVariant}. `
-                            : "Cleanup variant: none. "}
-                          {selectedInspectorPlate.targetPlate ? `Targets ${selectedInspectorPlate.targetPlate}. ` : ""}
-                          {guidePlateSuggestion
-                            ? `Guide focus currently points at ${guidePlateSuggestion.plateLabel}.`
-                            : "No active layer guide match yet."}
-                        </div>
-                      </>
-                    ) : null}
-                    {selectedDraftPlate ? (
-                      <div className="draft-refine-box">
-                        <strong>Draft plate refine</strong>
-                        <span>
-                          This stage pick is still a draft. Tighten if the box is too loose, widen if the object is clipped, then promote it into a real object layer.
-                        </span>
-                        <div className="action-row">
-                          <button className="ghost-button" type="button" onClick={() => refineSelectedDraftPlate("tighten")}>
-                            tighten fit
-                          </button>
-                          <button className="ghost-button" type="button" onClick={() => refineSelectedDraftPlate("widen")}>
-                            widen fit
-                          </button>
-                          <button className="ghost-button active" type="button" onClick={promoteSelectedDraftPlate}>
-                            promote to layer
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </>
-                ) : null}
-                {inspectorQueuesOpen ? (
-                  <div className="inspector-queues">
-                    {draftInspectorPlates.length > 0 ? (
-                      <div className="queue-block">
-                        <strong>Draft plates</strong>
-                        <span>{draftInspectorPlates.map((plate) => plate.label.replace(/^draft:\s*/i, "")).join(", ")}</span>
-                      </div>
-                    ) : null}
-                    {missingObjectCandidates.length > 0 ? (
-                      <div className="candidate-object-list">
-                        {missingObjectCandidates.map((candidate) => (
-                          <div className="candidate-object-card" key={candidate.id}>
-                            <strong>{candidate.label}</strong>
-                            <span>{formatRoleLabel(candidate.suggestedRole)}</span>
-                            <span>{candidate.reason}</span>
-                            <div className="action-row">
-                              <button className={`ghost-button ${armedMissingCandidateId === candidate.id ? "active" : ""}`} type="button" onClick={() => armMissingCandidate(candidate.id)}>
-                                {armedMissingCandidateId === candidate.id ? "click scene now" : "pick on stage"}
-                              </button>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-              </article>
+          <InlineSegmentedControl
+            value={manual.previewMode}
+            options={[
+              { label: "composite", value: "composite" },
+              { label: "depth", value: "depth" },
+              { label: "selection", value: "selection" },
+            ]}
+            onChange={(value) => setManual((prev) => ({ ...prev, previewMode: value as PreviewMode }))}
+          />
+          <InlineSegmentedControl
+            value={manual.renderMode}
+            options={[
+              { label: "auto", value: "auto" },
+              { label: "safe", value: "safe" },
+              { label: "3-layer", value: "three-layer" },
+            ]}
+            onChange={(value) => applyRenderMode(value as RenderMode)}
+          />
+          <ToggleButton
+            active={manual.invertDepth}
+            label="invert depth"
+            onClick={() => setManual((prev) => ({ ...prev, invertDepth: !prev.invertDepth }))}
+          />
+        </section>
 
-              <article className="panel panel-compact inspector-card">
-                <div className="panel-header">
-                  <div className="panel-title-wrap">
-                    <Icon name="isolate" />
-                    <div>
-                      <h2>Scene Plan</h2>
-                      <div className="panel-subtitle">routing and quick fixes</div>
-                    </div>
-                  </div>
-                  <button className="ghost-button" type="button" onClick={() => setAssistDetailsOpen((value) => !value)}>
-                    {assistDetailsOpen ? "hide details" : "more detail"}
-                  </button>
-                </div>
-                <SegmentedControl
-                  label="scene type"
-                  value={sceneType}
-                  options={[
-                    { label: "portrait", value: "portrait_close" },
-                    { label: "single", value: "single_subject" },
-                    { label: "group", value: "group_midshot" },
-                    { label: "wide", value: "wide_scene" },
-                    { label: "synthetic", value: "synthetic_ai_scene" },
-                  ]}
-                  onChange={(value) => setSceneType(value as SceneType)}
-                />
-                <div className="scene-plan-list">
-                  <div className="scene-plan-item">
-                    <strong>Route</strong>
-                    <span>{workflowRouting.mode}. {workflowRouting.reasons[0] || "No route note."}</span>
-                  </div>
-                  <div className="scene-plan-item">
-                    <strong>Risk</strong>
-                    <span>
-                      {plateLayout.cameraSafe.ok
-                        ? "Camera-safe check is clear."
-                        : plateLayout.cameraSafe.warning || "Camera-safe tuning still needed."}
-                    </span>
-                  </div>
-                  <div className="scene-plan-item">
-                    <strong>Next</strong>
-                    <span>{assistPlan.recommendations[0]?.detail || assistPlan.summary}</span>
-                  </div>
-                </div>
-                <div className="assist-focus-strip">
-                  <span className="chip">clean plates {workflowRouting.specialCleanCount}</span>
-                  <span className="chip">edge risk {plateLayout.cameraSafe.worstTransitionRisk}</span>
-                  <span className="chip">{guidePlateSuggestion ? `guide ${guidePlateSuggestion.plateLabel}` : "guide idle"}</span>
-                </div>
-                <div className="action-row">
-                  <button className="ghost-button active" type="button" onClick={applyAssistRecommendation}>
-                    apply next action
-                  </button>
-                  {guidePlateSuggestion ? (
-                    <button className="ghost-button" type="button" onClick={focusGuideSuggestion}>
-                      focus guide match
-                    </button>
-                  ) : null}
-                </div>
-                {assistStatus ? <div className="assist-status">{assistStatus}</div> : null}
-                {assistDetailsOpen ? (
-                  <div className="assist-secondary">
-                    <div className="assist-recommendation-list">
-                      {assistPlan.recommendations.map((recommendation) => (
-                        <div className={`assist-recommendation tone-${recommendation.tone}`} key={recommendation.title}>
-                          <strong>{recommendation.title}</strong>
-                          <span>{recommendation.detail}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="action-row">
-                      <button
-                        className={`ghost-button ${assistPlan.focusAction === "protect" ? "active" : ""}`}
-                        type="button"
-                        onClick={openProtectRegionAssist}
-                      >
-                        protect region
-                      </button>
-                      <button
-                        className={`ghost-button ${assistPlan.focusAction === "silhouette" ? "active" : ""}`}
-                        type="button"
-                        onClick={openSilhouetteAssist}
-                        disabled={selectedPlateAuthority !== "object"}
-                      >
-                        refine silhouette
-                      </button>
-                      <button
-                        className={`ghost-button ${assistPlan.focusAction === "widen-depth" ? "active" : ""}`}
-                        type="button"
-                        onClick={() => adjustDepthBand(0.04)}
-                      >
-                        widen depth band
-                      </button>
-                      <button
-                        className={`ghost-button ${assistPlan.focusAction === "narrow-depth" ? "active" : ""}`}
-                        type="button"
-                        onClick={() => adjustDepthBand(-0.04)}
-                      >
-                        narrow depth band
-                      </button>
-                      {selectedDraftPlate ? (
-                        <button
-                          className={`ghost-button ${assistPlan.focusAction === "promote-layer" ? "active" : ""}`}
-                          type="button"
-                          onClick={promoteSelectedDraftPlate}
-                        >
-                          promote to layer
-                        </button>
-                      ) : null}
-                    </div>
-                    {missingObjectCandidates.length > 0 ? (
-                      <div className="panel-copy">
-                        Missing detail watchlist: {missingObjectCandidates.map((candidate) => candidate.label).join(", ")}.
-                      </div>
-                    ) : null}
-                    {draftInspectorPlates.length > 0 ? (
-                      <div className="panel-copy">
-                        Draft plates: {draftInspectorPlates.map((plate) => plate.label.replace(/^draft:\s*/i, "")).join(", ")}.
-                      </div>
-                    ) : null}
-                    {selectedAuthoritativeObjectPlate ? (
-                      <div className="panel-copy">
-                        Active cleanup target: {selectedAuthoritativeObjectPlate.label.replace(/^draft:\s*/i, "")} as an authoritative object layer.
-                      </div>
-                    ) : selectedDraftPlate ? (
-                      <div className="panel-copy">
-                        Active selection is still a draft. Promote it before silhouette or depth cleanup.
-                      </div>
-                    ) : null}
-                    <div className="panel-copy">
-                      {guidePlateSuggestion
-                        ? `Layer guide suggests focusing ${guidePlateSuggestion.plateLabel} before the next cleanup move.`
-                        : "Layer guides can promote a candidate plate into focus before you apply cleanup or role changes."}
-                    </div>
-                    <RangeControl
-                      label="hero object scale"
-                      value={foregroundOverscalePct}
-                      min={0}
-                      max={12}
-                      step={0.5}
-                      onChange={setForegroundOverscalePct}
-                      suffix="%"
-                    />
-                  </div>
-                ) : null}
-                {assistPlan.roleSuggestion && selectedInspectorPlate && assistPlan.roleSuggestion !== selectedInspectorPlate.role ? (
-                  <div className="panel-copy">
-                    Suggested role for this plate: {formatRoleLabel(assistPlan.roleSuggestion)}.
-                  </div>
-                ) : null}
-              </article>
+        {debugOpen ? (
+          <>
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Focus Proxy</h2>
+              </div>
+              <RangeControl label="focus x" value={focus.x} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, x: value }))} />
+              <RangeControl label="focus y" value={focus.y} min={0.2} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, y: value }))} />
+              <RangeControl label="focus width" value={focus.width} min={0.15} max={0.8} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, width: value }))} />
+              <RangeControl label="focus height" value={focus.height} min={0.2} max={0.9} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, height: value }))} />
+              <RangeControl label="focus feather" value={focus.feather} min={0.02} max={0.35} step={0.01} onChange={(value) => setFocus((prev) => ({ ...prev, feather: value }))} />
+              <div className="panel-copy">
+                Depth preview prefers real baked depth when available. Samples without baked depth still fall back to the focus-driven proxy map.
+              </div>
             </section>
-          ) : null}
-        </section>
 
-        <section className="panel panel-compact accordion-section">
-          <button className="accordion-toggle" type="button" onClick={() => setCleanupOpen((value) => !value)}>
-            <div className="panel-title-wrap">
-              <Icon name="isolate" />
-              <div>
-                <h2>After Extract: Manual Cleanup</h2>
-                <div className="panel-subtitle">Optional rescue tools, not part of Import</div>
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Guided Hints</h2>
+                <button className="ghost-button" type="button" onClick={() => setGuidedHintsVisible((value) => !value)}>
+                  {guidedHintsVisible ? "hide hints" : "show hints"}
+                </button>
               </div>
-            </div>
-            <div className="accordion-actions">
-              <span className="accordion-chevron">{cleanupOpen ? "−" : "+"}</span>
-            </div>
-          </button>
-          <div className="panel-copy">
-            This block belongs after `Extract`. Keep it closed for normal shots. Open it only when masking, routing, or cleanup starts failing.
-          </div>
-          <div className="utility-summary">
-            <span>Stage: post-extract rescue</span>
-            <span>
-              {cleanupOpen
-                ? activeCleanupToolLabel
-                  ? `Active tool: ${activeCleanupToolLabel}. Controls moved next to the viewer.`
-                  : "Pick one rescue tool. Controls appear next to the viewer, not as a left-rail sheet."
-                : "Closed by default, so no settings are shown until you open it."}
-            </span>
-          </div>
-          {cleanupOpen ? (
-            <div className="accordion-body">
-              <div className="cleanup-tool-picker">
-                {cleanupToolOptions.map((tool) => (
-                  <button
-                    key={tool.id}
-                    className={`ghost-button cleanup-tool-button ${activeCleanupTool === tool.id ? "active" : ""}`}
-                    type="button"
-                    onClick={() =>
-                      setActiveCleanupTool((value) => (value === tool.id ? null : (tool.id as "focus" | "hints" | "stage" | "matte" | "brushes")))
-                    }
-                  >
-                    {tool.label}
-                  </button>
-                ))}
+              <p className="guided-note">
+                `mask_hint.png` contract for assisted mode. Red marks closer subject regions, blue pushes background, green protects ambiguous detail.
+              </p>
+              <div className="chip-row">
+                <span className="chip hint-chip hint-red">closer</span>
+                <span className="chip hint-chip hint-blue">farther</span>
+                <span className="chip hint-chip hint-green">protect</span>
               </div>
-              <div className="cleanup-tools-footer">
-                <div className="panel-copy">
-                  {activeCleanupToolLabel
-                    ? `Only ${activeCleanupToolLabel} stays open. All rescue controls live next to the viewer while the tool is active.`
-                    : "Select a rescue tool only when cleanup actually starts failing."}
-                </div>
-                <div className="panel-header-actions">
-                  {activeCleanupTool !== null ? (
-                    <button className="ghost-button" type="button" onClick={closeCleanupContext}>
-                      close active tool
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Stage Tools</h2>
+              </div>
+              <SegmentedControl
+                label="tool"
+                value={stageTool}
+                options={[
+                  { label: "brush", value: "brush" },
+                  { label: "group", value: "group" },
+                  { label: "matte", value: "matte" },
+                ]}
+                onChange={(value) => setStageTool(value as StageTool)}
+              />
+              <div className="panel-copy">
+                `brush` nudges local depth. `group` locks a whole region into foreground or midground. `matte` drops click seeds and grows a roto-style matte.
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Algorithmic Matte</h2>
+                <button className="ghost-button" type="button" onClick={() => setMatteSeeds([])}>
+                  clear
+                </button>
+              </div>
+              <SegmentedControl
+                label="matte mode"
+                value={matteSeedMode}
+                options={[
+                  { label: "add", value: "add" },
+                  { label: "subtract", value: "subtract" },
+                  { label: "protect", value: "protect" },
+                ]}
+                onChange={(value) => setMatteSeedMode(value as MatteSeedMode)}
+              />
+              <SegmentedControl
+                label="matte view"
+                value={matteSettings.view}
+                options={[
+                  { label: "rgb", value: "rgb" },
+                  { label: "depth", value: "depth" },
+                ]}
+                onChange={(value) => setMatteSettings((prev) => ({ ...prev, view: value as MatteView }))}
+              />
+              <ToggleButton active={matteSettings.visible} label="show matte overlay" onClick={() => setMatteSettings((prev) => ({ ...prev, visible: !prev.visible }))} />
+              <RangeControl label="grow radius" value={matteSettings.growRadius} min={0.05} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, growRadius: value }))} />
+              <RangeControl label="edge snap" value={matteSettings.edgeSnap} min={0.04} max={0.28} step={0.005} onChange={(value) => setMatteSettings((prev) => ({ ...prev, edgeSnap: value }))} />
+              <RangeControl label="matte opacity" value={matteSettings.opacity} min={0.2} max={0.95} step={0.01} onChange={(value) => setMatteSettings((prev) => ({ ...prev, opacity: value }))} />
+              <div className="mini-stat-grid">
+                <MiniStat label="seeds" value={`${matteSeeds.length}`} />
+                <MiniStat label="coverage" value={formatPct(proxyMaps.matteCoverage * 100)} />
+                <MiniStat label="mode" value={matteSeedMode} />
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Hint Brushes</h2>
+                <button className="ghost-button" type="button" onClick={() => setHintStrokes([])}>
+                  clear
+                </button>
+              </div>
+              <SegmentedControl
+                label="brush"
+                value={brushMode}
+                options={[
+                  { label: "closer", value: "closer" },
+                  { label: "farther", value: "farther" },
+                  { label: "protect", value: "protect" },
+                  { label: "erase", value: "erase" },
+                ]}
+                onChange={(value) => setBrushMode(value as BrushMode)}
+              />
+              <RangeControl label="brush size" value={brushSize} min={0.01} max={0.12} step={0.005} onChange={(value) => setBrushSize(value)} />
+              <div className="mini-stat-grid">
+                <MiniStat label="strokes" value={`${hintStrokes.length}`} />
+                <MiniStat label="closer" value={formatPct(proxyMaps.closerCoverage * 100)} />
+                <MiniStat label="farther" value={formatPct(proxyMaps.fartherCoverage * 100)} />
+                <MiniStat label="protect" value={formatPct(proxyMaps.protectCoverage * 100)} />
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <h2>Merge Groups</h2>
+                <button className="ghost-button" type="button" onClick={() => {
+                  setGroupBoxes([]);
+                  setGroupDraft(null);
+                }}>
+                  clear
+                </button>
+              </div>
+              <SegmentedControl
+                label="group mode"
+                value={groupMode}
+                options={[
+                  { label: "fg group", value: "foreground-group" },
+                  { label: "mid group", value: "midground-group" },
+                  { label: "erase", value: "erase-group" },
+                ]}
+                onChange={(value) => setGroupMode(value as GroupMode)}
+              />
+              <div className="mini-stat-grid">
+                <MiniStat label="boxes" value={`${groupBoxes.length}`} />
+                <MiniStat label="fg area" value={formatPct(proxyMaps.foregroundGroupCoverage * 100)} />
+                <MiniStat label="mid area" value={formatPct(proxyMaps.midgroundGroupCoverage * 100)} />
+              </div>
+            </section>
+
+            <section className="panel">
+              <div className="panel-header">
+                <h2>AI Assist</h2>
+                <button className="ghost-button" type="button" onClick={() => setAiAssistVisible((value) => !value)}>
+                  {aiAssistVisible ? "hide" : "show"}
+                </button>
+              </div>
+              <div className="panel-copy">
+                Local `qwen2.5vl:3b` suggests coarse semantic groups. Suggestions are filtered before they can affect the stage.
+              </div>
+              <div className="mini-stat-grid">
+                <MiniStat label="model" value={aiAssistSuggestion?.model || "offline"} />
+                <MiniStat label="confidence" value={aiAssistSuggestion ? `${Math.round(aiAssistSuggestion.confidence * 100)}%` : "n/a"} />
+                <MiniStat label="compare" value={aiCompareMode} />
+              </div>
+              {aiAssistSuggestion ? (
+                <>
+                  <div className="panel-copy">
+                    {aiAssistSuggestion.primary_subject || aiAssistSuggestion.scene_summary || "No semantic summary yet."}
+                  </div>
+                  <div className="chip-row">
+                    {aiAssistSuggestion.sanitation_flags.map((flag) => (
+                      <span className="chip" key={flag}>{flag}</span>
+                    ))}
+                  </div>
+                  <div className="action-row">
+                    <button className="ghost-button" type="button" onClick={() => setAiAssistVisible((value) => !value)}>
+                      {aiAssistVisible ? "hide overlay" : "show overlay"}
                     </button>
-                  ) : null}
-                  <button className="ghost-button" type="button" onClick={() => setDebugOpen((value) => !value)}>
-                    {debugOpen ? "hide debug tools" : "open debug tools"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </section>
-
+                    <button className="ghost-button" type="button" onClick={() => applyAiAssistSuggestion("ai")}>
+                      ai only
+                    </button>
+                    <button className="ghost-button" type="button" onClick={() => applyAiAssistSuggestion("blend")}>
+                      blend
+                    </button>
+                    <button className="ghost-button" type="button" onClick={restoreManualGroups}>
+                      restore manual
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="panel-copy">No cached AI suggestion found for this sample.</div>
+              )}
+            </section>
+          </>
+        ) : null}
       </aside>
 
       <main className="main-pane">
         <div className="stage-header">
           <div>
-            <div className="eyebrow">Preview</div>
+            <div className="eyebrow">Proxy Preview</div>
             <h2>{sample.title}</h2>
+          </div>
+          <div className="metric-strip">
+            <MetricPill label="preview" value={`${snapshot.previewScore}/100`} tone={snapshot.previewScore >= 72 ? "good" : snapshot.previewScore >= 50 ? "mid" : "bad"} />
+            <MetricPill label="disocclusion" value={`${snapshot.disocclusionRisk}`} tone={snapshot.disocclusionRisk < 35 ? "good" : snapshot.disocclusionRisk < 60 ? "mid" : "bad"} />
+            <MetricPill label="cardboard" value={`${snapshot.cardboardRisk}`} tone={snapshot.cardboardRisk < 35 ? "good" : snapshot.cardboardRisk < 60 ? "mid" : "bad"} />
+            <MetricPill label="overscan" value={formatPct(snapshot.overscanPct)} tone={snapshot.overscanPct >= snapshot.minSafeOverscanPct ? "good" : "bad"} />
           </div>
         </div>
 
-        <section className="main-workspace">
-        <div className="stage-monitor-row">
-        <div className="stage-workspace" style={{ width: stageShellStyle.width }}>
-        <div className="stage-shell" ref={stageRef} style={stageShellStyle}>
+        <div className="stage-shell" ref={stageRef}>
           <div className="stage-grid" />
           <div
-            className={`hint-editor-surface ${stageEditingActive ? "is-active" : ""} ${stageTool === "group" ? "group-mode" : stageTool === "matte" ? "matte-mode" : "brush-mode"}`}
+            className={`hint-editor-surface ${stageTool === "group" ? "group-mode" : stageTool === "matte" ? "matte-mode" : "brush-mode"}`}
             onPointerDown={(event) => {
-              if (!stageEditingActive) return;
               event.preventDefault();
-              if (armedMissingCandidateId) {
-                placeMissingCandidate(event.clientX, event.clientY);
-                return;
-              }
               if (stageTool === "brush") {
                 beginStroke(event.clientX, event.clientY);
                 return;
@@ -3979,7 +2823,6 @@ function App() {
               beginGroupDraft(event.clientX, event.clientY);
             }}
             onPointerMove={(event) => {
-              if (!stageEditingActive) return;
               if ((event.buttons & 1) !== 1) return;
               if (stageTool === "brush") {
                 extendStroke(event.clientX, event.clientY);
@@ -3991,7 +2834,6 @@ function App() {
               extendGroupDraft(event.clientX, event.clientY);
             }}
             onPointerUp={() => {
-              if (!stageEditingActive) return;
               if (stageTool === "brush") {
                 endStroke();
                 return;
@@ -4002,7 +2844,6 @@ function App() {
               endGroupDraft();
             }}
             onPointerLeave={() => {
-              if (!stageEditingActive) return;
               if (stageTool === "brush") {
                 endStroke();
                 return;
@@ -4016,11 +2857,6 @@ function App() {
           {manual.previewMode === "depth" ? (
             <div className="depth-preview-plane">
               <img src={proxyMaps.depthUrl} alt={`${sample.title} depth preview`} />
-              <div className="depth-preview-meta">
-                <span>Depth map</span>
-                <strong>white = near · black = far</strong>
-                <span>{proxyMaps.usingRealDepth ? "real depth source" : "proxy depth source"}</span>
-              </div>
             </div>
           ) : null}
           {manual.previewMode !== "depth" && guidedHintsVisible && showSelectionOverlays ? (
@@ -4033,7 +2869,7 @@ function App() {
               <div
                 className="parallax-plane background-plane"
                 style={{
-                  transform: `translate3d(${backgroundOffsetX}%, ${backgroundOffsetY}%, ${-layoutMotion.layerGapPx}px) scale(${backgroundScale})`,
+                  transform: `translate3d(${backgroundOffsetX}%, ${backgroundOffsetY}%, ${-layoutMotion.layerGapPx}px) scale(${1 + motion.overscanPct / 100})`,
                   WebkitMaskImage:
                     effectivePreviewPlateLayers.length > 0 && !backgroundRgbaUrl ? backgroundMaskImage : undefined,
                   maskImage:
@@ -4058,9 +2894,7 @@ function App() {
                 effectivePreviewPlateLayers.map((plate) => {
                   const xOffset = foregroundOffsetX * plate.parallaxStrength;
                   const yOffset = foregroundOffsetY * plate.parallaxStrength * 0.92;
-                  const overscaleBoost =
-                    plate.role === "foreground-subject" ? foregroundOverscalePct / 100 : 0;
-                  const scale = 1 + (motion.zoom - 1) * plate.parallaxStrength + overscaleBoost;
+                  const scale = 1 + (motion.zoom - 1) * plate.parallaxStrength;
                   const blurPx = manual.blurPx * plate.motionDamping * 0.42;
                   const plateMaskUrl = plateCompositeMaps.plateMaskUrls[plate.id];
                   const plateRgbaUrl = plateCompositeMaps.plateRgbaUrls[plate.id];
@@ -4124,93 +2958,9 @@ function App() {
               <img src={proxyMaps.hintOverlayUrl} alt={`${sample.title} manual hint overlay`} />
             </div>
           ) : null}
-          {groupBoxes.length > 0 ? (
+          {groupBoxes.length > 0 && showSelectionOverlays ? (
             <div className="group-box-plane">
               <img src={proxyMaps.groupOverlayUrl} alt={`${sample.title} group overlay`} />
-              {groupBoxes.map((box) => (
-                <button
-                  key={box.id}
-                  className={`group-guide-box ${box.mode}`}
-                  type="button"
-                  style={{
-                    left: `${box.x * 100}%`,
-                    top: `${box.y * 100}%`,
-                    width: `${box.width * 100}%`,
-                    height: `${box.height * 100}%`,
-                  }}
-                  onClick={() => focusGuideBox(box)}
-                >
-                  <span>{formatGroupModeLabel(box.mode)}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {manual.previewMode !== "depth" && inspectorPlates.length > 0 ? (
-            <div className="stage-object-plane">
-              {inspectorPlates.map((plate) => {
-                const isSelected = selectedInspectorPlate?.id === plate.id;
-                const plateAuthority = getPlateAuthority(plateStateById.get(plate.id) ?? plate);
-                const isDraft = plateAuthority === "draft";
-                const isAuthoritative = plateAuthority === "object";
-                const riskLevel =
-                  plate.risk.disocclusionRisk >= 60
-                    ? "high"
-                    : plate.risk.disocclusionRisk >= 35
-                      ? "medium"
-                      : "low";
-                return (
-                  <div
-                    key={plate.id}
-                    className={`stage-object-box ${isSelected ? "is-selected" : ""} ${isDraft ? "is-draft" : ""} ${isAuthoritative ? "is-authoritative" : ""} ${riskLevel === "high" ? "is-risk-high" : riskLevel === "medium" ? "is-risk-medium" : "is-risk-low"}`}
-                    style={{
-                      left: `${plate.box.x * 100}%`,
-                      top: `${plate.box.y * 100}%`,
-                      width: `${plate.box.width * 100}%`,
-                      height: `${plate.box.height * 100}%`,
-                    }}
-                  >
-                    <button className="stage-object-hit" type="button" onClick={() => focusStagePlate(plate.id)}>
-                      <span className="stage-object-badge">
-                        <strong>{plate.label.replace(/^draft:\s*/i, "")}</strong>
-                        <span>{formatRoleLabel(plate.role)}</span>
-                        <span className={`plate-authority-chip ${plateAuthority}`}>{formatPlateAuthorityLabel(plateAuthority)}</span>
-                      </span>
-                    </button>
-                    {isSelected ? (
-                      <div className="stage-object-actions">
-                        {isDraft ? (
-                          <button className="ghost-button active" type="button" onClick={promoteSelectedDraftPlate}>
-                            make layer
-                          </button>
-                        ) : null}
-                        <button className="ghost-button" type="button" onClick={() => focusStagePlate(plate.id)}>
-                          inspect layer
-                        </button>
-                        {isAuthoritative ? (
-                          <button className="ghost-button" type="button" onClick={() => openPlateSilhouetteAssist(plate.id)}>
-                            silhouette
-                          </button>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          ) : null}
-          {provisionalObjectCandidates.length > 0 ? (
-            <div className="candidate-marker-plane">
-              {provisionalObjectCandidates.map((candidate) => (
-                <button
-                  key={candidate.id}
-                  className="candidate-marker"
-                  type="button"
-                  style={{ left: `${candidate.x * 100}%`, top: `${candidate.y * 100}%` }}
-                  onClick={() => focusPlacedCandidate(candidate.id)}
-                >
-                  <span>{candidate.label}</span>
-                </button>
-              ))}
             </div>
           ) : null}
           {matteSettings.visible && matteSeeds.length > 0 && showSelectionOverlays ? (
@@ -4221,16 +2971,16 @@ function App() {
               ))}
             </div>
           ) : null}
-          {debugOpen && aiAssistVisible && aiAssistSuggestion && showSelectionOverlays ? (
+          {aiAssistVisible && aiAssistSuggestion && showSelectionOverlays ? (
             <div className="ai-suggestion-plane">
               {aiAssistSuggestion.accepted_foreground_groups.map((box, index) => (
                 <div key={`ai-fg-${index}`} className="ai-suggestion-box foreground" style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }}>
-                  <span>{`${formatGroupModeLabel("foreground-group")} · ${box.label}`}</span>
+                  <span>{box.label}</span>
                 </div>
               ))}
               {aiAssistSuggestion.accepted_midground_groups.map((box, index) => (
                 <div key={`ai-mid-${index}`} className="ai-suggestion-box midground" style={{ left: `${box.x * 100}%`, top: `${box.y * 100}%`, width: `${box.width * 100}%`, height: `${box.height * 100}%` }}>
-                  <span>{`${formatGroupModeLabel("midground-group")} · ${box.label}`}</span>
+                  <span>{box.label}</span>
                 </div>
               ))}
             </div>
@@ -4262,63 +3012,47 @@ function App() {
                 width: `${groupDraftBox.width * 100}%`,
                 height: `${groupDraftBox.height * 100}%`,
               }}
-            >
-              <span>{formatGroupModeLabel(groupMode)}</span>
-            </div>
+            />
           ) : null}
           <div className="focus-frame" style={foregroundFrame} />
+          <div className="stage-badges">
+            <span className="chip">{manual.renderMode}</span>
+            <span className="chip">{manual.previewMode} preview</span>
+            <span className="chip">{proxyMaps.usingRealDepth ? "real depth" : "proxy depth"}</span>
+            <span className="chip">mask {formatPct(proxyMaps.selectionCoverage * 100)}</span>
+            {debugOpen ? (
+              <>
+                <span className="chip">tool {stageTool}</span>
+                {stageTool === "brush" ? <span className="chip">brush {brushMode}</span> : stageTool === "group" ? <span className="chip">group {groupMode}</span> : <span className="chip">matte {matteSettings.view}</span>}
+                {groupBoxes.length > 0 ? <span className="chip">groups {groupBoxes.length}</span> : null}
+                {matteSeeds.length > 0 ? <span className="chip">matte seeds {matteSeeds.length}</span> : null}
+                {aiAssistVisible && aiAssistSuggestion ? <span className="chip">ai assist overlay</span> : null}
+                <span className="chip">compare {aiCompareMode}</span>
+                {guidedHintsVisible ? <span className="chip">guided hints visible</span> : null}
+              </>
+            ) : null}
+          </div>
           <div className="stage-footer">
             <span>{sample.width} × {sample.height}</span>
             <span>motion {formatPct(snapshot.travelXPct)} / {formatPct(snapshot.travelYPct)}</span>
-            <span>overscan {formatPct(snapshot.overscanPct)}</span>
-          </div>
+            <span>target {manual.targetDepth.toFixed(2)} ± {(manual.range / 2).toFixed(2)}</span>
           </div>
         </div>
-        </div>
-        {cleanupContextPanel ? <section className="cleanup-context-shell">{cleanupContextPanel}</section> : null}
 
         <section className="workflow-dock">
-          <article className={`panel panel-compact workflow-card depth-card effect-panel ${activeEffectPanel === "depth" ? "is-open" : "is-collapsed"}`}>
-            <button className="accordion-toggle effect-panel-toggle" type="button" onClick={() => setActiveEffectPanel((value) => (value === "depth" ? null : "depth"))}>
-              <div className="panel-header">
+          <article className="panel panel-compact workflow-card">
+            <div className="panel-header">
               <div className="panel-title-wrap">
                 <Icon name="depth" />
                 <div>
                   <h2>Depth</h2>
-                  <div className="panel-subtitle">Step 2 · shape the B/W depth map</div>
+                  <div className="panel-subtitle">B/W map remap and cleanup</div>
                 </div>
               </div>
-              </div>
-              <div className="accordion-actions">
-                <span className="effect-summary-inline">{manual.previewMode === "composite" ? "shot" : manual.previewMode === "depth" ? "depth map" : "mask"}</span>
-                <span className="accordion-chevron">{activeEffectPanel === "depth" ? "−" : "+"}</span>
-              </div>
-            </button>
-            <div className="effect-summary-strip">
-              <span>near {manual.nearLimit.toFixed(2)}</span>
-              <span>far {manual.farLimit.toFixed(2)}</span>
-              <span>gamma {manual.gamma.toFixed(2)}</span>
-            </div>
-            {activeEffectPanel === "depth" ? (
-              <>
-            <div className="depth-toolbar">
-              <InlineSegmentedControl
-                value={manual.previewMode}
-                options={[
-                  { label: "shot", value: "composite" },
-                  { label: "depth map", value: "depth" },
-                  { label: "mask", value: "selection" },
-                ]}
-                onChange={(value) => setManual((prev) => ({ ...prev, previewMode: value as PreviewMode }))}
-              />
-              <span className="chip">{proxyMaps.usingRealDepth ? "real depth source" : "proxy depth source"}</span>
-            </div>
-            <div className="panel-copy depth-card-copy">
-              B/W depth base. White reads near, black reads far.
             </div>
             <div className="workflow-card-grid">
               <RangeControl
-                label="near"
+                label="near limit"
                 value={manual.nearLimit}
                 min={0.4}
                 max={0.95}
@@ -4331,7 +3065,7 @@ function App() {
                 }
               />
               <RangeControl
-                label="far"
+                label="far limit"
                 value={manual.farLimit}
                 min={0}
                 max={0.6}
@@ -4343,235 +3077,115 @@ function App() {
                   }))
                 }
               />
-              <div className="depth-primary-stack">
-                <RangeControl
-                  label="gamma"
-                  value={manual.gamma}
-                  min={0.4}
-                  max={2.2}
-                  step={0.01}
-                  onChange={(value) => setManual((prev) => ({ ...prev, gamma: value }))}
-                />
-                <ToggleButton
-                  active={manual.invertDepth}
-                  label={manual.invertDepth ? "invert depth on" : "invert depth off"}
-                  onClick={() => setManual((prev) => ({ ...prev, invertDepth: !prev.invertDepth }))}
-                />
-              </div>
+              <RangeControl
+                label="gamma"
+                value={manual.gamma}
+                min={0.4}
+                max={2.2}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, gamma: value }))}
+              />
+              <RangeControl
+                label="softness"
+                value={manual.softness}
+                min={0.02}
+                max={0.28}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, softness: value }))}
+              />
+              <RangeControl
+                label="expand / shrink"
+                value={manual.expandShrink}
+                min={-0.18}
+                max={0.18}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, expandShrink: value }))}
+              />
+              <RangeControl
+                label="blur"
+                value={manual.blurPx}
+                min={0}
+                max={4}
+                step={0.1}
+                onChange={(value) => setManual((prev) => ({ ...prev, blurPx: value }))}
+                suffix="px"
+              />
             </div>
-            <section className="panel panel-compact depth-subsection">
-              <button className="accordion-toggle" type="button" onClick={() => setDepthIsolateOpen((value) => !value)}>
-                <div className="panel-title-wrap">
-                  <div>
-                    <h3>Isolate Depth Band</h3>
-                    <div className="panel-subtitle">Pick the usable subject band</div>
-                  </div>
-                </div>
-                <div className="accordion-actions">
-                  <span className="accordion-chevron">{depthIsolateOpen ? "−" : "+"}</span>
-                </div>
-              </button>
-              <div className="depth-subsection-summary">
-                <span>target {manual.targetDepth.toFixed(2)}</span>
-                <span>range {manual.range.toFixed(2)}</span>
-              </div>
-              {depthIsolateOpen ? (
-                <div className="accordion-body">
-                  <div className="workflow-card-secondary">
-                    <RangeControl
-                      label="target depth"
-                      value={manual.targetDepth}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, targetDepth: value }))}
-                    />
-                    <RangeControl
-                      label="range"
-                      value={manual.range}
-                      min={0.08}
-                      max={0.6}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, range: value }))}
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </section>
-            <section className="panel panel-compact depth-subsection">
-              <button className="accordion-toggle" type="button" onClick={() => setDepthRefineOpen((value) => !value)}>
-                <div className="panel-title-wrap">
-                  <div>
-                    <h3>Refine Depth Map</h3>
-                    <div className="panel-subtitle">Soften or tighten the remap</div>
-                  </div>
-                </div>
-                <div className="accordion-actions">
-                  <span className="accordion-chevron">{depthRefineOpen ? "−" : "+"}</span>
-                </div>
-              </button>
-              <div className="depth-subsection-summary">
-                <span>softness {manual.softness.toFixed(2)}</span>
-                <span>blur {manual.blurPx.toFixed(1)}px</span>
-              </div>
-              {depthRefineOpen ? (
-                <div className="accordion-body">
-                  <div className="workflow-card-secondary">
-                    <RangeControl
-                      label="softness"
-                      value={manual.softness}
-                      min={0.02}
-                      max={0.28}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, softness: value }))}
-                    />
-                    <RangeControl
-                      label="expand / shrink"
-                      value={manual.expandShrink}
-                      min={-0.18}
-                      max={0.18}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, expandShrink: value }))}
-                    />
-                    <RangeControl
-                      label="blur"
-                      value={manual.blurPx}
-                      min={0}
-                      max={4}
-                      step={0.1}
-                      onChange={(value) => setManual((prev) => ({ ...prev, blurPx: value }))}
-                      suffix="px"
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </section>
-            <section className="panel panel-compact depth-subsection">
-              <button className="accordion-toggle" type="button" onClick={() => setDepthAdvancedOpen((value) => !value)}>
-                <div className="panel-title-wrap">
-                  <div>
-                    <h3>Advanced Depth Shaping</h3>
-                    <div className="panel-subtitle">Bias and post-filter only if the base breaks down</div>
-                  </div>
-                </div>
-                <div className="accordion-actions">
-                  <span className="accordion-chevron">{depthAdvancedOpen ? "−" : "+"}</span>
-                </div>
-              </button>
-              {depthAdvancedOpen ? (
-                <div className="accordion-body">
-                  <div className="workflow-card-secondary">
-                    <RangeControl
-                      label="foreground bias"
-                      value={manual.foregroundBias}
-                      min={0}
-                      max={0.5}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, foregroundBias: value }))}
-                    />
-                    <RangeControl
-                      label="background bias"
-                      value={manual.backgroundBias}
-                      min={0}
-                      max={0.5}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, backgroundBias: value }))}
-                    />
-                    <RangeControl
-                      label="post-filter"
-                      value={manual.postFilter}
-                      min={0}
-                      max={0.45}
-                      step={0.01}
-                      onChange={(value) => setManual((prev) => ({ ...prev, postFilter: value }))}
-                    />
-                  </div>
-                </div>
-              ) : null}
-            </section>
-              </>
-            ) : null}
+            <div className="mini-stat-grid">
+              <MiniStat label="depth src" value={proxyMaps.usingRealDepth ? "real" : "proxy"} />
+              <MiniStat label="near mean" value={proxyMaps.nearMean.toFixed(3)} />
+            </div>
           </article>
 
-          <article className={`panel panel-compact workflow-card extract-card effect-panel ${activeEffectPanel === "extract" ? "is-open" : "is-collapsed"}`}>
-            <button className="accordion-toggle effect-panel-toggle" type="button" onClick={() => setActiveEffectPanel((value) => (value === "extract" ? null : "extract"))}>
-              <div className="panel-header">
+          <article className="panel panel-compact workflow-card">
+            <div className="panel-header">
               <div className="panel-title-wrap">
                 <Icon name="isolate" />
                 <div>
-                  <h2>Extract</h2>
-                  <div className="panel-subtitle">Step 2 · isolate subject and split layers</div>
+                  <h2>Isolate</h2>
+                  <div className="panel-subtitle">Foreground band from depth</div>
                 </div>
               </div>
-              </div>
-              <div className="accordion-actions">
-                <span className="effect-summary-inline">subject split</span>
-                <span className="accordion-chevron">{activeEffectPanel === "extract" ? "−" : "+"}</span>
-              </div>
-            </button>
-            <div className="effect-summary-strip">
-              <span>mask {formatPct(proxyMaps.selectionCoverage * 100)}</span>
-              <span>mid {formatPct(proxyMaps.midgroundCoverage * 100)}</span>
-            </div>
-            {activeEffectPanel === "extract" ? (
-              <>
-            <div className="panel-copy extract-card-copy">
-              Extract decides what stays in the subject layer, what drops to midground, and when the shot needs cleanup help.
             </div>
             <div className="workflow-card-grid">
+              <RangeControl
+                label="target depth"
+                value={manual.targetDepth}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, targetDepth: value }))}
+              />
+              <RangeControl
+                label="range"
+                value={manual.range}
+                min={0.08}
+                max={0.6}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, range: value }))}
+              />
+              <RangeControl
+                label="foreground bias"
+                value={manual.foregroundBias}
+                min={0}
+                max={0.5}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, foregroundBias: value }))}
+              />
+              <RangeControl
+                label="background bias"
+                value={manual.backgroundBias}
+                min={0}
+                max={0.5}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, backgroundBias: value }))}
+              />
+              <RangeControl
+                label="post-filter"
+                value={manual.postFilter}
+                min={0}
+                max={0.45}
+                step={0.01}
+                onChange={(value) => setManual((prev) => ({ ...prev, postFilter: value }))}
+              />
               <div className="mini-stat-grid mini-stat-grid-compact">
-                <MiniStat label="subject mask" value={formatPct(proxyMaps.selectionCoverage * 100)} />
-                <MiniStat label="midground split" value={formatPct(proxyMaps.midgroundCoverage * 100)} />
+                <MiniStat label="mask cover" value={formatPct(proxyMaps.selectionCoverage * 100)} />
+                <MiniStat label="midground" value={formatPct(proxyMaps.midgroundCoverage * 100)} />
               </div>
             </div>
-            <div className="workflow-card-secondary">
-              <div className="panel-copy">
-                Use `Depth` to shape the black-and-white map. Use this card to read the isolation result and decide whether the shot is clean enough or needs manual cleanup.
-              </div>
-              <button className="ghost-button" type="button" onClick={() => setCleanupOpen(true)}>
-                open manual cleanup
-              </button>
-            </div>
-            <div className="panel-copy">
-              Layer split: {workflowRouting.mode}. {workflowRouting.reasons[0] || "No routing warning."}
-              {workflowRouting.reasons[1] ? ` ${workflowRouting.reasons[1]}` : ""}
-            </div>
-              </>
-            ) : null}
           </article>
 
-          <article className={`panel panel-compact workflow-card camera-card effect-panel ${activeEffectPanel === "camera" ? "is-open" : "is-collapsed"}`}>
-            <button className="accordion-toggle effect-panel-toggle" type="button" onClick={() => setActiveEffectPanel((value) => (value === "camera" ? null : "camera"))}>
-              <div className="panel-header">
+          <article className="panel panel-compact workflow-card">
+            <div className="panel-header">
               <div className="panel-title-wrap">
                 <Icon name="camera" />
                 <div>
                   <h2>Camera</h2>
-                  <div className="panel-subtitle">Step 3 · move and keep it safe</div>
+                  <div className="panel-subtitle">Motion, timing and render</div>
                 </div>
               </div>
-              </div>
-              <div className="accordion-actions">
-                <span className="effect-summary-inline">one safe move</span>
-                <span className="accordion-chevron">{activeEffectPanel === "camera" ? "−" : "+"}</span>
-              </div>
-            </button>
-            <div className="effect-summary-strip">
-              <span>x {formatPct(snapshot.travelXPct)}</span>
-              <span>y {formatPct(snapshot.travelYPct)}</span>
-              <span>overscan {formatPct(snapshot.overscanPct)}</span>
-            </div>
-            {activeEffectPanel === "camera" ? (
-              <>
-            <div className="panel-copy camera-card-copy">
-              This build uses one safe camera move for the whole shot. Use this card to tune travel and overscan; the tray below is only a keyframe reserve for a later pass.
-            </div>
-            <div className="panel-header-actions camera-header-actions">
-              <button className="ghost-button" type="button" onClick={() => setCameraTuningOpen((value) => !value)}>
-                {cameraTuningOpen ? "hide tuning" : "show tuning"}
-              </button>
               <button className="ghost-button" type="button" onClick={applyRecommendedPreset}>
-                apply safe move
+                safe preset
               </button>
             </div>
             <div className="workflow-card-grid">
@@ -4594,6 +3208,22 @@ function App() {
                 suffix="%"
               />
               <RangeControl
+                label="zoom"
+                value={motion.zoom}
+                min={1}
+                max={1.1}
+                step={0.001}
+                onChange={(value) => setMotion((prev) => ({ ...prev, zoom: value }))}
+              />
+              <RangeControl
+                label="phase"
+                value={motion.phase}
+                min={0}
+                max={1}
+                step={0.01}
+                onChange={(value) => setMotion((prev) => ({ ...prev, phase: value }))}
+              />
+              <RangeControl
                 label="overscan"
                 value={motion.overscanPct}
                 min={4}
@@ -4602,131 +3232,244 @@ function App() {
                 onChange={(value) => setMotion((prev) => ({ ...prev, overscanPct: value }))}
                 suffix="%"
               />
-              <div className="render-mode-wrap">
-                <span className="mini-label">output mode</span>
-                <InlineSegmentedControl
-                  value={manual.renderMode}
-                  options={[
-                    { label: "auto", value: "auto" },
-                    { label: "safer", value: "safe" },
-                    { label: "guided", value: "three-layer" },
-                  ]}
-                  onChange={(value) => applyRenderMode(value as RenderMode)}
-                />
-              </div>
-            </div>
-            {cameraTuningOpen ? (
-              <div className="workflow-card-secondary">
-                <RangeControl
-                  label="zoom"
-                  value={motion.zoom}
-                  min={1}
-                  max={1.1}
-                  step={0.001}
-                  onChange={(value) => setMotion((prev) => ({ ...prev, zoom: value }))}
-                />
-                <RangeControl
-                  label="phase"
-                  value={motion.phase}
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  onChange={(value) => setMotion((prev) => ({ ...prev, phase: value }))}
-                />
-              </div>
-            ) : null}
-            <div className="workflow-card-grid">
               <div className="mini-stat-grid mini-stat-grid-compact">
-                <MiniStat label="current move" value={`${formatPct(snapshot.travelXPct)} / ${formatPct(snapshot.travelYPct)}`} />
-                <MiniStat label="render mode" value={renderPolicy} />
+                <MiniStat label="travel" value={`${formatPct(snapshot.travelXPct)} / ${formatPct(snapshot.travelYPct)}`} />
+                <MiniStat label="render" value={renderPolicy} />
               </div>
               <div className="mini-stat-grid mini-stat-grid-compact">
                 <MiniStat
-                  label="safe move"
+                  label="safe x / y"
                   value={`${formatPct(plateLayout.cameraSafe.suggestion.travelXPct)} / ${formatPct(plateLayout.cameraSafe.suggestion.travelYPct)}`}
                 />
                 <MiniStat label="safe overscan" value={formatPct(plateLayout.cameraSafe.suggestion.overscanPct)} />
               </div>
               <div className="panel-copy">
                 {plateLayout.cameraSafe.warning
-                  ? `Camera warning: ${plateLayout.cameraSafe.warning}.`
-                  : "Camera check: no warning."}
-                {plateLayout.cameraSafe.suggestion.reason ? ` Safe move note: ${plateLayout.cameraSafe.suggestion.reason}.` : ""}
+                  ? `Camera-safe warning: ${plateLayout.cameraSafe.warning}.`
+                  : "Camera-safe check: no warning."}
+                {plateLayout.cameraSafe.suggestion.reason ? ` Suggested motion tweak: ${plateLayout.cameraSafe.suggestion.reason}.` : ""}
               </div>
             </div>
-              </>
-            ) : null}
           </article>
 
-        </section>
-        </section>
-
-      </main>
-
-      <aside className="export-pane">
-        <article className={`panel panel-compact export-card effect-panel ${exportPanelOpen ? "is-open" : "is-collapsed"}`}>
-          <button className="accordion-toggle effect-panel-toggle" type="button" onClick={() => setExportPanelOpen((value) => !value)}>
+          <article className="panel panel-compact workflow-card export-card">
             <div className="panel-header">
               <div className="panel-title-wrap">
                 <Icon name="export" />
                 <div>
                   <h2>Export</h2>
-                  <div className="panel-subtitle">Step 4 · save layers and preview</div>
+                  <div className="panel-subtitle">Final assets and preview outputs</div>
                 </div>
               </div>
             </div>
-            <div className="accordion-actions">
-              <span className="effect-summary-inline">
-                {exportLayout.metrics.visiblePlateCount} plates · {exportLayout.routing.mode}
-              </span>
-              <span className="accordion-chevron">{exportPanelOpen ? "−" : "+"}</span>
+            <div className="export-stack">
+              {exportTargets.map((target) => (
+                <div className="export-item" key={target.label}>
+                  <strong>{target.label}</strong>
+                  <span>{target.value}</span>
+                </div>
+              ))}
             </div>
-          </button>
-          <div className="effect-summary-strip">
-            <span>{exportTargets[0].label}</span>
-            <span>{exportTargets[1].label}</span>
-            <span>{exportTargets[2].label}</span>
-          </div>
-          <div className="action-row export-actions export-actions-compact">
-            <button className="ghost-button" type="button" onClick={handleExportLayout}>
-              download layout
-            </button>
-            <button className="ghost-button" type="button" onClick={handleExportAssets}>
-              download assets
-            </button>
-            <button className="ghost-button" type="button" onClick={handleExportJobState}>
-              copy job state
-            </button>
-          </div>
-          {exportStatus ? <div className="export-status">{exportStatus}</div> : null}
-          {exportPanelOpen ? (
-            <>
-              <div className="export-stack">
-                {exportTargets.map((target) => (
-                  <div className="export-item" key={target.label}>
-                    <strong>{target.label}</strong>
-                    <span>{target.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="panel-copy">
-                {exportLayout.cameraSafe.adjustment.applied
-                  ? `Export auto-adjusts motion to ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelXPct)} / ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelYPct)} with ${formatPct(exportLayout.cameraSafe.adjustment.effective.overscanPct)} overscan.`
-                  : "Export uses the current camera motion as-is."}
-              </div>
-              <div className="panel-copy">
-                Visible plates: {exportLayout.metrics.visiblePlateCount}. Routing stays {exportLayout.routing.mode}.
-              </div>
-            </>
-          ) : (
-            <div className="panel-copy export-collapsed-note">
+            <div className="panel-copy">
               {exportLayout.cameraSafe.adjustment.applied
-                ? `Safe export will auto-adjust motion and overscan.`
-                : `Current camera move exports as-is.`}
+                ? `Export auto-adjusts motion to ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelXPct)} / ${formatPct(exportLayout.cameraSafe.adjustment.effective.travelYPct)} with ${formatPct(exportLayout.cameraSafe.adjustment.effective.overscanPct)} overscan.`
+                : "Export uses the current camera motion as-is."}
             </div>
-          )}
-        </article>
-      </aside>
+          </article>
+        </section>
+
+        {debugOpen ? (
+          <section className="bottom-panels">
+            <article className="info-card">
+              <div className="eyebrow">Manual Pro</div>
+              <h3>What changed in this wave</h3>
+              <p>
+                The sandbox now has two intervention types: local depth brushes and region-level merge groups. The new group boxes are a proxy for `same layer / merge group`, so split subjects can be forced back into one plane.
+              </p>
+            </article>
+            <article className="info-card">
+              <div className="eyebrow">Next step</div>
+              <h3>What comes after this</h3>
+              <ul>
+                <li>Turn plate decomposition into the main path for complex scenes.</li>
+                <li>Give each plate its own local depth or depth priority.</li>
+                <li>Introduce special clean plates like `no people` and `no trees`.</li>
+                <li>Make camera layout plate-aware instead of just foreground/background.</li>
+                <li>Keep portrait mode fast while multi-plate mode gets richer authoring.</li>
+              </ul>
+            </article>
+            <article className="info-card">
+              <div className="eyebrow">Plate Stack</div>
+              <h3>Current sample decomposition</h3>
+              <div className="mini-stat-grid">
+                <MiniStat label="visible plates" value={`${visibleRenderablePlates.length}`} />
+                <MiniStat label="z span" value={`${plateZSpan.toFixed(1)}`} />
+                <MiniStat label="effective layers" value={`${layoutMotion.layerCount}`} />
+                <MiniStat label="layout gap" value={`${layoutMotion.layerGapPx.toFixed(1)}px`} />
+              </div>
+              <ul className="plate-stack-list plate-stack-editor">
+                {plateStack.map((plate, index) => (
+                  <li key={plate.id}>
+                    <strong>{plate.label}</strong>
+                    <span>{plate.role}</span>
+                    <span>z {plate.z}</span>
+                    <span>{plate.visible ? "visible" : "hidden"}</span>
+                    <div className="plate-stack-actions">
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => movePlate(plate.id, -1)}
+                        disabled={index === 0}
+                      >
+                        up
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => movePlate(plate.id, 1)}
+                        disabled={index === plateStack.length - 1}
+                      >
+                        down
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => nudgePlateZ(plate.id, 4)}
+                      >
+                        z+
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => nudgePlateZ(plate.id, -4)}
+                      >
+                        z-
+                      </button>
+                      <button
+                        className="ghost-button"
+                        type="button"
+                        onClick={() => setPlateVisibility(plate.id, !plate.visible)}
+                      >
+                        {plate.visible ? "hide" : "show"}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </article>
+            <article className="info-card">
+              <div className="eyebrow">Qwen Plate Plan</div>
+              <h3>Automatic object-layer proposal</h3>
+              {qwenPlatePlan ? (
+                <>
+                  <div className="mini-stat-grid">
+                    <MiniStat label="model" value={qwenPlatePlan.model || "offline"} />
+                    <MiniStat label="plates" value={`${qwenPlatePlan.recommended_plate_count || 0}`} />
+                    <MiniStat label="confidence" value={`${Math.round((qwenPlatePlan.confidence || 0) * 100)}%`} />
+                    <MiniStat label="special clean" value={`${qwenPlatePlan.special_clean_plates?.length || 0}`} />
+                  </div>
+                  <p>
+                    {qwenPlatePlan.scene_summary || "No scene summary yet."}
+                  </p>
+                  <div className="action-row">
+                    <button className="ghost-button" type="button" onClick={applyQwenPlatePlan}>
+                      apply qwen plan
+                    </button>
+                    {qwenPlateGate ? (
+                      <button className="ghost-button" type="button" onClick={applyQwenPlateGate}>
+                        apply gated stack
+                      </button>
+                    ) : null}
+                  </div>
+                  {qwenPlateGate ? (
+                    <>
+                      <div className="mini-stat-grid">
+                        <MiniStat label="gate" value={qwenPlateGate.decision} />
+                        <MiniStat label="overlap" value={`${Math.round(qwenPlateGate.metrics.visible_overlap_ratio * 100)}%`} />
+                        <MiniStat label="added clean" value={`${qwenPlateGate.added_special_clean_variants.length}`} />
+                      </div>
+                      <p>{qwenPlateGate.reasons[0] || "No gate rationale yet."}</p>
+                    </>
+                  ) : null}
+                </>
+              ) : (
+                <p>No cached Qwen plate plan found for this sample.</p>
+              )}
+            </article>
+          </section>
+        ) : null}
+      </main>
+
+      {debugOpen ? (
+        <aside className="debug-pane">
+          <div className="panel-header">
+            <h2>Debug Snapshot</h2>
+            <button className="ghost-button" type="button" onClick={() => window.vetkaParallaxLab?.print()}>
+              print snapshot
+            </button>
+          </div>
+          <dl className="debug-list">
+            <DebugRow label="sample" value={snapshot.sampleId} />
+            <DebugRow label="preview mode" value={manual.previewMode} />
+            <DebugRow label="render mode" value={manual.renderMode} />
+            <DebugRow label="stage tool" value={stageTool} />
+            <DebugRow label="brush" value={brushMode} />
+            <DebugRow label="group mode" value={groupMode} />
+            <DebugRow label="hint strokes" value={`${hintStrokes.length}`} />
+            <DebugRow label="group boxes" value={`${groupBoxes.length}`} />
+            <DebugRow label="plate count" value={`${plateStack.length}`} />
+            <DebugRow label="visible plates" value={`${visibleRenderablePlates.length}`} />
+            <DebugRow label="plate z span" value={`${plateZSpan.toFixed(1)}`} />
+            <DebugRow label="effective layers" value={`${layoutMotion.layerCount}`} />
+            <DebugRow label="layout gap" value={`${layoutMotion.layerGapPx.toFixed(1)}px`} />
+            <DebugRow label="matte seeds" value={`${matteSeeds.length}`} />
+            <DebugRow label="matte cover" value={formatPct(proxyMaps.matteCoverage * 100)} />
+            <DebugRow label="guided hints" value={guidedHintsVisible ? "visible" : "hidden"} />
+            <DebugRow label="ai assist" value={aiAssistVisible ? "visible" : "hidden"} />
+            <DebugRow label="ai compare" value={aiCompareMode} />
+            <DebugRow label="job state" value="localStorage sync" />
+            <DebugRow label="selection cover" value={formatPct(proxyMaps.selectionCoverage * 100)} />
+            <DebugRow label="midground cover" value={formatPct(proxyMaps.midgroundCoverage * 100)} />
+            <DebugRow label="depth source" value={proxyMaps.usingRealDepth ? "real" : "proxy"} />
+            <DebugRow label="fg group cover" value={formatPct(proxyMaps.foregroundGroupCoverage * 100)} />
+            <DebugRow label="mid group cover" value={formatPct(proxyMaps.midgroundGroupCoverage * 100)} />
+            <DebugRow label="near mean" value={proxyMaps.nearMean.toFixed(3)} />
+            <DebugRow label="displayed box" value={`${snapshot.displayedWidth} × ${snapshot.displayedHeight}`} />
+            <DebugRow label="stage coverage" value={`${snapshot.stageCoverageRatio}`} />
+            <DebugRow label="foreground coverage" value={`${snapshot.foregroundCoverage}`} />
+            <DebugRow label="travel x" value={formatPct(snapshot.travelXPct)} tone={snapshot.travelXPct <= snapshot.safeTravelXPct ? "good" : "bad"} />
+            <DebugRow label="travel y" value={formatPct(snapshot.travelYPct)} tone={snapshot.travelYPct <= snapshot.safeTravelYPct ? "good" : "bad"} />
+            <DebugRow label="recommended overscan" value={formatPct(snapshot.recommendedOverscanPct)} tone={snapshot.overscanPct >= snapshot.recommendedOverscanPct ? "good" : "mid"} />
+            <DebugRow label="min safe overscan" value={formatPct(snapshot.minSafeOverscanPct)} tone={snapshot.overscanPct >= snapshot.minSafeOverscanPct ? "good" : "bad"} />
+            <DebugRow
+              label="camera-safe travel"
+              value={`${formatPct(plateLayout.cameraSafe.suggestion.travelXPct)} / ${formatPct(plateLayout.cameraSafe.suggestion.travelYPct)}`}
+              tone={plateLayout.cameraSafe.ok ? "good" : "mid"}
+            />
+            <DebugRow
+              label="camera-safe overscan"
+              value={formatPct(plateLayout.cameraSafe.suggestion.overscanPct)}
+              tone={snapshot.overscanPct >= plateLayout.cameraSafe.suggestion.overscanPct ? "good" : "mid"}
+            />
+            {plateLayout.cameraSafe.warning ? (
+              <DebugRow label="camera-safe warning" value={plateLayout.cameraSafe.warning} tone="bad" />
+            ) : null}
+            {plateLayout.cameraSafe.suggestion.reason ? (
+              <DebugRow label="camera-safe suggestion" value={plateLayout.cameraSafe.suggestion.reason} tone="mid" />
+            ) : null}
+            <DebugRow label="disocclusion risk" value={`${snapshot.disocclusionRisk}`} tone={snapshot.disocclusionRisk < 35 ? "good" : snapshot.disocclusionRisk < 60 ? "mid" : "bad"} />
+            <DebugRow label="cardboard risk" value={`${snapshot.cardboardRisk}`} tone={snapshot.cardboardRisk < 35 ? "good" : snapshot.cardboardRisk < 60 ? "mid" : "bad"} />
+            <DebugRow label="preview score" value={`${snapshot.previewScore}/100`} tone={snapshot.previewScore >= 72 ? "good" : snapshot.previewScore >= 50 ? "mid" : "bad"} />
+            <DebugRow label="duration" value={`${snapshot.durationSec}s @ ${snapshot.fps} fps`} />
+            <DebugRow label="total frames" value={`${snapshot.totalFrames}`} />
+          </dl>
+          <div className="debug-tip">
+            Browser helpers: `debug.logs()`, `debug.inspect("overscan")`, `debug.watch("setMotion")`.
+            Job state helpers: `window.vetkaParallaxLab?.exportJobState()` and `window.vetkaParallaxLab?.importJobState(payload)`.
+            Layout helper: `window.vetkaParallaxLab?.exportPlateLayout()`.
+          </div>
+        </aside>
+      ) : null}
     </div>
   );
 }
@@ -4845,7 +3588,6 @@ function InlineSegmentedControl(props: {
 function SegmentedControl(props: {
   label: string;
   value: string;
-  valueLabel?: string;
   options: { label: string; value: string }[];
   onChange: (value: string) => void;
 }) {
@@ -4853,7 +3595,7 @@ function SegmentedControl(props: {
     <div className="segmented-control">
       <div className="range-header">
         <span>{props.label}</span>
-        <strong>{props.valueLabel ?? props.value}</strong>
+        <strong>{props.value}</strong>
       </div>
       <div className="segmented-row">
         {props.options.map((option) => (
@@ -4885,6 +3627,24 @@ function MiniStat(props: { label: string; value: string }) {
       <span>{props.label}</span>
       <strong>{props.value}</strong>
     </div>
+  );
+}
+
+function MetricPill(props: { label: string; value: string; tone: "good" | "mid" | "bad" }) {
+  return (
+    <div className={`metric-pill ${props.tone}`}>
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+function DebugRow(props: { label: string; value: string; tone?: "good" | "mid" | "bad" }) {
+  return (
+    <>
+      <dt>{props.label}</dt>
+      <dd className={props.tone ? `tone-${props.tone}` : ""}>{props.value}</dd>
+    </>
   );
 }
 

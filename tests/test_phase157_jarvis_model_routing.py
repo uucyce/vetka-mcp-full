@@ -1,9 +1,7 @@
 import asyncio
 
 from src.voice.jarvis_llm import resolve_jarvis_text_model, get_jarvis_context
-import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 157 contracts changed")
 
 def test_resolve_jarvis_prefers_explicit_model_over_favorites():
     model_id, route, reason = resolve_jarvis_text_model(

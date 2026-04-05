@@ -19,7 +19,6 @@ import os
 import json
 import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 126 contracts changed")
 
 # ── Helpers ──
 
@@ -100,7 +99,6 @@ class TestTaskBoardStats:
     def test_hold_status_still_valid(self):
         """hold status should still be valid (125.1)."""
         from src.orchestration.task_board import VALID_STATUSES
-
         assert "hold" in VALID_STATUSES
 
 

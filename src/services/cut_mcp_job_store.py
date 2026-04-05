@@ -71,9 +71,6 @@ class CutMCPJobStore:
                 return None
             if state is not None:
                 job["state"] = str(state)
-                # MARKER_B2.2: Record start time for ETA calculation
-                if state == "running" and not job.get("started_at"):
-                    job["started_at"] = datetime.now(timezone.utc).isoformat()
             if progress is not None:
                 job["progress"] = max(0.0, min(1.0, float(progress)))
             if result is not None:

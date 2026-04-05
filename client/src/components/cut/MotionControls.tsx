@@ -8,7 +8,6 @@
  */
 import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { useSelectionStore } from '../../store/useSelectionStore';
 
 // ─── Types ───
 
@@ -22,11 +21,6 @@ interface MotionState {
   anchorX: number;
   anchorY: number;
   opacity: number;
-  // MARKER_B4.1: Crop (FCP7 Ch.16)
-  cropLeft: number;
-  cropRight: number;
-  cropTop: number;
-  cropBottom: number;
 }
 
 const DEFAULT_MOTION: MotionState = {
@@ -35,7 +29,6 @@ const DEFAULT_MOTION: MotionState = {
   rotation: 0,
   anchorX: 0.5, anchorY: 0.5,
   opacity: 1,
-  cropLeft: 0, cropRight: 0, cropTop: 0, cropBottom: 0,
 };
 
 // ─── Styles ───
@@ -110,7 +103,7 @@ const RESET_BTN: CSSProperties = {
 // ─── Component ───
 
 export default function MotionControls() {
-  const selectedClipId = useSelectionStore((s) => s.selectedClipId);
+  const selectedClipId = useCutEditorStore((s) => s.selectedClipId);
   const lanes = useCutEditorStore((s) => s.lanes);
 
   const selectedClip = lanes
@@ -174,9 +167,7 @@ export default function MotionControls() {
 
   const isModified = motion.posX !== 0 || motion.posY !== 0 ||
     motion.scaleX !== 1 || motion.scaleY !== 1 ||
-    motion.rotation !== 0 || motion.opacity !== 1 ||
-    motion.cropLeft !== 0 || motion.cropRight !== 0 ||
-    motion.cropTop !== 0 || motion.cropBottom !== 0;
+    motion.rotation !== 0 || motion.opacity !== 1;
 
   return (
     <>
@@ -211,7 +202,7 @@ export default function MotionControls() {
         <div style={SECTION_TITLE}>
           <span>Scale</span>
           <button
-            style={{ ...LINK_BTN, color: motion.uniform ? '#999' : '#555' }}
+            style={{ ...LINK_BTN, color: motion.uniform ? '#4a9eff' : '#555' }}
             onClick={() => updateField('uniform', !motion.uniform)}
             title={motion.uniform ? 'Linked (uniform)' : 'Independent X/Y'}
           >
@@ -281,26 +272,9 @@ export default function MotionControls() {
         </div>
       </div>
 
-      {/* Opacity — MARKER_B4.1: with keyframe button */}
+      {/* Opacity */}
       <div style={SECTION}>
-        <div style={SECTION_TITLE}>
-          <span>Opacity</span>
-          <button
-            style={RESET_BTN}
-            title="Add keyframe at playhead"
-            onClick={() => {
-              if (!selectedClipId) return;
-              const s = useCutEditorStore.getState();
-              const clip = s.lanes.flatMap((l) => l.clips).find((c) => c.clip_id === selectedClipId);
-              if (clip) {
-                const relTime = s.currentTime - clip.start_sec;
-                if (relTime >= 0) s.addKeyframe(selectedClipId, 'opacity', relTime, motion.opacity);
-              }
-            }}
-          >
-            ◆ KF
-          </button>
-        </div>
+        <div style={SECTION_TITLE}><span>Opacity</span></div>
         <div style={ROW}>
           <span style={LABEL}>Value</span>
           <input
@@ -308,13 +282,7 @@ export default function MotionControls() {
             style={SLIDER}
             min={0} max={1} step={0.01}
             value={motion.opacity}
-            onChange={(e) => {
-              updateField('opacity', Number(e.target.value));
-              // MARKER_B3.2: auto-keyframe in record mode
-              if (selectedClipId) {
-                useCutEditorStore.getState().recordPropertyChange(selectedClipId, 'opacity', Number(e.target.value));
-              }
-            }}
+            onChange={(e) => updateField('opacity', Number(e.target.value))}
           />
           <input
             type="number"
@@ -325,31 +293,6 @@ export default function MotionControls() {
           />
           <span style={{ color: '#555', fontSize: 10 }}>%</span>
         </div>
-      </div>
-
-      {/* Crop — MARKER_B4.1 (FCP7 Ch.16) */}
-      <div style={SECTION}>
-        <div style={SECTION_TITLE}><span>Crop</span></div>
-        {(['cropLeft', 'cropRight', 'cropTop', 'cropBottom'] as const).map((field) => (
-          <div style={ROW} key={field}>
-            <span style={LABEL}>{field.replace('crop', '')}</span>
-            <input
-              type="range"
-              style={SLIDER}
-              min={0} max={100} step={1}
-              value={motion[field] * 100}
-              onChange={(e) => updateField(field, Number(e.target.value) / 100)}
-            />
-            <input
-              type="number"
-              style={{ ...INPUT, width: 50 }}
-              value={Math.round(motion[field] * 100)}
-              onChange={(e) => updateField(field, Number(e.target.value) / 100)}
-              step={1}
-            />
-            <span style={{ color: '#555', fontSize: 10 }}>%</span>
-          </div>
-        ))}
       </div>
 
       {/* Anchor Point */}
@@ -385,7 +328,7 @@ export default function MotionControls() {
                 ...LINK_BTN,
                 fontSize: 8,
                 padding: '2px 3px',
-                color: motion.anchorX === pt.x && motion.anchorY === pt.y ? '#999' : '#555',
+                color: motion.anchorX === pt.x && motion.anchorY === pt.y ? '#4a9eff' : '#555',
               }}
               onClick={() => { updateField('anchorX', pt.x); updateField('anchorY', pt.y); }}
               title={`Anchor ${pt.label}`}

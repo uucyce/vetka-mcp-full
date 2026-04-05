@@ -1,8 +1,6 @@
 # CUT Data Model
 # Структура данных DAG Project
 
-> **See also:** Current implementation state in **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)** §5.1 (Timeline Structure), §9.1 (DAG Scene Graph).
-
 **Date:** 2026-03-18
 **Basis:** CUT_TARGET_ARCHITECTURE.md
 **Audience:** Разработчики, архитектор данных

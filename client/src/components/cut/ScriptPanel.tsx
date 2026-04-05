@@ -55,7 +55,7 @@ const CHUNK_BASE: CSSProperties = {
 
 const CHUNK_ACTIVE: CSSProperties = {
   ...CHUNK_BASE,
-  borderLeftColor: '#999',
+  borderLeftColor: '#4a9eff',
   background: 'rgba(74, 158, 255, 0.08)',
 };
 
@@ -133,9 +133,6 @@ export default function ScriptPanel({ scriptText = '' }: ScriptPanelProps) {
 
   // Editor store
   const isPlaying = useCutEditorStore((s) => s.isPlaying);
-  const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
-  const projectId = useCutEditorStore((s) => s.projectId);
-  const [applyStatus, setApplyStatus] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   // ─── Parse script text into chunks via API ───
   useEffect(() => {
@@ -175,20 +172,6 @@ export default function ScriptPanel({ scriptText = '' }: ScriptPanelProps) {
     [syncFromScript],
   );
 
-  // ─── Apply to DAG ───
-  const handleApplyToDAG = useCallback(() => {
-    if (!sandboxRoot || !projectId || !scriptText.trim()) return;
-    setApplyStatus('loading');
-    fetch(`${API_BASE}/cut/project/apply-script`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sandbox_root: sandboxRoot, project_id: projectId, text: scriptText }),
-    })
-      .then((res) => res.json())
-      .then((data) => setApplyStatus(data.success ? 'done' : 'error'))
-      .catch(() => setApplyStatus('error'));
-  }, [sandboxRoot, projectId, scriptText]);
-
   // ─── Teleprompter auto-scroll during playback ───
   useEffect(() => {
     if (!isPlaying || !listRef.current || lastSyncSource === 'script' || chunks.length === 0) return;
@@ -207,21 +190,6 @@ export default function ScriptPanel({ scriptText = '' }: ScriptPanelProps) {
 
   return (
     <div style={PANEL}>
-      {chunks.length > 0 && (
-        <div style={{ display: 'flex', padding: '4px 8px', borderBottom: '1px solid #222', gap: 6, alignItems: 'center' }}>
-          <button
-            onClick={handleApplyToDAG}
-            disabled={applyStatus === 'loading' || !sandboxRoot || !projectId}
-            style={{
-              background: '#222', border: '1px solid #333', borderRadius: 3,
-              color: applyStatus === 'done' ? '#999' : applyStatus === 'error' ? '#888' : '#ccc',
-              fontSize: 10, padding: '2px 8px', cursor: 'pointer',
-            }}
-          >
-            {applyStatus === 'loading' ? 'Applying...' : applyStatus === 'done' ? 'Applied to DAG' : 'Apply to DAG'}
-          </button>
-        </div>
-      )}
       <div ref={listRef} style={CHUNK_LIST}>
         {chunks.length === 0 && (
           <div style={EMPTY_STATE}>

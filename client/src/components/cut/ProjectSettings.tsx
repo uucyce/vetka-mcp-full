@@ -5,7 +5,6 @@
  */
 import { useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 const OVERLAY: CSSProperties = {
   position: 'fixed',
@@ -130,8 +129,6 @@ export default function ProjectSettings() {
   const setProxyMode = useCutEditorStore((s) => s.setProxyMode);
 
   const close = useCallback(() => setShow(false), [setShow]);
-  // MARKER_GAMMA-ESC-HOOK: Escape closes overlay + data-overlay prevents escapeContext from firing
-  useOverlayEscapeClose(close);
 
   if (!show) return null;
 
@@ -139,7 +136,7 @@ export default function ProjectSettings() {
   const dropFrameRelevant = framerate === 29.97 || framerate === 59.94;
 
   return (
-    <div style={OVERLAY} data-overlay="1" onClick={close}>
+    <div style={OVERLAY} onClick={close}>
       <div style={DIALOG} onClick={(e) => e.stopPropagation()}>
         <div style={HEADER}>Project Settings</div>
 

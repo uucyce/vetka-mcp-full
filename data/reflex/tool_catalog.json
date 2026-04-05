@@ -4,9 +4,9 @@
   "generator": "scripts/generate_reflex_catalog.py",
   "marker": "MARKER_172.P1.CATALOG",
   "stats": {
-    "total_tools": 96,
+    "total_tools": 94,
     "by_namespace": {
-      "vetka": 41,
+      "vetka": 40,
       "internal": 10,
       "mycelium": 24,
       "cut": 20
@@ -17,7 +17,7 @@
       "media": 20,
       "reasoning": 2,
       "keys": 4,
-      "visualization": 2,
+      "visualization": 1,
       "orchestration": 17,
       "system": 5,
       "other": 15,
@@ -3665,52 +3665,6 @@
       "deprecated_aliases": [],
       "active": true,
       "source": "mcp__Claude_in_Chrome__computer"
-    },
-    {
-      "tool_id": "vetka_screenshot",
-      "namespace": "vetka",
-      "kind": "visualization",
-      "description": "Capture screen + OCR text from display. Non-interactive for agent use.",
-      "intent_tags": [
-        "screenshot",
-        "ocr",
-        "screen-capture",
-        "vision",
-        "observe",
-        "read",
-        "inspect"
-      ],
-      "trigger_patterns": {
-        "file_types": [
-          "*"
-        ],
-        "phase_types": [
-          "research",
-          "fix",
-          "build"
-        ],
-        "keywords": [
-          "screenshot",
-          "screen",
-          "ocr",
-          "capture",
-          "vision"
-        ]
-      },
-      "cost": {
-        "latency_ms": 800,
-        "tokens": 0,
-        "risk_level": "read_only"
-      },
-      "permission": "READ",
-      "roles": [
-        "all"
-      ],
-      "deprecated_aliases": [],
-      "active": true,
-      "source": "static_extra_tools",
-      "typical_use": "Get text content from user's screen for context analysis",
-      "overlay_hints": {}
     }
   ]
 }

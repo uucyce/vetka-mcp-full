@@ -5,7 +5,6 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 import asyncio
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 155c contracts changed")
 
 def test_is_first_architect_turn_detection():
     from src.api.routes.architect_chat_routes import ChatContext, _is_first_architect_turn

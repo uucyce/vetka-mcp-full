@@ -12,8 +12,6 @@ Tests:
   T3.6 test_empty_log_returns_default — 0.5 when no history
   T3.7 test_stats_returns_summary — tool counts, success rates
 """
-import pytest
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — REFLEX feedback performance test")
 
 import json
 import math

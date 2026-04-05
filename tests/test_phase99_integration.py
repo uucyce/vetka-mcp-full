@@ -26,8 +26,6 @@ from src.memory.memory_proxy import (
     reset_all_proxies,
 )
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 99 contracts changed")
-
 
 # ============================================================
 # INTEGRATION TEST: Full CAM → STM → MGC Flow

@@ -280,53 +280,6 @@ class CamelotEngine:
                 unique.append((key_str, score))
         return unique[:10]
 
-    def suggest_transition(
-        self, key_a: str, key_b: str,
-    ) -> Dict[str, Any]:
-        """
-        Suggest transition type and duration based on Camelot distance.
-
-        Distance mapping (from task spec):
-        - 0-1 (harmonically compatible) → short crossfade (0.5s)
-        - 2-3 (moderate)                → medium crossfade (1.0s)
-        - 4-5 (dramatic)                → long crossfade (2.0s)
-        - 6   (clash)                   → dip-to-black (2.0s)
-
-        Returns dict with type, duration_sec, quality, distance.
-        """
-        d = self.distance(key_a, key_b)
-        quality = self.transition_quality(key_a, key_b)
-
-        if d <= 1:
-            return {
-                "type": "cross_dissolve",
-                "duration_sec": 0.5,
-                "quality": quality,
-                "distance": d,
-            }
-        elif d <= 3:
-            return {
-                "type": "cross_dissolve",
-                "duration_sec": 1.0,
-                "quality": quality,
-                "distance": d,
-            }
-        elif d <= 5:
-            return {
-                "type": "cross_dissolve",
-                "duration_sec": 2.0,
-                "quality": quality,
-                "distance": d,
-            }
-        else:
-            # Clash — dip-to-black hides the harmonic collision
-            return {
-                "type": "dip_to_black",
-                "duration_sec": 2.0,
-                "quality": quality,
-                "distance": d,
-            }
-
     def key_from_musical(self, musical_key: str) -> Optional[str]:
         """Convert musical key name to Camelot code. E.g. 'A minor' → '8A'."""
         return _KEY_TO_CAMELOT.get(musical_key)

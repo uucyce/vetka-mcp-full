@@ -1,9 +1,5 @@
 # MARKER_136.UNIFIED_SEARCH_BACKEND_TEST
 # MARKER_137.S1_2_TAVILY_WIRE_TEST
-import pytest
-
-pytestmark = pytest.mark.stale(reason="Unified search — web search normalization logic changed")
-
 import asyncio
 
 from src.api.handlers import unified_search as us

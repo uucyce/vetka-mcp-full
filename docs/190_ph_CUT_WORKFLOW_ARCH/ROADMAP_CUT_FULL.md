@@ -1,9 +1,6 @@
 # CUT Full Roadmap v2
 # From current state to shipping NLE product
 
-> **NOTE:** For current feature status verified from code, see **[docs/VETKA_CUT_MANUAL.md](../VETKA_CUT_MANUAL.md)**.
-> This roadmap defines WHAT to build. The manual shows WHAT IS BUILT.
-
 **Date:** 2026-03-19
 **Basis:** CUT_UNIFIED_VISION.md v2 (canonical source of truth)
 **Audience:** Any agent (including Ollama 8B). Each task is self-contained.

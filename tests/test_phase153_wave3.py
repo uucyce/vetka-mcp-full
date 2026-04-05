@@ -20,7 +20,6 @@ import pytest
 
 from src.services.project_config import ProjectConfig, SessionState
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 153 contracts changed")
 
 @pytest.fixture
 def tmp_dir():
@@ -55,7 +54,6 @@ def api_client(tmp_dir):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
     from src.api.routes.mcc_routes import router
-
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)

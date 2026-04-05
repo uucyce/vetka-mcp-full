@@ -1,8 +1,4 @@
 # MARKER_137.S1_6_UNIFIED_SEARCH_E2E_TEST
-import pytest
-
-pytestmark = pytest.mark.stale(reason="Unified search — merge/filter logic changed")
-
 import asyncio
 
 from src.api.handlers import unified_search as us

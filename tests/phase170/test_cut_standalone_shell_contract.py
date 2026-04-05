@@ -1,7 +1,5 @@
-import pytest
 from pathlib import Path
 
-pytestmark = pytest.mark.stale(reason="CUT API refactored — bootstrap/project_state contracts changed")
 
 ROOT = Path("/Users/danilagulin/Documents/VETKA_Project/vetka_live_03")
 

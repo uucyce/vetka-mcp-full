@@ -172,7 +172,6 @@ async function installWorkerQueueMocks(page, requestLog, cancelBodies) {
   });
 }
 
-// MARKER_QA.W6: Rewritten to match current DebugShellPanel (MARKER_QA.W5.1).
 test.describe.serial('phase170 cut debug worker queue smoke', () => {
   test.setTimeout(90000);
 
@@ -198,25 +197,22 @@ test.describe.serial('phase170 cut debug worker queue smoke', () => {
       { waitUntil: 'domcontentloaded' }
     );
 
-    await expect(page.getByText('Project').first()).toBeVisible({ timeout: 10000 });
-    await page.click('button:text-is("View")'); await page.waitForTimeout(200); await page.click('text=Toggle NLE / Debug');
+    await expect(page.getByText('Source Browser').first()).toBeVisible();
+    await page.locator('button[title="Toggle NLE / Debug view"]').click();
     await expect(page.getByText('VETKA CUT')).toBeVisible();
-    // MARKER_QA.W6: DebugShellPanel uses "active:" / "recent:" labels (not "active_jobs:")
     await expect(page.getByText('Worker Queue')).toBeVisible();
-    await expect(page.getByText(/active:\s*1/)).toBeVisible();
-    await expect(page.getByText(/recent:\s*1/)).toBeVisible();
-    // Job row: "{job_id_prefix}... {state}" — job_id starts with "job_wave"
-    await expect(page.getByText('job_wave...')).toBeVisible();
-    await expect(page.getByText('running')).toBeVisible();
+    await expect(page.getByText(/active_jobs:\s*1/)).toBeVisible();
+    await expect(page.getByText(/recent_jobs:\s*1/)).toBeVisible();
+    await expect(page.getByText('waveform_build').first()).toBeVisible();
+    await expect(page.getByText('running · 42%')).toBeVisible();
+    await expect(page.getByText('audio_sync').first()).toBeVisible();
+    await expect(page.getByText('done · 100%')).toBeVisible();
 
-    // Cancel button text is just "Cancel"
-    await page.getByRole('button', { name: 'Cancel' }).click();
+    await page.getByRole('button', { name: 'Cancel Job' }).click();
     await expect.poll(() => cancelBodies.length).toBe(1);
-    // After cancel: active job moves to recent
-    await page.getByRole('button', { name: 'Refresh Project State' }).click();
-    await expect.poll(() => requestLog.filter((e) => e.pathname === '/api/cut/project-state').length).toBeGreaterThan(1);
-    await expect(page.getByText(/active:\s*0/)).toBeVisible();
-    await expect(page.getByText(/recent:\s*2/)).toBeVisible();
+    await expect(page.getByText(/active_jobs:\s*0/)).toBeVisible();
+    await expect(page.getByText(/recent_jobs:\s*2/)).toBeVisible();
+    await expect(page.getByText('cancelled · 42%')).toBeVisible();
 
     await expect(page.locator('text=MCC Runtime Error')).toHaveCount(0);
     await expect(pageErrors).toEqual([]);

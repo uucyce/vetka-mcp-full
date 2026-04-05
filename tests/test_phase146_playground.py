@@ -24,9 +24,6 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock
-import pytest
-
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 146 contracts changed")
 
 # Ensure project root in path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -519,7 +516,6 @@ class TestPlaygroundExpiry(unittest.TestCase):
         mock_git.return_value = ""
 
         from src.orchestration.playground_manager import PlaygroundManager
-
         manager = PlaygroundManager(base_dir=self.temp_dir)
 
         # Create playground

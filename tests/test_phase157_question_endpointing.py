@@ -6,9 +6,7 @@ Phase 157.2.8 tests:
 """
 
 from __future__ import annotations
-import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 157 contracts changed")
 
 def test_question_hint_detection_basic():
     from src.api.handlers import jarvis_handler as jh

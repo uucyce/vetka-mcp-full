@@ -15,7 +15,6 @@ import pytest
 
 from src.services.project_config import ProjectConfig, SessionState
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 153 contracts changed")
 
 # ──────────────────────────────────────────────────────────────
 # ProjectConfig tests

@@ -3,9 +3,6 @@
 Covers: list_tools, call_tool dispatch, migration messages, handler delegation.
 """
 import pytest
-
-pytestmark = pytest.mark.stale(reason="Mycelium MCP server refactored — tool count/dispatch changed")
-
 import json
 import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock

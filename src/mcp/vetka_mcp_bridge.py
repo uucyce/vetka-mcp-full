@@ -49,14 +49,12 @@ if _project_root not in sys.path:
 import asyncio
 import httpx
 import json
-import struct
 import sys
 import os
 import signal
 import uuid
 import contextvars
 import argparse
-from pathlib import Path
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -113,15 +111,6 @@ from src.mcp.tools.web_search_tool import register_web_search_tool
 from src.mcp.tools.task_board_tools import TASK_BOARD_SCHEMA
 # MARKER_119.8: Context7 library docs for @coder
 from src.mcp.tools.library_docs_tool import register_library_docs_tool
-# MARKER_198.SCREENSHOT: Screen capture + Vision OCR for all agents
-from src.mcp.tools.screenshot_tool import ScreenshotTool
-
-# MARKER_198.P2.4: Register failure workaround hook at import time
-try:
-    from src.services.reflex_workaround_hook import register_workaround_hook
-    register_workaround_hook()
-except Exception:
-    pass  # Hook registration is optional
 
 # VETKA server configuration
 VETKA_BASE_URL = "http://localhost:5001"
@@ -930,8 +919,7 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="vetka_task_board",
             description="Task Board CRUD (add/list/get/update/remove/summary/claim/complete/active_agents/merge_request/promote_to_main). "
-                        "Uses local transport as fallback when MYCELIUM MCP is unavailable. "
-                        "AGENT_WAKE: action=notify/notifications/ack_notifications for cross-agent notification inbox.",
+                        "Uses local transport as fallback when MYCELIUM MCP is unavailable.",
             inputSchema=TASK_BOARD_SCHEMA,
         ),
         Tool(
@@ -1032,43 +1020,6 @@ async def list_tools() -> list[Tool]:
                 }
             }
         ),
-        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
-        Tool(
-            name="vetka_screenshot",
-            description=(
-                "Capture screen and/or OCR text from display. "
-                "Non-interactive — for agent use. "
-                "Returns OCR text and/or JPEG path."
-            ),
-            inputSchema={
-                "type": "object",
-                "properties": {
-                    "mode": {
-                        "type": "string",
-                        "enum": ["ocr", "jpeg", "both"],
-                        "default": "both",
-                        "description": "ocr=text only, jpeg=image only, both=text+image"
-                    },
-                    "region": {
-                        "type": "string",
-                        "enum": ["full", "active"],
-                        "default": "full",
-                        "description": "full=all screens, active=frontmost window"
-                    },
-                    "monitor": {
-                        "type": "integer",
-                        "description": "Specific display number (1, 2, ...) — screencapture -D flag"
-                    },
-                    "quality": {
-                        "type": "integer",
-                        "default": 50,
-                        "minimum": 1,
-                        "maximum": 100,
-                        "description": "JPEG compression quality (1-100)"
-                    }
-                }
-            }
-        ),
     ]
 
     # Phase 55.1: Register new MCP tools
@@ -1103,80 +1054,6 @@ async def list_tools() -> list[Tool]:
 
 
 # ============================================================================
-# MARKER_200.W0.1: STM recording for Claude Code agents
-# ============================================================================
-# Claude Code agents never write to STM — 15% of REFLEX scoring power is wasted.
-# This records significant tool calls so STM is populated at session_init.
-
-_STM_SIGNIFICANT_TOOLS = {
-    "vetka_search_semantic", "vetka_search_files", "vetka_read_file",
-    "vetka_edit_file", "vetka_git_commit", "vetka_git_status",
-    "vetka_task_board", "vetka_session_init", "vetka_call_model",
-    "vetka_implement", "vetka_review", "vetka_research",
-    "vetka_execute_workflow", "vetka_task_dispatch", "vetka_task_import",
-    "vetka_edit_artifact", "vetka_approve_artifact", "vetka_reject_artifact",
-    "vetka_run_tests", "vetka_mycelium_pipeline",
-}
-_stm_session_count = 0
-_STM_SESSION_CAP = 50
-
-
-def _stm_summarize(tool_name: str, arguments: dict) -> Optional[str]:
-    """Generate one-line STM summary for significant tool calls.
-    Returns None for non-significant tools (health, tree, metrics, etc.)."""
-    if tool_name not in _STM_SIGNIFICANT_TOOLS:
-        return None
-
-    if tool_name == "vetka_edit_file":
-        return f"edit {arguments.get('path', '?')}"
-    elif tool_name == "vetka_read_file":
-        return f"read {arguments.get('path', '?')}"
-    elif tool_name in ("vetka_search_semantic", "vetka_search_files"):
-        return f"search: {arguments.get('query', '?')[:80]}"
-    elif tool_name == "vetka_task_board":
-        action = arguments.get("action", "?")
-        task_id = arguments.get("task_id", "")
-        extra = f" {task_id}" if task_id else ""
-        title = arguments.get("title", "")
-        if title:
-            extra += f" — {title[:50]}"
-        return f"task_board {action}{extra}"
-    elif tool_name == "vetka_git_commit":
-        return f"commit: {arguments.get('message', '')[:60]}"
-    elif tool_name == "vetka_git_status":
-        return "git status"
-    elif tool_name == "vetka_session_init":
-        role = arguments.get("role", "")
-        return f"session_init{f' role={role}' if role else ''}"
-    elif tool_name == "vetka_call_model":
-        return f"call_model {arguments.get('model', '?')}"
-    elif tool_name == "vetka_run_tests":
-        return f"run_tests {arguments.get('test_path', '?')}"
-    else:
-        return tool_name.replace("vetka_", "")
-
-
-def _record_stm(tool_name: str, arguments: dict) -> None:
-    """Record tool call to STM buffer. Non-blocking, non-fatal.
-    Caps at _STM_SESSION_CAP writes per MCP session."""
-    global _stm_session_count
-    if _stm_session_count >= _STM_SESSION_CAP:
-        return
-
-    summary = _stm_summarize(tool_name, arguments)
-    if not summary:
-        return
-
-    try:
-        from src.memory.stm_buffer import get_stm_buffer
-        stm = get_stm_buffer()
-        stm.add_message(summary, source="mcp_bridge")
-        _stm_session_count += 1
-    except Exception:
-        pass  # STM never blocks the bridge
-
-
-# ============================================================================
 # TOOL IMPLEMENTATIONS
 # ============================================================================
 
@@ -1190,31 +1067,8 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
     request_id = f"req-{uuid.uuid4().hex[:8]}"
     start_time = time.time()
 
-    # MARKER_200.PID_LOCK: Passive agent lock — write PID on every MCP call
-    # Zero overhead, enables worktree occupancy detection
-    try:
-        _cwd = os.environ.get("VETKA_MCP_CWD") or os.getcwd()
-        _lock_path = os.path.join(_cwd, ".agent_lock")
-        with open(_lock_path, "w") as _lf:
-            _lf.write(f"{os.getpid()}\n{time.time()}\n{name}\n")
-    except Exception:
-        pass  # Lock never blocks the bridge
-
     # Log request to VETKA group chat
     await log_mcp_request(name, arguments, request_id)
-
-    # MARKER_200.W0.1: Record tool call to STM for Claude Code agents
-    _record_stm(name, arguments)
-
-    # MARKER_198.P2.1: Pre-tool hooks (enrich args, block calls)
-    try:
-        from src.mcp.bridge_hooks import run_pre_hooks
-        _hook_sid = session_context.get()
-        arguments, _early_return = await run_pre_hooks(name, arguments, _hook_sid)
-        if _early_return is not None:
-            return _early_return if isinstance(_early_return, list) else [TextContent(type="text", text=str(_early_return))]
-    except Exception:
-        pass  # Hooks never block the bridge
 
     if not http_client:
         error_msg = "Error: HTTP client not initialized. Please restart the MCP server."
@@ -1485,31 +1339,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
             result = tool.execute(arguments)
             return [TextContent(type="text", text=format_llm_result(result))]
-
-        # MARKER_198.SCREENSHOT: Screen capture + Vision OCR
-        elif name == "vetka_screenshot":
-            tool = ScreenshotTool()
-            result = tool.execute(arguments)
-
-            if not result.get("success"):
-                err = result.get("error", "unknown error")
-                return [TextContent(type="text", text=f"Error: {err}")]
-
-            data = result.get("result", {})
-            parts = []
-
-            ocr_text = data.get("text")
-            if ocr_text is not None:
-                char_count = data.get("char_count", len(ocr_text))
-                parts.append(f"=== OCR TEXT ({char_count} chars) ===\n{ocr_text}")
-
-            image_path = data.get("image_path")
-            if image_path:
-                size_kb = data.get("image_size_kb", 0)
-                parts.append(f"IMAGE: {image_path} ({size_kb} KB)")
-
-            output = "\n\n".join(parts) if parts else "No output produced."
-            return [TextContent(type="text", text=output)]
 
         elif name == "vetka_read_group_messages":
             # Read group messages via REST API
@@ -1912,34 +1741,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         elif name == "vetka_task_board":
             # MARKER_178.6.1: Live fallback — uses local task_board handler
-            # MARKER_195.22: Reload BOTH orchestration + tools layers to pick up hot-patched code.
-            # Previous fix (195.21) only reloaded task_board_tools but not task_board.py,
-            # so complete_task/merge_request/promote_to_main changes stayed cached.
-            # Order matters: reload dependency (task_board) BEFORE dependent (task_board_tools).
             try:
-                import importlib
-                # MARKER_196.FIX: Reset singletons before reload to prevent leaks
-                try:
-                    from src.mcp.mcp_actor import MCPSessionDispatcher
-                    MCPSessionDispatcher.reset()
-                except Exception:
-                    pass
-                try:
-                    from src.orchestration.task_board import reset_task_board
-                    reset_task_board()
-                except Exception:
-                    pass
-                import src.orchestration.task_board as _board_mod
-                importlib.reload(_board_mod)
-                import src.mcp.tools.task_board_tools as _tb_mod
-                importlib.reload(_tb_mod)
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
-                # MARKER_201.MCP_NOTIFY_RECEIVER: inject cross-process notifications
-                if _notification_receiver is not None:
-                    _push = _notification_receiver.drain_pending()
-                    if _push:
-                        result["push_notifications"] = _push
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"
                 return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
             except Exception as e:
@@ -2096,21 +1900,9 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log successful response to group chat
             await log_mcp_response(name, data, request_id, duration_ms)
 
-            result_text = format_result(name, data)
-
-            # MARKER_198.P2.1: Post-tool hooks (record outcome, suggest workaround)
-            try:
-                from src.mcp.bridge_hooks import run_post_hooks
-                _hook_sid = session_context.get()
-                _suggestion = await run_post_hooks(name, arguments, result_text, _hook_sid)
-                if _suggestion:
-                    result_text += f"\n\n[MEMORY SUGGESTION]\n{_suggestion}"
-            except Exception:
-                pass
-
             return [TextContent(
                 type="text",
-                text=result_text
+                text=format_result(name, data)
             )]
         else:
             error_text = f"Error: HTTP {response.status_code}\n{response.text}"
@@ -2119,34 +1911,14 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
             # Log error response to group chat
             await log_mcp_response(name, None, request_id, duration_ms, error=error_text)
 
-            # MARKER_198.P2.5: Post-tool hooks on HTTP error (was missing for 4xx/5xx)
-            try:
-                from src.mcp.bridge_hooks import run_post_hooks
-                _hook_sid = session_context.get()
-                _suggestion = await run_post_hooks(name, arguments, error_text, _hook_sid, error=Exception(f"HTTP {response.status_code}"))
-                if _suggestion:
-                    error_text += f"\n\n[WORKAROUND]\n{_suggestion}"
-            except Exception:
-                pass
-
             return [TextContent(type="text", text=error_text)]
 
-    except httpx.ConnectError as e:
+    except httpx.ConnectError:
         duration_ms = (time.time() - start_time) * 1000
         error_msg = "Error: Cannot connect to VETKA server at localhost:5001.\nMake sure VETKA is running: python main.py"
 
         # Log connection error to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
-
-        # MARKER_198.P2.1: Post-tool hooks on error
-        try:
-            from src.mcp.bridge_hooks import run_post_hooks
-            _hook_sid = session_context.get()
-            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
-            if _suggestion:
-                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
-        except Exception:
-            pass
 
         return [TextContent(type="text", text=error_msg)]
     except Exception as e:
@@ -2155,16 +1927,6 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
 
         # Log exception to group chat
         await log_mcp_response(name, None, request_id, duration_ms, error=error_msg)
-
-        # MARKER_198.P2.1: Post-tool hooks on error
-        try:
-            from src.mcp.bridge_hooks import run_post_hooks
-            _hook_sid = session_context.get()
-            _suggestion = await run_post_hooks(name, arguments, error_msg, _hook_sid, error=e)
-            if _suggestion:
-                error_msg += f"\n\n[WORKAROUND]\n{_suggestion}"
-        except Exception:
-            pass
 
         return [TextContent(type="text", text=error_msg)]
 
@@ -2762,118 +2524,15 @@ async def graceful_shutdown():
     except Exception as e:
         print(f"[MCP] Pool cleanup error: {e}", file=sys.stderr)
 
-    # MARKER_201.MCP_NOTIFY_RECEIVER: Stop notification receiver on shutdown
-    if _notification_receiver is not None:
-        _notification_receiver.stop()
-
     # Close main client
     await cleanup_client()
 
     print("[MCP] Shutdown complete", file=sys.stderr)
 
 
-# MARKER_201.MCP_NOTIFY_RECEIVER: Cross-process notification receiver.
-# Connects to UDS Daemon (/tmp/vetka-events.uds) as an "agent" client.
-# The daemon fans out all EventBus events from all running worktrees to
-# this receiver, which buffers them for piggyback delivery in the next
-# vetka_task_board MCP response.
-#
-# Wire protocol: 4-byte big-endian length prefix + JSON payload.
-# Registration: first outgoing frame {"type": "agent", "role": <role>}
-#
-# Lifecycle: started once in main() when VETKA_AGENT_ROLE env var is set.
-# Reconnects with exponential backoff if the daemon is not running yet.
-
-class MCPNotificationReceiver:
-    """Buffers push notifications from the UDS daemon for piggybacking."""
-
-    SOCKET_PATH = "/tmp/vetka-events.uds"
-
-    def __init__(self, role: str, socket_path: str = SOCKET_PATH):
-        self._role = role
-        self._socket_path = socket_path
-        self._pending: list = []
-        self._running = False
-        self._task: Optional[asyncio.Task] = None
-
-    def start(self) -> None:
-        """Launch background listener coroutine as an asyncio Task."""
-        if self._task is None or self._task.done():
-            self._running = True
-            self._task = asyncio.create_task(
-                self._listen_loop(), name="uds-notify-receiver"
-            )
-
-    def stop(self) -> None:
-        """Cancel the background listener."""
-        self._running = False
-        if self._task and not self._task.done():
-            self._task.cancel()
-
-    def drain_pending(self) -> list:
-        """Return and clear all buffered notification frames."""
-        result = self._pending[:]
-        self._pending.clear()
-        return result
-
-    async def _listen_loop(self) -> None:
-        """Connect → register → read frames in a loop; reconnect on failure."""
-        backoff = 1.0
-        while self._running:
-            try:
-                reader, writer = await asyncio.open_unix_connection(self._socket_path)
-                # Send agent registration as first frame
-                reg = json.dumps({"type": "agent", "role": self._role}).encode()
-                writer.write(struct.pack(">I", len(reg)) + reg)
-                await writer.drain()
-                backoff = 1.0  # reset after successful connect
-
-                # Read length-prefixed frames until disconnect
-                while self._running:
-                    length_bytes = await reader.readexactly(4)
-                    length = struct.unpack(">I", length_bytes)[0]
-                    if length > 1_048_576:  # 1 MB sanity cap
-                        logger.warning("[MCPNotify] Oversized frame (%d bytes), reconnecting", length)
-                        break
-                    payload = await reader.readexactly(length)
-                    frame = json.loads(payload.decode())
-                    self._pending.append(frame)
-                    # Prevent unbounded growth between task_board calls
-                    if len(self._pending) > 200:
-                        self._pending = self._pending[-200:]
-
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
-
-            except (ConnectionRefusedError, FileNotFoundError):
-                pass  # daemon not running yet — retry silently
-            except asyncio.CancelledError:
-                return
-            except asyncio.IncompleteReadError:
-                pass  # daemon closed connection — reconnect
-            except Exception as exc:
-                logger.debug("[MCPNotify] Receiver error: %s", exc)
-
-            if self._running:
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 30.0)
-
-
-# Module-level singleton — set in main() when VETKA_AGENT_ROLE is present
-_notification_receiver: Optional[MCPNotificationReceiver] = None
-
-
 # MARKER_106a_4: Enhanced main with HTTP/WS/stdio modes
 async def main():
     """Run the MCP server with multi-transport support"""
-    # MARKER_195.22: Capture initial cwd before anything changes it.
-    # Claude Code launches MCP subprocess from worktree directory.
-    # session_init uses VETKA_MCP_CWD to detect branch correctly.
-    os.environ.setdefault("VETKA_MCP_CWD", os.getcwd())
-
     args = parse_args()
 
     # Register signal handlers
@@ -2883,27 +2542,6 @@ async def main():
 
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
-
-    # MARKER_205.UDS_AUTOSTART: Ensure UDS daemon is running (lightweight, 0 CPU idle).
-    # Every MCP bridge instance checks — first one to find it missing starts it.
-    _uds_socket = Path("/tmp/vetka-events.uds")
-    if not _uds_socket.exists():
-        _start_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "start_uds_daemon.sh"
-        if _start_script.exists():
-            import subprocess as _sp
-            _sp.Popen([str(_start_script)], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
-            print("[MCP] UDS daemon not running — started via start_uds_daemon.sh", file=sys.stderr)
-        else:
-            print("[MCP] UDS daemon not running and start script not found", file=sys.stderr)
-
-    # MARKER_201.MCP_NOTIFY_RECEIVER: Start cross-process notification receiver.
-    # Connects to UDS daemon and buffers push events for piggyback delivery.
-    global _notification_receiver
-    _agent_role = os.environ.get("VETKA_AGENT_ROLE", "").strip()
-    if _agent_role:
-        _notification_receiver = MCPNotificationReceiver(_agent_role)
-        _notification_receiver.start()
-        print(f"[MCP] MCPNotificationReceiver started (role={_agent_role})", file=sys.stderr)
 
     try:
         if args.http or args.ws:

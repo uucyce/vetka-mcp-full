@@ -61,13 +61,13 @@ const DOT_RADIUS = 2;
 const DOT_RADIUS_SYNC = 3;           // sync dots are larger
 const MIN_DOT_SPACING_PX = 3;        // skip dots closer than this
 
-// MARKER_GAMMA-P4.2: Monochrome palette — brightness differentiation only
+// Colors from Architecture doc §11 / §5.1
 const COLORS = {
-  audio:   '#ccc',      // bright — audio beats
-  visual:  '#888',      // medium — visual beats
-  script:  '#E0E0E0',   // near-white — script beats
-  sync:    '#fff',      // white — all-sync emphasis
-  syncDim: '#777',      // dimmed — partial sync (0.67)
+  audio:   '#5DCAA5',   // green
+  visual:  '#85B7EB',   // blue
+  script:  '#E0E0E0',   // white
+  sync:    '#FF9F43',   // orange — all-sync
+  syncDim: '#B87030',   // orange dimmed — partial sync (0.67)
   bg:      '#111111',
   border:  '#333',
 };

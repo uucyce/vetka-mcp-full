@@ -85,9 +85,7 @@ async def lifespan(app: FastAPI):
             await asyncio.wait_for(coro, timeout=timeout_sec)
             logger.info(f"[Shutdown] {label} stopped")
         except asyncio.TimeoutError:
-            logger.warning(
-                f"[Shutdown] {label} timeout after {timeout_sec:.1f}s (continue)"
-            )
+            logger.warning(f"[Shutdown] {label} timeout after {timeout_sec:.1f}s (continue)")
         except asyncio.CancelledError:
             logger.info(f"[Shutdown] {label} cancelled")
         except Exception as e:
@@ -124,12 +122,7 @@ async def lifespan(app: FastAPI):
         "MCC_JEPA_HTTP_URL",
         f"http://{os.environ['MCC_JEPA_HTTP_HOST']}:{os.environ['MCC_JEPA_HTTP_PORT']}/embed_texts",
     )
-    jepa_enabled = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    jepa_enabled = os.environ.get("MCC_JEPA_HTTP_ENABLE", "").strip().lower() in {"1", "true", "yes", "on"}
     jepa_host = os.environ.get("MCC_JEPA_HTTP_HOST", "127.0.0.1")
     jepa_port = os.environ.get("MCC_JEPA_HTTP_PORT", "8099")
     jepa_health_url = f"http://{jepa_host}:{jepa_port}/health"
@@ -153,9 +146,7 @@ async def lifespan(app: FastAPI):
                 )
                 for _ in range(25):
                     if await _http_ok(jepa_health_url):
-                        logger.info(
-                            f"[Startup] JEPA runtime started on {jepa_host}:{jepa_port}"
-                        )
+                        logger.info(f"[Startup] JEPA runtime started on {jepa_host}:{jepa_port}")
                         break
                     await asyncio.sleep(0.2)
                 if not await _http_ok(jepa_health_url):
@@ -166,9 +157,7 @@ async def lifespan(app: FastAPI):
             except Exception as e:
                 logger.warning(f"[Startup] JEPA runtime auto-start failed: {e}")
         else:
-            logger.info(
-                f"[Startup] JEPA runtime already active on {jepa_host}:{jepa_port}"
-            )
+            logger.info(f"[Startup] JEPA runtime already active on {jepa_host}:{jepa_port}")
 
     # Initialize all components using existing initialization module
     from src.initialization import initialize_all_components
@@ -192,9 +181,6 @@ async def lifespan(app: FastAPI):
 
     # === MARKER_131.C20A: Heartbeat daemon (60s loop) ===
     # MARKER_133.C33E: Load config from disk
-    # MARKER_198.HEARTBEAT: Event-driven wake instead of 5s poll
-    _heartbeat_wake_event = asyncio.Event()
-
     async def heartbeat_daemon():
         """Run heartbeat tick every N seconds to process @dragon/@doctor tasks."""
         from src.orchestration.mycelium_heartbeat import heartbeat_tick
@@ -223,10 +209,8 @@ async def lifespan(app: FastAPI):
                 enabled = config.get("enabled", False)
 
                 if not enabled:
-                    # MARKER_198.HEARTBEAT: Sleep until settings endpoint fires wake event
-                    # No more 5s poll — daemon is fully dormant until triggered
-                    _heartbeat_wake_event.clear()
-                    await _heartbeat_wake_event.wait()
+                    # Check every 5s if user toggled ON — responsive to MCC button
+                    await asyncio.sleep(5)
                     continue
 
                 # MARKER_140: monitor_all=True scans ALL active groups + recent solo chats
@@ -377,9 +361,7 @@ async def lifespan(app: FastAPI):
     else:
         heartbeat_task = asyncio.create_task(heartbeat_daemon())
         app.state.heartbeat_task = heartbeat_task
-        # MARKER_198.HEARTBEAT: Expose wake event so settings endpoint can trigger it
-        app.state.heartbeat_wake_event = _heartbeat_wake_event
-        logger.info("[Startup] Heartbeat daemon started (event-driven when disabled)")
+        logger.info("[Startup] Heartbeat daemon started (60s interval)")
 
     # === PHASE 56: Start model health checks ===
     # === PHASE 60.4: Auto-discover Ollama models ===
@@ -499,9 +481,7 @@ async def lifespan(app: FastAPI):
             logger.error(f"[Startup] TTS server start failed: {e}")
             app.state.tts_process = None
     else:
-        logger.info(
-            "[Startup] TTS autostart skipped (set VETKA_TTS_AUTOSTART=1 to enable)"
-        )
+        logger.info("[Startup] TTS autostart skipped (set VETKA_TTS_AUTOSTART=1 to enable)")
         app.state.tts_process = None
 
     # === MARKER_106e_2: Register async Socket.IO handlers ===
@@ -621,17 +601,9 @@ app = FastAPI(
 )
 
 # CORS Middleware
-# MARKER_196.GW-SEC: Gateway endpoints use restricted CORS; others use permissive for dev
-_gateway_origins = [
-    o.strip()
-    for o in os.environ.get("GATEWAY_ALLOWED_ORIGINS", "").split(",")
-    if o.strip()
-]
-_cors_origins = _gateway_origins if _gateway_origins else ["*"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

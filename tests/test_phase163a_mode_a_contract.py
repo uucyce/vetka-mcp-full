@@ -1,7 +1,5 @@
 from pathlib import Path
-import pytest
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 163a contracts changed")
 
 ROOT = Path(__file__).resolve().parents[1]
 

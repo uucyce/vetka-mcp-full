@@ -4,9 +4,6 @@ Test suite for CAM tools integration in VETKA agents
 """
 
 import pytest
-
-pytestmark = pytest.mark.stale(reason="CAM/AURA integration — level lookup API changed")
-
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch
 from typing import Dict, Any, List

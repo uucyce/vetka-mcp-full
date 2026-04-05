@@ -66,16 +66,15 @@ _MEDIUM_MODEL_CONTEXT = 32768    # ≤32k → standard palette
 
 
 def _infer_context_from_git() -> tuple:
-    """MARKER_186.3: Scan recent git changes to build task_text.
+    """MARKER_186.3: Scan recent git changes to build task_text and mgc_stats.
 
     Returns (task_text, mgc_stats) where task_text is a synthetic description
     built from recently changed file extensions and directories.
-    mgc_stats is always empty — real MGC stats come from get_mgc_cache().get_stats()
-    (MARKER_200.MGC_REAL).
     """
     import subprocess
 
     task_keywords: list = []
+    mgc_stats: Dict[str, Any] = {}
 
     try:
         result = subprocess.run(
@@ -90,7 +89,7 @@ def _infer_context_from_git() -> tuple:
         if not files:
             return "", {}
 
-        # Count file types for keyword inference
+        # Count file types for MGC stats
         ext_counts: Dict[str, int] = {}
         for f in files:
             ext = os.path.splitext(f)[1].lower()
@@ -129,12 +128,18 @@ def _infer_context_from_git() -> tuple:
         # Deduplicate
         task_keywords = list(dict.fromkeys(task_keywords))
 
+        # MGC stats: treat recently changed files as "hot" gen0
+        ui_file_count = ext_counts.get(".tsx", 0) + ext_counts.get(".ts", 0) + ext_counts.get(".css", 0)
+        mgc_stats = {
+            "gen0_size": len(files),
+            "gen0_max": 100,
+            "hit_rate": min(1.0, ui_file_count / max(1, len(files))),
+        }
+
     except Exception:
         pass
 
-    # MARKER_200.MGC_REAL: No fake mgc_stats from git diff.
-    # Real MGC stats are read from get_mgc_cache().get_stats() in from_session().
-    return " ".join(task_keywords), {}
+    return " ".join(task_keywords), mgc_stats
 
 
 def _agent_type_to_role(agent_type: str) -> str:
@@ -250,7 +255,6 @@ class ReflexContext:
         model_context_length: int = 128000,
         model_output_tps: float = 50.0,
         agent_type: str = "",
-        stm_items: Optional[List[str]] = None,
     ) -> "ReflexContext":
         """Build ReflexContext from vetka_session_init response.
 
@@ -266,28 +270,15 @@ class ReflexContext:
             model_output_tps: Model speed
             agent_type: Agent type: "claude_code", "cursor", "dragon", etc.
         """
-        # MARKER_198.P0.3: HOPE LOD from task complexity + model tier (NOT viewport zoom)
-        # LOW = compressed overview (for Haiku or high-complexity cross-domain tasks)
-        # MID = balanced (default, for Sonnet or medium tasks)
-        # HIGH = full detail (for Opus or low-complexity single-file tasks)
-        _task_complexity = session_data.get("task_board_summary", {}).get("top_pending", [{}])
-        _complexity_hint = "medium"  # default
-        if _task_complexity and isinstance(_task_complexity[0], dict):
-            _complexity_hint = _task_complexity[0].get("complexity", "medium")
-
-        # Model tier override
-        _agent_type = agent_type or "claude_code"
-        if "haiku" in _agent_type.lower():
-            hope_level = "LOW"  # Haiku always gets compressed context
-        elif "opus" in _agent_type.lower():
-            hope_level = "HIGH" if _complexity_hint == "low" else "MID"
-        else:  # sonnet, default
-            if _complexity_hint == "high":
-                hope_level = "LOW"
-            elif _complexity_hint == "low":
-                hope_level = "HIGH"
-            else:
-                hope_level = "MID"
+        # Extract viewport zoom → HOPE level
+        viewport = session_data.get("viewport", {})
+        zoom = viewport.get("zoom", 0.5)
+        if zoom < 0.3:
+            hope_level = "LOW"
+        elif zoom > 1.0:
+            hope_level = "HIGH"
+        else:
+            hope_level = "MID"
 
         # Extract user tool preferences from ENGRAM
         user_prefs = session_data.get("user_preferences", {})
@@ -305,109 +296,13 @@ class ReflexContext:
         # MARKER_186.3: Map agent_type to agent_role for role-based filtering
         agent_role = _agent_type_to_role(agent_type)
 
-        # MARKER_200.CAM_COSINE: Compute CAM surprise from embedding cosine distance.
-        # Replaces word-overlap Jaccard (Phase 198) with real semantic distance.
-        # Uses mcc_jepa_adapter fallback chain: HTTP → Ollama → deterministic hash.
-        # Falls back to Jaccard if embedding fails.
-        cam_surprise = 0.0
-        try:
-            import json as _json_cam
-            from pathlib import Path as _Path
-
-            def _cam_project_root() -> "_Path":
-                """Worktree-safe project root (same pattern as experience_report.py)."""
-                candidate = _Path(__file__).resolve().parent.parent.parent
-                parts = candidate.parts
-                try:
-                    wt_idx = parts.index(".claude")
-                    main_root = _Path(*parts[:wt_idx])
-                    if main_root.exists():
-                        return main_root
-                except ValueError:
-                    pass
-                return candidate
-
-            _cam_path = _cam_project_root() / "data" / "cam_last_task.json"
-
-            # Determine current task text from session data
-            _current_task_text = task_text.strip()
-            if not _current_task_text:
-                _tbs = session_data.get("task_board_summary", {})
-                _top = _tbs.get("top_pending", [])
-                if _top and isinstance(_top[0], dict):
-                    _current_task_text = _top[0].get("title", "")
-
-            if _cam_path.exists() and _current_task_text:
-                _prev = _json_cam.loads(_cam_path.read_text())
-                _prev_embedding = _prev.get("embedding")
-                _prev_text = _prev.get("task_text", "")
-
-                if _prev_embedding and isinstance(_prev_embedding, list):
-                    # Cosine distance path: embed current, compare to stored embedding
-                    try:
-                        from src.services.mcc_jepa_adapter import embed_texts_for_overlay
-                        _result = embed_texts_for_overlay(
-                            [_current_task_text], target_dim=128
-                        )
-                        if _result and _result.vectors and len(_result.vectors) > 0:
-                            _curr_emb = _result.vectors[0]
-                            _prev_emb = _prev_embedding
-                            # Cosine similarity: dot(a,b) / (|a| * |b|)
-                            _dot = sum(a * b for a, b in zip(_curr_emb, _prev_emb))
-                            _norm_a = sum(a * a for a in _curr_emb) ** 0.5
-                            _norm_b = sum(b * b for b in _prev_emb) ** 0.5
-                            if _norm_a > 0 and _norm_b > 0:
-                                _cosine_sim = _dot / (_norm_a * _norm_b)
-                                cam_surprise = round(
-                                    max(0.0, min(1.0, 1.0 - _cosine_sim)), 4
-                                )
-                    except Exception:
-                        pass  # Fall through to Jaccard below
-
-                # Jaccard fallback if embedding failed or no stored embedding
-                if cam_surprise == 0.0 and _prev_text and _prev_text != _current_task_text:
-                    _prev_words = set(_prev_text.lower().split())
-                    _curr_words = set(_current_task_text.lower().split())
-                    _total = len(_prev_words | _curr_words)
-                    if _total > 0:
-                        _overlap = len(_prev_words & _curr_words)
-                        cam_surprise = round(1.0 - _overlap / _total, 4)
-
-            # Persist current task text + embedding for next session
-            if _current_task_text:
-                _cam_data: Dict[str, Any] = {"task_text": _current_task_text}
-                try:
-                    from src.services.mcc_jepa_adapter import embed_texts_for_overlay
-                    _save_result = embed_texts_for_overlay(
-                        [_current_task_text], target_dim=128
-                    )
-                    if _save_result and _save_result.vectors and len(_save_result.vectors) > 0:
-                        _cam_data["embedding"] = _save_result.vectors[0]
-                except Exception:
-                    pass  # Save text-only if embedding fails
-                _cam_path.parent.mkdir(parents=True, exist_ok=True)
-                _cam_path.write_text(_json_cam.dumps(_cam_data))
-        except Exception:
-            pass  # CAM surprise is best-effort — never blocks session init
-
-        # MARKER_200.MGC_REAL: Read actual MGC cache stats instead of git-diff heuristic
-        if not mgc_stats:
-            try:
-                from src.memory.mgc_cache import get_mgc_cache
-                _mgc = get_mgc_cache()
-                _mgc_s = _mgc.get_stats() if hasattr(_mgc, 'get_stats') else {}
-                if _mgc_s:
-                    mgc_stats = _mgc_s
-            except Exception:
-                pass  # MGC stats are best-effort
-
         return ReflexContext(
             task_text=task_text,
             phase_type=phase_type,
             agent_role=agent_role,
-            cam_surprise=cam_surprise,
+            cam_surprise=0.0,  # Not available at session start
             user_tool_prefs=tool_prefs,
-            stm_items=stm_items or [],  # MARKER_198.P0.1: populated from disk if available
+            stm_items=[],  # STM empty at session start
             hope_level=hope_level,
             mgc_stats=mgc_stats,
             feedback_scores=feedback_scores or {},
@@ -533,44 +428,11 @@ class ReflexScorer:
         return scored[:top_n]
 
     def score(self, tool: Any, context: ReflexContext) -> float:
-        """Score a single tool against context. Returns 0.0-1.0.
-
-        MARKER_199.EMOTION_SCORE: Emotion modifier is applied here (same as recommend()).
-        final_score = base_score * emotion_modifier(curiosity, trust, caution)
-        Modifier is clamped to [0.3, 1.5]; result is clamped to [0.0, 1.0].
-        Emotion errors are swallowed — they must never break scoring.
-
-        Previous: MARKER_195.2.3 (initial wiring, single-signal only).
-        Now: full EmotionContext with agent_id, phase_type, permission (parity with recommend()).
-        """
+        """Score a single tool against context. Returns 0.0-1.0."""
         if not REFLEX_ENABLED:
             return 0.0
         signals = self.score_signals(tool, context)
-        total = self._weighted_sum(signals)
-
-        # MARKER_199.EMOTION_SCORE: Apply emotion modifier to single-tool scoring.
-        # Builds EmotionContext identical to recommend() so both paths are consistent.
-        try:
-            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext as EmoCtx
-            emotion_engine = get_reflex_emotions()
-            tool_id = getattr(tool, "tool_id", str(tool))
-            emo_ctx = EmoCtx(
-                agent_id=context.extra.get("agent_type", ""),
-                phase_type=context.phase_type,
-                tool_permission=getattr(tool, "permission", "READ"),
-                is_foreign_file=context.extra.get("is_foreign_file", False),
-                has_recon=context.extra.get("has_recon", True),
-                guard_warnings=context.extra.get("guard_warnings", []),
-                freshness_score=context.extra.get("freshness_score", 0.0),
-                protocol_violation_count=context.extra.get("protocol_violation_count", 0),
-            )
-            breakdown = emotion_engine.get_modifier_breakdown(tool_id, emo_ctx)
-            emo_modifier = breakdown.get("modifier", 1.0)
-            total = max(0.0, min(1.0, total * emo_modifier))
-        except Exception:
-            pass  # Emotion errors never break scoring
-
-        return round(total, 4)
+        return round(self._weighted_sum(signals), 4)
 
     def score_signals(self, tool: Any, context: ReflexContext) -> Dict[str, float]:
         """Compute all 8 signal scores for a tool. Each returns 0.0-1.0."""
@@ -959,13 +821,11 @@ class ReflexScorer:
         top_n: int = 10,
         agent_type: str = "",
         current_task: Optional[Dict[str, Any]] = None,
-        stm_items: Optional[List[str]] = None,
     ) -> List[ScoredTool]:
         """Recommend tools for session_init response (IP-6).
 
         MARKER_186.3: Enhanced with agent_type and auto-context from git.
         MARKER_191.3: Enhanced with current_task for task-aware semantic matching.
-        MARKER_198.P0.1: Enhanced with stm_items from disk-persisted STM buffer.
         Builds ReflexContext from session data, returns broad recommendations.
         """
         if not REFLEX_ENABLED:
@@ -992,7 +852,6 @@ class ReflexScorer:
             phase_type=phase_type,
             feedback_scores=feedback_scores,
             agent_type=agent_type,
-            stm_items=stm_items,  # MARKER_198.P0.1: pass disk-loaded STM items
         )
 
         try:

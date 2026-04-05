@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
-
-pytestmark = pytest.mark.stale(reason="Myco runtime role preview — registry constants changed")
 
 
 def test_role_preview_registry_contains_expected_roles_and_system_assets() -> None:

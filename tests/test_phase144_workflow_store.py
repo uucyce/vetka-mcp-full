@@ -18,8 +18,6 @@ from src.services.workflow_store import (
     VALID_EDGE_TYPES,
 )
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 144 contracts changed")
-
 
 @pytest.fixture
 def store(tmp_path):
@@ -1593,7 +1591,6 @@ class TestArchitectChatFix:
         from fastapi.testclient import TestClient
         from src.api.routes.architect_chat_routes import router
         from fastapi import FastAPI
-
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)

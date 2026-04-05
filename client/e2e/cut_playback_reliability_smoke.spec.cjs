@@ -176,11 +176,9 @@ test.describe.serial('phase170 cut playback reliability smoke', () => {
     );
 
     await expect(page.getByTestId('cut-editor-layout')).toBeVisible();
-    // MARKER_QA.W6: Source monitor shows empty state, program monitor auto-derives
-    // media from clip at playhead (clip_a starts at 0), so it won't show empty state.
-    // Just verify both monitor areas are rendered.
+    // Program monitor should show empty state text
     await expect(page.locator('text=Select a clip to preview')).toBeVisible();
-    await expect(page.locator('text=PROGRAM').first()).toBeVisible();
+    await expect(page.locator('text=Program Monitor')).toBeVisible();
   });
 
   test('clicking a clip in source browser activates preview and shows timecode', async ({ page }) => {
@@ -219,8 +217,8 @@ test.describe.serial('phase170 cut playback reliability smoke', () => {
       await expect.poll(() => mediaProxyHits).toBeGreaterThanOrEqual(0);
     }
 
-    // Timecode display should be visible (00:00:00:00) — multiple timecodes exist (source + program)
-    await expect(page.locator('text=00:00:00:00').first()).toBeVisible();
+    // Timecode display should be visible (00:00:00:00)
+    await expect(page.locator('text=00:00:00:00')).toBeVisible();
   });
 
   test('error overlay appears when media-proxy returns 404', async ({ page }) => {

@@ -16,7 +16,6 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import {
   IconSkipStart, IconPlay, IconPause, IconSkipEnd,
 } from './icons/CutIcons';
-import TimecodeField, { formatTimecode as formatTimecodeDisplay } from './TimecodeField';
 
 // ─── Styles ───
 
@@ -40,7 +39,7 @@ const SCRUBBER_ROW: CSSProperties = {
 
 const SCRUBBER_FILL: CSSProperties = {
   height: '100%',
-  background: '#ccc',
+  background: '#3b82f6',
   borderRadius: 1,
   transition: 'width 0.05s linear',
 };
@@ -94,7 +93,13 @@ const IO_BTN: CSSProperties = {
 
 // ─── Helpers ───
 
-// MARKER_W5.TC: formatTC replaced by TimecodeField component and formatTimecodeDisplay import
+function formatTC(seconds: number, fps = 25): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60);
+  const f = Math.floor((seconds % 1) * fps);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
+}
 
 // ─── Component ───
 
@@ -103,12 +108,9 @@ interface MonitorTransportProps {
 }
 
 export default function MonitorTransport({ feed }: MonitorTransportProps) {
-  // MARKER_DUAL-VIDEO: Source transport uses sourceCurrentTime/seekSource/playSource,
-  // Program transport uses timeline currentTime/seek/play
-  const isSource = feed === 'source';
-  const currentTime = useCutEditorStore((s) => isSource ? s.sourceCurrentTime : s.currentTime);
-  const duration = useCutEditorStore((s) => isSource ? s.sourceDuration : s.duration);
-  const isPlaying = useCutEditorStore((s) => isSource ? s.sourceIsPlaying : s.isPlaying);
+  const currentTime = useCutEditorStore((s) => s.currentTime);
+  const duration = useCutEditorStore((s) => s.duration);
+  const isPlaying = useCutEditorStore((s) => s.isPlaying);
   // MARKER_W1.4: Read correct marks based on feed
   const sourceMarkIn = useCutEditorStore((s) => s.sourceMarkIn);
   const sourceMarkOut = useCutEditorStore((s) => s.sourceMarkOut);
@@ -119,26 +121,20 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
   const setSequenceMarkIn = useCutEditorStore((s) => s.setSequenceMarkIn);
   const setSequenceMarkOut = useCutEditorStore((s) => s.setSequenceMarkOut);
 
-  const markIn = isSource ? sourceMarkIn : sequenceMarkIn;
-  const markOut = isSource ? sourceMarkOut : sequenceMarkOut;
-  const setMarkIn = isSource ? setSourceMarkIn : setSequenceMarkIn;
-  const setMarkOut = isSource ? setSourceMarkOut : setSequenceMarkOut;
+  const markIn = feed === 'source' ? sourceMarkIn : sequenceMarkIn;
+  const markOut = feed === 'source' ? sourceMarkOut : sequenceMarkOut;
+  const setMarkIn = feed === 'source' ? setSourceMarkIn : setSequenceMarkIn;
+  const setMarkOut = feed === 'source' ? setSourceMarkOut : setSequenceMarkOut;
 
-  const projectFramerate = useCutEditorStore((s) => s.projectFramerate);
-  const dropFrame = useCutEditorStore((s) => s.dropFrame);
-  // MARKER_GAMMA-LOOP: Loop playback toggle (program feed only)
-  const loopPlayback = useCutEditorStore((s) => s.loopPlayback);
-  const setLoopPlayback = useCutEditorStore((s) => s.setLoopPlayback);
-
-  const togglePlay = useCutEditorStore((s) => isSource ? s.togglePlaySource : s.togglePlay);
-  const seek = useCutEditorStore((s) => isSource ? s.seekSource : s.seek);
+  const togglePlay = useCutEditorStore((s) => s.togglePlay);
+  const seek = useCutEditorStore((s) => s.seek);
 
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   const handleSkipStart = useCallback(() => seek(0), [seek]);
   const handleSkipEnd = useCallback(() => seek(duration), [seek, duration]);
-  const handleStepBack = useCallback(() => seek(Math.max(0, currentTime - 1 / projectFramerate)), [seek, currentTime, projectFramerate]);
-  const handleStepForward = useCallback(() => seek(Math.min(duration, currentTime + 1 / projectFramerate)), [seek, currentTime, duration, projectFramerate]);
+  const handleStepBack = useCallback(() => seek(Math.max(0, currentTime - 1 / 25)), [seek, currentTime]);
+  const handleStepForward = useCallback(() => seek(Math.min(duration, currentTime + 1 / 25)), [seek, currentTime, duration]);
 
   // MARKER_FIX-MONITOR-1: Navigate edit points (clip boundaries)
   const lanes = useCutEditorStore((s) => s.lanes);
@@ -175,35 +171,13 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
     }
   }, [lanes, lockedLanes, currentTime, seek]);
 
-  // MARKER_FCP7.MON2: Mark Clip (X) — set IN/OUT to boundaries of clip under playhead
-  const handleMarkClip = useCallback(() => {
-    for (const lane of lanes) {
-      for (const clip of lane.clips) {
-        if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
-          setMarkIn(clip.start_sec);
-          setMarkOut(clip.start_sec + clip.duration_sec);
-          return;
-        }
-      }
-    }
-  }, [lanes, currentTime, setMarkIn, setMarkOut]);
-
-  // MARKER_W5.MF: Match Frame (FCP7 Ch.50)
-  // Find clip at playhead → load source in Source Monitor → seek to matching frame
   const handleMatchFrame = useCallback(() => {
-    const state = useCutEditorStore.getState();
+    // Match Frame: find clip at playhead → load into Source Monitor
+    const setSourceMedia = useCutEditorStore.getState().setSourceMedia;
     for (const lane of lanes) {
       for (const clip of lane.clips) {
         if (currentTime >= clip.start_sec && currentTime < clip.start_sec + clip.duration_sec) {
-          // Calculate source-relative time
-          const sourceOffset = clip.source_in ?? 0;
-          const sourceTime = (currentTime - clip.start_sec) + sourceOffset;
-          // Load source into Source Monitor
-          state.setSourceMedia(clip.source_path);
-          // Set source mark IN to the matched frame so editor can see it
-          state.setSourceMarkIn(sourceTime);
-          // Focus Source Monitor
-          state.setFocusedPanel('source');
+          setSourceMedia(clip.source_path);
           return;
         }
       }
@@ -229,18 +203,11 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
       {/* MARKER_FIX-MONITOR-1: Controls row — FCP7/Premiere centered layout */}
       <div style={CONTROLS_ROW}>
-        {/* Left: Editable Timecode (MARKER_W5.TC) */}
-        <TimecodeField
-          seconds={currentTime}
-          fps={projectFramerate}
-          dropFrame={dropFrame}
-          onSeek={seek}
-          style={{ position: 'absolute', left: 8 }}
-          testId={`monitor-timecode-${feed}`}
-        />
+        {/* Left: Timecode (absolute positioned) */}
+        <span style={{ ...TC_STYLE, position: 'absolute', left: 8 }}>{formatTC(currentTime)}</span>
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
-        <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to Previous Edit (Up)" aria-label="Previous Edit" data-testid="prev-edit">
+        <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to previous edit (Up)">
           <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'|◂◂'}</span>
         </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipStart} title="Go to start">
@@ -249,7 +216,7 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame (Left)">
           <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
         </button>
-        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#ccc' : '#999' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
+        <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#3b82f6' : '#ccc' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
         <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame (Right)">
@@ -258,55 +225,31 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
         <button style={TRANSPORT_BTN} onClick={handleSkipEnd} title="Go to end">
           <IconSkipEnd size={14} />
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to Next Edit (Down)" aria-label="Next Edit" data-testid="next-edit">
+        <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to next edit (Down)">
           <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'▸▸|'}</span>
         </button>
 
         {/* Right: Duration + Marking (absolute positioned) */}
         <div style={{ position: 'absolute', right: 8, display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={DUR_STYLE}>{formatTimecodeDisplay(duration, projectFramerate, dropFrame)}</span>
-          {/* IN / OUT + Mark Clip + Match Frame — FCP7-style bracket icons, monochrome */}
+          <span style={DUR_STYLE}>{formatTC(duration)}</span>
+          {/* IN / OUT + Match Frame — Source and Program both get marks */}
           <div style={{ width: 1, height: 14, background: '#333' }} />
           <button
-            style={{ ...IO_BTN, color: markIn != null ? '#ccc' : '#666' }}
+            style={{ ...IO_BTN, color: markIn != null ? '#3b82f6' : '#666' }}
             onClick={() => setMarkIn(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} IN (I)`}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M7 1H4V9H7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            I
           </button>
           <button
-            style={{ ...IO_BTN, color: markOut != null ? '#ccc' : '#666' }}
+            style={{ ...IO_BTN, color: markOut != null ? '#3b82f6' : '#666' }}
             onClick={() => setMarkOut(currentTime)}
             title={`Set ${feed === 'source' ? 'Source' : 'Sequence'} OUT (O)`}
           >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M3 1H6V9H3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            O
           </button>
-          <button
-            style={IO_BTN}
-            onClick={handleMarkClip}
-            title="Mark Clip (X)"
-            data-testid="mark-clip"
-            aria-label="mark clip"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M7 1H4V9H7M3 1H6V9H3" stroke="currentColor" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round" opacity="0.5"/><path d="M2 2L8 8M8 2L2 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          </button>
-          <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)" data-testid="match-frame" aria-label="match frame">
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><rect x="1" y="2" width="8" height="6" rx="1" stroke="currentColor" strokeWidth="1.2"/><line x1="4" y1="2" x2="4" y2="8" stroke="currentColor" strokeWidth="0.8"/><line x1="7" y1="2" x2="7" y2="8" stroke="currentColor" strokeWidth="0.8"/></svg>
-          </button>
-          {/* MARKER_GAMMA-LOOP: Loop toggle (program monitor only) */}
-          {!isSource && (
-            <button
-              style={{ ...IO_BTN, color: loopPlayback ? '#ccc' : '#444', borderColor: loopPlayback ? '#555' : '#333' }}
-              onClick={() => setLoopPlayback(!loopPlayback)}
-              title="Loop Playback"
-              data-testid="loop-playback-btn"
-              aria-label="loop playback"
-            >
-              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                <path d="M2 3H7a2 2 0 010 4H3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-                <path d="M3 2L2 3l1 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+          {feed === 'program' && (
+            <button style={IO_BTN} onClick={handleMatchFrame} title="Match Frame (F)">F</button>
           )}
         </div>
       </div>

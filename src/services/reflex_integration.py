@@ -25,7 +25,6 @@ Part of VETKA OS:
 """
 
 import logging
-import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -183,18 +182,9 @@ def reflex_post_fc(
         for te in tool_executions:
             tool_name = te.get("name", "")
             result = te.get("result", {})
-            raw_success = result.get("success", False)
-            # MARKER_199.CORTEX_BENIGN_MISS — distinguish tool error from "no result"
-            # File-not-found / no-match is normal operation, NOT a tool failure.
-            error_msg = str(result.get("error", ""))
-            is_benign_miss = bool(re.search(
-                r"not found|no such file|does not exist|no match|empty|not exist"
-                r"|нет файла|файл не найден",
-                error_msg, re.IGNORECASE
-            )) if error_msg else False
-            success = raw_success or is_benign_miss
-            # Usefulness: only true when tool ran successfully AND returned content
-            useful = raw_success and bool(result.get("result"))
+            success = result.get("success", False)
+            # Usefulness heuristic: has non-empty result content
+            useful = success and bool(result.get("result"))
 
             fb.record(
                 tool_id=tool_name,
@@ -258,26 +248,6 @@ def reflex_verifier(
             status = "PASS" if verifier_passed else "FAIL"
             logger.info("[REFLEX IP-5] Verifier %s → %d tools feedback for %s (run=%s, conf=%.2f)",
                         status, count, subtask_id, run_id or "?", verifier_confidence)
-
-        # MARKER_199.VERIFIER_TRUST — Wire verifier outcome into Trust emotion.
-        # Pass → build trust (+0.15 EMA); Fail → drop trust fast (-0.35 EMA).
-        # Wrapped in try/except: emotions never break the verifier pipeline.
-        try:
-            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
-            emo_engine = get_reflex_emotions()
-            emo_ctx = EmotionContext(phase_type=phase_type)
-            for tid in tools_used:
-                if tid:
-                    emo_engine.record_outcome(tid, success=verifier_passed, context=emo_ctx)
-            if tools_used:
-                logger.debug(
-                    "[REFLEX IP-5] VERIFIER_TRUST: %s → trust %s for %d tool(s)",
-                    "PASS" if verifier_passed else "FAIL",
-                    "+" if verifier_passed else "-",
-                    len(tools_used),
-                )
-        except Exception as _emo_err:
-            logger.debug("[REFLEX IP-5] VERIFIER_TRUST emotion update failed (non-fatal): %s", _emo_err)
 
         # MARKER_182.REFLEX: Log to ActionRegistry if run_id provided
         if run_id:
@@ -362,7 +332,6 @@ def reflex_session(
     phase_type: str = "research",
     agent_type: str = "",
     current_task: Optional[Dict[str, Any]] = None,
-    stm_items: Optional[List[str]] = None,
 ) -> List[Dict]:
     """MARKER_172.P4.IP6 + MARKER_186.3 + MARKER_191.3 + MARKER_193.2 — Get task-aware recommendations for session_init.
 
@@ -372,7 +341,6 @@ def reflex_session(
     MARKER_186.3: Now accepts agent_type for agent-aware scoring.
     MARKER_191.3: Now accepts current_task for task-aware semantic matching.
     MARKER_193.2: Guard filtering — blocked/warned tools annotated before return.
-    MARKER_198.P0.1: Now accepts stm_items from disk-persisted STM buffer.
 
     Returns:
         List of {tool_id, score, reason} dicts (blocked tools excluded).
@@ -386,10 +354,9 @@ def reflex_session(
         scored = scorer.recommend_for_session(
             session_data,
             phase_type=phase_type,
-            top_n=3,  # MARKER_197.SLIM: Reduced from 10 to 3 to cut token bloat
+            top_n=10,
             agent_type=agent_type,
             current_task=current_task,
-            stm_items=stm_items,  # MARKER_198.P0.1: disk-loaded STM context
         )
 
         # MARKER_173.P2.IP6_UPDATE: Apply user preferences (pin/ban)
@@ -412,106 +379,6 @@ def reflex_session(
             recs = guard.filter_recommendations(recs, ctx)
         except Exception as e:
             logger.debug("[REFLEX IP-6] Guard filtering failed (non-fatal): %s", e)
-
-        # MARKER_196.1: D2 → D3 wiring — populate EmotionContext.tool_freshness from ToolSourceWatch
-        # MARKER_196.2: D1 → D3 wiring — populate EmotionContext.guard_warnings from ProtocolGuard
-        # MARKER_198.P1.2: scan_all() runs first to detect new commits this session, then
-        #   freshness_score is capped at 0.75 so compute_curiosity yields exactly +0.30 boost
-        #   at t=0, decaying linearly to 0.0 at 48h.
-        try:
-            from src.services.reflex_emotions import get_reflex_emotions, EmotionContext
-            emo_engine = get_reflex_emotions()
-
-            # --- 196.1 / 198.P1.2: Freshness → Curiosity ---
-            tool_freshness: Dict[str, float] = {}
-            try:
-                from src.services.tool_source_watch import get_tool_source_watch, FRESHNESS_WINDOW_HOURS
-                watch = get_tool_source_watch()
-
-                # MARKER_198.P1.2: Run scan_all() to detect any source-code commits that
-                # happened since the last session. FreshnessEvents are returned but we only
-                # need the side-effect of updating persisted freshness state; we then read
-                # it back via get_all() so both newly-detected and previously-known fresh
-                # tools are included in the scoring pass.
-                try:
-                    new_events = watch.scan_all()
-                    if new_events:
-                        logger.info(
-                            "[REFLEX IP-6] 198.P1.2: scan_all detected %d new freshness event(s): %s",
-                            len(new_events),
-                            ", ".join(e.tool_id for e in new_events),
-                        )
-                except Exception as scan_err:
-                    logger.debug("[REFLEX IP-6] 198.P1.2: scan_all failed (non-fatal): %s", scan_err)
-
-                all_freshness = watch.get_all()
-                for tid, entry in all_freshness.items():
-                    if entry.is_recently_updated():
-                        hours = entry.hours_since_update()
-                        # MARKER_198.P1.2: Cap freshness_score at 0.75 so that
-                        # compute_curiosity (freshness_score * 0.4) yields a maximum
-                        # curiosity boost of +0.30 at t=0, decaying to 0.0 at 48h.
-                        raw_score = max(0.0, 1.0 - hours / FRESHNESS_WINDOW_HOURS)
-                        score = round(min(raw_score, 0.75), 4)
-                        tool_freshness[tid] = score
-                if tool_freshness:
-                    logger.debug("[REFLEX IP-6] 196.1/198.P1.2: %d fresh tools populated", len(tool_freshness))
-            except Exception as e:
-                logger.debug("[REFLEX IP-6] 196.1/198.P1.2 freshness wiring failed (non-fatal): %s", e)
-
-            # --- 196.2 + MARKER_198.P1.1: Guard → Caution (violation count wiring) ---
-            guard_warnings_list: list = []
-            protocol_violation_count: int = 0
-            try:
-                from src.services.protocol_guard import get_protocol_guard as _get_pg
-                from src.services.session_tracker import get_session_tracker as _get_st
-                _tracker = _get_st()
-                _guard = _get_pg()
-                _sid = session_data.get("session_id", "reflex_default")
-                _session = _tracker.get_session(_sid)
-                _pending = _guard.check_all_pending(_session)
-                for v in _pending:
-                    guard_warnings_list.append(v.rule_id)
-                # MARKER_198.P1.1: Wire violation count into Caution boost.
-                # Count unresolved protocol violations to scale caution proportionally.
-                protocol_violation_count = len(_pending)
-                if guard_warnings_list:
-                    logger.debug(
-                        "[REFLEX IP-6] 196.2/198.P1.1: %d guard warnings, %d violations → Caution boost",
-                        len(guard_warnings_list), protocol_violation_count,
-                    )
-            except Exception as e:
-                logger.debug("[REFLEX IP-6] 196.2 guard wiring failed (non-fatal): %s", e)
-
-            # Build a shared EmotionContext with wired data for session-level emotion compute
-            # MARKER_198.P1.1: Include protocol_violation_count to boost Caution signal
-            emo_ctx = EmotionContext(
-                agent_id=agent_type,
-                phase_type=phase_type,
-                tool_freshness=tool_freshness,
-                guard_warnings=guard_warnings_list,
-                protocol_violation_count=protocol_violation_count,
-            )
-
-            # Recompute emotions for each recommended tool with wired context
-            for rec in recs:
-                tid = rec.get("tool_id", "")
-                if not tid or tid == "protocol_guard":
-                    continue
-                try:
-                    # Set per-tool freshness_score from the tool_freshness dict
-                    emo_ctx.freshness_score = tool_freshness.get(tid, 0.0)
-                    state = emo_engine.compute_emotions(tid, emo_ctx)
-                    rec["emotions"] = {
-                        "curiosity": round(state.curiosity, 4),
-                        "trust": round(state.trust, 4),
-                        "caution": round(state.caution, 4),
-                        "mood": state.mood_label,
-                    }
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.debug("[REFLEX IP-6] 196.1/196.2 emotion wiring failed (non-fatal): %s", e)
 
         # MARKER_195.7: Protocol violations as REFLEX warnings
         try:

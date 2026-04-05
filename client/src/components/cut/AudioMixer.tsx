@@ -16,23 +16,8 @@
  *
  * @phase 198
  */
-import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
-import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { getAudioScopeSocket } from './WaveformMinimap';
-
-// MARKER_B_P2_HOTKEYS: Convert linear volume (0..1.5) to dB display string.
-// Mirrors cut_audio_engine.py linear_to_db / adjust_lane_volume_db math.
-function linearToDb(linear: number): number {
-  if (linear <= 0) return -96;
-  return 20 * Math.log10(linear);
-}
-
-function formatDb(linear: number): string {
-  const db = linearToDb(linear);
-  if (db <= -96) return '-inf';
-  if (db >= 0) return `+${db.toFixed(1)}`;
-  return db.toFixed(1);
-}
+import { useState, useCallback, type CSSProperties } from 'react';
+import { useCutEditorStore, type TimelineLane } from '../../store/useCutEditorStore';
 
 // ─── Styles ────────────────────────────────────────────────────────
 
@@ -121,7 +106,7 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
         left: 0,
         width: '100%',
         height: fillH,
-        background: value > 1.0 ? '#999' : '#555',
+        background: value > 1.0 ? '#c44' : '#555',
         borderRadius: 2,
         transition: 'height 0.05s',
       }} />
@@ -149,47 +134,11 @@ function VolumeFader({ value, onChange }: { value: number; onChange: (v: number)
   );
 }
 
-// ─── MARKER_B75: Clipping indicator — latched red light (FCP7 Ch.55) ──
-
-function ClipIndicator({ level }: { level: number }) {
-  const [clipped, setClipped] = useState(false);
-  const [flash, setFlash] = useState(true);
-
-  useEffect(() => {
-    if (level >= 0.95) setClipped(true);
-  }, [level]);
-
-  // Flashing effect: toggle every 400ms while clipped
-  useEffect(() => {
-    if (!clipped) return;
-    const id = setInterval(() => setFlash((f) => !f), 400);
-    return () => clearInterval(id);
-  }, [clipped]);
-
-  if (!clipped) return null;
-
-  return (
-    <div
-      onClick={() => { setClipped(false); setFlash(true); }}
-      title="CLIP — click to reset"
-      style={{
-        width: 16, height: 10, lineHeight: '10px', textAlign: 'center' as const,
-        fontSize: 6, fontFamily: 'monospace', fontWeight: 700,
-        background: flash ? '#fff' : '#666', color: flash ? '#000' : '#aaa', borderRadius: 1,
-        cursor: 'pointer', userSelect: 'none' as const, flexShrink: 0,
-        transition: 'background 0.15s, color 0.15s',
-      }}
-    >
-      CLIP
-    </div>
-  );
-}
-
 // ─── VU indicator (simulated) ──────────────────────────────────────
 
 function VuIndicator({ level, muted }: { level: number; muted: boolean }) {
   const h = muted ? 0 : Math.min(1, level) * 40;
-  const color = level > 0.85 ? '#bbb' : level > 0.6 ? '#777' : '#444';
+  const color = level > 0.85 ? '#ef4444' : level > 0.6 ? '#eab308' : '#22c55e';
   return (
     <div style={{ width: 6, height: 40, background: '#1a1a1a', borderRadius: 1, position: 'relative', overflow: 'hidden' }}>
       <div style={{
@@ -205,88 +154,20 @@ function VuIndicator({ level, muted }: { level: number; muted: boolean }) {
   );
 }
 
-// ─── MARKER_GAMMA-17: Interactive pan knob ────────────────────────
+// ─── Pan display ───────────────────────────────────────────────────
 
-function PanKnob({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function PanDisplay({ value }: { value: number }) {
   // value: -1 (L) to +1 (R), 0 = center
   const label = value === 0 ? 'C' : value < 0 ? `L${Math.round(-value * 100)}` : `R${Math.round(value * 100)}`;
-  const pct = (value + 1) / 2; // 0..1
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const el = ref.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const update = (clientX: number) => {
-      const raw = (clientX - rect.left) / rect.width; // 0..1
-      const clamped = Math.max(0, Math.min(1, raw));
-      const panVal = Math.round((clamped * 2 - 1) * 20) / 20; // snap to 0.05
-      onChange(panVal);
-    };
-    update(e.clientX);
-    const onMove = (ev: MouseEvent) => update(ev.clientX);
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-    document.addEventListener('mousemove', onMove);
-    document.addEventListener('mouseup', onUp);
-  }, [onChange]);
-
-  const handleDoubleClick = useCallback(() => onChange(0), [onChange]);
-
   return (
-    <div
-      ref={ref}
-      onMouseDown={handleMouseDown}
-      onDoubleClick={handleDoubleClick}
-      title={`Pan: ${label} (double-click to center)`}
-      style={{
-        width: '100%',
-        height: 8,
-        background: '#111',
-        borderRadius: 2,
-        position: 'relative',
-        cursor: 'ew-resize',
-        marginTop: 2,
-        marginBottom: 2,
-      }}
-    >
-      {/* Center mark */}
-      <div style={{
-        position: 'absolute',
-        left: '50%',
-        top: 0,
-        width: 1,
-        height: '100%',
-        background: '#333',
-      }} />
-      {/* Thumb */}
-      <div style={{
-        position: 'absolute',
-        left: `${pct * 100}%`,
-        top: 0,
-        width: 4,
-        height: '100%',
-        background: value === 0 ? '#666' : '#999',
-        borderRadius: 1,
-        transform: 'translateX(-2px)',
-      }} />
-      {/* Label */}
-      <div style={{
-        position: 'absolute',
-        top: -8,
-        left: 0,
-        right: 0,
-        fontSize: 6,
-        fontFamily: 'monospace',
-        color: '#555',
-        textAlign: 'center',
-        pointerEvents: 'none',
-      }}>
-        {label}
-      </div>
+    <div style={{
+      fontSize: 7,
+      fontFamily: 'monospace',
+      color: '#555',
+      textAlign: 'center',
+      width: '100%',
+    }}>
+      {label}
     </div>
   );
 }
@@ -300,9 +181,7 @@ function ChannelStrip({
   pan,
   muted,
   soloed,
-  audioLevel,
   onVolumeChange,
-  onPanChange,
   onToggleMute,
   onToggleSolo,
 }: {
@@ -312,45 +191,22 @@ function ChannelStrip({
   pan: number;
   muted: boolean;
   soloed: boolean;
-  audioLevel: number;
   onVolumeChange: (v: number) => void;
-  onPanChange: (v: number) => void;
   onToggleMute: () => void;
   onToggleSolo: () => void;
 }) {
-  const adjustAudioLevel = useCutEditorStore((s) => s.adjustAudioLevel);
-
-  // MARKER_B_P2_HOTKEYS: Alt+Up / Alt+Down adjust level on focused strip.
-  // The strip registers keyboard listener on focus (tabIndex required).
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (!e.altKey) return;
-    if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      adjustAudioLevel(laneId, +1.0); // +1 dB
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      adjustAudioLevel(laneId, -1.0); // -1 dB
-    }
-  }, [laneId, adjustAudioLevel]);
-
-  const dbDisplay = formatDb(volume);
-
   return (
-    <div style={{ ...STRIP, outline: 'none' }} tabIndex={0} onKeyDown={handleKeyDown}>
+    <div style={STRIP}>
       <div style={LABEL}>{label}</div>
-      {/* MARKER_B52: Use real audio level × volume for VU */}
-      <VuIndicator level={audioLevel * volume} muted={muted} />
-      <ClipIndicator level={audioLevel * volume} />
+      <VuIndicator level={volume} muted={muted} />
       <VolumeFader value={volume} onChange={onVolumeChange} />
-      {/* MARKER_B_P2_HOTKEYS: Show both % and dB — dB is primary for audio work */}
-      <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666', lineHeight: 1.2, textAlign: 'center' }}>
-        <div>{Math.round(volume * 100)}%</div>
-        <div style={{ color: volume > 1.0 ? '#999' : '#555' }}>{dbDisplay} dB</div>
+      <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#666' }}>
+        {Math.round(volume * 100)}%
       </div>
-      <PanKnob value={pan} onChange={onPanChange} />
+      <PanDisplay value={pan} />
       <div style={{ display: 'flex', gap: 2 }}>
-        <button style={SMALL_BTN(muted, '#999')} onClick={onToggleMute}>M</button>
-        <button style={SMALL_BTN(soloed, '#ccc')} onClick={onToggleSolo}>S</button>
+        <button style={SMALL_BTN(muted, '#e44')} onClick={onToggleMute}>M</button>
+        <button style={SMALL_BTN(soloed, '#eab308')} onClick={onToggleSolo}>S</button>
       </div>
     </div>
   );
@@ -375,27 +231,8 @@ export default function AudioMixer() {
   const toggleSolo = useCutEditorStore((s) => s.toggleSolo);
   const setLaneVolume = useCutEditorStore((s) => s.setLaneVolume);
 
-  // MARKER_B75: Master volume + pan from store (was useState)
-  const masterVolume = useCutEditorStore((s) => s.masterVolume);
-  const setMasterVolume = useCutEditorStore((s) => s.setMasterVolume);
-  const masterPan = useCutEditorStore((s) => s.masterPan);
-  const setMasterPan = useCutEditorStore((s) => s.setMasterPan);
-  // MARKER_B75: Lane pans from store (was useState)
-  const lanePans = useCutEditorStore((s) => s.lanePans);
-  const setLanePan = useCutEditorStore((s) => s.setLanePan);
-  // MARKER_B_P2_HOTKEYS: Audio scrubbing state + toggle action
-  const audioScrubbing = useCutEditorStore((s) => s.audioScrubbing);
-  const toggleAudioScrubbing = useCutEditorStore((s) => s.toggleAudioScrubbing);
-  // MARKER_B52: Real audio levels from WebSocket (replaces simulated VU)
-  const [audioLevels, setAudioLevels] = useState<{ left: number; right: number }>({ left: 0, right: 0 });
-  useEffect(() => {
-    const socket = getAudioScopeSocket();
-    const onData = (d: any) => {
-      if (d.success) setAudioLevels({ left: d.rms_left || 0, right: d.rms_right || 0 });
-    };
-    socket.on('audio_scope_data', onData);
-    return () => { socket.off('audio_scope_data', onData); };
-  }, []);
+  // Master volume (local state — not in store yet)
+  const [masterVolume, setMasterVolume] = useState(1.0);
 
   // Filter to audio-relevant lanes (audio_sync, aux, or all if < 6 lanes)
   const audioLanes = lanes.length > 0 ? lanes : [];
@@ -411,79 +248,38 @@ export default function AudioMixer() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* MARKER_B_P2_HOTKEYS: Audio scrubbing status bar (Shift+S) */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        padding: '2px 6px',
-        background: '#080808',
-        borderBottom: '1px solid #1a1a1a',
-        gap: 4,
-        flexShrink: 0,
-      }}>
-        <span style={{ fontSize: 7, fontFamily: 'monospace', color: '#444', marginRight: 2 }}>
-          SCRUB
-        </span>
-        <button
-          onClick={toggleAudioScrubbing}
-          title={`Audio scrubbing ${audioScrubbing ? 'ON' : 'OFF'} (Shift+S)`}
-          style={{
-            padding: '1px 5px',
-            fontSize: 7,
-            fontFamily: 'monospace',
-            fontWeight: 700,
-            background: audioScrubbing ? '#2a2a2a' : '#111',
-            color: audioScrubbing ? '#aaa' : '#333',
-            border: `1px solid ${audioScrubbing ? '#444' : '#222'}`,
-            borderRadius: 2,
-            cursor: 'pointer',
-            letterSpacing: 0.5,
-          }}
-        >
-          {audioScrubbing ? 'ON' : 'OFF'}
-        </button>
-      </div>
+    <div style={MIXER_ROOT}>
+      {/* Per-lane strips */}
+      {audioLanes.map((lane) => (
+        <ChannelStrip
+          key={lane.lane_id}
+          laneId={lane.lane_id}
+          label={LANE_LABELS[lane.lane_type] || lane.lane_id.slice(0, 4).toUpperCase()}
+          volume={laneVolumes[lane.lane_id] ?? 1.0}
+          pan={0}
+          muted={mutedLanes.has(lane.lane_id)}
+          soloed={soloLanes.has(lane.lane_id)}
+          onVolumeChange={(v) => setLaneVolume(lane.lane_id, v)}
+          onToggleMute={() => toggleMute(lane.lane_id)}
+          onToggleSolo={() => toggleSolo(lane.lane_id)}
+        />
+      ))}
 
-      {/* Channel strips row */}
-      <div style={{ ...MIXER_ROOT, flex: 1, minHeight: 0 }}>
-        {/* Per-lane strips */}
-        {audioLanes.map((lane) => (
-          <ChannelStrip
-            key={lane.lane_id}
-            laneId={lane.lane_id}
-            label={LANE_LABELS[lane.lane_type] || lane.lane_id.slice(0, 4).toUpperCase()}
-            volume={laneVolumes[lane.lane_id] ?? 1.0}
-            pan={lanePans[lane.lane_id] ?? 0}
-            muted={mutedLanes.has(lane.lane_id)}
-            soloed={soloLanes.has(lane.lane_id)}
-            audioLevel={(audioLevels.left + audioLevels.right) / 2}
-            onVolumeChange={(v) => setLaneVolume(lane.lane_id, v)}
-            onPanChange={(v) => setLanePan(lane.lane_id, v)}
-            onToggleMute={() => toggleMute(lane.lane_id)}
-            onToggleSolo={() => toggleSolo(lane.lane_id)}
-          />
-        ))}
+      {/* Separator */}
+      <div style={{ width: 1, background: '#333', margin: '4px 2px', flexShrink: 0 }} />
 
-        {/* Separator */}
-        <div style={{ width: 1, background: '#333', margin: '4px 2px', flexShrink: 0 }} />
-
-        {/* Master strip — MARKER_B_P2_HOTKEYS: added dB display */}
-        <div style={{ ...STRIP, background: '#151515', outline: 'none' }} tabIndex={0}>
-          <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
-          <VuIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} muted={false} />
-          <ClipIndicator level={masterVolume * (audioLevels.left + audioLevels.right) / 2} />
-          <VolumeFader value={masterVolume} onChange={setMasterVolume} />
-          <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888', lineHeight: 1.2, textAlign: 'center' }}>
-            <div>{Math.round(masterVolume * 100)}%</div>
-            <div style={{ color: masterVolume > 1.0 ? '#999' : '#555' }}>{formatDb(masterVolume)} dB</div>
-          </div>
-          <PanKnob value={masterPan} onChange={setMasterPan} />
-          <div style={{ display: 'flex', gap: 2 }}>
-            <button style={SMALL_BTN(false, '#999')} disabled>M</button>
-            <button style={SMALL_BTN(false, '#ccc')} disabled>S</button>
-          </div>
+      {/* Master strip */}
+      <div style={{ ...STRIP, background: '#151515' }}>
+        <div style={{ ...LABEL, color: '#ccc' }}>MST</div>
+        <VuIndicator level={masterVolume} muted={false} />
+        <VolumeFader value={masterVolume} onChange={setMasterVolume} />
+        <div style={{ fontSize: 7, fontFamily: 'monospace', color: '#888' }}>
+          {Math.round(masterVolume * 100)}%
+        </div>
+        <PanDisplay value={0} />
+        <div style={{ display: 'flex', gap: 2 }}>
+          <button style={SMALL_BTN(false, '#e44')} disabled>M</button>
+          <button style={SMALL_BTN(false, '#eab308')} disabled>S</button>
         </div>
       </div>
     </div>

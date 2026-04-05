@@ -156,7 +156,7 @@ export function Panel({
             [position === 'left' ? 'right' : 'left']: 0,
             width: 4,
             cursor: 'col-resize',
-            background: isResizing ? '#555' : 'transparent',
+            background: isResizing ? '#3b82f6' : 'transparent',
           }}
         />
       )}

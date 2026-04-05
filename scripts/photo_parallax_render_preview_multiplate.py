@@ -276,23 +276,6 @@ def plate_motion_expr(profile: dict[str, Any], axis: str, depth_byte: float, str
     return f"{pixels:.4f}*{signed}"
 
 
-def background_motion_expr(profile: dict[str, Any], axis: str, strength_scale: float = 0.6) -> str:
-    camera_geometry = profile["camera_geometry"]
-    zoom_px = float(camera_geometry["zoom_px"])
-    camera_shift = float(camera_geometry["camera_tx"] if axis == "x" else camera_geometry["camera_ty"])
-    signed = profile["signed"]
-    cosine = profile["cosine"]
-    z_far = max(1e-6, float(camera_geometry["z_far"]))
-    pixels = (-(zoom_px * camera_shift) / z_far) * strength_scale
-    if profile["motion_type"] == "orbit":
-        if axis == "x":
-            return f"{pixels:.4f}*{signed}"
-        return f"{(pixels * 0.52):.4f}*{cosine}"
-    if profile["motion_type"].startswith("dolly"):
-        return f"{(pixels * 0.72):.4f}*{signed}"
-    return f"{pixels:.4f}*{signed}"
-
-
 def build_filter_complex(
     layout: dict[str, Any],
     manifest: dict[str, Any],
@@ -341,13 +324,7 @@ def build_filter_complex(
         f"scale=w='iw*{asset_scale:.6f}*{supersample:.3f}':h='ih*{asset_scale:.6f}*{supersample:.3f}':flags=lanczos:eval=frame,"
         "setsar=1[bg]"
     )
-    bg_x_motion = f"({background_motion_expr(profile, 'x')})*{motion_scale:.6f}"
-    bg_y_motion = f"({background_motion_expr(profile, 'y')})*{motion_scale:.6f}"
-    chain.append(
-        "[base][bg]"
-        f"overlay=x='(W-w)/2-({bg_x_motion})':"
-        f"y='(H-h)/2-({bg_y_motion})':eval=frame:format=auto[layer0]"
-    )
+    chain.append("[base][bg]overlay=x='(W-w)/2':y='(H-h)/2':eval=frame:format=auto[layer0]")
 
     current_layer = "layer0"
     for plate_offset, plate in enumerate(ordered):

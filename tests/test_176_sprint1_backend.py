@@ -20,8 +20,6 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-pytestmark = pytest.mark.stale(reason="Roadmap API contracts changed")
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 

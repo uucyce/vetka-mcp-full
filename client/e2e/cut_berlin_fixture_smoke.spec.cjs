@@ -137,9 +137,6 @@ test.describe.serial('phase170 berlin fixture smoke lane', () => {
     );
 
     await expect(page.getByTestId('cut-editor-layout')).toBeVisible();
-    // MARKER_QA.W6: DockviewLayout defaults to GRAPH tab — click PROJECT to activate source browser
-    await page.getByText('Project', { exact: true }).first().click();
-    await page.waitForTimeout(300);
     const sourceBrowser = page.getByTestId('cut-source-browser');
 
     await expect(sourceBrowser).toBeVisible();

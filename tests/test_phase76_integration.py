@@ -19,7 +19,6 @@ from datetime import datetime
 from unittest.mock import Mock, MagicMock, patch
 from typing import Dict, Any
 
-pytestmark = pytest.mark.stale(reason="Pre-existing failure — phase 76 contracts changed")
 
 # ============================================
 # PHASE 76.1: REPLAY BUFFER TESTS
@@ -593,7 +592,6 @@ class TestBackwardCompatibility:
         except ImportError:
             # langgraph not installed - verify via file content instead
             import os
-
             builder_path = os.path.join(
                 os.path.dirname(__file__), '..', 'src', 'orchestration', 'langgraph_builder.py'
             )
