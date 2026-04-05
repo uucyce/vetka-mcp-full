@@ -145,6 +145,21 @@ EOF
         ;;
 esac
 
+# ── Set window title: [VETKA] Role — worktree ────────────────
+WINDOW_TITLE="[VETKA] ${ROLE} — ${WORKTREE}"
+case "$BACKEND" in
+    terminal_app)
+        osascript -e "tell application \"Terminal\" to set custom title of front window to \"$WINDOW_TITLE\""
+        ;;
+    iterm2)
+        osascript -e "tell application \"iTerm2\" to tell current session of current window to set name to \"$WINDOW_TITLE\""
+        ;;
+esac
+# Also set tmux window name (visible in tmux status bar / tmux ls)
+sleep 0.3
+tmux rename-window -t "$SESSION_NAME" "$WINDOW_TITLE" 2>/dev/null || true
+echo "$LOG_PREFIX Window title set: $WINDOW_TITLE"
+
 # ── Update session registry ──────────────────────────────────
 mkdir -p "$(dirname "$REGISTRY_FILE")"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
