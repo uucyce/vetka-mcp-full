@@ -21,6 +21,24 @@
 - они подтверждают только engineering readiness;
 - product readiness начинается там, где depth-first truth, camera geometry и visual result совпадают.
 
+## 1.1 Update (`2026-03-27`)
+
+После этого handoff был выполнен отдельный fresh-bundle cycle для `hover-politsia`.
+
+Новые canonical docs:
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/docs/180_photo-to-parallax/PARALLAX_HOVER_POLITSIA_ARTIFACT_PROVENANCE_RECON_2026-03-27.md`
+
+Короткий итог update:
+
+- historical `camera_contract` review bundle действительно был stale relative to the current export root;
+- fresh rerender + fresh inspection pack были собраны заново;
+- на fresh bundle motion читается не только в steam, но и в vehicle/walker;
+- exact old “steam over head” symptom больше нельзя считать proven current-state truth;
+- remaining weak point has narrowed to current visual quality / proxy-like semantics / compositor policy, not stale provenance.
+
+If a next agent starts from this handoff, they should treat the `2026-03-27` provenance recon as a required companion doc.
+
 ## 2. Что читать первым
 
 Стартовый порядок чтения:
@@ -194,6 +212,14 @@
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract/hover-politsia/preview_multiplate.gif`
 - `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract/hover-politsia/preview_multiplate_report.json`
 
+### Fresh current-truth bundle (`2026-03-27`)
+
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract_fresh_20260327/hover-politsia/preview_multiplate.mp4`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/render_preview_multiplate_qwen_gated_camera_contract_fresh_20260327/hover-politsia/preview_multiplate_report.json`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/video_inspection/hover-politsia-camera-contract-fresh-20260327/inspection.json`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/video_inspection/hover-politsia-camera-contract-fresh-20260327/motion_diff.jpg`
+- `/Users/danilagulin/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground/output/video_inspection/hover-politsia-camera-contract-fresh-20260327/motion_energy.png`
+
 ## 6. Текущие задачи на board
 
 ### Уже закрыто
@@ -223,6 +249,17 @@
 3. `tb_1773892186_5` — AE calibration
 - привязать current camera contract к Пашиному AE reference;
 - сузить дефолты по `zoomPx`, `zNear`, `zFar`, `motionScale`, `Tx/Ty/Tz`.
+
+4. `tb_1774594729_1` — compare fresh hover-politsia bundle against visual baseline
+- идти не от stale-artifact hypothesis, а от current fresh bundle;
+- назвать, что уже стало лучше;
+- отделить remaining visual weakness from historical false alarms;
+- сузить next fix path to compositor policy vs exporter semantics.
+
+5. `tb_1774595847_1` — replace hard-box `environment-mid` semantics and reduce proxy-like authority
+- это уже не abstract recon, а конкретный implementation path;
+- first probe on `2026-03-27` showed that shaped atmospheric alpha is viable;
+- camera tuning is not the first lever for this cycle.
 
 ## 7. Грабли, на которые больше не наступать
 

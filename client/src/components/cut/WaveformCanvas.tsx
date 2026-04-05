@@ -11,8 +11,12 @@ type WaveformCanvasProps = {
   height: number;
   color?: string;
   bgColor?: string;
+  /** Hover/seek cursor position 0-1 */
   cursorRatio?: number | null;
   cursorColor?: string;
+  /** MARKER_B36: Playback cursor position 0-1 (playhead within clip) */
+  playbackRatio?: number | null;
+  playbackColor?: string;
   style?: CSSProperties;
 };
 
@@ -24,6 +28,8 @@ export default function WaveformCanvas({
   bgColor = 'transparent',
   cursorRatio = null,
   cursorColor = 'rgba(255, 255, 255, 0.92)',
+  playbackRatio = null,
+  playbackColor = 'rgba(255, 255, 255, 0.55)',
   style,
 }: WaveformCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,12 +62,20 @@ export default function WaveformCanvas({
       ctx.fillRect(x, y, Math.max(1, barWidth - 0.5), barHeight);
     }
 
+    // MARKER_B36: Playback cursor (thinner, semi-transparent)
+    if (playbackRatio != null) {
+      const pbX = Math.max(0, Math.min(width - 1, playbackRatio * width));
+      ctx.fillStyle = playbackColor;
+      ctx.fillRect(pbX, 0, 1, height);
+    }
+
+    // Hover/seek cursor (on top of playback cursor)
     if (cursorRatio != null) {
       const cursorX = Math.max(0, Math.min(width - 1, cursorRatio * width));
       ctx.fillStyle = cursorColor;
       ctx.fillRect(cursorX, 0, 1, height);
     }
-  }, [bins, width, height, color, bgColor, cursorRatio, cursorColor]);
+  }, [bins, width, height, color, bgColor, cursorRatio, cursorColor, playbackRatio, playbackColor]);
 
   return (
     <canvas

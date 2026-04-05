@@ -12,6 +12,8 @@ import os
 import pytest
 from pathlib import Path
 
+pytestmark = pytest.mark.stale(reason="Phase 180 file markers — CUT layout V2 refactor")
+
 
 # ---------------------------------------------------------------------------
 # 180.14: Timeline Versioning

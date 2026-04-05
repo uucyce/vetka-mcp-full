@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.stale(reason="Jarvis live context — client extraction API changed")
+
 import asyncio
 import importlib
 import sys

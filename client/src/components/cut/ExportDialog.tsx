@@ -10,17 +10,22 @@
  * Backend: POST /cut/render/master → cut_render_engine.render_timeline() → async job.
  * Editorial: POST /cut/export/* endpoints (unchanged).
  */
-import { useState, useCallback, useRef, type CSSProperties } from 'react';
+import { useState, useCallback, useRef, useEffect, type CSSProperties } from 'react';
+import { io, type Socket } from 'socket.io-client';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
-import { API_BASE } from '../../config/api.config';
+import { API_BASE, getSocketUrl } from '../../config/api.config';
+import { useOverlayEscapeClose } from '../../hooks/useOverlayEscapeClose';
 
 // ─── Types ───
 
 type ExportTab = 'master' | 'editorial' | 'publish';
 
-type VideoCodec = 'prores_422' | 'prores_4444' | 'h264' | 'h265' | 'dnxhd';
+// MARKER_B6.1: Full ProRes family + codecs
+type VideoCodec = 'prores_proxy' | 'prores_lt' | 'prores_422' | 'prores_422hq' | 'prores_4444' | 'prores_4444xq' | 'h264' | 'h265' | 'dnxhd';
 type Resolution = '4k' | '1080p' | '720p' | 'source';
 type EditorialFormat = 'premiere_xml' | 'fcpxml' | 'edl' | 'otio';
+// MARKER_B6.2: Audio codec type
+type AudioCodec = 'aac' | 'pcm_s24le' | 'libmp3lame' | 'flac';
 
 interface CodecOption {
   id: VideoCodec;
@@ -37,11 +42,26 @@ interface ResolutionOption {
 }
 
 const CODECS: CodecOption[] = [
-  { id: 'prores_422', label: 'ProRes 422', ext: '.mov', description: 'High quality, large files. Best for post-production.' },
-  { id: 'prores_4444', label: 'ProRes 4444', ext: '.mov', description: 'Maximum quality with alpha. Largest files.' },
+  // Delivery
   { id: 'h264', label: 'H.264', ext: '.mp4', description: 'Universal delivery codec. Good quality/size ratio.' },
   { id: 'h265', label: 'H.265 (HEVC)', ext: '.mp4', description: 'Better compression than H.264. Modern devices.' },
-  { id: 'dnxhd', label: 'DNxHD', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
+  // MARKER_B6.1: Full ProRes family
+  { id: 'prores_proxy', label: 'ProRes Proxy', ext: '.mov', description: 'Smallest ProRes. Offline editing, proxy workflows.' },
+  { id: 'prores_lt', label: 'ProRes LT', ext: '.mov', description: 'Lightweight. 70% of 422 size, good for field editing.' },
+  { id: 'prores_422', label: 'ProRes 422', ext: '.mov', description: 'Standard broadcast quality. Industry workhorse.' },
+  { id: 'prores_422hq', label: 'ProRes 422 HQ', ext: '.mov', description: 'High quality mastering. Visually lossless.' },
+  { id: 'prores_4444', label: 'ProRes 4444', ext: '.mov', description: 'Maximum quality with alpha channel support.' },
+  { id: 'prores_4444xq', label: 'ProRes 4444 XQ', ext: '.mov', description: 'Highest ProRes quality. HDR/wide gamut mastering.' },
+  // Post-production
+  { id: 'dnxhd', label: 'DNxHR HQ', ext: '.mxf', description: 'Avid-compatible. Broadcast and post-production.' },
+];
+
+// MARKER_B6.2: Audio codec options
+const AUDIO_CODECS: { id: AudioCodec; label: string; description: string }[] = [
+  { id: 'aac', label: 'AAC', description: 'Default for MP4/MOV. Universal compatibility.' },
+  { id: 'pcm_s24le', label: 'PCM 24-bit', description: 'Uncompressed. Best for ProRes/DNxHR masters.' },
+  { id: 'libmp3lame', label: 'MP3', description: 'Legacy delivery. Smaller files.' },
+  { id: 'flac', label: 'FLAC', description: 'Lossless compression. Archive quality.' },
 ];
 
 const RESOLUTIONS: ResolutionOption[] = [
@@ -57,6 +77,17 @@ const EDITORIAL_FORMATS: { id: EditorialFormat; label: string; description: stri
   { id: 'edl', label: 'EDL', description: 'Edit Decision List (CMX 3600)' },
   { id: 'otio', label: 'OpenTimelineIO', description: 'Universal timeline interchange' },
 ];
+
+// MARKER_B4.3: Export preset type (fetched from backend GET /cut/render/presets)
+type ExportPreset = {
+  key: string;
+  label: string;
+  codec: string;
+  resolution: string;
+  fps: number;
+  quality: number;
+  aspect?: string;
+};
 
 const PUBLISH_PRESETS = [
   { id: 'youtube', label: 'YouTube', resolution: '1080p', codec: 'h264', bitrate: '12M' },
@@ -116,7 +147,7 @@ const TAB: CSSProperties = {
 const TAB_ACTIVE: CSSProperties = {
   ...TAB,
   color: '#ccc',
-  borderBottom: '2px solid #4a9eff',
+  borderBottom: '2px solid #999',
 };
 
 const BODY: CSSProperties = {
@@ -170,7 +201,7 @@ const BTN: CSSProperties = {
 
 const BTN_PRIMARY: CSSProperties = {
   ...BTN,
-  background: '#4a9eff',
+  background: '#999',
   color: '#fff',
 };
 
@@ -223,11 +254,124 @@ export default function ExportDialog() {
   const [codec, setCodec] = useState<VideoCodec>('h264');
   const [resolution, setResolution] = useState<Resolution>('1080p');
   const [quality, setQuality] = useState(80);
+  // MARKER_B6.3: Bitrate mode
+  const [bitrateMode, setBitrateMode] = useState<'crf' | 'cbr' | 'vbr'>('crf');
+  const [targetBitrate, setTargetBitrate] = useState('12M');
+  const [maxBitrate, setMaxBitrate] = useState('15M');
+  const [audioCodec, setAudioCodec] = useState<AudioCodec>('aac');
   const [selectionOnly, setSelectionOnly] = useState(false);
   const [audioStems, setAudioStems] = useState(false);
+  // MARKER_B51: Loudness normalization
+  const [loudnessNorm, setLoudnessNorm] = useState(false);
+  const [loudnessStandard, setLoudnessStandard] = useState('youtube');
   const [editorialFormat, setEditorialFormat] = useState<EditorialFormat>('premiere_xml');
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState<string | null>(null);
+  // MARKER_B4.1: Track active job for cancel
+  const activeJobIdRef = useRef<string | null>(null);
+  // MARKER_B4.3: Export presets from backend
+  const [presets, setPresets] = useState<ExportPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState<string>('custom');
+  // MARKER_B4.2: ETA + SocketIO progress
+  const [etaSec, setEtaSec] = useState<number | null>(null);
+  const [elapsedSec, setElapsedSec] = useState<number | null>(null);
+  const socketRef = useRef<Socket | null>(null);
+  const useSocketProgress = useRef(false);
+
+  // MARKER_GAMMA-T1: Listen for MenuBar export sub-menu pre-selection
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.tab) setTab(detail.tab);
+      if (detail?.format) setEditorialFormat(detail.format);
+      if (detail?.codec) setCodec(detail.codec);
+    };
+    window.addEventListener('cut:open-export', handler);
+    return () => window.removeEventListener('cut:open-export', handler);
+  }, []);
+
+  // MARKER_B4.2: SocketIO render_progress listener
+  useEffect(() => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) {
+      // No active job — disconnect socket if connected
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      useSocketProgress.current = false;
+      setEtaSec(null);
+      setElapsedSec(null);
+      return;
+    }
+
+    // Connect socket for progress events
+    const socket = io(getSocketUrl(), {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 5,
+    });
+    socketRef.current = socket;
+
+    socket.on('connect', () => {
+      useSocketProgress.current = true;
+    });
+
+    socket.on('render_progress', (data: any) => {
+      if (data.job_id !== activeJobIdRef.current) return;
+      const progress = data.progress ?? 0;
+      setRenderProgress(progress);
+      if (data.eta_sec != null) setEtaSec(Math.round(data.eta_sec));
+      if (data.elapsed_sec != null) setElapsedSec(Math.round(data.elapsed_sec));
+      if (data.message === 'done') {
+        setRenderStatus('Complete');
+      } else if (data.message === 'cancelled') {
+        setRenderStatus('Cancelled');
+        setRenderProgress(null);
+      } else if (data.message?.startsWith('error:')) {
+        setRenderError(data.message);
+        setRenderProgress(null);
+      } else if (data.message && data.message.startsWith('Encoding at')) {
+        // MARKER_B51: Show speed + ETA from FFmpeg -progress pipe
+        setRenderStatus(`${data.message} (${Math.round(progress * 100)}%)`);
+      } else {
+        setRenderStatus(`Encoding... ${Math.round(progress * 100)}%`);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+      useSocketProgress.current = false;
+    };
+  }, [renderProgress !== null ? activeJobIdRef.current : null]);
+
+  // MARKER_B4.3: Fetch presets on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/cut/render/presets`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.presets) setPresets(data.presets); })
+      .catch(() => {});
+  }, []);
+
+  // MARKER_B4.3: Apply preset → auto-fill codec/resolution/quality
+  const applyPreset = useCallback((presetKey: string) => {
+    setSelectedPreset(presetKey);
+    if (presetKey === 'custom') return;
+    const p = presets.find((pr) => pr.key === presetKey);
+    if (!p) return;
+    // Map preset codec to our VideoCodec type
+    const codecMap: Record<string, VideoCodec> = {
+      h264: 'h264', h265: 'h265',
+      prores_proxy: 'prores_proxy', prores_lt: 'prores_lt',
+      prores_422: 'prores_422', prores_422hq: 'prores_422hq',
+      prores_4444: 'prores_4444', prores_4444xq: 'prores_4444xq',
+      dnxhr_hq: 'dnxhd', av1: 'h264', vp9: 'h264',
+    };
+    setCodec(codecMap[p.codec] || 'h264');
+    setResolution((p.resolution || '1080p') as Resolution);
+    setQuality(p.quality || 80);
+  }, [presets]);
 
   const hasSelection = sequenceMarkIn !== null && sequenceMarkOut !== null;
   const audioLanes = lanes.filter((l) => l.lane_type.startsWith('audio'));
@@ -238,6 +382,9 @@ export default function ExportDialog() {
     setExportResult(null);
     setRenderError(null);
   }, [renderProgress, setShow, setRenderError]);
+
+  // MARKER_GAMMA-ESC-HOOK: Escape closes dialog + data-overlay prevents escapeContext from firing
+  useOverlayEscapeClose(close);
 
   // ─── Master render ───
   const startRender = useCallback(async () => {
@@ -261,6 +408,10 @@ export default function ExportDialog() {
           range_in: selectionOnly && hasSelection ? sequenceMarkIn : null,
           range_out: selectionOnly && hasSelection ? sequenceMarkOut : null,
           audio_stems: audioStems,
+          audio_codec: audioCodec,
+          bitrate_mode: bitrateMode,
+          target_bitrate: bitrateMode !== 'crf' ? targetBitrate : '',
+          max_bitrate: bitrateMode === 'vbr' ? maxBitrate : '',
         }),
       });
 
@@ -271,31 +422,47 @@ export default function ExportDialog() {
 
       const data = await res.json();
       if (data.job_id) {
-        // Poll for progress
+        // MARKER_B4.1: Store job_id for cancel
+        activeJobIdRef.current = data.job_id;
+        // Poll for progress (MARKER_B4.2: slower when SocketIO active, faster as fallback)
         setRenderStatus('Encoding...');
         for (let i = 0; i < 600; i++) {
-          await new Promise((r) => setTimeout(r, 500));
+          const pollInterval = useSocketProgress.current ? 2000 : 500;
+          await new Promise((r) => setTimeout(r, pollInterval));
           const jobRes = await fetch(`${API_BASE}/cut/job/${encodeURIComponent(data.job_id)}`);
           if (!jobRes.ok) continue;
           const job = await jobRes.json();
           const state = job.job?.state;
           const progress = job.job?.progress ?? 0;
-          setRenderProgress(progress);
-          setRenderStatus(state === 'done' ? 'Complete' : `Encoding... ${Math.round(progress * 100)}%`);
+          // Only update UI from HTTP if socket isn't providing real-time updates
+          if (!useSocketProgress.current) {
+            setRenderProgress(progress);
+            setRenderStatus(state === 'done' ? 'Complete' : `Encoding... ${Math.round(progress * 100)}%`);
+          }
           if (state === 'done') {
             const result = job.job?.result;
             const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
             const transitions = result?.transitions_count ? ` | ${result.transitions_count} transition(s)` : '';
             const fc = result?.used_filter_complex ? ' | filter_complex' : '';
             setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB}${transitions}${fc})` : ''}`);
+            activeJobIdRef.current = null;
             setRenderProgress(null);
             setRenderStatus(null);
             return;
           }
           if (state === 'error') {
+            activeJobIdRef.current = null;
             throw new Error(job.job?.error?.message || 'Render failed');
           }
+          if (state === 'cancelled') {
+            activeJobIdRef.current = null;
+            setRenderStatus('Cancelled');
+            setRenderProgress(null);
+            setTimeout(() => setRenderStatus(null), 1500);
+            return;
+          }
         }
+        activeJobIdRef.current = null;
         throw new Error('Render timed out');
       } else if (data.output_path) {
         setExportResult(data.output_path);
@@ -305,6 +472,7 @@ export default function ExportDialog() {
         throw new Error(data.error || 'Unknown render error');
       }
     } catch (err) {
+      activeJobIdRef.current = null;
       setRenderError(err instanceof Error ? err.message : 'Render failed');
       setRenderProgress(null);
       setRenderStatus(null);
@@ -373,6 +541,7 @@ export default function ExportDialog() {
       const data = await res.json();
 
       if (data.job_id) {
+        activeJobIdRef.current = data.job_id;
         setRenderStatus(`Encoding for ${presetId}...`);
         for (let i = 0; i < 600; i++) {
           await new Promise((r) => setTimeout(r, 500));
@@ -387,19 +556,30 @@ export default function ExportDialog() {
             const result = job.job?.result;
             const sizeMB = result?.file_size_bytes ? `${(result.file_size_bytes / 1048576).toFixed(1)} MB` : '';
             setExportResult(`${result?.output_path || 'Render complete'}${sizeMB ? ` (${sizeMB})` : ''}`);
+            activeJobIdRef.current = null;
             setRenderProgress(null);
             setRenderStatus(null);
             return;
           }
           if (state === 'error') {
+            activeJobIdRef.current = null;
             throw new Error(job.job?.error?.message || 'Publish render failed');
           }
+          if (state === 'cancelled') {
+            activeJobIdRef.current = null;
+            setRenderStatus('Cancelled');
+            setRenderProgress(null);
+            setTimeout(() => setRenderStatus(null), 1500);
+            return;
+          }
         }
+        activeJobIdRef.current = null;
         throw new Error('Publish render timed out');
       } else {
         throw new Error(data.error || 'Unknown publish error');
       }
     } catch (err) {
+      activeJobIdRef.current = null;
       setRenderError(err instanceof Error ? err.message : 'Publish failed');
       setRenderProgress(null);
       setRenderStatus(null);
@@ -407,13 +587,25 @@ export default function ExportDialog() {
   }, [sandboxRoot, projectId, timelineId, projectFramerate, selectionOnly, hasSelection,
       sequenceMarkIn, sequenceMarkOut, setRenderProgress, setRenderStatus, setRenderError]);
 
+  // MARKER_B4.1: Cancel active render job
+  const cancelRender = useCallback(async () => {
+    const jobId = activeJobIdRef.current;
+    if (!jobId) return;
+    try {
+      await fetch(`${API_BASE}/cut/job/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+      setRenderStatus('Cancelling...');
+    } catch {
+      // Best-effort cancel — polling loop will detect state change
+    }
+  }, [setRenderStatus]);
+
   if (!show) return null;
 
   const selectedCodec = CODECS.find((c) => c.id === codec)!;
   const isRendering = renderProgress !== null;
 
   return (
-    <div style={OVERLAY} onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
+    <div style={OVERLAY} data-overlay="1" onClick={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div style={DIALOG} onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div style={HEADER}>
@@ -443,13 +635,32 @@ export default function ExportDialog() {
         <div style={BODY}>
           {tab === 'master' && (
             <>
+              {/* MARKER_B4.3: Preset dropdown */}
+              {presets.length > 0 && (
+                <div style={FIELD}>
+                  <label style={LABEL}>Preset</label>
+                  <select
+                    style={SELECT}
+                    value={selectedPreset}
+                    onChange={(e) => applyPreset(e.target.value)}
+                    disabled={isRendering}
+                    data-testid="export-preset-select"
+                  >
+                    <option value="custom">Custom settings</option>
+                    {presets.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               {/* Codec */}
               <div style={FIELD}>
                 <label style={LABEL}>Codec</label>
                 <select
                   style={SELECT}
                   value={codec}
-                  onChange={(e) => setCodec(e.target.value as VideoCodec)}
+                  onChange={(e) => { setCodec(e.target.value as VideoCodec); setSelectedPreset('custom'); }}
                   disabled={isRendering}
                 >
                   {CODECS.map((c) => (
@@ -467,7 +678,7 @@ export default function ExportDialog() {
                 <select
                   style={SELECT}
                   value={resolution}
-                  onChange={(e) => setResolution(e.target.value as Resolution)}
+                  onChange={(e) => { setResolution(e.target.value as Resolution); setSelectedPreset('custom'); }}
                   disabled={isRendering}
                 >
                   {RESOLUTIONS.map((r) => (
@@ -478,23 +689,124 @@ export default function ExportDialog() {
                 </select>
               </div>
 
-              {/* Quality */}
+              {/* MARKER_B6.3: Quality / Bitrate mode */}
               <div style={FIELD}>
-                <label style={LABEL}>Quality</label>
-                <div style={SLIDER_ROW}>
-                  <input
-                    type="range"
-                    min={10}
-                    max={100}
-                    value={quality}
-                    onChange={(e) => setQuality(Number(e.target.value))}
-                    disabled={isRendering}
-                    style={{ flex: 1 }}
-                  />
-                  <span style={{ fontSize: 11, color: '#888', width: 30, textAlign: 'right' }}>
-                    {quality}%
-                  </span>
+                <label style={LABEL}>Rate Control</label>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                  {(['crf', 'cbr', 'vbr'] as const).map((m) => (
+                    <button
+                      key={m}
+                      style={{
+                        ...BTN,
+                        background: bitrateMode === m ? '#333' : '#1a1a1a',
+                        color: bitrateMode === m ? '#ccc' : '#555',
+                        fontSize: 9,
+                        padding: '3px 10px',
+                        border: bitrateMode === m ? '1px solid #555' : '1px solid #222',
+                      }}
+                      onClick={() => { setBitrateMode(m); setSelectedPreset('custom'); }}
+                      disabled={isRendering}
+                    >
+                      {m.toUpperCase()}
+                    </button>
+                  ))}
                 </div>
+                {bitrateMode === 'crf' && (
+                  <div style={SLIDER_ROW}>
+                    <input
+                      type="range"
+                      min={10}
+                      max={100}
+                      value={quality}
+                      onChange={(e) => { setQuality(Number(e.target.value)); setSelectedPreset('custom'); }}
+                      disabled={isRendering}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ fontSize: 11, color: '#888', width: 30, textAlign: 'right' }}>
+                      {quality}%
+                    </span>
+                  </div>
+                )}
+                {(bitrateMode === 'cbr' || bitrateMode === 'vbr') && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 9, color: '#555', marginBottom: 2 }}>Target Bitrate</div>
+                      <input
+                        type="text"
+                        value={targetBitrate}
+                        onChange={(e) => { setTargetBitrate(e.target.value); setSelectedPreset('custom'); }}
+                        disabled={isRendering}
+                        style={{ ...SELECT, width: '100%' }}
+                        placeholder="12M"
+                      />
+                    </div>
+                    {bitrateMode === 'vbr' && (
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 9, color: '#555', marginBottom: 2 }}>Max Bitrate</div>
+                        <input
+                          type="text"
+                          value={maxBitrate}
+                          onChange={(e) => { setMaxBitrate(e.target.value); setSelectedPreset('custom'); }}
+                          disabled={isRendering}
+                          style={{ ...SELECT, width: '100%' }}
+                          placeholder="15M"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div style={{ fontSize: 9, color: '#444', marginTop: 3 }}>
+                  {bitrateMode === 'crf' ? 'Quality-based (variable file size)' : bitrateMode === 'cbr' ? 'Constant bitrate (predictable file size, streaming)' : 'Variable bitrate (target + max cap)'}
+                </div>
+              </div>
+
+              {/* MARKER_B6.2: Audio codec */}
+              <div style={FIELD}>
+                <label style={LABEL}>Audio Codec</label>
+                <select
+                  style={SELECT}
+                  value={audioCodec}
+                  onChange={(e) => { setAudioCodec(e.target.value as AudioCodec); setSelectedPreset('custom'); }}
+                  disabled={isRendering}
+                  data-testid="export-audio-codec"
+                >
+                  {AUDIO_CODECS.map((ac) => (
+                    <option key={ac.id} value={ac.id}>{ac.label}</option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 9, color: '#555', marginTop: 3 }}>
+                  {AUDIO_CODECS.find((ac) => ac.id === audioCodec)?.description}
+                </div>
+              </div>
+
+              {/* MARKER_B51: Loudness normalization toggle */}
+              <div style={FIELD}>
+                <label style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  fontSize: 11, color: '#aaa', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={loudnessNorm}
+                    onChange={(e) => setLoudnessNorm(e.target.checked)}
+                    disabled={isRendering}
+                  />
+                  Loudness normalization
+                </label>
+                {loudnessNorm && (
+                  <select
+                    value={loudnessStandard}
+                    onChange={(e) => setLoudnessStandard(e.target.value)}
+                    disabled={isRendering}
+                    style={{ marginTop: 4, marginLeft: 24, background: '#1a1a1a', color: '#aaa', border: '1px solid #333', borderRadius: 2, fontSize: 10, padding: '2px 4px' }}
+                  >
+                    <option value="youtube">YouTube (-14 LUFS)</option>
+                    <option value="ebu_r128">EBU R128 (-23 LUFS)</option>
+                    <option value="atsc_a85">ATSC A/85 (-24 LUFS)</option>
+                    <option value="netflix">Netflix (-27 LUFS)</option>
+                    <option value="podcast">Podcast (-16 LUFS)</option>
+                  </select>
+                )}
               </div>
 
               {/* MARKER_W6.2: Selection range */}
@@ -557,7 +869,7 @@ export default function ExportDialog() {
                   key={fmt.id}
                   style={{
                     ...RADIO_ITEM,
-                    background: editorialFormat === fmt.id ? '#1f1f2a' : 'transparent',
+                    background: editorialFormat === fmt.id ? '#222' : 'transparent',
                   }}
                   onClick={() => setEditorialFormat(fmt.id)}
                 >
@@ -583,7 +895,7 @@ export default function ExportDialog() {
                   key={preset.id}
                   style={{ ...RADIO_ITEM, opacity: isRendering ? 0.5 : 1, pointerEvents: isRendering ? 'none' : 'auto' }}
                   onClick={() => startPublish(preset.id)}
-                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#1f1f2a'; }}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.background = '#222'; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.background = 'transparent'; }}
                 >
                   <div>
@@ -601,7 +913,7 @@ export default function ExportDialog() {
           {isRendering && (
             <div style={{ marginTop: 12 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ fontSize: 10, color: '#4a9eff' }}>{renderStatus}</div>
+                <div style={{ fontSize: 10, color: '#999' }}>{renderStatus}</div>
                 <div style={{ fontSize: 9, color: '#555' }}>
                   {(renderProgress ?? 0) < 0.1 ? 'Preparing...'
                     : (renderProgress ?? 0) < 0.3 ? 'Building graph...'
@@ -614,27 +926,38 @@ export default function ExportDialog() {
                 <div style={{
                   width: `${Math.round((renderProgress ?? 0) * 100)}%`,
                   height: '100%',
-                  background: '#4a9eff',
+                  background: '#999',
                   borderRadius: 3,
                   transition: 'width 0.3s',
                 }} />
               </div>
-              <div style={{ fontSize: 9, color: '#444', marginTop: 3, textAlign: 'right' }}>
-                {Math.round((renderProgress ?? 0) * 100)}%
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 3 }}>
+                <button
+                  style={{ ...BTN, background: '#333', color: '#ccc', fontSize: 9, padding: '2px 10px' }}
+                  onClick={cancelRender}
+                  data-testid="export-cancel-render"
+                >
+                  Cancel Render
+                </button>
+                <span style={{ fontSize: 9, color: '#444' }}>
+                  {Math.round((renderProgress ?? 0) * 100)}%
+                  {etaSec != null && etaSec > 0 && ` — ${etaSec < 60 ? `${etaSec}s` : `${Math.floor(etaSec / 60)}m ${etaSec % 60}s`} remaining`}
+                  {elapsedSec != null && elapsedSec > 0 && ` (${elapsedSec < 60 ? `${elapsedSec}s` : `${Math.floor(elapsedSec / 60)}m ${elapsedSec % 60}s`} elapsed)`}
+                </span>
               </div>
             </div>
           )}
 
           {/* Error */}
           {renderError && (
-            <div style={{ fontSize: 10, color: '#e55', marginTop: 8 }}>
+            <div style={{ fontSize: 10, color: '#999', marginTop: 8 }}>
               {renderError}
             </div>
           )}
 
           {/* Result */}
           {exportResult && (
-            <div style={{ fontSize: 10, color: '#4ade80', marginTop: 8, wordBreak: 'break-all' }}>
+            <div style={{ fontSize: 10, color: '#ccc', marginTop: 8, wordBreak: 'break-all' }}>
               {exportResult}
             </div>
           )}

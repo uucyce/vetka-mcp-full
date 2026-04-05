@@ -5,7 +5,7 @@
  * This panel manages imported media assets, organized by bins (buckets).
  *
  * Import methods (matching Premiere Pro):
- * 1. Cmd+I hotkey (via 'cut:trigger-import' custom event from TransportBar)
+ * 1. Cmd+I hotkey (via 'cut:import-media' custom event from MenuBar/hotkeys)
  * 2. Double-click dropzone to open native file picker
  * 3. Drag & drop files/folders into the panel (future: Tauri native)
  *
@@ -17,15 +17,18 @@
  */
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
+import { isTauri, openFileDialog, openFolderDialog } from '../../config/tauri';
 import DAGProjectPanel from './DAGProjectPanel';
+import { setDragPreview } from './utils/dragPreview';
 
-// MARKER_W5.4: View mode type
-type ProjectViewMode = 'list' | 'grid' | 'dag';
+// MARKER_W5.4 + GAMMA-P1.2: View mode type
+type ProjectViewMode = 'list' | 'columns' | 'grid' | 'dag';
 
 // ─── Bin (bucket) types ───
 
-type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other';
+type BinKey = 'video' | 'audio' | 'music_track' | 'stills' | 'boards' | 'documents' | 'other' | string;
 
 interface BinDef {
   key: BinKey;
@@ -179,6 +182,9 @@ function labelForPath(path: string): string {
   return parts.length > 0 ? parts[parts.length - 1] : 'project';
 }
 
+// MARKER_GAMMA-14: setDragPreview extracted to ./utils/dragPreview.ts (Gamma-8 refactor)
+
+// MARKER_W6.IMPORT-FIX: Infer folder path from file list (Tauri native or browser webkitdirectory)
 function inferFolderPath(files: FileList | null): string {
   if (!files || files.length === 0) return '';
   const first = files[0] as File & { path?: string; webkitRelativePath?: string };
@@ -186,7 +192,9 @@ function inferFolderPath(files: FileList | null): string {
   if (typeof first.path === 'string' && first.path) {
     return first.path.replace(/[\\/][^\\/]+$/, '');
   }
-  // Browser: no native path, return empty
+  // Browser webkitdirectory: webkitRelativePath = "folder/subfolder/file.mp4"
+  // We can't get absolute path in browser — return empty for now
+  // The uploadAndImport flow handles browser mode
   return '';
 }
 
@@ -227,7 +235,7 @@ export default function ProjectPanel() {
   const activeMediaPath = useCutEditorStore((s) => s.sourceMediaPath);
   // MARKER_W1.3: Project click → Source Monitor (not program)
   const setActiveMedia = useCutEditorStore((s) => s.setSourceMedia);
-  const setSelectedClip = useCutEditorStore((s) => s.setSelectedClip);
+  const setSelectedClip = useSelectionStore((s) => s.setSelectedClip);
 
   // Local state
   const [importStatus, setImportStatus] = useState('');
@@ -238,19 +246,64 @@ export default function ProjectPanel() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // MARKER_W5.4: View mode
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
+  // MARKER_GAMMA-19: Context menu for project items
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; path: string } | null>(null);
+  // MARKER_GAMMA-P1.4: Search/filter clips
+  const [searchQuery, setSearchQuery] = useState('');
+  // MARKER_GAMMA-MB1: Thumbnail size slider for grid view (48-160px)
+  const [thumbSize, setThumbSize] = useState(80);
+  // MARKER_GAMMA-P1.1: User-created bins
+  type UserBin = { id: string; name: string };
+  const [userBins, setUserBins] = useState<UserBin[]>(() => {
+    try { const raw = localStorage.getItem('cut_user_bins'); return raw ? JSON.parse(raw) : []; } catch { return []; }
+  });
+  const [clipBinMap, setClipBinMap] = useState<Record<string, string>>(() => {
+    try { const raw = localStorage.getItem('cut_clip_bins'); return raw ? JSON.parse(raw) : {}; } catch { return {}; }
+  });
+  const [renamingBin, setRenamingBin] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  // MARKER_GAMMA-R4.2: Multi-select state
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set());
+  // MARKER_GAMMA-R4.5: Shift+click range select anchor
+  const lastClickedPathRef = useRef<string | null>(null);
 
-  // ─── Open file picker ───
-  const openFilePicker = useCallback(() => {
-    if (importing) return;
-    fileInputRef.current?.click();
-  }, [importing]);
+  const saveUserBins = useCallback((bins: UserBin[]) => {
+    setUserBins(bins);
+    try { localStorage.setItem('cut_user_bins', JSON.stringify(bins)); } catch { /* ok */ }
+  }, []);
+  const saveClipBinMap = useCallback((map: Record<string, string>) => {
+    setClipBinMap(map);
+    try { localStorage.setItem('cut_clip_bins', JSON.stringify(map)); } catch { /* ok */ }
+  }, []);
 
-  // ─── Listen for Cmd+I from TransportBar hotkey ───
-  useEffect(() => {
-    const handler = () => openFilePicker();
-    window.addEventListener('cut:trigger-import', handler);
-    return () => window.removeEventListener('cut:trigger-import', handler);
-  }, [openFilePicker]);
+  const createBin = useCallback(() => {
+    const id = `bin_${Date.now()}`;
+    const name = `Bin ${userBins.length + 1}`;
+    saveUserBins([...userBins, { id, name }]);
+    setRenamingBin(id);
+    setRenameValue(name);
+  }, [userBins, saveUserBins]);
+
+  const renameBin = useCallback((id: string, name: string) => {
+    saveUserBins(userBins.map((b) => b.id === id ? { ...b, name } : b));
+    setRenamingBin(null);
+  }, [userBins, saveUserBins]);
+
+  const deleteBin = useCallback((id: string) => {
+    saveUserBins(userBins.filter((b) => b.id !== id));
+    const next = { ...clipBinMap };
+    for (const key of Object.keys(next)) { if (next[key] === id) delete next[key]; }
+    saveClipBinMap(next);
+  }, [userBins, clipBinMap, saveUserBins, saveClipBinMap]);
+
+  const assignClipToBin = useCallback((clipPath: string, binId: string) => {
+    saveClipBinMap({ ...clipBinMap, [clipPath]: binId });
+  }, [clipBinMap, saveClipBinMap]);
+  // MARKER_GAMMA-P1.2: Column sort
+  type SortKey = 'name' | 'duration' | 'modality';
+  type SortDir = 'asc' | 'desc';
+  const [sortKey, setSortKey] = useState<SortKey>('name');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
 
   // ─── Job polling — returns the completed job result ───
   const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
@@ -351,8 +404,34 @@ export default function ProjectPanel() {
       }
       setImportProgress(0.8);
 
-      // Step 3: Refresh project state → populates thumbnails + lanes in store
+      // MARKER_W6.IMPORT-FIX: Refresh project state → populates thumbnails + lanes in store.
+      // Call refreshProjectState from store, but also trigger a direct re-fetch
+      // because the closure may have stale projectId.
       await refreshProjectState?.();
+      // Fallback: direct fetch to force store hydration with correct pid
+      try {
+        const stateRes = await fetch(
+          `${API_BASE}/cut/project-state?sandbox_root=${encodeURIComponent(sandboxRoot)}&project_id=${encodeURIComponent(pid)}`
+        );
+        if (stateRes.ok) {
+          const statePayload = await stateRes.json();
+          if (statePayload.success) {
+            const tl = statePayload.timeline_state;
+            if (tl?.lanes) {
+              useCutEditorStore.getState().setLanes(tl.lanes);
+            }
+            if (tl?.markers) {
+              useCutEditorStore.getState().setMarkers(tl.markers);
+            }
+            useCutEditorStore.getState().setEditorSession({
+              sandboxRoot,
+              projectId: pid,
+              sourcePath: trimmed,
+              timelineId: String(tl?.timeline_id || 'main'),
+            });
+          }
+        }
+      } catch { /* non-critical fallback */ }
       setImportStatus(`Imported ${labelForPath(trimmed)}`);
       setImportProgress(1);
     } catch (err) {
@@ -362,6 +441,58 @@ export default function ProjectPanel() {
       setImporting(false);
     }
   }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
+
+  // ─── Open file picker ───
+  // MARKER_CUT-IMPORT-FIX: In Tauri, use native dialog for real filesystem paths.
+  // HTML <input type="file"> doesn't expose file.path in Tauri 2.x WebView.
+  const openFilePicker = useCallback(async () => {
+    if (importing) return;
+
+    if (isTauri()) {
+      // Tauri native: use native file dialog which returns real filesystem paths
+      const paths = await openFileDialog({
+        title: 'Import Media Files',
+        multiple: true,
+        filters: [
+          {
+            name: 'Media',
+            extensions: [
+              'mov', 'mp4', 'avi', 'mkv', 'webm',
+              'm4a', 'wav', 'mp3', 'flac', 'aac', 'ogg',
+              'jpg', 'jpeg', 'png', 'tiff', 'bmp', 'webp',
+            ],
+          },
+        ],
+      });
+
+      if (paths && paths.length > 0) {
+        // Derive folder from first file's parent directory
+        const firstPath = paths[0];
+        const folderPath = firstPath.replace(/[\\/][^\\/]+$/, '');
+        if (folderPath) {
+          void startImport(folderPath);
+          return;
+        }
+      }
+      // User cancelled — no fallback
+      return;
+    }
+
+    // Browser mode: use HTML file input
+    fileInputRef.current?.click();
+  }, [importing, startImport]);
+
+  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
+  useEffect(() => {
+    const handler = () => { void openFilePicker(); };
+    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
+    window.addEventListener('cut:import-media', handler);
+    window.addEventListener('cut:trigger-import', handler);
+    return () => {
+      window.removeEventListener('cut:import-media', handler);
+      window.removeEventListener('cut:trigger-import', handler);
+    };
+  }, [openFilePicker]);
 
   // ─── Upload files to backend (browser mode — no native paths) ───
   const uploadAndImport = useCallback(async (files: FileList) => {
@@ -454,7 +585,27 @@ export default function ProjectPanel() {
         }))
       );
 
-  const projectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+  const allProjectItems = mediaItems.map((item) => classifyItem(item, laneTypesByPath));
+
+  // MARKER_GAMMA-P1.4: Filter by search query
+  const searchLower = searchQuery.toLowerCase();
+  const projectItems = searchLower
+    ? allProjectItems.filter((item) => basename(item.source_path).toLowerCase().includes(searchLower))
+    : allProjectItems;
+
+  // MARKER_GAMMA-P1.2: Sort for column view
+  const toggleSort = useCallback((key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('asc'); }
+  }, [sortKey]);
+
+  const sortedItems = [...projectItems].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1;
+    if (sortKey === 'name') return dir * basename(a.source_path).localeCompare(basename(b.source_path));
+    if (sortKey === 'duration') return dir * ((a.duration_sec ?? 0) - (b.duration_sec ?? 0));
+    if (sortKey === 'modality') return dir * (a.modality ?? '').localeCompare(b.modality ?? '');
+    return 0;
+  });
 
   const bins = BIN_ORDER
     .map((bin) => ({
@@ -464,7 +615,41 @@ export default function ProjectPanel() {
     .filter((b) => b.items.length > 0);
 
   // ─── Click on clip ───
-  const handleClipClick = useCallback((clipSourcePath: string) => {
+  // MARKER_GAMMA-R4.2 + R4.5: Multi-select with Cmd/Ctrl+click, Shift+click range
+  const handleClipClick = useCallback((clipSourcePath: string, e?: React.MouseEvent) => {
+    if (e && e.shiftKey && lastClickedPathRef.current) {
+      // MARKER_GAMMA-R4.5: Shift+click range select
+      // Build flat ordered list of all visible items for range calculation
+      const allPaths = sortedItems.map((it) => it.source_path);
+      const anchorIdx = allPaths.indexOf(lastClickedPathRef.current);
+      const targetIdx = allPaths.indexOf(clipSourcePath);
+      if (anchorIdx !== -1 && targetIdx !== -1) {
+        const lo = Math.min(anchorIdx, targetIdx);
+        const hi = Math.max(anchorIdx, targetIdx);
+        const rangePaths = allPaths.slice(lo, hi + 1);
+        setSelectedPaths((prev) => {
+          const next = new Set(prev);
+          for (const p of rangePaths) next.add(p);
+          return next;
+        });
+      } else {
+        setSelectedPaths(new Set([clipSourcePath]));
+      }
+      // Don't update lastClickedPathRef — anchor stays for extending range
+    } else if (e && (e.metaKey || e.ctrlKey)) {
+      // Toggle in multi-selection
+      setSelectedPaths((prev) => {
+        const next = new Set(prev);
+        if (next.has(clipSourcePath)) next.delete(clipSourcePath);
+        else next.add(clipSourcePath);
+        return next;
+      });
+      lastClickedPathRef.current = clipSourcePath;
+    } else {
+      // Single select — clear multi-selection
+      setSelectedPaths(new Set([clipSourcePath]));
+      lastClickedPathRef.current = clipSourcePath;
+    }
     setActiveMedia(clipSourcePath);
     for (const lane of lanes) {
       const clip = lane.clips.find((c) => c.source_path === clipSourcePath);
@@ -474,7 +659,7 @@ export default function ProjectPanel() {
       }
     }
     setSelectedClip(null);
-  }, [lanes, setActiveMedia, setSelectedClip]);
+  }, [lanes, setActiveMedia, setSelectedClip, sortedItems]);
 
   const toggleBin = useCallback((key: string) => {
     setCollapsedBins((prev) => {
@@ -485,15 +670,23 @@ export default function ProjectPanel() {
     });
   }, []);
 
-  const totalClips = projectItems.length;
+  const totalClips = allProjectItems.length;
+  const filteredCount = projectItems.length;
 
   return (
-    <div style={PANEL}>
-      {/* Header with view mode switcher — MARKER_W5.4 */}
+    <div style={PANEL} data-testid="cut-source-browser">
+      {/* Header with view mode switcher — MARKER_W5.4 + GAMMA-P1.1 New Bin */}
       <div style={HEADER}>
-        <span>Project</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Project</span>
+          <button
+            onClick={createBin}
+            style={{ ...MODE_SWITCH_BTN, color: '#555', fontSize: 10 }}
+            title="New Bin (⌘B)"
+          >+</button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {(['list', 'grid', 'dag'] as const).map((mode) => (
+          {(['list', 'columns', 'grid', 'dag'] as const).map((mode) => (
             <button
               key={mode}
               style={{
@@ -502,16 +695,54 @@ export default function ProjectPanel() {
                 background: viewMode === mode ? '#1a1a1a' : 'none',
               }}
               onClick={() => setViewMode(mode)}
-              title={mode === 'list' ? 'List view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
+              title={mode === 'list' ? 'List view' : mode === 'columns' ? 'Column view' : mode === 'grid' ? 'Grid view' : 'DAG view'}
             >
-              {mode === 'list' ? '≡' : mode === 'grid' ? '⊞' : '◇'}
+              {mode === 'list' ? '≡' : mode === 'columns' ? '▤' : mode === 'grid' ? '⊞' : '◇'}
             </button>
           ))}
           <span style={{ marginLeft: 6, fontSize: 9, color: '#555' }}>
-            {totalClips}
+            {searchLower ? `${filteredCount}/${totalClips}` : totalClips}
           </span>
         </div>
       </div>
+
+      {/* MARKER_GAMMA-P1.4: Search/filter bar */}
+      <div style={{ padding: '4px 10px', borderBottom: '1px solid #1a1a1a', flexShrink: 0 }}>
+        <input
+          type="text"
+          placeholder="Filter clips..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          style={{
+            width: '100%',
+            padding: '3px 6px',
+            background: '#111',
+            border: '1px solid #333',
+            borderRadius: 3,
+            color: '#ccc',
+            fontSize: 9,
+            outline: 'none',
+            boxSizing: 'border-box',
+          }}
+        />
+      </div>
+
+      {/* MARKER_GAMMA-MB1: Thumbnail size slider (grid mode only) */}
+      {viewMode === 'grid' && (
+        <div style={{ padding: '2px 10px', borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <span style={{ fontSize: 8, color: '#555' }}>Size</span>
+          <input
+            type="range"
+            min={48}
+            max={160}
+            step={8}
+            value={thumbSize}
+            onChange={(e) => setThumbSize(parseInt(e.target.value))}
+            style={{ flex: 1, height: 3, appearance: 'none', background: '#333', borderRadius: 2, outline: 'none', cursor: 'pointer' }}
+          />
+          <span style={{ fontSize: 8, color: '#555', fontVariantNumeric: 'tabular-nums', width: 24, textAlign: 'right' }}>{thumbSize}</span>
+        </div>
+      )}
 
       {/* Import area */}
       <div style={IMPORT_AREA}>
@@ -519,9 +750,9 @@ export default function ProjectPanel() {
         <div
           style={{
             ...DROPZONE,
-            borderColor: dragging ? '#4a9eff' : '#2f2f2f',
-            background: dragging ? '#081120' : 'transparent',
-            color: dragging ? '#bfdbfe' : '#555',
+            borderColor: dragging ? '#999' : '#2f2f2f',
+            background: dragging ? '#0a0a0a' : 'transparent',
+            color: dragging ? '#ccc' : '#555',
           }}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
@@ -537,10 +768,13 @@ export default function ProjectPanel() {
             : 'Double-click or press ⌘I to import media'}
         </div>
 
-        {/* Hidden file picker — accepts media files */}
+        {/* MARKER_W6.IMPORT-FIX: Hidden file picker — folder mode for NLE import */}
         <input
           ref={fileInputRef}
           type="file"
+          // @ts-expect-error -- webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
+          directory=""
           multiple
           accept={MEDIA_ACCEPT}
           style={{ display: 'none' }}
@@ -556,16 +790,86 @@ export default function ProjectPanel() {
           <div style={{
             ...STATUS_LINE,
             color: importStatus.toLowerCase().includes('fail') || importStatus.toLowerCase().includes('error')
-              ? '#f87171'
-              : '#93c5fd',
+              ? '#999'
+              : '#777',
           }}>
             {importStatus}
           </div>
         )}
       </div>
 
-      {/* Content area — switches by viewMode (MARKER_W5.4) */}
-      {viewMode === 'dag' ? (
+      {/* Content area — switches by viewMode (MARKER_W5.4 + GAMMA-P1.2) */}
+      {viewMode === 'columns' ? (
+        /* MARKER_GAMMA-P1.2: Column view — sortable table */
+        <div style={{ ...BIN_LIST, fontSize: 9 }}>
+          {/* Column headers */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 60px 50px',
+            padding: '3px 10px',
+            borderBottom: '1px solid #333',
+            color: '#777',
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            userSelect: 'none',
+          }}>
+            <span style={{ cursor: 'pointer' }} onClick={() => toggleSort('name')}>
+              Name {sortKey === 'name' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('duration')}>
+              Duration {sortKey === 'duration' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+            <span style={{ cursor: 'pointer', textAlign: 'right' }} onClick={() => toggleSort('modality')}>
+              Type {sortKey === 'modality' ? (sortDir === 'asc' ? '\u25B4' : '\u25BE') : ''}
+            </span>
+          </div>
+          {/* Rows */}
+          {sortedItems.map((item) => {
+            const isActive = item.source_path === activeMediaPath;
+            return (
+              <div
+                key={item.item_id}
+                draggable
+                onDragStart={(e) => {
+                  const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                  const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                  e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                  e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
+                  e.dataTransfer.effectAllowed = 'copy';
+                  setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
+                }}
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
+                onClick={(e) => handleClipClick(item.source_path, e)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 60px 50px',
+                  padding: '3px 10px',
+                  borderBottom: '1px solid #111',
+                  background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                  cursor: 'grab',
+                  color: (isActive || selectedPaths.has(item.source_path)) ? '#ccc' : '#888',
+                }}
+                onMouseEnter={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = '#111'; }}
+                onMouseLeave={(e) => { if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {basename(item.source_path)}
+                </span>
+                <span style={{ textAlign: 'right', color: '#555', fontVariantNumeric: 'tabular-nums' }}>
+                  {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                </span>
+                <span style={{ textAlign: 'right', color: '#444' }}>
+                  {item.modality ?? '—'}
+                </span>
+              </div>
+            );
+          })}
+          {totalClips === 0 && (
+            <div style={{ padding: 24, color: '#333', textAlign: 'center', fontSize: 11 }}>No clips imported</div>
+          )}
+        </div>
+      ) : viewMode === 'dag' ? (
         /* DAG view — embedded DAGProjectPanel */
         <div style={{ flex: 1, overflow: 'hidden' }}>
           <DAGProjectPanel />
@@ -573,18 +877,31 @@ export default function ProjectPanel() {
       ) : viewMode === 'grid' ? (
         /* Grid view — thumbnail grid */
         <div style={{ ...BIN_LIST }}>
-          <div style={GRID_CONTAINER}>
+          <div style={{ ...GRID_CONTAINER, gridTemplateColumns: `repeat(auto-fill, minmax(${thumbSize}px, 1fr))` }}>
             {projectItems.map((item) => {
               const isActive = item.source_path === activeMediaPath;
               return (
                 <div
                   key={item.item_id}
+                  draggable
+                  onDragStart={(e) => {
+                    const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                    const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                    e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                    e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
+                    e.dataTransfer.effectAllowed = 'copy';
+                    setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
+                    (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                  }}
+                  onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                  onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                   style={{
                     ...GRID_ITEM,
-                    background: isActive ? '#1a1a2a' : 'transparent',
-                    border: isActive ? '1px solid #4a9eff' : '1px solid transparent',
+                    background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                    border: (isActive || selectedPaths.has(item.source_path)) ? '1px solid #999' : '1px solid transparent',
+                    cursor: 'grab',
                   }}
-                  onClick={() => handleClipClick(item.source_path)}
+                  onClick={(e) => handleClipClick(item.source_path, e)}
                 >
                   {item.poster_url ? (
                     <img src={item.poster_url} style={GRID_THUMB} alt="" />
@@ -623,12 +940,89 @@ export default function ProjectPanel() {
           )}
         </div>
       ) : (
-        /* List view (default) — bins with clip rows */
+        /* List view (default) — user bins + auto bins with clip rows */
         <div style={BIN_LIST}>
+          {/* MARKER_GAMMA-P1.1: User-created bins */}
+          {userBins.map((ubin) => {
+            const isCollapsed = collapsedBins.has(ubin.id);
+            const ubinItems = projectItems.filter((it) => clipBinMap[it.source_path] === ubin.id);
+            return (
+              <div key={ubin.id} data-testid={`cut-user-bin-${ubin.id}`}>
+                <div
+                  style={BIN_HEADER}
+                  onClick={() => toggleBin(ubin.id)}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    const path = e.dataTransfer.getData('text/cut-media-path');
+                    if (path) assignClipToBin(path, ubin.id);
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    if (confirm(`Delete bin "${ubin.name}"?`)) deleteBin(ubin.id);
+                  }}
+                >
+                  <span>
+                    {isCollapsed ? '▸' : '▾'}{' '}
+                    {renamingBin === ubin.id ? (
+                      <input
+                        autoFocus
+                        value={renameValue}
+                        onChange={(e) => setRenameValue(e.target.value)}
+                        onBlur={() => renameBin(ubin.id, renameValue)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') renameBin(ubin.id, renameValue); if (e.key === 'Escape') setRenamingBin(null); }}
+                        onClick={(e) => e.stopPropagation()}
+                        style={{ background: '#111', border: '1px solid #555', borderRadius: 2, color: '#ccc', fontSize: 10, width: 100, padding: '0 3px', outline: 'none' }}
+                      />
+                    ) : (
+                      <span onDoubleClick={(e) => { e.stopPropagation(); setRenamingBin(ubin.id); setRenameValue(ubin.name); }}>
+                        {ubin.name}
+                      </span>
+                    )}
+                  </span>
+                  <span>{ubinItems.length}</span>
+                </div>
+                {!isCollapsed && ubinItems.map((item) => {
+                  const isActive = item.source_path === activeMediaPath;
+                  return (
+                    <div
+                      key={item.item_id}
+                      draggable
+                      onDragStart={(e) => {
+                        const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                        const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                        e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                        e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
+                      }}
+                      style={{
+                        ...CLIP_ITEM,
+                        background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                        borderLeft: (isActive || selectedPaths.has(item.source_path)) ? '2px solid #999' : '2px solid transparent',
+                        cursor: 'grab',
+                      }}
+                      onClick={(e) => handleClipClick(item.source_path, e)}
+                    >
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 11, color: isActive ? '#fff' : '#aaa', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {basename(item.source_path)}
+                        </div>
+                        <div style={{ fontSize: 9, color: '#555' }}>
+                          {item.duration_sec ? `${Number(item.duration_sec).toFixed(1)}s` : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+          {/* Auto-classified bins */}
           {bins.map((bin) => {
             const isCollapsed = collapsedBins.has(bin.key);
             return (
-              <div key={bin.key}>
+              <div key={bin.key} data-testid={`cut-source-bucket-${bin.key}`}>
                 <div style={BIN_HEADER} onClick={() => toggleBin(bin.key)}>
                   <span>
                     {isCollapsed ? '▸' : '▾'} {bin.icon} {bin.label}
@@ -640,12 +1034,26 @@ export default function ProjectPanel() {
                   return (
                     <div
                       key={item.item_id}
+                      data-testid={`cut-source-item-${item.item_id}`}
+                      draggable
+                      onDragStart={(e) => {
+                        const isMulti = selectedPaths.has(item.source_path) && selectedPaths.size > 1;
+                        const paths = isMulti ? [...selectedPaths] : [item.source_path];
+                        e.dataTransfer.setData('text/cut-media-path', paths[0]);
+                        e.dataTransfer.setData('text/cut-media-paths', JSON.stringify(paths));
+                        e.dataTransfer.effectAllowed = 'copy';
+                        setDragPreview(e, basename(item.source_path), item.modality, item.poster_url, item.duration_sec, paths.length);
+                        (e.currentTarget as HTMLElement).style.opacity = '0.5';
+                      }}
+                      onDragEnd={(e) => { (e.currentTarget as HTMLElement).style.opacity = '1'; }}
+                      onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, path: item.source_path }); }}
                       style={{
                         ...CLIP_ITEM,
-                        background: isActive ? '#1a1a2a' : 'transparent',
-                        borderLeft: isActive ? '2px solid #4a9eff' : '2px solid transparent',
+                        background: (isActive || selectedPaths.has(item.source_path)) ? '#1a1a1a' : 'transparent',
+                        borderLeft: (isActive || selectedPaths.has(item.source_path)) ? '2px solid #999' : '2px solid transparent',
+                        cursor: 'grab',
                       }}
-                      onClick={() => handleClipClick(item.source_path)}
+                      onClick={(e) => handleClipClick(item.source_path, e)}
                     >
                       {item.poster_url ? (
                         <img src={item.poster_url} style={THUMB} alt="" />
@@ -695,6 +1103,53 @@ export default function ProjectPanel() {
                 press above to import media
               </span>
             </div>
+          )}
+        </div>
+      )}
+      {/* MARKER_GAMMA-19: Project item context menu */}
+      {ctxMenu && (
+        <div
+          style={{
+            position: 'fixed', top: ctxMenu.y, left: ctxMenu.x,
+            background: '#0b0b0b', border: '1px solid #333', borderRadius: 4,
+            padding: '3px 0', zIndex: 10000, minWidth: 160,
+            fontSize: 11, fontFamily: 'system-ui, -apple-system, sans-serif',
+            color: '#ccc', boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+          }}
+          onMouseLeave={() => setCtxMenu(null)}
+        >
+          {[
+            { label: 'Open in Source Monitor', action: () => { setActiveMedia(ctxMenu.path); setCtxMenu(null); } },
+            { label: 'Add to Timeline', action: () => {
+              window.dispatchEvent(new CustomEvent('cut:add-to-timeline', { detail: { path: ctxMenu.path } }));
+              setCtxMenu(null);
+            }},
+            { separator: true },
+            { label: 'Reveal in Finder', action: () => {
+              fetch(`${API_BASE}/files/open-in-finder`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ path: ctxMenu.path }),
+              }).catch(() => {});
+              setCtxMenu(null);
+            }},
+          ].map((item: { label?: string; action?: () => void; separator?: boolean; disabled?: boolean }, i) =>
+            'separator' in item ? (
+              <div key={i} style={{ height: 1, background: '#222', margin: '3px 0' }} />
+            ) : (
+              <div
+                key={i}
+                onClick={item.disabled ? undefined : item.action}
+                style={{
+                  padding: '4px 12px', cursor: item.disabled ? 'default' : 'pointer',
+                  color: item.disabled ? '#444' : '#ccc', whiteSpace: 'nowrap',
+                }}
+                onMouseEnter={(e) => { if (!item.disabled) (e.currentTarget as HTMLElement).style.background = '#1a1a1a'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                {item.label}
+              </div>
+            ),
           )}
         </div>
       )}

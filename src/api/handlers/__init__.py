@@ -118,6 +118,10 @@ async def register_all_handlers(sio: AsyncServer, app=None):
     register_approval_socket_handlers(sio, app)  # Phase 104.4 - Approval Socket
     await register_mcp_socket_handlers(sio, app)  # MARKER_106e_2: MCP socket handlers
     register_layout_socket_handlers(sio, app)  # MARKER_110_BACKEND_CONFIG: Layout config handlers
+    from .scope_socket_handler import register_scope_socket_handlers  # MARKER_B15-WS
+    register_scope_socket_handlers(sio)  # MARKER_B15-WS: Real-time video scopes
+    from .audio_scope_socket_handler import register_audio_scope_socket_handlers  # MARKER_B40
+    register_audio_scope_socket_handlers(sio)  # MARKER_B40: Real-time audio scopes
 
     # MARKER_123.0A: Phase 123.0 - Initialize ActivityHub with Socket.IO
     hub = get_activity_hub()

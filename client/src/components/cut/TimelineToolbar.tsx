@@ -15,9 +15,15 @@
  *   - Export button → File menu (future task)
  *   - Undo was never here (Cmd+Z)
  */
-import { type CSSProperties } from 'react';
+import { type CSSProperties, type ReactNode } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useSelectionStore } from '../../store/useSelectionStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
+import { formatTimecode } from './TimecodeField';
+import {
+  SelectionIcon, RazorIcon, RippleIcon, RollIcon,
+  SlipIcon, SlideIcon, HandIcon, ZoomIcon,
+} from './icons/ToolIcons';
 
 const ROOT: CSSProperties = {
   display: 'flex',
@@ -72,21 +78,132 @@ const ZOOM_SLIDER: CSSProperties = {
   appearance: 'none' as const,
   background: '#222',
   borderRadius: 2,
+  accentColor: '#999',
   outline: 'none',
   cursor: 'pointer',
 };
 
+// MARKER_GAMMA-ICON1: SVG tool icons — no Unicode, no emoji, pure monochrome
+type ToolId = 'selection' | 'razor' | 'slip' | 'slide' | 'ripple' | 'roll' | 'hand' | 'zoom';
+
+const TOOL_SVG: Record<ToolId, (color: string) => ReactNode> = {
+  selection: (c) => <SelectionIcon color={c} size={14} />,
+  razor:     (c) => <RazorIcon color={c} size={14} />,
+  ripple:    (c) => <RippleIcon color={c} size={14} />,
+  roll:      (c) => <RollIcon color={c} size={14} />,
+  slip:      (c) => <SlipIcon color={c} size={14} />,
+  slide:     (c) => <SlideIcon color={c} size={14} />,
+  hand:      (c) => <HandIcon color={c} size={14} />,
+  zoom:      (c) => <ZoomIcon color={c} size={14} />,
+};
+
+const PRIMARY_TOOLS: { id: ToolId; label: string; shortcut: string }[] = [
+  { id: 'selection', label: 'Selection', shortcut: 'V' },
+  { id: 'razor',     label: 'Razor',     shortcut: 'C' },
+  { id: 'ripple',    label: 'Ripple',    shortcut: 'B' },
+  { id: 'roll',      label: 'Roll',      shortcut: 'N' },
+  { id: 'slip',      label: 'Slip',      shortcut: 'Y' },
+  { id: 'slide',     label: 'Slide',     shortcut: 'U' },
+  { id: 'hand',      label: 'Hand',      shortcut: 'H' },
+  { id: 'zoom',      label: 'Zoom',      shortcut: 'Z' },
+];
+
+// MARKER_A3.2: Marker legend component — per-kind visibility toggles
+const MARKER_KINDS = [
+  { kind: 'bpm_audio', label: 'Audio', color: '#22c55e' },
+  { kind: 'bpm_visual', label: 'Visual', color: '#4a9eff' },
+  { kind: 'bpm_script', label: 'Script', color: '#fff' },
+  { kind: 'sync_point', label: 'Sync', color: '#f59e0b' },
+];
+
+function MarkerLegend() {
+  const visibleMarkerKinds = useCutEditorStore((s) => s.visibleMarkerKinds);
+  const toggleMarkerKind = useCutEditorStore((s) => s.toggleMarkerKind);
+
+  const MARKER_TOGGLE: CSSProperties = {
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '2px 6px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 4,
+    fontSize: 9,
+    fontFamily: '"JetBrains Mono", monospace',
+    color: '#555',
+    borderRadius: 3,
+    userSelect: 'none',
+  };
+
+  return (
+    <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+      {MARKER_KINDS.map(({ kind, label, color }) => {
+        const isVisible = visibleMarkerKinds.has(kind);
+        return (
+          <button
+            key={kind}
+            onClick={() => toggleMarkerKind(kind)}
+            title={`${label} markers: ${isVisible ? 'visible' : 'hidden'}`}
+            style={{
+              ...MARKER_TOGGLE,
+              background: isVisible ? '#1a1a1a' : 'none',
+              border: isVisible ? '1px solid #333' : '1px solid transparent',
+              opacity: isVisible ? 1 : 0.5,
+            }}
+          >
+            <div style={{ width: 8, height: 8, background: color, borderRadius: 1 }} />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function TimelineToolbar() {
   const snapEnabled = useCutEditorStore((s) => s.snapEnabled ?? true);
   const toggleSnap = useCutEditorStore((s) => s.toggleSnap);
-  const linkedSelection = useCutEditorStore((s) => s.linkedSelection);
-  const toggleLinkedSelection = useCutEditorStore((s) => s.toggleLinkedSelection);
+  const linkedSelection = useSelectionStore((s) => s.linkedSelection);
+  const toggleLinkedSelection = useSelectionStore((s) => s.toggleLinkedSelection);
+  const activeTool = useCutEditorStore((s) => s.activeTool);
+  const setActiveTool = useCutEditorStore((s) => s.setActiveTool);
+  // MARKER_TRIM.STATUS: I/O timecodes for toolbar display
+  const sequenceMarkIn = useCutEditorStore((s) => s.sequenceMarkIn);
+  const sequenceMarkOut = useCutEditorStore((s) => s.sequenceMarkOut);
+  const fps = useCutEditorStore((s) => s.projectFramerate ?? 25);
   // Zoom
   const zoom = useCutEditorStore((s) => s.zoom);
   const setZoom = useCutEditorStore((s) => s.setZoom);
 
   return (
     <div style={ROOT}>
+      {/* MARKER_GAMMA-TT2: Clickable tool buttons */}
+      {PRIMARY_TOOLS.map((tool) => {
+        const isActive = activeTool === tool.id;
+        return (
+          <button
+            key={tool.id}
+            onClick={() => setActiveTool(tool.id)}
+            title={`${tool.label} (${tool.shortcut})`}
+            style={{
+              ...TOGGLE_BTN,
+              background: isActive ? '#222' : 'none',
+              border: isActive ? '1px solid #555' : '1px solid transparent',
+              color: isActive ? '#ccc' : '#555',
+              fontSize: 10,
+              fontFamily: '"JetBrains Mono", monospace',
+              minWidth: 20,
+              height: 18,
+              justifyContent: 'center',
+            }}
+          >
+            {TOOL_SVG[tool.id](isActive ? '#ccc' : '#555')}
+          </button>
+        );
+      })}
+
+      <div style={{ width: 1, height: 14, background: '#222' }} />
+
       {/* Snap toggle */}
       <button
         style={{
@@ -104,6 +221,9 @@ export default function TimelineToolbar() {
       {/* MARKER_DISPLAY-CTRL: Timeline Display Controls popup */}
       <TimelineDisplayControls />
 
+      {/* MARKER_A3.2: Marker legend — toggle visibility by kind */}
+      <MarkerLegend />
+
       <div style={{ width: 1, height: 14, background: '#222' }} />
 
       {/* Linked Selection toggle */}
@@ -114,6 +234,8 @@ export default function TimelineToolbar() {
         }}
         onClick={toggleLinkedSelection}
         title={`Linked Selection ${linkedSelection ? 'ON' : 'OFF'}`}
+        data-testid="linked-selection-btn"
+        aria-label="Linked Selection"
       >
         <ChainIcon active={linkedSelection} />
       </button>
@@ -123,6 +245,33 @@ export default function TimelineToolbar() {
 
       {/* Spacer */}
       <div style={{ flex: 1 }} />
+
+      {/* MARKER_TRIM.STATUS: I/O timecode display (FCP7 Ch.34) */}
+      {(sequenceMarkIn != null || sequenceMarkOut != null) && (
+        <span style={{
+          fontSize: 9, fontFamily: '"JetBrains Mono", monospace',
+          color: '#555', letterSpacing: 0.5, userSelect: 'none',
+          display: 'flex', gap: 6,
+        }}>
+          {sequenceMarkIn != null && (
+            <span title="Mark In">I: {formatTimecode(sequenceMarkIn, fps)}</span>
+          )}
+          {sequenceMarkOut != null && (
+            <span title="Mark Out">O: {formatTimecode(sequenceMarkOut, fps)}</span>
+          )}
+        </span>
+      )}
+
+      {/* MARKER_TRIM.STATUS: Active trim tool name */}
+      {(activeTool === 'ripple' || activeTool === 'roll' || activeTool === 'slip' || activeTool === 'slide') ? (
+        <span style={{
+          fontSize: 9, fontFamily: '"JetBrains Mono", monospace',
+          color: '#555', letterSpacing: 1, textTransform: 'uppercase',
+          userSelect: 'none',
+        }}>
+          {activeTool}
+        </span>
+      ) : null}
 
       {/* Zoom slider */}
       <input

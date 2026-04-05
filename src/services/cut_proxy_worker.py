@@ -63,6 +63,98 @@ PROXY_480P = ProxySpec(width=854, height=480, video_bitrate="1M", crf=30, suffix
 PROXY_360P = ProxySpec(width=640, height=360, video_bitrate="500k", crf=32, suffix="_proxy_360p")
 
 
+# ── MARKER_B2: Auto-select proxy spec via ProbeResult ─────
+
+@dataclass
+class AutoProxyDecision:
+    """Result of auto proxy spec selection."""
+    needs_proxy: bool = False
+    spec: ProxySpec | None = None
+    reason: str = ""           # human-readable reason for decision
+    playback_class: str = ""   # from ProbeResult
+    source_resolution: str = "" # e.g. "4K", "1080p"
+
+
+def auto_select_proxy_spec(probe_result: Any) -> AutoProxyDecision:
+    """
+    MARKER_B2 — Intelligently select proxy spec based on ProbeResult.
+
+    Decision matrix:
+      transcode_required + any resolution → 480p (heavy source, small proxy)
+      proxy_recommended + ≥4K             → 480p
+      proxy_recommended + ≥1080p          → 720p
+      proxy_recommended + <1080p          → skip (already small)
+      native + ≥4K                        → 720p (4K native is heavy for scrubbing)
+      native + <4K                        → skip
+      audio_only                          → skip
+
+    Args:
+        probe_result: ProbeResult from cut_codec_probe.probe_file()
+
+    Returns:
+        AutoProxyDecision with spec selection and reasoning.
+    """
+    decision = AutoProxyDecision()
+
+    if not hasattr(probe_result, "ok") or not probe_result.ok:
+        decision.reason = "probe_failed"
+        return decision
+
+    pc = getattr(probe_result, "playback_class", "") or ""
+    height = getattr(probe_result, "height", 0) or 0
+    codec_family = getattr(probe_result, "codec_family", "") or ""
+    resolution_label = getattr(probe_result, "resolution_label", "") or ""
+
+    decision.playback_class = pc
+    decision.source_resolution = resolution_label
+
+    # Audio-only: no proxy needed
+    if codec_family == "audio_only":
+        decision.reason = "audio_only"
+        return decision
+
+    # Transcode required (RAW, exotic codecs) → always proxy, small
+    if pc == "transcode_required":
+        decision.needs_proxy = True
+        decision.spec = PROXY_480P
+        decision.reason = f"transcode_required ({resolution_label}): heavy codec needs small proxy"
+        return decision
+
+    # Proxy recommended (production codecs, HEVC 10-bit, broadcast MXF)
+    if pc == "proxy_recommended":
+        if height >= 2160:  # 4K+
+            decision.needs_proxy = True
+            decision.spec = PROXY_480P
+            decision.reason = f"proxy_recommended + {resolution_label}: 4K+ heavy → 480p proxy"
+        elif height >= 1080:
+            decision.needs_proxy = True
+            decision.spec = PROXY_720P
+            decision.reason = f"proxy_recommended + {resolution_label}: heavy codec → 720p proxy"
+        else:
+            decision.reason = f"proxy_recommended + {resolution_label}: small enough, skip"
+        return decision
+
+    # Native playback (H.264/VP9/AV1 in native container)
+    if pc == "native":
+        if height >= 2160:  # 4K native is still heavy for timeline scrubbing
+            decision.needs_proxy = True
+            decision.spec = PROXY_720P
+            decision.reason = f"native + {resolution_label}: 4K+ too heavy for scrubbing → 720p"
+        else:
+            decision.reason = f"native + {resolution_label}: lightweight, no proxy needed"
+        return decision
+
+    # Unknown or unsupported → proxy to be safe
+    if pc == "unsupported":
+        decision.needs_proxy = True
+        decision.spec = PROXY_480P
+        decision.reason = f"unsupported codec: transcode to 480p proxy"
+        return decision
+
+    decision.reason = f"unknown playback_class '{pc}': skip"
+    return decision
+
+
 @dataclass
 class ProxyResult:
     """Result of proxy generation."""
@@ -261,6 +353,83 @@ class ProxyWorker:
                 )
             else:
                 logger.warning("Proxy [%d/%d] FAIL %s: %s", i + 1, total, sp, result.error)
+
+        return results
+
+    def generate_auto(
+        self,
+        source_paths: list[str],
+        *,
+        on_progress: Any = None,
+    ) -> list[dict[str, Any]]:
+        """
+        MARKER_B2 — Auto-proxy: probe each file, decide spec, generate if needed.
+
+        Returns list of dicts with proxy result + probe metadata + decision info.
+        """
+        from src.services.cut_codec_probe import probe_file
+
+        results: list[dict[str, Any]] = []
+        total = len(source_paths)
+
+        for i, sp in enumerate(source_paths):
+            probe_result = probe_file(sp)
+            decision = auto_select_proxy_spec(probe_result)
+
+            entry: dict[str, Any] = {
+                "source_path": sp,
+                "needs_proxy": decision.needs_proxy,
+                "reason": decision.reason,
+                "playback_class": decision.playback_class,
+                "source_resolution": decision.source_resolution,
+                "codec_family": probe_result.codec_family if probe_result.ok else "",
+                "video_codec": probe_result.video_codec if probe_result.ok else "",
+            }
+
+            if decision.needs_proxy and decision.spec:
+                # Temporarily switch spec for this file
+                orig_spec = self.spec
+                self.spec = decision.spec
+                proxy_result = self.generate(sp)
+                self.spec = orig_spec
+
+                entry.update({
+                    "proxy_path": proxy_result.proxy_path,
+                    "proxy_success": proxy_result.success,
+                    "proxy_skipped": proxy_result.skipped,
+                    "proxy_error": proxy_result.error,
+                    "proxy_duration_sec": proxy_result.duration_sec,
+                    "source_size_bytes": proxy_result.source_size_bytes,
+                    "proxy_size_bytes": proxy_result.proxy_size_bytes,
+                    "proxy_spec": f"{decision.spec.width}x{decision.spec.height}",
+                })
+            else:
+                entry.update({
+                    "proxy_path": None,
+                    "proxy_success": False,
+                    "proxy_skipped": True,
+                    "proxy_error": "",
+                    "proxy_duration_sec": 0.0,
+                    "source_size_bytes": probe_result.file_size_bytes if probe_result.ok else 0,
+                    "proxy_size_bytes": 0,
+                    "proxy_spec": "none",
+                })
+
+            results.append(entry)
+
+            if on_progress is not None:
+                try:
+                    on_progress(i, total, entry)
+                except Exception:
+                    pass
+
+            logger.info(
+                "AutoProxy [%d/%d] %s → %s (%s)",
+                i + 1, total,
+                "PROXY" if decision.needs_proxy else "SKIP",
+                os.path.basename(sp),
+                decision.reason,
+            )
 
         return results
 

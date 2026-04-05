@@ -171,16 +171,27 @@ class ToolSourceWatch:
         entry = watch.get(tool_id)  # Get freshness state for a tool
     """
 
+    # MARKER_199.WATCH_TTL: Cache scan results for 5 minutes to avoid
+    # re-running git log on every session_init (~200ms-2s saved per call)
+    _SCAN_TTL_SECONDS = 300
+
     def __init__(self):
         self._source_map: Optional[Dict[str, List[str]]] = None
         self._freshness: Optional[Dict[str, ToolFreshnessEntry]] = None
+        self._last_scan_time: float = 0.0
+        self._last_scan_result: List[FreshnessEvent] = []
 
     def scan_all(self) -> List[FreshnessEvent]:
         """Scan all mapped tools for source code changes.
 
         Returns list of FreshnessEvents for tools whose source files changed.
         Designed to run once per session_init (budget: <500ms).
+        Uses a 5-minute TTL cache to avoid redundant git calls.
         """
+        import time
+        now = time.monotonic()
+        if self._last_scan_result and (now - self._last_scan_time) < self._SCAN_TTL_SECONDS:
+            return self._last_scan_result
         source_map = self._get_source_map()
         freshness = self._load_freshness()
         events: List[FreshnessEvent] = []
@@ -264,6 +275,10 @@ class ToolSourceWatch:
         if events:
             logger.info("[FRESHNESS] %d tool(s) freshened: %s",
                         len(events), ", ".join(e.tool_id for e in events))
+
+        # MARKER_199.WATCH_TTL: Cache result
+        self._last_scan_time = now
+        self._last_scan_result = events
 
         return events
 

@@ -406,6 +406,31 @@ def merge_tools(all_sources: list, roles_map: dict) -> list:
     return list(seen.values())
 
 
+# ─── Static extra tools (manually curated, survive regeneration) ─────
+
+STATIC_EXTRA_TOOLS: list = [
+    {
+        "tool_id": "vetka_screenshot",
+        "namespace": "vetka",
+        "kind": "visualization",
+        "description": "Capture screen + OCR text from display. Non-interactive for agent use.",
+        "intent_tags": ["screenshot", "ocr", "screen-capture", "vision", "observe", "read", "inspect"],
+        "trigger_patterns": {
+            "file_types": ["*"],
+            "phase_types": ["research", "fix", "build"],
+            "keywords": ["screenshot", "screen", "ocr", "capture", "vision"],
+        },
+        "cost": {"latency_ms": 800, "tokens": 0, "risk_level": "read_only"},
+        "permission": "READ",
+        "roles": ["all"],
+        "deprecated_aliases": [],
+        "active": True,
+        "source": "static_extra_tools",
+        "typical_use": "Get text content from user's screen for context analysis",
+    },
+]
+
+
 # ─── Main ────────────────────────────────────────────────────────────
 
 def generate_catalog() -> dict:
@@ -440,7 +465,9 @@ def generate_catalog() -> dict:
     print(f"    Found {len(cut_tools)} CUT endpoints")
 
     # Merge and deduplicate
-    all_tools = coder_tools + internal_tools + vetka_tools + mycelium_tools + cut_tools
+    print("  Including static extra tools...")
+    print(f"    Found {len(STATIC_EXTRA_TOOLS)} static extra tools")
+    all_tools = coder_tools + internal_tools + vetka_tools + mycelium_tools + cut_tools + STATIC_EXTRA_TOOLS
     print(f"\n  Total raw: {len(all_tools)}")
 
     merged = merge_tools(all_tools, roles_map)

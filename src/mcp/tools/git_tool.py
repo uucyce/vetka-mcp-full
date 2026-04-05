@@ -14,10 +14,13 @@ MARKER_108_7_AUTO_DIGEST: Auto-update project_digest.json after successful commi
 """
 import subprocess
 import json
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from .base_tool import BaseMCPTool
+
+logger = logging.getLogger("VETKA_MCP")
 
 # MARKER_178.FIX_HARDCODE: Resolve PROJECT_ROOT dynamically (worktree-safe)
 def _resolve_git_root() -> Path:
@@ -223,6 +226,12 @@ class GitCommitTool(BaseMCPTool):
                 if result.returncode != 0:
                     return {"success": False, "error": f"Failed to stage files: {result.stderr}", "result": None}
 
+            # MARKER_196.FIX: Capture HEAD before commit for false-positive detection
+            _head_before = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=str(git_root), capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+
             # Commit
             result = subprocess.run(
                 ["git", "commit", "-m", message],
@@ -235,7 +244,23 @@ class GitCommitTool(BaseMCPTool):
             if result.returncode != 0:
                 if "nothing to commit" in result.stdout.lower() or "nothing to commit" in result.stderr.lower():
                     return {"success": False, "error": "Nothing to commit", "result": None}
-                return {"success": False, "error": result.stderr or result.stdout, "result": None}
+
+                # MARKER_196.FIX: Check if commit actually succeeded despite non-zero exit
+                # Pre-commit hook stdout/stderr can cause git to report failure even when
+                # the commit was created. Defensive: never lose a commit due to hook noise.
+                _head_after = subprocess.run(
+                    ["git", "rev-parse", "HEAD"],
+                    cwd=str(git_root), capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                if _head_after != _head_before:
+                    # Commit exists! Treat as success despite returncode.
+                    import logging as _lg
+                    _lg.getLogger("vetka.git").warning(
+                        "[GitTool] Commit succeeded (HEAD changed) despite returncode=%d. "
+                        "Hook output: %s", result.returncode, (result.stderr or result.stdout)[:200],
+                    )
+                else:
+                    return {"success": False, "error": result.stderr or result.stdout, "result": None}
 
             # Get commit hash
             commit_hash = subprocess.run(
@@ -264,6 +289,24 @@ class GitCommitTool(BaseMCPTool):
             auto_completed = self._auto_complete_tasks(commit_hash, message)
             if auto_completed:
                 result_data["auto_completed_tasks"] = auto_completed
+
+            # MARKER_198.P1.9: Surface tasks whose allowed_paths overlap committed files
+            try:
+                _diff_result = subprocess.run(
+                    ["git", "diff-tree", "--no-commit-id", "-r", "--name-only", commit_hash],
+                    capture_output=True, text=True, cwd=str(git_root),
+                )
+                if _diff_result.returncode == 0:
+                    _committed_files = [f.strip() for f in _diff_result.stdout.strip().split("\n") if f.strip()]
+                    if _committed_files:
+                        from src.orchestration.task_board import get_task_board as _get_tb
+                        _board = _get_tb()
+                        _matched = _board.find_tasks_by_changed_files(_committed_files)
+                        if _matched:
+                            result_data["matched_tasks"] = _matched
+                            logger.info(f"[P1.9] {len(_matched)} tasks match committed files")
+            except Exception as _e:
+                logger.debug(f"[P1.9] Post-commit task match failed: {_e}")
 
             # MARKER_GIT_AUTO_PUSH: Auto-push to remote if requested
             if auto_push:

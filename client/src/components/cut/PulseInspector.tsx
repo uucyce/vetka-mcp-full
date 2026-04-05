@@ -9,9 +9,10 @@
  * Located in right_bottom dock position (below Source Monitor).
  * Updates reactively via usePanelSyncStore.
  */
-import { useMemo, type CSSProperties } from 'react';
+import { useMemo, useState, useEffect, type CSSProperties } from 'react';
 import { usePanelSyncStore, type SyncSceneContext } from '../../store/usePanelSyncStore';
 import CamelotWheel from './CamelotWheel';
+import { API_BASE } from '../../config/api.config';
 
 // ─── Types ───
 
@@ -104,15 +105,16 @@ function pendulumLabel(v: number): string {
 
 // ─── Helper: dramatic function icon ───
 
+// MARKER_GAMMA-PW3: Monochrome function labels (no emoji per feedback rule)
 function functionIcon(fn: string): string {
   switch (fn) {
-    case 'exposition': return '📖';
-    case 'rising_action': return '📈';
-    case 'climax': return '⚡';
-    case 'falling_action': return '📉';
-    case 'resolution': return '🏁';
-    case 'turning_point': return '🔄';
-    default: return '●';
+    case 'exposition': return 'I';
+    case 'rising_action': return '/';
+    case 'climax': return '^';
+    case 'falling_action': return '\\';
+    case 'resolution': return '_';
+    case 'turning_point': return '>';
+    default: return '-';
   }
 }
 
@@ -131,6 +133,21 @@ export default function PulseInspector({ sceneContext: contextProp }: PulseInspe
   const playheadSec = usePanelSyncStore((s) => s.playheadSec);
 
   const context = contextProp || activeSceneContext;
+
+  // MARKER_GAMMA-PW3: Fetch Camelot harmonic neighbors when key changes
+  const [neighbors, setNeighbors] = useState<string[]>([]);
+  const currentKey = context?.camelot_key;
+  useEffect(() => {
+    if (!currentKey) { setNeighbors([]); return; }
+    fetch(`${API_BASE}/cut/pulse/camelot/neighbors?key=${encodeURIComponent(currentKey)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.neighbors)) {
+          setNeighbors(data.neighbors);
+        }
+      })
+      .catch(() => setNeighbors([]));
+  }, [currentKey]);
 
   // Format timecode
   const timecode = useMemo(() => {
@@ -166,7 +183,8 @@ export default function PulseInspector({ sceneContext: contextProp }: PulseInspe
   return (
     <div style={PANEL}>
       <div style={HEADER}>
-        {context?.label || activeSceneId || selectedAssetId || 'Inspector'}
+        <span style={{ color: '#666', marginRight: 6 }}>PULSE</span>
+        {context?.label || activeSceneId || selectedAssetPath?.split('/').pop() || selectedAssetId || 'No Selection'}
       </div>
 
       <div style={CONTENT}>
@@ -319,6 +337,18 @@ export default function PulseInspector({ sceneContext: contextProp }: PulseInspe
                     size={120}
                   />
                 </div>
+
+                {/* MARKER_GAMMA-PW3: Harmonic neighbors — compatible keys for next scene */}
+                {neighbors.length > 0 && (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={ROW}>
+                      <span style={LABEL}>Compatible Keys</span>
+                      <span style={{ ...VALUE, fontSize: 9, letterSpacing: 1 }}>
+                        {neighbors.join('  ')}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </>
             )}
           </>

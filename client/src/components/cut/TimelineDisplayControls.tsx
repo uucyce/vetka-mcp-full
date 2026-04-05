@@ -69,7 +69,7 @@ const SIZE_BTN: CSSProperties = {
 
 function CheckMark({ checked }: { checked: boolean }) {
   return (
-    <span style={{ width: 14, textAlign: 'center', color: checked ? '#4a9eff' : '#444' }}>
+    <span style={{ width: 14, textAlign: 'center', color: checked ? '#999' : '#444' }}>
       {checked ? '✓' : ''}
     </span>
   );
@@ -85,11 +85,16 @@ export default function TimelineDisplayControls() {
   const showThroughEdits = useCutEditorStore((s) => s.showThroughEdits);
   const showClipLabels = useCutEditorStore((s) => s.showClipLabels);
   const showRubberBand = useCutEditorStore((s) => s.showRubberBand);
+  // MARKER_GAMMA-CLIP-LABEL-MODE: clip label display mode selector
+  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
+  const setClipLabelMode = useCutEditorStore((s) => s.setClipLabelMode);
   const trackHeightPreset = useCutEditorStore((s) => s.trackHeightPreset);
   const cycleTrackHeights = useCutEditorStore((s) => s.cycleTrackHeights);
   const showVideoTracks = useCutEditorStore((s) => s.showVideoTracks);
   const showAudioTracks = useCutEditorStore((s) => s.showAudioTracks);
   const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
+  const proxyMode = useCutEditorStore((s) => s.proxyMode);
+  const setProxyMode = useCutEditorStore((s) => s.setProxyMode);
 
   const toggleShowClipNames = useCutEditorStore((s) => s.toggleShowClipNames);
   const toggleShowClipBorders = useCutEditorStore((s) => s.toggleShowClipBorders);
@@ -168,6 +173,32 @@ export default function TimelineDisplayControls() {
             <span>Show Opacity/Volume Band</span>
           </div>
 
+          {/* MARKER_GAMMA-CLIP-LABEL-MODE: Clip label display mode (FCP7 #45) */}
+          <div style={{ ...TOGGLE_ROW, marginTop: 2, gap: 0, flexDirection: 'column', alignItems: 'flex-start', padding: '3px 12px' }}>
+            <span style={{ fontSize: 9, color: '#666', marginBottom: 2 }}>Label:</span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {(['name', 'filename', 'color'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  data-testid={`clip-label-mode-${mode}`}
+                  onClick={() => setClipLabelMode(mode)}
+                  style={{
+                    padding: '1px 6px',
+                    borderRadius: 3,
+                    border: `1px solid ${clipLabelMode === mode ? '#999' : '#444'}`,
+                    background: clipLabelMode === mode ? '#222' : '#111',
+                    color: clipLabelMode === mode ? '#ccc' : '#666',
+                    fontSize: 9,
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div style={SEPARATOR} />
 
           {/* Group B: Track Layout */}
@@ -180,9 +211,9 @@ export default function TimelineDisplayControls() {
                   key={preset}
                   style={{
                     ...SIZE_BTN,
-                    background: trackHeightPreset === preset ? '#4a9eff33' : '#111',
-                    borderColor: trackHeightPreset === preset ? '#4a9eff' : '#444',
-                    color: trackHeightPreset === preset ? '#4a9eff' : '#aaa',
+                    background: trackHeightPreset === preset ? '#222' : '#111',
+                    borderColor: trackHeightPreset === preset ? '#999' : '#444',
+                    color: trackHeightPreset === preset ? '#999' : '#aaa',
                   }}
                   onClick={() => {
                     // Cycle until we reach the target preset
@@ -221,6 +252,24 @@ export default function TimelineDisplayControls() {
               <CheckMark checked={timecodeDisplayMode === mode} />
               <span>
                 {mode === 'timecode' ? 'Timecode (HH:MM:SS:FF)' : mode === 'frames' ? 'Frames' : 'Seconds'}
+              </span>
+            </div>
+          ))}
+
+          <div style={SEPARATOR} />
+
+          {/* MARKER_B72: Group D: Playback Quality / Proxy toggle */}
+          <div style={GROUP_LABEL}>Playback Quality</div>
+          {(['full', 'proxy', 'auto'] as const).map((mode) => (
+            <div
+              key={mode}
+              style={TOGGLE_ROW}
+              onClick={() => setProxyMode(mode)}
+              data-testid={`proxy-mode-${mode}`}
+            >
+              <CheckMark checked={proxyMode === mode} />
+              <span>
+                {mode === 'full' ? 'Full Resolution' : mode === 'proxy' ? 'Proxy (Performance)' : 'Auto (Proxy if needed)'}
               </span>
             </div>
           ))}

@@ -49,6 +49,8 @@ input {
 
 .left-rail,
 .debug-pane {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -63,8 +65,8 @@ input {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(9, 9, 9, 0.94);
   backdrop-filter: blur(12px);
-  border-radius: 18px;
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.32);
 }
 
 .brand-card,
@@ -154,7 +156,7 @@ ul {
 }
 
 .sample-button {
-  border-radius: 12px;
+  border-radius: 6px;
   overflow: hidden;
   padding: 0;
   cursor: pointer;
@@ -256,7 +258,7 @@ ul {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   color: #f1f1ef;
-  border-radius: 14px;
+  border-radius: 4px;
   padding: 9px 11px;
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
@@ -333,7 +335,7 @@ ul {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
   color: rgba(241, 241, 239, 0.7);
-  border-radius: 12px;
+  border-radius: 4px;
   padding: 8px 10px;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -392,7 +394,7 @@ ul {
 .export-item {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(255, 255, 255, 0.03);
-  border-radius: 14px;
+  border-radius: 4px;
   padding: 10px 12px;
   display: flex;
   align-items: center;
@@ -494,7 +496,7 @@ ul {
 
 .mini-stat {
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 14px;
+  border-radius: 4px;
   padding: 9px 11px;
   display: flex;
   flex-direction: column;
@@ -535,9 +537,12 @@ ul {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 10px;
+  isolation: isolate;
 }
 
 .stage-header {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -576,8 +581,11 @@ ul {
 .stage-shell {
   position: relative;
   min-height: min(58vh, 680px);
-  border-radius: 24px;
-  overflow: hidden;
+  border-radius: 6px;
+  overflow: clip;
+  contain: paint;
+  isolation: isolate;
+  z-index: 0;
   background:
     radial-gradient(circle at center, rgba(255, 255, 255, 0.06), transparent 54%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent),
@@ -718,7 +726,7 @@ ul {
   inset: 0;
   display: grid;
   place-items: center;
-  transform-style: preserve-3d;
+  transform-style: flat;
   transition: transform 160ms ease;
 }
 
@@ -790,12 +798,16 @@ ul {
 }
 
 .bottom-panels {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 14px;
 }
 
 .workflow-dock {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(260px, 0.9fr);
   gap: 10px;
