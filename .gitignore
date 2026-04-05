@@ -87,6 +87,7 @@ temp/
 *.tmp
 
 # Local runtime/tool noise (git cleanliness)
+.agent_lock
 .media_cache/
 .ocr_cache/
 .playwright-cli/

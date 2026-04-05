@@ -280,7 +280,6 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
-                "sherpa_status",
             ],
             "description": "Operation to perform",
         },
@@ -391,7 +390,6 @@ TASK_BOARD_SCHEMA = {
             "type": "string",
             "enum": [
                 "pending",
-                "recon_done",
                 "queued",
                 "claimed",
                 "running",
@@ -494,11 +492,11 @@ TASK_BOARD_SCHEMA = {
             "type": "boolean",
             "description": "For stale_check: if true, auto-close tasks with score >= 0.8. Default false (dry run).",
         },
-        # MARKER_201.MERGE: merge_request strategy (snapshot added)
+        # MARKER_198.MERGE: merge_request strategy
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash", "snapshot"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit. 'snapshot': overlay only allowed_paths from branch onto main (one clean commit, ignores diverged history).",
+            "enum": ["cherry-pick", "merge", "squash"],
+            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
@@ -626,10 +624,12 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
     if not keywords:
         return []
 
+    # MARKER_201.DOC_GATE_LAZY: Cap glob scan at 400 files — docs/ has 2000+ .md files.
+    # Removed stat().st_mtime sort (2000+ syscalls → MCP timeout -32001).
+    # Keyword match on filename is sufficient; semantic search (Strategy 1) handles recency.
+    import itertools
     suggestions = []
-    for md_file in sorted(
-        docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
-    ):
+    for md_file in itertools.islice(docs_dir.rglob("*.md"), 400):
         name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
         score = sum(1 for k in keywords if k in name_lower)
         if score > 0:
@@ -771,6 +771,27 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     suggested[:3],
                 )
 
+        # MARKER_ETA.DESC_GUARD: Validate description length.
+        # P1/P2: block if description is empty or < 20 chars (too vague to act on).
+        # P3+: allow but surface a warning in response.
+        _desc_raw = payload.get("description", "").strip()
+        _priority_for_guard = int(payload.get("priority", 3))
+        if len(_desc_raw) < 20:
+            if _priority_for_guard <= 2:
+                return {
+                    "success": False,
+                    "error": (
+                        f"DESC_GUARD: P{_priority_for_guard} tasks require description ≥ 20 characters "
+                        f"(got {len(_desc_raw)}). Add context: what problem, why now, acceptance criteria."
+                    ),
+                    "desc_guard": True,
+                }
+            # P3+ — allow, but flag
+            payload["_desc_guard_warning"] = (
+                f"DESC_GUARD: description is short ({len(_desc_raw)} chars). "
+                "Consider adding more context for better task clarity."
+            )
+
         try:
             payload = apply_task_profile_defaults(payload)
         except ValueError as exc:
@@ -816,13 +837,63 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if _dg_warnings:
             result["doc_gate_warning"] = _dg_warnings[0]
 
+        # MARKER_ETA.DESC_GUARD: Surface description length warning for P3+ tasks
+        _dg_desc = payload.get("_desc_guard_warning")
+        if _dg_desc:
+            result["desc_guard_warning"] = _dg_desc
+
+        # MARKER_ETA.SOFT_DEDUP: Check for similar existing tasks by title.
+        # Score is FTS5 BM25 rank (negative, closer to 0 = more similar).
+        # Threshold > -15 catches near-identical titles without false-positive noise.
+        try:
+            import re as _re_dedup
+            _clean_title = _re_dedup.sub(r"[^\w\s]", " ", title)
+            _title_words = _clean_title.split()[:6]
+            if _title_words:
+                _fts_hits = board.search_fts(" ".join(_title_words), limit=10)
+                _dupes = [
+                    {"task_id": h["task_id"], "snippet": h["snippet"][:120], "score": h["rank"]}
+                    for h in _fts_hits
+                    if h["task_id"] != task_id and h["rank"] > -15
+                ]
+                if _dupes:
+                    result["possible_duplicates"] = {
+                        "message": (
+                            f"SOFT_DEDUP: {len(_dupes)} similar task(s) found. "
+                            "Review before working — may already be covered."
+                        ),
+                        "tasks": _dupes[:5],
+                    }
+        except Exception:
+            pass  # Dedup is advisory, never blocks
+
         # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
         # When parallel tasks share allowed_paths, they risk API drift (different method names).
         # Surface a warning so Commander can provide a Protocol contract.
+        # MARKER_201.SHARED_ZONES: Suppress warning for naturally shared files (App.tsx,
+        # task_board.py, package.json etc.) registered in agent_registry.yaml shared_zones.
         new_paths = payload.get("allowed_paths") or []
         if new_paths:
             try:
-                overlapping = board.find_tasks_by_changed_files(new_paths)
+                # Load shared_zone file basenames to suppress false-positive overlap warnings
+                _shared_zone_files: set = set()
+                try:
+                    from src.services.agent_registry import get_agent_registry
+                    _reg = get_agent_registry()
+                    _shared_zone_files = {zone.file for zone in _reg.shared_zones}
+                except Exception:
+                    pass
+
+                # Only warn about exclusive paths (not registered shared_zones)
+                exclusive_paths = [
+                    p for p in new_paths
+                    if not any(
+                        p == sz or p.endswith("/" + sz) or sz.endswith("/" + p.split("/")[-1])
+                        for sz in _shared_zone_files
+                    )
+                ]
+
+                overlapping = board.find_tasks_by_changed_files(exclusive_paths) if exclusive_paths else []
                 # Exclude the task we just created
                 overlapping = [t for t in overlapping if t.get("id") != task_id]
                 if overlapping:
@@ -838,7 +909,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                         "overlapping_tasks": overlap_titles,
                         "shared_paths": [
                             p
-                            for p in new_paths
+                            for p in exclusive_paths
                             if any(
                                 any(
                                     p.startswith(ap) or ap.startswith(p)
@@ -1012,6 +1083,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_191.7: Auto-inject docs content for MCP agents
         docs = _load_docs_content_sync(task)
         result = {"success": True, "task": task}
+        # MARKER_191.20: Inject subtask_progress for visibility
+        from src.orchestration.task_board import TaskBoard as _TB
+        _progress = _TB.get_subtask_progress(task)
+        if _progress is not None:
+            result["subtask_progress"] = _progress
         if docs:
             result["docs_content"] = docs
         return result
@@ -1753,204 +1829,18 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
 
-    # MARKER_202.SHERPA_SIGNAL: Query or update Sherpa availability status.
-    # GET:  action=sherpa_status (no args) → returns current status
-    # SET:  action=sherpa_status status=busy|idle|stopped [tasks_enriched=N]
-    elif action == "sherpa_status":
-        new_status = arguments.get("status")
-        if new_status:
-            # Update Sherpa status
-            import os
-            valid = ("idle", "busy", "stopped")
-            if new_status not in valid:
-                return {"success": False, "error": f"sherpa_status must be one of {valid}"}
-            board.settings["sherpa_status"] = new_status
-            if new_status in ("idle", "busy"):
-                board.settings["sherpa_pid"] = os.getpid()
-                from datetime import datetime
-                board.settings["sherpa_last_seen"] = datetime.now().isoformat()
-            if "tasks_enriched" in arguments:
-                try:
-                    board.settings["sherpa_tasks_enriched"] = int(arguments["tasks_enriched"])
-                except (ValueError, TypeError):
-                    pass
-            if new_status == "stopped":
-                board.settings["sherpa_pid"] = None
-            board._save("sherpa_status_update")
-            return {
-                "success": True,
-                "sherpa_status": new_status,
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
-        else:
-            # Query current status
-            return {
-                "success": True,
-                "sherpa_status": board.settings.get("sherpa_status", "stopped"),
-                "sherpa_pid": board.settings.get("sherpa_pid"),
-                "sherpa_last_seen": board.settings.get("sherpa_last_seen"),
-                "sherpa_tasks_enriched": board.settings.get("sherpa_tasks_enriched", 0),
-            }
-
-    # MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill
-    elif action == "spawn":
-        return _handle_synapse(arguments)
+    # MARKER_191.20: Subtask progress tracking — mark one subtask as done
+    elif action == "subtask_done":
+        task_id = arguments.get("task_id")
+        subtask_title = arguments.get("subtask_title", "").strip()
+        if not task_id:
+            return {"success": False, "error": "task_id is required for subtask_done"}
+        if not subtask_title:
+            return {"success": False, "error": "subtask_title is required for subtask_done"}
+        return board.subtask_done(task_id, subtask_title)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
-
-
-def _handle_synapse(arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill.
-
-    Sub-operations via 'sub' parameter:
-      spawn  — start agent in new terminal window
-      write  — send prompt text to running agent session
-      wake   — force agent to read notification inbox
-      status — list running agent tmux sessions
-      kill   — stop agent session
-    """
-    import subprocess
-
-    sub = arguments.get("sub", "spawn")
-    role = arguments.get("role")
-    scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
-
-    if sub == "status":
-        # List all vetka-* tmux sessions
-        result = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name} #{session_created} #{session_attached}"],
-            capture_output=True, text=True,
-        )
-        sessions = []
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.startswith("vetka-"):
-                    parts = line.split()
-                    sessions.append({
-                        "session": parts[0],
-                        "role": parts[0].replace("vetka-", ""),
-                        "created": parts[1] if len(parts) > 1 else None,
-                        "attached": parts[2] if len(parts) > 2 else "0",
-                    })
-        return {"success": True, "sessions": sessions, "count": len(sessions)}
-
-    if not role:
-        return {"success": False, "error": "role is required for spawn sub-operations"}
-
-    session_name = f"vetka-{role}"
-
-    if sub == "spawn":
-        # Load agent info from registry
-        import yaml
-        registry_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "templates" / "agent_registry.yaml"
-        agent_type = "claude_code"
-        worktree = None
-        try:
-            with open(registry_path) as f:
-                data = yaml.safe_load(f)
-            for r in data.get("roles", []):
-                if r.get("callsign") == role:
-                    worktree = r.get("worktree")
-                    agent_type = r.get("agent_type", "claude_code")
-                    break
-        except Exception as exc:
-            return {"success": False, "error": f"Failed to read agent_registry.yaml: {exc}"}
-
-        if not worktree:
-            return {"success": False, "error": f"Role '{role}' not found in agent_registry.yaml or has no worktree"}
-
-        # Check if already running
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode == 0:
-            return {"success": True, "already_running": True, "session": session_name,
-                    "message": f"{role} already running in {session_name}"}
-
-        synapse_script = scripts_dir / "spawn_synapse.sh"
-        if not synapse_script.exists():
-            return {"success": False, "error": f"spawn_synapse.sh not found at {synapse_script}"}
-
-        proc = subprocess.run(
-            [str(synapse_script), role, worktree, agent_type],
-            capture_output=True, text=True, timeout=15,
-        )
-        if proc.returncode != 0:
-            return {"success": False, "error": f"Spawn failed: {proc.stderr.strip()}"}
-
-        return {"success": True, "session": session_name, "agent_type": agent_type,
-                "worktree": worktree, "message": proc.stdout.strip()}
-
-    elif sub == "write":
-        prompt = arguments.get("prompt") or arguments.get("message")
-        if not prompt:
-            return {"success": False, "error": "prompt or message is required for write"}
-
-        # Check session exists
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": False, "error": f"No active session {session_name} — spawn agent first"}
-
-        # Try synapse_write.sh first, fall back to direct tmux send-keys
-        write_script = scripts_dir / "synapse_write.sh"
-        if write_script.exists():
-            proc = subprocess.run(
-                [str(write_script), role, prompt],
-                capture_output=True, text=True, timeout=10,
-            )
-            ok = proc.returncode == 0
-        else:
-            # Direct tmux send-keys fallback
-            proc = subprocess.run(
-                ["tmux", "send-keys", "-t", session_name, prompt, "Enter"],
-                capture_output=True, text=True,
-            )
-            ok = proc.returncode == 0
-
-        return {"success": ok, "session": session_name,
-                "message": f"Sent to {role}" if ok else proc.stderr.strip()}
-
-    elif sub == "wake":
-        # Check session exists
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": False, "error": f"No active session {session_name} — agent not running"}
-
-        # Try synapse_wake.sh first, fall back to direct tmux send-keys
-        wake_script = scripts_dir / "synapse_wake.sh"
-        if wake_script.exists():
-            proc = subprocess.run(
-                [str(wake_script), role],
-                capture_output=True, text=True, timeout=10,
-            )
-            ok = proc.returncode == 0
-        else:
-            # Fallback: type /compact into agent session to trigger tool use → hook reads signal
-            proc = subprocess.run(
-                ["tmux", "send-keys", "-t", session_name,
-                 "check notifications from task board", "Enter"],
-                capture_output=True, text=True,
-            )
-            ok = proc.returncode == 0
-
-        return {"success": ok, "session": session_name,
-                "message": f"Wake sent to {role}" if ok else proc.stderr.strip()}
-
-    elif sub == "kill":
-        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
-        if check.returncode != 0:
-            return {"success": True, "message": f"{role} not running (no session {session_name})"}
-
-        proc = subprocess.run(
-            ["tmux", "kill-session", "-t", session_name],
-            capture_output=True, text=True,
-        )
-        return {"success": proc.returncode == 0, "session": session_name,
-                "message": f"{role} killed" if proc.returncode == 0 else proc.stderr.strip()}
-
-    else:
-        return {"success": False,
-                "error": f"Unknown sub-operation '{sub}'. Valid: spawn, write, wake, status, kill"}
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:
