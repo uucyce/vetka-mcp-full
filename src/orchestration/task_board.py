@@ -1579,6 +1579,111 @@ class TaskBoard:
         return {"updated": updated, "settings": self.settings}
 
     # ==========================================
+    # CONTEXT CHECKPOINT — MARKER_209.CONTEXT_RESTART
+    # ==========================================
+
+    def save_context_checkpoint(self, role: str, reason: str = "context_exhaustion",
+                                extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Save agent context checkpoint for restart recovery.
+
+        Called when context exhaustion is detected. Persists current task state
+        so a restarted agent can resume from where it left off.
+
+        Args:
+            role: Agent callsign (Alpha, Beta, etc.)
+            reason: Why checkpoint was created (context_exhaustion, manual, etc.)
+            extra: Additional context to persist
+
+        Returns:
+            Dict with checkpoint path and contents
+        """
+        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
+        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+        checkpoint = {
+            "role": role,
+            "reason": reason,
+            "checkpoint_time": datetime.now().isoformat(),
+        }
+
+        # Find current claimed task for this role
+        try:
+            cursor = self.db.execute(
+                "SELECT id, title, extra FROM tasks WHERE status = 'claimed' "
+                "AND (json_extract(extra, '$.assigned_to') = ? OR json_extract(extra, '$.owner_agent') = ?) "
+                "ORDER BY json_extract(extra, '$.assigned_at') DESC LIMIT 1",
+                (role, role)
+            )
+            row = cursor.fetchone()
+            if row:
+                checkpoint["task_id"] = row[0]
+                checkpoint["task_title"] = row[1]
+                task_extra = json.loads(row[2]) if row[2] else {}
+                checkpoint["branch"] = task_extra.get("branch_name", "")
+                checkpoint["allowed_paths"] = task_extra.get("allowed_paths", [])
+        except Exception as e:
+            checkpoint["task_lookup_error"] = str(e)
+
+        if extra:
+            checkpoint.update(extra)
+
+        cp_path = checkpoint_dir / f"{role}_checkpoint.json"
+        cp_path.write_text(json.dumps(checkpoint, indent=2))
+        logger.info(f"MARKER_209.CHECKPOINT: Saved checkpoint for {role} -> {cp_path}")
+
+        return {"success": True, "checkpoint_path": str(cp_path), "checkpoint": checkpoint}
+
+    def load_context_checkpoint(self, role: str, consume: bool = True) -> Dict[str, Any]:
+        """Load and optionally consume agent context checkpoint.
+
+        Called by session_init when a restarted agent boots up.
+
+        Args:
+            role: Agent callsign
+            consume: If True, rename checkpoint to .consumed after reading
+
+        Returns:
+            Dict with checkpoint data, or empty dict if no checkpoint exists
+        """
+        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
+        cp_path = checkpoint_dir / f"{role}_checkpoint.json"
+
+        if not cp_path.exists():
+            return {"has_checkpoint": False}
+
+        try:
+            checkpoint = json.loads(cp_path.read_text())
+        except (json.JSONDecodeError, OSError) as e:
+            return {"has_checkpoint": False, "error": str(e)}
+
+        result = {"has_checkpoint": True, "checkpoint": checkpoint}
+
+        if consume:
+            consumed_path = checkpoint_dir / f"{role}_checkpoint.consumed.json"
+            cp_path.rename(consumed_path)
+            result["consumed"] = True
+
+        logger.info(f"MARKER_209.CHECKPOINT: Loaded checkpoint for {role} (consume={consume})")
+        return result
+
+    def list_checkpoints(self) -> Dict[str, Any]:
+        """List all active checkpoints across agents."""
+        checkpoint_dir = PROJECT_ROOT / "data" / "checkpoints"
+        if not checkpoint_dir.exists():
+            return {"checkpoints": []}
+
+        checkpoints = []
+        for cp_file in checkpoint_dir.glob("*_checkpoint.json"):
+            try:
+                data = json.loads(cp_file.read_text())
+                data["_file"] = cp_file.name
+                checkpoints.append(data)
+            except Exception:
+                pass
+
+        return {"checkpoints": checkpoints}
+
+    # ==========================================
     # CRUD OPERATIONS
     # ==========================================
 

@@ -131,3 +131,12 @@ Commander will wake, approve/reject, and you continue.
 Your persistent memory: `{{ role.memory_path }}`
 Read at session start. Write lessons/decisions there so next session picks them up.
 {%- endif %}
+
+## Context Restart Recovery
+If you see "CONTEXT RESTART" in your first message, you were restarted due to context exhaustion.
+Recovery steps:
+1. Run `vetka_session_init role={{ role.callsign }}` to reload full context
+2. Check `data/checkpoints/{{ role.callsign }}_checkpoint.json` for your saved state
+3. The checkpoint contains: task_id, files_modified, branch, last action
+4. Resume the task from where you left off — do NOT start over
+5. The checkpoint is auto-consumed on read (moved to .consumed.json)
