@@ -4870,6 +4870,7 @@ class TaskBoard:
             commits,
             task.get("allowed_paths") or [],
             heal_docs=_heal_docs,
+            task=task,
         )
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
@@ -4976,6 +4977,7 @@ class TaskBoard:
         commits: List[str],
         allowed_paths: List[str] = None,
         heal_docs: List[str] = None,
+        task: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """Execute git merge in a temporary worktree.
 
@@ -4990,6 +4992,7 @@ class TaskBoard:
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
         - snapshot: Overlay allowed_paths from branch onto main (one commit)
+        - smart_snapshot: Diff-based, conflict-safe, sidecar-aware (MARKER_208)
 
         Args:
             allowed_paths: Task's owned paths for snapshot strategy scoping.
@@ -5062,7 +5065,142 @@ class TaskBoard:
 
             # ---- Execute strategy (all operations in tmp_dir) ----
 
-            if strategy == "snapshot":
+            if strategy == "smart_snapshot":
+                # MARKER_208.SMART_SNAPSHOT: Diff-based, conflict-safe, sidecar-aware merge.
+                # 1. git diff main..branch --name-only → all changed files
+                # 2. Filter to scope (allowed_paths prefix match) + auto-detect sidecars
+                # 3. git merge-tree conflict check before applying
+                # 4. Abort + notify on conflict instead of silent overwrite
+
+                # Step 1: Get all files changed on branch vs main
+                rc, diff_out, _ = await _git(
+                    "diff", "--name-only", f"main..{branch}", cwd=str(PROJECT_ROOT)
+                )
+                if rc != 0 or not diff_out:
+                    return {
+                        "success": False,
+                        "error": f"smart_snapshot: git diff main..{branch} failed or empty",
+                    }
+                all_changed = set(diff_out.splitlines())
+
+                # Step 2: Filter to task scope + sidecar auto-detection
+                _closure = (task or {}).get("closure_files") or []
+                scope_prefixes = list(allowed_paths or []) + list(_closure)
+                if not scope_prefixes:
+                    # No scope restriction — take everything (same as full diff)
+                    scoped_files = all_changed
+                else:
+                    scoped_files = set()
+                    for f in all_changed:
+                        for prefix in scope_prefixes:
+                            if f == prefix or f.startswith(prefix.rstrip("/") + "/"):
+                                scoped_files.add(f)
+                                break
+
+                    # Sidecar auto-detection: for each scoped file, include related
+                    # test files and __init__.py from the diff
+                    sidecars = set()
+                    for f in scoped_files:
+                        stem = Path(f).stem  # e.g. "task_board" from "src/.../task_board.py"
+                        for candidate in all_changed - scoped_files:
+                            cand_stem = Path(candidate).stem
+                            # test_task_board.py matches task_board.py
+                            if cand_stem == f"test_{stem}" or cand_stem == stem:
+                                sidecars.add(candidate)
+                            # __init__.py in same directory
+                            if Path(candidate).name == "__init__.py" and str(Path(candidate).parent) == str(Path(f).parent):
+                                sidecars.add(candidate)
+                    if sidecars:
+                        logger.info(
+                            "[MergeRequest] smart_snapshot: auto-detected %d sidecar(s): %s",
+                            len(sidecars), sorted(sidecars),
+                        )
+                    scoped_files |= sidecars
+
+                if not scoped_files:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no scoped files changed vs main",
+                    }
+
+                # Step 3: Conflict detection via git merge-tree
+                rc_base, merge_base, _ = await _git(
+                    "merge-base", "main", branch, cwd=str(PROJECT_ROOT)
+                )
+                if rc_base == 0 and merge_base:
+                    rc_mt, mt_out, mt_err = await _git(
+                        "merge-tree", merge_base, "main", branch, cwd=str(PROJECT_ROOT)
+                    )
+                    # merge-tree outputs conflict markers — check if any scoped files conflict
+                    if mt_out:
+                        conflicting = []
+                        for sf in scoped_files:
+                            if sf in mt_out and ("<<<<<<" in mt_out or "+<<<<<<" in mt_out):
+                                conflicting.append(sf)
+                        # Also check for the general conflict pattern
+                        if not conflicting and "<<<<<<" in mt_out:
+                            # Parse which files have conflict markers
+                            for line in mt_out.splitlines():
+                                for sf in scoped_files:
+                                    if sf in line:
+                                        conflicting.append(sf)
+                                        break
+                        if conflicting:
+                            _conflict_msg = (
+                                f"smart_snapshot: {len(conflicting)} file(s) have conflicts: "
+                                f"{conflicting[:5]}. Use strategy=merge or resolve manually."
+                            )
+                            logger.warning("[MergeRequest] %s", _conflict_msg)
+                            # Notify Commander about conflict
+                            try:
+                                self._auto_notify(
+                                    task or {}, self.NOTIF_TASK_NEEDS_FIX,
+                                    extra_msg=_conflict_msg,
+                                    source_role="merge_request",
+                                )
+                            except Exception:
+                                pass
+                            return {
+                                "success": False,
+                                "error": _conflict_msg,
+                                "conflicting_files": conflicting[:10],
+                                "strategy": "smart_snapshot",
+                            }
+
+                # Step 4: Apply — checkout scoped files from branch
+                for fpath in sorted(scoped_files):
+                    rc, _, err = await _git("checkout", branch, "--", fpath)
+                    if rc != 0:
+                        logger.warning(
+                            "[MergeRequest] smart_snapshot: checkout '%s' failed: %s",
+                            fpath, err,
+                        )
+
+                # Check if anything changed
+                rc, st_out, _ = await _git("status", "--porcelain")
+                if not st_out:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no file changes vs main",
+                    }
+
+                # Stage and commit
+                await _git("add", "-A")
+                rc, _, err = await _git(
+                    "commit", "-m",
+                    f"Smart snapshot merge {branch} into main ({len(scoped_files)} files) via TaskBoard",
+                )
+                if rc != 0:
+                    return {"success": False, "error": f"smart_snapshot commit failed: {err}"}
+
+                logger.info(
+                    "[MergeRequest] smart_snapshot: merged %d files from %s",
+                    len(scoped_files), branch,
+                )
+
+            elif strategy == "snapshot":
                 # MARKER_201.SNAPSHOT: Take main as base, overlay only allowed_paths
                 # from branch. Creates one clean integration commit — no history replay,
                 # no conflicts from diverged branches, no doc deletions.
