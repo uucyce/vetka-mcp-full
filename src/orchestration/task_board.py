@@ -3419,6 +3419,17 @@ class TaskBoard:
     # ==========================================
 
     _WAKE_COOLDOWN_SECS = 30
+    _WAKE_LOG = "/tmp/synapse_wake_log.jsonl"
+
+    @staticmethod
+    def _wake_log(role: str, method: str, message: str) -> None:
+        """Append JSONL audit entry for wake verification."""
+        try:
+            entry = {"ts": time.time(), "role": role, "method": method, "message": message}
+            with open(TaskBoard._WAKE_LOG, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass  # Audit log never blocks wake
 
     def _synapse_wake(self, role: str, message: str = "") -> None:
         """MARKER_208.SYNAPSE_WAKE_NATIVE: Wake an agent via tmux or macOS notification.
@@ -3458,6 +3469,7 @@ class TaskBoard:
                     capture_output=True, timeout=3,
                 )
                 ts_file.touch()
+                self._wake_log(role, "tmux", message)
                 logger.info("[TaskBoard] SYNAPSE_WAKE: tmux poked %s", role)
                 return
         except Exception as exc:
@@ -3484,6 +3496,7 @@ class TaskBoard:
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
             ts_file.touch()
+            self._wake_log(role, "osascript", message)
             logger.info("[TaskBoard] SYNAPSE_WAKE: macOS notified %s (no tmux session)", role)
         except Exception as exc:
             logger.debug("[TaskBoard] SYNAPSE_WAKE macOS fallback failed for %s: %s", role, exc)
