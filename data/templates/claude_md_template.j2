@@ -11,9 +11,14 @@ Tools are exposed directly by MCP — check tool list in Vibe's UI.
 ```
 1. vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. vetka_task_board action=list project_id=cut filter_status=pending
-3. Claim → Work → vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
+2. vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-commit + close. NEVER `git add`/`git commit` manually.
 
@@ -34,9 +39,14 @@ export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
 ```
 1. mcp__vetka__vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
-3. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+2. mcp__vetka__vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
 NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
@@ -53,9 +63,14 @@ export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
 ```
 1. mcp__vetka__vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
-3. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+2. mcp__vetka__vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
 NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
@@ -70,9 +85,22 @@ Send to another agent: `vetka_task_board action=notify source_role={{ role.calls
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.
 {%- else %}
-NEVER commit to main. NEVER touch files outside your `role_context.owned_paths`.
-If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander:
+NEVER commit to main. NEVER merge branches to main. NEVER run `git merge`. Merge authority belongs ONLY to Commander.
+NEVER touch files outside your `role_context.owned_paths`.
+If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander instead:
 `vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="Tasks ready for merge: <ids>"`
+{%- endif %}
+{%- if role.domain == "qa" %}
+
+## QA Auto-Fix Dispatch (MARKER_212.QA_AUTOFIX)
+When you find a regression or bug during verification:
+1. **Create a fix task directly** for the responsible agent: `vetka_task_board action=add role=<agent> phase_type=fix priority=<1-3> description="full diagnosis"`
+   - Check `allowed_paths` in agent_registry to find the responsible agent
+   - Priority: 1=CRITICAL, 2=regression, 3=cleanup
+2. **Notify the agent**: `vetka_task_board action=notify target_role=<agent> message="Fix task filed: <id>"`
+3. **Notify Commander** with a batch summary of all filed fix tasks (not one-by-one)
+4. **NEVER report bugs to Commander for manual dispatch.** You create fix tasks directly.
+5. **NEVER merge or merge_request.** You verify only. Merge is Commander/Zeta territory.
 {%- endif %}
 {%- if role.memory_path %}
 

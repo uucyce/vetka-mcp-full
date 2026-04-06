@@ -434,36 +434,13 @@ export default function ProjectPanel() {
           const statePayload = await stateRes.json();
           if (statePayload.success) {
             const tl = statePayload.timeline_state;
-            const store = useCutEditorStore.getState();
             if (tl?.lanes) {
-              store.setLanes(tl.lanes);
+              useCutEditorStore.getState().setLanes(tl.lanes);
             }
             if (tl?.markers) {
-              store.setMarkers(tl.markers);
+              useCutEditorStore.getState().setMarkers(tl.markers);
             }
-            // MARKER_IMPORT-P0-HYDRATE: Hydrate thumbnails from project-state response.
-            // Without this, ProjectPanel shows "No clips imported" even after successful bootstrap.
-            const thumbItems = statePayload.thumbnail_bundle?.items;
-            if (Array.isArray(thumbItems) && thumbItems.length > 0) {
-              store.setThumbnails(thumbItems);
-            } else if (tl?.lanes) {
-              // Fallback: synthesize ThumbnailItem[] from lane clips if no thumbnail_bundle
-              const synthItems: Array<{ item_id: string; source_path: string; modality?: string; duration_sec?: number }> = [];
-              for (const lane of tl.lanes as Array<{ lane_id?: string; clips?: Array<{ clip_id: string; source_path?: string; duration_sec?: number }> }>) {
-                for (const c of lane.clips || []) {
-                  synthItems.push({
-                    item_id: c.clip_id,
-                    source_path: c.source_path || '',
-                    modality: (c.source_path || '').match(/\.(mp3|wav|aif|aiff|flac|aac|ogg|m4a)$/i) ? 'audio' : 'video',
-                    duration_sec: c.duration_sec || 0,
-                  });
-                }
-              }
-              if (synthItems.length > 0) {
-                store.setThumbnails(synthItems);
-              }
-            }
-            store.setEditorSession({
+            useCutEditorStore.getState().setEditorSession({
               sandboxRoot,
               projectId: pid,
               sourcePath: trimmed,

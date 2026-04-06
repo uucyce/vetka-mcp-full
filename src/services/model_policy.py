@@ -164,6 +164,10 @@ class ModelPolicy:
             "gemma3:12b": ["generalist", "coder"],
             "mistral-nemo": ["general", "docs", "research"],
             "qwen3.5:latest": ["coder", "architect", "researcher"],
+            # MARKER_211: Gemma 4 family (Apache 2.0, vision+audio)
+            "gemma4:e2b": ["scout", "classifier", "router"],
+            "gemma4:e4b": ["sherpa", "code_review", "vision_qa", "enrichment"],
+            "gemma4:26b": ["architect", "deep_analysis"],
         }
         return mapping.get(self.model_id.lower(), ["general"])
 
@@ -215,6 +219,10 @@ LOCALGUYS_CATALOG = [
     "gemma3:4b",
     "gemma3:12b",
     "mistral-nemo",
+    # MARKER_211: Gemma 4 family
+    "gemma4:e2b",
+    "gemma4:e4b",
+    "gemma4:26b",
 ]
 
 
