@@ -48,26 +48,9 @@ from src.services.cut_scene_graph_taxonomy import (
     SCENE_GRAPH_NODE_TAKE,
 )
 from src.api.routes.cut_routes_bootstrap import (
-    CutBootstrapRequest,
-    _bootstrap_error,
     _build_initial_timeline_state,
-    _execute_cut_bootstrap,
     _infer_cut_media_modality,
-    _run_cut_bootstrap_job,
     _utc_now_iso,
-)
-
-# MARKER_CIRCULAR_FIX: Shared models from cut_routes_models (breaks circular import)
-from src.api.routes.cut_routes_models import (
-    CutAudioSyncRequest,
-    CutMusicSyncRequest,
-    CutPauseSliceRequest,
-    CutScanMatrixRequest,
-    CutSceneAssemblyRequest,
-    CutThumbnailBuildRequest,
-    CutTimecodeSyncRequest,
-    CutTranscriptNormalizeRequest,
-    CutWaveformBuildRequest,
 )
 
 logger = logging.getLogger("cut.workers")
@@ -1212,18 +1195,14 @@ def _serialize_srt_marker(index: int, marker: dict[str, Any]) -> str:
 
 
 def _extract_marker_meta_from_srt(text: str) -> tuple[dict[str, Any], str]:
-    # MARKER_PLAYER_LAB_SRT: support simple [N] / [FAV] tags from VETKA Videoplayer Lab
     line = str(text or "").strip()
-    upper = line.upper()
-    if upper.startswith("[N]"):
-        return {"kind": "negative", "score": 0.3}, line[3:].strip()
-    if upper.startswith("[FAV]"):
-        return {"kind": "favorite", "score": 1.0}, line[5:].strip()
     if not line.startswith("{"):
         return {}, line
     try:
-        meta, end_idx = json.JSONDecoder().raw_decode(line)
-        note = line[end_idx:].strip()
+        end = line.index("}")
+        raw_meta = line[1:end]
+        meta = json.loads(raw_meta)
+        note = line[end + 1 :].strip()
         return (meta if isinstance(meta, dict) else {}), note
     except Exception:
         return {}, line

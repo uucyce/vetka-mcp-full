@@ -24,12 +24,14 @@ import time
 import logging
 import os
 import re
+import subprocess
 import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 logger = logging.getLogger("VETKA_TASK_BOARD")
+
 
 # MARKER_121.1: Task Board storage
 # MARKER_189.11: Resolve to main repo root — safe from worktree cwd confusion.
@@ -42,21 +44,37 @@ def _resolve_main_repo_root() -> Path:
     # __file__-relative: works when task_board.py lives in main repo (always true via .mcp.json)
     return Path(__file__).resolve().parent.parent.parent
 
+
 _MAIN_ROOT = _resolve_main_repo_root()
 TASK_BOARD_FILE = _MAIN_ROOT / "data" / "task_board.json"
 TASK_BOARD_DB = _MAIN_ROOT / "data" / "task_board.db"
-_TASK_BOARD_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.json"
-_TASK_BOARD_DB_FALLBACK = Path(os.environ.get('TMPDIR', '/tmp')) / "vetka_task_board.db"
+_TASK_BOARD_FALLBACK = Path(os.environ.get("TMPDIR", "/tmp")) / "vetka_task_board.json"
+_TASK_BOARD_DB_FALLBACK = Path(os.environ.get("TMPDIR", "/tmp")) / "vetka_task_board.db"
 PROJECT_ROOT = _MAIN_ROOT
 
 # MARKER_192.1: Indexed columns for SQLite hybrid schema.
 # These columns get their own DB columns + indexes for WHERE/ORDER BY.
 # Everything else goes into the 'extra' JSON blob column.
 INDEXED_COLUMNS = [
-    "id", "title", "description", "priority", "status", "phase_type",
-    "complexity", "project_id", "assigned_to", "agent_type", "assigned_at",
-    "created_by", "created_at", "started_at", "completed_at", "closed_at",
-    "commit_hash", "commit_message", "updated_at",
+    "id",
+    "title",
+    "description",
+    "priority",
+    "status",
+    "phase_type",
+    "complexity",
+    "project_id",
+    "assigned_to",
+    "agent_type",
+    "assigned_at",
+    "created_by",
+    "created_at",
+    "started_at",
+    "completed_at",
+    "closed_at",
+    "commit_hash",
+    "commit_message",
+    "updated_at",
 ]
 _INDEXED_SET = frozenset(INDEXED_COLUMNS)
 
@@ -77,7 +95,23 @@ PRIORITY_SOMEDAY = 5
 #   verified = QA gate passed (MARKER_195.20), ready for merge
 #   needs_fix = QA gate failed, needs re-work
 # MARKER_196.QA: Added "need_qa" — explicit QA gate request between done_worktree and verified
-VALID_STATUSES = {"pending", "queued", "claimed", "running", "done", "done_worktree", "need_qa", "done_main", "failed", "cancelled", "hold", "pending_user_approval", "verified", "needs_fix"}
+VALID_STATUSES = {
+    "pending",
+    "queued",
+    "claimed",
+    "running",
+    "done",
+    "done_worktree",
+    "need_qa",
+    "done_main",
+    "failed",
+    "cancelled",
+    "hold",
+    "pending_user_approval",
+    "verified",
+    "needs_fix",
+    "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
+}
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
 # Agent types
@@ -91,7 +125,9 @@ AGENT_TYPES = {"claude_code", "cursor", "mycelium", "grok", "human", "unknown"}
 _task_counter = 0
 _task_counter_pid = os.getpid()  # Bind counter to process for uniqueness
 DEFAULT_PROTOCOL_VERSION = "multitask_mcp_v1"
-DEFAULT_VERIFIER_PASS_THRESHOLD = float(os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75"))
+DEFAULT_VERIFIER_PASS_THRESHOLD = float(
+    os.getenv("VETKA_VERIFIER_PASS_THRESHOLD", "0.75")
+)
 
 
 def _generate_task_id() -> str:
@@ -124,14 +160,16 @@ class TaskBoard:
 
     # MARKER_198.WORKTREE_GUARD: Protected role worktrees — never auto-remove
     # Source of truth: data/templates/agent_registry.yaml
-    PROTECTED_WORKTREES = frozenset({
-        "cut-engine",    # Alpha
-        "cut-media",     # Beta
-        "cut-ux",        # Gamma
-        "cut-qa",        # Delta
-        "cut-qa-2",      # Epsilon
-        "harness",       # Zeta
-    })
+    PROTECTED_WORKTREES = frozenset(
+        {
+            "cut-engine",  # Alpha
+            "cut-media",  # Beta
+            "cut-ux",  # Gamma
+            "cut-qa",  # Delta
+            "cut-qa-2",  # Epsilon
+            "harness",  # Zeta
+        }
+    )
 
     @classmethod
     def _get_dispatch_semaphore(cls, max_concurrent: int = 2) -> asyncio.Semaphore:
@@ -140,14 +178,19 @@ class TaskBoard:
         MARKER_133.C33C: Enforces max_concurrent pipelines running.
         """
         # Create new semaphore if size changed or doesn't exist
-        if cls._dispatch_semaphore is None or cls._dispatch_semaphore_size != max_concurrent:
+        if (
+            cls._dispatch_semaphore is None
+            or cls._dispatch_semaphore_size != max_concurrent
+        ):
             cls._dispatch_semaphore = asyncio.Semaphore(max_concurrent)
             cls._dispatch_semaphore_size = max_concurrent
-            logger.info(f"[TaskBoard] Created dispatch semaphore with max_concurrent={max_concurrent}")
+            logger.info(
+                f"[TaskBoard] Created dispatch semaphore with max_concurrent={max_concurrent}"
+            )
         return cls._dispatch_semaphore
 
     @classmethod
-    def get_concurrent_info(cls, board: 'TaskBoard') -> Dict[str, Any]:
+    def get_concurrent_info(cls, board: "TaskBoard") -> Dict[str, Any]:
         """Get current concurrency info for monitoring.
 
         MARKER_133.C33C: Returns max, available slots, and running count.
@@ -155,15 +198,20 @@ class TaskBoard:
         max_c = board.settings.get("max_concurrent", 2)
         sem = cls._get_dispatch_semaphore(max_c)
         try:
-            cursor = board.db.execute("SELECT COUNT(*) FROM tasks WHERE status = 'running'")
+            cursor = board.db.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status = 'running'"
+            )
             running = cursor.fetchone()[0]
         except Exception:
-            running = len([t for t in board.tasks.values() if t.get("status") == "running"])
+            running = len(
+                [t for t in board.tasks.values() if t.get("status") == "running"]
+            )
         return {
             "max": max_c,
-            "available": sem._value if hasattr(sem, '_value') else max_c,
+            "available": sem._value if hasattr(sem, "_value") else max_c,
             "running": running,
         }
+
     # MARKER_133.C33C_END
 
     def __init__(self, board_file: Optional[Path] = None):
@@ -197,7 +245,12 @@ class TaskBoard:
         self.settings: Dict[str, Any] = {
             "max_concurrent": 2,
             "auto_dispatch": True,  # MARKER_137.S1_1_EVENT_DISPATCH: Enable by default
-            "default_preset": "dragon_silver"
+            "default_preset": "dragon_silver",
+            # MARKER_202.SHERPA_SIGNAL: Sherpa availability status (queryable by any agent)
+            "sherpa_status": "stopped",  # idle | busy | stopped
+            "sherpa_pid": None,
+            "sherpa_last_seen": None,
+            "sherpa_tasks_enriched": 0,
         }
         self.integrity_warning: str = ""
 
@@ -218,11 +271,20 @@ class TaskBoard:
         # Bulk writes in init cause lock storms with 14 concurrent MCP processes.
         # Use action=backfill_modules for on-demand backfill (same pattern as FTS5).
 
+        # MARKER_201.EVENT_BUS: Initialize unified event bus with default subscribers.
+        # Audit log uses same DB path. init_event_bus is idempotent.
+        try:
+            from src.orchestration.event_bus import init_event_bus
+
+            self.event_bus = init_event_bus(db_path=self.db_path)
+        except Exception:
+            self.event_bus = None
+
         atexit.register(self.close)
 
     def close(self):
         """Close SQLite connection and checkpoint WAL."""
-        if hasattr(self, 'db') and self.db:
+        if hasattr(self, "db") and self.db:
             try:
                 self.db.execute("PRAGMA wal_checkpoint(PASSIVE)")
                 self.db.close()
@@ -284,7 +346,9 @@ class TaskBoard:
             # Remaining tasks get backfilled on next init (progressive convergence).
             if len(pending_updates) > 50:
                 pending_updates = pending_updates[:50]
-                logger.info(f"[TaskBoard] Module backfill capped at 50 (remaining deferred)")
+                logger.info(
+                    f"[TaskBoard] Module backfill capped at 50 (remaining deferred)"
+                )
 
             # MARKER_200.SINGLE_LOCK: One transaction for task updates + FTS re-index.
             # Before: 2 separate `with self.db:` blocks = 2 lock cycles.
@@ -303,7 +367,9 @@ class TaskBoard:
                     # FTS in same transaction
                     self._index_task_fts_inner(task)
 
-            logger.info(f"[TaskBoard] Backfilled module for {len(pending_updates)} tasks (batched)")
+            logger.info(
+                f"[TaskBoard] Backfilled module for {len(pending_updates)} tasks (batched)"
+            )
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
                 logger.debug("[TaskBoard] Module backfill skipped — database locked")
@@ -405,7 +471,9 @@ class TaskBoard:
     def _get_schema_version(self) -> int:
         """Get current schema version from meta table."""
         try:
-            row = self.db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+            row = self.db.execute(
+                "SELECT value FROM meta WHERE key = 'schema_version'"
+            ).fetchone()
             return int(row[0]) if row else 0
         except Exception:
             return 0
@@ -414,7 +482,7 @@ class TaskBoard:
         """Set schema version in meta table."""
         self.db.execute(
             "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
-            (str(version),)
+            (str(version),),
         )
         self.db.commit()
 
@@ -446,10 +514,14 @@ class TaskBoard:
                         );
                     """)
                     self._set_schema_version(1)
-                    logger.info("[TaskBoard] Migration 1: FTS5 full-text search table created")
+                    logger.info(
+                        "[TaskBoard] Migration 1: FTS5 full-text search table created"
+                    )
                 except sqlite3.OperationalError as e:
                     if "locked" in str(e).lower():
-                        logger.warning("[TaskBoard] Migration 1 deferred — database locked")
+                        logger.warning(
+                            "[TaskBoard] Migration 1 deferred — database locked"
+                        )
                         return  # Will retry on next init
                     logger.warning(f"[TaskBoard] Migration 1 (FTS5) failed: {e}")
                 except Exception as e:
@@ -482,11 +554,17 @@ class TaskBoard:
                     logger.info("[TaskBoard] Migration 2: notifications table created")
                 except sqlite3.OperationalError as e:
                     if "locked" in str(e).lower():
-                        logger.warning("[TaskBoard] Migration 2 deferred — database locked")
+                        logger.warning(
+                            "[TaskBoard] Migration 2 deferred — database locked"
+                        )
                         return
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                    logger.warning(
+                        f"[TaskBoard] Migration 2 (notifications) failed: {e}"
+                    )
                 except Exception as e:
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                    logger.warning(
+                        f"[TaskBoard] Migration 2 (notifications) failed: {e}"
+                    )
 
         # MARKER_199.DDL_FAST: _backfill_fts() removed from init path.
         # It inserted 1648 rows on every init when schema_version failed to write,
@@ -518,14 +596,96 @@ class TaskBoard:
                         CREATE INDEX IF NOT EXISTS idx_notif_unread ON notifications(target_role, read_at);
                     """)
                     self._set_schema_version(2)
-                    logger.info("[TaskBoard] Migration 2: notifications table created (AGENT_WAKE)")
+                    logger.info(
+                        "[TaskBoard] Migration 2: notifications table created (AGENT_WAKE)"
+                    )
                 except sqlite3.OperationalError as e:
                     if "locked" in str(e).lower():
-                        logger.warning("[TaskBoard] Migration 2 deferred — database locked")
+                        logger.warning(
+                            "[TaskBoard] Migration 2 deferred — database locked"
+                        )
                         return
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                    logger.warning(
+                        f"[TaskBoard] Migration 2 (notifications) failed: {e}"
+                    )
                 except Exception as e:
-                    logger.warning(f"[TaskBoard] Migration 2 (notifications) failed: {e}")
+                    logger.warning(
+                        f"[TaskBoard] Migration 2 (notifications) failed: {e}"
+                    )
+
+        if current < 3:
+            # Migration 3: Agent registry table (MARKER_196.GW1.2)
+            agents_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agents'"
+            ).fetchone()
+            if agents_exists:
+                self._set_schema_version(3)
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE TABLE IF NOT EXISTS agents (
+                            id TEXT PRIMARY KEY,
+                            name TEXT NOT NULL,
+                            agent_type TEXT NOT NULL,
+                            capabilities TEXT,
+                            model_tier TEXT,
+                            api_key_hash TEXT NOT NULL,
+                            status TEXT DEFAULT 'active',
+                            last_heartbeat TEXT,
+                            created_at TEXT DEFAULT (datetime('now')),
+                            updated_at TEXT DEFAULT (datetime('now'))
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_agents_status ON agents(status);
+                        CREATE INDEX IF NOT EXISTS idx_agents_type ON agents(agent_type);
+                    """)
+                    self._set_schema_version(3)
+                    logger.info("[TaskBoard] Migration 3: agents table created")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning(
+                            "[TaskBoard] Migration 3 deferred — database locked"
+                        )
+                        return
+                    logger.warning(f"[TaskBoard] Migration 3 (agents) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 3 (agents) failed: {e}")
+
+        if current < 4:
+            # Migration 4: Audit log table (MARKER_196.GW2.3)
+            audit_exists = self.db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='audit_log'"
+            ).fetchone()
+            if audit_exists:
+                self._set_schema_version(4)
+            else:
+                try:
+                    self.db.executescript("""
+                        CREATE TABLE IF NOT EXISTS audit_log (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            agent_id TEXT,
+                            action TEXT NOT NULL,
+                            task_id TEXT,
+                            ip_address TEXT,
+                            user_agent TEXT,
+                            request_body TEXT,
+                            response_status INTEGER,
+                            created_at TEXT DEFAULT (datetime('now'))
+                        );
+                        CREATE INDEX IF NOT EXISTS idx_audit_agent ON audit_log(agent_id);
+                        CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action);
+                        CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+                    """)
+                    self._set_schema_version(4)
+                    logger.info("[TaskBoard] Migration 4: audit_log table created")
+                except sqlite3.OperationalError as e:
+                    if "locked" in str(e).lower():
+                        logger.warning(
+                            "[TaskBoard] Migration 4 deferred — database locked"
+                        )
+                        return
+                    logger.warning(f"[TaskBoard] Migration 4 (audit_log) failed: {e}")
+                except Exception as e:
+                    logger.warning(f"[TaskBoard] Migration 4 (audit_log) failed: {e}")
 
     # ==========================================
     # MARKER_199.FTS5: Full-Text Search
@@ -553,8 +713,13 @@ class TaskBoard:
             self.db.execute(
                 "INSERT INTO tasks_fts(task_id, title, description, commit_message, tags_text) "
                 "VALUES(?, ?, ?, ?, ?)",
-                (task_id, task.get("title", ""), task.get("description", ""),
-                 task.get("commit_message", ""), tags_text),
+                (
+                    task_id,
+                    task.get("title", ""),
+                    task.get("description", ""),
+                    task.get("commit_message", ""),
+                    tags_text,
+                ),
             )
         except Exception as e:
             # FTS indexing never blocks task operations
@@ -617,7 +782,9 @@ class TaskBoard:
             return count
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
-                logger.warning("[FTS5] Backfill skipped — database locked. Will retry on next init.")
+                logger.warning(
+                    "[FTS5] Backfill skipped — database locked. Will retry on next init."
+                )
             else:
                 logger.warning(f"[FTS5] Backfill failed: {e}")
             return 0
@@ -638,7 +805,8 @@ class TaskBoard:
             # MARKER_199.FTS5_SANITIZE: Strip special chars that FTS5 interprets as operators
             # (colons, dashes, arrows, etc.) to prevent "no such column" errors.
             import re as _re_fts
-            _sanitized = _re_fts.sub(r'[^\w\s"*]', ' ', query).strip()
+
+            _sanitized = _re_fts.sub(r'[^\w\s"*]', " ", query).strip()
             if not _sanitized:
                 return []
             rows = self.db.execute(
@@ -648,11 +816,13 @@ class TaskBoard:
             ).fetchall()
             results = []
             for row in rows:
-                results.append({
-                    "task_id": row[0],
-                    "snippet": row[1],
-                    "rank": round(float(row[2]), 4),
-                })
+                results.append(
+                    {
+                        "task_id": row[0],
+                        "snippet": row[1],
+                        "rank": round(float(row[2]), 4),
+                    }
+                )
             return results
         except Exception as e:
             logger.warning(f"[FTS5] Search failed for query '{query}': {e}")
@@ -674,12 +844,14 @@ class TaskBoard:
             )
             skipped = []
             for row in cursor:
-                skipped.append({
-                    "task_id": row[0],
-                    "title": row[1],
-                    "assigned_to": row[2] or "unknown",
-                    "completed_at": row[3],
-                })
+                skipped.append(
+                    {
+                        "task_id": row[0],
+                        "title": row[1],
+                        "assigned_to": row[2] or "unknown",
+                        "completed_at": row[3],
+                    }
+                )
             return skipped
         except Exception as e:
             logger.debug(f"[Debrief] Skipped query failed: {e}")
@@ -702,6 +874,7 @@ class TaskBoard:
         Writes to SQLite (persistent) AND to file inbox (hook trigger).
         """
         import random
+
         notif_id = f"notif_{int(time.time())}_{random.randint(10000, 99999)}"
         now = datetime.now().isoformat()
 
@@ -709,7 +882,15 @@ class TaskBoard:
             self.db.execute(
                 "INSERT INTO notifications (id, source_role, target_role, message, ntype, task_id, created_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (notif_id, source_role, target_role, message[:1000], ntype, task_id, now),
+                (
+                    notif_id,
+                    source_role,
+                    target_role,
+                    message[:1000],
+                    ntype,
+                    task_id,
+                    now,
+                ),
             )
             self.db.commit()
         except Exception as e:
@@ -720,7 +901,11 @@ class TaskBoard:
         self._write_inbox(target_role, source_role, message, notif_id)
 
         logger.info(f"[Notify] {source_role} → {target_role}: {message[:80]}")
-        return {"success": True, "notification_id": notif_id, "target_role": target_role}
+        return {
+            "success": True,
+            "notification_id": notif_id,
+            "target_role": target_role,
+        }
 
     def get_notifications(
         self,
@@ -746,9 +931,13 @@ class TaskBoard:
                 )
             return [
                 {
-                    "id": row[0], "from": row[1], "to": row[2],
-                    "message": row[3], "ntype": row[4],
-                    "task_id": row[5], "created_at": row[6],
+                    "id": row[0],
+                    "from": row[1],
+                    "to": row[2],
+                    "message": row[3],
+                    "ntype": row[4],
+                    "task_id": row[5],
+                    "created_at": row[6],
                 }
                 for row in cursor
             ]
@@ -783,7 +972,9 @@ class TaskBoard:
             logger.warning(f"[Notify] Ack failed: {e}")
             return {"success": False, "error": str(e)}
 
-    def _write_inbox(self, target_role: str, source_role: str, message: str, notif_id: str):
+    def _write_inbox(
+        self, target_role: str, source_role: str, message: str, notif_id: str
+    ):
         """Write notification to file inbox for hook-triggered delivery.
 
         File: .claude/worktrees/<worktree>/.inbox
@@ -791,26 +982,33 @@ class TaskBoard:
         """
         try:
             from src.services.agent_registry import get_agent_registry
+
             registry = get_agent_registry()
             role = registry.get_by_callsign(target_role)
             if not role or not role.worktree:
-                logger.debug(f"[Notify] No worktree for role {target_role}, inbox skipped")
+                logger.debug(
+                    f"[Notify] No worktree for role {target_role}, inbox skipped"
+                )
                 return
 
             # Resolve inbox path: project_root/.claude/worktrees/<worktree>/.inbox
             project_root = Path(self.board_file).parent.parent  # data/ → project root
-            inbox_path = project_root / ".claude" / "worktrees" / role.worktree / ".inbox"
+            inbox_path = (
+                project_root / ".claude" / "worktrees" / role.worktree / ".inbox"
+            )
 
             if not inbox_path.parent.exists():
                 logger.debug(f"[Notify] Worktree dir missing: {inbox_path.parent}")
                 return
 
-            entry = json.dumps({
-                "id": notif_id,
-                "from": source_role,
-                "message": message[:500],
-                "at": datetime.now().strftime("%H:%M:%S"),
-            })
+            entry = json.dumps(
+                {
+                    "id": notif_id,
+                    "from": source_role,
+                    "message": message[:500],
+                    "at": datetime.now().strftime("%H:%M:%S"),
+                }
+            )
             with open(inbox_path, "a") as f:
                 f.write(entry + "\n")
 
@@ -863,8 +1061,15 @@ class TaskBoard:
         except (TypeError, ValueError):
             task["priority"] = 3
         # Convert empty strings back to None for nullable fields
-        for field in ("started_at", "completed_at", "closed_at", "commit_hash",
-                       "commit_message", "assigned_to", "assigned_at"):
+        for field in (
+            "started_at",
+            "completed_at",
+            "closed_at",
+            "commit_hash",
+            "commit_message",
+            "assigned_to",
+            "assigned_at",
+        ):
             if task.get(field) == "":
                 task[field] = None
         return task
@@ -893,6 +1098,28 @@ class TaskBoard:
             self._index_task_fts_inner(task)
         # MARKER_200.FOREVER: Cache coherence — write-through
         self.tasks[task["id"]] = task
+
+    def _insert_task(self, task: dict):
+        """Strict INSERT (no OR REPLACE) for new task creation.
+
+        MARKER_201.STRICT_INSERT: Prevents silent cross-process overwrites on add_task.
+        _save_task keeps INSERT OR REPLACE for update paths.
+        Raises sqlite3.IntegrityError if task_id already exists in DB.
+        """
+        row = self._task_to_row(task)
+        row["updated_at"] = datetime.now().isoformat()
+        columns = list(row.keys())
+        placeholders = ", ".join("?" for _ in columns)
+        col_names = ", ".join(columns)
+        values = [row[c] for c in columns]
+        with self.db:
+            self.db.execute(
+                f"INSERT INTO tasks ({col_names}) VALUES ({placeholders})",
+                values,
+            )
+        # Cache coherence — write-through
+        self.tasks[task["id"]] = task
+        self._index_task_fts(task)
 
     def _insert_task(self, task: dict):
         """Strict INSERT (no OR REPLACE) for new task creation.
@@ -1032,7 +1259,9 @@ class TaskBoard:
                         self.settings[key] = value
                 self._save_settings()
 
-            logger.info(f"[TaskBoard] Migrated {len(tasks)} tasks from {json_path} to SQLite")
+            logger.info(
+                f"[TaskBoard] Migrated {len(tasks)} tasks from {json_path} to SQLite"
+            )
         except Exception as e:
             logger.warning(f"[TaskBoard] JSON→SQLite migration failed: {e}")
 
@@ -1133,7 +1362,9 @@ class TaskBoard:
             record["suggestions"] = verifier_feedback.get("suggestions", [])[:5]
             record["severity"] = verifier_feedback.get("severity", "unknown")
         if pipeline_stats:
-            record["verifier_avg_confidence"] = pipeline_stats.get("verifier_avg_confidence", 0)
+            record["verifier_avg_confidence"] = pipeline_stats.get(
+                "verifier_avg_confidence", 0
+            )
             record["subtasks_completed"] = pipeline_stats.get("subtasks_completed", 0)
             record["subtasks_total"] = pipeline_stats.get("subtasks_total", 0)
             record["duration_s"] = pipeline_stats.get("duration_s", 0)
@@ -1156,11 +1387,14 @@ class TaskBoard:
         if not ok:
             return {"success": False, "error": f"update_task blocked for {task_id}"}
 
-        logger.info(f"[TaskBoard] Task {task_id} failure #{attempt} recorded, reset to pending")
+        logger.info(
+            f"[TaskBoard] Task {task_id} failure #{attempt} recorded, reset to pending"
+        )
 
         # MARKER_187.12: Feed failure into memory subsystems (non-blocking)
         try:
             from src.memory.failure_feedback import record_failure_feedback
+
             failed_tools = []
             if verifier_feedback:
                 failed_tools = verifier_feedback.get("failed_tools", [])
@@ -1170,7 +1404,9 @@ class TaskBoard:
                 failed_tools=failed_tools,
                 tier_used=tier_used,
                 attempt=attempt,
-                severity=verifier_feedback.get("severity", "major") if verifier_feedback else "major",
+                severity=verifier_feedback.get("severity", "major")
+                if verifier_feedback
+                else "major",
             )
         except Exception as e:
             logger.debug(f"[TaskBoard] Failure feedback skipped: {e}")
@@ -1256,7 +1492,9 @@ class TaskBoard:
         value = str(phase_type or "build").strip().lower()
         if value in VALID_PHASE_TYPES:
             return value
-        raise ValueError(f"Invalid phase_type '{phase_type}'. Expected one of: {sorted(VALID_PHASE_TYPES)}")
+        raise ValueError(
+            f"Invalid phase_type '{phase_type}'. Expected one of: {sorted(VALID_PHASE_TYPES)}"
+        )
 
     def _normalize_protocol_fields(
         self,
@@ -1273,7 +1511,9 @@ class TaskBoard:
         tests = self._normalize_test_commands(closure_tests)
         files = self._normalize_doc_refs(closure_files)
         proof_required = bool(require_closure_proof or tests)
-        protocol = protocol_version or (DEFAULT_PROTOCOL_VERSION if (proof_required or docs or recon) else None)
+        protocol = protocol_version or (
+            DEFAULT_PROTOCOL_VERSION if (proof_required or docs or recon) else None
+        )
         return {
             "architecture_docs": docs,
             "recon_docs": recon,
@@ -1307,12 +1547,22 @@ class TaskBoard:
         return results
 
     # MARKER_192.2: Infer execution_mode from agent_type
-    _MANUAL_AGENT_TYPES = {"claude_code", "cursor", "human", "grok", "codex"}
+    _MANUAL_AGENT_TYPES = {
+        "claude_code",
+        "cursor",
+        "human",
+        "grok",
+        "codex",
+        "opencode",
+        "local_ollama",
+    }
     # MARKER_191.8: Also match by agent_name when agent_type is unknown
     _MANUAL_AGENT_NAMES = {"opus", "cursor", "codex", "grok", "claude-code", "opencode"}
 
     @staticmethod
-    def _infer_execution_mode(agent_type: Optional[str], agent_name: Optional[str] = None) -> str:
+    def _infer_execution_mode(
+        agent_type: Optional[str], agent_name: Optional[str] = None
+    ) -> str:
         """Infer execution_mode from agent_type or agent_name.
 
         MARKER_191.8: Also checks agent_name when agent_type is unknown.
@@ -1327,7 +1577,9 @@ class TaskBoard:
 
     def _closure_threshold(self, task: Dict[str, Any]) -> float:
         try:
-            return float(task.get("verifier_threshold") or DEFAULT_VERIFIER_PASS_THRESHOLD)
+            return float(
+                task.get("verifier_threshold") or DEFAULT_VERIFIER_PASS_THRESHOLD
+            )
         except (TypeError, ValueError):
             return DEFAULT_VERIFIER_PASS_THRESHOLD
 
@@ -1354,7 +1606,9 @@ class TaskBoard:
             # If closure_tests were defined, validate them (but don't require pipeline/verifier)
             tests = closure_proof.get("tests")
             if isinstance(tests, list) and tests:
-                if any(not isinstance(row, dict) or not row.get("passed") for row in tests):
+                if any(
+                    not isinstance(row, dict) or not row.get("passed") for row in tests
+                ):
                     return "all closure_proof tests must pass before closing the task"
             return None
 
@@ -1363,7 +1617,9 @@ class TaskBoard:
         if not bool(closure_proof.get("pipeline_success", stats.get("success"))):
             return "pipeline_success must be true before closing the task"
 
-        verifier_confidence = closure_proof.get("verifier_confidence", stats.get("verifier_avg_confidence", 0))
+        verifier_confidence = closure_proof.get(
+            "verifier_confidence", stats.get("verifier_avg_confidence", 0)
+        )
         try:
             verifier_confidence = float(verifier_confidence or 0)
         except (TypeError, ValueError):
@@ -1407,7 +1663,12 @@ class TaskBoard:
             _history_agent_name=activating_agent,
             _history_agent_type=agent_type,
         )
-        return {"success": False, "error": reason, "task_id": task_id, "tests": closure_results or []}
+        return {
+            "success": False,
+            "error": reason,
+            "task_id": task_id,
+            "tests": closure_results or [],
+        }
 
     @staticmethod
     def _detect_current_branch(cwd: str = None) -> Optional[str]:
@@ -1417,35 +1678,87 @@ class TaskBoard:
         Callers must handle None explicitly to avoid false branch attribution.
         """
         import subprocess
+
         git_cwd = cwd or str(PROJECT_ROOT)
         try:
             result = subprocess.run(
                 ["git", "branch", "--show-current"],
-                cwd=git_cwd, capture_output=True, text=True, timeout=5,
+                cwd=git_cwd,
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return result.stdout.strip()
         except Exception:
             pass
-        logger.warning("[TaskBoard] _detect_current_branch: could not detect branch, returning None (was silently returning 'main')")
+        logger.warning(
+            "[TaskBoard] _detect_current_branch: could not detect branch, returning None (was silently returning 'main')"
+        )
         return None
 
-    def _notify_board_update(self, action: str = "update", event_data: Optional[Dict[str, Any]] = None):
-        """MARKER_124.3D: Emit SocketIO event for live Task Board UI updates.
-        MARKER_130.C18C: Enhanced with event_data for claim/complete actions.
+    def _notify_board_update(
+        self, action: str = "update", event_data: Optional[Dict[str, Any]] = None
+    ):
+        """MARKER_124.3D / MARKER_201.EVENT_BUS: Emit event via unified Event Bus.
 
-        Uses fire-and-forget HTTP POST to our own REST endpoint which has sio access.
-        Falls back silently if server isn't running.
+        Routes through EventBus → subscribers (AuditSubscriber, HTTPNotifySubscriber,
+        PiggybackCollector). Replaces direct httpx POST with subscriber-based fan-out.
+
+        Backward compatible: all existing call sites continue to work unchanged.
 
         Args:
             action: Event action type (update, task_claimed, task_completed, etc.)
             event_data: Optional extra data to include in event (task_id, assigned_to, etc.)
         """
         try:
-            import asyncio
-            summary = self.get_board_summary()
+            # Build payload from event_data + board summary
+            payload = {}
+            if event_data:
+                payload.update(event_data)
 
-            # MARKER_130.C18C: Build payload with optional event_data
+            # Extract source_agent from event_data if available
+            source_agent = ""
+            if event_data:
+                source_agent = event_data.get("assigned_to", "")
+
+            # Build tags for routing
+            tags = []
+            if action in (
+                "task_completed",
+                "task_claimed",
+                "task_needs_fix",
+                "task_verified",
+            ):
+                tags.append("notify_commander")
+            if action in ("task_completed",):
+                tags.append("persist")
+
+            # Emit via Event Bus if available
+            if self.event_bus is not None:
+                from src.orchestration.event_bus import AgentEvent
+
+                event = AgentEvent(
+                    event_type=action,
+                    source_agent=source_agent,
+                    payload=payload,
+                    tags=tags,
+                )
+                self.event_bus.emit(event)
+            else:
+                # Fallback: direct HTTP POST (legacy path)
+                self._notify_board_update_legacy(action, event_data)
+        except Exception:
+            pass  # Never block save on notification failure
+
+    def _notify_board_update_legacy(
+        self, action: str, event_data: Optional[Dict[str, Any]] = None
+    ):
+        """Legacy HTTP notification path — used only when Event Bus is not available."""
+        try:
+            import asyncio
+
+            summary = self.get_board_summary()
             payload = {"action": action, "summary": summary}
             if event_data:
                 payload.update(event_data)
@@ -1453,10 +1766,11 @@ class TaskBoard:
             async def _emit():
                 try:
                     import httpx
+
                     async with httpx.AsyncClient(timeout=2.0) as client:
                         await client.post(
                             "http://localhost:5001/api/debug/task-board/notify",
-                            json=payload
+                            json=payload,
                         )
                 except Exception:
                     pass
@@ -1465,9 +1779,9 @@ class TaskBoard:
                 loop = asyncio.get_running_loop()
                 loop.create_task(_emit())
             except RuntimeError:
-                pass  # No event loop (sync context)
+                pass
         except Exception:
-            pass  # Never block save on notification failure
+            pass
 
     # MARKER_137.S1_1_EVENT_DISPATCH: Update board settings (auto_dispatch, max_concurrent, etc.)
     def update_settings(self, **kwargs) -> Dict[str, Any]:
@@ -1499,20 +1813,30 @@ class TaskBoard:
         dependencies: Optional[List[str]] = None,
         source: str = "manual",
         assigned_to: Optional[str] = None,  # MARKER_130.C16A
-        agent_type: Optional[str] = None,   # MARKER_130.C16A
-        created_by: str = "unknown",        # MARKER_133.C33D: Client attribution
-        session_id: Optional[str] = None,          # MARKER_183.1: Heartbeat session ID
-        source_chat_id: Optional[str] = None,   # MARKER_152.3: Chat provenance
+        agent_type: Optional[str] = None,  # MARKER_130.C16A
+        created_by: str = "unknown",  # MARKER_133.C33D: Client attribution
+        session_id: Optional[str] = None,  # MARKER_183.1: Heartbeat session ID
+        source_chat_id: Optional[str] = None,  # MARKER_152.3: Chat provenance
         source_group_id: Optional[str] = None,  # MARKER_152.3: Group provenance
-        module: Optional[str] = None,            # MARKER_155.2A: Roadmap module assignment
-        primary_node_id: Optional[str] = None,   # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
-        affected_nodes: Optional[List[str]] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
-        workflow_id: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
-        workflow_bank: Optional[str] = None,     # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
-        workflow_family: Optional[str] = None,   # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
-        workflow_selection_origin: Optional[str] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
-        team_profile: Optional[str] = None,      # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
-        task_origin: Optional[str] = None,       # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        module: Optional[str] = None,  # MARKER_155.2A: Roadmap module assignment
+        primary_node_id: Optional[
+            str
+        ] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        affected_nodes: Optional[
+            List[str]
+        ] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_id: Optional[str] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        workflow_bank: Optional[
+            str
+        ] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_family: Optional[
+            str
+        ] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        workflow_selection_origin: Optional[
+            str
+        ] = None,  # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1
+        team_profile: Optional[str] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
+        task_origin: Optional[str] = None,  # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1
         roadmap_id: Optional[str] = None,
         roadmap_node_id: Optional[str] = None,
         roadmap_lane: Optional[str] = None,
@@ -1537,10 +1861,21 @@ class TaskBoard:
         require_closure_proof: bool = False,
         closure_tests: Optional[List[str]] = None,
         closure_files: Optional[List[str]] = None,
-        implementation_hints: Optional[str] = None,  # MARKER_191.6: Algorithm/approach guidance
-        execution_mode: Optional[str] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
-        role: Optional[str] = None,    # MARKER_ZETA.D4: Agent callsign (Alpha/Beta/Gamma/Delta/Commander)
-        domain: Optional[str] = None,  # MARKER_ZETA.D4: Domain (engine/media/ux/qa/architect)
+        implementation_hints: Optional[
+            str
+        ] = None,  # MARKER_191.6: Algorithm/approach guidance
+        execution_mode: Optional[
+            str
+        ] = None,  # MARKER_192.2: "pipeline" | "manual" — controls closure proof requirements
+        role: Optional[
+            str
+        ] = None,  # MARKER_ZETA.D4: Agent callsign (Alpha/Beta/Gamma/Delta/Commander)
+        domain: Optional[
+            str
+        ] = None,  # MARKER_ZETA.D4: Domain (engine/media/ux/qa/architect)
+        allowed_tools: Optional[
+            List[str]
+        ] = None,  # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim
     ) -> str:
         """Add a new task to the board.
 
@@ -1567,7 +1902,8 @@ class TaskBoard:
         _collision_attempts = 0
         while task_id in self.tasks and _collision_attempts < 10:
             logger.warning(
-                "[TaskBoard] ID collision detected: %s already exists, regenerating", task_id
+                "[TaskBoard] ID collision detected: %s already exists, regenerating",
+                task_id,
             )
             task_id = _generate_task_id()
             _collision_attempts += 1
@@ -1609,20 +1945,21 @@ class TaskBoard:
             # MARKER_135.DAG_BRIDGE: Result data for DAG visualization
             "result": None,  # {agents: {...}, subtasks: [...]} for DAGAggregator
             # MARKER_130.C16A: Multi-agent coordination fields
-            "assigned_to": assigned_to,       # Agent name: "opus", "cursor", "dragon", "grok"
-            "assigned_at": None,              # ISO timestamp when claimed
-            "agent_type": agent_type,         # "claude_code", "cursor", "mycelium", "grok", "human"
-            "commit_hash": None,              # Git commit that completed this task
-            "commit_message": None,           # First line of commit message
+            "assigned_to": assigned_to,  # Agent name: "opus", "cursor", "dragon", "grok"
+            "assigned_at": None,  # ISO timestamp when claimed
+            "agent_type": agent_type,  # "claude_code", "cursor", "mycelium", "grok", "human"
+            "commit_hash": None,  # Git commit that completed this task
+            "commit_message": None,  # First line of commit message
             # MARKER_133.C33D: Client attribution
-            "created_by": created_by,         # "claude-code", "cursor", "opencode", "heartbeat"
+            "created_by": created_by,  # "claude-code", "cursor", "opencode", "heartbeat"
             # MARKER_152.3: Task provenance — trace back to originating chat
             # MARKER_183.1: Session ID links all tasks from one heartbeat tick
             "session_id": session_id,
-            "source_chat_id": source_chat_id,   # VETKA chat UUID where task was created
-            "source_group_id": source_group_id, # Group chat UUID (for @dragon/@doctor tasks)
+            "source_chat_id": source_chat_id,  # VETKA chat UUID where task was created
+            "source_group_id": source_group_id,  # Group chat UUID (for @dragon/@doctor tasks)
             # MARKER_155.2A: Roadmap module assignment for drill-down filtering
-            "module": module or self._auto_assign_module(title, description or title, tags or []),
+            "module": module
+            or self._auto_assign_module(title, description or title, tags or []),
             # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: explicit task-to-code anchor metadata
             "primary_node_id": primary_node_id,
             "affected_nodes": affected_nodes or [],
@@ -1663,16 +2000,21 @@ class TaskBoard:
             # "manual" = relaxed proof (commit_hash only, closure_tests if defined)
             "execution_mode": execution_mode or self._infer_execution_mode(agent_type),
             # MARKER_ZETA.D4: Agent role/domain binding
-            "role": role or "",        # Agent callsign from agent_registry.yaml
-            "domain": domain or "",    # Domain from agent_registry.yaml
+            "role": role or "",  # Agent callsign from agent_registry.yaml
+            "domain": domain or "",  # Domain from agent_registry.yaml
             "closure_subtask": {
-                "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
+                "status": "pending"
+                if protocol_fields["require_closure_proof"]
+                else "not_required",
                 "tests": [],
                 "finished_at": None,
             },
             "closed_by": None,
             "closed_at": None,
             "closure_proof": None,
+            # MARKER_201.TOOL_GUARD: Restrict which tool_types can claim this task
+            # Empty list = unrestricted (any tool_type can claim)
+            "allowed_tools": allowed_tools or [],
             "status_history": [],
         }
         self._append_history(
@@ -1693,22 +2035,46 @@ class TaskBoard:
         # MARKER_201.STRICT_INSERT: Use strict INSERT for new tasks (not OR REPLACE)
         self._insert_task(task_payload)
         self._notify_board_update("added")
-        logger.info(f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})")
+        logger.info(
+            f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})"
+        )
         return task_id
 
     # MARKER_155.2A: Auto-assign module from task content
     # Maps keywords in title/description/tags to roadmap module IDs
     _MODULE_KEYWORDS: dict = {
         "backend_api": ["api", "routes", "endpoint", "rest", "http", "backend route"],
-        "backend_orchestration": ["pipeline", "orchestration", "agent", "dragon", "mycelium", "heartbeat"],
+        "backend_orchestration": [
+            "pipeline",
+            "orchestration",
+            "agent",
+            "dragon",
+            "mycelium",
+            "heartbeat",
+        ],
         "backend_mcp": ["mcp", "mcp server", "mcp tool"],
         "backend_services": ["service", "roadmap", "config", "project config"],
         "backend_memory": ["memory", "cam", "stm", "engram", "qdrant", "vector"],
         "backend_elisya": ["elisya", "llm", "model", "provider", "call_model"],
         "backend_tools": ["tool", "fc_loop", "patch", "registry"],
         "backend_scanners": ["scanner", "scan", "watcher", "indexer"],
-        "frontend_components": ["component", "ui", "panel", "view", "dag", "node", "mcc", "dagview",
-                                "frontend", "canvas", "chat", "button", "toggle", "import", "drag"],
+        "frontend_components": [
+            "component",
+            "ui",
+            "panel",
+            "view",
+            "dag",
+            "node",
+            "mcc",
+            "dagview",
+            "frontend",
+            "canvas",
+            "chat",
+            "button",
+            "toggle",
+            "import",
+            "drag",
+        ],
         "frontend_hooks": ["hook", "useSocket", "useStore", "useMCC"],
         "frontend_store": ["store", "zustand", "state"],
         "tests": ["test", "pytest", "e2e", "playwright"],
@@ -1747,7 +2113,11 @@ class TaskBoard:
         return task
 
     def get_context_packet(
-        self, task_id: str, *, max_chars: int = 24000, doc_budget: int = 8192,
+        self,
+        task_id: str,
+        *,
+        max_chars: int = 24000,
+        doc_budget: int = 8192,
     ) -> Optional[Dict[str, Any]]:
         """MARKER_199.MCC: Build MCC-ready context packet for a task.
 
@@ -1801,16 +2171,19 @@ class TaskBoard:
                     break
                 try:
                     from pathlib import Path as _P
+
                     _project_root = _P(__file__).parent.parent.parent
                     _full = _project_root / doc_path
                     if _full.exists():
                         _text = _full.read_text(errors="replace")
                         _remaining = doc_budget - chars_used
-                        _chunk = _text[:min(per_doc_limit, _remaining)]
-                        docs_content.append({
-                            "path": doc_path,
-                            "content": _chunk,
-                        })
+                        _chunk = _text[: min(per_doc_limit, _remaining)]
+                        docs_content.append(
+                            {
+                                "path": doc_path,
+                                "content": _chunk,
+                            }
+                        )
                         chars_used += len(_chunk)
                 except Exception:
                     pass
@@ -1820,7 +2193,8 @@ class TaskBoard:
         # Similar completed tasks (for learning) — top 3 by FTS5
         try:
             import re as _re_cp
-            _clean_title = _re_cp.sub(r'[^\w\s]', '', task.get("title", ""))
+
+            _clean_title = _re_cp.sub(r"[^\w\s]", "", task.get("title", ""))
             title_words = _clean_title.split()[:5]
             if title_words:
                 similar = self.search_fts(" ".join(title_words), limit=5)
@@ -1829,12 +2203,19 @@ class TaskBoard:
                     if s.get("task_id") == task_id:
                         continue
                     st = self.get_task(s["task_id"])
-                    if st and st.get("status") in ("done", "done_main", "done_worktree", "verified"):
-                        completed_similar.append({
-                            "task_id": s["task_id"],
-                            "title": st.get("title", "")[:80],
-                            "commit_message": st.get("commit_message", "")[:120],
-                        })
+                    if st and st.get("status") in (
+                        "done",
+                        "done_main",
+                        "done_worktree",
+                        "verified",
+                    ):
+                        completed_similar.append(
+                            {
+                                "task_id": s["task_id"],
+                                "title": st.get("title", "")[:80],
+                                "commit_message": st.get("commit_message", "")[:120],
+                            }
+                        )
                     if len(completed_similar) >= 3:
                         break
                 if completed_similar:
@@ -1844,15 +2225,20 @@ class TaskBoard:
 
         # Truncate total packet to max_chars
         import json as _json_cp
+
         _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
         if len(_serialized) > max_chars:
             # Trim docs first
             if "docs" in packet:
                 while len(_serialized) > max_chars and packet["docs"]:
-                    packet["docs"][-1]["content"] = packet["docs"][-1]["content"][:len(packet["docs"][-1]["content"]) // 2]
+                    packet["docs"][-1]["content"] = packet["docs"][-1]["content"][
+                        : len(packet["docs"][-1]["content"]) // 2
+                    ]
                     if len(packet["docs"][-1]["content"]) < 100:
                         packet["docs"].pop()
-                    _serialized = _json_cp.dumps(packet, default=str, ensure_ascii=False)
+                    _serialized = _json_cp.dumps(
+                        packet, default=str, ensure_ascii=False
+                    )
 
         packet["_chars"] = len(_serialized)
         packet["_max_chars"] = max_chars
@@ -1892,32 +2278,57 @@ class TaskBoard:
             if updates["status"] == "done_worktree":
                 has_commit = updates.get("commit_hash") or task.get("commit_hash")
                 if not has_commit:
-                    logger.warning(f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash")
+                    logger.warning(
+                        f"[TaskBoard] Blocked done_worktree for {task_id}: no commit_hash"
+                    )
                     return False
         if "phase_type" in updates:
             try:
-                updates["phase_type"] = self._normalize_phase_type(updates["phase_type"])
+                updates["phase_type"] = self._normalize_phase_type(
+                    updates["phase_type"]
+                )
             except ValueError as e:
                 logger.warning(f"[TaskBoard] {e}")
                 return False
 
-        protocol_update_keys = {"architecture_docs", "recon_docs", "protocol_version", "require_closure_proof", "closure_tests", "closure_files"}
+        protocol_update_keys = {
+            "architecture_docs",
+            "recon_docs",
+            "protocol_version",
+            "require_closure_proof",
+            "closure_tests",
+            "closure_files",
+        }
         if any(key in updates for key in protocol_update_keys):
             protocol_fields = self._normalize_protocol_fields(
-                architecture_docs=updates.get("architecture_docs", task.get("architecture_docs")),
+                architecture_docs=updates.get(
+                    "architecture_docs", task.get("architecture_docs")
+                ),
                 recon_docs=updates.get("recon_docs", task.get("recon_docs")),
-                protocol_version=updates.get("protocol_version", task.get("protocol_version")),
-                require_closure_proof=bool(updates.get("require_closure_proof", task.get("require_closure_proof"))),
+                protocol_version=updates.get(
+                    "protocol_version", task.get("protocol_version")
+                ),
+                require_closure_proof=bool(
+                    updates.get(
+                        "require_closure_proof", task.get("require_closure_proof")
+                    )
+                ),
                 closure_tests=updates.get("closure_tests", task.get("closure_tests")),
                 closure_files=updates.get("closure_files", task.get("closure_files")),
             )
             updates.update(protocol_fields)
             if "closure_subtask" not in updates:
-                current = task.get("closure_subtask") if isinstance(task.get("closure_subtask"), dict) else {}
+                current = (
+                    task.get("closure_subtask")
+                    if isinstance(task.get("closure_subtask"), dict)
+                    else {}
+                )
                 if current.get("status") not in {"done", "manual_override"}:
                     updates["closure_subtask"] = {
                         **current,
-                        "status": "pending" if protocol_fields["require_closure_proof"] else "not_required",
+                        "status": "pending"
+                        if protocol_fields["require_closure_proof"]
+                        else "not_required",
                         "tests": current.get("tests", []),
                         "finished_at": current.get("finished_at"),
                     }
@@ -1928,22 +2339,60 @@ class TaskBoard:
         # MARKER_155.2A: Added 'module' for roadmap module assignment
         # MARKER_155.G1.TASK_ANCHORING_CONTRACT_V1: Added anchor metadata fields
         # MARKER_167.STATS_WORKFLOW.TASK_BINDING.V1: Added workflow binding metadata fields
-        ADDABLE_FIELDS = {"result", "stats", "result_summary", "result_status", "feedback",
-                          "session_id", "source_chat_id", "source_group_id", "module",
-                          "primary_node_id", "affected_nodes", "workflow_id", "workflow_bank",
-                          "workflow_family", "workflow_selection_origin", "team_profile", "task_origin",
-                          "roadmap_id", "roadmap_node_id", "roadmap_lane", "roadmap_title",
-                          "ownership_scope", "allowed_paths", "owner_agent", "completion_contract",
-                          "verification_agent", "blocked_paths", "forbidden_scopes", "worktree_hint",
-                          "touch_policy", "overlap_risk", "depends_on_docs",
-                          "project_id", "project_lane", "parent_task_id", "architecture_docs",
-                          "recon_docs", "protocol_version", "require_closure_proof", "closure_tests",
-                          "closure_files", "closure_subtask", "closed_by", "closed_at",
-                          "closure_proof", "status_history",
-                          "branch_name", "merge_commits", "merge_strategy", "merge_result",  # MARKER_184.5
-                          "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
-                          "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
-                          }
+        ADDABLE_FIELDS = {
+            "result",
+            "stats",
+            "result_summary",
+            "result_status",
+            "feedback",
+            "session_id",
+            "source_chat_id",
+            "source_group_id",
+            "module",
+            "primary_node_id",
+            "affected_nodes",
+            "workflow_id",
+            "workflow_bank",
+            "workflow_family",
+            "workflow_selection_origin",
+            "team_profile",
+            "task_origin",
+            "roadmap_id",
+            "roadmap_node_id",
+            "roadmap_lane",
+            "roadmap_title",
+            "ownership_scope",
+            "allowed_paths",
+            "owner_agent",
+            "completion_contract",
+            "verification_agent",
+            "blocked_paths",
+            "forbidden_scopes",
+            "worktree_hint",
+            "touch_policy",
+            "overlap_risk",
+            "depends_on_docs",
+            "project_id",
+            "project_lane",
+            "parent_task_id",
+            "architecture_docs",
+            "recon_docs",
+            "protocol_version",
+            "require_closure_proof",
+            "closure_tests",
+            "closure_files",
+            "closure_subtask",
+            "closed_by",
+            "closed_at",
+            "closure_proof",
+            "status_history",
+            "branch_name",
+            "merge_commits",
+            "merge_strategy",
+            "merge_result",  # MARKER_184.5
+            "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
+            "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
+        }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
         # action=update must not bypass the ownership check that action=claim enforces.
@@ -1951,7 +2400,11 @@ class TaskBoard:
         # Exception: system-level resets (status→pending via record_failure) are allowed.
         OWNERSHIP_FIELDS = {"assigned_to", "owner_agent"}
         is_system_reset = new_status in ("pending", "needs_fix", "cancelled")
-        if old_status in ("claimed", "running") and OWNERSHIP_FIELDS & set(updates.keys()) and not is_system_reset:
+        if (
+            old_status in ("claimed", "running")
+            and OWNERSHIP_FIELDS & set(updates.keys())
+            and not is_system_reset
+        ):
             current_owner = task.get("assigned_to") or task.get("owner_agent") or ""
             # Determine caller: explicit _history_agent_name, or the new assigned_to value
             caller = history_agent_name or ""
@@ -2032,10 +2485,14 @@ class TaskBoard:
                 started_at = task.get("started_at")
                 if started_at:
                     try:
-                        started = datetime.fromisoformat(started_at.replace("Z", "+00:00").replace("+00:00", ""))
+                        started = datetime.fromisoformat(
+                            started_at.replace("Z", "+00:00").replace("+00:00", "")
+                        )
                         if (now - started).total_seconds() > running_timeout_min * 60:
                             task["status"] = "failed"
-                            task["result_summary"] = f"Timeout: running > {running_timeout_min}min"
+                            task["result_summary"] = (
+                                f"Timeout: running > {running_timeout_min}min"
+                            )
                             self._append_history(
                                 task,
                                 event="stale_running_timeout",
@@ -2047,7 +2504,9 @@ class TaskBoard:
                             )
                             self._save_task(task)
                             cleaned += 1
-                            logger.info(f"[TaskBoard] Cleaned stale running task {task.get('id')}")
+                            logger.info(
+                                f"[TaskBoard] Cleaned stale running task {task.get('id')}"
+                            )
                     except Exception:
                         pass
 
@@ -2055,7 +2514,9 @@ class TaskBoard:
                 assigned_at = task.get("assigned_at")
                 if assigned_at:
                     try:
-                        claimed = datetime.fromisoformat(assigned_at.replace("Z", "+00:00").replace("+00:00", ""))
+                        claimed = datetime.fromisoformat(
+                            assigned_at.replace("Z", "+00:00").replace("+00:00", "")
+                        )
                         if (now - claimed).total_seconds() > claimed_timeout_min * 60:
                             task["status"] = "pending"
                             task["assigned_to"] = None
@@ -2069,7 +2530,9 @@ class TaskBoard:
                             )
                             self._save_task(task)
                             cleaned += 1
-                            logger.info(f"[TaskBoard] Released stale claimed task {task.get('id')}")
+                            logger.info(
+                                f"[TaskBoard] Released stale claimed task {task.get('id')}"
+                            )
                     except Exception:
                         pass
 
@@ -2131,9 +2594,19 @@ class TaskBoard:
             # Check 1: git log --all for [task:ID] tag in commit messages
             try:
                 tag_result = subprocess.run(
-                    ["git", "log", "--all", "--oneline", "--fixed-strings",
-                     f"--grep=[task:{tid}]", "-1"],
-                    cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                    [
+                        "git",
+                        "log",
+                        "--all",
+                        "--oneline",
+                        "--fixed-strings",
+                        f"--grep=[task:{tid}]",
+                        "-1",
+                    ],
+                    cwd=str(PROJECT_ROOT),
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if tag_result.returncode == 0 and tag_result.stdout.strip():
                     commit_line = tag_result.stdout.strip()
@@ -2146,8 +2619,17 @@ class TaskBoard:
             if score < 0.5 and title:
                 # Extract key terms from title (skip common prefixes)
                 _title_clean = title
-                for _prefix in ("ZETA-FIX:", "ALPHA-P1:", "BETA-", "GAMMA-", "DELTA-",
-                                 "EPSILON-", "MERGE-REQUEST:", "ZETA:", "ZETA-RECON:"):
+                for _prefix in (
+                    "ZETA-FIX:",
+                    "ALPHA-P1:",
+                    "BETA-",
+                    "GAMMA-",
+                    "DELTA-",
+                    "EPSILON-",
+                    "MERGE-REQUEST:",
+                    "ZETA:",
+                    "ZETA-RECON:",
+                ):
                     _title_clean = _title_clean.replace(_prefix, "").strip()
                 # Use first 3 significant words as grep pattern
                 _words = [w for w in _title_clean.split() if len(w) > 3][:3]
@@ -2155,9 +2637,19 @@ class TaskBoard:
                     _pattern = ".*".join(_words[:2])
                     try:
                         kw_result = subprocess.run(
-                            ["git", "log", "--all", "--oneline", f"--grep={_pattern}",
-                             "-i", "-1"],
-                            cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                            [
+                                "git",
+                                "log",
+                                "--all",
+                                "--oneline",
+                                f"--grep={_pattern}",
+                                "-i",
+                                "-1",
+                            ],
+                            cwd=str(PROJECT_ROOT),
+                            capture_output=True,
+                            text=True,
+                            timeout=5,
                         )
                         if kw_result.returncode == 0 and kw_result.stdout.strip():
                             commit_line = kw_result.stdout.strip()
@@ -2165,6 +2657,28 @@ class TaskBoard:
                             score += 0.4
                     except Exception:
                         pass
+
+            # Check 4 (MARKER_201.CHERRY_PICK_STALE): branch_name with no commits ahead of main.
+            # When cherry-pick lands all branch commits on main without closing the task,
+            # branch becomes empty ahead of main → strong stale signal.
+            branch_name = task.get("branch_name")
+            if branch_name and score < 0.9:
+                try:
+                    branch_check = subprocess.run(
+                        ["git", "log", "--oneline", f"main..{branch_name}", "-1"],
+                        cwd=str(PROJECT_ROOT),
+                        capture_output=True,
+                        text=True,
+                        timeout=5,
+                    )
+                    # returncode 0 + empty stdout = branch exists but has nothing ahead of main
+                    if branch_check.returncode == 0 and not branch_check.stdout.strip():
+                        evidence.append(
+                            f"branch_empty_ahead_of_main: {branch_name} (all commits already on main)"
+                        )
+                        score += 0.9
+                except Exception:
+                    pass
 
             # Check 3: allowed_paths have commits newer than task creation
             if score < 0.5:
@@ -2174,12 +2688,25 @@ class TaskBoard:
                     try:
                         for ap in allowed[:3]:
                             ap_result = subprocess.run(
-                                ["git", "log", "--all", "--oneline",
-                                 f"--since={created_at[:10]}", "-1", "--", ap],
-                                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                                [
+                                    "git",
+                                    "log",
+                                    "--all",
+                                    "--oneline",
+                                    f"--since={created_at[:10]}",
+                                    "-1",
+                                    "--",
+                                    ap,
+                                ],
+                                cwd=str(PROJECT_ROOT),
+                                capture_output=True,
+                                text=True,
+                                timeout=5,
                             )
                             if ap_result.returncode == 0 and ap_result.stdout.strip():
-                                evidence.append(f"path_changed_after_creation: {ap} → {ap_result.stdout.strip()}")
+                                evidence.append(
+                                    f"path_changed_after_creation: {ap} → {ap_result.stdout.strip()}"
+                                )
                                 score += 0.2
                                 break
                     except Exception:
@@ -2204,7 +2731,9 @@ class TaskBoard:
                         _history_reason=f"score={score:.2f}: {evidence[0][:100]}",
                     )
                     closed.append(tid)
-                    logger.info(f"[TaskBoard] Stale auto-closed {tid}: {evidence[0][:60]}")
+                    logger.info(
+                        f"[TaskBoard] Stale auto-closed {tid}: {evidence[0][:60]}"
+                    )
 
         candidates.sort(key=lambda x: x["score"], reverse=True)
 
@@ -2222,7 +2751,14 @@ class TaskBoard:
     # MARKER_130.C16A: AGENT COORDINATION
     # ==========================================
 
-    def claim_task(self, task_id: str, agent_name: str, agent_type: str = "unknown", *, worktree_path: Optional[str] = None) -> Dict[str, Any]:
+    def claim_task(
+        self,
+        task_id: str,
+        agent_name: str,
+        agent_type: str = "unknown",
+        *,
+        worktree_path: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Claim a task for an agent.
 
         Args:
@@ -2237,8 +2773,39 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        if task["status"] not in ("pending", "queued", "needs_fix"):
-            return {"success": False, "error": f"Task {task_id} is {task['status']}, can't claim"}
+        if task["status"] not in ("pending", "queued", "needs_fix", "recon_done"):
+            return {
+                "success": False,
+                "error": f"Task {task_id} is {task['status']}, can't claim",
+            }
+
+        # MARKER_208.SINGLE_CLAIM: Reject if agent already has an active task
+        active_row = self.db.execute(
+            "SELECT id, title FROM tasks WHERE assigned_to = ? AND status IN ('claimed', 'running')",
+            (agent_name,),
+        ).fetchone()
+        if active_row and active_row[0] != task_id:
+            return {
+                "success": False,
+                "error": f"You already have active task {active_row[0]} — complete it first",
+                "active_task_id": active_row[0],
+            }
+
+        # MARKER_201.TOOL_GUARD: Reject if task is locked to specific tool_types
+        task_allowed = task.get("allowed_tools") or []
+        if task_allowed and agent_type not in task_allowed:
+            logger.warning(
+                "[TaskBoard] TOOL_GUARD rejected claim: %s (%s) not in allowed_tools %s for task %s",
+                agent_name,
+                agent_type,
+                task_allowed,
+                task_id,
+            )
+            return {
+                "success": False,
+                "error": f"Tool isolation: agent_type '{agent_type}' not in allowed_tools {task_allowed}",
+                "tool_isolation_rejected": True,
+            }
 
         # MARKER_192.2 + MARKER_191.8: Update execution_mode on claim if not explicitly set
         inferred_mode = self._infer_execution_mode(agent_type, agent_name)
@@ -2250,11 +2817,13 @@ class TaskBoard:
             "owner_agent": agent_name,  # MARKER_199.MCC: populate for MCC dev panel
         }
         # Set execution_mode if: (a) not set at all, or (b) was default "pipeline" but no agent claimed yet
-        if (not task.get("execution_mode")
-                or (task.get("execution_mode") == "pipeline" and not task.get("agent_type"))):
+        if not task.get("execution_mode") or (
+            task.get("execution_mode") == "pipeline" and not task.get("agent_type")
+        ):
             update_fields["execution_mode"] = inferred_mode
 
-        self.update_task(task_id,
+        self.update_task(
+            task_id,
             **update_fields,
             _history_event="claimed",
             _history_source="task_board",
@@ -2264,22 +2833,45 @@ class TaskBoard:
         )
 
         # MARKER_130.C18C: Emit enhanced event for claim
-        self._notify_board_update("task_claimed", {
-            "task_id": task_id,
-            "title": task.get("title", ""),
-            "assigned_to": agent_name,
-            "agent_type": agent_type,
-        })
+        self._notify_board_update(
+            "task_claimed",
+            {
+                "task_id": task_id,
+                "title": task.get("title", ""),
+                "assigned_to": agent_name,
+                "agent_type": agent_type,
+            },
+        )
+
+        # MARKER_196.GW2.2: Emit SSE event for external agents
+        try:
+            from src.services.gateway_sse import emit_task_event
+
+            emit_task_event(
+                task_id,
+                "task_claimed",
+                {
+                    "assigned_to": agent_name,
+                    "agent_type": agent_type,
+                },
+            )
+        except Exception:
+            pass  # SSE is optional — never break claim
 
         # MARKER_ZETA.D4: Warn-mode domain validation via AgentRegistry
         domain_warning = None
         try:
             from src.services.agent_registry import get_agent_registry
+
             registry = get_agent_registry()
-            agent_role = registry.get_by_branch(self._detect_current_branch(cwd=worktree_path) or "")
+            agent_role = registry.get_by_branch(
+                self._detect_current_branch(cwd=worktree_path) or ""
+            )
             task_domain = task.get("domain", "")
             if agent_role and task_domain:
-                matches, msg = registry.validate_domain_match(agent_role.callsign, task_domain)
+                matches, msg = registry.validate_domain_match(
+                    agent_role.callsign, task_domain
+                )
                 if not matches:
                     domain_warning = msg
                     logger.warning(f"[TaskBoard] ZETA domain warning on claim: {msg}")
@@ -2289,7 +2881,9 @@ class TaskBoard:
         except Exception as e:
             logger.debug(f"[TaskBoard] ZETA domain check skipped (non-fatal): {e}")
 
-        logger.info(f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})")
+        logger.info(
+            f"[TaskBoard] Task {task_id} claimed by {agent_name} ({agent_type})"
+        )
         result = {"success": True, "task_id": task_id, "assigned_to": agent_name}
         if domain_warning:
             result["domain_warning"] = domain_warning
@@ -2307,7 +2901,9 @@ class TaskBoard:
         override_reason: Optional[str] = None,
         branch: Optional[str] = None,
         worktree_path: Optional[str] = None,  # MARKER_195.20: cwd for branch detection
-        execution_mode: Optional[str] = None,  # MARKER_192.2: override task's execution_mode at close time
+        execution_mode: Optional[
+            str
+        ] = None,  # MARKER_192.2: override task's execution_mode at close time
     ) -> Dict[str, Any]:
         """Mark a task as complete with optional commit info.
 
@@ -2332,8 +2928,16 @@ class TaskBoard:
 
         # MARKER_191.1: Guard against double-close (done/done_main/done_worktree)
         # MARKER_199.DOUBLE_CLOSE: Guard against re-closing done OR verified tasks
-        if task.get("status", "").startswith("done") or task.get("status") == "verified":
-            return {"success": True, "task_id": task_id, "status": task["status"], "note": "already closed"}
+        if (
+            task.get("status", "").startswith("done")
+            or task.get("status") == "verified"
+        ):
+            return {
+                "success": True,
+                "task_id": task_id,
+                "status": task["status"],
+                "note": "already closed",
+            }
 
         # MARKER_192.2: Allow execution_mode override at close time
         if execution_mode and execution_mode in ("pipeline", "manual"):
@@ -2349,7 +2953,9 @@ class TaskBoard:
         if override_reason and not proof.get("override_reason"):
             proof["override_reason"] = override_reason[:300]
 
-        proof_error = self._validate_closure_proof(task, proof if proof else closure_proof, manual_override=manual_override)
+        proof_error = self._validate_closure_proof(
+            task, proof if proof else closure_proof, manual_override=manual_override
+        )
         if proof_error:
             return {"success": False, "error": proof_error, "task_id": task_id}
 
@@ -2362,10 +2968,14 @@ class TaskBoard:
         # MARKER_200.QA_GATE_AUTO_CLOSE: When git_auto_close triggers complete_task
         # on main (post-merge hook), route to need_qa instead of done_main.
         # promote_to_main is the ONLY legitimate path to done_main.
-        _is_auto_close = (closure_proof or {}).get("auto_close_method") == "commit_match"
+        _is_auto_close = (closure_proof or {}).get(
+            "auto_close_method"
+        ) == "commit_match"
         if not is_worktree and _is_auto_close:
             final_status = "need_qa"
-            logger.info(f"[TaskBoard] QA_GATE: git_auto_close → need_qa (not done_main) for {task_id}")
+            logger.info(
+                f"[TaskBoard] QA_GATE: git_auto_close → need_qa (not done_main) for {task_id}"
+            )
         else:
             final_status = "done_worktree" if is_worktree else "done_main"
 
@@ -2376,6 +2986,7 @@ class TaskBoard:
         if task_role and branch and branch != "main":
             try:
                 from src.services.agent_registry import get_agent_registry
+
                 registry = get_agent_registry()
                 role_entry = registry.get_by_callsign(task_role)
                 if role_entry and role_entry.branch and role_entry.branch != branch:
@@ -2429,23 +3040,48 @@ class TaskBoard:
             **update,
             _history_event="closed_manual" if manual_override else "closed",
             _history_source="task_board",
-            _history_reason=override_reason or ("task closed by closure protocol" if task.get("require_closure_proof") else "task completed"),
+            _history_reason=override_reason
+            or (
+                "task closed by closure protocol"
+                if task.get("require_closure_proof")
+                else "task completed"
+            ),
             _history_agent_name=closed_by or str(task.get("assigned_to") or ""),
             _history_agent_type=str(task.get("agent_type") or ""),
         )
 
         # MARKER_130.C18C: Emit enhanced event for completion
-        self._notify_board_update("task_completed", {
-            "task_id": task_id,
-            "title": task.get("title", ""),
-            "assigned_to": task.get("assigned_to"),
-            "commit_hash": commit_hash,
-            "commit_message": commit_message[:50] if commit_message else None,
-        })
+        self._notify_board_update(
+            "task_completed",
+            {
+                "task_id": task_id,
+                "title": task.get("title", ""),
+                "assigned_to": task.get("assigned_to"),
+                "commit_hash": commit_hash,
+                "commit_message": commit_message[:50] if commit_message else None,
+            },
+        )
+
+        # MARKER_196.GW2.2: Emit SSE event for external agents
+        try:
+            from src.services.gateway_sse import emit_task_event
+
+            emit_task_event(
+                task_id,
+                "task_completed",
+                {
+                    "assigned_to": task.get("assigned_to"),
+                    "commit_hash": commit_hash,
+                    "status": final_status,
+                },
+            )
+        except Exception:
+            pass  # SSE is optional — never break complete
 
         # MARKER_200.AGENT_WAKE: Notify Commander about completed task
         self._auto_notify(
-            task, self.NOTIF_TASK_COMPLETED,
+            task,
+            self.NOTIF_TASK_COMPLETED,
             source_role=str(task.get("assigned_to") or ""),
         )
 
@@ -2456,20 +3092,30 @@ class TaskBoard:
             task_allowed = task.get("allowed_paths", [])
             if task_role and task_allowed:
                 from src.services.agent_registry import get_agent_registry
+
                 registry = get_agent_registry()
                 for ap in task_allowed:
                     result_check = registry.validate_file_ownership(task_role, ap)
                     if result_check.is_blocked:
                         warn_msg = f"File '{ap}' is BLOCKED for {task_role}"
                         ownership_warnings.append(warn_msg)
-                        logger.warning(f"[TaskBoard] ZETA ownership warning: {warn_msg}")
+                        logger.warning(
+                            f"[TaskBoard] ZETA ownership warning: {warn_msg}"
+                        )
         except Exception as e:
             logger.debug(f"[TaskBoard] ZETA ownership check skipped (non-fatal): {e}")
 
         branch_info = f" on {branch}" if branch else ""
-        logger.info(f"[TaskBoard] Task {task_id} → {final_status}{branch_info}" +
-                    (f" (commit: {commit_hash[:8]})" if commit_hash else ""))
-        result = {"success": True, "task_id": task_id, "commit_hash": commit_hash, "status": final_status}
+        logger.info(
+            f"[TaskBoard] Task {task_id} → {final_status}{branch_info}"
+            + (f" (commit: {commit_hash[:8]})" if commit_hash else "")
+        )
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "commit_hash": commit_hash,
+            "status": final_status,
+        }
         if ownership_warnings:
             result["ownership_warnings"] = ownership_warnings
 
@@ -2482,7 +3128,9 @@ class TaskBoard:
                     debrief_prompt = self._generate_debrief_prompt(phase_prefix, task)
                     result["debrief_prompt"] = debrief_prompt
                     result["is_last_phase_task"] = True
-                    logger.info(f"[TaskBoard] Phase {phase_prefix} complete — debrief prompt attached")
+                    logger.info(
+                        f"[TaskBoard] Phase {phase_prefix} complete — debrief prompt attached"
+                    )
         except Exception as e:
             logger.debug(f"[TaskBoard] Auto-debrief check skipped (non-fatal): {e}")
 
@@ -2504,13 +3152,13 @@ class TaskBoard:
         """
         if not title:
             return None
-        m = re.match(r'^(\d+)\.', title)
+        m = re.match(r"^(\d+)\.", title)
         return m.group(1) if m else None
 
     def _count_pending_for_phase(self, prefix: str) -> int:
         """Count tasks with matching phase prefix still pending or claimed."""
         count = 0
-        pattern = re.compile(r'^' + re.escape(prefix) + r'\.')
+        pattern = re.compile(r"^" + re.escape(prefix) + r"\.")
         try:
             for status in ("pending", "claimed"):
                 tasks = self.list_tasks(status=status)
@@ -2577,12 +3225,113 @@ class TaskBoard:
                 )
             logger.info(
                 "[TaskBoard] NOTIFY: %s → %s [%s] %s",
-                source_role or "system", target_role, ntype, message[:80],
+                source_role or "system",
+                target_role,
+                ntype,
+                message[:80],
             )
+            # MARKER_204.VIBE: Write signal file for Vibe agents so PRETOOL_HOOK picks it up
+            self._write_vibe_signal(target_role, notif_id, source_role, message, ntype)
+
+            # MARKER_204.FILE_SIGNAL: Write file signal for hook-based delivery
+            try:
+                import json as _json_signal
+                signals_dir = Path.home() / ".claude" / "signals"
+                signals_dir.mkdir(parents=True, exist_ok=True)
+                signal_file = signals_dir / f"{target_role}.json"
+                signal_entry = {
+                    "id": notif_id,
+                    "from": source_role or "system",
+                    "message": message[:500],
+                    "ntype": ntype,
+                    "task_id": task_id,
+                    "ts": now,
+                }
+                # Append to existing array (don't overwrite)
+                existing = []
+                if signal_file.exists():
+                    try:
+                        existing = _json_signal.loads(signal_file.read_text(encoding="utf-8"))
+                        if not isinstance(existing, list):
+                            existing = []
+                    except Exception:
+                        existing = []
+                existing.append(signal_entry)
+                signal_file.write_text(_json_signal.dumps(existing, ensure_ascii=False), encoding="utf-8")
+                logger.debug("[TaskBoard] FILE_SIGNAL: wrote %s (%d entries)", signal_file.name, len(existing))
+            except Exception as sig_err:
+                logger.debug("[TaskBoard] FILE_SIGNAL write failed (non-fatal): %s", sig_err)
+
+            # MARKER_205.NOTIFY_BUS: Emit notify event through EventBus → UDS daemon
+            # This enables autospawn: daemon receives notify, checks tmux, spawns offline agent.
+            try:
+                if hasattr(self, 'event_bus') and self.event_bus:
+                    from src.orchestration.event_bus import AgentEvent
+                    event = AgentEvent(
+                        event_type="notify",
+                        source_agent="task_board",
+                        payload={
+                            "action": "notify",
+                            "target_role": target_role,
+                            "source_role": source_role,
+                            "message": message[:500],
+                            "ntype": ntype,
+                            "task_id": task_id,
+                            "notification_id": notif_id,
+                        },
+                    )
+                    self.event_bus.emit(event)
+            except Exception as bus_err:
+                logger.debug("[TaskBoard] NOTIFY_BUS emit failed (non-fatal): %s", bus_err)
             return {"success": True, "notification_id": notif_id}
         except Exception as e:
             logger.warning(f"[TaskBoard] notify failed: {e}")
             return {"success": False, "error": str(e)}
+
+    def _write_vibe_signal(
+        self,
+        target_role: str,
+        notif_id: str,
+        source_role: str,
+        message: str,
+        ntype: str,
+    ) -> None:
+        """MARKER_204.VIBE: Write signal file for Vibe agents to ~/.vetka/signals/{role}.json.
+
+        PRETOOL_HOOK reads this file before each tool call, enabling push notifications
+        without polling for agents that use AGENTS.md (Vibe, Opencode).
+        """
+        try:
+            from src.services.agent_registry import get_agent_registry
+            reg = get_agent_registry()
+            role = reg.get_by_callsign(target_role)
+            tool_type = getattr(role, "tool_type", "claude_code") if role else "claude_code"
+
+            if tool_type in ("vibe", "opencode"):
+                import json
+                from pathlib import Path
+                signal_data = {
+                    "notification_id": notif_id,
+                    "from": source_role,
+                    "message": message,
+                    "type": ntype,
+                    "created_at": datetime.now().isoformat(),
+                }
+                # Write to ~/.vetka/signals/ for Vibe agents
+                vetka_dir = Path.home() / ".vetka" / "signals"
+                vetka_dir.mkdir(parents=True, exist_ok=True)
+                (vetka_dir / f"{target_role}.json").write_text(
+                    json.dumps(signal_data, ensure_ascii=False), encoding="utf-8"
+                )
+                # Also write to ~/.claude/signals/ for opencode agents
+                claude_dir = Path.home() / ".claude" / "signals"
+                claude_dir.mkdir(parents=True, exist_ok=True)
+                (claude_dir / f"{target_role}.json").write_text(
+                    json.dumps(signal_data, ensure_ascii=False), encoding="utf-8"
+                )
+                logger.debug("[TaskBoard] Signal file written for %s (tool_type=%s)", target_role, tool_type)
+        except Exception as e:
+            logger.debug("[TaskBoard] _write_vibe_signal failed (non-fatal): %s", e)
 
     def get_notifications(
         self,
@@ -2618,9 +3367,14 @@ class TaskBoard:
                 ).fetchall()
             return [
                 {
-                    "id": r[0], "target_role": r[1], "source_role": r[2],
-                    "task_id": r[3], "message": r[4], "ntype": r[5],
-                    "created_at": r[6], "read_at": r[7],
+                    "id": r[0],
+                    "target_role": r[1],
+                    "source_role": r[2],
+                    "task_id": r[3],
+                    "message": r[4],
+                    "ntype": r[5],
+                    "created_at": r[6],
+                    "read_at": r[7],
                 }
                 for r in rows
             ]
@@ -2628,7 +3382,9 @@ class TaskBoard:
             logger.warning(f"[TaskBoard] get_notifications failed: {e}")
             return []
 
-    def ack_notifications(self, role: str, notification_ids: Optional[List[str]] = None) -> Dict[str, Any]:
+    def ack_notifications(
+        self, role: str, notification_ids: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
         """Mark notifications as read.
 
         Args:
@@ -2657,6 +3413,93 @@ class TaskBoard:
         except Exception as e:
             logger.warning(f"[TaskBoard] ack_notifications failed: {e}")
             return {"success": False, "error": str(e)}
+
+    # ==========================================
+    # MARKER_208.SYNAPSE_WAKE_NATIVE
+    # ==========================================
+
+    _WAKE_COOLDOWN_SECS = 30
+    _WAKE_LOG = "/tmp/synapse_wake_log.jsonl"
+
+    @staticmethod
+    def _wake_log(role: str, method: str, message: str) -> None:
+        """Append JSONL audit entry for wake verification."""
+        try:
+            entry = {"ts": time.time(), "role": role, "method": method, "message": message}
+            with open(TaskBoard._WAKE_LOG, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass  # Audit log never blocks wake
+
+    def _synapse_wake(self, role: str, message: str = "") -> None:
+        """MARKER_208.SYNAPSE_WAKE_NATIVE: Wake an agent via tmux or macOS notification.
+
+        Pure Python — no external script dependency. Replaces synapse_wake.sh
+        for the _auto_notify path so wake works from main without worktree merge.
+
+        Flow:
+        1. Debounce: skip if woken < 30s ago (/tmp/synapse_wake_{role}.ts)
+        2. tmux has-session → send-keys "vetka session init" if session alive
+        3. Fallback: macOS notification + Terminal activate + sound
+        """
+        ts_file = Path(f"/tmp/synapse_wake_{role}.ts")
+        try:
+            if ts_file.exists():
+                age = time.time() - ts_file.stat().st_mtime
+                if age < self._WAKE_COOLDOWN_SECS:
+                    logger.debug(
+                        "[TaskBoard] SYNAPSE_WAKE debounce: %s woken %ds ago, skip",
+                        role, int(age),
+                    )
+                    return
+        except Exception:
+            pass  # stat failure — proceed with wake
+
+        session_name = f"vetka-{role}"
+        try:
+            has = subprocess.run(
+                ["tmux", "has-session", "-t", session_name],
+                capture_output=True, timeout=3,
+            )
+            if has.returncode == 0:
+                # Session alive — inject session init to trigger hook + inbox read
+                subprocess.run(
+                    ["tmux", "send-keys", "-t", session_name,
+                     "vetka session init", "Enter"],
+                    capture_output=True, timeout=3,
+                )
+                ts_file.touch()
+                self._wake_log(role, "tmux", message)
+                logger.info("[TaskBoard] SYNAPSE_WAKE: tmux poked %s", role)
+                return
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE tmux failed for %s: %s", role, exc)
+
+        # Fallback: macOS notification (for Commander in raw terminal)
+        try:
+            subprocess.run(
+                ["pgrep", "-q", "WindowServer"],
+                capture_output=True, timeout=2,
+            )
+            wake_msg = message or f"Agent {role} needs attention"
+            subprocess.Popen(
+                ["osascript", "-e",
+                 f'display notification "{wake_msg}" with title "[VETKA] {role} Wake"'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["osascript", "-e", 'tell application "Terminal" to activate'],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            subprocess.Popen(
+                ["afplay", "/System/Library/Sounds/Ping.aiff"],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            ts_file.touch()
+            self._wake_log(role, "osascript", message)
+            logger.info("[TaskBoard] SYNAPSE_WAKE: macOS notified %s (no tmux session)", role)
+        except Exception as exc:
+            logger.debug("[TaskBoard] SYNAPSE_WAKE macOS fallback failed for %s: %s", role, exc)
 
     def _auto_notify(
         self,
@@ -2693,15 +3536,52 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
             targets.append(("Commander", f"Task completed by {owner}: {title}"))
+            # MARKER_212.WAKE_CHAIN: Also notify verification_agent so QA auto-wakes
+            verifier = task.get("verification_agent", "")
+            if verifier and verifier != owner:
+                targets.append((verifier, f"Task ready for QA: {title}"))
         else:
             return  # Unknown type, skip
 
         for target, msg in targets:
             if target:
+                # MARKER_208.DEDUP: Skip if identical notification exists within last 10s
+                try:
+                    recent = self.db.execute(
+                        "SELECT COUNT(*) FROM notifications "
+                        "WHERE target_role = ? AND task_id = ? AND ntype = ? "
+                        "AND created_at > datetime('now', '-10 seconds')",
+                        (target, task_id, ntype),
+                    ).fetchone()
+                    if recent and recent[0] > 0:
+                        logger.debug(
+                            "[TaskBoard] DEDUP: skipping duplicate %s → %s for task %s",
+                            ntype, target, task_id,
+                        )
+                        continue
+                except Exception:
+                    pass  # Dedup is best-effort — never block notifications
                 self.notify(
-                    target, msg,
-                    ntype=ntype, source_role=source_role, task_id=task_id,
+                    target,
+                    msg,
+                    ntype=ntype,
+                    source_role=source_role,
+                    task_id=task_id,
                 )
+
+        # MARKER_208.SYNAPSE_WAKE_NATIVE: Wake target agents — pure Python, no script dependency
+        _WAKE_TARGETS: Dict[str, list] = {
+            self.NOTIF_TASK_COMPLETED: ["Delta"],
+            self.NOTIF_TASK_VERIFIED: ["Commander"],
+            self.NOTIF_READY_TO_MERGE: ["Commander"],
+            self.NOTIF_TASK_NEEDS_FIX: [],  # populated dynamically below
+        }
+        wake_roles = list(_WAKE_TARGETS.get(ntype, []))
+        # Wake task owner on needs_fix so they see the QA failure
+        if ntype == self.NOTIF_TASK_NEEDS_FIX and owner:
+            wake_roles.append(owner)
+        for wake_target in wake_roles:
+            self._synapse_wake(wake_target, message=f"{ntype}: {title}")
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
@@ -2741,7 +3621,10 @@ class TaskBoard:
         elif verdict == "fail":
             new_status = "needs_fix"
         else:
-            return {"success": False, "error": f"Invalid verdict: '{verdict}'. Use 'pass' or 'fail'"}
+            return {
+                "success": False,
+                "error": f"Invalid verdict: '{verdict}'. Use 'pass' or 'fail'",
+            }
 
         verifier = verified_by or "Delta"
         self.update_task(
@@ -2755,23 +3638,32 @@ class TaskBoard:
         )
 
         if verdict == "fail":
-            self._notify_board_update("task_needs_fix", {
-                "task_id": task_id,
-                "title": task.get("title", ""),
-                "notes": notes[:200],
-            })
+            self._notify_board_update(
+                "task_needs_fix",
+                {
+                    "task_id": task_id,
+                    "title": task.get("title", ""),
+                    "notes": notes[:200],
+                },
+            )
 
         # MARKER_200.AGENT_WAKE: Auto-notify on QA verdict
         if verdict == "pass":
             self._auto_notify(task, self.NOTIF_TASK_VERIFIED, source_role=verifier)
         elif verdict == "fail":
-            self._auto_notify(task, self.NOTIF_TASK_NEEDS_FIX, source_role=verifier, extra_msg=notes[:200])
-
+            self._auto_notify(
+                task,
+                self.NOTIF_TASK_NEEDS_FIX,
+                source_role=verifier,
+                extra_msg=notes[:200],
+            )
 
             # MARKER_200.QA_FEEDBACK_LOOP: Auto-create fix task + ENGRAM danger entry
             fix_task_id = None
             try:
-                original_agent = task.get("assigned_to") or task.get("owner_agent") or ""
+                original_agent = (
+                    task.get("assigned_to") or task.get("owner_agent") or ""
+                )
                 original_role = task.get("role", "")
                 fix_title = f"QA-FIX: {task.get('title', task_id)[:80]}"
                 fix_desc = (
@@ -2796,25 +3688,51 @@ class TaskBoard:
                     architecture_docs=task.get("architecture_docs") or [],
                     tags=["qa-fix", "auto-generated"],
                 )
-                fix_task_id = fix_result if isinstance(fix_result, str) else (fix_result.get("task_id") if isinstance(fix_result, dict) else None)
+                fix_task_id = (
+                    fix_result
+                    if isinstance(fix_result, str)
+                    else (
+                        fix_result.get("task_id")
+                        if isinstance(fix_result, dict)
+                        else None
+                    )
+                )
                 if fix_task_id:
-                    logger.info(f"[TaskBoard] QA feedback loop: created fix task {fix_task_id} for {original_agent}")
+                    logger.info(
+                        f"[TaskBoard] QA feedback loop: created fix task {fix_task_id} for {original_agent}"
+                    )
             except Exception as e:
-                logger.warning(f"[TaskBoard] QA feedback loop: failed to create fix task: {e}")
+                logger.warning(
+                    f"[TaskBoard] QA feedback loop: failed to create fix task: {e}"
+                )
 
             # ENGRAM danger entry so original agent learns
             try:
                 from src.memory.engram_cache import EngramCache
+
                 engram = EngramCache()
                 engram_key = f"{original_role or original_agent}::qa_fail::{task_id}"
-                engram_value = f"[QA-FAIL] {notes[:200]}" if notes else f"[QA-FAIL] Task {task_id} failed QA by {verifier}"
+                engram_value = (
+                    f"[QA-FAIL] {notes[:200]}"
+                    if notes
+                    else f"[QA-FAIL] Task {task_id} failed QA by {verifier}"
+                )
                 engram.put(engram_key, engram_value, category="danger")
-                logger.info(f"[TaskBoard] QA feedback loop: ENGRAM danger entry for {original_role or original_agent}")
+                logger.info(
+                    f"[TaskBoard] QA feedback loop: ENGRAM danger entry for {original_role or original_agent}"
+                )
             except Exception as e:
                 logger.warning(f"[TaskBoard] QA feedback ENGRAM failed: {e}")
 
-        logger.info(f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}")
-        result = {"success": True, "task_id": task_id, "status": new_status, "verdict": verdict}
+        logger.info(
+            f"[TaskBoard] Task {task_id} QA {verdict} by {verifier} → {new_status}"
+        )
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "status": new_status,
+            "verdict": verdict,
+        }
         if verdict == "fail" and fix_task_id:
             result["fix_task_id"] = fix_task_id
             result["fix_task_assigned_to"] = task.get("assigned_to", "")
@@ -2824,16 +3742,27 @@ class TaskBoard:
     def _is_commit_on_main(commit_hash: str) -> bool:
         """MARKER_195.1: Verify commit is actually on main branch using git merge-base."""
         import subprocess
+
         try:
             result = subprocess.run(
                 ["git", "merge-base", "--is-ancestor", commit_hash, "main"],
-                cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=5,
+                cwd=str(PROJECT_ROOT),
+                capture_output=True,
+                text=True,
+                timeout=5,
             )
             return result.returncode == 0
         except Exception:
             return False
 
-    def promote_to_main(self, task_id: str, merge_commit_hash: Optional[str] = None, *, role: str = "", skip_qa: bool = False) -> Dict[str, Any]:
+    def promote_to_main(
+        self,
+        task_id: str,
+        merge_commit_hash: Optional[str] = None,
+        *,
+        role: str = "",
+        skip_qa: bool = False,
+    ) -> Dict[str, Any]:
         """MARKER_195.20c: Validate that merge happened, then set done_main.
 
         REQUIRES commit_hash proving the merge is on main.
@@ -2850,7 +3779,10 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
         if task.get("status") not in ("done_worktree", "done", "verified"):
-            return {"success": False, "error": f"Task {task_id} status is '{task.get('status')}', expected verified or done_worktree"}
+            return {
+                "success": False,
+                "error": f"Task {task_id} status is '{task.get('status')}', expected verified or done_worktree",
+            }
 
         # MARKER_200.QA_GATE: Enforce QA flow for done_worktree tasks
         # done_worktree should go through need_qa → verified before promote.
@@ -2885,7 +3817,9 @@ class TaskBoard:
 
         # Warn if not Commander (soft enforcement)
         if role and role != "Commander":
-            logger.warning(f"[TaskBoard] promote_to_main called by {role} (expected Commander)")
+            logger.warning(
+                f"[TaskBoard] promote_to_main called by {role} (expected Commander)"
+            )
 
         # REQUIRE commit_hash — no paper promotions
         if not merge_commit_hash:
@@ -2912,7 +3846,9 @@ class TaskBoard:
             _history_source="task_board",
             _history_reason="merge verified on main",
         )
-        logger.info(f"[TaskBoard] Task {task_id} promoted: → done_main (commit {merge_commit_hash[:8]} verified on main)")
+        logger.info(
+            f"[TaskBoard] Task {task_id} promoted: → done_main (commit {merge_commit_hash[:8]} verified on main)"
+        )
         return {"success": True, "task_id": task_id, "status": "done_main"}
 
     async def run_closure_protocol(
@@ -2933,7 +3869,8 @@ class TaskBoard:
         stats = task.get("stats") if isinstance(task.get("stats"), dict) else {}
         verifier_confidence = float(stats.get("verifier_avg_confidence") or 0.0)
         proof: Dict[str, Any] = {
-            "protocol_version": task.get("protocol_version") or DEFAULT_PROTOCOL_VERSION,
+            "protocol_version": task.get("protocol_version")
+            or DEFAULT_PROTOCOL_VERSION,
             "pipeline_success": bool(stats.get("success")),
             "verifier_confidence": verifier_confidence,
             "activating_agent": activating_agent,
@@ -2988,7 +3925,9 @@ class TaskBoard:
                 closure_results=closure_results,
             )
 
-        closure_files = [str(path) for path in (task.get("closure_files") or []) if str(path).strip()]
+        closure_files = [
+            str(path) for path in (task.get("closure_files") or []) if str(path).strip()
+        ]
         if not closure_files:
             return self._mark_closure_failed(
                 task_id,
@@ -2998,7 +3937,9 @@ class TaskBoard:
                 closure_results=closure_results,
             )
 
-        commit_title = commit_message or f"[Task {task_id}] {task.get('title', '')[:72]}".strip()
+        commit_title = (
+            commit_message or f"[Task {task_id}] {task.get('title', '')[:72]}".strip()
+        )
         from src.mcp.tools.git_tool import GitCommitTool
 
         commit_tool = GitCommitTool()
@@ -3046,10 +3987,14 @@ class TaskBoard:
                 task_title=str(task.get("title") or task_id),
                 status="done",
                 stats=tracker_stats,
-                source=f"{activating_agent}:{agent_type}" if agent_type else activating_agent,
+                source=f"{activating_agent}:{agent_type}"
+                if agent_type
+                else activating_agent,
             )
         except Exception as track_err:
-            logger.debug(f"[TaskBoard] Tracker update skipped for {task_id}: {track_err}")
+            logger.debug(
+                f"[TaskBoard] Tracker update skipped for {task_id}: {track_err}"
+            )
 
         return {
             "success": True,
@@ -3071,7 +4016,9 @@ class TaskBoard:
         active = []
         now = datetime.now()
 
-        cursor = self.db.execute("SELECT * FROM tasks WHERE status IN ('claimed', 'running')")
+        cursor = self.db.execute(
+            "SELECT * FROM tasks WHERE status IN ('claimed', 'running')"
+        )
         for row in cursor:
             task = self._row_to_task(row)
             if True:  # replaces the old `if task["status"] in ...` filter
@@ -3086,14 +4033,16 @@ class TaskBoard:
                         except (ValueError, TypeError):
                             pass
 
-                    active.append({
-                        "agent_name": agent,
-                        "agent_type": task.get("agent_type", "unknown"),
-                        "task_id": task["id"],
-                        "task_title": task["title"],
-                        "status": task["status"],
-                        "elapsed_seconds": elapsed,
-                    })
+                    active.append(
+                        {
+                            "agent_name": agent,
+                            "agent_type": task.get("agent_type", "unknown"),
+                            "task_id": task["id"],
+                            "task_title": task["title"],
+                            "status": task["status"],
+                            "elapsed_seconds": elapsed,
+                        }
+                    )
 
         return active
 
@@ -3101,7 +4050,9 @@ class TaskBoard:
     # MARKER_130.C17A: GIT COMMIT AUTO-DETECTION
     # ==========================================
 
-    def auto_complete_by_commit(self, commit_hash: str, commit_message: str, *, agent_id: Optional[str] = None) -> List[str]:
+    def auto_complete_by_commit(
+        self, commit_hash: str, commit_message: str, *, agent_id: Optional[str] = None
+    ) -> List[str]:
         """Auto-complete tasks mentioned in commit message.
 
         MARKER_191.1: Hardened against false positives.
@@ -3138,13 +4089,24 @@ class TaskBoard:
                 result = self.complete_task(
                     task["id"],
                     commit_hash,
-                    commit_message.split('\n')[0],
+                    commit_message.split("\n")[0],
                     closure_proof={
                         "commit_hash": commit_hash,
-                        "commit_message": commit_message.split('\n')[0],
-                        "pipeline_success": bool((task.get("stats") or {}).get("success")),
-                        "verifier_confidence": float((task.get("stats") or {}).get("verifier_avg_confidence") or 0),
-                        "tests": [{"command": "git auto-close", "passed": True, "exit_code": 0}],
+                        "commit_message": commit_message.split("\n")[0],
+                        "pipeline_success": bool(
+                            (task.get("stats") or {}).get("success")
+                        ),
+                        "verifier_confidence": float(
+                            (task.get("stats") or {}).get("verifier_avg_confidence")
+                            or 0
+                        ),
+                        "tests": [
+                            {
+                                "command": "git auto-close",
+                                "passed": True,
+                                "exit_code": 0,
+                            }
+                        ],
                         "activating_agent": real_closer,
                         "auto_close_method": "commit_match",
                     },
@@ -3152,9 +4114,13 @@ class TaskBoard:
                 )
                 if result.get("success"):
                     completed.append(task["id"])
-                    logger.info(f"[TaskBoard] Auto-completed {task['id']} (closer: {real_closer}) from commit {commit_hash[:8]}")
+                    logger.info(
+                        f"[TaskBoard] Auto-completed {task['id']} (closer: {real_closer}) from commit {commit_hash[:8]}"
+                    )
                 else:
-                    logger.warning(f"[TaskBoard] Auto-close FAILED for {task['id']}: {result.get('error')}")
+                    logger.warning(
+                        f"[TaskBoard] Auto-close FAILED for {task['id']}: {result.get('error')}"
+                    )
 
         return completed
 
@@ -3185,15 +4151,19 @@ class TaskBoard:
                 if matched:
                     break
             if matched:
-                candidates.append({
-                    "id": task["id"],
-                    "title": task.get("title", ""),
-                    "status": task.get("status", ""),
-                    "allowed_paths": allowed,
-                })
+                candidates.append(
+                    {
+                        "id": task["id"],
+                        "title": task.get("title", ""),
+                        "status": task.get("status", ""),
+                        "allowed_paths": allowed,
+                    }
+                )
         return candidates
 
-    def _commit_matches_task(self, task: Dict[str, Any], commit_msg: str, msg_lower: str) -> bool:
+    def _commit_matches_task(
+        self, task: Dict[str, Any], commit_msg: str, msg_lower: str
+    ) -> bool:
         """Check if commit message matches a task.
 
         MARKER_191.1: Hardened matching — only explicit references.
@@ -3224,15 +4194,19 @@ class TaskBoard:
 
         # 2. Direct ID mention as standalone token (not substring of another ID)
         # Use word boundary to avoid tb_123 matching inside tb_1234_5
-        if re.search(r'\b' + re.escape(task_id) + r'\b', commit_msg):
+        if re.search(r"\b" + re.escape(task_id) + r"\b", commit_msg):
             return True
 
         # 3. Phase/MARKER pattern (e.g., "Phase 130.C16" matches task tagged "C16")
         # Only match tags that look like phase codes (uppercase letter + digits)
-        phase_match = re.search(r'Phase\s*(\d+)[\.\s]*([A-Z]\d+[A-Z]?)', commit_msg, re.IGNORECASE)
+        phase_match = re.search(
+            r"Phase\s*(\d+)[\.\s]*([A-Z]\d+[A-Z]?)", commit_msg, re.IGNORECASE
+        )
         if phase_match:
             phase_tag = phase_match.group(2).upper()
-            if phase_tag in [t.upper() for t in tags if re.match(r'^[A-Z]\d+', t, re.IGNORECASE)]:
+            if phase_tag in [
+                t.upper() for t in tags if re.match(r"^[A-Z]\d+", t, re.IGNORECASE)
+            ]:
                 return True
 
         return False
@@ -3306,10 +4280,12 @@ class TaskBoard:
 
     # MARKER_191.16: Smart project_id matching — case-insensitive, RU layout fix, prefix autocomplete
     # Keyboard layout map: Russian ЙЦУКЕН → English QWERTY
-    _RU_TO_EN: Dict[str, str] = dict(zip(
-        "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ",
-        "qwertyuiop[]asdfghjkl;'zxcvbnm,.QWERTYUIOP[]ASDFGHJKL;'ZXCVBNM,.",
-    ))
+    _RU_TO_EN: Dict[str, str] = dict(
+        zip(
+            "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ",
+            "qwertyuiop[]asdfghjkl;'zxcvbnm,.QWERTYUIOP[]ASDFGHJKL;'ZXCVBNM,.",
+        )
+    )
 
     def _transliterate_ru_to_en(self, text: str) -> str:
         """Convert Russian keyboard layout input to English equivalent."""
@@ -3328,11 +4304,18 @@ class TaskBoard:
         """
         query = str(query or "").strip()
         if not query:
-            return {"resolved": None, "exact": False, "candidates": [], "method": "none"}
+            return {
+                "resolved": None,
+                "exact": False,
+                "candidates": [],
+                "method": "none",
+            }
 
         # MARKER_192.3: Collect all known project_ids from SQLite
         known: Dict[str, str] = {}  # lowercase → original
-        cursor = self.db.execute("SELECT DISTINCT project_id FROM tasks WHERE project_id != ''")
+        cursor = self.db.execute(
+            "SELECT DISTINCT project_id FROM tasks WHERE project_id != ''"
+        )
         for row in cursor:
             pid = str(row["project_id"]).strip()
             if pid:
@@ -3342,33 +4325,70 @@ class TaskBoard:
 
         # 1. Exact match
         if query in known.values():
-            return {"resolved": query, "exact": True, "candidates": [query], "method": "exact"}
+            return {
+                "resolved": query,
+                "exact": True,
+                "candidates": [query],
+                "method": "exact",
+            }
 
         # 2. Case-insensitive match
         q_lower = query.lower()
         if q_lower in known:
             resolved = known[q_lower]
-            return {"resolved": resolved, "exact": True, "candidates": [resolved], "method": "case_insensitive"}
+            return {
+                "resolved": resolved,
+                "exact": True,
+                "candidates": [resolved],
+                "method": "case_insensitive",
+            }
 
         # 3. RU→EN layout fix (СГЕ → CUT)
         en_query = self._transliterate_ru_to_en(query).lower()
         if en_query != q_lower and en_query in known:
             resolved = known[en_query]
-            return {"resolved": resolved, "exact": True, "candidates": [resolved], "method": "layout_fix"}
+            return {
+                "resolved": resolved,
+                "exact": True,
+                "candidates": [resolved],
+                "method": "layout_fix",
+            }
 
         # 4. Prefix match (c → cut, p → parallax)
-        prefix_matches = sorted(set(
-            original for key, original in known.items()
-            if key.startswith(q_lower) or key.startswith(en_query)
-        ))
+        prefix_matches = sorted(
+            set(
+                original
+                for key, original in known.items()
+                if key.startswith(q_lower) or key.startswith(en_query)
+            )
+        )
         if len(prefix_matches) == 1:
-            return {"resolved": prefix_matches[0], "exact": False, "candidates": prefix_matches, "method": "prefix"}
+            return {
+                "resolved": prefix_matches[0],
+                "exact": False,
+                "candidates": prefix_matches,
+                "method": "prefix",
+            }
         if len(prefix_matches) > 1:
             # Ambiguous prefix — check if one candidate matches exactly (e.g. "vetka" matches "vetka" not "vetka_pulse")
-            exact_prefix = [p for p in prefix_matches if p.lower() == q_lower or p.lower() == en_query]
+            exact_prefix = [
+                p
+                for p in prefix_matches
+                if p.lower() == q_lower or p.lower() == en_query
+            ]
             if len(exact_prefix) == 1:
-                return {"resolved": exact_prefix[0], "exact": False, "candidates": prefix_matches, "method": "prefix_exact"}
-            return {"resolved": None, "exact": False, "candidates": prefix_matches, "method": "prefix_ambiguous"}
+                return {
+                    "resolved": exact_prefix[0],
+                    "exact": False,
+                    "candidates": prefix_matches,
+                    "method": "prefix_exact",
+                }
+            return {
+                "resolved": None,
+                "exact": False,
+                "candidates": prefix_matches,
+                "method": "prefix_ambiguous",
+            }
 
         return {"resolved": None, "exact": False, "candidates": [], "method": "none"}
 
@@ -3384,7 +4404,8 @@ class TaskBoard:
         if resolve["method"] == "prefix_ambiguous":
             candidate_set = {c.lower() for c in resolve["candidates"]}
             filtered = [
-                t for t in tasks
+                t
+                for t in tasks
                 if str(t.get("project_id") or "").strip().lower() in candidate_set
             ]
             return filtered, resolve
@@ -3395,7 +4416,8 @@ class TaskBoard:
         resolved_lower = resolve["resolved"].lower()
         # Match all case variants of the resolved project
         filtered = [
-            t for t in tasks
+            t
+            for t in tasks
             if str(t.get("project_id") or "").strip().lower() == resolved_lower
         ]
         return filtered, resolve
@@ -3410,7 +4432,8 @@ class TaskBoard:
         # But this is a rare query, so full scan is acceptable
         cursor = self.db.execute("SELECT * FROM tasks")
         return [
-            self._row_to_task(row) for row in cursor
+            self._row_to_task(row)
+            for row in cursor
             if json.loads(row["extra"] or "{}").get("session_id") == session_id
         ]
 
@@ -3424,7 +4447,9 @@ class TaskBoard:
         """
         counts = {}
         total = 0
-        cursor = self.db.execute("SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status")
+        cursor = self.db.execute(
+            "SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status"
+        )
         for row in cursor:
             counts[row["status"]] = row["cnt"]
             total += row["cnt"]
@@ -3437,9 +4462,149 @@ class TaskBoard:
                 "id": next_task["id"],
                 "title": next_task["title"],
                 "priority": next_task["priority"],
-                "phase_type": next_task["phase_type"]
-            } if next_task else None
+                "phase_type": next_task["phase_type"],
+            }
+            if next_task
+            else None,
         }
+
+    # ── MARKER_196.GW1.2: Agent Registry ─────────────────────────────
+
+    def register_agent(
+        self,
+        name: str,
+        agent_type: str,
+        capabilities: list = None,
+        model_tier: str = None,
+    ) -> Dict[str, Any]:
+        """Register a new external agent and generate an API key.
+
+        Returns the agent info with the raw API key (shown once).
+        """
+        import hashlib
+        import secrets
+        import time
+
+        agent_id = f"agent_{int(time.time())}_{secrets.token_hex(4)}"
+        api_key = f"vetka_{secrets.token_urlsafe(32)}"
+        api_key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+
+        try:
+            self.db.execute(
+                """INSERT INTO agents (id, name, agent_type, capabilities, model_tier, api_key_hash, status)
+                   VALUES (?, ?, ?, ?, ?, ?, 'active')""",
+                (
+                    agent_id,
+                    name,
+                    agent_type,
+                    json.dumps(capabilities) if capabilities else None,
+                    model_tier,
+                    api_key_hash,
+                ),
+            )
+            self.db.commit()
+            return {
+                "success": True,
+                "agent": {
+                    "id": agent_id,
+                    "name": name,
+                    "agent_type": agent_type,
+                    "capabilities": capabilities,
+                    "model_tier": model_tier,
+                    "status": "active",
+                },
+                "api_key": api_key,  # Only shown once!
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
+        """Get agent by ID (without API key hash)."""
+        row = self.db.execute(
+            "SELECT id, name, agent_type, capabilities, model_tier, status, last_heartbeat, created_at FROM agents WHERE id = ?",
+            (agent_id,),
+        ).fetchone()
+        if row:
+            return dict(row)
+        return None
+
+    def authenticate_agent(self, api_key: str) -> Optional[Dict[str, Any]]:
+        """Authenticate by API key. Returns agent dict or None."""
+        import hashlib
+
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        row = self.db.execute(
+            "SELECT id, name, agent_type, capabilities, model_tier, status, last_heartbeat FROM agents WHERE api_key_hash = ?",
+            (key_hash,),
+        ).fetchone()
+        if row:
+            agent = dict(row)
+            if agent.get("status") != "active":
+                return None
+            # Update heartbeat
+            self.db.execute(
+                "UPDATE agents SET last_heartbeat = datetime('now') WHERE id = ?",
+                (agent["id"],),
+            )
+            self.db.commit()
+            return agent
+        return None
+
+    def heartbeat_agent(self, agent_id: str) -> Dict[str, Any]:
+        """Update agent heartbeat timestamp."""
+        row = self.db.execute(
+            "SELECT id FROM agents WHERE id = ?", (agent_id,)
+        ).fetchone()
+        if not row:
+            return {"success": False, "error": "Agent not found"}
+        self.db.execute(
+            "UPDATE agents SET last_heartbeat = datetime('now') WHERE id = ?",
+            (agent_id,),
+        )
+        self.db.commit()
+        return {"success": True, "agent_id": agent_id}
+
+    def list_agents(self, status: str = None) -> list:
+        """List registered agents (without API key hash)."""
+        if status:
+            rows = self.db.execute(
+                "SELECT id, name, agent_type, capabilities, model_tier, status, last_heartbeat, created_at FROM agents WHERE status = ?",
+                (status,),
+            ).fetchall()
+        else:
+            rows = self.db.execute(
+                "SELECT id, name, agent_type, capabilities, model_tier, status, last_heartbeat, created_at FROM agents"
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def log_audit(
+        self,
+        agent_id: str,
+        action: str,
+        task_id: str = None,
+        ip_address: str = None,
+        user_agent: str = None,
+        request_body: str = None,
+        response_status: int = None,
+    ):
+        """Log an audit entry."""
+        try:
+            self.db.execute(
+                """INSERT INTO audit_log (agent_id, action, task_id, ip_address, user_agent, request_body, response_status)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    agent_id,
+                    action,
+                    task_id,
+                    ip_address,
+                    user_agent,
+                    request_body,
+                    response_status,
+                ),
+            )
+            self.db.commit()
+        except Exception:
+            pass  # Audit logging should never break the main flow
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
@@ -3469,21 +4634,26 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        # MARKER_200.QA_GATE: Warn (don't block) if task hasn't been through QA
-        # merge_request is the actual merge — after this, code is on main.
-        # We warn but don't block because Commander may need to merge urgently.
-        _task_status = task.get("status", "")
-        if _task_status == "done_worktree":
-            _history = task.get("status_history", [])
-            _was_verified = any(
-                h.get("status") == "verified" or h.get("event") == "verified"
-                for h in _history
+        # MARKER_201.QA_WARN: Warn (not block) if task was not verified by QA.
+        # Commander may legitimately skip QA — we log it and flag the result.
+        _qa_skipped = task.get("status") != "verified"
+        if _qa_skipped:
+            self._append_history(
+                task,
+                event="qa_skipped_warning",
+                status=task.get("status", ""),
+                agent_name="merge_request",
+                agent_type="system",
+                source="merge_request",
+                reason=f"merge_request called without QA verification (status={task.get('status')}). "
+                "Commander override — proceeding.",
             )
-            if not _was_verified:
-                logger.warning(
-                    f"[MergeRequest] QA_GATE WARNING: Task {task_id} merging without QA verification. "
-                    f"Recommended flow: done_worktree → request_qa → verified → merge_request"
-                )
+            self._save_task(task)
+            logger.warning(
+                "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
+                task_id,
+                task.get("status"),
+            )
 
         branch = task.get("branch_name")
         # MARKER_195.21: Auto-infer branch from role via AgentRegistry
@@ -3492,16 +4662,22 @@ class TaskBoard:
                 role = task.get("role", "")
                 if role:
                     from src.services.agent_registry import get_agent_registry
+
                     registry = get_agent_registry()
                     agent_role = registry.get_by_callsign(role)
                     if agent_role and agent_role.branch:
                         branch = agent_role.branch
                         self.update_task(task_id, branch_name=branch)
-                        logger.info(f"[MergeRequest] Auto-inferred branch_name={branch} from role={role}")
+                        logger.info(
+                            f"[MergeRequest] Auto-inferred branch_name={branch} from role={role}"
+                        )
             except Exception as e:
                 logger.debug(f"[MergeRequest] Branch inference failed: {e}")
         if not branch:
-            return {"success": False, "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update."}
+            return {
+                "success": False,
+                "error": "Task has no branch_name and role-based inference failed. Set branch_name via action=update.",
+            }
 
         # MARKER_200.MERGE_AUTO: Strategy resolution — caller > task > auto-select > default
         commits = task.get("merge_commits", [])
@@ -3512,14 +4688,20 @@ class TaskBoard:
         # Step 1: Validate branch exists
         try:
             proc = await asyncio.create_subprocess_exec(
-                "git", "rev-parse", "--verify", branch,
+                "git",
+                "rev-parse",
+                "--verify",
+                branch,
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             stdout, stderr = await proc.communicate()
             if proc.returncode != 0:
-                return {"success": False, "error": f"Branch '{branch}' not found: {stderr.decode().strip()}"}
+                return {
+                    "success": False,
+                    "error": f"Branch '{branch}' not found: {stderr.decode().strip()}",
+                }
         except Exception as e:
             return {"success": False, "error": f"Git check failed: {e}"}
 
@@ -3527,7 +4709,10 @@ class TaskBoard:
         if not commits:
             try:
                 proc = await asyncio.create_subprocess_exec(
-                    "git", "log", "--oneline", f"main..{branch}",
+                    "git",
+                    "log",
+                    "--oneline",
+                    f"main..{branch}",
                     cwd=str(PROJECT_ROOT),
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
@@ -3539,7 +4724,10 @@ class TaskBoard:
                 pass
 
         if not commits:
-            return {"success": False, "error": f"No commits found on '{branch}' ahead of main"}
+            return {
+                "success": False,
+                "error": f"No commits found on '{branch}' ahead of main",
+            }
 
         # MARKER_200.MERGE_AUTO: Auto-select strategy if not explicitly set
         # 1-3 commits → cherry-pick (clean per-commit history)
@@ -3559,14 +4747,20 @@ class TaskBoard:
             for _ch in commits:
                 try:
                     _anc = await asyncio.create_subprocess_exec(
-                        "git", "merge-base", "--is-ancestor", _ch, "main",
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        _ch,
+                        "main",
                         cwd=str(PROJECT_ROOT),
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                     )
                     await _anc.communicate()
                     if _anc.returncode == 0:
-                        logger.info(f"[MergeRequest] Pre-filter: skip {_ch} (already on main)")
+                        logger.info(
+                            f"[MergeRequest] Pre-filter: skip {_ch} (already on main)"
+                        )
                         continue
                 except Exception:
                     pass
@@ -3576,6 +4770,7 @@ class TaskBoard:
                 # QA fix: early-return was skipping status update → task stuck in limbo
                 try:
                     from src.orchestration.action_registry import ActionRegistry
+
                     registry = ActionRegistry()
                     registry.log_action(
                         run_id=f"merge_{task_id}",
@@ -3585,20 +4780,32 @@ class TaskBoard:
                         result="noop",
                         session_id=task.get("session_id"),
                         task_id=task_id,
-                        metadata={"reason": "all_commits_already_on_main", "strategy": strategy},
+                        metadata={
+                            "reason": "all_commits_already_on_main",
+                            "strategy": strategy,
+                        },
                     )
                     registry.flush()
                 except Exception as e:
-                    logger.debug(f"[MergeRequest] ActionRegistry log failed (non-fatal): {e}")
+                    logger.debug(
+                        f"[MergeRequest] ActionRegistry log failed (non-fatal): {e}"
+                    )
                 self.update_task(
                     task_id,
                     status="done_main",
-                    merge_result={"status": "noop", "note": "All commits already on main"},
+                    merge_result={
+                        "status": "noop",
+                        "note": "All commits already on main",
+                    },
                     _history_event="merged_to_main",
                     _history_source="merge_request",
                     _history_reason=f"{branch} → main: all commits already present (noop)",
                 )
-                return {"success": True, "note": "All commits already on main", "commits_merged": 0}
+                return {
+                    "success": True,
+                    "note": "All commits already on main",
+                    "commits_merged": 0,
+                }
             commits = filtered_commits
 
         # Step 3: Count tests before merge
@@ -3611,18 +4818,64 @@ class TaskBoard:
             closure_results = await self._run_closure_tests(closure_tests)
             failed = [r for r in closure_results if not r["passed"]]
             if failed:
-                self.update_task(task_id, merge_result={
-                    "status": "tests_failed",
-                    "closure_results": closure_results,
-                })
+                self.update_task(
+                    task_id,
+                    merge_result={
+                        "status": "tests_failed",
+                        "closure_results": closure_results,
+                    },
+                )
                 return {
                     "success": False,
                     "error": "Closure tests failed",
                     "closure_results": closure_results,
                 }
 
-        # Step 5: Execute merge
-        merge_result = await self._execute_merge(branch, strategy, commits)
+        # MARKER_201.DOC_GUARD_HEAL: Detect deleted docs, auto-restore after merge.
+        # Root cause: agents doing git add . or checkout --theirs during rebase mark
+        # new-on-main docs as deleted, destroying them on merge.
+        # Policy: main wins unless task explicitly owns the doc via allowed_paths.
+        _heal_docs = []
+        try:
+            doc_check_proc = await asyncio.create_subprocess_exec(
+                "git",
+                "diff",
+                "--diff-filter=D",
+                "--name-only",
+                f"main..{branch}",
+                "--",
+                "docs/",
+                cwd=str(PROJECT_ROOT),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            doc_out, _ = await doc_check_proc.communicate()
+            deleted_docs = [
+                f for f in doc_out.decode().strip().split("\n") if f.strip()
+            ]
+            if deleted_docs:
+                _owned = set(task.get("allowed_paths") or [])
+                _heal_docs = [d for d in deleted_docs if d not in _owned]
+                if _heal_docs:
+                    logger.warning(
+                        "[MergeRequest] DOC_GUARD: branch '%s' deletes %d docs/ file(s) — will auto-restore from main.",
+                        branch,
+                        len(_heal_docs),
+                    )
+        except Exception as _doc_guard_err:
+            logger.debug(
+                f"[MergeRequest] DOC_GUARD check failed (non-fatal): {_doc_guard_err}"
+            )
+
+        # Step 5: Execute merge in temp worktree (never touches root checkout)
+        merge_result = await self._execute_merge(
+            branch,
+            strategy,
+            commits,
+            task.get("allowed_paths") or [],
+            heal_docs=_heal_docs,
+            task=task,
+        )
         if not merge_result.get("success"):
             self.update_task(task_id, merge_result=merge_result)
             return merge_result
@@ -3641,6 +4894,7 @@ class TaskBoard:
         # Step 7: Log to ActionRegistry
         try:
             from src.orchestration.action_registry import ActionRegistry
+
             registry = ActionRegistry()
             registry.log_action(
                 run_id=f"merge_{task_id}",
@@ -3680,8 +4934,10 @@ class TaskBoard:
             _history_reason=f"{branch} → main via {strategy}: {len(commits)} commits",
         )
 
-        logger.info(f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
-                     f"tests_delta={eval_delta['tests_delta']}")
+        logger.info(
+            f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
+            f"tests_delta={eval_delta['tests_delta']}"
+        )
 
         # MARKER_198.STALE: Post-merge stale scan — flag pending tasks that may be resolved by this merge
         stale_hint = None
@@ -3693,220 +4949,517 @@ class TaskBoard:
                     "top_stale": stale_result["candidates"][:5],
                     "hint": "Run action=stale_check auto_close=true to close confirmed stale tasks",
                 }
-                logger.info(f"[MergeRequest] Post-merge stale scan found {stale_result['candidates_count']} candidates")
+                logger.info(
+                    f"[MergeRequest] Post-merge stale scan found {stale_result['candidates_count']} candidates"
+                )
         except Exception as _e:
-            logger.debug(f"[MergeRequest] Post-merge stale scan failed (non-fatal): {_e}")
+            logger.debug(
+                f"[MergeRequest] Post-merge stale scan failed (non-fatal): {_e}"
+            )
 
-        result = {"success": True, "task_id": task_id, "status": "done_main", "merge_result": full_result, "eval_delta": eval_delta}
+        result = {
+            "success": True,
+            "task_id": task_id,
+            "status": "done_main",
+            "merge_result": full_result,
+            "eval_delta": eval_delta,
+        }
         if stale_hint:
             result["stale_hint"] = stale_hint
+        # MARKER_201.QA_WARN: Surface qa_skipped flag in result for Commander visibility
+        if _qa_skipped:
+            result["qa_skipped"] = True
+            result["qa_warning"] = (
+                "Task was not verified by QA before merge. Check merge carefully."
+            )
         return result
 
     async def _execute_merge(
-        self, branch: str, strategy: str, commits: List[str]
+        self,
+        branch: str,
+        strategy: str,
+        commits: List[str],
+        allowed_paths: List[str] = None,
+        heal_docs: List[str] = None,
+        task: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
-        """Execute the actual git merge operation.
+        """Execute git merge in a temporary worktree.
+
+        MARKER_201.TEMP_WORKTREE: All merge operations happen in a temp worktree.
+        Root checkout stays untouched — no stash, no checkout, no dirty state.
+
+        MARKER_201.SNAPSHOT: New strategy — overlay only allowed_paths from branch
+        onto main, creating one clean integration commit.
 
         Strategies:
         - cherry-pick: Cherry-pick each commit (default, safest)
         - merge: Git merge --no-ff
         - squash: Git merge --squash + commit
-        """
-        try:
-            # MARKER_199.MERGE_SAFE: Ensure we're on main — check returncode
-            # Stash any uncommitted changes first to prevent checkout failure
-            stash_proc = await asyncio.create_subprocess_exec(
-                "git", "stash", "--include-untracked",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stash_out, _ = await stash_proc.communicate()
-            did_stash = b"No local changes" not in stash_out
+        - snapshot: Overlay allowed_paths from branch onto main (one commit)
+        - smart_snapshot: Diff-based, conflict-safe, sidecar-aware (MARKER_208)
 
+        Args:
+            allowed_paths: Task's owned paths for snapshot strategy scoping.
+            heal_docs: Docs deleted by branch to auto-restore from main after merge.
+        """
+        import tempfile
+
+        tmp_dir = None
+        tmp_branch = f"_vtk_merge_{os.getpid()}"
+
+        async def _git(*args, cwd=None):
+            """Helper: run git command, return (returncode, stdout, stderr)."""
             proc = await asyncio.create_subprocess_exec(
-                "git", "checkout", "main",
-                cwd=str(PROJECT_ROOT),
+                "git",
+                *args,
+                cwd=cwd or tmp_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            co_stdout, co_stderr = await proc.communicate()
-            if proc.returncode != 0:
-                # Restore stash if we stashed
-                if did_stash:
-                    await (await asyncio.create_subprocess_exec(
-                        "git", "stash", "pop",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )).communicate()
+            out, err = await proc.communicate()
+            return proc.returncode, out.decode().strip(), err.decode().strip()
+
+        try:
+            # MARKER_201.TEMP_WORKTREE: Create temp worktree for merge.
+            # Uses a temporary branch at main's tip — root checkout is never touched.
+
+            # Prune stale worktrees
+            await _git("worktree", "prune", cwd=str(PROJECT_ROOT))
+
+            # Delete leftover temp branch from previous failed run (if any)
+            await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
+
+            # Create temp branch at main
+            rc, _, err = await _git("branch", tmp_branch, "main", cwd=str(PROJECT_ROOT))
+            if rc != 0:
                 return {
                     "success": False,
-                    "error": f"git checkout main failed (rc={proc.returncode}): {co_stderr.decode().strip()}",
+                    "error": f"Failed to create temp branch: {err}",
                 }
 
+            # Create temp worktree directory
+            tmp_dir = tempfile.mkdtemp(prefix="vetka-merge-")
+            # git worktree needs the dir to not exist — remove the empty one mkdtemp created
+            os.rmdir(tmp_dir)
+
+            rc, _, err = await _git(
+                "worktree", "add", tmp_dir, tmp_branch, cwd=str(PROJECT_ROOT)
+            )
+            if rc != 0:
+                return {
+                    "success": False,
+                    "error": f"Failed to create temp worktree: {err}",
+                }
+
+            logger.info(
+                f"[MergeRequest] Temp worktree created at {tmp_dir} on {tmp_branch}"
+            )
+
             # MARKER_198.CLAUDE_MD_GUARD: Save main's CLAUDE.md before merge
-            # Agent worktrees auto-generate CLAUDE.md with role-specific content.
-            # Cherry-picking/merging their commits contaminates main's CLAUDE.md.
-            claude_md_path = PROJECT_ROOT / "CLAUDE.md"
+            claude_md_path = Path(tmp_dir) / "CLAUDE.md"
             claude_md_backup = None
             if claude_md_path.exists():
                 claude_md_backup = claude_md_path.read_text()
 
-            if strategy == "cherry-pick":
-                # MARKER_200.IS_ANCESTOR: Cherry-pick commits in order (oldest first),
-                # skipping any that are already on main (prevents replay conflicts)
-                skipped_ancestors = []
-                for commit_hash in reversed(commits):
-                    # Check if commit is already an ancestor of main
-                    ancestor_proc = await asyncio.create_subprocess_exec(
-                        "git", "merge-base", "--is-ancestor", commit_hash, "main",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
+            # MARKER_201.AGENTS_MD_GUARD: Save main's AGENTS.md before merge
+            agents_md_path = Path(tmp_dir) / "AGENTS.md"
+            agents_md_backup = None
+            if agents_md_path.exists():
+                agents_md_backup = agents_md_path.read_text()
+
+            # ---- Execute strategy (all operations in tmp_dir) ----
+
+            if strategy == "smart_snapshot":
+                # MARKER_208.SMART_SNAPSHOT: Diff-based, conflict-safe, sidecar-aware merge.
+                # 1. git diff main..branch --name-only → all changed files
+                # 2. Filter to scope (allowed_paths prefix match) + auto-detect sidecars
+                # 3. git merge-tree conflict check before applying
+                # 4. Abort + notify on conflict instead of silent overwrite
+
+                # Step 1: Get all files changed on branch vs main
+                rc, diff_out, _ = await _git(
+                    "diff", "--name-only", f"main..{branch}", cwd=str(PROJECT_ROOT)
+                )
+                if rc != 0 or not diff_out:
+                    return {
+                        "success": False,
+                        "error": f"smart_snapshot: git diff main..{branch} failed or empty",
+                    }
+                all_changed = set(diff_out.splitlines())
+
+                # Step 2: Filter to task scope + sidecar auto-detection
+                _closure = (task or {}).get("closure_files") or []
+                scope_prefixes = list(allowed_paths or []) + list(_closure)
+                if not scope_prefixes:
+                    # No scope restriction — take everything (same as full diff)
+                    scoped_files = all_changed
+                else:
+                    import fnmatch as _fnmatch
+
+                    scoped_files = set()
+                    for f in all_changed:
+                        for prefix in scope_prefixes:
+                            # MARKER_209.3: Support glob patterns (e.g. "tests/*.py")
+                            if "*" in prefix or "?" in prefix:
+                                if _fnmatch.fnmatch(f, prefix):
+                                    scoped_files.add(f)
+                                    break
+                            elif f == prefix or f.startswith(prefix.rstrip("/") + "/"):
+                                scoped_files.add(f)
+                                break
+
+                    # Sidecar auto-detection: for each scoped file, include related
+                    # test files, __init__.py, and format variants from the diff.
+                    # MARKER_209.3: Extended sidecar patterns:
+                    #   - test_{stem}.py / {stem}_test.py (both conventions)
+                    #   - .json ↔ .jsonl variants
+                    #   - Cross-directory: src/x.py → tests/test_x.py
+                    #   - __init__.py in same directory
+                    sidecars = set()
+                    remaining = all_changed - scoped_files
+                    for f in scoped_files:
+                        fp = Path(f)
+                        stem = fp.stem  # e.g. "task_board" from "src/.../task_board.py"
+                        suffix = fp.suffix  # e.g. ".py"
+                        for candidate in remaining:
+                            cp = Path(candidate)
+                            cand_stem = cp.stem
+                            # test_task_board.py or task_board_test.py matches task_board.py
+                            if cand_stem == f"test_{stem}" or cand_stem == f"{stem}_test" or cand_stem == stem:
+                                sidecars.add(candidate)
+                            # __init__.py in same directory
+                            elif cp.name == "__init__.py" and str(cp.parent) == str(fp.parent):
+                                sidecars.add(candidate)
+                            # .json ↔ .jsonl variant matching
+                            elif suffix in (".json", ".jsonl") and cp.suffix in (".json", ".jsonl"):
+                                if cand_stem == stem:
+                                    sidecars.add(candidate)
+                    if sidecars:
+                        logger.info(
+                            "[MergeRequest] smart_snapshot: auto-detected %d sidecar(s): %s",
+                            len(sidecars), sorted(sidecars),
+                        )
+                    scoped_files |= sidecars
+
+                if not scoped_files:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no scoped files changed vs main",
+                    }
+
+                # Step 3: Conflict detection via git merge-tree
+                # MARKER_209.3: Improved conflict detection —
+                #   - Handle merge-base failure gracefully (warn, don't skip silently)
+                #   - Section-based parsing: split merge-tree output by file sections
+                #   - Deduplicate conflicting list
+                rc_base, merge_base, _ = await _git(
+                    "merge-base", "main", branch, cwd=str(PROJECT_ROOT)
+                )
+                if rc_base != 0 or not merge_base:
+                    logger.warning(
+                        "[MergeRequest] smart_snapshot: merge-base failed (rc=%d), "
+                        "skipping conflict pre-check — conflicts may surface at checkout",
+                        rc_base,
                     )
-                    await ancestor_proc.communicate()
-                    if ancestor_proc.returncode == 0:
-                        # Already on main — skip
-                        skipped_ancestors.append(commit_hash)
-                        logger.info(f"[MergeRequest] Skipped {commit_hash} — already ancestor of main")
+                if rc_base == 0 and merge_base:
+                    rc_mt, mt_out, mt_err = await _git(
+                        "merge-tree", merge_base.strip(), "main", branch, cwd=str(PROJECT_ROOT)
+                    )
+                    # merge-tree outputs conflict markers — check if any scoped files conflict.
+                    # Parse section-by-section: each file's section typically starts with its path.
+                    if mt_out:
+                        conflicting_set: set = set()
+                        # Split output into per-file sections and check each for conflict markers
+                        lines = mt_out.splitlines()
+                        current_file = None
+                        for line in lines:
+                            # Detect file path lines (merge-tree format varies)
+                            for sf in scoped_files:
+                                if sf in line:
+                                    current_file = sf
+                                    break
+                            # If we see conflict markers, attribute to current file
+                            if current_file and ("<<<<<<" in line or "+<<<<<<" in line):
+                                conflicting_set.add(current_file)
+                        # Fallback: if no section-based hits but global conflict exists
+                        if not conflicting_set and ("<<<<<<" in mt_out or "+<<<<<<" in mt_out):
+                            for sf in scoped_files:
+                                if sf in mt_out:
+                                    conflicting_set.add(sf)
+                        conflicting = sorted(conflicting_set)
+                        if conflicting:
+                            _conflict_msg = (
+                                f"smart_snapshot: {len(conflicting)} file(s) have conflicts: "
+                                f"{conflicting[:5]}. Use strategy=merge or resolve manually."
+                            )
+                            logger.warning("[MergeRequest] %s", _conflict_msg)
+                            # Notify Commander about conflict
+                            try:
+                                self._auto_notify(
+                                    task or {}, self.NOTIF_TASK_NEEDS_FIX,
+                                    extra_msg=_conflict_msg,
+                                    source_role="merge_request",
+                                )
+                            except Exception:
+                                pass
+                            return {
+                                "success": False,
+                                "error": _conflict_msg,
+                                "conflicting_files": conflicting[:10],
+                                "strategy": "smart_snapshot",
+                            }
+
+                # Step 4: Apply — checkout scoped files from branch
+                for fpath in sorted(scoped_files):
+                    rc, _, err = await _git("checkout", branch, "--", fpath)
+                    if rc != 0:
+                        logger.warning(
+                            "[MergeRequest] smart_snapshot: checkout '%s' failed: %s",
+                            fpath, err,
+                        )
+
+                # Check if anything changed
+                rc, st_out, _ = await _git("status", "--porcelain")
+                if not st_out:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "smart_snapshot: no file changes vs main",
+                    }
+
+                # Stage and commit
+                await _git("add", "-A")
+                rc, _, err = await _git(
+                    "commit", "-m",
+                    f"Smart snapshot merge {branch} into main ({len(scoped_files)} files) via TaskBoard",
+                )
+                if rc != 0:
+                    return {"success": False, "error": f"smart_snapshot commit failed: {err}"}
+
+                logger.info(
+                    "[MergeRequest] smart_snapshot: merged %d files from %s",
+                    len(scoped_files), branch,
+                )
+
+            elif strategy == "snapshot":
+                # MARKER_201.SNAPSHOT: Take main as base, overlay only allowed_paths
+                # from branch. Creates one clean integration commit — no history replay,
+                # no conflicts from diverged branches, no doc deletions.
+                if not allowed_paths:
+                    return {
+                        "success": False,
+                        "error": "strategy=snapshot requires allowed_paths",
+                    }
+
+                for fpath in allowed_paths:
+                    rc, _, err = await _git("checkout", branch, "--", fpath)
+                    if rc != 0:
+                        logger.debug(
+                            f"[MergeRequest] snapshot: '{fpath}' not on {branch}, skipping"
+                        )
+
+                # MARKER_205.SNAPSHOT_AUTO_EXPAND: Auto-detect sidecar files changed
+                # in branch but not covered by allowed_paths (e.g. new modules, event_bus.py,
+                # tests outside owned paths). Without this, they silently disappear on merge.
+                # Real incident 2026-04-04: Zeta's event_bus.py lost — 2h debug, 3 conflicts.
+                rc, diff_out, _ = await _git("diff", "--name-only", f"main..{branch}")
+                if rc == 0 and diff_out:
+                    actual_changed = set(diff_out.splitlines())
+                    allowed_set = set(allowed_paths)
+                    sidecar_files = actual_changed - allowed_set
+                    if sidecar_files:
+                        logger.info(
+                            "[MergeRequest] snapshot auto-expand: %d sidecar file(s) "
+                            "changed in branch but outside allowed_paths: %s",
+                            len(sidecar_files), sorted(sidecar_files),
+                        )
+                        for fpath in sorted(sidecar_files):
+                            rc2, _, err2 = await _git("checkout", branch, "--", fpath)
+                            if rc2 != 0:
+                                logger.warning(
+                                    "[MergeRequest] snapshot auto-expand: '%s' checkout "
+                                    "failed, skipping: %s", fpath, err2
+                                )
+                            else:
+                                logger.debug(
+                                    "[MergeRequest] snapshot auto-expand: included '%s'", fpath
+                                )
+
+                # Check if anything changed
+                rc, st_out, _ = await _git("status", "--porcelain")
+                if not st_out:
+                    return {
+                        "success": True,
+                        "commit_hash": "noop",
+                        "note": "snapshot: no file changes vs main",
+                    }
+
+                # Stage and commit
+                await _git("add", "-A")
+                rc, _, err = await _git(
+                    "commit",
+                    "-m",
+                    f"Snapshot merge {branch} into main via TaskBoard",
+                )
+                if rc != 0:
+                    return {"success": False, "error": f"Snapshot commit failed: {err}"}
+
+            elif strategy == "cherry-pick":
+                # MARKER_200.IS_ANCESTOR: Cherry-pick commits oldest-first,
+                # skipping any already on main (prevents replay conflicts)
+                skipped_ancestors = []
+                for _ch in reversed(commits):
+                    rc, _, _ = await _git(
+                        "merge-base", "--is-ancestor", _ch, tmp_branch
+                    )
+                    if rc == 0:
+                        skipped_ancestors.append(_ch)
+                        logger.info(
+                            f"[MergeRequest] Skipped {_ch} — already ancestor of main"
+                        )
                         continue
 
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "cherry-pick", commit_hash,
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    stdout, stderr = await proc.communicate()
-                    if proc.returncode != 0:
-                        stderr_text = stderr.decode().strip()
-                        # MARKER_198.P1.MERGE: Handle empty cherry-pick (commit already on main)
-                        if "empty" in stderr_text or "nothing to commit" in stderr_text:
-                            skip_proc = await asyncio.create_subprocess_exec(
-                                "git", "cherry-pick", "--skip",
-                                cwd=str(PROJECT_ROOT),
-                                stdout=asyncio.subprocess.PIPE,
-                                stderr=asyncio.subprocess.PIPE,
+                    rc, _, err = await _git("cherry-pick", _ch)
+                    if rc != 0:
+                        if "empty" in err or "nothing to commit" in err:
+                            await _git("cherry-pick", "--skip")
+                            skipped_ancestors.append(_ch)
+                            logger.info(
+                                f"[MergeRequest] Skipped empty cherry-pick {_ch}"
                             )
-                            await skip_proc.communicate()
-                            skipped_ancestors.append(commit_hash)
-                            logger.info(f"[MergeRequest] Skipped empty cherry-pick {commit_hash} (already on main)")
                             continue
                         # Abort cherry-pick on real conflict
-                        abort_proc = await asyncio.create_subprocess_exec(
-                            "git", "cherry-pick", "--abort",
-                            cwd=str(PROJECT_ROOT),
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
-                        await abort_proc.communicate()
+                        await _git("cherry-pick", "--abort")
                         return {
                             "success": False,
-                            "error": f"Cherry-pick failed for {commit_hash}: {stderr_text}",
-                            "conflicting_commit": commit_hash,
+                            "error": f"Cherry-pick failed for {_ch}: {err}",
+                            "conflicting_commit": _ch,
                             "skipped_ancestors": skipped_ancestors,
                         }
 
             elif strategy == "merge":
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", "--no-ff", branch,
-                    "-m", f"Merge {branch} into main via TaskBoard",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                rc, _, err = await _git(
+                    "merge",
+                    "--no-ff",
+                    branch,
+                    "-m",
+                    f"Merge {branch} into main via TaskBoard",
                 )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    # Abort merge
-                    abort_proc = await asyncio.create_subprocess_exec(
-                        "git", "merge", "--abort",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await abort_proc.communicate()
-                    return {
-                        "success": False,
-                        "error": f"Merge failed: {stderr.decode().strip()}",
-                    }
+                if rc != 0:
+                    await _git("merge", "--abort")
+                    return {"success": False, "error": f"Merge failed: {err}"}
 
             elif strategy == "squash":
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "merge", "--squash", branch,
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    return {"success": False, "error": f"Squash failed: {stderr.decode().strip()}"}
+                rc, _, err = await _git("merge", "--squash", branch)
+                if rc != 0:
+                    return {"success": False, "error": f"Squash failed: {err}"}
 
-                # Commit the squash
-                proc = await asyncio.create_subprocess_exec(
-                    "git", "commit", "-m", f"Squash merge {branch} into main via TaskBoard",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
+                rc, _, err = await _git(
+                    "commit",
+                    "-m",
+                    f"Squash merge {branch} into main via TaskBoard",
                 )
-                stdout, stderr = await proc.communicate()
-                if proc.returncode != 0:
-                    return {"success": False, "error": f"Squash commit failed: {stderr.decode().strip()}"}
+                if rc != 0:
+                    return {"success": False, "error": f"Squash commit failed: {err}"}
+
             else:
                 return {"success": False, "error": f"Unknown strategy: {strategy}"}
 
-            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if it was changed by the merge
+            # MARKER_198.CLAUDE_MD_GUARD: Restore main's CLAUDE.md if changed by merge
             if claude_md_backup is not None and claude_md_path.exists():
                 current_content = claude_md_path.read_text()
                 if current_content != claude_md_backup:
                     claude_md_path.write_text(claude_md_backup)
-                    # Stage the restoration
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "add", "CLAUDE.md",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
+                    await _git("add", "CLAUDE.md")
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info(
+                        "[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md"
                     )
-                    await proc.communicate()
-                    # Amend the last commit to exclude the agent's CLAUDE.md change
-                    proc = await asyncio.create_subprocess_exec(
-                        "git", "commit", "--amend", "--no-edit",
-                        cwd=str(PROJECT_ROOT),
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                    )
-                    await proc.communicate()
-                    logger.info("[MergeRequest] CLAUDE_MD_GUARD: Restored main's CLAUDE.md (agent version excluded from merge)")
 
-            # Get resulting commit hash
-            proc = await asyncio.create_subprocess_exec(
-                "git", "rev-parse", "HEAD",
-                cwd=str(PROJECT_ROOT),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            # MARKER_201.AGENTS_MD_GUARD: Restore main's AGENTS.md if changed by merge
+            if agents_md_backup is not None and agents_md_path.exists():
+                current_content = agents_md_path.read_text()
+                if current_content != agents_md_backup:
+                    agents_md_path.write_text(agents_md_backup)
+                    await _git("add", "AGENTS.md")
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info(
+                        "[MergeRequest] AGENTS_MD_GUARD: Restored main's AGENTS.md"
+                    )
+
+            # MARKER_201.DOC_HEAL: Restore docs deleted by branch after merge.
+            # Uses main ref (pre-merge state) as source — tmp_branch started at main,
+            # so 'main' still points to the pre-merge commit.
+            if heal_docs:
+                healed = []
+                for doc_path in heal_docs:
+                    rc, _, err = await _git("checkout", "main", "--", doc_path)
+                    if rc == 0:
+                        healed.append(doc_path)
+                    else:
+                        logger.warning(
+                            f"[MergeRequest] DOC_HEAL: could not restore {doc_path}: {err[:100]}"
+                        )
+                if healed:
+                    await _git("add", *healed)
+                    await _git("commit", "--amend", "--no-edit")
+                    logger.info(
+                        f"[MergeRequest] DOC_HEAL: auto-restored {len(healed)} doc(s): {healed}"
+                    )
+
+            # Get resulting commit hash (full for update-ref, short for return)
+            rc, full_hash, _ = await _git("rev-parse", "HEAD")
+            commit_hash = full_hash[:12]
+
+            # MARKER_201.TEMP_WORKTREE: Advance main ref to merge result.
+            # Uses update-ref (plumbing) — works regardless of what's checked out in root.
+            rc, _, err = await _git(
+                "update-ref", "refs/heads/main", full_hash, cwd=str(PROJECT_ROOT)
             )
-            stdout, _ = await proc.communicate()
-            commit_hash = stdout.decode().strip()[:12]
+            if rc != 0:
+                return {
+                    "success": False,
+                    "error": f"Failed to advance main ref: {err}",
+                    "merge_commit": commit_hash,
+                    "hint": f"Merge succeeded in temp worktree but main ref not updated. "
+                    f"Manual fix: git update-ref refs/heads/main {full_hash}",
+                }
 
-            # MARKER_199.MERGE_SAFE: Restore stash if we stashed before checkout
-            if did_stash:
-                await (await asyncio.create_subprocess_exec(
-                    "git", "stash", "pop",
-                    cwd=str(PROJECT_ROOT),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )).communicate()
-
+            logger.info(
+                f"[MergeRequest] main advanced to {commit_hash} via temp worktree"
+            )
             return {"success": True, "commit_hash": commit_hash}
 
         except Exception as e:
             return {"success": False, "error": f"Merge execution failed: {e}"}
 
+        finally:
+            # MARKER_201.TEMP_WORKTREE: Cleanup temp worktree and branch.
+            # Always runs — even on error paths.
+            if tmp_dir and Path(tmp_dir).exists():
+                try:
+                    await _git(
+                        "worktree", "remove", "--force", tmp_dir, cwd=str(PROJECT_ROOT)
+                    )
+                except Exception:
+                    logger.warning(
+                        f"[MergeRequest] Failed to remove temp worktree {tmp_dir}"
+                    )
+            try:
+                await _git("branch", "-D", tmp_branch, cwd=str(PROJECT_ROOT))
+            except Exception:
+                pass
+
     async def _count_tests(self) -> int:
         """Run pytest --co -q to count available tests. Returns count or 0."""
         try:
             proc = await asyncio.create_subprocess_exec(
-                "python", "-m", "pytest", "--co", "-q",
+                "python",
+                "-m",
+                "pytest",
+                "--co",
+                "-q",
                 cwd=str(PROJECT_ROOT),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -3923,6 +5476,7 @@ class TaskBoard:
             return 0
         except Exception:
             return 0
+
     # MARKER_126.11B stubs removed — superseded by live claim_task() at line ~1377
 
     # ==========================================
@@ -3942,7 +5496,9 @@ class TaskBoard:
         self.tasks[task_id] = task
         self._save_task(task)
         self._notify_board_update("stats_recorded")
-        logger.info(f"[TaskBoard] Stats recorded for {task_id}: {stats.get('preset', '?')}")
+        logger.info(
+            f"[TaskBoard] Stats recorded for {task_id}: {stats.get('preset', '?')}"
+        )
         return True
 
     # MARKER_151.12B: Compute adjusted success blending verifier + user feedback
@@ -4053,7 +5609,7 @@ class TaskBoard:
     async def dispatch_next(
         self,
         chat_id: Optional[str] = None,
-        selected_key: Optional[Dict[str, str]] = None  # MARKER_126.9E
+        selected_key: Optional[Dict[str, str]] = None,  # MARKER_126.9E
     ) -> Dict[str, Any]:
         """Pick highest-priority task and dispatch to pipeline.
 
@@ -4066,9 +5622,14 @@ class TaskBoard:
         """
         task = self.get_next_task()
         if not task:
-            return {"success": False, "error": "No pending tasks with satisfied dependencies"}
+            return {
+                "success": False,
+                "error": "No pending tasks with satisfied dependencies",
+            }
 
-        return await self.dispatch_task(task["id"], chat_id=chat_id, selected_key=selected_key)
+        return await self.dispatch_task(
+            task["id"], chat_id=chat_id, selected_key=selected_key
+        )
 
     # ==========================================
     # MARKER_189.15: DOCS CONTENT INJECTION
@@ -4097,7 +5658,7 @@ class TaskBoard:
         # Collect all doc paths
         doc_paths = []
         for field in ("architecture_docs", "recon_docs"):
-            for doc_ref in (task.get(field) or []):
+            for doc_ref in task.get(field) or []:
                 doc_ref = str(doc_ref).strip()
                 if doc_ref:
                     doc_paths.append((field, doc_ref))
@@ -4111,15 +5672,20 @@ class TaskBoard:
             model_id = self._get_coder_model_from_preset(preset)
             if model_id:
                 from src.elisya.llm_model_registry import LLMModelRegistry
+
                 registry = LLMModelRegistry()
                 profile = await registry.get_profile(model_id)
                 context_length = profile.context_length
                 # Budget: 30% of context, capped at 128K chars (~32K tokens)
                 budget_chars = min(int(context_length * 0.30 * 4), 128000)
-                logger.info(f"[TaskBoard] Docs budget: {budget_chars} chars "
-                            f"(model={model_id}, context={context_length})")
+                logger.info(
+                    f"[TaskBoard] Docs budget: {budget_chars} chars "
+                    f"(model={model_id}, context={context_length})"
+                )
         except Exception as e:
-            logger.warning(f"[TaskBoard] Failed to get model context, using default budget: {e}")
+            logger.warning(
+                f"[TaskBoard] Failed to get model context, using default budget: {e}"
+            )
 
         # Read docs up to budget
         sections = []
@@ -4146,7 +5712,10 @@ class TaskBoard:
                 content = full_path.read_text(encoding="utf-8", errors="replace")
                 # Per-doc cap
                 if len(content) > per_doc_cap:
-                    content = content[:per_doc_cap] + f"\n... [truncated, {len(content)} chars total]"
+                    content = (
+                        content[:per_doc_cap]
+                        + f"\n... [truncated, {len(content)} chars total]"
+                    )
 
                 remaining = budget_chars - total_chars
                 if len(content) > remaining:
@@ -4167,6 +5736,7 @@ class TaskBoard:
         try:
             if total_chars > 8000:
                 from src.memory.elision import compress_context
+
                 result = compress_context(docs_text, level=2)
                 if result.get("compressed"):
                     ratio = result.get("ratio", 1.0)
@@ -4187,8 +5757,10 @@ class TaskBoard:
 
         footer = "\n--- END DOCS ---\n"
 
-        logger.info(f"[TaskBoard] Injected {docs_included} docs ({total_chars} chars) "
-                     f"into task {task.get('id', '?')}")
+        logger.info(
+            f"[TaskBoard] Injected {docs_included} docs ({total_chars} chars) "
+            f"into task {task.get('id', '?')}"
+        )
 
         return header + docs_text + footer
 
@@ -4213,11 +5785,93 @@ class TaskBoard:
             pass
         return None
 
+    # MARKER_196.CORE_GAP_1: Auto-commit after pipeline file write
+    def _auto_commit_pipeline_files(
+        self,
+        task_id: str,
+        files_created: List[str],
+        task_title: str = "",
+    ) -> Optional[str]:
+        """Create a git commit for files written by the pipeline.
+
+        This bridges the gap where pipeline.execute() writes files to disk
+        but dispatch_task() sets status='done' without a commit_hash.
+
+        Args:
+            task_id: Task board ID for commit message
+            files_created: List of file paths written by pipeline
+            task_title: Task title for commit message
+
+        Returns:
+            Commit hash if successful, None otherwise
+        """
+        import subprocess as _sub
+
+        if not files_created:
+            return None
+
+        # Filter to only files that actually exist on disk
+        existing = []
+        for fp in files_created:
+            try:
+                if Path(fp).exists():
+                    existing.append(fp)
+            except Exception:
+                pass
+
+        if not existing:
+            logger.warning(
+                f"[TaskBoard] Auto-commit: no existing files for task {task_id}"
+            )
+            return None
+
+        try:
+            # git add
+            add_r = _sub.run(
+                ["git", "add"] + existing, capture_output=True, text=True, timeout=10
+            )
+            if add_r.returncode != 0:
+                logger.warning(
+                    f"[TaskBoard] Auto-commit git add failed: {add_r.stderr.strip()}"
+                )
+
+            # git commit
+            title_preview = (task_title or "")[:60]
+            msg = f"phase196.CORE_GAP_1: Pipeline auto-commit — {title_preview} [task:{task_id}]"
+            commit_r = _sub.run(
+                ["git", "commit", "-m", msg], capture_output=True, text=True, timeout=10
+            )
+            if commit_r.returncode != 0:
+                # Might be "nothing to commit" if files were already staged
+                if "nothing to commit" not in commit_r.stderr.lower():
+                    logger.warning(
+                        f"[TaskBoard] Auto-commit failed: {commit_r.stderr.strip()}"
+                    )
+                    return None
+                # Try to get HEAD hash anyway
+                hash_r = _sub.run(
+                    ["git", "rev-parse", "HEAD"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
+                )
+                return hash_r.stdout.strip() if hash_r.returncode == 0 else None
+
+            # Get commit hash
+            hash_r = _sub.run(
+                ["git", "rev-parse", "HEAD"], capture_output=True, text=True, timeout=5
+            )
+            return hash_r.stdout.strip() if hash_r.returncode == 0 else None
+
+        except Exception as e:
+            logger.error(f"[TaskBoard] Auto-commit exception: {e}")
+            return None
+
     async def dispatch_task(
         self,
         task_id: str,
         chat_id: Optional[str] = None,
-        selected_key: Optional[Dict[str, str]] = None  # MARKER_126.9E
+        selected_key: Optional[Dict[str, str]] = None,  # MARKER_126.9E
     ) -> Dict[str, Any]:
         """Dispatch a specific task to the Mycelium pipeline.
 
@@ -4239,7 +5893,10 @@ class TaskBoard:
             return {"success": False, "error": f"Task {task_id} not found"}
 
         if task["status"] not in ("pending", "queued"):
-            return {"success": False, "error": f"Task {task_id} is {task['status']}, not dispatchable"}
+            return {
+                "success": False,
+                "error": f"Task {task_id} is {task['status']}, not dispatchable",
+            }
 
         # MARKER_133.C33C: Check concurrent limit before dispatching
         max_concurrent = self.settings.get("max_concurrent", 2)
@@ -4247,8 +5904,12 @@ class TaskBoard:
 
         # Non-blocking check: if semaphore locked, return queued status
         if sem.locked():
-            running_count = len([t for t in self.tasks.values() if t.get("status") == "running"])
-            logger.warning(f"[TaskBoard] Max concurrent ({max_concurrent}) reached, queuing {task_id}. Running: {running_count}")
+            running_count = len(
+                [t for t in self.tasks.values() if t.get("status") == "running"]
+            )
+            logger.warning(
+                f"[TaskBoard] Max concurrent ({max_concurrent}) reached, queuing {task_id}. Running: {running_count}"
+            )
             self.update_task(
                 task_id,
                 status="queued",
@@ -4256,7 +5917,12 @@ class TaskBoard:
                 _history_source="dispatch",
                 _history_reason=f"max_concurrent={max_concurrent} reached",
             )
-            return {"success": False, "error": f"max_concurrent ({max_concurrent}) reached", "queued": True, "task_id": task_id}
+            return {
+                "success": False,
+                "error": f"max_concurrent ({max_concurrent}) reached",
+                "queued": True,
+                "task_id": task_id,
+            }
 
         # Acquire semaphore and dispatch
         # MARKER_133.C33C: Pipeline execution inside semaphore context
@@ -4281,9 +5947,7 @@ class TaskBoard:
 
                 # MARKER_133.FIX1: auto_write=True — Dragon writes real code to disk
                 pipeline = AgentPipeline(
-                    chat_id=chat_id,
-                    auto_write=True,
-                    preset=preset
+                    chat_id=chat_id, auto_write=True, preset=preset
                 )
                 # MARKER_121.2: Tag pipeline with board task ID for callback
                 pipeline._board_task_id = task_id
@@ -4308,7 +5972,9 @@ class TaskBoard:
                 if failure_history:
                     task_text += "\n\n--- PREVIOUS FAILURE HISTORY ---\n"
                     task_text += f"This task has failed {len(failure_history)} previous attempt(s).\n"
-                    task_text += "Learn from these errors — do NOT repeat the same approach.\n\n"
+                    task_text += (
+                        "Learn from these errors — do NOT repeat the same approach.\n\n"
+                    )
                     for rec in failure_history[-3:]:  # last 3 attempts max
                         task_text += f"Attempt #{rec.get('attempt', '?')} (tier: {rec.get('tier_used', '?')}):\n"
                         issues = rec.get("issues", [])
@@ -4318,7 +5984,9 @@ class TaskBoard:
                         suggestions = rec.get("suggestions", [])
                         if suggestions:
                             task_text += f"  Suggestions: {'; '.join(str(s)[:80] for s in suggestions[:3])}\n"
-                        conf = rec.get("verifier_confidence") or rec.get("verifier_avg_confidence")
+                        conf = rec.get("verifier_confidence") or rec.get(
+                            "verifier_avg_confidence"
+                        )
                         if conf:
                             task_text += f"  Confidence: {conf}\n"
                         task_text += "\n"
@@ -4342,18 +6010,39 @@ class TaskBoard:
                     # Always unregister after completion
                     TaskBoard.unregister_pipeline(task_id)
 
+                # MARKER_196.CORE_GAP_1: Auto-commit files written by pipeline
+                files_created = result.get("results", {}).get("files_created", [])
+                commit_hash = None
+                if files_created:
+                    commit_hash = self._auto_commit_pipeline_files(
+                        task_id, files_created, task.get("title", "")
+                    )
+                    logger.info(
+                        f"[TaskBoard] Auto-commit for task {task_id}: "
+                        f"{len(files_created)} files, commit={commit_hash or 'none'}"
+                    )
+
                 # Update task with results
                 pipeline_status = result.get("status", "unknown")
                 completed = pipeline_status == "done"
 
                 # MARKER_C21A: Expanded result storage (2KB limit)
                 pipeline_results = {
-                    "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
-                    "files_created": result.get("results", {}).get("files_created", [])[:20],  # Limit to 20 files
+                    "subtasks_completed": result.get("results", {}).get(
+                        "subtasks_completed", 0
+                    ),
+                    "subtasks_total": result.get("results", {}).get(
+                        "subtasks_total", 0
+                    ),
+                    "files_created": result.get("results", {}).get("files_created", [])[
+                        :20
+                    ],  # Limit to 20 files
                     "stats": result.get("results", {}).get("stats", {}),
-                    "approval_status": result.get("results", {}).get("approval_status", "unknown"),
+                    "approval_status": result.get("results", {}).get(
+                        "approval_status", "unknown"
+                    ),
                     "success": result.get("results", {}).get("success", completed),
+                    "commit_hash": commit_hash,
                 }
                 result_summary = json.dumps(pipeline_results)[:2000]  # 2KB limit
 
@@ -4362,6 +6051,7 @@ class TaskBoard:
                     pipeline_task_id=result.get("task_id"),
                     assigned_tier=pipeline.preset_name,
                     result_summary=result_summary,
+                    commit_hash=commit_hash,
                 )
 
                 if completed and task.get("require_closure_proof"):
@@ -4371,15 +6061,21 @@ class TaskBoard:
                         agent_type=str(task.get("agent_type") or "mycelium"),
                     )
                     final_status = "done" if closure_result.get("success") else "failed"
-                    logger.info(f"[TaskBoard] Task {task_id} closure protocol → {final_status}")
+                    logger.info(
+                        f"[TaskBoard] Task {task_id} closure protocol → {final_status}"
+                    )
                     return {
                         "success": bool(closure_result.get("success")),
                         "task_id": task_id,
                         "pipeline_task_id": result.get("task_id"),
                         "status": final_status,
                         "tier_used": pipeline.preset_name,
-                        "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                        "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                        "subtasks_completed": result.get("results", {}).get(
+                            "subtasks_completed", 0
+                        ),
+                        "subtasks_total": result.get("results", {}).get(
+                            "subtasks_total", 0
+                        ),
                         "closure": closure_result,
                     }
 
@@ -4395,8 +6091,12 @@ class TaskBoard:
                         _history_agent_type=str(task.get("agent_type") or ""),
                     )
                     # MARKER_183.5: Compute eval_delta for successful runs
-                    eval_result = TaskBoard.compute_eval_score(pipeline_results.get("stats", {}))
-                    logger.info(f"[TaskBoard] Task {task_id} done — eval: {eval_result}")
+                    eval_result = TaskBoard.compute_eval_score(
+                        pipeline_results.get("stats", {})
+                    )
+                    logger.info(
+                        f"[TaskBoard] Task {task_id} done — eval: {eval_result}"
+                    )
                 else:
                     # MARKER_183.5: Record failure + reset to pending for retry
                     # Extract verifier feedback from pipeline results
@@ -4408,7 +6108,9 @@ class TaskBoard:
                     )
                     eval_result = TaskBoard.compute_eval_score(stats)
 
-                logger.info(f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'pending (retry)'}")
+                logger.info(
+                    f"[TaskBoard] Task {task_id} dispatched → {'done' if completed else 'pending (retry)'}"
+                )
 
                 return {
                     "success": completed,
@@ -4416,8 +6118,12 @@ class TaskBoard:
                     "pipeline_task_id": result.get("task_id"),
                     "status": "done" if completed else "pending",
                     "tier_used": pipeline.preset_name,
-                    "subtasks_completed": result.get("results", {}).get("subtasks_completed", 0),
-                    "subtasks_total": result.get("results", {}).get("subtasks_total", 0),
+                    "subtasks_completed": result.get("results", {}).get(
+                        "subtasks_completed", 0
+                    ),
+                    "subtasks_total": result.get("results", {}).get(
+                        "subtasks_total", 0
+                    ),
                     "eval_delta": eval_result,
                 }
 
@@ -4475,16 +6181,27 @@ class TaskBoard:
             # Determine phase_type and priority from content
             line_lower = line.lower()
 
-            if any(w in line_lower for w in ["баг", "fix", "исправ", "broken", "не работает", "кривой"]):
+            if any(
+                w in line_lower
+                for w in ["баг", "fix", "исправ", "broken", "не работает", "кривой"]
+            ):
                 phase_type = "fix"
                 priority = PRIORITY_HIGH
-            elif any(w in line_lower for w in ["research", "исследов", "выяснить", "diagnose", "узнать"]):
+            elif any(
+                w in line_lower
+                for w in ["research", "исследов", "выяснить", "diagnose", "узнать"]
+            ):
                 phase_type = "research"
                 priority = PRIORITY_MEDIUM
-            elif any(w in line_lower for w in ["test", "pytest", "e2e", "spec", "smoke"]):
+            elif any(
+                w in line_lower for w in ["test", "pytest", "e2e", "spec", "smoke"]
+            ):
                 phase_type = "test"
                 priority = PRIORITY_MEDIUM
-            elif any(w in line_lower for w in ["нужно сделать", "добавить", "add", "create", "implement"]):
+            elif any(
+                w in line_lower
+                for w in ["нужно сделать", "добавить", "add", "create", "implement"]
+            ):
                 phase_type = "build"
                 priority = PRIORITY_MEDIUM
             else:
@@ -4510,7 +6227,7 @@ class TaskBoard:
                 priority=priority,
                 phase_type=phase_type,
                 complexity=complexity,
-                source=source_tag
+                source=source_tag,
             )
             imported += 1
 

@@ -166,11 +166,6 @@ class CutProjectPaths:
     def autosave_dir(self) -> str:
         return os.path.join(self.sandbox_root, ".autosave")
 
-    # MARKER_IMPORT-SAVE-FIX: autosave timeline state path — used by /save (autosave=True) and /autosave/check
-    @property
-    def autosave_timeline_state_path(self) -> str:
-        return os.path.join(self.autosave_dir, "timeline_state.json")
-
     @property
     def last_save_timestamp_path(self) -> str:
         return os.path.join(self.config_dir, "last_save_timestamp.json")
@@ -242,20 +237,6 @@ class CutProjectStore:
         if not self._validate_timeline_state_payload(payload):
             raise ValueError("Invalid cut_timeline_state_v1 payload")
         self._atomic_write_json(self.paths.timeline_state_path, payload)
-
-    # MARKER_IMPORT-SAVE-FIX: Autosave timeline state to .autosave/ for crash recovery
-    def save_autosave_timeline_state(self, state: dict[str, Any]) -> None:
-        """Write timeline_state to .autosave/timeline_state.json (periodic autosave)."""
-        payload = dict(state or {})
-        os.makedirs(self.paths.autosave_dir, exist_ok=True)
-        self._atomic_write_json(self.paths.autosave_timeline_state_path, payload)
-
-    def load_autosave_timeline_state(self) -> dict[str, Any] | None:
-        """Load autosaved timeline state (if exists)."""
-        path = self.paths.autosave_timeline_state_path
-        if not os.path.exists(path):
-            return None
-        return self._load_json(path)
 
     # ------------------------------------------------------------------
     # MARKER_198.MULTI_TL: Per-timeline-id storage

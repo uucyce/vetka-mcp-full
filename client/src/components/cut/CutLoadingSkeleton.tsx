@@ -9,7 +9,7 @@
  *   <CutLoadingSkeleton variant="project" />
  *   <CutLoadingSkeleton variant="monitor" label="Importing media..." />
  */
-import type { CSSProperties, JSX } from 'react';
+import type { CSSProperties } from 'react';
 
 type SkeletonVariant = 'timeline' | 'project' | 'monitor' | 'generic';
 

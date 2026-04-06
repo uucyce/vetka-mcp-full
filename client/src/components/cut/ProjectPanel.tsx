@@ -19,7 +19,6 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from 're
 import { useCutEditorStore, type ThumbnailItem } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { API_BASE } from '../../config/api.config';
-import { isTauri, openFileDialog, openFolderDialog } from '../../config/tauri';
 import DAGProjectPanel from './DAGProjectPanel';
 import { setDragPreview } from './utils/dragPreview';
 
@@ -244,7 +243,6 @@ export default function ProjectPanel() {
   const [dragging, setDragging] = useState(false);
   const [collapsedBins, setCollapsedBins] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const folderInputRef = useRef<HTMLInputElement | null>(null);
   // MARKER_W5.4: View mode
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
   // MARKER_GAMMA-19: Context menu for project items
@@ -306,57 +304,23 @@ export default function ProjectPanel() {
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
 
-  // ─── Open file picker (MARKER_IMPORT-DIALOG-FIX) ───
-  // In Tauri: use native openFileDialog with proper media filters (directory=false).
-  // In browser: fall back to HTML <input type="file"> (no webkitdirectory).
-  // MARKER_IMPORT-P0-FIX: openFilePicker with robust path handling + debug logging
-  const openFilePicker = useCallback(async () => {
+  // ─── Open file picker ───
+  const openFilePicker = useCallback(() => {
     if (importing) return;
-    if (isTauri()) {
-      console.log('[CUT Import] Opening native file dialog via Tauri...');
-      const result = await openFileDialog({ title: 'Import Media Files', multiple: true });
-      console.log('[CUT Import] Dialog result:', result);
-      if (!result) {
-        console.log('[CUT Import] Dialog cancelled or returned null');
-        return;
-      }
-      const paths = Array.isArray(result) ? result : [result];
-      if (paths.length > 0) {
-        // Derive common parent folder for backend bootstrap scan
-        const firstDir = paths[0].replace(/[\\/][^\\/]+$/, '');
-        console.log(`[CUT Import] Selected ${paths.length} file(s), importing from: ${firstDir}`);
-        void startImport(firstDir);
-      }
-    } else {
-      fileInputRef.current?.click();
-    }
-  }, [importing, startImport]);
-
-  // ─── Open folder picker (import folder as bin) ───
-  const openFolderPicker = useCallback(async () => {
-    if (importing) return;
-    if (isTauri()) {
-      const folder = await openFolderDialog('Import Media Folder');
-      if (folder) void startImport(folder);
-    } else {
-      folderInputRef.current?.click();
-    }
-  }, [importing, startImport]);
+    fileInputRef.current?.click();
+  }, [importing]);
 
   // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
   useEffect(() => {
-    const fileHandler = () => { void openFilePicker(); };
-    const folderHandler = () => { void openFolderPicker(); };
-    // MARKER_IMPORT-DIALOG-FIX: file import = default Cmd+I, folder import = separate event
-    window.addEventListener('cut:import-media', fileHandler);
-    window.addEventListener('cut:trigger-import', fileHandler);
-    window.addEventListener('cut:import-folder', folderHandler);
+    const handler = () => openFilePicker();
+    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
+    window.addEventListener('cut:import-media', handler);
+    window.addEventListener('cut:trigger-import', handler);
     return () => {
-      window.removeEventListener('cut:import-media', fileHandler);
-      window.removeEventListener('cut:trigger-import', fileHandler);
-      window.removeEventListener('cut:import-folder', folderHandler);
+      window.removeEventListener('cut:import-media', handler);
+      window.removeEventListener('cut:trigger-import', handler);
     };
-  }, [openFilePicker, openFolderPicker]);
+  }, [openFilePicker]);
 
   // ─── Job polling — returns the completed job result ───
   const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
@@ -389,12 +353,9 @@ export default function ProjectPanel() {
     }
 
     // Auto-derive sandbox if not set
-    // MARKER_IMPORT-P0-FIX: If source_path is a file, derive sandbox from its parent dir
     let sandboxRoot = storeSandboxRoot;
     if (!sandboxRoot) {
-      const hasExt = /\.[a-zA-Z0-9]{2,5}$/.test(trimmed);
-      const baseDir = hasExt ? trimmed.replace(/[\\/][^\\/]+$/, '') : trimmed;
-      sandboxRoot = `${baseDir}/cut_sandbox`;
+      sandboxRoot = `${trimmed}/cut_sandbox`;
       setEditorSession({ sandboxRoot });
     }
 
@@ -772,29 +733,19 @@ export default function ProjectPanel() {
             : 'Double-click or press ⌘I to import media'}
         </div>
 
-        {/* MARKER_IMPORT-DIALOG-FIX: Hidden file picker — individual media files (NO webkitdirectory) */}
+        {/* MARKER_W6.IMPORT-FIX: Hidden file picker — folder mode for NLE import */}
         <input
           ref={fileInputRef}
-          type="file"
-          multiple
-          accept={MEDIA_ACCEPT}
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            handleFileSelect(e.target.files);
-            e.target.value = '';
-          }}
-        />
-        {/* MARKER_IMPORT-DIALOG-FIX: Hidden folder picker — folder import as bin */}
-        <input
-          ref={folderInputRef}
           type="file"
           // @ts-expect-error -- webkitdirectory is non-standard but widely supported
           webkitdirectory=""
           directory=""
           multiple
+          accept={MEDIA_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => {
             handleFileSelect(e.target.files);
+            // Reset so re-selecting same files works
             e.target.value = '';
           }}
         />
