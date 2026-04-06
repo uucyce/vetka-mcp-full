@@ -345,4 +345,23 @@ def process_smart_debrief(report) -> dict:
         len(results["memory_routes"]),
     )
 
+    # MARKER_203.ROLE_MEMORY: Append task experience to per-role MEMORY.md
+    try:
+        from src.memory.role_memory_writer import append_entry
+        _q1 = "\n".join(report.lessons_learned) if report.lessons_learned else None
+        _q3 = "\n".join(report.recommendations) if report.recommendations else None
+        _task_id = (report.tasks_completed[0] if report.tasks_completed else None) or report.session_id
+        append_entry(
+            callsign=report.agent_callsign or "unknown",
+            task_id=_task_id or "unknown",
+            task_title=f"Session {report.session_id[:8]}",
+            q1=_q1,
+            q2=None,  # ExperienceReport has no Q2 field — populated via task_board q2_worked
+            q3=_q3,
+            domain=report.domain or "",
+            hot_files=list(report.files_touched)[:5] if report.files_touched else None,
+        )
+    except Exception:
+        pass  # NEVER fatal — role memory write must not block task completion
+
     return results

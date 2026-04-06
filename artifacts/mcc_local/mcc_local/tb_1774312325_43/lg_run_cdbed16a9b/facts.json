@@ -1,0 +1,17 @@
+{
+  "affected_files": [
+    "src/tools/cascade_debug.py",
+    "tests/test_cascade_debug.py"
+  ],
+  "dependencies": [
+    "git",
+    "task_id mapping service",
+    "commit log parser"
+  ],
+  "risks": [
+    "Potential for false positives in git blame analysis",
+    "Complexity in parsing and mapping task IDs",
+    "Dependence on external services for task ID mapping"
+  ],
+  "scope_estimate": "medium"
+}

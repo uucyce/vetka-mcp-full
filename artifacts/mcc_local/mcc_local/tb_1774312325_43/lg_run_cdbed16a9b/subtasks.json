@@ -1,0 +1,36 @@
+{
+  "parent_task_id": "tb_1774312325_43",
+  "children_created": 6,
+  "children": [
+    {
+      "task_id": "tb_1774772224_77373_1",
+      "description": "Implement git blame integration to extract commit metadata",
+      "file": "src/tools/cascade_debug.py"
+    },
+    {
+      "task_id": "tb_1774772224_77373_2",
+      "description": "Create task_id mapping service interface",
+      "file": "src/tools/cascade_debug.py"
+    },
+    {
+      "task_id": "tb_1774772224_77373_3",
+      "description": "Parse commit logs for task_id associations",
+      "file": "src/tools/cascade_debug.py"
+    },
+    {
+      "task_id": "tb_1774772224_77373_4",
+      "description": "Implement agent-to-task_id mapping logic",
+      "file": "src/tools/cascade_debug.py"
+    },
+    {
+      "task_id": "tb_1774772224_77373_5",
+      "description": "Build cascade tracing function for failing tests",
+      "file": "src/tools/cascade_debug.py"
+    },
+    {
+      "task_id": "tb_1774772224_77373_6",
+      "description": "Write unit tests for git blame integration",
+      "file": "tests/test_cascade_debug.py"
+    }
+  ]
+}
