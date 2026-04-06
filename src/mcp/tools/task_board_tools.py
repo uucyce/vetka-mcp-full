@@ -1976,10 +1976,21 @@ def _handle_synapse(arguments: Dict[str, Any]) -> Dict[str, Any]:
             )
             ok = proc.returncode == 0
         else:
-            # Fallback: type /compact into agent session to trigger tool use → hook reads signal
+            # Fallback: send notification check so agent sees Commander orders
+            # Exit copy-mode first ('q' is harmless if not in copy-mode)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, "q"],
+                capture_output=True, text=True,
+            )
+            import time; time.sleep(0.1)
+            wake_prompt = f"Check your notifications: vetka_task_board action=notifications role={role}"
+            subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, wake_prompt],
+                capture_output=True, text=True,
+            )
+            time.sleep(0.3)  # TUI needs time before Enter
             proc = subprocess.run(
-                ["tmux", "send-keys", "-t", session_name,
-                 "check notifications from task board", "Enter"],
+                ["tmux", "send-keys", "-t", session_name, "Enter"],
                 capture_output=True, text=True,
             )
             ok = proc.returncode == 0

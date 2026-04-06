@@ -56,6 +56,8 @@ import json, pathlib
 p = pathlib.Path('$REGISTRY_FILE')
 data = json.loads(p.read_text()) if p.exists() else {}
 for role, info in data.items():
+    if not isinstance(info, dict):
+        continue
     agent_type = info.get('agent_type', 'claude_code')
     if agent_type == 'vibe':
         continue  # can't monitor browser agents via tmux
@@ -230,6 +232,23 @@ check_all_agents() {
                 restart_agent "$role" "$session_name" "$worktree" "$agent_type"
             else
                 echo "$LOG_PREFIX Auto-restart disabled — checkpoint saved at $CHECKPOINT_DIR/${role}_checkpoint.json"
+            fi
+        fi
+
+        # ── MARKER_212.CTX_70_ALERT: Detect high context usage (opencode shows %) ──
+        # opencode status bar: "56.4K (5%)" or "120K (72%)"
+        # Claude Code: check for "context" percentage mentions
+        local ctx_pct
+        ctx_pct=$(echo "$pane_output" | grep -oE '\([0-9]{1,3}%\)' | tail -1 | tr -d '()%' || echo "")
+        if [ -n "$ctx_pct" ] && [ "$ctx_pct" -ge "${SYNAPSE_CTX_WARN_PCT:-70}" ] 2>/dev/null; then
+            local alert_file="$CHECKPOINT_DIR/${role}_ctx_alert"
+            # Only alert once per threshold crossing (cooldown via flag file)
+            if [ ! -f "$alert_file" ] || [ "$(( $(date +%s) - $(stat -f%m "$alert_file" 2>/dev/null || echo 0) ))" -gt 600 ]; then
+                echo "$LOG_PREFIX CONTEXT WARNING: $role at ${ctx_pct}% context usage"
+                if pgrep -q WindowServer 2>/dev/null; then
+                    osascript -e "display notification \"$role at ${ctx_pct}% context — consider refreshing chat\" with title \"CTX-MON: $role HIGH CONTEXT\" sound name \"Ping\"" 2>/dev/null || true
+                fi
+                touch "$alert_file"
             fi
         fi
     done <<< "$sessions"
