@@ -127,24 +127,7 @@ class UDSDaemon:
             capture_output=True,
         )
         if result.returncode == 0:
-            # tmux session exists but not UDS-connected — wake via synapse_wake.sh
-            # MARKER_212.AUTO_WAKE: notify events must always reach the agent
-            scripts_dir = Path(__file__).resolve().parent
-            wake_script = scripts_dir / "synapse_wake.sh"
-            if wake_script.exists():
-                role_info = self._role_worktree.get(target_role)
-                agent_type = "claude_code"
-                if isinstance(role_info, dict):
-                    agent_type = role_info.get("agent_type", "claude_code")
-                msg = payload.get("message", "You have pending notifications")
-                try:
-                    subprocess.Popen(
-                        [str(wake_script), target_role, agent_type, msg],
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                    logger.info("[AUTOSPAWN] Woke %s via synapse_wake.sh (tmux session online)", target_role)
-                except Exception as exc:
-                    logger.warning("[AUTOSPAWN] Failed to wake %s: %s", target_role, exc)
+            # tmux session exists — agent is running but not UDS-connected
             return
 
         # Agent offline — spawn via SYNAPSE (Phase 206) or legacy spawn_agent.sh

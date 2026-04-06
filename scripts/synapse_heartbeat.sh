@@ -87,9 +87,8 @@ nudge_agent() {
         return 1
     fi
 
-    tmux send-keys -t "$session_name" "continue"
-    sleep 0.3  # TUI needs time to process typed text before Enter
-    tmux send-keys -t "$session_name" Enter
+    # opencode uses Enter to submit, same as claude_code
+    tmux send-keys -t "$session_name" "continue" Enter
     echo "$LOG_PREFIX Nudged $role ($agent_type) with 'continue'"
 }
 

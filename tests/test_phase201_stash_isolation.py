@@ -352,16 +352,10 @@ class TestDocGuardRegression:
         assert doc in deleted
 
     def test_clean_branch_passes_doc_guard(self):
-        """main branch itself must have 0 self-deleted docs (post-merge guard).
-
-        Originally checked harness-eta, but that branch is merged.
-        Now verifies main has no broken doc deletions by checking the
-        DOC_GUARD marker exists in task_board.py (the actual protection).
-        """
-        source = (_REPO / "src/orchestration/task_board.py").read_text()
-        assert "DOC_GUARD" in source or "doc_guard" in source.lower(), (
-            "DOC_GUARD protection missing from task_board.py — "
-            "doc deletion incident may recur."
+        """harness-eta (our verified branch) must have 0 deleted docs."""
+        deleted = self._diff_filter_D("claude/harness-eta")
+        assert deleted == [], (
+            f"claude/harness-eta must have 0 deleted docs, found: {deleted}"
         )
 
     def test_doc_guard_checks_docs_subdir_only(self, fixture_branch_with_deleted_doc):
@@ -438,31 +432,37 @@ class TestSyntaxAndImportContract:
             pytest.fail(f"SyntaxError in {_HARNESS_ETA}:{relpath}: {e}")
 
     # -----------------------------------------------------------------------
-    # Marker presence — post-merge regression tests
-    # Originally checked on harness-eta (pending merge). Now harness-eta
-    # is merged to main, so these read from the local working copy.
+    # Marker presence — checked on harness-eta (pending merge)
+    # After harness-eta merges to main, these guards become post-merge
+    # regression tests automatically.
     # -----------------------------------------------------------------------
 
-    def test_no_stash_in_merge_path(self):
-        """Snapshot merge superseded stash — verify no stash in merge path.
-
-        MARKER_201.STASH_SCOPE and STASH_SAFE were planned for cherry-pick
-        merges but superseded by snapshot strategy (no stash, no checkout,
-        no dirty state). Verify the snapshot approach is in place.
-        """
-        source = (_REPO / "src/orchestration/task_board.py").read_text()
-        # Snapshot merge mentions "no stash" — that's the replacement
-        assert "no stash" in source or "snapshot" in source.lower(), (
-            "Neither stash isolation nor snapshot merge strategy found in task_board.py"
+    @skip_no_eta
+    def test_stash_scope_marker_present_in_task_board(self):
+        """MARKER_201.STASH_SCOPE must be in task_board.py on harness-eta."""
+        source = _git_show_file(_HARNESS_ETA, "src/orchestration/task_board.py")
+        assert "MARKER_201.STASH_SCOPE" in source, (
+            "STASH_SCOPE marker missing from harness-eta task_board.py — "
+            "scoped stash protection may have been reverted."
         )
 
+    @skip_no_eta
+    def test_stash_safe_marker_present_in_task_board(self):
+        """MARKER_201.STASH_SAFE / stash_pop_failed must be in task_board.py."""
+        source = _git_show_file(_HARNESS_ETA, "src/orchestration/task_board.py")
+        assert "STASH_SAFE" in source or "stash_pop_failed" in source, (
+            "STASH_SAFE / stash_pop_failed missing — pop failure recovery removed."
+        )
+
+    @skip_no_eta
     def test_doc_guard_marker_present_in_task_board(self):
-        """MARKER_201.DOC_GUARD must be in task_board.py (post-merge guard)."""
-        source = (_REPO / "src/orchestration/task_board.py").read_text()
+        """MARKER_201.DOC_GUARD must be in harness-eta task_board.py."""
+        source = _git_show_file(_HARNESS_ETA, "src/orchestration/task_board.py")
         assert "MARKER_201.DOC_GUARD" in source, (
             "DOC_GUARD marker missing — doc deletion protection may have been reverted."
         )
 
+    @skip_no_eta
     def test_include_untracked_never_in_task_board(self):
         """
         CRITICAL REGRESSION GUARD:
@@ -470,23 +470,24 @@ class TestSyntaxAndImportContract:
         This was the root cause of the Parallax destruction incident.
         Comments explaining the absence (e.g. "no --include-untracked") are fine.
         """
-        source = (_REPO / "src/orchestration/task_board.py").read_text()
+        source = _git_show_file(_HARNESS_ETA, "src/orchestration/task_board.py")
         # Only flag lines where --include-untracked is NOT in a comment (i.e. live code)
         active_lines = [
             line for line in source.splitlines()
             if "--include-untracked" in line and not line.lstrip().startswith("#")
         ]
         assert not active_lines, (
-            "CRITICAL: --include-untracked found as active code in task_board.py. "
+            "CRITICAL: --include-untracked found as active code in task_board.py on harness-eta. "
             "This caused the Parallax project destruction. Remove immediately.\n"
             f"Offending lines: {active_lines}"
         )
 
+    @skip_no_eta
     def test_allowed_paths_passed_to_execute_merge(self):
         """task.allowed_paths must be forwarded to _execute_merge."""
-        source = (_REPO / "src/orchestration/task_board.py").read_text()
+        source = _git_show_file(_HARNESS_ETA, "src/orchestration/task_board.py")
         assert "allowed_paths" in source, (
-            "allowed_paths not found in task_board.py — "
+            "allowed_paths not found in harness-eta task_board.py — "
             "project isolation during merge is broken."
         )
 
