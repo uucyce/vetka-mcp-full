@@ -155,6 +155,14 @@ case "$AGENT_TYPE" in
     claude_code)
         SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions --model $MODEL_TIER"
         ;;
+    free_code)
+        # MARKER_GEMMA_FLEET: Gemma agents via free-code + litellm_gemma_bridge
+        # MODEL_TIER = ollama model name (gemma4:e4b, gemma4:e2b, gemma4:26b)
+        # Requires: LiteLLM on :4000 + litellm_gemma_bridge.py on :4001
+        GEMMA_BRIDGE_URL="${GEMMA_BRIDGE_URL:-http://localhost:4001}"
+        FREE_CODE_BIN="${FREE_CODE_BIN:-$HOME/Documents/VETKA_Project/free-code/cli-dev}"
+        SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --dangerously-skip-permissions --model $MODEL_TIER"
+        ;;
     opencode)
         # NOTE: opencode has no auto-approve flag. Agent stays within worktree
         # in normal operation. Permission dialogs only trigger for out-of-worktree reads.
