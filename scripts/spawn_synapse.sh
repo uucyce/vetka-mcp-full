@@ -11,36 +11,6 @@
 
 set -euo pipefail
 
-# ── MARKER_212.RECOLOR: --recolor-all flag to apply colors to all running sessions ──
-if [ "${1:-}" = "--recolor-all" ]; then
-    PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
-    REGISTRY_YAML="$PROJECT_ROOT/data/templates/agent_registry.yaml"
-    echo "[SYNAPSE] Recoloring all running vetka-* sessions from agent_registry.yaml..."
-    python3 -c "
-import yaml, subprocess
-with open('$REGISTRY_YAML') as f:
-    reg = yaml.safe_load(f)
-for role in reg.get('roles', []):
-    cs = role.get('callsign', '')
-    color = role.get('tmux_color', '')
-    session = f'vetka-{cs}'
-    if not color:
-        continue
-    r = subprocess.run(['tmux', 'has-session', '-t', session], capture_output=True)
-    if r.returncode != 0:
-        continue
-    subprocess.run(['tmux', 'set-option', '-t', session, 'status-style', color], capture_output=True)
-    subprocess.run(['tmux', 'set-option', '-t', session, 'status-left', f' [{cs}] '], capture_output=True)
-    subprocess.run(['tmux', 'set-option', '-t', session, 'status-right', ' %H:%M '], capture_output=True)
-    bg = next((p.split('=')[1] for p in color.split(',') if p.startswith('bg=')), '')
-    if bg:
-        subprocess.run(['tmux', 'set-option', '-t', session, 'pane-active-border-style', f'fg={bg}'], capture_output=True)
-    print(f'  {cs}: {color}')
-"
-    echo "[SYNAPSE] Done."
-    exit 0
-fi
-
 ROLE="${1:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}"
 WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}"
 AGENT_TYPE="${3:-claude_code}"

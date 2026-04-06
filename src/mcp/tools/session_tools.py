@@ -2066,30 +2066,6 @@ class SessionInitTool(BaseMCPTool):
         except Exception:
             pass  # Memory health never blocks session_init
 
-        # MARKER_211.CONTEXT_ALERT: Warn when agent context exceeds 70% of budget
-        try:
-            _ctx_tokens = _estimate_tokens(context)
-            _ctx_ratio = _ctx_tokens / max_context_tokens if max_context_tokens > 0 else 0
-            if _ctx_ratio > 0.70:
-                _alert_level = "critical" if _ctx_ratio > 0.90 else "warning"
-                context["context_budget_alert"] = {
-                    "level": _alert_level,
-                    "used_tokens": _ctx_tokens,
-                    "budget_tokens": max_context_tokens,
-                    "usage_pct": round(_ctx_ratio * 100, 1),
-                    "message": (
-                        f"Context at {round(_ctx_ratio * 100)}% of budget "
-                        f"({_ctx_tokens}/{max_context_tokens} tokens). "
-                        f"Consider completing current task and starting fresh session."
-                    ),
-                }
-                logger.warning(
-                    f"[SessionInit] Context budget {_alert_level}: "
-                    f"{round(_ctx_ratio * 100)}% used ({_ctx_tokens}/{max_context_tokens})"
-                )
-        except Exception:
-            pass  # Context alert never blocks session_init
-
         return {"success": True, "result": context}
 
     async def _get_viewport_context(self, session_id: str) -> Optional[Dict[str, Any]]:

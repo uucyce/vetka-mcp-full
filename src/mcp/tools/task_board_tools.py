@@ -280,7 +280,6 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
-                "agent_activity",
             ],
             "description": "Operation to perform",
         },
@@ -1840,10 +1839,6 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "subtask_title is required for subtask_done"}
         return board.subtask_done(task_id, subtask_title)
 
-    # MARKER_212.AGENT_ACTIVITY: tmux-based agent activity monitor
-    elif action == "agent_activity":
-        return _agent_activity(board, arguments)
-
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
 
@@ -2612,104 +2607,4 @@ def handle_task_import(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "file": file_path,
         "source_tag": source_tag,
         "total_tasks": len(board.tasks),
-    }
-
-
-# ---------------------------------------------------------------------------
-# MARKER_212.AGENT_ACTIVITY: tmux-based agent activity monitor
-# ---------------------------------------------------------------------------
-
-def _agent_activity(board, arguments: dict) -> dict:
-    """Check all agent tmux sessions for activity. Returns per-agent status.
-
-    Cross-references tmux session_activity with task_board claimed tasks.
-    Flags agents idle > idle_threshold (default 120s) that have claimed tasks.
-
-    Usage: vetka_task_board action=agent_activity
-    Optional: idle_threshold=<seconds> (default 120)
-    """
-    import subprocess
-    import time
-
-    idle_threshold = int(arguments.get("idle_threshold", 120))
-    now = int(time.time())
-
-    # 1. Get all vetka-* tmux sessions with activity timestamps
-    try:
-        raw = subprocess.run(
-            ["tmux", "list-sessions", "-F", "#{session_name} #{session_activity}"],
-            capture_output=True, text=True, timeout=5,
-        )
-        if raw.returncode != 0:
-            return {"success": False, "error": f"tmux error: {raw.stderr.strip()}"}
-    except FileNotFoundError:
-        return {"success": False, "error": "tmux not found"}
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": "tmux timed out"}
-
-    sessions = {}
-    for line in raw.stdout.strip().splitlines():
-        parts = line.split(None, 1)
-        if len(parts) == 2 and parts[0].startswith("vetka-"):
-            callsign = parts[0].replace("vetka-", "")
-            try:
-                last_active = int(parts[1])
-            except ValueError:
-                last_active = 0
-            sessions[callsign] = last_active
-
-    # 2. Get claimed tasks from board
-    claimed = {}
-    for task in board.tasks.values():
-        t = task if isinstance(task, dict) else task
-        status = t.get("status", "")
-        assigned = t.get("assigned_to") or t.get("owner_agent") or ""
-        if status == "claimed" and assigned:
-            if assigned not in claimed:
-                claimed[assigned] = []
-            claimed[assigned].append({
-                "task_id": t.get("id", ""),
-                "title": (t.get("title", ""))[:60],
-            })
-
-    # 3. Build activity report
-    agents = []
-    idle_agents = []
-    for callsign, last_active in sorted(sessions.items()):
-        idle_secs = now - last_active if last_active > 0 else -1
-        has_claimed = callsign in claimed
-        is_idle = idle_secs > idle_threshold and has_claimed
-
-        entry = {
-            "callsign": callsign,
-            "tmux_session": f"vetka-{callsign}",
-            "last_active_epoch": last_active,
-            "idle_seconds": idle_secs,
-            "status": "IDLE" if is_idle else ("active" if idle_secs <= idle_threshold else "no_task"),
-            "claimed_tasks": claimed.get(callsign, []),
-        }
-        agents.append(entry)
-        if is_idle:
-            idle_agents.append(callsign)
-
-    # 4. Also report agents with claimed tasks but NO tmux session (offline)
-    for callsign, tasks in claimed.items():
-        if callsign not in sessions:
-            agents.append({
-                "callsign": callsign,
-                "tmux_session": None,
-                "last_active_epoch": 0,
-                "idle_seconds": -1,
-                "status": "OFFLINE",
-                "claimed_tasks": tasks,
-            })
-            idle_agents.append(callsign)
-
-    return {
-        "success": True,
-        "agents": agents,
-        "idle_threshold": idle_threshold,
-        "idle_agents": idle_agents,
-        "total_sessions": len(sessions),
-        "total_claimed": sum(len(v) for v in claimed.values()),
     }
