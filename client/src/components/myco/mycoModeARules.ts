@@ -416,7 +416,7 @@ function buildSearchHint(snapshot: MycoModeAFocusSnapshot): MycoModeAHint {
   return {
     title: `${snapshot.searchContext}/ search · ${snapshot.searchMode.toUpperCase()}`,
     body: `${bodies[snapshot.searchContext]} ${modeBodies[snapshot.searchMode]}`,
-    nextActions: (snapshot.searchContext as string) === 'file'
+    nextActions: snapshot.searchContext === 'file'
       ? ['Найти файл', 'Открыть артефакт', 'Добавить внешний файл в VETKA']
       : snapshot.searchContext === 'web'
         ? ['Ввести запрос', 'Открыть результат', 'Сохранить страницу в VETKA']

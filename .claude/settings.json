@@ -10,6 +10,17 @@
           }
         ]
       }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check_notifications.sh Eta 2>/dev/null || true"
+          }
+        ]
+      }
     ]
   }
 }

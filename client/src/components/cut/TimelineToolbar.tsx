@@ -21,7 +21,7 @@ import { useSelectionStore } from '../../store/useSelectionStore';
 import TimelineDisplayControls from './TimelineDisplayControls';
 import {
   SelectionIcon, RazorIcon, RippleIcon, RollIcon,
-  SlipIcon, SlideIcon, HandIcon, ZoomIcon,
+  SlipIcon, SlideIcon, HandIcon, ZoomIcon, SnapIcon,
 } from './icons/ToolIcons';
 
 const ROOT: CSSProperties = {

@@ -280,6 +280,7 @@ TASK_BOARD_SCHEMA = {
                 "notify",
                 "notifications",
                 "ack_notifications",
+                "agent_activity",
             ],
             "description": "Operation to perform",
         },
@@ -624,10 +625,12 @@ def _suggest_docs_for_title(title: str, limit: int = 5) -> list:
     if not keywords:
         return []
 
+    # MARKER_201.DOC_GATE_LAZY: Cap glob scan at 400 files — docs/ has 2000+ .md files.
+    # Removed stat().st_mtime sort (2000+ syscalls → MCP timeout -32001).
+    # Keyword match on filename is sufficient; semantic search (Strategy 1) handles recency.
+    import itertools
     suggestions = []
-    for md_file in sorted(
-        docs_dir.rglob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True
-    ):
+    for md_file in itertools.islice(docs_dir.rglob("*.md"), 400):
         name_lower = md_file.name.lower() + " " + md_file.parent.name.lower()
         score = sum(1 for k in keywords if k in name_lower)
         if score > 0:
@@ -769,6 +772,27 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                     suggested[:3],
                 )
 
+        # MARKER_ETA.DESC_GUARD: Validate description length.
+        # P1/P2: block if description is empty or < 20 chars (too vague to act on).
+        # P3+: allow but surface a warning in response.
+        _desc_raw = payload.get("description", "").strip()
+        _priority_for_guard = int(payload.get("priority", 3))
+        if len(_desc_raw) < 20:
+            if _priority_for_guard <= 2:
+                return {
+                    "success": False,
+                    "error": (
+                        f"DESC_GUARD: P{_priority_for_guard} tasks require description ≥ 20 characters "
+                        f"(got {len(_desc_raw)}). Add context: what problem, why now, acceptance criteria."
+                    ),
+                    "desc_guard": True,
+                }
+            # P3+ — allow, but flag
+            payload["_desc_guard_warning"] = (
+                f"DESC_GUARD: description is short ({len(_desc_raw)} chars). "
+                "Consider adding more context for better task clarity."
+            )
+
         try:
             payload = apply_task_profile_defaults(payload)
         except ValueError as exc:
@@ -814,13 +838,63 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if _dg_warnings:
             result["doc_gate_warning"] = _dg_warnings[0]
 
+        # MARKER_ETA.DESC_GUARD: Surface description length warning for P3+ tasks
+        _dg_desc = payload.get("_desc_guard_warning")
+        if _dg_desc:
+            result["desc_guard_warning"] = _dg_desc
+
+        # MARKER_ETA.SOFT_DEDUP: Check for similar existing tasks by title.
+        # Score is FTS5 BM25 rank (negative, closer to 0 = more similar).
+        # Threshold > -15 catches near-identical titles without false-positive noise.
+        try:
+            import re as _re_dedup
+            _clean_title = _re_dedup.sub(r"[^\w\s]", " ", title)
+            _title_words = _clean_title.split()[:6]
+            if _title_words:
+                _fts_hits = board.search_fts(" ".join(_title_words), limit=10)
+                _dupes = [
+                    {"task_id": h["task_id"], "snippet": h["snippet"][:120], "score": h["rank"]}
+                    for h in _fts_hits
+                    if h["task_id"] != task_id and h["rank"] > -15
+                ]
+                if _dupes:
+                    result["possible_duplicates"] = {
+                        "message": (
+                            f"SOFT_DEDUP: {len(_dupes)} similar task(s) found. "
+                            "Review before working — may already be covered."
+                        ),
+                        "tasks": _dupes[:5],
+                    }
+        except Exception:
+            pass  # Dedup is advisory, never blocks
+
         # MARKER_199.CONTRACT: API Contract Guard — detect path overlap with active tasks
         # When parallel tasks share allowed_paths, they risk API drift (different method names).
         # Surface a warning so Commander can provide a Protocol contract.
+        # MARKER_201.SHARED_ZONES: Suppress warning for naturally shared files (App.tsx,
+        # task_board.py, package.json etc.) registered in agent_registry.yaml shared_zones.
         new_paths = payload.get("allowed_paths") or []
         if new_paths:
             try:
-                overlapping = board.find_tasks_by_changed_files(new_paths)
+                # Load shared_zone file basenames to suppress false-positive overlap warnings
+                _shared_zone_files: set = set()
+                try:
+                    from src.services.agent_registry import get_agent_registry
+                    _reg = get_agent_registry()
+                    _shared_zone_files = {zone.file for zone in _reg.shared_zones}
+                except Exception:
+                    pass
+
+                # Only warn about exclusive paths (not registered shared_zones)
+                exclusive_paths = [
+                    p for p in new_paths
+                    if not any(
+                        p == sz or p.endswith("/" + sz) or sz.endswith("/" + p.split("/")[-1])
+                        for sz in _shared_zone_files
+                    )
+                ]
+
+                overlapping = board.find_tasks_by_changed_files(exclusive_paths) if exclusive_paths else []
                 # Exclude the task we just created
                 overlapping = [t for t in overlapping if t.get("id") != task_id]
                 if overlapping:
@@ -836,7 +910,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
                         "overlapping_tasks": overlap_titles,
                         "shared_paths": [
                             p
-                            for p in new_paths
+                            for p in exclusive_paths
                             if any(
                                 any(
                                     p.startswith(ap) or ap.startswith(p)
@@ -1010,6 +1084,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         # MARKER_191.7: Auto-inject docs content for MCP agents
         docs = _load_docs_content_sync(task)
         result = {"success": True, "task": task}
+        # MARKER_191.20: Inject subtask_progress for visibility
+        from src.orchestration.task_board import TaskBoard as _TB
+        _progress = _TB.get_subtask_progress(task)
+        if _progress is not None:
+            result["subtask_progress"] = _progress
         if docs:
             result["docs_content"] = docs
         return result
@@ -1750,6 +1829,20 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if isinstance(notif_ids, str):
             notif_ids = [n.strip() for n in notif_ids.split(",") if n.strip()]
         return board.ack_notifications(role, notification_ids=notif_ids)
+
+    # MARKER_191.20: Subtask progress tracking — mark one subtask as done
+    elif action == "subtask_done":
+        task_id = arguments.get("task_id")
+        subtask_title = arguments.get("subtask_title", "").strip()
+        if not task_id:
+            return {"success": False, "error": "task_id is required for subtask_done"}
+        if not subtask_title:
+            return {"success": False, "error": "subtask_title is required for subtask_done"}
+        return board.subtask_done(task_id, subtask_title)
+
+    # MARKER_212.AGENT_ACTIVITY: tmux-based agent activity monitor
+    elif action == "agent_activity":
+        return _agent_activity(board, arguments)
 
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
@@ -2519,4 +2612,104 @@ def handle_task_import(arguments: Dict[str, Any]) -> Dict[str, Any]:
         "file": file_path,
         "source_tag": source_tag,
         "total_tasks": len(board.tasks),
+    }
+
+
+# ---------------------------------------------------------------------------
+# MARKER_212.AGENT_ACTIVITY: tmux-based agent activity monitor
+# ---------------------------------------------------------------------------
+
+def _agent_activity(board, arguments: dict) -> dict:
+    """Check all agent tmux sessions for activity. Returns per-agent status.
+
+    Cross-references tmux session_activity with task_board claimed tasks.
+    Flags agents idle > idle_threshold (default 120s) that have claimed tasks.
+
+    Usage: vetka_task_board action=agent_activity
+    Optional: idle_threshold=<seconds> (default 120)
+    """
+    import subprocess
+    import time
+
+    idle_threshold = int(arguments.get("idle_threshold", 120))
+    now = int(time.time())
+
+    # 1. Get all vetka-* tmux sessions with activity timestamps
+    try:
+        raw = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name} #{session_activity}"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if raw.returncode != 0:
+            return {"success": False, "error": f"tmux error: {raw.stderr.strip()}"}
+    except FileNotFoundError:
+        return {"success": False, "error": "tmux not found"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "tmux timed out"}
+
+    sessions = {}
+    for line in raw.stdout.strip().splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2 and parts[0].startswith("vetka-"):
+            callsign = parts[0].replace("vetka-", "")
+            try:
+                last_active = int(parts[1])
+            except ValueError:
+                last_active = 0
+            sessions[callsign] = last_active
+
+    # 2. Get claimed tasks from board
+    claimed = {}
+    for task in board.tasks.values():
+        t = task if isinstance(task, dict) else task
+        status = t.get("status", "")
+        assigned = t.get("assigned_to") or t.get("owner_agent") or ""
+        if status == "claimed" and assigned:
+            if assigned not in claimed:
+                claimed[assigned] = []
+            claimed[assigned].append({
+                "task_id": t.get("id", ""),
+                "title": (t.get("title", ""))[:60],
+            })
+
+    # 3. Build activity report
+    agents = []
+    idle_agents = []
+    for callsign, last_active in sorted(sessions.items()):
+        idle_secs = now - last_active if last_active > 0 else -1
+        has_claimed = callsign in claimed
+        is_idle = idle_secs > idle_threshold and has_claimed
+
+        entry = {
+            "callsign": callsign,
+            "tmux_session": f"vetka-{callsign}",
+            "last_active_epoch": last_active,
+            "idle_seconds": idle_secs,
+            "status": "IDLE" if is_idle else ("active" if idle_secs <= idle_threshold else "no_task"),
+            "claimed_tasks": claimed.get(callsign, []),
+        }
+        agents.append(entry)
+        if is_idle:
+            idle_agents.append(callsign)
+
+    # 4. Also report agents with claimed tasks but NO tmux session (offline)
+    for callsign, tasks in claimed.items():
+        if callsign not in sessions:
+            agents.append({
+                "callsign": callsign,
+                "tmux_session": None,
+                "last_active_epoch": 0,
+                "idle_seconds": -1,
+                "status": "OFFLINE",
+                "claimed_tasks": tasks,
+            })
+            idle_agents.append(callsign)
+
+    return {
+        "success": True,
+        "agents": agents,
+        "idle_threshold": idle_threshold,
+        "idle_agents": idle_agents,
+        "total_sessions": len(sessions),
+        "total_claimed": sum(len(v) for v in claimed.values()),
     }

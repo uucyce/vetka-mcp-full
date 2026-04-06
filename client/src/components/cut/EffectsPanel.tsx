@@ -69,6 +69,14 @@ const RESET_BTN: CSSProperties = {
   cursor: 'pointer',
 };
 
+const EMPTY: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  height: '100%',
+  color: '#555',
+  fontSize: 10,
+};
 
 const TOGGLE_BTN = (active: boolean): CSSProperties => ({
   padding: '2px 8px',
@@ -195,7 +203,7 @@ export default function EffectsPanel() {
   const resetClipEffects = useCutEditorStore((s) => s.resetClipEffects);
 
   // Find selected clip
-  let selectedClip: any = null;
+  let selectedClip = null;
   if (selectedClipId) {
     for (const lane of lanes) {
       const found = lane.clips.find((c) => c.clip_id === selectedClipId);

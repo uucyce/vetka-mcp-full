@@ -1564,6 +1564,11 @@ class SessionInitTool(BaseMCPTool):
                 # MARKER_200.MODEL_TIER: Include model_tier from registry
                 if getattr(_role, "model_tier", None):
                     _role_ctx["model_tier"] = _role.model_tier
+                # MARKER_204.VIBE: Include tool_type + memory_path for Vibe/Opencode agents
+                if getattr(_role, "tool_type", None):
+                    _role_ctx["tool_type"] = _role.tool_type
+                if getattr(_role, "memory_path", None):
+                    _role_ctx["memory_path"] = _role.memory_path
 
                 # Workflow hints based on domain
                 if _role.domain == "architect":
@@ -1627,6 +1632,29 @@ class SessionInitTool(BaseMCPTool):
 
         except Exception:
             pass  # Role context never blocks session init
+
+        # MARKER_208.LATEST_FEEDBACK: Surface newest feedback doc for this role
+        # Globs from main repo (not worktree) so docs are always found
+        _resolved_role = context.get("role_context", {}).get("callsign", "") or role_name or ""
+        if _resolved_role:
+            try:
+                import glob as _glob_mod
+                _feedback_pattern = str(PROJECT_ROOT / "docs" / "190_ph_CUT_WORKFLOW_ARCH" / "feedback" / f"FEEDBACK_{_resolved_role.upper()}_*")
+                _feedback_files = sorted(_glob_mod.glob(_feedback_pattern))
+                if _feedback_files:
+                    _newest = _feedback_files[-1]
+                    _preview_lines = []
+                    try:
+                        with open(_newest, "r", encoding="utf-8") as _fb_f:
+                            _preview_lines = _fb_f.readlines()[:80]
+                    except Exception:
+                        pass
+                    context["latest_feedback"] = {
+                        "path": str(Path(_newest).relative_to(PROJECT_ROOT)),
+                        "preview": "".join(_preview_lines),
+                    }
+            except Exception:
+                pass  # Feedback lookup never blocks session init
 
         # MARKER_200.FEEDBACK_BRIDGE: Ingest Claude Code feedback memories into ENGRAM L1
         # Scans ~/.claude/projects/.../memory/feedback_*.md → ENGRAM danger entries.
@@ -2037,6 +2065,30 @@ class SessionInitTool(BaseMCPTool):
             context["memory_health"] = memory_health
         except Exception:
             pass  # Memory health never blocks session_init
+
+        # MARKER_211.CONTEXT_ALERT: Warn when agent context exceeds 70% of budget
+        try:
+            _ctx_tokens = _estimate_tokens(context)
+            _ctx_ratio = _ctx_tokens / max_context_tokens if max_context_tokens > 0 else 0
+            if _ctx_ratio > 0.70:
+                _alert_level = "critical" if _ctx_ratio > 0.90 else "warning"
+                context["context_budget_alert"] = {
+                    "level": _alert_level,
+                    "used_tokens": _ctx_tokens,
+                    "budget_tokens": max_context_tokens,
+                    "usage_pct": round(_ctx_ratio * 100, 1),
+                    "message": (
+                        f"Context at {round(_ctx_ratio * 100)}% of budget "
+                        f"({_ctx_tokens}/{max_context_tokens} tokens). "
+                        f"Consider completing current task and starting fresh session."
+                    ),
+                }
+                logger.warning(
+                    f"[SessionInit] Context budget {_alert_level}: "
+                    f"{round(_ctx_ratio * 100)}% used ({_ctx_tokens}/{max_context_tokens})"
+                )
+        except Exception:
+            pass  # Context alert never blocks session_init
 
         return {"success": True, "result": context}
 
