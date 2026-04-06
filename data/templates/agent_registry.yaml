@@ -255,6 +255,175 @@ roles:
       - "docs/190_ph_CUT_WORKFLOW_ARCH/HANDOFF_CUT_COMMANDER_PEDANTIC_BELL_2026-03-22.md"
     roadmap: ""
 
+  # ══════════════════════════════════════════════════════════
+  # POLARIS FLEET — Opencode + Vibe agents (Phase 211+)
+  # Captain Polaris coordinates Theta/Iota/Kappa (Qwen)
+  # and Lambda/Mu/Nu (Vibe Mistral free tier)
+  # ══════════════════════════════════════════════════════════
+
+  # ── Polaris: Fleet Captain ──────────────────────────────
+  - callsign: "Polaris"
+    domain: "architect"
+    pipeline_stage: "architect"
+    tool_type: "opencode"
+    role_title: "Fleet Captain / Opencode Architect"
+    worktree: "captain"
+    branch: "agent/polaris-captain"
+    model_tier: "qwen"  # Qwen 3.6+ Free via Opencode
+    tmux_color: "bg=colour39,fg=colour0"  # bright cyan, dark text — captain
+    owned_paths:
+      - "data/templates/agent_registry.yaml"
+      - "data/templates/model_presets.json"
+      - "docs/200_taskboard_forever/"
+      - "docs/201ph_WEATHERE/"
+      - "docs/210_sherpa_gemma4/"
+      - "src/orchestration/task_board.py"
+      - "src/services/agent_registry.py"
+      - "src/services/model_router.py"
+      - "src/services/model_policy.py"
+      - "src/tools/generate_agents_md.py"
+      - "tests/benchmark/"
+      - "memory/roles/Polaris/"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+      - "src/mcp/"
+    key_docs:
+      - "docs/210_sherpa_gemma4/BENCHMARK_RESULTS_LIVE.md"
+      - "docs/210_sherpa_gemma4/GEMMA4_RECON_SHERPA_tb_1775406942_68814_2.md"
+    roadmap: ""
+    memory_path: "memory/roles/Polaris/MEMORY.md"
+
+  # ── Theta: Polaris Fleet — Model Infra ──────────────────
+  - callsign: "Theta"
+    domain: "architect"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Model Infrastructure / Ollama Integration"
+    worktree: "polaris-theta"
+    branch: "claude/polaris-theta"
+    model_tier: "qwen"
+    tmux_color: "bg=colour33,fg=white"  # blue — theta
+    owned_paths:
+      - "src/services/model_router.py"
+      - "src/services/model_policy.py"
+      - "src/elisya/provider_registry.py"
+      - "tests/benchmark/"
+      - "docs/210_sherpa_gemma4/"
+    blocked_paths:
+      - "client/"
+      - "e2e/"
+      - "src/mcp/"
+    key_docs:
+      - "docs/210_sherpa_gemma4/BENCHMARK_RESULTS_LIVE.md"
+    roadmap: ""
+
+  # ── Iota: Polaris Fleet — Benchmark/QA ──────────────────
+  - callsign: "Iota"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "opencode"
+    role_title: "Model Benchmark / QA"
+    worktree: "polaris-iota"
+    branch: "claude/polaris-iota"
+    model_tier: "qwen"
+    tmux_color: "bg=colour27,fg=white"  # dark blue — iota
+    owned_paths:
+      - "tests/benchmark/"
+      - "docs/210_sherpa_gemma4/"
+    blocked_paths:
+      - "client/"
+      - "e2e/"
+      - "src/"
+    key_docs:
+      - "docs/210_sherpa_gemma4/BENCHMARK_RESULTS_LIVE.md"
+    roadmap: ""
+
+  # ── Kappa: Polaris Fleet — Integration ──────────────────
+  - callsign: "Kappa"
+    domain: "architect"
+    pipeline_stage: "coder"
+    tool_type: "opencode"
+    role_title: "Agent Integration / Harness Wiring"
+    worktree: "polaris-kappa"
+    branch: "claude/polaris-kappa"
+    model_tier: "qwen"
+    tmux_color: "bg=colour21,fg=white"  # navy — kappa
+    owned_paths:
+      - "src/services/agent_registry.py"
+      - "src/tools/generate_agents_md.py"
+      - "data/templates/"
+      - "scripts/spawn_synapse.sh"
+      - "scripts/synapse_write.sh"
+    blocked_paths:
+      - "client/"
+      - "e2e/"
+      - "src/mcp/"
+    key_docs:
+      - "docs/200_taskboard_forever/ARCHITECTURE_TASKBOARD_BIBLE.md"
+    roadmap: ""
+
+  # ── Lambda: Polaris Fleet — Vibe Mistral QA3 ───────────
+  - callsign: "Lambda"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "vibe"
+    role_title: "QA3 / Vibe Mistral Free Tier"
+    worktree: "polaris-lambda"
+    branch: "claude/polaris-lambda"
+    model_tier: "mistral"
+    tmux_color: "bg=colour57,fg=white"  # purple — lambda
+    owned_paths:
+      - "tests/"
+      - "docs/"
+    blocked_paths:
+      - "client/src/"
+      - "src/services/"
+      - "src/mcp/"
+    key_docs: []
+    roadmap: ""
+
+  # ── Mu: Polaris Fleet — Vibe Mistral QA4 ───────────────
+  - callsign: "Mu"
+    domain: "qa"
+    pipeline_stage: "verifier"
+    tool_type: "vibe"
+    role_title: "QA4 / Vibe Mistral Free Tier"
+    worktree: "polaris-mu"
+    branch: "claude/polaris-mu"
+    model_tier: "mistral"
+    tmux_color: "bg=colour93,fg=white"  # bright purple — mu
+    owned_paths:
+      - "tests/"
+      - "docs/"
+    blocked_paths:
+      - "client/src/"
+      - "src/services/"
+      - "src/mcp/"
+    key_docs: []
+    roadmap: ""
+
+  # ── Nu: Polaris Fleet — Vibe Mistral Research ──────────
+  - callsign: "Nu"
+    domain: "architect"
+    pipeline_stage: "coder"
+    tool_type: "vibe"
+    role_title: "Research / Vibe Mistral Free Tier"
+    worktree: "polaris-nu"
+    branch: "claude/polaris-nu"
+    model_tier: "mistral"
+    tmux_color: "bg=colour129,fg=white"  # magenta-purple — nu
+    owned_paths:
+      - "docs/"
+      - "tests/benchmark/"
+    blocked_paths:
+      - "client/src/"
+      - "src/"
+    key_docs: []
+    roadmap: ""
+
 # ── Shared Zones ────────────────────────────────────────────
 # Files where multiple agents have partial ownership.
 # Protocol: declare scope in task description before touching.
