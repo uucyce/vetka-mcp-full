@@ -1,5 +1,5 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 7.0 | **Дата:** 2026-04-07 (Phase 210 — Gemma Fleet: Omicron/Pi/Rho/Sigma + free_code агенты)
+**Версия:** 7.1 | **Дата:** 2026-04-07 (Phase 210 — Gemma Fleet operational: 19 ролей, worktrees созданы, CLAUDE.md regenerated)
 
 ---
 
@@ -23,6 +23,7 @@
 | **Theta** | Qwen3.6 Plus Free | **Opencode** | WEATHER Core — profile manager, universal prompt injection |
 | **Iota** | Qwen3.6 Plus Free | **Opencode** | WEATHER Mediator — local model bridge, context packing |
 | **Kappa** | Qwen3.6 Plus Free | **Opencode** | WEATHER Terminal — xterm.js, CLI agent integration |
+| **Nu** | Mistral Vibe | **Vibe CLI** | Research Agent — free tier, recon + web research |
 | **Mistral-1** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 1 — free tier, 10-15 tasks/day |
 | **Mistral-2** | Mistral Vibe | **Vibe CLI** | QA Agent 5 — free tier, 10-15 tasks/day |
 | **Mistral-3** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 2 — free tier, 10-15 tasks/day |
@@ -198,13 +199,7 @@ scripts/spawn_synapse.sh Sigma gemma-qa free_code
 > export FREE_CODE_BIN=~/Documents/VETKA_Project/free-code/cli-dev  # default
 > ```
 >
-> **Создание worktrees (один раз, Commander domain):**
-> ```bash
-> git worktree add .claude/worktrees/gemma-engine main
-> git worktree add .claude/worktrees/gemma-scout main
-> git worktree add .claude/worktrees/gemma-sherpa main
-> git worktree add .claude/worktrees/gemma-qa main
-> ```
+> **Worktrees уже созданы** (gemma-engine/scout/sherpa/qa готовы к запуску).
 
 #### Fallback: ручной запуск Gemma агента
 
@@ -247,6 +242,7 @@ opencode
 | **Theta** | `weather-core` | WEATHER | **Opencode** | Qwen3.6+ Free | Profile manager, universal prompt injection |
 | **Iota** | `weather-mediator` | WEATHER | **Opencode** | Qwen3.6+ Free | Local model mediator, context packing |
 | **Kappa** | `weather-terminal` | WEATHER | **Opencode** | Qwen3.6+ Free | Terminal integration, CLI agents |
+| **Nu** | `polaris-nu` | Research | **Vibe CLI** | Mistral Vibe | Research Agent — recon, web research, free tier |
 | **Mistral-1** | `weather-mistral-1` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 1 — free tier |
 | **Mistral-2** | `cut-qa-5` | QA5 | **Vibe CLI** | Mistral Vibe | QA Agent 5 — free tier |
 | **Mistral-3** | `weather-mistral-2` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 2 — free tier |
@@ -286,6 +282,7 @@ mcp__vetka__vetka_session_init role=Iota      # → WEATHER Mediator context
 mcp__vetka__vetka_session_init role=Kappa     # → WEATHER Terminal context
 mcp__vetka__vetka_session_init role=Mistral-1 # → WEATHER Agent 1 (Vibe CLI)
 mcp__vetka__vetka_session_init role=Mistral-2 # → QA Agent 5 (Vibe CLI)
+mcp__vetka__vetka_session_init role=Nu        # → Research Agent (Vibe CLI)
 mcp__vetka__vetka_session_init role=Mistral-3 # → WEATHER Agent 2 (Vibe CLI)
 mcp__vetka__vetka_session_init role=Omicron   # → Gemma engine context (free-code)
 mcp__vetka__vetka_session_init role=Pi        # → Gemma scout context (free-code)
