@@ -3536,6 +3536,10 @@ class TaskBoard:
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
             targets.append(("Commander", f"Task completed by {owner}: {title}"))
+            # MARKER_212.WAKE_CHAIN: Also notify verification_agent so QA auto-wakes
+            verifier = task.get("verification_agent", "")
+            if verifier and verifier != owner:
+                targets.append((verifier, f"Task ready for QA: {title}"))
         else:
             return  # Unknown type, skip
 
