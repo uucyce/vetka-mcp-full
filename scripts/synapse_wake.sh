@@ -64,8 +64,17 @@ if [ "$IDLE_SEC" -lt "$WAKE_THRESHOLD" ]; then
     exit 0
 fi
 
-# ── Idle agent: also inject tmux text to trigger inbox read ─
-tmux send-keys -t "$SESSION_NAME" "vetka session init"
+# ── Idle agent: inject notification check (not session init!) ─
+# Agents do session_init but skip notifications — root cause of wake bug.
+# Send direct notification check so agent sees Commander orders immediately.
+
+# Exit tmux copy-mode if active (yellow 'jump to forward' bar blocks input).
+# If not in copy-mode, 'q' is harmless — goes to input buffer.
+tmux send-keys -t "$SESSION_NAME" q
+sleep 0.1
+
+WAKE_PROMPT="Check your notifications: vetka_task_board action=notifications role=$ROLE"
+tmux send-keys -t "$SESSION_NAME" "$WAKE_PROMPT"
 sleep 0.3  # TUI needs time to process typed text before Enter
 tmux send-keys -t "$SESSION_NAME" Enter
-echo "$LOG_PREFIX Woke $ROLE (idle ${IDLE_SEC}s) — notification + tmux poke sent"
+echo "$LOG_PREFIX Woke $ROLE (idle ${IDLE_SEC}s) — notification check sent"
