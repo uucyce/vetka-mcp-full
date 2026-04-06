@@ -1,69 +1,71 @@
 #!/bin/bash
-# scripts/synapse_wake.sh — SYNAPSE: force idle agent to read its notification inbox
-# Phase 206.5 | ARCH: docs/200_taskboard_forever/ROADMAP_SYNAPSE_206.md
-# MARKER_206.SYNAPSE_WAKE
+# scripts/synapse_wake.sh — Wake Synapse agent with dual alert (visual + tmux)
+# Phase 209.4 | MARKER_209.DUAL_WAKE
 #
-# Usage: synapse_wake.sh ROLE [AGENT_TYPE]
-#   ROLE        — agent callsign (Alpha, Beta, Eta, ...)
-#   AGENT_TYPE  — claude_code (default) | opencode | vibe | generic_cli
+# Usage: synapse_wake.sh ROLE [AGENT_TYPE] [MESSAGE]
 #
-# How it works:
-#   Phase 204 already writes a signal file on notify(). If the agent is idle
-#   (no tool calls happening), the PreToolUse hook never fires, so the signal
-#   is never read. synapse_wake.sh nudges the agent by injecting "/inbox" into
-#   its tmux session, which forces a tool call → hook fires → signal read.
-#
-# No-op conditions (safe to skip wake):
-#   - Session does not exist (agent offline)
-#   - Agent was recently active (pane activity within ACTIVE_THRESHOLD_SECS)
+# ALWAYS sends macOS notification (visual alert for human operator).
+# If agent is idle (> WAKE_THRESHOLD), also injects tmux text poke.
+# This ensures Commander sees the alert even when mid-conversation.
 
 set -euo pipefail
 
-ROLE="${1:?Usage: synapse_wake.sh ROLE [AGENT_TYPE]}"
+ROLE="${1:?Usage: synapse_wake.sh ROLE [AGENT_TYPE] [MESSAGE]}"
 AGENT_TYPE="${2:-claude_code}"
+MESSAGE="${3:-Agent $ROLE has pending notifications}"
 
 SESSION_NAME="vetka-$ROLE"
-LOG_PREFIX="[SYNAPSE.WAKE]"
+WAKE_THRESHOLD="${SYNAPSE_WAKE_THRESHOLD:-30}"
+LOG_PREFIX="[SYNAPSE-WAKE]"
 
-# How recently (seconds) a pane must have been active to be considered busy.
-# tmux #{pane_activity} is updated on every byte of output — tool calls produce output.
-ACTIVE_THRESHOLD_SECS="${SYNAPSE_WAKE_THRESHOLD:-30}"
-
-# ── Vibe stub ─────────────────────────────────────────────────────────────────
-if [ "$AGENT_TYPE" = "vibe" ]; then
-    echo "$LOG_PREFIX WARNING: vibe agent wake not implemented — Playwright bridge in 206.7" >&2
-    echo "$LOG_PREFIX Role=$ROLE skipped." >&2
-    exit 0
-fi
-
-# ── Session exists? ───────────────────────────────────────────────────────────
-if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    # MARKER_208.WAKE_FALLBACK: No tmux session — fall back to macOS alerts
-    # Commander and other non-Synapse agents run in raw Terminal, not tmux
+# ── macOS notification (ALWAYS fires — visual interrupt) ──
+# This is the critical fix: even if agent is mid-conversation,
+# the human operator sees the notification banner.
+_send_notification() {
+    local title="$1"
+    local body="$2"
     if pgrep -q WindowServer 2>/dev/null; then
-        WAKE_MSG="Agent $ROLE needs attention — check notification inbox"
-        osascript -e "display notification \"$WAKE_MSG\" with title \"[VETKA] $ROLE Wake\"" 2>/dev/null || true
-        osascript -e 'tell application "Terminal" to activate' 2>/dev/null || true
-        afplay /System/Library/Sounds/Ping.aiff &
-        echo "$LOG_PREFIX $ROLE: no tmux session — sent macOS notification + sound + Terminal activate"
-    else
-        echo "$LOG_PREFIX $ROLE: no session '$SESSION_NAME', no GUI — cannot wake" >&2
+        osascript -e "display notification \"$body\" with title \"$title\" sound name \"Ping\"" 2>/dev/null || true
+        echo "$LOG_PREFIX macOS notification sent: $title"
     fi
+}
+
+# ── Vibe agents: signal file + notification ───────────────
+if [ "$AGENT_TYPE" = "vibe" ]; then
+    SIGNAL_DIR="$HOME/.vetka/signals"
+    mkdir -p "$SIGNAL_DIR"
+    SIGNAL_FILE="$SIGNAL_DIR/${ROLE}_wake_$(date +%s).json"
+    echo "{\"role\": \"$ROLE\", \"action\": \"wake\", \"ts\": $(date +%s), \"message\": \"$MESSAGE\"}" > "$SIGNAL_FILE"
+    _send_notification "SYNAPSE: $ROLE" "$MESSAGE"
+    echo "$LOG_PREFIX $ROLE (vibe) wake signal + notification sent"
     exit 0
 fi
 
-# ── Activity check — no-op if recently active ─────────────────────────────────
-LAST_ACTIVITY=$(tmux display-message -p -t "$SESSION_NAME" '#{pane_activity}' 2>/dev/null || echo "0")
-NOW=$(date +%s)
-DIFF=$((NOW - LAST_ACTIVITY))
-
-if [ "$LAST_ACTIVITY" != "0" ] && [ "$DIFF" -lt "$ACTIVE_THRESHOLD_SECS" ]; then
-    echo "$LOG_PREFIX $ROLE is active (pane activity ${DIFF}s ago, threshold=${ACTIVE_THRESHOLD_SECS}s) — no-op"
-    exit 0
+# ── Validate tmux session exists ──────────────────────────
+if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    # Agent not running — still send notification so operator knows
+    _send_notification "SYNAPSE: $ROLE OFFLINE" "$ROLE is not running — needs spawn"
+    echo "$LOG_PREFIX $ROLE not running (no tmux session '$SESSION_NAME')"
+    exit 1
 fi
 
-# ── Send inbox wake trigger ───────────────────────────────────────────────────
-# Use synapse_write.sh for agent-type-aware submit (opencode TUI needs split text+Enter)
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"$SCRIPT_DIR/synapse_write.sh" "$ROLE" "vetka session init" "$AGENT_TYPE"
-echo "$LOG_PREFIX $ROLE ← woken (sent inbox trigger, last activity was ${DIFF}s ago)"
+# ── ALWAYS send macOS notification ────────────────────────
+_send_notification "SYNAPSE: Wake $ROLE" "$MESSAGE"
+
+# ── ALWAYS inject notification check into agent ───────────
+# Previous bug: idle threshold guard skipped tmux poke for "active" agents.
+# But agent at idle prompt (waiting for input) counts as "active" by tmux
+# pane_activity metric. Result: notifications never delivered.
+# Fix: ALWAYS inject. If agent is mid-generation, text queues in tmux
+# input buffer and executes when agent finishes.
+
+# Exit tmux copy-mode if active (yellow bar blocks input).
+# If not in copy-mode, 'q' goes to input buffer — harmless, gets consumed.
+tmux send-keys -t "$SESSION_NAME" q
+sleep 0.1
+
+WAKE_PROMPT="Check your notifications: vetka_task_board action=notifications role=$ROLE"
+tmux send-keys -t "$SESSION_NAME" "$WAKE_PROMPT"
+sleep 0.3  # TUI needs time to process typed text before Enter
+tmux send-keys -t "$SESSION_NAME" Enter
+echo "$LOG_PREFIX Woke $ROLE — notification check injected"

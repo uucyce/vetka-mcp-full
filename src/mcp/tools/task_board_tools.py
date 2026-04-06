@@ -1844,8 +1844,175 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "agent_activity":
         return _agent_activity(board, arguments)
 
+    # MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill
+    elif action == "spawn":
+        return _handle_synapse(arguments)
+
     else:
         return {"success": False, "error": f"Unknown action: {action}"}
+
+
+def _handle_synapse(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """MARKER_206.SYNAPSE: Commander-facing spawn/write/wake/status/kill.
+
+    Sub-operations via 'sub' parameter:
+      spawn  — start agent in new terminal window
+      write  — send prompt text to running agent session
+      wake   — force agent to read notification inbox
+      status — list running agent tmux sessions
+      kill   — stop agent session
+    """
+    import subprocess
+
+    sub = arguments.get("sub", "spawn")
+    role = arguments.get("role")
+    scripts_dir = Path(__file__).resolve().parent.parent.parent.parent / "scripts"
+
+    if sub == "status":
+        # List all vetka-* tmux sessions
+        result = subprocess.run(
+            ["tmux", "list-sessions", "-F", "#{session_name} #{session_created} #{session_attached}"],
+            capture_output=True, text=True,
+        )
+        sessions = []
+        if result.returncode == 0:
+            for line in result.stdout.strip().split("\n"):
+                if line.startswith("vetka-"):
+                    parts = line.split()
+                    sessions.append({
+                        "session": parts[0],
+                        "role": parts[0].replace("vetka-", ""),
+                        "created": parts[1] if len(parts) > 1 else None,
+                        "attached": parts[2] if len(parts) > 2 else "0",
+                    })
+        return {"success": True, "sessions": sessions, "count": len(sessions)}
+
+    if not role:
+        return {"success": False, "error": "role is required for spawn sub-operations"}
+
+    session_name = f"vetka-{role}"
+
+    if sub == "spawn":
+        # Load agent info from registry
+        import yaml
+        registry_path = Path(__file__).resolve().parent.parent.parent.parent / "data" / "templates" / "agent_registry.yaml"
+        agent_type = "claude_code"
+        worktree = None
+        try:
+            with open(registry_path) as f:
+                data = yaml.safe_load(f)
+            for r in data.get("roles", []):
+                if r.get("callsign") == role:
+                    worktree = r.get("worktree")
+                    agent_type = r.get("agent_type", "claude_code")
+                    break
+        except Exception as exc:
+            return {"success": False, "error": f"Failed to read agent_registry.yaml: {exc}"}
+
+        if not worktree:
+            return {"success": False, "error": f"Role '{role}' not found in agent_registry.yaml or has no worktree"}
+
+        # Check if already running
+        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+        if check.returncode == 0:
+            return {"success": True, "already_running": True, "session": session_name,
+                    "message": f"{role} already running in {session_name}"}
+
+        synapse_script = scripts_dir / "spawn_synapse.sh"
+        if not synapse_script.exists():
+            return {"success": False, "error": f"spawn_synapse.sh not found at {synapse_script}"}
+
+        proc = subprocess.run(
+            [str(synapse_script), role, worktree, agent_type],
+            capture_output=True, text=True, timeout=15,
+        )
+        if proc.returncode != 0:
+            return {"success": False, "error": f"Spawn failed: {proc.stderr.strip()}"}
+
+        return {"success": True, "session": session_name, "agent_type": agent_type,
+                "worktree": worktree, "message": proc.stdout.strip()}
+
+    elif sub == "write":
+        prompt = arguments.get("prompt") or arguments.get("message")
+        if not prompt:
+            return {"success": False, "error": "prompt or message is required for write"}
+
+        # Check session exists
+        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+        if check.returncode != 0:
+            return {"success": False, "error": f"No active session {session_name} — spawn agent first"}
+
+        # Try synapse_write.sh first, fall back to direct tmux send-keys
+        write_script = scripts_dir / "synapse_write.sh"
+        if write_script.exists():
+            proc = subprocess.run(
+                [str(write_script), role, prompt],
+                capture_output=True, text=True, timeout=10,
+            )
+            ok = proc.returncode == 0
+        else:
+            # Direct tmux send-keys fallback
+            proc = subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, prompt, "Enter"],
+                capture_output=True, text=True,
+            )
+            ok = proc.returncode == 0
+
+        return {"success": ok, "session": session_name,
+                "message": f"Sent to {role}" if ok else proc.stderr.strip()}
+
+    elif sub == "wake":
+        # Check session exists
+        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+        if check.returncode != 0:
+            return {"success": False, "error": f"No active session {session_name} — agent not running"}
+
+        # Try synapse_wake.sh first, fall back to direct tmux send-keys
+        wake_script = scripts_dir / "synapse_wake.sh"
+        if wake_script.exists():
+            proc = subprocess.run(
+                [str(wake_script), role],
+                capture_output=True, text=True, timeout=10,
+            )
+            ok = proc.returncode == 0
+        else:
+            # Fallback: send notification check so agent sees Commander orders
+            # Exit copy-mode first ('q' is harmless if not in copy-mode)
+            subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, "q"],
+                capture_output=True, text=True,
+            )
+            import time; time.sleep(0.1)
+            wake_prompt = f"Check your notifications: vetka_task_board action=notifications role={role}"
+            subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, wake_prompt],
+                capture_output=True, text=True,
+            )
+            time.sleep(0.3)  # TUI needs time before Enter
+            proc = subprocess.run(
+                ["tmux", "send-keys", "-t", session_name, "Enter"],
+                capture_output=True, text=True,
+            )
+            ok = proc.returncode == 0
+
+        return {"success": ok, "session": session_name,
+                "message": f"Wake sent to {role}" if ok else proc.stderr.strip()}
+
+    elif sub == "kill":
+        check = subprocess.run(["tmux", "has-session", "-t", session_name], capture_output=True)
+        if check.returncode != 0:
+            return {"success": True, "message": f"{role} not running (no session {session_name})"}
+
+        proc = subprocess.run(
+            ["tmux", "kill-session", "-t", session_name],
+            capture_output=True, text=True,
+        )
+        return {"success": proc.returncode == 0, "session": session_name,
+                "message": f"{role} killed" if proc.returncode == 0 else proc.stderr.strip()}
+
+    else:
+        return {"success": False,
+                "error": f"Unknown sub-operation '{sub}'. Valid: spawn, write, wake, status, kill"}
 
 
 def _inject_debrief(result: dict, arguments: dict) -> None:
