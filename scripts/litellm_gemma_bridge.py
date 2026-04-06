@@ -60,16 +60,74 @@ TOOL_CALL_KEYS = [
     ("function", "args"),          # OpenAI variant (observed in Gemma output)
 ]
 
+# ── MARKER_GEMMA_BRIDGE_3B: Priority B — system prompt + XML parser ──────────
+# Inject this prompt so Gemma outputs structured XML instead of arbitrary JSON.
+# XML is unambiguous: no need to hunt for JSON in mixed text.
+GEMMA_TOOL_SYSTEM_PROMPT = """\
+When you need to call a tool, output ONLY this XML block and nothing else:
+<tool_use>
+<name>exact_tool_name</name>
+<input>{"param1": "value1"}</input>
+</tool_use>
+
+Rules:
+- Use the exact tool name as given in the tool definitions.
+- The <input> tag must contain valid JSON.
+- Do NOT output raw JSON objects, markdown code blocks, or explanation text.
+- One XML block per tool call. Chain multiple calls sequentially.
+- If no tool is needed, respond with plain text (no XML).
+"""
+
+_TOOL_USE_XML_RE = re.compile(
+    r"<tool_use>\s*<name>(.*?)</name>\s*<input>(.*?)</input>\s*</tool_use>",
+    re.DOTALL,
+)
+
+
+def _extract_xml_tool_calls(text: str) -> list:
+    """Extract <tool_use> XML blocks from Gemma response (~15 lines, Priority B parser)."""
+    calls = []
+    for m in _TOOL_USE_XML_RE.finditer(text):
+        name = m.group(1).strip()
+        if not name:
+            continue
+        try:
+            input_data = json.loads(m.group(2).strip())
+        except (json.JSONDecodeError, ValueError):
+            input_data = {}
+        calls.append({"tool_name": name, "parameters": input_data})
+    return calls
+
+
+def _inject_system_prompt(req_data: dict) -> dict:
+    """Prepend GEMMA_TOOL_SYSTEM_PROMPT to the request system field if not already present."""
+    existing = req_data.get("system", "")
+    if isinstance(existing, str):
+        if GEMMA_TOOL_SYSTEM_PROMPT.strip() not in existing:
+            req_data["system"] = GEMMA_TOOL_SYSTEM_PROMPT + ("\n\n" + existing if existing else "")
+    elif isinstance(existing, list):
+        existing_text = " ".join(
+            b.get("text", "") for b in existing if isinstance(b, dict)
+        )
+        if GEMMA_TOOL_SYSTEM_PROMPT.strip() not in existing_text:
+            req_data["system"] = [{"type": "text", "text": GEMMA_TOOL_SYSTEM_PROMPT}] + existing
+    else:
+        req_data["system"] = GEMMA_TOOL_SYSTEM_PROMPT
+    return req_data
+
 
 def _extract_tool_calls(text: str) -> list:
-    """Extract JSON tool call objects from text response.
+    """Extract tool calls from text response.
 
-    Handles:
-    - Clean JSON: {"tool_name": "...", "parameters": {...}}
-    - Markdown wrapped: ```json ... ```
-    - Multiple tool calls in sequence
-    - Mixed text + JSON
+    Priority B (XML) tried first — unambiguous, matches GEMMA_TOOL_SYSTEM_PROMPT.
+    Fallback to JSON heuristics for models without the system prompt.
     """
+    # Priority B: XML parser (fast, unambiguous)
+    xml_calls = _extract_xml_tool_calls(text)
+    if xml_calls:
+        return xml_calls
+
+    # Fallback: JSON heuristics (legacy / no system prompt)
     calls = []
     # Strip markdown blocks first
     clean = re.sub(r"```(?:json)?\s*\n?", "", text)
@@ -269,6 +327,15 @@ class BridgeHandler(BaseHTTPRequestHandler):
             try:
                 req_data = json.loads(body)
                 is_stream = req_data.get("stream", False)
+            except Exception:
+                pass
+
+        # Inject system prompt so Gemma outputs XML tool calls (Priority B)
+        if is_messages and body:
+            try:
+                req_data = json.loads(body)
+                req_data = _inject_system_prompt(req_data)
+                body = json.dumps(req_data).encode()
             except Exception:
                 pass
 
