@@ -1,96 +1,77 @@
 #!/bin/bash
-# scripts/synapse_write.sh — SYNAPSE: inject prompt into a running agent's session
-# Phase 206.4 | ARCH: docs/200_taskboard_forever/ROADMAP_SYNAPSE_206.md
-# MARKER_206.SYNAPSE_WRITE
+# scripts/synapse_write.sh — Inject prompt text into running Synapse agent
+# Phase 209 | MARKER_209.SYNAPSE_WRITE
 #
-# Usage:
-#   synapse_write.sh ROLE 'prompt text' [AGENT_TYPE]
-#   echo -e "line1\nline2" | synapse_write.sh ROLE - [AGENT_TYPE]
+# Usage: synapse_write.sh ROLE 'prompt text' [AGENT_TYPE]
+#   echo "multi-line prompt" | synapse_write.sh ROLE - [AGENT_TYPE]
 #
-#   ROLE        — agent callsign (Alpha, Beta, Eta, ...)
-#   PROMPT      — text to inject, or '-' to read from stdin (multi-line)
-#   AGENT_TYPE  — claude_code (default) | opencode | vibe | generic_cli
+# Works WITHOUT window focus — uses tmux send-keys for programmatic access.
 
 set -euo pipefail
 
-ROLE="${1:?Usage: synapse_write.sh ROLE PROMPT [AGENT_TYPE]}"
-PROMPT_ARG="${2:?Usage: synapse_write.sh ROLE PROMPT [AGENT_TYPE]}"
+ROLE="${1:?Usage: synapse_write.sh ROLE 'prompt text' [AGENT_TYPE]}"
+PROMPT="${2:?Usage: synapse_write.sh ROLE 'prompt text' [AGENT_TYPE]}"
 AGENT_TYPE="${3:-claude_code}"
 
 SESSION_NAME="vetka-$ROLE"
-LOG_PREFIX="[SYNAPSE.WRITE]"
-TMPFILE=""
-BUFFER_NAME="synapse_${ROLE}_write"
+LOG_PREFIX="[SYNAPSE-WRITE]"
 
-cleanup() {
-    [ -n "$TMPFILE" ] && [ -f "$TMPFILE" ] && rm -f "$TMPFILE"
-    tmux delete-buffer -b "$BUFFER_NAME" 2>/dev/null || true
-}
-trap cleanup EXIT
+# ── Validate session exists ────────────────────────────────
+if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+    echo "$LOG_PREFIX ERROR: no tmux session '$SESSION_NAME' — agent not running" >&2
+    exit 1
+fi
 
-# ── Vibe stub (Playwright bridge not yet implemented — SYNAPSE-206.7) ─────────
+# ── Read from stdin if PROMPT is "-" ───────────────────────
+if [ "$PROMPT" = "-" ]; then
+    PROMPT=$(cat)
+fi
+
+if [ -z "$PROMPT" ]; then
+    echo "$LOG_PREFIX ERROR: empty prompt" >&2
+    exit 1
+fi
+
+# ── Vibe agents: signal file mechanism (no tmux) ──────────
 if [ "$AGENT_TYPE" = "vibe" ]; then
-    echo "$LOG_PREFIX WARNING: vibe agent_type not supported yet" >&2
-    echo "$LOG_PREFIX Playwright bridge will be wired in SYNAPSE-206.7. Role=$ROLE skipped." >&2
+    SIGNAL_DIR="$HOME/.vetka/signals"
+    mkdir -p "$SIGNAL_DIR"
+    SIGNAL_FILE="$SIGNAL_DIR/${ROLE}_write_$(date +%s).json"
+    python3 -c "
+import json, sys
+json.dump({'role': '$ROLE', 'prompt': sys.stdin.read(), 'ts': $(date +%s)}, open('$SIGNAL_FILE', 'w'))
+" <<< "$PROMPT"
+    echo "$LOG_PREFIX $ROLE (vibe) signal written to $SIGNAL_FILE"
     exit 0
 fi
 
-# ── Validate session exists ───────────────────────────────────────────────────
-if ! tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-    echo "$LOG_PREFIX ERROR: tmux session '$SESSION_NAME' not found for role $ROLE" >&2
-    echo "$LOG_PREFIX Hint: spawn first with:  spawn_synapse.sh $ROLE <worktree> $AGENT_TYPE" >&2
-    exit 1
-fi
+# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit key ──────
+# opencode Bubble Tea TUI: Enter submits in Zen mode (empirically verified)
+# claude_code: Enter submits
+# Future: read submit_key from agent_registry.yaml if per-agent override needed
+case "$AGENT_TYPE" in
+    opencode)
+        SUBMIT_KEY="Enter"
+        ;;
+    *)
+        SUBMIT_KEY="Enter"
+        ;;
+esac
 
-# ── Resolve prompt ────────────────────────────────────────────────────────────
-TMPFILE=$(mktemp /tmp/synapse_write_XXXXXX.txt)
+# ── Detect single-line vs multi-line ──────────────────────
+NEWLINE_COUNT=$(echo "$PROMPT" | wc -l | tr -d ' ')
 
-if [ "$PROMPT_ARG" = "-" ]; then
-    # Read from stdin (multi-line heredoc / pipe)
-    cat > "$TMPFILE"
+if [ "$NEWLINE_COUNT" -le 1 ]; then
+    # Single-line: direct send-keys
+    tmux send-keys -t "$SESSION_NAME" "$PROMPT" "$SUBMIT_KEY"
+    echo "$LOG_PREFIX Sent to $ROLE ($AGENT_TYPE): ${PROMPT:0:80}..."
 else
-    printf '%s' "$PROMPT_ARG" > "$TMPFILE"
-fi
-
-if [ ! -s "$TMPFILE" ]; then
-    echo "$LOG_PREFIX ERROR: prompt is empty" >&2
-    exit 1
-fi
-
-LINE_COUNT=$(wc -l < "$TMPFILE")
-
-# ── Agent-type-aware submit ───────────────────────────────────────────────────
-# opencode TUI treats batched text+Enter as "text with newline" not "type then submit".
-# Fix: send text and submit key separately. Opencode needs a delay for TUI to process.
-send_submit_key() {
-    local session="$1"
-    local agent="$2"
-    case "$agent" in
-        opencode)
-            # opencode TUI needs a brief pause between text input and submit
-            sleep 0.3
-            tmux send-keys -t "$session" Enter
-            ;;
-        *)
-            # claude_code, generic_cli: Enter submits immediately
-            tmux send-keys -t "$session" Enter
-            ;;
-    esac
-}
-
-# ── Send prompt ───────────────────────────────────────────────────────────────
-if [ "$LINE_COUNT" -le 1 ]; then
-    # Single-line: send text literally, then submit separately
-    PROMPT_TEXT=$(cat "$TMPFILE")
-    tmux send-keys -t "$SESSION_NAME" -l "$PROMPT_TEXT"
-    send_submit_key "$SESSION_NAME" "$AGENT_TYPE"
-    PREVIEW="${PROMPT_TEXT:0:80}"
-    [ "${#PROMPT_TEXT}" -gt 80 ] && PREVIEW="${PREVIEW}..."
-    echo "$LOG_PREFIX $ROLE ($AGENT_TYPE) ← \"$PREVIEW\""
-else
-    # Multi-line: load into tmux paste buffer, then paste + submit separately
-    tmux load-buffer -b "$BUFFER_NAME" "$TMPFILE"
-    tmux paste-buffer -b "$BUFFER_NAME" -t "$SESSION_NAME"
-    send_submit_key "$SESSION_NAME" "$AGENT_TYPE"
-    echo "$LOG_PREFIX $ROLE ($AGENT_TYPE) ← multi-line prompt injected (${LINE_COUNT} lines)"
+    # Multi-line: use tmux load-buffer + paste, then submit
+    TMPFILE=$(mktemp /tmp/synapse_write_XXXXXX.txt)
+    echo "$PROMPT" > "$TMPFILE"
+    tmux load-buffer -b synapse_write_buf "$TMPFILE"
+    tmux paste-buffer -b synapse_write_buf -t "$SESSION_NAME"
+    tmux send-keys -t "$SESSION_NAME" "" "$SUBMIT_KEY"
+    rm -f "$TMPFILE"
+    echo "$LOG_PREFIX Pasted multi-line to $ROLE ($AGENT_TYPE, ${NEWLINE_COUNT} lines)"
 fi

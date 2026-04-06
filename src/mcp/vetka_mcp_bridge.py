@@ -56,6 +56,7 @@ import signal
 import uuid
 import contextvars
 import argparse
+from pathlib import Path
 from typing import Any, Optional
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -1923,22 +1924,26 @@ async def call_tool(name: str, arguments: dict[str, Any]) -> list[TextContent]:
                     MCPSessionDispatcher.reset()
                 except Exception:
                     pass
+                # MARKER_205.HOT_RELOAD: Reset EventBus + TaskBoard singletons before reload
+                try:
+                    from src.orchestration.event_bus import reset_event_bus
+                    reset_event_bus()
+                except Exception:
+                    pass
                 try:
                     from src.orchestration.task_board import reset_task_board
                     reset_task_board()
                 except Exception:
                     pass
+                # Reload order: event_bus → task_board → tools (dependency order)
+                import src.orchestration.event_bus as _bus_mod
+                importlib.reload(_bus_mod)
                 import src.orchestration.task_board as _board_mod
                 importlib.reload(_board_mod)
                 import src.mcp.tools.task_board_tools as _tb_mod
                 importlib.reload(_tb_mod)
                 from src.mcp.tools.task_board_tools import handle_task_board
                 result = handle_task_board(arguments)
-                # MARKER_201.MCP_NOTIFY_RECEIVER: inject cross-process notifications
-                if _notification_receiver is not None:
-                    _push = _notification_receiver.drain_pending()
-                    if _push:
-                        result["push_notifications"] = _push
                 transport_note = "🔧 Transport: vetka_task_board (local fallback)"
                 return [TextContent(type="text", text=f"{transport_note}\n{json.dumps(result, indent=2, ensure_ascii=False)}")]
             except Exception as e:
@@ -2761,108 +2766,10 @@ async def graceful_shutdown():
     except Exception as e:
         print(f"[MCP] Pool cleanup error: {e}", file=sys.stderr)
 
-    # MARKER_201.MCP_NOTIFY_RECEIVER: Stop notification receiver on shutdown
-    if _notification_receiver is not None:
-        _notification_receiver.stop()
-
     # Close main client
     await cleanup_client()
 
     print("[MCP] Shutdown complete", file=sys.stderr)
-
-
-# MARKER_201.MCP_NOTIFY_RECEIVER: Cross-process notification receiver.
-# Connects to UDS Daemon (/tmp/vetka-events.uds) as an "agent" client.
-# The daemon fans out all EventBus events from all running worktrees to
-# this receiver, which buffers them for piggyback delivery in the next
-# vetka_task_board MCP response.
-#
-# Wire protocol: 4-byte big-endian length prefix + JSON payload.
-# Registration: first outgoing frame {"type": "agent", "role": <role>}
-#
-# Lifecycle: started once in main() when VETKA_AGENT_ROLE env var is set.
-# Reconnects with exponential backoff if the daemon is not running yet.
-
-class MCPNotificationReceiver:
-    """Buffers push notifications from the UDS daemon for piggybacking."""
-
-    SOCKET_PATH = "/tmp/vetka-events.uds"
-
-    def __init__(self, role: str, socket_path: str = SOCKET_PATH):
-        self._role = role
-        self._socket_path = socket_path
-        self._pending: list = []
-        self._running = False
-        self._task: Optional[asyncio.Task] = None
-
-    def start(self) -> None:
-        """Launch background listener coroutine as an asyncio Task."""
-        if self._task is None or self._task.done():
-            self._running = True
-            self._task = asyncio.create_task(
-                self._listen_loop(), name="uds-notify-receiver"
-            )
-
-    def stop(self) -> None:
-        """Cancel the background listener."""
-        self._running = False
-        if self._task and not self._task.done():
-            self._task.cancel()
-
-    def drain_pending(self) -> list:
-        """Return and clear all buffered notification frames."""
-        result = self._pending[:]
-        self._pending.clear()
-        return result
-
-    async def _listen_loop(self) -> None:
-        """Connect → register → read frames in a loop; reconnect on failure."""
-        backoff = 1.0
-        while self._running:
-            try:
-                reader, writer = await asyncio.open_unix_connection(self._socket_path)
-                # Send agent registration as first frame
-                reg = json.dumps({"type": "agent", "role": self._role}).encode()
-                writer.write(struct.pack(">I", len(reg)) + reg)
-                await writer.drain()
-                backoff = 1.0  # reset after successful connect
-
-                # Read length-prefixed frames until disconnect
-                while self._running:
-                    length_bytes = await reader.readexactly(4)
-                    length = struct.unpack(">I", length_bytes)[0]
-                    if length > 1_048_576:  # 1 MB sanity cap
-                        logger.warning("[MCPNotify] Oversized frame (%d bytes), reconnecting", length)
-                        break
-                    payload = await reader.readexactly(length)
-                    frame = json.loads(payload.decode())
-                    self._pending.append(frame)
-                    # Prevent unbounded growth between task_board calls
-                    if len(self._pending) > 200:
-                        self._pending = self._pending[-200:]
-
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except Exception:
-                    pass
-
-            except (ConnectionRefusedError, FileNotFoundError):
-                pass  # daemon not running yet — retry silently
-            except asyncio.CancelledError:
-                return
-            except asyncio.IncompleteReadError:
-                pass  # daemon closed connection — reconnect
-            except Exception as exc:
-                logger.debug("[MCPNotify] Receiver error: %s", exc)
-
-            if self._running:
-                await asyncio.sleep(backoff)
-                backoff = min(backoff * 2, 30.0)
-
-
-# Module-level singleton — set in main() when VETKA_AGENT_ROLE is present
-_notification_receiver: Optional[MCPNotificationReceiver] = None
 
 
 # MARKER_106a_4: Enhanced main with HTTP/WS/stdio modes
@@ -2880,17 +2787,39 @@ async def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGHUP, signal_handler)  # MARKER_181.6.12: Terminal close → graceful shutdown
 
+    # MARKER_205.HOT_RELOAD: SIGUSR1 triggers full module reload without restart.
+    # Usage: kill -USR1 $(pgrep -f vetka_mcp_bridge)
+    def _reload_handler(signum, frame):
+        import importlib as _rl
+        _log = __import__('logging').getLogger("VETKA_MCP")
+        try:
+            from src.orchestration.event_bus import reset_event_bus
+            reset_event_bus()
+        except Exception:
+            pass
+        try:
+            from src.orchestration.task_board import reset_task_board
+            reset_task_board()
+        except Exception:
+            pass
+        try:
+            from src.mcp.mcp_actor import MCPSessionDispatcher
+            MCPSessionDispatcher.reset()
+        except Exception:
+            pass
+        import src.orchestration.event_bus as _em
+        _rl.reload(_em)
+        import src.orchestration.task_board as _bm
+        _rl.reload(_bm)
+        import src.mcp.tools.task_board_tools as _tm
+        _rl.reload(_tm)
+        _log.info("[MCP] HOT_RELOAD: all modules reloaded via SIGUSR1")
+        print("[MCP] HOT_RELOAD complete — task_board + event_bus + tools reloaded", file=__import__('sys').stderr)
+
+    signal.signal(signal.SIGUSR1, _reload_handler)
+
     session_id = await init_client(session_id=args.session_id)
     print(f"[MCP] Started with session_id={session_id[:8]}...", file=sys.stderr)
-
-    # MARKER_201.MCP_NOTIFY_RECEIVER: Start cross-process notification receiver.
-    # Connects to UDS daemon and buffers push events for piggyback delivery.
-    global _notification_receiver
-    _agent_role = os.environ.get("VETKA_AGENT_ROLE", "").strip()
-    if _agent_role:
-        _notification_receiver = MCPNotificationReceiver(_agent_role)
-        _notification_receiver.start()
-        print(f"[MCP] MCPNotificationReceiver started (role={_agent_role})", file=sys.stderr)
 
     try:
         if args.http or args.ws:

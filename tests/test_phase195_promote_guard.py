@@ -37,16 +37,17 @@ def test_promote_rejects_unmerged_commit(tmp_path):
     """promote_to_main should refuse when commit is NOT on main."""
     board = _make_board(tmp_path)
     tid = board.add_task("Test worktree task", priority=3)
-    board.update_task(tid, status="done_worktree", commit_hash="abc123def")
+    # Must go through verified to pass QA_GATE (which fires before IS_ANCESTOR)
+    board.update_task(tid, status="verified", commit_hash="abc123def")
 
     with patch.object(type(board), '_is_commit_on_main', return_value=False):
         result = board.promote_to_main(tid, merge_commit_hash="abc123def")
 
     assert result["success"] is False
     assert "NOT on main" in result["error"]
-    # Task should remain done_worktree
+    # Task should remain verified (not promoted)
     task = board.get_task(tid)
-    assert task["status"] == "done_worktree"
+    assert task["status"] == "verified"
 
 
 # ── Test 2: promote_to_main succeeds when commit is on main ─────
@@ -55,7 +56,8 @@ def test_promote_succeeds_when_on_main(tmp_path):
     """promote_to_main should succeed when commit IS on main."""
     board = _make_board(tmp_path)
     tid = board.add_task("Test merged task", priority=3)
-    board.update_task(tid, status="done_worktree", commit_hash="abc123def")
+    # Must go through verified to pass QA_GATE (fires before IS_ANCESTOR)
+    board.update_task(tid, status="verified", commit_hash="abc123def")
 
     with patch.object(type(board), '_is_commit_on_main', return_value=True):
         result = board.promote_to_main(tid, merge_commit_hash="merge456")
@@ -154,7 +156,8 @@ def test_promote_without_hash_blocked(tmp_path):
     """MARKER_195.20c: promote without commit_hash is blocked — no paper promotions."""
     board = _make_board(tmp_path)
     tid = board.add_task("Task without proof", priority=3)
-    board.update_task(tid, status="done_worktree", commit_hash="stored_hash_123")
+    # Must go through verified to pass QA_GATE (fires before commit_hash check)
+    board.update_task(tid, status="verified", commit_hash="stored_hash_123")
 
     result = board.promote_to_main(tid)  # No merge_commit_hash
 
@@ -162,7 +165,7 @@ def test_promote_without_hash_blocked(tmp_path):
     assert "commit_hash required" in result["error"]
     # Status must NOT have changed
     task = board.get_task(tid)
-    assert task["status"] == "done_worktree"
+    assert task["status"] == "verified"
 
 
 # ── Test 9: _detect_current_branch passes cwd to subprocess ───
