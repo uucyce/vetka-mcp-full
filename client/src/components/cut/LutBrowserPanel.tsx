@@ -164,7 +164,7 @@ export default function LutBrowserPanel() {
       ...lane,
       clips: (lane.clips || []).map((clip) => {
         if (clip.clip_id !== selectedClipId) return clip;
-        const cc = (clip as any).color_correction || {};
+        const cc = clip.color_correction ?? {};
         return { ...clip, color_correction: { ...cc, lutPath: lut.path, lutName: lut.name } };
       }),
     }));

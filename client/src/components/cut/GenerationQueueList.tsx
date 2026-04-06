@@ -13,10 +13,12 @@
  * @task tb_1774432042_1
  */
 import { useState, useCallback, useRef, useEffect, type CSSProperties, type MouseEvent } from 'react';
+import { useGenerationControlStore, type JobRecord, type JobRecordStatus } from '../../store/useGenerationControlStore';
+import { PROVIDER_MAP } from '../../config/generation.config';
 
-// ─── Types ───
+// ─── Types (local view model — maps from JobRecord) ───
 
-type JobStatus = 'queued' | 'generating' | 'previewing' | 'completed' | 'cancelled' | 'failed';
+type JobStatus = JobRecordStatus;
 
 interface GenerationJob {
   id: string;
@@ -39,14 +41,24 @@ interface ContextMenuState {
   jobId: string | null;
 }
 
-// ─── Demo data ───
+// ─── Map store JobRecord → local view model ───
 
-const DEMO_JOBS: GenerationJob[] = [
-  { id: 'j1', providerId: 'runway', providerMonogram: 'R', prompt: 'Cinematic drone shot of mountains at golden hour', status: 'generating', progress: 0.65, cost: 0.50, eta: '~12s', createdAt: Date.now() - 30000, completedAt: null, previewUrl: null },
-  { id: 'j2', providerId: 'sora', providerMonogram: 'S', prompt: 'Slow motion rain drops on window', status: 'queued', progress: 0, cost: null, eta: null, createdAt: Date.now() - 10000, completedAt: null, previewUrl: null },
-  { id: 'j3', providerId: 'kling', providerMonogram: 'K', prompt: 'Interview b-roll, office environment', status: 'completed', progress: 1, cost: 0.30, eta: null, createdAt: Date.now() - 120000, completedAt: Date.now() - 60000, previewUrl: null },
-  { id: 'j4', providerId: 'elevenlabs', providerMonogram: 'E', prompt: 'Narrator voice: "In the beginning..."', status: 'failed', progress: 0, cost: null, eta: null, createdAt: Date.now() - 90000, completedAt: null, previewUrl: null },
-];
+function toViewModel(r: JobRecord): GenerationJob {
+  const provider = PROVIDER_MAP.get(r.providerId);
+  return {
+    id: r.id,
+    providerId: r.providerId,
+    providerMonogram: provider?.monogram ?? r.providerId.slice(0, 1).toUpperCase(),
+    prompt: r.prompt,
+    status: r.status,
+    progress: r.progress,
+    cost: r.cost,
+    eta: r.eta,
+    createdAt: r.createdAt,
+    completedAt: r.completedAt,
+    previewUrl: r.previewUrl,
+  };
+}
 
 // ─── Styles ───
 
@@ -151,7 +163,33 @@ function statusLabel(status: JobStatus): string {
 // ─── Component ───
 
 export default function GenerationQueueList() {
-  const [jobs, setJobs] = useState<GenerationJob[]>(DEMO_JOBS);
+  // Initialize from store; sync when store history changes (new jobs arrive)
+  const storeHistory = useGenerationControlStore((s) => s.jobHistory);
+  const [jobs, setJobs] = useState<GenerationJob[]>(() => storeHistory.map(toViewModel));
+
+  // Sync store → local when new jobs added (avoids overwriting local context-menu mutations)
+  const prevLenRef = useRef(storeHistory.length);
+  useEffect(() => {
+    if (storeHistory.length !== prevLenRef.current) {
+      prevLenRef.current = storeHistory.length;
+      setJobs(storeHistory.map(toViewModel));
+    }
+  }, [storeHistory]);
+
+  // Keep active job's status/progress in sync
+  useEffect(() => {
+    if (storeHistory.length === 0) return;
+    const active = storeHistory[0];
+    setJobs((prev) => {
+      if (prev.length === 0) return prev;
+      const head = prev[0];
+      if (head.id === active.id && (head.status !== active.status || head.progress !== active.progress)) {
+        return [toViewModel(active), ...prev.slice(1)];
+      }
+      return prev;
+    });
+  }, [storeHistory]);
+
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     visible: false, x: 0, y: 0, jobId: null,
   });

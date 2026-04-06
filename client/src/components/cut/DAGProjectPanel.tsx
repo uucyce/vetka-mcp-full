@@ -10,7 +10,7 @@
  *
  * Ref: CUT_TARGET_ARCHITECTURE.md §2.2, CUT_DATA_MODEL.md
  */
-import { useCallback, useEffect, useState, useRef, type CSSProperties } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import {
   ReactFlow,
   Background,
@@ -139,8 +139,6 @@ function layoutNodes(nodes: DAGNodeData[], edges: { source: string; target: stri
   const mediaNodes = nodes.filter((n) => n.node_type !== 'scene_chunk');
 
   // Find max time for Y inversion
-  const maxSec = spineNodes.reduce((mx, n) => Math.max(mx, (n.start_sec ?? 0) + (n.duration_sec ?? 0)), 0);
-
   // MARKER_C8.1: Y direction — flipY false = START top, END bottom (positive Y = down in ReactFlow)
   const yPos = (sec: number) => flipY ? -(sec * PX_PER_SEC) : sec * PX_PER_SEC;
 

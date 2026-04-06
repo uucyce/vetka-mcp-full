@@ -244,6 +244,7 @@ export default function ProjectPanel() {
   const [dragging, setDragging] = useState(false);
   const [collapsedBins, setCollapsedBins] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
   // MARKER_W5.4: View mode
   const [viewMode, setViewMode] = useState<ProjectViewMode>('list');
   // MARKER_GAMMA-19: Context menu for project items
@@ -304,6 +305,51 @@ export default function ProjectPanel() {
   type SortDir = 'asc' | 'desc';
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  // ─── Open file picker (MARKER_IMPORT-DIALOG-FIX) ───
+  // In Tauri: use native openFileDialog with proper media filters (directory=false).
+  // In browser: fall back to HTML <input type="file"> (no webkitdirectory).
+  const openFilePicker = useCallback(async () => {
+    if (importing) return;
+    if (isTauri()) {
+      const result = await openFileDialog({ title: 'Import Media Files', multiple: true });
+      if (!result) return;
+      const paths = Array.isArray(result) ? result : [result];
+      if (paths.length > 0) {
+        // Derive common parent folder and import
+        const firstDir = paths[0].replace(/[\\/][^\\/]+$/, '');
+        void startImport(firstDir);
+      }
+    } else {
+      fileInputRef.current?.click();
+    }
+  }, [importing, startImport]);
+
+  // ─── Open folder picker (import folder as bin) ───
+  const openFolderPicker = useCallback(async () => {
+    if (importing) return;
+    if (isTauri()) {
+      const folder = await openFolderDialog('Import Media Folder');
+      if (folder) void startImport(folder);
+    } else {
+      folderInputRef.current?.click();
+    }
+  }, [importing, startImport]);
+
+  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
+  useEffect(() => {
+    const fileHandler = () => { void openFilePicker(); };
+    const folderHandler = () => { void openFolderPicker(); };
+    // MARKER_IMPORT-DIALOG-FIX: file import = default Cmd+I, folder import = separate event
+    window.addEventListener('cut:import-media', fileHandler);
+    window.addEventListener('cut:trigger-import', fileHandler);
+    window.addEventListener('cut:import-folder', folderHandler);
+    return () => {
+      window.removeEventListener('cut:import-media', fileHandler);
+      window.removeEventListener('cut:trigger-import', fileHandler);
+      window.removeEventListener('cut:import-folder', folderHandler);
+    };
+  }, [openFilePicker, openFolderPicker]);
 
   // ─── Job polling — returns the completed job result ───
   const pollJob = useCallback(async (jobId: string): Promise<Record<string, unknown>> => {
@@ -441,58 +487,6 @@ export default function ProjectPanel() {
       setImporting(false);
     }
   }, [pollJob, projectId, refreshProjectState, storeSandboxRoot, setEditorSession]);
-
-  // ─── Open file picker ───
-  // MARKER_CUT-IMPORT-FIX: In Tauri, use native dialog for real filesystem paths.
-  // HTML <input type="file"> doesn't expose file.path in Tauri 2.x WebView.
-  const openFilePicker = useCallback(async () => {
-    if (importing) return;
-
-    if (isTauri()) {
-      // Tauri native: use native file dialog which returns real filesystem paths
-      const paths = await openFileDialog({
-        title: 'Import Media Files',
-        multiple: true,
-        filters: [
-          {
-            name: 'Media',
-            extensions: [
-              'mov', 'mp4', 'avi', 'mkv', 'webm',
-              'm4a', 'wav', 'mp3', 'flac', 'aac', 'ogg',
-              'jpg', 'jpeg', 'png', 'tiff', 'bmp', 'webp',
-            ],
-          },
-        ],
-      });
-
-      if (paths && paths.length > 0) {
-        // Derive folder from first file's parent directory
-        const firstPath = paths[0];
-        const folderPath = firstPath.replace(/[\\/][^\\/]+$/, '');
-        if (folderPath) {
-          void startImport(folderPath);
-          return;
-        }
-      }
-      // User cancelled — no fallback
-      return;
-    }
-
-    // Browser mode: use HTML file input
-    fileInputRef.current?.click();
-  }, [importing, startImport]);
-
-  // ─── Listen for Cmd+I hotkey (from CutEditorLayoutV2 importMedia handler) ───
-  useEffect(() => {
-    const handler = () => { void openFilePicker(); };
-    // MARKER_W6.IMPORT-FIX: Listen for BOTH event names for backward compat
-    window.addEventListener('cut:import-media', handler);
-    window.addEventListener('cut:trigger-import', handler);
-    return () => {
-      window.removeEventListener('cut:import-media', handler);
-      window.removeEventListener('cut:trigger-import', handler);
-    };
-  }, [openFilePicker]);
 
   // ─── Upload files to backend (browser mode — no native paths) ───
   const uploadAndImport = useCallback(async (files: FileList) => {
@@ -768,19 +762,29 @@ export default function ProjectPanel() {
             : 'Double-click or press ⌘I to import media'}
         </div>
 
-        {/* MARKER_W6.IMPORT-FIX: Hidden file picker — folder mode for NLE import */}
+        {/* MARKER_IMPORT-DIALOG-FIX: Hidden file picker — individual media files (NO webkitdirectory) */}
         <input
           ref={fileInputRef}
           type="file"
-          // @ts-expect-error -- webkitdirectory is non-standard but widely supported
-          webkitdirectory=""
-          directory=""
           multiple
           accept={MEDIA_ACCEPT}
           style={{ display: 'none' }}
           onChange={(e) => {
             handleFileSelect(e.target.files);
-            // Reset so re-selecting same files works
+            e.target.value = '';
+          }}
+        />
+        {/* MARKER_IMPORT-DIALOG-FIX: Hidden folder picker — folder import as bin */}
+        <input
+          ref={folderInputRef}
+          type="file"
+          // @ts-expect-error -- webkitdirectory is non-standard but widely supported
+          webkitdirectory=""
+          directory=""
+          multiple
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            handleFileSelect(e.target.files);
             e.target.value = '';
           }}
         />

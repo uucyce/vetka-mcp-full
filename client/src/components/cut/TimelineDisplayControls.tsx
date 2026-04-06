@@ -10,6 +10,7 @@
  */
 import { useState, useRef, useEffect, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { useDockviewStore } from '../../store/useDockviewStore';
 
 const POPUP_STYLE: CSSProperties = {
   position: 'absolute',
@@ -67,6 +68,14 @@ const SIZE_BTN: CSSProperties = {
   cursor: 'pointer',
 };
 
+// MARKER_A3.2: BPM marker kind toggles
+const BPM_TOGGLE_KINDS: Array<{ kind: string; label: string; color: string }> = [
+  { kind: 'bpm_audio',  label: 'BPM Audio',   color: '#22c55e' },
+  { kind: 'bpm_visual', label: 'BPM Visual',  color: '#4a9eff' },
+  { kind: 'bpm_script', label: 'BPM Script',  color: '#cccccc' },
+  { kind: 'sync_point', label: 'Sync Points', color: '#f59e0b' },
+];
+
 function CheckMark({ checked }: { checked: boolean }) {
   return (
     <span style={{ width: 14, textAlign: 'center', color: checked ? '#999' : '#444' }}>
@@ -85,9 +94,6 @@ export default function TimelineDisplayControls() {
   const showThroughEdits = useCutEditorStore((s) => s.showThroughEdits);
   const showClipLabels = useCutEditorStore((s) => s.showClipLabels);
   const showRubberBand = useCutEditorStore((s) => s.showRubberBand);
-  // MARKER_GAMMA-CLIP-LABEL-MODE: clip label display mode selector
-  const clipLabelMode = useCutEditorStore((s) => s.clipLabelMode);
-  const setClipLabelMode = useCutEditorStore((s) => s.setClipLabelMode);
   const trackHeightPreset = useCutEditorStore((s) => s.trackHeightPreset);
   const cycleTrackHeights = useCutEditorStore((s) => s.cycleTrackHeights);
   const showVideoTracks = useCutEditorStore((s) => s.showVideoTracks);
@@ -105,6 +111,10 @@ export default function TimelineDisplayControls() {
   const toggleShowVideoTracks = useCutEditorStore((s) => s.toggleShowVideoTracks);
   const toggleShowAudioTracks = useCutEditorStore((s) => s.toggleShowAudioTracks);
   const setTimecodeDisplayMode = useCutEditorStore((s) => s.setTimecodeDisplayMode);
+
+  // MARKER_A3.2: BPM marker kind visibility
+  const visibleMarkerKinds = useDockviewStore((s) => s.visibleMarkerKinds);
+  const toggleMarkerKind = useDockviewStore((s) => s.toggleMarkerKind);
 
   // Close on outside click
   useEffect(() => {
@@ -173,32 +183,6 @@ export default function TimelineDisplayControls() {
             <span>Show Opacity/Volume Band</span>
           </div>
 
-          {/* MARKER_GAMMA-CLIP-LABEL-MODE: Clip label display mode (FCP7 #45) */}
-          <div style={{ ...TOGGLE_ROW, marginTop: 2, gap: 0, flexDirection: 'column', alignItems: 'flex-start', padding: '3px 12px' }}>
-            <span style={{ fontSize: 9, color: '#666', marginBottom: 2 }}>Label:</span>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['name', 'filename', 'color'] as const).map((mode) => (
-                <button
-                  key={mode}
-                  data-testid={`clip-label-mode-${mode}`}
-                  onClick={() => setClipLabelMode(mode)}
-                  style={{
-                    padding: '1px 6px',
-                    borderRadius: 3,
-                    border: `1px solid ${clipLabelMode === mode ? '#999' : '#444'}`,
-                    background: clipLabelMode === mode ? '#222' : '#111',
-                    color: clipLabelMode === mode ? '#ccc' : '#666',
-                    fontSize: 9,
-                    cursor: 'pointer',
-                    textTransform: 'capitalize',
-                  }}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div style={SEPARATOR} />
 
           {/* Group B: Track Layout */}
@@ -258,7 +242,33 @@ export default function TimelineDisplayControls() {
 
           <div style={SEPARATOR} />
 
-          {/* MARKER_B72: Group D: Playback Quality / Proxy toggle */}
+          {/* MARKER_A3.2: Group D: BPM Marker Visibility */}
+          <div style={GROUP_LABEL}>Marker Visibility</div>
+          {BPM_TOGGLE_KINDS.map(({ kind, label, color }) => (
+            <div
+              key={kind}
+              style={TOGGLE_ROW}
+              onClick={() => toggleMarkerKind(kind)}
+              data-testid={`toggle-marker-kind-${kind}`}
+            >
+              <CheckMark checked={visibleMarkerKinds.has(kind)} />
+              <span
+                style={{
+                  display: 'inline-block',
+                  width: 6,
+                  height: 6,
+                  borderRadius: '50%',
+                  background: color,
+                  flexShrink: 0,
+                }}
+              />
+              <span>{label}</span>
+            </div>
+          ))}
+
+          <div style={SEPARATOR} />
+
+          {/* MARKER_B72: Group E: Playback Quality / Proxy toggle */}
           <div style={GROUP_LABEL}>Playback Quality</div>
           {(['full', 'proxy', 'auto'] as const).map((mode) => (
             <div
