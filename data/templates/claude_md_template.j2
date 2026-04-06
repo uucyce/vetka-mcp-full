@@ -3,7 +3,38 @@
 
 **Role:** {{ role.role_title }} | **Branch:** `{{ role.branch }}`
 
-{% if role.tool_type == "vibe" %}
+{% if role.tool_type == "free_code" %}
+## Init (free-code + Gemma)
+```
+1. mcp__vetka__vetka_session_init
+   → returns: role_context, tasks, docs, predecessor advice, protocol guards
+2. mcp__vetka__vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.**
+
+`action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
+
+## Tool Call Format (Gemma XML protocol — MARKER_GEMMA_BRIDGE_3B)
+You are running on Gemma4 via free-code + LiteLLM bridge. The bridge expects XML tool calls.
+When you need to call a tool, output ONLY this XML block:
+```
+<tool_use>
+<name>exact_tool_name</name>
+<input>{"param1": "value1"}</input>
+</tool_use>
+```
+- Use the exact tool name (e.g. `vetka_read_file`, `vetka_task_board`)
+- `<input>` must contain valid JSON
+- One XML block per tool call — no explanation text around it
+- Plain text response = no XML needed
+
+{% elif role.tool_type == "vibe" %}
 ## Init (Vibe CLI)
 Tools are exposed directly by MCP — check tool list in Vibe's UI.
 **DO NOT** use `mcp__vetka__` prefix — Vibe exposes tools without namespace prefix.
