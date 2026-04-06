@@ -303,6 +303,50 @@ pub async fn pick_folder_native(app: AppHandle, title: Option<String>) -> Result
     Ok(selected)
 }
 
+/// MARKER_IMPORT-P0-FIX: Native file picker for media import.
+/// Fallback when JS @tauri-apps/plugin-dialog bridge is unavailable or misbehaves.
+/// Uses tauri_plugin_dialog directly from Rust — reliable on macOS/Windows/Linux.
+#[tauri::command]
+pub async fn pick_files_native(
+    app: AppHandle,
+    title: Option<String>,
+    multiple: Option<bool>,
+) -> Result<Option<Vec<String>>, String> {
+    let multi = multiple.unwrap_or(true);
+    let mut builder = app.dialog().file();
+    if let Some(t) = title.as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+        builder = builder.set_title(t);
+    }
+    // Media file filters — matches MEDIA_FILE_EXTENSIONS in tauri.ts
+    builder = builder
+        .add_filter("Video", &["mp4", "mov", "avi", "mkv", "mts", "m2ts", "webm", "mxf", "r3d"])
+        .add_filter("Audio", &["wav", "mp3", "aif", "aiff", "flac", "aac", "ogg", "m4a"])
+        .add_filter("Image", &["jpg", "jpeg", "png", "tiff", "tif", "bmp", "webp", "exr", "dpx"])
+        .add_filter("All Files", &["*"]);
+
+    if multi {
+        let selected = builder
+            .blocking_pick_files();
+        match selected {
+            Some(paths) if !paths.is_empty() => {
+                let strs: Vec<String> = paths
+                    .into_iter()
+                    .filter_map(|p| p.into_path().ok())
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect();
+                if strs.is_empty() { Ok(None) } else { Ok(Some(strs)) }
+            }
+            _ => Ok(None),
+        }
+    } else {
+        let selected = builder
+            .blocking_pick_file()
+            .and_then(|p| p.into_path().ok())
+            .map(|p| p.to_string_lossy().to_string());
+        Ok(selected.map(|s| vec![s]))
+    }
+}
+
 /// MARKER_159.WINFS.R1_CMD: Native window-level fullscreen toggle.
 #[tauri::command]
 pub fn set_window_fullscreen(
