@@ -234,7 +234,7 @@ export default function VideoScopes() {
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
         if (clip.clip_id === selectedClipId) {
-          return clip.color_correction ?? null;
+          return (clip as any).color_correction as { lutPath?: string; logProfile?: string } | null;
         }
       }
     }

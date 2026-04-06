@@ -12,6 +12,8 @@
 ```
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
+If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
 
 ## Notifications
 Check for Commander messages: `vetka_task_board action=notifications role={{ role.callsign }}`
@@ -21,7 +23,10 @@ Send to another agent: `vetka_task_board action=notify source_role={{ role.calls
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.
 {%- else %}
-NEVER commit to main. NEVER touch files outside your `role_context.owned_paths`.
+NEVER commit to main. NEVER merge branches to main. NEVER run `git merge`. Merge authority belongs ONLY to Commander.
+NEVER touch files outside your `role_context.owned_paths`.
+If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander instead:
+`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="Tasks ready for merge: <ids>"`
 {%- endif %}
 {%- if role.key_docs %}
 
@@ -58,3 +63,80 @@ Full ownership map: `data/templates/agent_registry.yaml`
 6. action=stale_check limit=30  (post-merge cleanup)
 ```
 {%- endif %}
+
+## Synapse — Agent Fleet Commands
+{%- if role.domain == "architect" %}
+
+### Spawn agent (new Terminal window + auto-init)
+```bash
+scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
+# Example: scripts/spawn_synapse.sh Alpha cut-engine claude_code "vetka session init"
+```
+
+### Write to running agent
+```bash
+scripts/synapse_write.sh ROLE "prompt text"
+# Example: scripts/synapse_write.sh Alpha "claim tb_xxx and start working"
+```
+
+### Wake sleeping agent
+```bash
+scripts/synapse_wake.sh ROLE
+```
+
+### Check who's alive / Kill agent
+```bash
+tmux list-sessions          # list all
+tmux kill-session -t vetka-ROLE   # kill one
+```
+
+Agents run in own process, own tokens. Orchestrate via TaskBoard + synapse_write.
+{%- elif role.domain == "harness" %}
+
+### Spawn agent (infra maintenance)
+```bash
+scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
+```
+
+### Write to / Wake agent
+```bash
+scripts/synapse_write.sh ROLE "prompt text"
+scripts/synapse_wake.sh ROLE
+```
+
+### Fleet status
+```bash
+tmux list-sessions
+cat data/synapse_sessions.json
+```
+{%- else %}
+
+### Auto-notifications (passive — no action needed)
+- **On claim:** Commander is auto-notified you claimed a task.
+- **On done_worktree:** Delta (QA) is auto-notified for verification.
+- **On verified:** Commander is auto-notified for merge.
+
+### Wake (if idle)
+Commander may wake you via `synapse_wake.sh {{ role.callsign }}`.
+Your inbox hook (`check_agent_inbox.sh`) auto-reads notifications between tool calls.
+
+### Dilemma escalation
+If stuck on a protocol decision (conflicting rules, ambiguous scope, missing dependency):
+`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander ntype=dilemma_escalation message="<describe dilemma>"`
+Commander will wake, approve/reject, and you continue.
+{%- endif %}
+{%- if role.memory_path %}
+
+## Role Memory
+Your persistent memory: `{{ role.memory_path }}`
+Read at session start. Write lessons/decisions there so next session picks them up.
+{%- endif %}
+
+## Context Restart Recovery
+If you see "CONTEXT RESTART" in your first message, you were restarted due to context exhaustion.
+Recovery steps:
+1. Run `vetka_session_init role={{ role.callsign }}` to reload full context
+2. Check `data/checkpoints/{{ role.callsign }}_checkpoint.json` for your saved state
+3. The checkpoint contains: task_id, files_modified, branch, last action
+4. Resume the task from where you left off — do NOT start over
+5. The checkpoint is auto-consumed on read (moved to .consumed.json)

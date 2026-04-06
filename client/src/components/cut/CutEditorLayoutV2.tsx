@@ -32,7 +32,6 @@ import MenuBar from './MenuBar';
 import ProjectSettings from './ProjectSettings';
 import ExportDialog from './ExportDialog';
 import SpeedControl from './SpeedControl';
-import FindDialog from './FindDialog';
 import PasteAttributesDialog from './PasteAttributesDialog';
 import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
@@ -40,7 +39,6 @@ import TrimEditWindow from './TrimEditWindow';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
-import { useGenerationControlStore } from '../../store/useGenerationControlStore';
 
 
 // ─── Styles ───
@@ -95,8 +93,7 @@ function PasteAttributesModal() {
   const show = useCutEditorStore((s) => s.showPasteAttributes);
   if (!show) return null;
   const close = () => useCutEditorStore.getState().setShowPasteAttributes(false);
-  const { clipboard, lanes, pasteAttributesSelective } = useCutEditorStore.getState();
-  const { selectedClipIds } = useSelectionStore.getState();
+  const { clipboard, selectedClipIds, lanes, pasteAttributesSelective } = useCutEditorStore.getState();
   const sourceClipName = clipboard[0]?.source_path?.split('/').pop() ?? 'Unknown';
   const targetNames: string[] = [];
   for (const lane of lanes) {
@@ -314,6 +311,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const doPause = isSourceFocused ? s.pauseSource : s.pause;
       const doPlay = isSourceFocused ? s.playSource : s.play;
       const curTime = isSourceFocused ? s.sourceCurrentTime : s.currentTime;
+      const maxDur = isSourceFocused ? s.sourceDuration : s.duration;
       // MARKER_JKL-KJ-KL: K+J = single frame backward
       if (kHeldRef.current) {
         doPause();
@@ -488,6 +486,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     cut: () => useCutEditorStore.getState().cutClips(),
     paste: () => useCutEditorStore.getState().pasteClips('overwrite'),
     pasteInsert: () => useCutEditorStore.getState().pasteClips('insert'),
+    pasteAttributes: () => useCutEditorStore.getState().pasteAttributes(),
 
     // MARKER_UNDO-FIX: All editing ops route through applyTimelineOps for undo support
     // MARKER_TL4: Delete all selected clips (linked selection may include multiple)
@@ -544,36 +543,39 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       sel.clearSelection();
     },
 
-    // MARKER_W6.WIRE: Nudge clip ±1 frame — supports multi-select (all selectedClipIds)
+    // MARKER_W6.WIRE: Nudge clip ±1 frame
     nudgeLeft: async () => {
       const s = useCutEditorStore.getState();
-      const { selectedClipIds } = useSelectionStore.getState();
-      if (selectedClipIds.size === 0) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
-      const ops: Array<Record<string, unknown>> = [];
+      // Find clip to get its current position and lane
       for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (selectedClipIds.has(clip.clip_id)) {
-            ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: Math.max(0, clip.start_sec - frameSec) });
-          }
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+        if (clip) {
+          await s.applyTimelineOps([{
+            op: 'move_clip', clip_id: clip.clip_id,
+            lane_id: lane.lane_id, start_sec: Math.max(0, clip.start_sec - frameSec),
+          }]);
+          return;
         }
       }
-      if (ops.length) await s.applyTimelineOps(ops);
     },
     nudgeRight: async () => {
       const s = useCutEditorStore.getState();
-      const { selectedClipIds } = useSelectionStore.getState();
-      if (selectedClipIds.size === 0) return;
+      const selectedClipId = useSelectionStore.getState().selectedClipId;
+      if (!selectedClipId) return;
       const frameSec = 1 / s.projectFramerate;
-      const ops: Array<Record<string, unknown>> = [];
       for (const lane of s.lanes) {
-        for (const clip of lane.clips) {
-          if (selectedClipIds.has(clip.clip_id)) {
-            ops.push({ op: 'move_clip', clip_id: clip.clip_id, lane_id: lane.lane_id, start_sec: clip.start_sec + frameSec });
-          }
+        const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
+        if (clip) {
+          await s.applyTimelineOps([{
+            op: 'move_clip', clip_id: clip.clip_id,
+            lane_id: lane.lane_id, start_sec: clip.start_sec + frameSec,
+          }]);
+          return;
         }
       }
-      if (ops.length) await s.applyTimelineOps(ops);
     },
 
     // MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36)
@@ -700,8 +702,8 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       for (const lane of s.lanes) {
         const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
         if (clip) {
-          s.setSequenceMarkIn(clip.start_sec);
-          s.setSequenceMarkOut(clip.start_sec + clip.duration_sec);
+          s.setMarkIn(clip.start_sec);
+          s.setMarkOut(clip.start_sec + clip.duration_sec);
           return;
         }
       }
@@ -1018,7 +1020,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Cmd+Shift+S — swap two selected adjacent clips
     swapClips: () => {
       const s = useCutEditorStore.getState();
-      const ids = [...useSelectionStore.getState().selectedClipIds];
+      const ids = [...s.selectedClipIds];
       if (ids.length !== 2) return;
       // Find both clips — must be on the same lane
       for (const lane of s.lanes) {
@@ -1062,12 +1064,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Alt+V — paste attributes (effects) from clipboard clip to selected clip
     pasteAttributes: () => {
       const s = useCutEditorStore.getState();
-      const sel = useSelectionStore.getState();
       const clipboard = (s as any).clipboard as Array<{ clip_id: string; effects?: any; keyframes?: any }> | undefined;
       if (!clipboard || clipboard.length === 0) return;
       const sourceClip = clipboard[0];
       if (!sourceClip.effects && !sourceClip.keyframes) return;
-      const targetIds = sel.selectedClipIds.size > 0 ? [...sel.selectedClipIds] : sel.selectedClipId ? [sel.selectedClipId] : [];
+      const targetIds = s.selectedClipIds.size > 0 ? [...s.selectedClipIds] : s.selectedClipId ? [s.selectedClipId] : [];
       if (targetIds.length === 0) return;
       const newLanes = s.lanes.map((lane) => ({
         ...lane,
@@ -1091,12 +1092,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // F6 — select clip at playhead position
     selectClipAtPlayhead: () => {
       const s = useCutEditorStore.getState();
-      const sel = useSelectionStore.getState();
       for (const lane of s.lanes) {
         if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
         for (const clip of lane.clips) {
           if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
-            sel.setSelectedClip(clip.clip_id);
+            s.setSelectedClip(clip.clip_id);
             return;
           }
         }
@@ -1105,20 +1105,19 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     // Alt+A — select all clips on the same track as the currently selected clip
     selectAllOnTrack: () => {
       const s = useCutEditorStore.getState();
-      const sel = useSelectionStore.getState();
-      const selId = sel.selectedClipId;
+      const selId = s.selectedClipId;
       if (!selId) return;
       for (const lane of s.lanes) {
         if (lane.clips.some((c) => c.clip_id === selId)) {
           const ids = new Set(lane.clips.map((c) => c.clip_id));
-          useSelectionStore.setState({ selectedClipIds: ids });
+          useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: selId });
           return;
         }
       }
     },
     // Cmd+Shift+A — deselect all
     deselectAll: () => {
-      useSelectionStore.getState().clearSelection();
+      useCutEditorStore.getState().clearSelection();
     },
     // Alt+Shift+Right — select all clips forward from playhead
     selectForward: () => {
@@ -1127,10 +1126,14 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       for (const lane of s.lanes) {
         if (s.lockedLanes.has(lane.lane_id) || s.hiddenLanes.has(lane.lane_id)) continue;
         for (const clip of lane.clips) {
-          if (clip.start_sec >= s.currentTime - 0.001) ids.add(clip.clip_id);
+          if (clip.start_sec >= s.currentTime - 0.001) {
+            ids.add(clip.clip_id);
+          }
         }
       }
-      if (ids.size > 0) useSelectionStore.setState({ selectedClipIds: ids });
+      if (ids.size > 0) {
+        useCutEditorStore.setState({ selectedClipIds: ids, selectedClipId: [...ids][0] });
+      }
     },
     // T — toggle A/V selection targeting (cycle: all → video-only → audio-only → all)
     toggleAVSelection: () => {
@@ -1142,17 +1145,17 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       const onlyVideo = videoLanes.every((id) => targeted.has(id)) && audioLanes.every((id) => !targeted.has(id));
       let next: Set<string>;
       if (allTargeted || targeted.size === 0) {
-        next = new Set(videoLanes);
+        next = new Set(videoLanes);       // → video only
       } else if (onlyVideo) {
-        next = new Set(audioLanes);
+        next = new Set(audioLanes);       // → audio only
       } else {
-        next = new Set([...videoLanes, ...audioLanes]);
+        next = new Set([...videoLanes, ...audioLanes]); // → all
       }
       useCutEditorStore.setState({ targetedLanes: next });
     },
-    // Cmd+L — link/unlink clips
+    // Cmd+L — link/unlink clips (alias for toggleLinkedSelection)
     linkUnlinkClips: () => {
-      useSelectionStore.getState().toggleLinkedSelection();
+      useCutEditorStore.getState().toggleLinkedSelection();
     },
 
     // MARKER_SOURCE_ACQUIRE: Cmd+8 — open Source Acquire panel
@@ -1160,10 +1163,11 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       window.dispatchEvent(new CustomEvent('cut:focus-panel', { detail: { panelId: 'acquire' } }));
     },
 
-    // MARKER_FCP7FIX: revealMasterClip, collapse/expand, rename — use selectionStore
+    // MARKER_FCP7FIX: 4 missing actions — revealMasterClip, collapse/expand, rename
+    // Shift+F — reveal master clip in project browser (fires CustomEvent for DAG panel to handle)
     revealMasterClip: () => {
       const s = useCutEditorStore.getState();
-      const clipId = useSelectionStore.getState().selectedClipId;
+      const clipId = s.selectedClipId;
       if (!clipId) return;
       for (const lane of s.lanes) {
         const clip = lane.clips.find((c) => c.clip_id === clipId);
@@ -1173,25 +1177,36 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
         }
       }
     },
+    // Shift+- — toggle track collapse for the lane of the selected clip
     collapseExpandTrack: () => {
       const s = useCutEditorStore.getState();
-      const clipId = useSelectionStore.getState().selectedClipId;
+      const clipId = s.selectedClipId;
       if (!clipId) return;
       for (const lane of s.lanes) {
-        if (lane.clips.some((c) => c.clip_id === clipId)) { s.toggleTrackCollapse(lane.lane_id); return; }
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.toggleTrackCollapse(lane.lane_id);
+          return;
+        }
       }
     },
+    // Shift+= — expand track to max height for the lane of the selected clip
     expandTrack: () => {
       const s = useCutEditorStore.getState();
-      const clipId = useSelectionStore.getState().selectedClipId;
+      const clipId = s.selectedClipId;
       if (!clipId) return;
       for (const lane of s.lanes) {
-        if (lane.clips.some((c) => c.clip_id === clipId)) { s.expandTrackMax(lane.lane_id); return; }
+        if (lane.clips.some((c) => c.clip_id === clipId)) {
+          s.expandTrackMax(lane.lane_id);
+          return;
+        }
       }
     },
+    // Enter — start inline rename on selected clip
     renameClipInline: () => {
-      const clipId = useSelectionStore.getState().selectedClipId;
-      if (clipId) useCutEditorStore.getState().setRenamingClip(clipId);
+      const s = useCutEditorStore.getState();
+      if (s.selectedClipId) {
+        s.setRenamingClip(s.selectedClipId);
+      }
     },
 
     // MARKER_LAYOUT-3: Panel focus shortcuts (⌘1-5)
@@ -1252,8 +1267,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     extractClip: () => useCutEditorStore.getState().extractClip(),
     closeGap: () => useCutEditorStore.getState().closeGap(),
     extendEdit: () => useCutEditorStore.getState().extendEdit(),
-    // MARKER_FCP7-CH15: Insert Gap (FCP7 Sequence > Insert Gap)
-    insertGap: () => useCutEditorStore.getState().insertGap(),
     // MARKER_SPLIT-EDIT: L-cut / J-cut (FCP7 Ch.41)
     splitEditLCut: () => useCutEditorStore.getState().splitEditLCut(),
     splitEditJCut: () => useCutEditorStore.getState().splitEditJCut(),
@@ -1275,21 +1288,125 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     timecodeEntry: () => {
       useCutEditorStore.getState().setShowTimecodeEntry(true);
     },
+    revealMasterClip: () => {
+      const s = useCutEditorStore.getState();
+      // Find clip under playhead and dispatch reveal event for ProjectPanel
+      for (const lane of s.lanes) {
+        if (s.lockedLanes.has(lane.lane_id)) continue;
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            window.dispatchEvent(new CustomEvent('cut:reveal-master-clip', {
+              detail: { sourcePath: clip.source_path, clipId: clip.clip_id },
+            }));
+            s.setFocusedPanel('project');
+            return;
+          }
+        }
+      }
+    },
+    collapseExpandTrack: () => {
+      // Ctrl+Up — collapse to minimum
+      useCutEditorStore.getState().setTrackHeight(28);
+    },
+    expandTrack: () => {
+      // Ctrl+Down — expand to default
+      useCutEditorStore.getState().setTrackHeight(56);
+    },
+    renameClipInline: () => {
+      const selected = useSelectionStore.getState().selectedClipIds;
+      if (selected.size === 1) {
+        const clipId = Array.from(selected)[0];
+        window.dispatchEvent(new CustomEvent('cut:rename-clip-inline', {
+          detail: { clipId },
+        }));
+      }
+    },
     toggleTimelineDisplayMode: () => {
       useCutEditorStore.getState().cycleTimelineDisplayMode();
-    },
-    cycleClipLabelMode: () => {
-      useCutEditorStore.getState().cycleClipLabelMode();
-    },
-    findDialog: () => {
-      const s = useCutEditorStore.getState();
-      s.setShowFindDialog(!s.showFindDialog);
     },
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
 
-  }), [saveProject, performInsert, performOverwrite]);
+    // MARKER_GAMMA-TRIM5-WIRE: New hotkey handlers for TRIM5/SEL6 actions
+    rippleTrimToPlayhead: () => {
+      const sel = useSelectionStore.getState();
+      const s = useCutEditorStore.getState();
+      if (!sel.selectedClipId) return;
+      void s.applyTimelineOps([{
+        op: 'ripple_trim_to_playhead', clip_id: sel.selectedClipId, playhead: s.currentTime,
+      }]);
+    },
+    swapClips: () => {
+      const ids = [...useSelectionStore.getState().selectedClipIds];
+      if (ids.length !== 2) return;
+      void useCutEditorStore.getState().applyTimelineOps([{
+        op: 'swap_clips', clip_a_id: ids[0], clip_b_id: ids[1],
+      }]);
+    },
+    deleteMarker: () => {
+      const s = useCutEditorStore.getState();
+      const marker = s.markers.find((m) => Math.abs(m.start_sec - s.currentTime) < 0.1);
+      if (marker) {
+        void s.applyTimelineOps([{ op: 'delete_marker', marker_id: marker.marker_id }]);
+      }
+    },
+    pasteAttributes: () => useCutEditorStore.getState().pasteAttributes(),
+    selectClipAtPlayhead: () => {
+      const s = useCutEditorStore.getState();
+      for (const lane of s.lanes) {
+        for (const clip of lane.clips) {
+          if (s.currentTime >= clip.start_sec && s.currentTime < clip.start_sec + clip.duration_sec) {
+            useSelectionStore.getState().setSelectedClip(clip.clip_id);
+            return;
+          }
+        }
+      }
+    },
+    selectAllOnTrack: () => {
+      const sel = useSelectionStore.getState();
+      const s = useCutEditorStore.getState();
+      if (!sel.selectedClipId) return;
+      let targetLaneId = '';
+      for (const lane of s.lanes) {
+        if (lane.clips.some((c) => c.clip_id === sel.selectedClipId)) { targetLaneId = lane.lane_id; break; }
+      }
+      if (!targetLaneId) return;
+      const ids = new Set<string>();
+      for (const lane of s.lanes) {
+        if (lane.lane_id === targetLaneId) { for (const c of lane.clips) ids.add(c.clip_id); }
+      }
+      useSelectionStore.setState({ selectedClipIds: ids });
+    },
+    selectForward: () => {
+      const s = useCutEditorStore.getState();
+      const sel = useSelectionStore.getState();
+      const ids = new Set(sel.selectedClipIds);
+      for (const lane of s.lanes) {
+        for (const c of lane.clips) { if (c.start_sec >= s.currentTime) ids.add(c.clip_id); }
+      }
+      useSelectionStore.setState({ selectedClipIds: ids });
+    },
+    toggleAVSelection: () => {
+      const s = useCutEditorStore.getState();
+      const targets = s.targetedLanes ?? new Set<string>();
+      if (targets.size === 0) return;
+      for (const laneId of targets) { s.toggleTarget(laneId); }
+    },
+    linkUnlinkClips: () => {
+      useSelectionStore.getState().toggleLinkedSelection();
+    },
+    focusSourceAcquire: () => useCutEditorStore.getState().setFocusedPanel('source'),
+    runPulseAnalysis: () => {
+      void useCutEditorStore.getState().applyTimelineOps([{ op: 'run_pulse_analysis' }]);
+    },
+    runAutoMontageFavorites: () => {
+      void useCutEditorStore.getState().applyTimelineOps([{ op: 'run_automontage_favorites' }]);
+    },
+    exportTimeline: () => {
+      useCutEditorStore.getState().setShowExportDialog(true);
+    },
+  }), [saveProject, threePointInsert, threePointOverwrite]);
 
   useCutHotkeys({ handlers: hotkeyHandlers });
 
@@ -1460,92 +1577,16 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     const audioLane = s.lanes.find((l) => l.lane_type.startsWith('audio'));
     if (!audioLane) return;
     for (const clip of audioLane.clips) {
+      const clipEnd = clip.start_sec + clip.duration_sec;
       // If playhead is within 2s before clip start and we haven't prefetched this clip yet
       if (currentTime >= clip.start_sec - 2 && currentTime < clip.start_sec && lastPrefetchRef.current !== clip.clip_id) {
         lastPrefetchRef.current = clip.clip_id;
-        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id, volume: 1, pan: 0, muted: false }]);
+        prefetch([{ source_path: clip.source_path, source_in: clip.source_in ?? 0, duration_sec: clip.duration_sec, start_sec: clip.start_sec, clip_id: clip.clip_id }]);
         break;
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentTime, prefetch]);
-
-  // MARKER_VIDEO_PREFETCH: Prefetch next clip's video when playhead approaches clip boundary (2s lookahead).
-  // Mirror of MARKER_AUDIO_PREFETCH. Uses a hidden <video preload="auto"> to warm the browser HTTP cache
-  // so VideoPreview's <video> finds data cached → no blank-frame flash at edit points.
-  // No WebCodecs, no store changes, no VideoPreview changes needed — browser cache does the work.
-  const videoPrefetchElRef = useRef<HTMLVideoElement | null>(null);
-  const lastVideoPrefetchRef = useRef('');
-  useEffect(() => {
-    if (!isPlayingRef.current) return;
-    const s = useCutEditorStore.getState();
-    const videoLane = s.lanes.find((l) => l.lane_type.startsWith('video'));
-    if (!videoLane) return;
-    for (const clip of videoLane.clips) {
-      if (
-        currentTime >= clip.start_sec - 2 &&
-        currentTime < clip.start_sec &&
-        lastVideoPrefetchRef.current !== clip.clip_id
-      ) {
-        lastVideoPrefetchRef.current = clip.clip_id;
-        // Lazy-create hidden video element (reused across prefetch calls)
-        if (!videoPrefetchElRef.current) {
-          const vid = document.createElement('video');
-          vid.preload = 'auto';
-          vid.muted = true;
-          vid.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;';
-          document.body.appendChild(vid);
-          videoPrefetchElRef.current = vid;
-        }
-        const url = `${API_BASE}/files/raw?path=${encodeURIComponent(clip.source_path)}`;
-        videoPrefetchElRef.current.src = url;
-        // Seek to source_in so browser fetches the right segment
-        videoPrefetchElRef.current.currentTime = clip.source_in ?? 0;
-        break;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentTime]);
-
-  // MARKER_GEN-HOTKEYS-GLOBAL: Cmd+J/K/L/R generation transport hotkeys.
-  // Scoped to focusedPanel==='generation'. Uses capture phase to override conflicting
-  // global bindings (Cmd+J=openSpeedControl, Cmd+K=splitClip, Cmd+L=toggleLinkedSelection).
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const s = useCutEditorStore.getState();
-      if (s.focusedPanel !== 'generation') return;
-      if (!e.metaKey && !e.ctrlKey) return;
-      const store = useGenerationControlStore.getState();
-      const { machineState } = store;
-      if (e.key === 'r') {
-        if (['IDLE', 'CONFIGURING', 'REJECTED'].includes(machineState)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          store.submitJob();
-        }
-      } else if (e.key === 'j') {
-        if (machineState === 'PREVIEWING') {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          store.acceptPreview();
-        }
-      } else if (e.key === 'k') {
-        if (machineState === 'PREVIEWING') {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          store.rejectPreview();
-        }
-      } else if (e.key === 'l') {
-        if (machineState === 'QUEUED' || machineState === 'GENERATING') {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          store.cancelJob();
-        }
-      }
-    };
-    window.addEventListener('keydown', handler, true);
-    return () => window.removeEventListener('keydown', handler, true);
-  }, []);
 
   // MARKER_SCRUB_SYNC: REMOVED — Source Monitor is fully independent from timeline.
   // It only changes via explicit user action: double-click, Match Frame, "Open in Source Monitor".
@@ -1561,8 +1602,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <ExportDialog />
       {/* MARKER_B11: Speed/Duration dialog (⌘R) */}
       <SpeedControlModal />
-      {/* MARKER_FCP7-FIND: Find dialog (⌘F) */}
-      <FindDialog />
       {/* MARKER_TRIM_WINDOW: Floating trim edit overlay (FCP7 Ch.45-46) */}
       <TrimEditWindow />
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}

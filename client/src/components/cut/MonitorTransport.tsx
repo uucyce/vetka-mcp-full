@@ -15,7 +15,6 @@ import { useCallback, type CSSProperties } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
 import {
   IconSkipStart, IconPlay, IconPause, IconSkipEnd,
-  IconPrevFrame, IconNextFrame, IconPrevEdit, IconNextEdit,
 } from './icons/CutIcons';
 import TimecodeField, { formatTimecode as formatTimecodeDisplay } from './TimecodeField';
 
@@ -242,25 +241,25 @@ export default function MonitorTransport({ feed }: MonitorTransportProps) {
 
         {/* Center: Transport [PrevEdit] [|◂] [◂] [Play] [▸] [▸|] [NextEdit] */}
         <button style={TRANSPORT_BTN} onClick={handlePrevEdit} title="Go to Previous Edit (Up)" aria-label="Previous Edit" data-testid="prev-edit">
-          <IconPrevEdit size={14} />
+          <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'|◂◂'}</span>
         </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipStart} title="Go to start">
           <IconSkipStart size={14} />
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleStepBack} title="Step back 1 frame (Left)">
-          <IconPrevFrame size={14} />
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepBack} title="Step back 1 frame (Left)">
+          <span style={{ fontFamily: 'monospace' }}>{'|◂'}</span>
         </button>
         <button style={{ ...TRANSPORT_BTN, color: isPlaying ? '#ccc' : '#999' }} onClick={togglePlay} title={isPlaying ? 'Pause (K)' : 'Play (Space)'}>
           {isPlaying ? <IconPause size={16} /> : <IconPlay size={16} />}
         </button>
-        <button style={TRANSPORT_BTN} onClick={handleStepForward} title="Step forward 1 frame (Right)">
-          <IconNextFrame size={14} />
+        <button style={{ ...TRANSPORT_BTN, fontSize: 10 }} onClick={handleStepForward} title="Step forward 1 frame (Right)">
+          <span style={{ fontFamily: 'monospace' }}>{'▸|'}</span>
         </button>
         <button style={TRANSPORT_BTN} onClick={handleSkipEnd} title="Go to end">
           <IconSkipEnd size={14} />
         </button>
         <button style={TRANSPORT_BTN} onClick={handleNextEdit} title="Go to Next Edit (Down)" aria-label="Next Edit" data-testid="next-edit">
-          <IconNextEdit size={14} />
+          <span style={{ fontFamily: 'monospace', fontSize: 9 }}>{'▸▸|'}</span>
         </button>
 
         {/* Right: Duration + Marking (absolute positioned) */}
