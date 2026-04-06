@@ -47,6 +47,13 @@ function fmtTC(sec: number, fps: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
 }
 
+// MARKER_GAMMA-MARKER-TC-MODE: respect timecodeDisplayMode (same pattern as StatusBar)
+function fmtTime(sec: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
+  if (mode === 'frames') return `${Math.round(sec * fps)}f`;
+  if (mode === 'seconds') return `${sec.toFixed(2)}s`;
+  return fmtTC(sec, fps);
+}
+
 const PANEL: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -96,6 +103,8 @@ export default function MarkerListPanel() {
   const fps = useCutEditorStore((s) => s.projectFramerate) || 24;
   const seek = useCutEditorStore((s) => s.seek);
   const currentTime = useCutEditorStore((s) => s.currentTime);
+  // MARKER_GAMMA-MARKER-TC-MODE: respect user's display mode preference
+  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
 
   const [sortKey, setSortKey] = useState<SortKey>('time');
   const [sortAsc, setSortAsc] = useState(true);
@@ -204,7 +213,7 @@ export default function MarkerListPanel() {
                     }} />
                   </td>
                   <td style={{ ...TD, fontVariantNumeric: 'tabular-nums', fontFamily: 'monospace', fontSize: 9 }}>
-                    {fmtTC(m.start_sec, fps)}
+                    {fmtTime(m.start_sec, fps, timecodeDisplayMode)}
                   </td>
                   <td style={{ ...TD, color: '#888', fontSize: 9 }}>
                     {KIND_LABELS[m.kind] || m.kind}

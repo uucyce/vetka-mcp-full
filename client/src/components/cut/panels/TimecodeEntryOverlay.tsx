@@ -40,13 +40,15 @@ const HINT: CSSProperties = {
 export function TimecodeEntryOverlay() {
   const show = useCutEditorStore((s) => s.showTimecodeEntry);
   const currentTime = useCutEditorStore((s) => s.currentTime);
+  // MARKER_GAMMA-FIX-TC-FPS: use actual project framerate, not hardcoded 30
+  const fps = useCutEditorStore((s) => s.projectFramerate ?? 30);
 
   const [value, setValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (show) {
-      setValue(formatTimecode(currentTime));
+      setValue(formatTimecode(currentTime, fps));
       setTimeout(() => {
         inputRef.current?.focus();
         inputRef.current?.select();
@@ -62,12 +64,12 @@ export function TimecodeEntryOverlay() {
   useOverlayEscapeClose(close);
 
   const submit = useCallback(() => {
-    const seconds = parseTimecode(value);
+    const seconds = parseTimecode(value, fps);
     if (seconds !== null && seconds >= 0) {
       useCutEditorStore.getState().seek(seconds);
     }
     close();
-  }, [value, close]);
+  }, [value, fps, close]);
 
   if (!show) return null;
 
@@ -99,21 +101,21 @@ export function TimecodeEntryOverlay() {
   );
 }
 
-function formatTimecode(sec: number): string {
+function formatTimecode(sec: number, fps: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const s = Math.floor(sec % 60);
-  const f = Math.floor((sec % 1) * 30);
+  const f = Math.floor((sec % 1) * fps);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
 }
 
-function parseTimecode(tc: string): number | null {
+function parseTimecode(tc: string, fps: number): number | null {
   // Accept HH:MM:SS:FF or HH:MM:SS or MM:SS or raw seconds
   const parts = tc.trim().split(/[:;]/);
   if (parts.length === 4) {
     const [h, m, s, f] = parts.map(Number);
     if ([h, m, s, f].some(isNaN)) return null;
-    return h * 3600 + m * 60 + s + f / 30;
+    return h * 3600 + m * 60 + s + f / fps;
   }
   if (parts.length === 3) {
     const [h, m, s] = parts.map(Number);

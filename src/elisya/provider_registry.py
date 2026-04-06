@@ -738,16 +738,9 @@ class OllamaProvider(BaseProvider):
         "codellama",  # CodeLlama base
         "mistral",  # Mistral 7B base (newer versions support tools)
         "phi",  # Microsoft Phi models
-        "gemma",  # Google Gemma base (NOT gemma3/gemma4 — those support tools)
+        "gemma",  # Google Gemma base
         "orca-mini",  # Orca lightweight
         "vicuna",  # Vicuna base
-    }
-
-    # MARKER_211: Models that DO support tools despite matching blacklist prefix
-    # gemma4 and gemma3 support native function calling via Ollama
-    MODELS_WITH_TOOLS_OVERRIDE = {
-        "gemma4",  # Gemma 4 family: e2b, e4b, 26b — native FC
-        "gemma3",  # Gemma 3 family: 1b, 4b, 12b — native FC
     }
 
     def __init__(self, config: ProviderConfig):
@@ -802,11 +795,6 @@ class OllamaProvider(BaseProvider):
         """
         # Extract base model name (remove tag)
         base_name = model_name.split(":")[0].lower()
-
-        # MARKER_211: Check whitelist override first (gemma4, gemma3 support tools)
-        for supported in self.MODELS_WITH_TOOLS_OVERRIDE:
-            if supported in base_name:
-                return True
 
         # Check against blacklist
         for unsupported in self.MODELS_WITHOUT_TOOLS:
