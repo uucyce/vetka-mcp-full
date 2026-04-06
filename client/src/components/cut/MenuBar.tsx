@@ -15,7 +15,6 @@ import { useCutEditorStore } from '../../store/useCutEditorStore';
 import { useSelectionStore } from '../../store/useSelectionStore';
 import { useDockviewStore, type WorkspacePresetName } from '../../store/useDockviewStore';
 import { PRESET_BUILDERS } from './presetBuilders';
-import { API_BASE } from '../../config/api.config';
 import {
   type HotkeyPresetName,
   loadPresetName,
@@ -563,8 +562,8 @@ export default function MenuBar() {
           for (const lane of s.lanes) {
             const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
             if (clip) {
-              s.setMarkIn(clip.start_sec);
-              s.setMarkOut(clip.start_sec + clip.duration_sec);
+              s.setSequenceMarkIn(clip.start_sec);
+              s.setSequenceMarkOut(clip.start_sec + clip.duration_sec);
               return;
             }
           }
@@ -720,7 +719,7 @@ export default function MenuBar() {
           const s = store.getState();
           const t = s.currentTime;
           const selectedLane = s.lanes.find((lane) =>
-            lane.clips.some((c) => c.clip_id === s.selectedClipId)
+            lane.clips.some((c) => c.clip_id === useSelectionStore.getState().selectedClipId)
           );
           if (!selectedLane) return;
           const clipsToSplit = selectedLane.clips.filter(
@@ -799,8 +798,16 @@ export default function MenuBar() {
         { separator: true },
         { label: `${store.getState().snapEnabled ? '\u2713 ' : ''}Snap in Timeline`, shortcut: sc('toggleSnap'), action: () => store.getState().toggleSnap() },
         { separator: true },
-        { label: 'Insert Tracks...', disabled: true },
-        { label: 'Delete Tracks...', disabled: true },
+        { label: 'Insert Tracks', submenu: [
+          { label: 'Add Video Track', action: () => store.getState().addLane('video') },
+          { label: 'Add Audio Track', action: () => store.getState().addLane('audio') },
+        ]},
+        { label: 'Delete Track', action: () => {
+          // Remove the first empty lane (video or audio) — prefer focused panel lane
+          const s = store.getState();
+          const emptyLane = s.lanes.find((l) => l.clips.length === 0);
+          if (emptyLane) { s.removeLane(emptyLane.lane_id); }
+        }},
         { separator: true },
         { label: 'Nest Item(s)', disabled: true },
         { label: 'Solo Selected Item(s)', action: () => {
@@ -816,20 +823,7 @@ export default function MenuBar() {
         }},
         { separator: true },
         { label: 'Scene Detection', shortcut: '⌘D', action: () => {
-          // MARKER_GAMMA-2: Direct backend call (was keyboard dispatch)
-          // TODO: Replace with store.getState().runSceneDetection() when Alpha adds store action
-          const s = store.getState();
-          if (!s.sandboxRoot || !s.projectId) return;
-          void (async () => {
-            await fetch(`${API_BASE}/cut/scene-detect-and-apply`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sandbox_root: s.sandboxRoot, project_id: s.projectId, timeline_id: s.timelineId || 'main',
-              }),
-            });
-            await s.refreshProjectState?.();
-          })();
+          void store.getState().runSceneDetection();
         }},
       ],
     },

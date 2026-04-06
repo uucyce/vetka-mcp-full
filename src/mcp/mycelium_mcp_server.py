@@ -939,14 +939,8 @@ def _signal_handler(signum, frame):
 
 
 async def _graceful_shutdown():
-    """Clean shutdown: cancel pipelines, flush DB, close connections, exit.
-
-    MARKER_RESTART: Full graceful shutdown sequence [task:tb_1775402806_44957_3]
-    SIGTERM → cancel pipelines → flush DB → close connections → sys.exit(0)
-    """
-    logger.info("Graceful shutdown starting...")
-
-    # 1. Cancel active pipelines
+    """Clean shutdown: cancel pipelines, close connections."""
+    # Cancel active pipelines
     for task_id, task in list(_active_pipelines.items()):
         logger.info(f"Cancelling pipeline {task_id}...")
         task.cancel()
@@ -955,30 +949,21 @@ async def _graceful_shutdown():
         except (asyncio.CancelledError, asyncio.TimeoutError):
             pass
 
-    # 2. Flush DB — close any open EventBus sqlite connections
-    try:
-        from src.orchestration.event_bus import reset_event_bus
-        reset_event_bus()
-        logger.info("EventBus DB flushed and closed")
-    except (ImportError, Exception) as e:
-        logger.debug(f"EventBus cleanup (non-critical): {e}")
-
-    # 3. Close WS broadcaster
+    # Close WS broadcaster
     if _ws_broadcaster:
         await _ws_broadcaster.stop()
         logger.info("WebSocket broadcaster stopped")
 
-    # 4. Close HTTP client
+    # Close HTTP client
     if _http_client:
         await _http_client.stop()
         logger.info("HTTP client stopped")
 
-    # 5. Persist pipeline state before exit
+    # MARKER_152.12P: Persist state before exit
     _save_pipeline_state()
     logger.info(f"Pipeline state saved ({len(_pipeline_history)} records)")
 
-    logger.info("Shutdown complete — exiting cleanly")
-    sys.exit(0)
+    logger.info("Shutdown complete")
 
 
 # ============================================================

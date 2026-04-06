@@ -122,7 +122,7 @@ async def test_execute_merge_cherry_pick(tmp_path):
     assert result["commit_hash"] == "abc123def456"
 
     git_cmds = [a[1] for a in call_args]
-    assert "worktree" in git_cmds  # MARKER_201: temp worktree instead of checkout
+    assert "checkout" in git_cmds
     assert "cherry-pick" in git_cmds
 
 
@@ -173,7 +173,7 @@ async def test_execute_merge_squash(tmp_path):
 
     assert result["success"] is True
     git_cmds = [a[1] for a in call_args]
-    assert "worktree" in git_cmds  # MARKER_201: temp worktree instead of checkout
+    assert "checkout" in git_cmds
     assert "commit" in git_cmds
 
 

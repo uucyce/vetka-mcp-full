@@ -193,7 +193,7 @@ class CutTimeMarkerApplyRequest(BaseModel):
     op: Literal["create", "archive"] = "create"
     marker_id: str | None = None
     media_path: str = ""
-    kind: Literal["favorite", "comment", "cam", "insight", "chat"] = "favorite"
+    kind: Literal["favorite", "negative", "comment", "cam", "insight", "chat"] = "favorite"
     start_sec: float = Field(default=0.0, ge=0.0)
     end_sec: float = Field(default=1.0, ge=0.0)
     anchor_sec: float | None = Field(default=None, ge=0.0)
@@ -210,7 +210,7 @@ class CutTimeMarkerApplyRequest(BaseModel):
 class PlayerLabMarkerImportItem(BaseModel):
     marker_id: str = ""
     media_path: str
-    kind: Literal["favorite", "comment", "cam", "insight", "chat"] = "favorite"
+    kind: Literal["favorite", "negative", "comment", "cam", "insight", "chat"] = "favorite"
     start_sec: float = Field(default=0.0, ge=0.0)
     end_sec: float = Field(default=0.0, ge=0.0)
     anchor_sec: float | None = Field(default=None, ge=0.0)
@@ -1215,6 +1215,31 @@ def _find_clip(timeline_state: dict[str, Any], clip_id: str) -> tuple[dict[str, 
     return None, None
 
 
+# MARKER_OP-REGISTRY: Canonical set of valid timeline op types.
+# Must stay in sync with client/src/config/timeline_ops.ts → TIMELINE_OP_TYPES.
+# Any new op added to _apply_timeline_ops MUST be added here too (and vice-versa).
+VALID_TIMELINE_OPS: frozenset[str] = frozenset({
+    # Selection / view
+    "set_selection", "set_view",
+    # Clip positioning
+    "move_clip", "trim_clip", "slip_clip", "ripple_trim", "ripple_trim_to_playhead",
+    "roll_edit", "slide_clip", "swap_clips",
+    # Clip lifecycle
+    "insert_at", "overwrite_at", "split_at", "remove_clip", "ripple_delete", "replace_media",
+    # Clip properties
+    "set_clip_color", "set_clip_meta", "set_transition",
+    "set_effects", "reset_effects", "set_prop", "add_keyframe", "remove_keyframe",
+    # Sync
+    "apply_sync_offset",
+    # Markers
+    "delete_marker",
+    # Lane management (FCP7 Ch.59: Insert/Delete Tracks)
+    "add_lane", "remove_lane",
+    # Async / dedicated-endpoint proxies
+    "run_pulse_analysis", "run_automontage_favorites",
+})
+
+
 def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     state = deepcopy(timeline_state)
     applied_ops: list[dict[str, Any]] = []
@@ -1662,6 +1687,18 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             applied_ops.append({"op": op_type, "clip_id": clip_id, "effects": effects})
             continue
 
+        # MARKER_OP-REGISTRY: reset_effects — remove all effects from a clip (complement of set_effects)
+        if op_type == "reset_effects":
+            clip_id = str(op.get("clip_id") or "").strip()
+            if not clip_id:
+                raise ValueError("clip_id is required for reset_effects")
+            _, clip = _find_clip(state, clip_id)
+            if clip is None:
+                raise ValueError(f"clip not found: {clip_id}")
+            clip.pop("effects", None)
+            applied_ops.append({"op": op_type, "clip_id": clip_id})
+            continue
+
         # MARKER_PASTE_ATTR: set_prop — set arbitrary clip property (for paste attributes)
         if op_type == "set_prop":
             clip_id = str(op.get("clip_id") or "").strip()
@@ -1677,18 +1714,33 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _paste_safe_keys = {
                 "color_correction", "motion", "speed", "reverse", "maintain_pitch",
                 "transition", "transition_out", "keyframes", "effects",
+                "name",  # MARKER_INLINE-RENAME: user-editable clip label
             }
-            if key not in _paste_safe_keys:
-                raise ValueError(f"set_prop: key '{key}' not in paste-safe whitelist")
             value = op.get("value")
-            if value is None:
-                clip.pop(key, None)
+            if "." in key:
+                # KF-SETPROP-DOT: dotted path support (e.g. "keyframes.opacity")
+                root_key, sub_key = key.split(".", 1)
+                if root_key not in _paste_safe_keys:
+                    raise ValueError(f"set_prop: root key '{root_key}' not in paste-safe whitelist")
+                if value is None:
+                    if root_key in clip and isinstance(clip[root_key], dict):
+                        clip[root_key].pop(sub_key, None)
+                else:
+                    if root_key not in clip or not isinstance(clip[root_key], dict):
+                        clip[root_key] = {}
+                    clip[root_key][sub_key] = value
             else:
-                clip[key] = value
+                if key not in _paste_safe_keys:
+                    raise ValueError(f"set_prop: key '{key}' not in paste-safe whitelist")
+                if value is None:
+                    clip.pop(key, None)
+                else:
+                    clip[key] = value
             applied_ops.append({"op": op_type, "clip_id": clip_id, "key": key})
             continue
 
-        # MARKER_B71: add_keyframe — append a keyframe to clip's keyframes list
+        # KF-DICTFORMAT: add_keyframe — store as dict {property: [{time_sec, value, easing}]}
+        # Frontend store reads clip.keyframes[property] (dict access), must match.
         if op_type == "add_keyframe":
             clip_id = str(op.get("clip_id") or "").strip()
             if not clip_id:
@@ -1703,16 +1755,29 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _, clip = _find_clip(state, clip_id)
             if clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
-            keyframes = clip.setdefault("keyframes", [])
-            kf = {"property": prop, "time_sec": round(time_sec, 4), "value": value}
+            # Migrate legacy flat-list format to dict on first access
+            if isinstance(clip.get("keyframes"), list):
+                old_flat = clip["keyframes"]
+                clip["keyframes"] = {}
+                for k in old_flat:
+                    p = str(k.get("property") or "")
+                    if p:
+                        clip["keyframes"].setdefault(p, []).append(
+                            {kk: vv for kk, vv in k.items() if kk != "property"}
+                        )
+            kf_dict = clip.setdefault("keyframes", {})
+            prop_list = kf_dict.setdefault(prop, [])
+            kf = {"time_sec": round(time_sec, 4), "value": value}
             if "easing" in op:
                 kf["easing"] = str(op["easing"])
-            keyframes.append(kf)
-            keyframes.sort(key=lambda k: (str(k.get("property") or ""), float(k.get("time_sec") or 0.0)))
+            # Replace any existing keyframe at same time
+            prop_list[:] = [k for k in prop_list if abs(float(k.get("time_sec") or 0.0) - time_sec) >= 0.001]
+            prop_list.append(kf)
+            prop_list.sort(key=lambda k: float(k.get("time_sec") or 0.0))
             applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "value": value})
             continue
 
-        # MARKER_B71: remove_keyframe — remove keyframe by property+time
+        # KF-DICTFORMAT: remove_keyframe — filter from dict[property] list
         if op_type == "remove_keyframe":
             clip_id = str(op.get("clip_id") or "").strip()
             if not clip_id:
@@ -1726,13 +1791,18 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
             _, clip = _find_clip(state, clip_id)
             if clip is None:
                 raise ValueError(f"clip not found: {clip_id}")
-            keyframes = clip.get("keyframes", [])
-            original_len = len(keyframes)
-            clip["keyframes"] = [
-                k for k in keyframes
-                if not (str(k.get("property") or "") == prop and abs(float(k.get("time_sec") or 0.0) - time_sec) < 0.001)
-            ]
-            removed = original_len - len(clip["keyframes"])
+            kf_dict = clip.get("keyframes") or {}
+            if isinstance(kf_dict, list):
+                # Legacy flat list — treat as no match
+                removed = 0
+            else:
+                prop_list = kf_dict.get(prop, [])
+                original_len = len(prop_list)
+                kf_dict[prop] = [
+                    k for k in prop_list
+                    if abs(float(k.get("time_sec") or 0.0) - time_sec) >= 0.001
+                ]
+                removed = original_len - len(kf_dict[prop])
             applied_ops.append({"op": op_type, "clip_id": clip_id, "property": prop, "time_sec": round(time_sec, 4), "removed": removed})
             continue
 
@@ -1870,6 +1940,74 @@ def _apply_timeline_ops(timeline_state: dict[str, Any], ops: list[dict[str, Any]
                         c["start_sec"] = round(c_start - delta, 4)
             source_lane["clips"] = sorted(source_lane["clips"], key=lambda c: float(c.get("start_sec") or 0.0))
             applied_ops.append({"op": op_type, "clip_id": clip_id, "playhead": playhead, "edge": trim_end})
+            continue
+
+        # MARKER_DELTABUG-MARKERS: delete_marker — remove marker from state["markers"] list.
+        # Markers stored inline in timeline_state["markers"] for undo-stack support.
+        if op_type == "delete_marker":
+            marker_id = str(op.get("marker_id") or "").strip()
+            if not marker_id:
+                raise ValueError("delete_marker requires marker_id")
+            markers = state.get("markers")
+            if isinstance(markers, list):
+                original_len = len(markers)
+                state["markers"] = [m for m in markers if str(m.get("marker_id") or "") != marker_id]
+                removed = original_len - len(state["markers"])
+            else:
+                removed = 0
+            applied_ops.append({"op": op_type, "marker_id": marker_id, "removed": removed})
+            continue
+
+        # MARKER_A5.6: add_lane — insert a new empty lane (video or audio).
+        # FCP7 Ch.59: Insert Tracks creates empty tracks at specified position.
+        if op_type == "add_lane":
+            import uuid as _uuid
+            lane_type = str(op.get("lane_type") or "video").strip()
+            if not (lane_type.startswith("video") or lane_type.startswith("audio")):
+                raise ValueError(f"add_lane: invalid lane_type '{lane_type}' — must start with 'video' or 'audio'")
+            prefix = "video" if lane_type.startswith("video") else "audio"
+            new_lane_id = f"{prefix}_{_uuid.uuid4().hex[:8]}"
+            new_lane: dict[str, Any] = {
+                "lane_id": new_lane_id,
+                "lane_type": lane_type,
+                "clips": [],
+            }
+            lanes = state.setdefault("lanes", [])
+            position = op.get("position")
+            if position is not None and isinstance(position, int) and 0 <= position <= len(lanes):
+                lanes.insert(position, new_lane)
+            else:
+                lanes.append(new_lane)
+            applied_ops.append({"op": op_type, "lane_id": new_lane_id, "lane_type": lane_type})
+            continue
+
+        # MARKER_A5.6: remove_lane — remove an empty lane by ID.
+        # Safety: refuses to remove lanes with clips unless force=True.
+        if op_type == "remove_lane":
+            lane_id = str(op.get("lane_id") or "").strip()
+            if not lane_id:
+                raise ValueError("remove_lane requires lane_id")
+            force = bool(op.get("force", False))
+            lanes = state.get("lanes", [])
+            target = next((l for l in lanes if str(l.get("lane_id") or "") == lane_id), None)
+            if target is None:
+                applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": False, "reason": "lane_not_found"})
+                continue
+            clips = target.get("clips") or []
+            if clips and not force:
+                applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": False, "reason": "lane_not_empty"})
+                continue
+            state["lanes"] = [l for l in lanes if str(l.get("lane_id") or "") != lane_id]
+            applied_ops.append({"op": op_type, "lane_id": lane_id, "removed": True, "clips_removed": len(clips)})
+            continue
+
+        # MARKER_DELTABUG-PULSE: run_pulse_analysis / run_automontage_favorites are no-ops here.
+        # These ops arrive via timeline op pipeline but the real work is done by dedicated
+        # endpoints (/api/cut/pulse/... and /api/cut/pulse/auto-montage).
+        # Accepting them here prevents the "unsupported timeline op" error when the frontend
+        # routes these through applyTimelineOps.
+        if op_type in ("run_pulse_analysis", "run_automontage_favorites"):
+            applied_ops.append({"op": op_type, "note": "routed_to_dedicated_endpoint"})
             continue
 
         raise ValueError(f"unsupported timeline op: {op_type or '<empty>'}")
@@ -2463,7 +2601,7 @@ async def cut_import_markers_srt(body: CutMarkerSrtImportRequest) -> dict[str, A
         if not media_path:
             continue
         marker_kind = str(meta.get("kind") or "comment")
-        if marker_kind not in {"favorite", "comment", "cam", "insight", "chat"}:
+        if marker_kind not in {"favorite", "negative", "comment", "cam", "insight", "chat"}:
             marker_kind = "comment"
         req = CutTimeMarkerApplyRequest(
             sandbox_root=body.sandbox_root,

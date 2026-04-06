@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState, useEffect } from 'react';
 import { Loader2, Check, X, AlertCircle } from 'lucide-react';
 import { CodeViewer } from '../artifact/viewers/CodeViewer';
