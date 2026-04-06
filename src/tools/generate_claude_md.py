@@ -57,14 +57,9 @@ _GENERIC_ROOT_CLAUDE_MD = """\
 ```
 1. mcp__vetka__vetka_session_init role=<YourCallsign>
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. mcp__vetka__vetka_task_board action=notifications role=<YourCallsign>
-   → READ Commander orders BEFORE doing anything else
-3. mcp__vetka__vetka_task_board action=ack_notifications role=<YourCallsign>
-4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
-5. Claim → Work → action=complete task_id=<id> branch=<your-branch>
+2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+3. Claim → Work → action=complete task_id=<id> branch=<your-branch>
 ```
-
-**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks.
 
 `action=complete` = auto-stage + commit + close task. NEVER `git add`/`git commit` manually.
 

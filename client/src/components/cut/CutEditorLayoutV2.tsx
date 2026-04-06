@@ -135,7 +135,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   }, [selectedClipId]);
 
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) — hook kept for external use/testing ───
-  useThreePointEdit();
+  const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
 
   // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
   const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
