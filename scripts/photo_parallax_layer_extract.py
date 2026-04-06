@@ -107,18 +107,18 @@ def bbox_mask(shape: tuple[int, int], bbox: dict, feather_px: int = 12) -> np.nd
 
 
 def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None, None]:
-    """Return the largest connected component from a boolean mask.
-    Uses scipy.ndimage.label when available (O(N)), falls back to
-    pure-Python BFS with a 4M-pixel guard for safety.
-    Returned meta always contains: score, area, aspect, fill."""
+    """Return the best connected component from a boolean mask.
+    Uses scipy.ndimage.label when available (O(N)), falls back to cv2,
+    then to pure-Python BFS with a pixel-count guard for safety."""
     h, w = mask.shape
 
-    # Fast path: scipy connected components (O(N))
+    # Fast path: scipy or cv2 for connected components
     try:
         from scipy.ndimage import label as _scipy_label
         labeled, num_features = _scipy_label(mask.astype(np.uint8))
         if num_features == 0:
             return None, None
+        # Find largest by pixel count
         comp_sizes = np.bincount(labeled.ravel())
         comp_sizes[0] = 0  # ignore background
         best_label = int(comp_sizes.argmax())
@@ -126,36 +126,38 @@ def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None
         ys, xs = np.where(best_comp_mask)
         area = len(ys)
         x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
+        expected_cx = w * 0.45
+        expected_cy = h * 0.62
         comp_h = y1 - y0 + 1
         comp_w = x1 - x0 + 1
-        aspect = comp_h / max(1, comp_w)
-        fill = area / max(1, comp_h * comp_w)
-        score = min(area / 3000, 1.5) + min(aspect / 3, 1.5)
+        cx = (x0 + x1) / 2
+        cy = (y0 + y1) / 2
+        score = min(area / 3000, 1.5) + min((comp_h / max(1, comp_w)) / 3, 1.5)
+        score += 1.2 * (1 - min(abs(cx - expected_cx) / max(1, w * 0.5), 1))
+        score += 1.2 * (1 - min(abs(cy - expected_cy) / max(1, h * 0.5), 1))
         return best_comp_mask, {
-            "score": float(score), "area": area,
-            "aspect": float(aspect), "fill": float(fill),
+            "score": score, "area": area,
             "bbox": {"x": x0, "y": y0, "width": comp_w, "height": comp_h},
         }
     except ImportError:
         pass
 
-    # Guard: pure-Python BFS on >4M pixels will be too slow — return whole mask
+    # Guard: pure-Python BFS on >4M pixels will be too slow
     if h * w > 4_000_000:
+        # Fallback: return entire mask as single component
         ys, xs = np.where(mask)
         if len(ys) == 0:
             return None, None
         x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())
-        comp_h = y1 - y0 + 1
-        comp_w = x1 - x0 + 1
-        area = int(mask.sum())
-        aspect = comp_h / max(1, comp_w)
-        fill = area / max(1, comp_h * comp_w)
-        return mask, {"score": 0.0, "area": area, "aspect": float(aspect), "fill": float(fill),
-                      "bbox": {"x": x0, "y": y0, "width": comp_w, "height": comp_h}}
+        return mask, {"score": 0.0, "area": int(mask.sum()),
+                      "bbox": {"x": x0, "y": y0, "width": x1 - x0 + 1, "height": y1 - y0 + 1}}
 
     visited = np.zeros((h, w), dtype=bool)
     best_mask: np.ndarray | None = None
     best_meta: dict | None = None
+
+    expected_cx = w * 0.45
+    expected_cy = h * 0.62
 
     for yy in range(h):
         for xx in range(w):
@@ -181,7 +183,14 @@ def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None
             comp_w = x1 - x0 + 1
             aspect = comp_h / max(1, comp_w)
             fill = area / max(1, comp_h * comp_w)
-            score = min(area / 3000, 1.5) + min(aspect / 3, 1.5)
+            cx = (x0 + x1) / 2
+            cy = (y0 + y1) / 2
+
+            score = 0.0
+            score += min(area / 3000, 1.5)
+            score += min(aspect / 3, 1.5)
+            score += 1.2 * (1 - min(abs(cx - expected_cx) / max(1, w * 0.5), 1))
+            score += 1.2 * (1 - min(abs(cy - expected_cy) / max(1, h * 0.5), 1))
             if fill < 0.08 or fill > 0.9:
                 score -= 2.0
 
@@ -190,9 +199,11 @@ def _largest_component(mask: np.ndarray) -> tuple[np.ndarray, dict] | tuple[None
                 comp_mask[ys, xs] = True
                 best_mask = comp_mask
                 best_meta = {
-                    "score": float(score), "area": area,
-                    "aspect": float(aspect), "fill": float(fill),
+                    "score": float(score),
+                    "area": area,
                     "bbox": (x0, y0, x1, y1),
+                    "aspect": float(aspect),
+                    "fill": float(fill),
                 }
 
     return best_mask, best_meta
@@ -443,8 +454,8 @@ def run_extraction(sample_id: str, outdir: Path) -> dict:
     proto_layers = []
     layer_alphas = []
 
-    for i_plate, plate in enumerate(sorted(visible_plates, key=lambda p: -p.get("z", 0))):
-        pid = plate.get("id") or f"plate_{i_plate}"
+    for plate in sorted(visible_plates, key=lambda p: -p.get("z", 0)):
+        pid = plate["id"]
         label = plate.get("label", pid)
         role = plate.get("role", "unknown")
         z = plate.get("z", 0)

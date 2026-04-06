@@ -1,4 +1,3 @@
-// @ts-nocheck
 /**
  * UnifiedSearchBar - Real-time search bar with hybrid search (Qdrant + Weaviate + RRF).
  * Supports multi-select, hover preview, sorting, and multiple search contexts.

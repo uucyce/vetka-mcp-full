@@ -112,7 +112,7 @@ type Step = 'platforms' | 'configure' | 'queue';
 
 export function PublishDialog() {
   const show = useCutEditorStore((s) => s.showPublishDialog);
-  const projectTitle = useCutEditorStore((s) => (s as any).projectTitle) ?? '';
+  const projectTitle = useCutEditorStore((s) => s.projectTitle) ?? '';
 
   const [step, setStep] = useState<Step>('platforms');
   const [targets, setTargets] = useState<Record<Platform, PlatformTarget>>(() => {
