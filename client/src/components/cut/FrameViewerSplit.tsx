@@ -15,6 +15,7 @@
  */
 import { useState, useCallback, useRef, useEffect, type CSSProperties, type MouseEvent } from 'react';
 import { useCutEditorStore } from '../../store/useCutEditorStore';
+import { API_BASE } from '../../config/api.config';
 
 // ─── Styles ───
 
