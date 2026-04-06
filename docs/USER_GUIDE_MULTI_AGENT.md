@@ -1,5 +1,5 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 5.0 | **Дата:** 2026-04-01 (Phase 196.6 — Haiku optimization wave)
+**Версия:** 7.0 | **Дата:** 2026-04-07 (Phase 210 — Gemma Fleet: Omicron/Pi/Rho/Sigma + free_code агенты)
 
 ---
 
@@ -26,17 +26,23 @@
 | **Mistral-1** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 1 — free tier, 10-15 tasks/day |
 | **Mistral-2** | Mistral Vibe | **Vibe CLI** | QA Agent 5 — free tier, 10-15 tasks/day |
 | **Mistral-3** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 2 — free tier, 10-15 tasks/day |
+| **Omicron** | gemma4:e4b (free) | **free-code** | Gemma Engine — engine-class задачи на локальной модели |
+| **Pi** | gemma4:e2b (free) | **free-code** | Gemma Scout — автоматический recon, лёгкие задачи |
+| **Rho** | gemma4:26b (free) | **free-code** | Gemma Sherpa — vision, web browsing, поддержка Sherpa |
+| **Sigma** | gemma4:e4b (free) | **free-code** | Gemma QA — верификация, тесты через Gemma |
 
-**Экономия:** 2 Opus + 1 Sonnet + 4 Haiku + 1 Sonnet (Eta) + 5 Qwen + 3 Mistral Vibe (free) = максимальная пропускная способность.
+**Экономия:** 2 Opus + 1 Sonnet + 4 Haiku + 1 Sonnet (Eta) + 5 Qwen + 3 Mistral Vibe + 4 Gemma (free, локально) = максимальная пропускная способность.
 
 ---
 
 ## Быстрый старт: 3 команды
 
 ```bash
-# 1. Запустить агента в worktree (роль загрузится автоматически, hook уведомит о сигналах)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine
-claude --dangerously-skip-permissions --model sonnet
+# 1. Запустить Claude Code агента (модель читается автоматически из agent_registry.yaml)
+scripts/spawn_synapse.sh Alpha cut-engine claude_code
+
+# 1b. Запустить Gemma агента (Ollama, бесплатно — нужен LiteLLM + bridge, см. ниже)
+scripts/spawn_synapse.sh Omicron gemma-engine free_code
 
 # 2. Запустить Qwen-агента через opencode (WEATHER роли) — с ролью для сигналов
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core
@@ -50,23 +56,25 @@ vetka_task_board action=active_agents
 
 ## Команды запуска
 
-### Claude Code — CUT домен (Opus / Sonnet / Haiku)
+### Claude Code — CUT домен (spawn_synapse.sh)
+
+`spawn_synapse.sh` читает `model_tier` из `data/templates/agent_registry.yaml` автоматически — модель указывать не нужно.
 
 ```bash
-# Alpha (Engine) — Sonnet (единственный Sonnet — сложные фиксы)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
+# Alpha (Engine) — Sonnet
+scripts/spawn_synapse.sh Alpha cut-engine claude_code
 
-# Beta (Media) — Haiku (imports, pipelines, шаблонная работа)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model haiku
+# Beta (Media) — Haiku
+scripts/spawn_synapse.sh Beta cut-media claude_code
 
-# Gamma (UX) — Haiku (wiring, SVG, CSS)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model haiku
+# Gamma (UX) — Haiku
+scripts/spawn_synapse.sh Gamma cut-ux claude_code
 
-# Delta (QA) — Haiku (pytest, code review по чеклисту)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model haiku
+# Delta (QA) — Haiku
+scripts/spawn_synapse.sh Delta cut-qa claude_code
 
-# Epsilon (QA2) — Haiku (contract tests, верификация)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model haiku
+# Epsilon (QA2) — Haiku
+scripts/spawn_synapse.sh Epsilon cut-qa-2 claude_code
 
 # Lambda (QA3) — Qwen via Opencode
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencode -m opencode/qwen3.6-plus-free
@@ -75,16 +83,37 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencod
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-4 && opencode -m opencode/qwen3.6-plus-free
 
 # Eta (Harness 2) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
+scripts/spawn_synapse.sh Eta harness-eta claude_code
 
 # Zeta (Harness) — Opus
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+scripts/spawn_synapse.sh Zeta harness claude_code
 
 # Commander (Architect) — Opus
+scripts/spawn_synapse.sh Commander pedantic-bell claude_code
+```
+
+#### Fallback: ручной запуск (если spawn_synapse.sh недоступен)
+
+```bash
+# Alpha — Sonnet
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
+# Beta — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model haiku
+# Gamma — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model haiku
+# Delta — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model haiku
+# Epsilon — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model haiku
+# Eta — Sonnet
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
+# Zeta — Opus
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+# Commander — Opus
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
 ```
 
-> **Когда повышать Haiku до Sonnet:** Если агент не справляется с задачей (3+ попытки, ошибки reasoning), временно повысьте: `claude --dangerously-skip-permissions --model sonnet`. После задачи верните обратно на haiku.
+> **Когда повышать Haiku до Sonnet:** Если агент не справляется с задачей (3+ попытки, ошибки reasoning), временно повысьте через fallback-команду с `--model sonnet`. После задачи верните обратно.
 
 ### Opencode — Qwen3.6 Plus Free (WEATHER домен)
 
@@ -117,6 +146,75 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mistral-2 &
 
 > **Mistral Vibe CLI:** Установить: `npm install -g @mistralai/vibe-cli` или `pip install mistral-vibe-cli`. Бесплатный лимит: ~10-15 задач/день на аккаунт.
 > **Первое сообщение:** `vetka_session_init role=Mistral-1` (или Mistral-2, Mistral-3)
+
+### Gemma Fleet — free_code (Ollama + LiteLLM + Bridge)
+
+Gemma агенты работают локально через Ollama — бесплатно, без лимитов API. Требуют запущенных LiteLLM + bridge процессов.
+
+#### Предварительно: запустить LiteLLM + bridge (один раз перед флотом)
+
+```bash
+# Terminal 1: LiteLLM proxy (переводит Anthropic→OpenAI→Ollama)
+LITELLM_MASTER_KEY=sk-ollama /tmp/litellm_venv/bin/litellm \
+  --model ollama/gemma4:e4b --port 4000 --drop_params
+
+# Terminal 2: Gemma Bridge (XML tool call converter, порт 4001)
+python3 scripts/litellm_gemma_bridge.py --port 4001
+
+# Проверка работы (ожидать: {"status": "ok"})
+curl http://localhost:4001/health
+```
+
+> **Установка LiteLLM (один раз):**
+> ```bash
+> python3 -m venv /tmp/litellm_venv && /tmp/litellm_venv/bin/pip install litellm
+> ```
+> **Ollama модели (один раз):**
+> ```bash
+> ollama pull gemma4:e4b   # 4B параметров — основной
+> ollama pull gemma4:e2b   # 2B параметров — быстрый scout
+> ollama pull gemma4:26b   # 26B параметров — vision/sherpa
+> ```
+
+#### Запуск Gemma Fleet
+
+```bash
+# Omicron (Engine) — gemma4:e4b — engine-class задачи
+scripts/spawn_synapse.sh Omicron gemma-engine free_code
+
+# Pi (Scout) — gemma4:e2b — автоматический recon, лёгкие задачи
+scripts/spawn_synapse.sh Pi gemma-scout free_code
+
+# Rho (Sherpa) — gemma4:26b — vision, web browsing
+scripts/spawn_synapse.sh Rho gemma-sherpa free_code
+
+# Sigma (QA) — gemma4:e4b — верификация, тесты
+scripts/spawn_synapse.sh Sigma gemma-qa free_code
+```
+
+> **Переменные окружения (опционально):**
+> ```bash
+> export GEMMA_BRIDGE_URL=http://localhost:4001   # default
+> export FREE_CODE_BIN=~/Documents/VETKA_Project/free-code/cli-dev  # default
+> ```
+>
+> **Создание worktrees (один раз, Commander domain):**
+> ```bash
+> git worktree add .claude/worktrees/gemma-engine main
+> git worktree add .claude/worktrees/gemma-scout main
+> git worktree add .claude/worktrees/gemma-sherpa main
+> git worktree add .claude/worktrees/gemma-qa main
+> ```
+
+#### Fallback: ручной запуск Gemma агента
+
+```bash
+# Gemma — ручной запуск через free-code напрямую
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/gemma-engine
+ANTHROPIC_BASE_URL=http://localhost:4001 ANTHROPIC_API_KEY=sk-ollama \
+  ~/Documents/VETKA_Project/free-code/cli-dev \
+  --dangerously-skip-permissions --model gemma4:e4b
+```
 
 ### Opencode — TUI режим (интерактивный)
 
@@ -152,6 +250,10 @@ opencode
 | **Mistral-1** | `weather-mistral-1` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 1 — free tier |
 | **Mistral-2** | `cut-qa-5` | QA5 | **Vibe CLI** | Mistral Vibe | QA Agent 5 — free tier |
 | **Mistral-3** | `weather-mistral-2` | WEATHER | **Vibe CLI** | Mistral Vibe | WEATHER Agent 2 — free tier |
+| **Omicron** | `gemma-engine` | Gemma | **free-code** | gemma4:e4b (free) | Engine-class задачи на Gemma |
+| **Pi** | `gemma-scout` | Gemma | **free-code** | gemma4:e2b (free) | Auto-recon scout, лёгкие задачи |
+| **Rho** | `gemma-sherpa` | Gemma | **free-code** | gemma4:26b (free) | Vision, web, поддержка Sherpa |
+| **Sigma** | `gemma-qa` | Gemma | **free-code** | gemma4:e4b (free) | QA верификация через Gemma |
 
 ---
 
@@ -185,6 +287,10 @@ mcp__vetka__vetka_session_init role=Kappa     # → WEATHER Terminal context
 mcp__vetka__vetka_session_init role=Mistral-1 # → WEATHER Agent 1 (Vibe CLI)
 mcp__vetka__vetka_session_init role=Mistral-2 # → QA Agent 5 (Vibe CLI)
 mcp__vetka__vetka_session_init role=Mistral-3 # → WEATHER Agent 2 (Vibe CLI)
+mcp__vetka__vetka_session_init role=Omicron   # → Gemma engine context (free-code)
+mcp__vetka__vetka_session_init role=Pi        # → Gemma scout context (free-code)
+mcp__vetka__vetka_session_init role=Rho       # → Gemma sherpa context (free-code)
+mcp__vetka__vetka_session_init role=Sigma     # → Gemma QA context (free-code)
 mcp__vetka__vetka_session_init role=Commander # → Architect context
 ```
 
@@ -400,6 +506,10 @@ opencode -m opencode/qwen3.6-plus-free
 | WEATHER: profiles, universal prompt injection | Theta | weather |
 | WEATHER: local model mediator, context packing | Iota | weather |
 | WEATHER: terminal, CLI agents, xterm.js | Kappa | weather |
+| Engine/compute задачи на Gemma (бесплатно) | Omicron | gemma |
+| Лёгкий recon, автосбор данных (бесплатно) | Pi | gemma |
+| Vision, web browsing, Sherpa-support (бесплатно) | Rho | gemma |
+| QA-верификация через Gemma (бесплатно) | Sigma | gemma |
 
 ---
 
@@ -423,7 +533,8 @@ git diff main..agent/theta-weather      # что изменилось
 
 | Файл | Назначение |
 |---|---|
-| `data/templates/agent_registry.yaml` | Роли, домены, owned_paths, blocked_paths |
+| `data/templates/agent_registry.yaml` | Роли, домены, owned_paths, blocked_paths, model_tier |
+| `scripts/spawn_synapse.sh` | Универсальный лаунчер — читает model_tier из registry |
 | `.claude/worktrees/*/CLAUDE.md` | Per-worktree инструкции |
 | `data/experience_reports/*.json` | Experience reports от агентов |
 | `src/services/agent_registry.py` | Python loader для registry |
@@ -454,6 +565,12 @@ git diff main..agent/theta-weather      # что изменилось
   8. Zeta (Opus), Eta (Sonnet) — harness, memory, pipeline
   9. Polaris (Qwen) — координация opencode флота
 
+Работа (Gemma Fleet — бесплатно, параллельно):
+  10. Omicron (gemma4:e4b) — engine задачи через Ollama
+  11. Pi (gemma4:e2b) — авто-recon, лёгкий сбор данных
+  12. Rho (gemma4:26b) — vision/web задачи, поддержка Sherpa
+  13. Sigma (gemma4:e4b) — QA верификация
+
 Merge:
   10. Commander → "замерджь через task_board merge_request"
   11. Post-merge hook: digest + task promote
@@ -465,11 +582,13 @@ Merge:
 
 ### Экономия лимитов (v5.0 vs v4.0)
 
-| Было (v4.0) | Стало (v5.0) | Экономия |
+| Было (v4.0) | Стало (v7.0) | Экономия |
 |---|---|---|
 | 2 Opus + 6 Sonnet | 2 Opus + 2 Sonnet + 4 Haiku | ~60% на CUT-агентах |
 | Sonnet = $3/M input | Haiku = $0.80/M input | 3.75x дешевле per agent |
 | Beta/Gamma/Delta/Epsilon на Sonnet | Те же на Haiku | Быстрее output, тот же QA gate |
+| Нет Gemma агентов | 4 Gemma (Omicron/Pi/Rho/Sigma) локально | $0 — бесплатно через Ollama |
+| Claude API для всех задач | Gemma берёт recon/scout/QA | -20-30% API calls на Claude |
 
 ---
 
@@ -481,9 +600,9 @@ Merge:
 - Merge conflict resolution (сложные)
 - Новая фича с нуля (не fix/wiring)
 
-Решение: временно повысить модель, после задачи вернуть.
+Решение: временно повысить модель через fallback-запуск, после задачи вернуть.
 ```bash
-# Временно Beta на Sonnet для сложной задачи
+# Временно Beta на Sonnet для сложной задачи (fallback с явной моделью)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model sonnet
 ```
 
