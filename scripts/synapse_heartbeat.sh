@@ -88,17 +88,8 @@ nudge_agent() {
     fi
 
     tmux send-keys -t "$session_name" "continue"
-    case "$agent_type" in
-        opencode)
-            # Escape exits Zen multiline input → compact mode, Enter submits
-            tmux send-keys -t "$session_name" Escape
-            sleep 0.3
-            tmux send-keys -t "$session_name" Enter
-            ;;
-        *)
-            tmux send-keys -t "$session_name" Enter
-            ;;
-    esac
+    sleep 0.3  # TUI needs time to process typed text before Enter
+    tmux send-keys -t "$session_name" Enter
     echo "$LOG_PREFIX Nudged $role ($agent_type) with 'continue'"
 }
 

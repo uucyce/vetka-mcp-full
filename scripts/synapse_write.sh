@@ -45,46 +45,30 @@ json.dump({'role': '$ROLE', 'prompt': sys.stdin.read(), 'ts': $(date +%s)}, open
     exit 0
 fi
 
-# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit sequence ─
-# opencode Bubble Tea TUI: Zen mode captures Enter as newline.
-#   Fix: Escape exits Zen → compact mode, then Enter submits.
-#   Empirically verified with Theta/Polaris fleet 2026-04-06.
-# claude_code: Enter submits directly.
-_submit_opencode() {
-    local session="$1"
-    # Escape = exit Zen multiline input → compact mode
-    tmux send-keys -t "$session" Escape
-    sleep 0.3
-    # Enter = submit in compact mode
-    tmux send-keys -t "$session" Enter
-}
-
-_submit_default() {
-    local session="$1"
-    tmux send-keys -t "$session" Enter
-}
+# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit timing ───
+# opencode Bubble Tea TUI needs a delay between paste/type and Enter.
+# Without delay, Enter arrives before TUI processes the text and gets
+# swallowed or treated as newline. 0.3s is enough for TUI event loop.
+# Verified: Commander tested bare Enter on Polaris — works WITH delay.
+SUBMIT_DELAY="${SYNAPSE_SUBMIT_DELAY:-0.3}"
 
 # ── Detect single-line vs multi-line ──────────────────────
 NEWLINE_COUNT=$(echo "$PROMPT" | wc -l | tr -d ' ')
 
 if [ "$NEWLINE_COUNT" -le 1 ]; then
-    # Single-line: type text then submit
+    # Single-line: type text, wait for TUI, then Enter
     tmux send-keys -t "$SESSION_NAME" "$PROMPT"
-    case "$AGENT_TYPE" in
-        opencode) _submit_opencode "$SESSION_NAME" ;;
-        *)        _submit_default "$SESSION_NAME" ;;
-    esac
+    sleep "$SUBMIT_DELAY"
+    tmux send-keys -t "$SESSION_NAME" Enter
     echo "$LOG_PREFIX Sent to $ROLE ($AGENT_TYPE): ${PROMPT:0:80}..."
 else
-    # Multi-line: use tmux load-buffer + paste, then submit
+    # Multi-line: use tmux load-buffer + paste, wait for TUI, then Enter
     TMPFILE=$(mktemp /tmp/synapse_write_XXXXXX.txt)
     echo "$PROMPT" > "$TMPFILE"
     tmux load-buffer -b synapse_write_buf "$TMPFILE"
     tmux paste-buffer -b synapse_write_buf -t "$SESSION_NAME"
-    case "$AGENT_TYPE" in
-        opencode) _submit_opencode "$SESSION_NAME" ;;
-        *)        _submit_default "$SESSION_NAME" ;;
-    esac
+    sleep "$SUBMIT_DELAY"
+    tmux send-keys -t "$SESSION_NAME" Enter
     rm -f "$TMPFILE"
     echo "$LOG_PREFIX Pasted multi-line to $ROLE ($AGENT_TYPE, ${NEWLINE_COUNT} lines)"
 fi
