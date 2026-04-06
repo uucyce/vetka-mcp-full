@@ -59,6 +59,7 @@ fn main() {
             commands::get_system_info,
             commands::trace_detached_media_geometry,
             commands::pick_folder_native,
+            commands::pick_files_native,
             commands::set_window_fullscreen,
             commands::get_window_fullscreen,
             commands::toggle_current_window_fullscreen,

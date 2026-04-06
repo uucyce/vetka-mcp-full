@@ -28,6 +28,23 @@ export type GenMachineState =
   | 'CANCELLED'
   | 'REJECTED';
 
+// ─── Job queue record ───
+
+export type JobRecordStatus = 'queued' | 'generating' | 'previewing' | 'completed' | 'cancelled' | 'failed';
+
+export interface JobRecord {
+  id: string;
+  providerId: string;
+  prompt: string;
+  status: JobRecordStatus;
+  progress: number;
+  cost: number | null;
+  eta: string | null;
+  createdAt: number;
+  completedAt: number | null;
+  previewUrl: string | null;
+}
+
 // ─── Store shape ───
 
 export interface GenerationControlState {
@@ -52,6 +69,9 @@ export interface GenerationControlState {
 
   // Reference frame (Cmd+F capture from source monitor)
   referenceFrameDataUrl: string | null;
+
+  // Job history queue (for GenerationQueueList)
+  jobHistory: JobRecord[];
 
   // Actions — state machine transitions
   connectProvider: (providerId: string) => void;
@@ -81,6 +101,7 @@ export interface GenerationControlState {
   // Internal / QA helpers
   forceState: (state: GenMachineState) => void;
   addSpend: (usd: number) => void;
+  clearJobHistory: () => void;
 }
 
 // ─── Guard: allowed transitions ───
@@ -133,6 +154,7 @@ export const useGenerationControlStore = create<GenerationControlState>((set, ge
   actualCostUsd: null,
   sessionSpendUsd: 0,
   referenceFrameDataUrl: null,
+  jobHistory: [],
 
   // ─── State machine transitions ───
 
@@ -183,28 +205,56 @@ export const useGenerationControlStore = create<GenerationControlState>((set, ge
 
   submitJob: () => {
     transition(get, set, 'QUEUED');
+    // Add job to history when submitted
+    const { prompt, activeProviderId } = get();
+    const newJob: JobRecord = {
+      id: `job_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      providerId: activeProviderId ?? '',
+      prompt,
+      status: 'queued',
+      progress: 0,
+      cost: null,
+      eta: null,
+      createdAt: Date.now(),
+      completedAt: null,
+      previewUrl: null,
+    };
+    set((s) => ({ jobHistory: [newJob, ...s.jobHistory] }));
   },
 
   jobQueued: (jobId) => {
     set({ jobId });
+    // Update history record with server-assigned jobId if needed
   },
 
   jobStarted: () => {
     transition(get, set, 'GENERATING', { progress: 0, progressEta: null });
+    set((s) => ({
+      jobHistory: s.jobHistory.map((j, i) => i === 0 ? { ...j, status: 'generating' as JobRecordStatus } : j),
+    }));
   },
 
   setProgress: (progress, eta) => {
     set({ progress, progressEta: eta ?? null });
+    set((s) => ({
+      jobHistory: s.jobHistory.map((j, i) => i === 0 ? { ...j, progress, eta: eta ?? null } : j),
+    }));
   },
 
   setPreviewUrl: (url) => {
     transition(get, set, 'PREVIEWING', { previewUrl: url, progress: 1 });
+    set((s) => ({
+      jobHistory: s.jobHistory.map((j, i) => i === 0 ? { ...j, status: 'previewing' as JobRecordStatus, previewUrl: url, progress: 1 } : j),
+    }));
   },
 
   cancelJob: () => {
     const { machineState } = get();
     if (machineState === 'QUEUED' || machineState === 'GENERATING') {
       transition(get, set, 'CANCELLED', { progress: 0, progressEta: null });
+      set((s) => ({
+        jobHistory: s.jobHistory.map((j, i) => i === 0 ? { ...j, status: 'cancelled' as JobRecordStatus, completedAt: Date.now() } : j),
+      }));
     }
   },
 
@@ -226,11 +276,17 @@ export const useGenerationControlStore = create<GenerationControlState>((set, ge
       estimatedCostUsd: null,
       actualCostUsd: null,
       sessionSpendUsd: s.sessionSpendUsd + (actualCostUsd ?? 0),
+      jobHistory: s.jobHistory.map((j, i) =>
+        i === 0 ? { ...j, status: 'completed' as JobRecordStatus, completedAt: Date.now(), cost: actualCostUsd } : j
+      ),
     }));
   },
 
   rejectPreview: () => {
     transition(get, set, 'REJECTED', { previewUrl: null });
+    set((s) => ({
+      jobHistory: s.jobHistory.map((j, i) => i === 0 ? { ...j, status: 'failed' as JobRecordStatus, completedAt: Date.now() } : j),
+    }));
     setTimeout(() => {
       transition(get, set, 'CONFIGURING');
     }, 50);
@@ -250,5 +306,9 @@ export const useGenerationControlStore = create<GenerationControlState>((set, ge
 
   addSpend: (usd) => {
     set((s) => ({ sessionSpendUsd: s.sessionSpendUsd + usd, actualCostUsd: usd }));
+  },
+
+  clearJobHistory: () => {
+    set({ jobHistory: [] });
   },
 }));

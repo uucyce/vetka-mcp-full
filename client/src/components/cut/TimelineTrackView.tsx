@@ -42,6 +42,18 @@ const LANE_CONFIG: Record<string, { label: string; color: string; icon: React.Re
   aux: { label: 'AUX', color: '#888', icon: <IconLink size={12} color="#888" /> },
 };
 
+// MARKER_COLOR-LABEL: FCP7 editorial color label palette — used as 3px left stripe on clips
+const COLOR_LABEL_MAP: Record<string, string> = {
+  red:    '#c0403a',
+  orange: '#c06c1e',
+  yellow: '#a88c00',
+  green:  '#3a8a3a',
+  teal:   '#2a7878',
+  blue:   '#3858a8',
+  purple: '#6e40a0',
+  grey:   '#555555',
+};
+
 const CONTAINER_STYLE: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -477,6 +489,11 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const syncSurface = useCutEditorStore((state) => state.syncSurface);
   // MARKER_DISPLAY-CTRL: display control flags
   const showClipNames = useCutEditorStore((state) => state.showClipNames);
+  const clipLabelMode = useCutEditorStore((state) => state.clipLabelMode);
+  const renamingClipId = useCutEditorStore((state) => state.renamingClipId);
+  const setRenamingClip = useCutEditorStore((state) => state.setRenamingClip);
+  const timecodeDisplayMode = useCutEditorStore((state) => state.timecodeDisplayMode);
+  const findQuery = useCutEditorStore((state) => state.findQuery);
   const showClipBorders = useCutEditorStore((state) => state.showClipBorders);
   const showWaveforms = useCutEditorStore((state) => state.showWaveforms);
   const waveformHiddenLanes = useCutEditorStore((state) => state.waveformHiddenLanes); // MARKER_A3.4
@@ -485,8 +502,8 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const showThroughEdits = useCutEditorStore((state) => state.showThroughEdits);
   const showVideoTracks = useCutEditorStore((state) => state.showVideoTracks);
   const showAudioTracks = useCutEditorStore((state) => state.showAudioTracks);
-  const markIn = useCutEditorStore((state) => state.markIn);
-  const markOut = useCutEditorStore((state) => state.markOut);
+  const markIn = useCutEditorStore((state) => state.sequenceMarkIn);
+  const markOut = useCutEditorStore((state) => state.sequenceMarkOut);
   const seek = useCutEditorStore((state) => state.seek);
   const setScrollLeft = useCutEditorStore((state) => state.setScrollLeft);
   const setTrackHeight = useCutEditorStore((state) => state.setTrackHeight);
@@ -494,7 +511,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   const soloLanes = useCutEditorStore((state) => state.soloLanes ?? new Set<string>());
   const lockedLanes = useCutEditorStore((state) => state.lockedLanes ?? new Set<string>());
   const targetedLanes = useCutEditorStore((state) => state.targetedLanes ?? new Set<string>());
-  const laneVolumes = useCutEditorStore((state) => state.laneVolumes);
   const snapEnabled = useCutEditorStore((state) => state.snapEnabled);
   const toggleMute = useCutEditorStore((state) => state.toggleMute);
   const toggleSolo = useCutEditorStore((state) => state.toggleSolo);
@@ -506,7 +522,6 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 disabled clips (ghosted on timeline, excluded from export)
   const disabledClips = useCutEditorStore((state) => state.disabledClips ?? new Set<string>());
   const toggleClipEnabled = useCutEditorStore((state) => state.toggleClipEnabled);
-  const setLaneVolume = useCutEditorStore((state) => state.setLaneVolume);
   const setSelectedClip = useSelectionStore((state) => state.setSelectedClip);
   // MARKER_W5.TC: Project timecode settings for editable TC field
   const projectFramerate = useCutEditorStore((state) => state.projectFramerate);
@@ -724,6 +739,16 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
   // MARKER_UNDO-FIX-23: Delegates to store applyTimelineOps for consistent error handling + toast
   const applyTimelineOps = useCallback(async (ops: Array<Record<string, unknown>>, opts?: { skipRefresh?: boolean }) => {
     await useCutEditorStore.getState().applyTimelineOps(ops, opts);
+  }, []);
+
+  // MARKER_INLINE-RENAME: listen for cut:rename-clip-inline dispatched by Enter hotkey in CutEditorLayoutV2
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { clipId } = (e as CustomEvent<{ clipId: string }>).detail;
+      if (clipId) useCutEditorStore.getState().setRenamingClip(clipId);
+    };
+    window.addEventListener('cut:rename-clip-inline', handler);
+    return () => window.removeEventListener('cut:rename-clip-inline', handler);
   }, []);
 
   const resolveMarkerMediaPath = useCallback(
@@ -1165,7 +1190,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
           const allClips: { clipId: string; time: number }[] = [];
           for (const lane of editorState.lanes) {
             for (const clip of lane.clips) {
-              allClips.push({ clipId: clip.clip_id, time: clip.start_sec ?? clip.timeline_in ?? 0 });
+              allClips.push({ clipId: clip.clip_id, time: clip.start_sec });
             }
           }
           allClips.sort((a, b) => a.time - b.time);
@@ -1206,7 +1231,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               // Match by linked_to field (explicit link)
               if ((c as any).linked_to === clipId || (clickedClip as any).linked_to === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by sync.linked_clip_id (legacy)
-              if (c.sync?.linked_clip_id === clipId || clickedClip.sync?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
+              if ((c.sync as any)?.linked_clip_id === clipId || (clickedClip.sync as any)?.linked_clip_id === c.clip_id) { ids.add(c.clip_id); continue; }
               // Match by scene_id (same scene = linked)
               if (clickedClip.scene_id && c.scene_id === clickedClip.scene_id) { ids.add(c.clip_id); }
             }
@@ -1791,6 +1816,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             scrollLeft={scrollLeft}
             totalWidth={containerWidth - LANE_HEADER_WIDTH}
             fps={projectFramerate}
+            timecodeDisplayMode={timecodeDisplayMode}
             rulerRef={rulerRef}
             onSeek={seek}
             onScrubStart={handleRulerScrubStart}
@@ -2054,6 +2080,10 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                   const isHovered = hoveredClipId === clip.clip_id;
                   // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — disabled clips are ghosted
                   const isDisabled = disabledClips.has(clip.clip_id);
+                  // MARKER_FCP7-FIND: highlight clips matching find query
+                  const isFound = findQuery.trim()
+                    ? (clip.source_path.split('/').pop() ?? '').toLowerCase().includes(findQuery.toLowerCase())
+                    : false;
                   const waveformBins = waveformMap.get(clip.source_path);
                   const stereoData = stereoWaveformMap.get(clip.source_path);
                   const syncInfo = clip.sync;
@@ -2074,6 +2104,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           : isSelected ? `1px solid ${config.color}` : '1px solid transparent',
                         // MARKER_GAMMA-CLIP-ENABLE: ghost disabled clips (FCP7 Ch.26)
                         opacity: isDisabled ? 0.3 : 1,
+                        // MARKER_FCP7-FIND: white outline on find match
+                        outline: isFound ? '2px solid rgba(255,255,255,0.7)' : undefined,
+                        outlineOffset: isFound ? '-2px' : undefined,
                       }}
                       onClick={(event) => handleClipClick(clip.clip_id, clip.source_path, event)}
                       onDoubleClick={() => {
@@ -2095,6 +2128,18 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                           style={{
                             position: 'absolute', inset: 0, zIndex: 5, pointerEvents: 'none',
                             background: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.25) 4px, rgba(0,0,0,0.25) 5px)',
+                          }}
+                        />
+                      )}
+                      {/* MARKER_COLOR-LABEL: FCP7 editorial color label — 3px left strip */}
+                      {clip.color_label && COLOR_LABEL_MAP[clip.color_label] && (
+                        <div
+                          data-testid={`cut-clip-color-label-${clip.clip_id}`}
+                          style={{
+                            position: 'absolute', left: 0, top: 0, bottom: 0,
+                            width: 3, borderRadius: '3px 0 0 3px',
+                            background: COLOR_LABEL_MAP[clip.color_label],
+                            zIndex: 2, pointerEvents: 'none',
                           }}
                         />
                       )}
@@ -2278,23 +2323,69 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                       ) : null}
 
                       {width > 40 && showClipNames ? (
-                        <span
-                          style={{
-                            position: 'relative',
-                            zIndex: 2,
-                            fontSize: 10,
-                            fontWeight: 500,
-                            color: '#fff',
-                            textOverflow: 'ellipsis',
-                            overflow: 'hidden',
-                            whiteSpace: 'nowrap',
-                            textShadow: '0 1px 3px rgba(0,0,0,0.8)',
-                            // MARKER_FCP7.EDIT2: Underline linked clip names (FCP7 p.592)
-                            textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
-                          }}
-                        >
-                          {basename(clip.source_path)}
-                        </span>
+                        renamingClipId === clip.clip_id ? (
+                          // MARKER_INLINE-RENAME: inline rename input — Enter commits, Esc cancels
+                          <input
+                            autoFocus
+                            defaultValue={clip.name ?? basename(clip.source_path).replace(/\.[^.]+$/, '')}
+                            style={{
+                              position: 'relative',
+                              zIndex: 10,
+                              fontSize: 10,
+                              fontWeight: 500,
+                              color: '#fff',
+                              background: 'rgba(0,0,0,0.7)',
+                              border: '1px solid rgba(255,255,255,0.4)',
+                              borderRadius: 2,
+                              padding: '0 4px',
+                              width: '90%',
+                              outline: 'none',
+                              boxSizing: 'border-box',
+                            }}
+                            onKeyDown={(e) => {
+                              e.stopPropagation();
+                              if (e.key === 'Enter') {
+                                const val = (e.target as HTMLInputElement).value.trim();
+                                setRenamingClip(null);
+                                if (val) {
+                                  void applyTimelineOps([{ op: 'set_prop', clip_id: clip.clip_id, key: 'name', value: val }]);
+                                }
+                              } else if (e.key === 'Escape') {
+                                setRenamingClip(null);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              const val = e.target.value.trim();
+                              setRenamingClip(null);
+                              if (val) {
+                                void applyTimelineOps([{ op: 'set_prop', clip_id: clip.clip_id, key: 'name', value: val }]);
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              position: 'relative',
+                              zIndex: 2,
+                              fontSize: 10,
+                              fontWeight: 500,
+                              color: '#fff',
+                              textOverflow: 'ellipsis',
+                              overflow: 'hidden',
+                              whiteSpace: 'nowrap',
+                              textShadow: '0 1px 3px rgba(0,0,0,0.8)',
+                              // MARKER_FCP7.EDIT2: Underline linked clip names (FCP7 p.592)
+                              textDecoration: linkedClipIds.has(clip.clip_id) ? 'underline' : 'none',
+                            }}
+                          >
+                            {/* MARKER_FCP7-CH45: clipLabelMode — name=no-ext, filename=full, color=hidden */}
+                            {/* MARKER_INLINE-RENAME: name mode prefers clip.name if set */}
+                            {clipLabelMode === 'color' ? '' : clipLabelMode === 'name'
+                              ? (clip.name ?? basename(clip.source_path).replace(/\.[^.]+$/, ''))
+                              : basename(clip.source_path)}
+                          </span>
+                        )
                       ) : null}
 
                       {/* MARKER_CAMELOT: PULSE Camelot key badge */}
@@ -2432,7 +2523,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                 const txAlign = tx.alignment;
                                 const zoomVal = zoom;
 
-                                const onMove = (e: MouseEvent) => {
+                                const onMove = (e: globalThis.MouseEvent) => {
                                   const deltaPx = startX - e.clientX; // drag left = increase duration
                                   const deltaSec = deltaPx / zoomVal;
                                   const newDur = Math.max(0.04, startDur + deltaSec);
@@ -2449,7 +2540,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                                   s.setLanes(updated);
                                 };
 
-                                const onUp = (e: MouseEvent) => {
+                                const onUp = (e: globalThis.MouseEvent) => {
                                   window.removeEventListener('mousemove', onMove);
                                   window.removeEventListener('mouseup', onUp);
                                   const deltaPx = startX - e.clientX;
@@ -2895,7 +2986,7 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
             const clipPath = contextMenu.clip.source_path;
             const close = () => setContextMenu(null);
 
-            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | 'separator';
+            type MenuItem = { label: string; shortcut?: string; action: () => void; disabled?: boolean } | { type: 'color_picker' } | 'separator';
 
             const items: MenuItem[] = [
               // ── Selection ──
@@ -2952,6 +3043,9 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
                 });
               }},
               'separator',
+              // MARKER_COLOR-LABEL: FCP7 color label picker — 8 circles + clear
+              { type: 'color_picker' as const },
+              'separator',
               // ── Sync & NLE ──
               { label: 'Apply Sync', disabled: !hasSync, action: () => { close(); void applySuggestedSync(contextMenu.clip); } },
               // MARKER_GAMMA-CLIP-ENABLE: FCP7 Ch.26 — toggle clip ghosted state
@@ -2978,29 +3072,67 @@ export default function TimelineTrackView({ timelineId: timelineIdProp }: Timeli
               if (item === 'separator') {
                 return <div key={`sep-${idx}`} style={{ height: 1, background: '#1e1e1e', margin: '3px 6px' }} />;
               }
+              if ('type' in item && item.type === 'color_picker') {
+                const activeLabel = contextMenu.clip.color_label;
+                return (
+                  <div key="color-picker" style={{ display: 'flex', alignItems: 'center', padding: '4px 8px', gap: 4 }}>
+                    <span style={{ color: '#555', fontSize: 10, marginRight: 2, flexShrink: 0 }}>Label</span>
+                    {Object.entries(COLOR_LABEL_MAP).map(([name, hex]) => (
+                      <button
+                        key={name}
+                        title={name}
+                        onClick={() => {
+                          close();
+                          void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: name } }]);
+                        }}
+                        style={{
+                          width: 12, height: 12, borderRadius: '50%',
+                          background: hex, border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0,
+                          outline: activeLabel === name ? '2px solid #fff' : '1px solid rgba(255,255,255,0.15)',
+                          outlineOffset: activeLabel === name ? 1 : 0,
+                        }}
+                      />
+                    ))}
+                    <button
+                      key="clear"
+                      title="Clear label"
+                      onClick={() => {
+                        close();
+                        void applyTimelineOps([{ op: 'set_clip_meta', clip_id: contextMenu.clip.clip_id, meta: { color_label: null } }]);
+                      }}
+                      style={{
+                        background: 'none', border: '1px solid #333', borderRadius: '50%',
+                        width: 12, height: 12, padding: 0, cursor: 'pointer', color: '#555',
+                        fontSize: 9, lineHeight: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                      }}
+                    >×</button>
+                  </div>
+                );
+              }
+              const mi = item as { label: string; shortcut?: string; action: () => void; disabled?: boolean };
               return (
                 <button
-                  key={item.label}
-                  disabled={Boolean(item.disabled)}
-                  onClick={item.action}
+                  key={mi.label}
+                  disabled={Boolean(mi.disabled)}
+                  onClick={mi.action}
                   style={{
                     width: '100%',
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     background: 'transparent',
-                    color: item.disabled ? '#444' : '#ccc',
+                    color: mi.disabled ? '#444' : '#ccc',
                     border: 'none',
                     borderRadius: 4,
                     padding: '6px 8px',
-                    cursor: item.disabled ? 'default' : 'pointer',
+                    cursor: mi.disabled ? 'default' : 'pointer',
                     fontSize: 11,
                     fontFamily: 'system-ui',
                   }}
                 >
-                  <span>{item.label}</span>
-                  {item.shortcut ? (
-                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{item.shortcut}</span>
+                  <span>{mi.label}</span>
+                  {mi.shortcut ? (
+                    <span style={{ color: '#555', fontSize: 10, marginLeft: 12, flexShrink: 0 }}>{mi.shortcut}</span>
                   ) : null}
                 </button>
               );

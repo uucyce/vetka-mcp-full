@@ -62,8 +62,8 @@ export default function SourceMonitorButtons() {
     for (const lane of s.lanes) {
       const clip = lane.clips.find((c) => c.clip_id === selectedClipId);
       if (clip) {
-        s.setMarkIn(clip.start_sec);
-        s.setMarkOut(clip.start_sec + clip.duration_sec);
+        s.setSourceMarkIn(clip.start_sec);
+        s.setSourceMarkOut(clip.start_sec + clip.duration_sec);
         return;
       }
     }
