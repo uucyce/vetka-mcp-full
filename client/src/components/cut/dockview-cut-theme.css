@@ -24,6 +24,16 @@
  * - !important ONLY for: pointer-events (Tauri)
  */
 
+/* ═══ MARKER_DOCK-FIX-TAURI: WebKit/WKWebView drag fix ══════════════
+ * Tauri uses WKWebView (Safari engine) on macOS. Safari requires
+ * -webkit-user-drag: element for HTML5 draggable="true" to fire
+ * dragstart events. Without this, dockview tabs and void containers
+ * are not draggable — panels become stuck (only resizable via sash).
+ * Chrome doesn't need this, so the bug only manifests in Tauri.    */
+.dockview-theme-dark [draggable="true"] {
+  -webkit-user-drag: element;
+}
+
 /* ═══ CSS Custom Properties (vars) — synced with tokens.css ═════════ */
 .dockview-theme-dark {
   --dv-background-color: var(--bg-primary);

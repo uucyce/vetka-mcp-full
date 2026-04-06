@@ -12,9 +12,6 @@
 
 set -e
 
-# MARKER_201.RUST_PATH: Ensure ~/.cargo/bin is in PATH for Tauri builds.
-export PATH="$HOME/.cargo/bin:$PATH"
-
 MODE="${1:-build}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"

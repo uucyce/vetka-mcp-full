@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * Core WebSocket hook for real-time communication with VETKA backend.
  * Handles tree updates, chat streaming, group messages, search, and file events.

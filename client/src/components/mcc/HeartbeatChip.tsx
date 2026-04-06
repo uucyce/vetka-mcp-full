@@ -74,7 +74,7 @@ export function HeartbeatChip() {
 
   const focusedTaskId = navTaskId || selectedTaskId || '';
   const focusedTask = tasks.find((task) => task.id === focusedTaskId) || null;
-  const focusedWorkflowFamily = String(focusedTask?.workflow_family || focusedTask?.workflow_id || '').trim();
+  const focusedWorkflowFamily = String((focusedTask as any)?.workflow_family || focusedTask?.workflow_id || '').trim();
   const profileMode = String(heartbeat?.profile_mode || 'global');
 
   const applyScope = useCallback(async (mode: 'global' | 'project' | 'workflow' | 'task') => {

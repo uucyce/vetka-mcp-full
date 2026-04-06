@@ -95,6 +95,13 @@ function formatTimecode(seconds: number, fps = 25): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}:${String(f).padStart(2, '0')}`;
 }
 
+// MARKER_TIMECODE-DISPLAY-MODE: Respects timecodeDisplayMode (timecode/frames/seconds)
+function fmtTime(seconds: number, fps: number, mode: 'timecode' | 'frames' | 'seconds'): string {
+  if (mode === 'frames') return String(Math.round(seconds * fps));
+  if (mode === 'seconds') return seconds % 1 === 0 ? `${seconds}s` : `${seconds.toFixed(1)}s`;
+  return formatTimecode(seconds, fps);
+}
+
 // MARKER_170.PLAYBACK.A2: Classify HTML5 MediaError codes
 function classifyVideoError(video: HTMLVideoElement): string {
   const error = video.error;
@@ -162,6 +169,8 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
   const pause = useCutEditorStore((s) => isSource ? s.pauseSource : s.pause);
   const setMediaError = useCutEditorStore((s) => s.setMediaError);
   const setMediaLoading = useCutEditorStore((s) => s.setMediaLoading);
+  const timecodeDisplayMode = useCutEditorStore((s) => s.timecodeDisplayMode);
+  const fps = useCutEditorStore((s) => s.projectFramerate || 25);
 
   // MARKER_FRAME_SPLIT: Frame viewer split toggle (local state, toggled via CustomEvent)
   const [showFrameSplit, setShowFrameSplit] = useState(false);
@@ -186,7 +195,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
     for (const lane of s.lanes) {
       for (const clip of lane.clips || []) {
         if (clip.clip_id === selectedClipId) {
-          return (clip as any).color_correction as { exposure?: number; contrast?: number; saturation?: number; hue?: number } | null;
+          return clip.color_correction ?? null;
         }
       }
     }
@@ -522,7 +531,7 @@ export default function VideoPreview({ feed }: VideoPreviewProps) {
           poster={activeThumbnail?.poster_url}
         />
       )}
-      <div style={TIMECODE_STYLE}>{formatTimecode(currentTime)}</div>
+      <div style={TIMECODE_STYLE}>{fmtTime(currentTime, fps, timecodeDisplayMode)}</div>
     </div>
   );
 }
