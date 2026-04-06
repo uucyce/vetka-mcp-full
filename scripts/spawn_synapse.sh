@@ -18,33 +18,49 @@ INIT_PROMPT="${4:-vetka session init}"
 
 PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
 WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
-
-# ── MARKER_209.POLARIS: Model routing + color from registry ──
-# Read model_id and tmux_color from agent_registry.yaml
-MODEL_ID="${SYNAPSE_MODEL_ID:-}"
-TMUX_COLOR=""
-_read_registry() {
-    python3 -c "
-import yaml, pathlib, json
-reg = pathlib.Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
-if not reg.exists():
-    reg = pathlib.Path('${WORKTREE_PATH}/data/templates/agent_registry.yaml')
-if reg.exists():
-    data = yaml.safe_load(reg.read_text())
-    for r in data.get('roles', []):
-        if r.get('callsign') == '$ROLE':
-            print(json.dumps({'model_id': r.get('model_id', ''), 'tmux_color': r.get('tmux_color', '')}))
-            break
-" 2>/dev/null || echo "{}"
-}
-if [ -z "$MODEL_ID" ] || [ -z "$TMUX_COLOR" ]; then
-    _REG_JSON=$(_read_registry)
-    [ -z "$MODEL_ID" ] && MODEL_ID=$(echo "$_REG_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('model_id',''))" 2>/dev/null || echo "")
-    [ -z "$TMUX_COLOR" ] && TMUX_COLOR=$(echo "$_REG_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tmux_color',''))" 2>/dev/null || echo "")
-fi
 SESSION_NAME="vetka-$ROLE"
 REGISTRY_FILE="$PROJECT_ROOT/data/synapse_sessions.json"
 LOG_PREFIX="[SYNAPSE]"
+
+# ── MARKER_209.UX: Color from agent_registry.yaml ────────────
+# Each role has a tmux_color field in the registry. Fallback: grey.
+REGISTRY_YAML="$PROJECT_ROOT/data/templates/agent_registry.yaml"
+
+_get_role_color() {
+    local role="$1"
+    local color=""
+    # Parse tmux_color for matching callsign from YAML (no python dep for speed)
+    if [ -f "$REGISTRY_YAML" ]; then
+        color=$(python3 -c "
+import yaml, sys
+try:
+    with open('$REGISTRY_YAML') as f:
+        reg = yaml.safe_load(f)
+    for r in reg.get('roles', []):
+        if r.get('callsign') == '$role':
+            print(r.get('tmux_color', ''))
+            sys.exit(0)
+except Exception:
+    pass
+" 2>/dev/null)
+    fi
+    echo "${color:-bg=colour244,fg=white}"  # fallback: grey
+}
+
+_apply_tmux_color() {
+    local session="$1" role="$2"
+    local style
+    style=$(_get_role_color "$role")
+    tmux set-option -t "$session" status-style "$style" 2>/dev/null || return 0
+    tmux set-option -t "$session" status-left " [$role] " 2>/dev/null || true
+    tmux set-option -t "$session" status-right " %H:%M " 2>/dev/null || true
+    # Extract bg color for pane border
+    local bg_color
+    bg_color=$(echo "$style" | grep -o 'bg=[^,]*' | cut -d= -f2)
+    if [ -n "$bg_color" ]; then
+        tmux set-option -t "$session" pane-active-border-style "fg=$bg_color" 2>/dev/null || true
+    fi
+}
 
 # ── Validate ──────────────────────────────────────────────────
 if [ "$AGENT_TYPE" != "vibe" ] && [ ! -d "$WORKTREE_PATH" ]; then
@@ -58,32 +74,49 @@ if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
     exit 0
 fi
 
+# ── Pre-spawn: ensure worktree has essential files ────────────
+# opencode has no --dangerously-skip-permissions — reading files outside worktree
+# triggers permission dialogs. Copy essential shared config into worktree beforehand.
+if [ "$AGENT_TYPE" = "opencode" ] || [ "$AGENT_TYPE" = "generic_cli" ]; then
+    # Ensure opencode.json with MCP config exists
+    if [ ! -f "$WORKTREE_PATH/opencode.json" ] && [ -f "$PROJECT_ROOT/opencode.json" ]; then
+        cp "$PROJECT_ROOT/opencode.json" "$WORKTREE_PATH/opencode.json"
+        echo "$LOG_PREFIX Copied opencode.json → worktree"
+    fi
+    # Ensure AGENTS.md exists (opencode's system prompt file)
+    if [ ! -f "$WORKTREE_PATH/AGENTS.md" ] && [ -f "$PROJECT_ROOT/AGENTS.md" ]; then
+        cp "$PROJECT_ROOT/AGENTS.md" "$WORKTREE_PATH/AGENTS.md"
+        echo "$LOG_PREFIX Copied AGENTS.md → worktree"
+    fi
+fi
+
 # ── Build spawn command per agent type ────────────────────────
 case "$AGENT_TYPE" in
     claude_code)
         SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
         ;;
     opencode)
-        # MARKER_209.POLARIS: pass model_id if available (e.g. openrouter/qwen/qwen3-235b-a22b:free)
-        if [ -n "$MODEL_ID" ]; then
-            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode -m '$MODEL_ID'"
-        else
-            SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
-        fi
+        # NOTE: opencode has no auto-approve flag. Agent stays within worktree
+        # in normal operation. Permission dialogs only trigger for out-of-worktree reads.
+        SPAWN_CMD="cd '$WORKTREE_PATH' && opencode"
         ;;
     generic_cli)
         # generic_cli expects SPAWN_CMD override via env var
         SPAWN_CMD="${SYNAPSE_SPAWN_CMD:-cd '$WORKTREE_PATH' && bash}"
         ;;
     vibe)
-        # Vibe = browser-based, no terminal session needed
+        # MARKER_206.VIBE_BRIDGE: Vibe = browser-based, no terminal session.
+        # V1 stub: open Chrome if URL set, otherwise graceful skip.
+        # V2 (SYNAPSE-206.7): full Playwright prompt injection via vibe_bridge.py
         VIBE_URL="${SYNAPSE_VIBE_URL:-}"
         if [ -z "$VIBE_URL" ]; then
-            echo "$LOG_PREFIX ERROR: SYNAPSE_VIBE_URL not set for vibe agent $ROLE" >&2
-            exit 1
+            echo "$LOG_PREFIX WARNING: vibe agent $ROLE — SYNAPSE_VIBE_URL not set, skipping (stub)" >&2
+            echo "$LOG_PREFIX Vibe fleet is V1 stub. Full support in SYNAPSE-206.7." >&2
+            exit 0
         fi
         open -a "Google Chrome" "$VIBE_URL"
         echo "$LOG_PREFIX $ROLE (vibe) → opened Chrome to $VIBE_URL"
+        echo "$LOG_PREFIX To inject prompts: python scripts/vibe_bridge.py --role $ROLE --prompt 'text'"
         exit 0
         ;;
     *)
@@ -93,63 +126,56 @@ case "$AGENT_TYPE" in
 esac
 
 # ── Detect best terminal backend ─────────────────────────────
-# Priority: iTerm2 (if running) > Terminal.app (GUI) > tmux headless
 detect_backend() {
-    # Check if we have a GUI (macOS with WindowServer)
     if ! pgrep -q WindowServer 2>/dev/null; then
         echo "tmux"
         return
     fi
-
-    # Check SYNAPSE_TERMINAL override
     if [ -n "${SYNAPSE_TERMINAL:-}" ]; then
         echo "$SYNAPSE_TERMINAL"
         return
     fi
-
-    # Prefer iTerm2 if it's installed
-    if [ -d "/Applications/iTerm.app" ]; then
-        echo "iterm2"
-        return
-    fi
-
-    # Terminal.app is always available on macOS with GUI
+    # Always use Terminal.app — iTerm2 AppleScript is unreliable
     echo "terminal_app"
 }
 
 BACKEND=$(detect_backend)
 
 # ── Spawn via detected backend ────────────────────────────────
-# All backends create a tmux session INSIDE the window for programmatic access
-TMUX_CMD="tmux new-session -s '$SESSION_NAME' \"$SPAWN_CMD\""
+# tmux inside terminal window = programmatic send-keys access without focus
+TMUX_INNER="tmux new-session -s ${SESSION_NAME} '${SPAWN_CMD}'"
 
 case "$BACKEND" in
+    terminal_app)
+        # do script without target = always creates NEW window
+        WINDOW_ID=$(osascript <<EOF
+tell application "Terminal"
+    activate
+    do script "${TMUX_INNER}"
+    return id of front window
+end tell
+EOF
+)
+        echo "$LOG_PREFIX $ROLE spawned via Terminal.app (window $WINDOW_ID) → tmux $SESSION_NAME"
+        ;;
+
     iterm2)
-        osascript <<APPLESCRIPT
+        osascript <<EOF
 tell application "iTerm2"
     activate
     set newWindow to (create window with default profile)
     tell current session of newWindow
-        write text "$TMUX_CMD"
+        write text "${TMUX_INNER}"
     end tell
 end tell
-APPLESCRIPT
-        echo "$LOG_PREFIX $ROLE spawned via iTerm2 → tmux session $SESSION_NAME"
-        ;;
-
-    terminal_app)
-        osascript <<APPLESCRIPT
-tell application "Terminal"
-    activate
-    do script "$TMUX_CMD"
-end tell
-APPLESCRIPT
-        echo "$LOG_PREFIX $ROLE spawned via Terminal.app → tmux session $SESSION_NAME"
+EOF
+        WINDOW_ID="iterm2-$$"
+        echo "$LOG_PREFIX $ROLE spawned via iTerm2 → tmux $SESSION_NAME"
         ;;
 
     tmux)
-        # Headless fallback — detached tmux session, no GUI window
-        tmux new-session -d -s "$SESSION_NAME" "$SPAWN_CMD"
+        eval "tmux new-session -d -s '${SESSION_NAME}' '${SPAWN_CMD}'"
+        WINDOW_ID="headless"
         echo "$LOG_PREFIX $ROLE spawned headless → tmux attach -t $SESSION_NAME"
         ;;
 
@@ -159,73 +185,81 @@ APPLESCRIPT
         ;;
 esac
 
-# ── MARKER_212.TMUX_COLOR: Apply role color to tmux status bar ──
-if [ -n "$TMUX_COLOR" ]; then
-    (
-        sleep 2  # Wait for session to initialize
-        if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-            tmux set -t "$SESSION_NAME" status-style "$TMUX_COLOR" 2>/dev/null || true
-            tmux set -t "$SESSION_NAME" status-left " $ROLE " 2>/dev/null || true
-            echo "$LOG_PREFIX Applied tmux color to $SESSION_NAME: $TMUX_COLOR"
-        fi
-    ) &
-fi
+# ── Set window title: [VETKA] Role — worktree ────────────────
+WINDOW_TITLE="[VETKA] ${ROLE} — ${WORKTREE}"
+case "$BACKEND" in
+    terminal_app)
+        osascript -e "tell application \"Terminal\" to set custom title of front window to \"$WINDOW_TITLE\""
+        ;;
+    iterm2)
+        osascript -e "tell application \"iTerm2\" to tell current session of current window to set name to \"$WINDOW_TITLE\""
+        ;;
+esac
+# Also set tmux window name (visible in tmux status bar / tmux ls)
+sleep 0.3
+tmux rename-window -t "$SESSION_NAME" "$WINDOW_TITLE" 2>/dev/null || true
+echo "$LOG_PREFIX Window title set: $WINDOW_TITLE"
 
-# ── Register session ────────────────────────────────────────
-# MARKER_207.SESSION_REGISTRY: Track spawned agents in synapse_sessions.json
-_register_session() {
-    local ts
-    ts=$(date +%s)
-    # Use python3 for atomic JSON update (jq not guaranteed)
-    python3 -c "
-import json, pathlib, sys
-p = pathlib.Path('$REGISTRY_FILE')
-data = {}
-if p.exists():
-    try: data = json.loads(p.read_text())
-    except: pass
-data['$ROLE'] = {
+# ── MARKER_209.UX: Apply role color to tmux status bar ───────
+_apply_tmux_color "$SESSION_NAME" "$ROLE"
+echo "$LOG_PREFIX Color applied: $ROLE → $(_get_role_color "$ROLE")"
+
+# ── Update session registry ──────────────────────────────────
+mkdir -p "$(dirname "$REGISTRY_FILE")"
+TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+python3 -c "
+import json
+try:
+    with open('$REGISTRY_FILE') as f:
+        reg = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    reg = {}
+reg['$ROLE'] = {
     'tmux_session': '$SESSION_NAME',
+    'window_id': '$WINDOW_ID',
     'worktree': '$WORKTREE',
     'agent_type': '$AGENT_TYPE',
-    'model_id': '$MODEL_ID' or None,
-    'fleet': None,
-    'backend': '$BACKEND',
-    'spawned_at': $ts,
-    'last_activity': $ts,
-    'compacting': False,
+    'started_at': '$TIMESTAMP',
+    'pid': $$
 }
-# MARKER_209.POLARIS: detect fleet from registry
-try:
-    import yaml
-    reg_path = __import__('pathlib').Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
-    if reg_path.exists():
-        reg = yaml.safe_load(reg_path.read_text())
-        for r in reg.get('roles', []):
-            if r.get('callsign') == '$ROLE':
-                data['$ROLE']['fleet'] = r.get('fleet')
-                break
-except Exception:
-    pass
-p.parent.mkdir(parents=True, exist_ok=True)
-p.write_text(json.dumps(data, indent=2))
-" 2>/dev/null || true
-}
-_register_session
-echo "$LOG_PREFIX Registered $ROLE in $REGISTRY_FILE"
+with open('$REGISTRY_FILE', 'w') as f:
+    json.dump(reg, f, indent=2)
+"
 
-# ── Auto-init after boot delay ──────────────────────────────
-# MARKER_207.AUTO_INIT: Send init prompt after agent boots (8s delay)
+echo "$LOG_PREFIX Registry updated: $REGISTRY_FILE"
+
+# ── Auto-init: wait for agent to boot, then send init prompt ──
+# FIX: was claude_code only — now supports all CLI agent types (opencode, generic_cli)
+# Uses synapse_write.sh which handles agent-type-aware submit (bug #1 fix)
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ -n "$INIT_PROMPT" ] && [ "$AGENT_TYPE" != "vibe" ]; then
+    # Boot time varies by agent type
+    case "$AGENT_TYPE" in
+        claude_code) BOOT_WAIT=8 ;;
+        opencode)    BOOT_WAIT=5 ;;
+        *)           BOOT_WAIT=3 ;;
+    esac
+    echo "$LOG_PREFIX Waiting ${BOOT_WAIT}s for $AGENT_TYPE to boot..."
     (
-        sleep 8
+        sleep "$BOOT_WAIT"
         if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
-            tmux send-keys -t "$SESSION_NAME" "$INIT_PROMPT" Enter
-            echo "$LOG_PREFIX Auto-init sent to $ROLE: $INIT_PROMPT"
+            "$SCRIPT_DIR/synapse_write.sh" "$ROLE" "$INIT_PROMPT" "$AGENT_TYPE"
+            echo "$LOG_PREFIX Auto-init sent: '$INIT_PROMPT' → $SESSION_NAME ($AGENT_TYPE)"
+        else
+            echo "$LOG_PREFIX WARNING: tmux session $SESSION_NAME gone before auto-init"
         fi
     ) &
     echo "$LOG_PREFIX Auto-init scheduled (background PID $!)"
 fi
 
-echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt'"
+echo "$LOG_PREFIX To write: scripts/synapse_write.sh $ROLE 'your prompt' $AGENT_TYPE"
 echo "$LOG_PREFIX To wake:  scripts/synapse_wake.sh $ROLE"
+
+# ── MARKER_209.UX: Recolor all running vetka-* sessions ──────
+# Apply colors to any already-running sessions that may lack them
+for existing_session in $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep '^vetka-'); do
+    existing_role="${existing_session#vetka-}"
+    _apply_tmux_color "$existing_session" "$existing_role"
+done
+echo "$LOG_PREFIX Recolor pass complete for all vetka-* sessions"

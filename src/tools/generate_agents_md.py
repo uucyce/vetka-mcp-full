@@ -35,9 +35,14 @@ TEMPLATE = """\
 ```
 1. mcp__vetka__vetka_session_init role={callsign}
    → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
-2. mcp__vetka__vetka_task_board action=list filter_status={filter_status}
-3. Claim → Work → action=complete task_id=<id> branch={branch}
+2. mcp__vetka__vetka_task_board action=notifications role={callsign}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={callsign}
+4. mcp__vetka__vetka_task_board action=list filter_status={filter_status}
+5. Claim → Work → action=complete task_id=<id> branch={branch}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-stage + commit + close. NEVER use vetka_git_commit manually.
 
@@ -68,9 +73,14 @@ If `vetka_session_init` shows as "Unknown tool" — MCP not connected. Restart V
 ```
 1. vetka_session_init role={callsign}
    → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
-2. vetka_task_board action=list filter_status={filter_status}
-3. Claim → Work → vetka_task_board action=complete task_id=<id> branch={branch}
+2. vetka_task_board action=notifications role={callsign}
+   → READ Commander orders BEFORE doing anything else
+3. vetka_task_board action=ack_notifications role={callsign}
+4. vetka_task_board action=list filter_status={filter_status}
+5. Claim → Work → vetka_task_board action=complete task_id=<id> branch={branch}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-commit + close. NEVER use vetka_git_commit manually.
 

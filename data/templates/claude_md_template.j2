@@ -3,18 +3,80 @@
 
 **Role:** {{ role.role_title }} | **Branch:** `{{ role.branch }}`
 
-## Init
+{% if role.tool_type == "vibe" %}
+## Init (Vibe CLI)
+Tools are exposed directly by MCP — check tool list in Vibe's UI.
+**DO NOT** use `mcp__vetka__` prefix — Vibe exposes tools without namespace prefix.
+
+```
+1. vetka_session_init
+   → returns: role_context, tasks, docs, predecessor advice, protocol guards
+2. vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → vetka_task_board action=complete task_id=<id> branch={{ role.branch }}
+```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
+
+`action=complete` = auto-commit + close. NEVER `git add`/`git commit` manually.
+
+## Error Handling
+If any MCP tool returns an error:
+- **STOP immediately** — DO NOT retry the same call
+- Report the error text to the user
+- Ask what to do next
+
+## Signal Setup (run once before launching Vibe)
+```bash
+export VETKA_AGENT_ROLE={{ role.callsign }}
+export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
+```
+
+{% elif role.tool_type == "opencode" %}
+## Init (Opencode)
 ```
 1. mcp__vetka__vetka_session_init
    → returns: role_context, tasks, docs, predecessor advice, protocol guards
-2. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
-3. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+2. mcp__vetka__vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
 ```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
 
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
 NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
 If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
 
+## Signal Setup (run once before launching Opencode)
+```bash
+export VETKA_AGENT_ROLE={{ role.callsign }}
+export PRETOOL_HOOK="bash scripts/check_opencode_signals.sh"
+```
+
+{% else %}
+## Init
+```
+1. mcp__vetka__vetka_session_init
+   → returns: role_context, tasks, docs, predecessor advice, protocol guards
+2. mcp__vetka__vetka_task_board action=notifications role={{ role.callsign }}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={{ role.callsign }}
+4. mcp__vetka__vetka_task_board action=list project_id=cut filter_status=pending
+5. Claim → Work → action=complete task_id=<id> branch={{ role.branch }}
+```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.** Agents that skip notifications miss Commander orders and work on wrong/stale tasks. This was the root cause of the wake bug.
+
+`action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
+NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
+If a rebase/merge conflict touches docs/, always `git checkout main -- <file>` to keep the main version.
+
+{% endif %}
 ## Notifications
 Check for Commander messages: `vetka_task_board action=notifications role={{ role.callsign }}`
 After reading: `vetka_task_board action=ack_notifications role={{ role.callsign }}`
@@ -28,6 +90,25 @@ NEVER touch files outside your `role_context.owned_paths`.
 If you see done_worktree tasks from other agents — DO NOT merge them. Notify Commander instead:
 `vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander message="Tasks ready for merge: <ids>"`
 {%- endif %}
+{%- if role.domain == "qa" %}
+
+## QA Auto-Fix Dispatch (MARKER_212.QA_AUTOFIX)
+When you find a regression or bug during verification:
+1. **Create a fix task directly** for the responsible agent: `vetka_task_board action=add role=<agent> phase_type=fix priority=<1-3> description="full diagnosis"`
+   - Check `allowed_paths` in agent_registry to find the responsible agent
+   - Priority: 1=CRITICAL, 2=regression, 3=cleanup
+2. **Notify the agent**: `vetka_task_board action=notify target_role=<agent> message="Fix task filed: <id>"`
+3. **Notify Commander** with a batch summary of all filed fix tasks (not one-by-one)
+4. **NEVER report bugs to Commander for manual dispatch.** You create fix tasks directly.
+5. **NEVER merge or merge_request.** You verify only. Merge is Commander/Zeta territory.
+{%- endif %}
+{%- if role.memory_path %}
+
+## Role Memory
+Your persistent memory: `{{ role.memory_path }}`
+Read at session start. Write lessons/decisions there so next session picks them up.
+Shared `MEMORY.md` in `.claude/memory/` is for all-agent rules only — do not write role-specific notes there.
+{%- endif %}
 {%- if role.key_docs %}
 
 ## Required Reading
@@ -36,6 +117,7 @@ If you see done_worktree tasks from other agents — DO NOT merge them. Notify C
 {%- endfor %}
 
 Read these BEFORE acting. `session_init` provides predecessor advice from these docs.
+Also check `latest_feedback` field from session_init — it contains your newest feedback doc.
 {%- endif %}
 {%- if role.domain == "architect" %}
 
@@ -63,80 +145,3 @@ Full ownership map: `data/templates/agent_registry.yaml`
 6. action=stale_check limit=30  (post-merge cleanup)
 ```
 {%- endif %}
-
-## Synapse — Agent Fleet Commands
-{%- if role.domain == "architect" %}
-
-### Spawn agent (new Terminal window + auto-init)
-```bash
-scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
-# Example: scripts/spawn_synapse.sh Alpha cut-engine claude_code "vetka session init"
-```
-
-### Write to running agent
-```bash
-scripts/synapse_write.sh ROLE "prompt text"
-# Example: scripts/synapse_write.sh Alpha "claim tb_xxx and start working"
-```
-
-### Wake sleeping agent
-```bash
-scripts/synapse_wake.sh ROLE
-```
-
-### Check who's alive / Kill agent
-```bash
-tmux list-sessions          # list all
-tmux kill-session -t vetka-ROLE   # kill one
-```
-
-Agents run in own process, own tokens. Orchestrate via TaskBoard + synapse_write.
-{%- elif role.domain == "harness" %}
-
-### Spawn agent (infra maintenance)
-```bash
-scripts/spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]
-```
-
-### Write to / Wake agent
-```bash
-scripts/synapse_write.sh ROLE "prompt text"
-scripts/synapse_wake.sh ROLE
-```
-
-### Fleet status
-```bash
-tmux list-sessions
-cat data/synapse_sessions.json
-```
-{%- else %}
-
-### Auto-notifications (passive — no action needed)
-- **On claim:** Commander is auto-notified you claimed a task.
-- **On done_worktree:** Delta (QA) is auto-notified for verification.
-- **On verified:** Commander is auto-notified for merge.
-
-### Wake (if idle)
-Commander may wake you via `synapse_wake.sh {{ role.callsign }}`.
-Your inbox hook (`check_agent_inbox.sh`) auto-reads notifications between tool calls.
-
-### Dilemma escalation
-If stuck on a protocol decision (conflicting rules, ambiguous scope, missing dependency):
-`vetka_task_board action=notify source_role={{ role.callsign }} target_role=Commander ntype=dilemma_escalation message="<describe dilemma>"`
-Commander will wake, approve/reject, and you continue.
-{%- endif %}
-{%- if role.memory_path %}
-
-## Role Memory
-Your persistent memory: `{{ role.memory_path }}`
-Read at session start. Write lessons/decisions there so next session picks them up.
-{%- endif %}
-
-## Context Restart Recovery
-If you see "CONTEXT RESTART" in your first message, you were restarted due to context exhaustion.
-Recovery steps:
-1. Run `vetka_session_init role={{ role.callsign }}` to reload full context
-2. Check `data/checkpoints/{{ role.callsign }}_checkpoint.json` for your saved state
-3. The checkpoint contains: task_id, files_modified, branch, last action
-4. Resume the task from where you left off — do NOT start over
-5. The checkpoint is auto-consumed on read (moved to .consumed.json)

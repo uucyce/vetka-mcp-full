@@ -7,7 +7,7 @@ Layer 2 of REFLEX (Reactive Execution & Function Linking EXchange).
 Pure math scoring on 8 memory signals → ranked tool recommendations in <5ms.
 
 Signals (Phase 187.3 rebalanced — see docs/186_memory/GROK_RESEARCH_ANSWERS.md):
-  1. Semantic match      (intent_tags vs task keywords)       weight: 0.22
+  1. Semantic match      (intent_tags vs task keywords)       weight: 0.14  [was 0.22, -0.08 for Signal 9]
   2. CAM surprise        (novelty boost from surprise_detector) weight: 0.12  + sparse boost ×1.5
   3. Feedback score      (CORTEX historical success, 0.5 default) weight: 0.18
   4. ENGRAM preference   (user tool_usage_patterns)           weight: 0.07
@@ -15,6 +15,7 @@ Signals (Phase 187.3 rebalanced — see docs/186_memory/GROK_RESEARCH_ANSWERS.md
   6. Phase match         (fix/build/research alignment)       weight: 0.18
   7. HOPE LOD match      (zoom level → tool granularity)      weight: 0.05  + sparse boost ×1.5
   8. MGC cache heat      (Gen0 hot files → relevant tools)    weight: 0.03
+  9. Weaviate similarity (embedding match via elysia_tools)   weight: 0.08  fallback → 0.0 (MARKER_198.P3.2)
 
 NO LLM calls. NO external API. Pure in-memory scoring.
 
@@ -42,7 +43,7 @@ REFLEX_ENABLED = os.getenv("REFLEX_ENABLED", "true").lower() in ("true", "1", "y
 # See docs/186_memory/GROK_RESEARCH_ANSWERS.md for rationale.
 # Σ = 1.00. Semantic down, phase+stm+feedback up, mgc kept at 0.03 (Opus: don't zero).
 _W = {
-    "semantic":  float(os.getenv("REFLEX_SEMANTIC_WEIGHT",  "0.22")),
+    "semantic":  float(os.getenv("REFLEX_SEMANTIC_WEIGHT",  "0.14")),  # was 0.22, -0.08 for Signal 9
     "cam":       float(os.getenv("REFLEX_CAM_WEIGHT",       "0.12")),
     "feedback":  float(os.getenv("REFLEX_FEEDBACK_WEIGHT",  "0.18")),
     "engram":    float(os.getenv("REFLEX_ENGRAM_WEIGHT",    "0.07")),
@@ -50,6 +51,8 @@ _W = {
     "phase":     float(os.getenv("REFLEX_PHASE_WEIGHT",     "0.18")),
     "hope":      float(os.getenv("REFLEX_HOPE_WEIGHT",      "0.05")),
     "mgc":       float(os.getenv("REFLEX_MGC_WEIGHT",       "0.03")),
+    # MARKER_198.P3.2: Signal 9 — Weaviate embedding similarity (stub: returns 0.0 until collection populated)
+    "weaviate":  float(os.getenv("REFLEX_WEAVIATE_WEIGHT",  "0.08")),
 }
 
 # MARKER_187.3: Sparse signal boost — amplify strong CAM/HOPE signals
@@ -192,6 +195,11 @@ class ReflexContext:
     # Model capability (from LLMModelRegistry)
     model_context_length: int = 128000
     model_output_tps: float = 50.0
+
+    # MARKER_198.P3.2: Signal 9 — Weaviate embedding similarity scores {tool_id: float}
+    # Populated by query_tool_similarity() from elysia_tools.py.
+    # Empty dict (default) → Signal 9 contributes 0.0 for all tools (zero regression).
+    weaviate_scores: Dict[str, float] = field(default_factory=dict)
 
     # Extra context for custom scoring
     extra: Dict[str, Any] = field(default_factory=dict)
@@ -573,7 +581,7 @@ class ReflexScorer:
         return round(total, 4)
 
     def score_signals(self, tool: Any, context: ReflexContext) -> Dict[str, float]:
-        """Compute all 8 signal scores for a tool. Each returns 0.0-1.0."""
+        """Compute all 9 signal scores for a tool. Each returns 0.0-1.0."""
         return {
             "semantic":  self._semantic_match(tool, context),
             "cam":       self._cam_relevance(tool, context),
@@ -583,6 +591,8 @@ class ReflexScorer:
             "phase":     self._phase_match(tool, context),
             "hope":      self._hope_lod_match(tool, context),
             "mgc":       self._mgc_heat(tool, context),
+            # MARKER_198.P3.2: Signal 9 — Weaviate embedding similarity (0.0 until collection populated)
+            "weaviate":  self._weaviate_similarity(tool, context),
         }
 
     def _weighted_sum(self, signals: Dict[str, float]) -> float:
@@ -919,6 +929,29 @@ class ReflexScorer:
         if hits == 0:
             return 0.0
         return min(1.0, hits / max(1, len(search_terms)))
+
+    # --- Signal 9: Weaviate embedding similarity ---
+
+    def _weaviate_similarity(self, tool: Any, context: ReflexContext) -> float:
+        """MARKER_198.P3.2: Signal 9 — Weaviate embedding similarity.
+
+        Looks up tool_id in context.weaviate_scores (pre-fetched via
+        elysia_tools.query_tool_similarity() at context build time).
+
+        Returns 0.0 when:
+          - context.weaviate_scores is empty (Weaviate unavailable or not populated)
+          - tool_id not in top-K results from collection query
+        Zero regression: existing behavior unchanged when weaviate_scores = {}.
+
+        To activate: populate weaviate_scores in ReflexContext.from_subtask() /
+        from_session() by calling query_tool_similarity(task_description).
+        See: src/orchestration/elysia_tools.py — query_tool_similarity() stub.
+        """
+        if not context.weaviate_scores:
+            return 0.0
+        tool_id = getattr(tool, "tool_id", None) or str(tool)
+        score = context.weaviate_scores.get(tool_id, 0.0)
+        return float(min(1.0, max(0.0, score)))
 
     # --- Convenience methods ---
 
