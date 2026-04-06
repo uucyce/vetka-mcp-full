@@ -87,8 +87,18 @@ nudge_agent() {
         return 1
     fi
 
-    # opencode uses Enter to submit, same as claude_code
-    tmux send-keys -t "$session_name" "continue" Enter
+    tmux send-keys -t "$session_name" "continue"
+    case "$agent_type" in
+        opencode)
+            # Escape exits Zen multiline input → compact mode, Enter submits
+            tmux send-keys -t "$session_name" Escape
+            sleep 0.3
+            tmux send-keys -t "$session_name" Enter
+            ;;
+        *)
+            tmux send-keys -t "$session_name" Enter
+            ;;
+    esac
     echo "$LOG_PREFIX Nudged $role ($agent_type) with 'continue'"
 }
 

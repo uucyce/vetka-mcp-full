@@ -45,25 +45,35 @@ json.dump({'role': '$ROLE', 'prompt': sys.stdin.read(), 'ts': $(date +%s)}, open
     exit 0
 fi
 
-# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit key ──────
-# opencode Bubble Tea TUI: Enter submits in Zen mode (empirically verified)
-# claude_code: Enter submits
-# Future: read submit_key from agent_registry.yaml if per-agent override needed
-case "$AGENT_TYPE" in
-    opencode)
-        SUBMIT_KEY="Enter"
-        ;;
-    *)
-        SUBMIT_KEY="Enter"
-        ;;
-esac
+# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit sequence ─
+# opencode Bubble Tea TUI: Zen mode captures Enter as newline.
+#   Fix: Escape exits Zen → compact mode, then Enter submits.
+#   Empirically verified with Theta/Polaris fleet 2026-04-06.
+# claude_code: Enter submits directly.
+_submit_opencode() {
+    local session="$1"
+    # Escape = exit Zen multiline input → compact mode
+    tmux send-keys -t "$session" Escape
+    sleep 0.3
+    # Enter = submit in compact mode
+    tmux send-keys -t "$session" Enter
+}
+
+_submit_default() {
+    local session="$1"
+    tmux send-keys -t "$session" Enter
+}
 
 # ── Detect single-line vs multi-line ──────────────────────
 NEWLINE_COUNT=$(echo "$PROMPT" | wc -l | tr -d ' ')
 
 if [ "$NEWLINE_COUNT" -le 1 ]; then
-    # Single-line: direct send-keys
-    tmux send-keys -t "$SESSION_NAME" "$PROMPT" "$SUBMIT_KEY"
+    # Single-line: type text then submit
+    tmux send-keys -t "$SESSION_NAME" "$PROMPT"
+    case "$AGENT_TYPE" in
+        opencode) _submit_opencode "$SESSION_NAME" ;;
+        *)        _submit_default "$SESSION_NAME" ;;
+    esac
     echo "$LOG_PREFIX Sent to $ROLE ($AGENT_TYPE): ${PROMPT:0:80}..."
 else
     # Multi-line: use tmux load-buffer + paste, then submit
@@ -71,7 +81,10 @@ else
     echo "$PROMPT" > "$TMPFILE"
     tmux load-buffer -b synapse_write_buf "$TMPFILE"
     tmux paste-buffer -b synapse_write_buf -t "$SESSION_NAME"
-    tmux send-keys -t "$SESSION_NAME" "" "$SUBMIT_KEY"
+    case "$AGENT_TYPE" in
+        opencode) _submit_opencode "$SESSION_NAME" ;;
+        *)        _submit_default "$SESSION_NAME" ;;
+    esac
     rm -f "$TMPFILE"
     echo "$LOG_PREFIX Pasted multi-line to $ROLE ($AGENT_TYPE, ${NEWLINE_COUNT} lines)"
 fi

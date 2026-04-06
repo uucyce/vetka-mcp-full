@@ -65,5 +65,11 @@ if [ "$IDLE_SEC" -lt "$WAKE_THRESHOLD" ]; then
 fi
 
 # ── Idle agent: also inject tmux text to trigger inbox read ─
-tmux send-keys -t "$SESSION_NAME" "vetka session init" Enter
+tmux send-keys -t "$SESSION_NAME" "vetka session init"
+if [ "$AGENT_TYPE" = "opencode" ]; then
+    # opencode Zen mode: Escape → compact, Enter → submit
+    tmux send-keys -t "$SESSION_NAME" Escape
+    sleep 0.3
+fi
+tmux send-keys -t "$SESSION_NAME" Enter
 echo "$LOG_PREFIX Woke $ROLE (idle ${IDLE_SEC}s) — notification + tmux poke sent"
