@@ -5,7 +5,7 @@
  */
 import { useState, type CSSProperties } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
-import { useSourceAcquireStore, type AcquireTab } from '../../../store/sourceAcquireStore';
+import { useSourceAcquireStore, type AcquireTab, type AcquireJob } from '../../../store/sourceAcquireStore';
 
 // ─── Tab definitions ────────────────────────────────────────────────
 

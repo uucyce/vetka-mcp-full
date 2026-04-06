@@ -16,12 +16,6 @@ import {
   type DockviewApi,
   type DockviewReadyEvent,
 } from 'dockview-react';
-
-/** Typed shape of dockview's toJSON() output for panel dedup guard */
-interface DockviewLayoutJSON {
-  panels?: { data?: Array<{ id?: string }> };
-  [key: string]: unknown;
-}
 // MARKER_GAMMA-37: dockview CSS via JS import (Vite resolves node_modules).
 // Our theme CSS loads second → wins by source order. GAMMA-35 nuclear overrides.
 import 'dockview-react/dist/styles/dockview.css';
@@ -72,7 +66,8 @@ import ToolsPalette from './ToolsPalette';
 import StatusBar from './StatusBar';
 import DropZoneOverlay from './DropZoneOverlay';
 import TimelineMiniMap from './panels/TimelineMiniMap';
-import WelcomeScreen, { addRecentProject } from './WelcomeScreen';
+// MARKER_CUT-UX-NOWELCOME: WelcomeScreen removed — app auto-bootstraps into NLE editor
+import { addRecentProject } from './WelcomeScreen';
 import { PRESET_BUILDERS, buildEditingLayout } from './presetBuilders';
 import MatchSequencePopup from './MatchSequencePopup';
 
@@ -151,10 +146,6 @@ const PANEL_FOCUS_MAP: Record<string, 'source' | 'program' | 'timeline' | 'proje
 
 // MARKER_GAMMA-28: Preset builders extracted to presetBuilders.ts (shared with MenuBar)
 
-// MARKER_GAMMA-CRITICAL: Increment when localStorage layout schema changes incompatibly
-const DOCKVIEW_LAYOUT_VERSION = 3;
-const DOCKVIEW_VERSION_KEY = 'cut_dockview_schema_version';
-
 // ─── Main component ─────────────────────────────────────────────────
 
 interface DockviewLayoutProps {
@@ -165,31 +156,21 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
   // MARKER_GAMMA-BUG4 + P0-FIX: Read project state (MUST be before any early return — Rules of Hooks)
   const sandboxRoot = useCutEditorStore((s) => s.sandboxRoot);
   const projectId = useCutEditorStore((s) => s.projectId);
-  const showWelcome = !sandboxRoot && !projectId;
+  // MARKER_CUT-UX-NOWELCOME: showWelcome removed — auto-bootstrap, no gate
 
   const apiRef = useRef<DockviewApi | null>(null);
   const { saveLayout, loadLayout, activePreset, setApiRef, toggleMaximize } = useDockviewStore();
 
-  // MARKER_GAMMA-CRITICAL: One-time cleanup of stale/corrupt saved layouts on mount
+  // MARKER_W6.DEDUP: One-time cleanup of corrupt saved layouts on mount
   useEffect(() => {
-    // Version-gate: clear ALL preset layouts when schema version changes
-    const storedVersion = Number(localStorage.getItem(DOCKVIEW_VERSION_KEY) ?? 0);
-    if (storedVersion !== DOCKVIEW_LAYOUT_VERSION) {
-      console.info(`[CUT] Dockview layout version changed (${storedVersion}→${DOCKVIEW_LAYOUT_VERSION}), clearing stale presets`);
-      for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom']) {
-        try { localStorage.removeItem('cut_dockview_' + preset); } catch { /* ok */ }
-      }
-      localStorage.setItem(DOCKVIEW_VERSION_KEY, String(DOCKVIEW_LAYOUT_VERSION));
-      return; // already clean — skip duplicate-check below
-    }
     for (const preset of ['editing', 'color', 'audio', 'multicam', 'custom'] as const) {
       try {
         const raw = localStorage.getItem('cut_dockview_' + preset);
         if (!raw) continue;
-        const json = JSON.parse(raw) as DockviewLayoutJSON;
+        const json = JSON.parse(raw);
         const panels = json?.panels?.data;
         if (!Array.isArray(panels)) continue;
-        const ids = panels.map((p) => p?.id).filter(Boolean);
+        const ids = panels.map((p: any) => p?.id).filter(Boolean);
         if (ids.length !== new Set(ids).size) {
           console.warn(`[CUT] Removing corrupt layout "${preset}" (duplicate panels)`);
           localStorage.removeItem('cut_dockview_' + preset);
@@ -252,10 +233,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     // MARKER_W6.DEDUP: Auto-save layout on changes (with dedup guard)
     event.api.onDidLayoutChange(() => {
       if (apiRef.current) {
-        const json = apiRef.current.toJSON() as DockviewLayoutJSON;
-        const panels = json?.panels?.data;
+        const json = apiRef.current.toJSON();
+        const panels = (json as any)?.panels?.data;
         if (Array.isArray(panels)) {
-          const ids = panels.map((p) => p?.id).filter(Boolean);
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
           const uniqueIds = new Set(ids);
           if (ids.length !== uniqueIds.size) {
             console.warn('[CUT DockviewLayout] Refusing to save layout with duplicate panels');
@@ -273,9 +254,9 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     const saved = loadLayout(activePreset);
     if (saved) {
       try {
-        const panels = (saved as DockviewLayoutJSON)?.panels?.data;
+        const panels = (saved as any)?.panels?.data;
         if (Array.isArray(panels)) {
-          const ids = panels.map((p) => p?.id).filter(Boolean);
+          const ids = panels.map((p: any) => p?.id).filter(Boolean);
           const uniqueIds = new Set(ids);
           if (ids.length !== uniqueIds.size) {
             console.warn('[CUT DockviewLayout] Corrupt saved layout: duplicate panel IDs found, resetting');
@@ -584,34 +565,10 @@ export default function DockviewLayout({ scriptText = '' }: DockviewLayoutProps)
     setTabMenu(null);
   }, [tabMenu, toggleMaximize]);
 
-  // MARKER_GAMMA-P0-FIX: WelcomeScreen check AFTER all hooks (Rules of Hooks compliance)
-  if (showWelcome) {
-    return (
-      <WelcomeScreen
-        onCreateProject={(name, preset) => {
-          const params = new URLSearchParams(window.location.search);
-          params.set('project_name', name);
-          params.set('preset', preset);
-          window.location.search = params.toString();
-        }}
-        onOpenProject={(id, path) => {
-          if (id && path) {
-            addRecentProject(id, id, path);
-            const params = new URLSearchParams();
-            params.set('sandbox_root', path);
-            params.set('project_id', id);
-            window.location.search = params.toString();
-          } else {
-            window.dispatchEvent(new CustomEvent('cut:import-media'));
-          }
-        }}
-      />
-    );
-  }
+  // MARKER_CUT-UX-NOWELCOME: WelcomeScreen gate removed — app auto-bootstraps into NLE editor
 
   return (
-    // MARKER_GAMMA-CRITICAL: flex:1 required — parent CutEditorLayoutV2 ROOT is flex-column; height:100% collapses to 0 without explicit flex allocation
-    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', flex: 1, minHeight: 0 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', width: '100%', height: '100%' }}>
       {/* MARKER_GAMMA-25: WorkspacePresets removed from top bar (FCP7: Window menu only) */}
       <div style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <DockviewReact
