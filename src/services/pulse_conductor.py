@@ -455,3 +455,97 @@ def get_pulse_conductor() -> PulseConductor:
     if _conductor_instance is None:
         _conductor_instance = PulseConductor()
     return _conductor_instance
+
+
+# MARKER_PLAYER_LAB_SRT: auto-assembly helpers for N-moment / Favorite-moment markers
+def filter_clips_by_lab_markers(
+    clips: List[Dict],
+    markers: List[Dict],
+    *,
+    include_untagged: bool = True,
+) -> List[Dict]:
+    """
+    Filter clips for rough cut assembly using VETKA Videoplayer Lab markers.
+
+    Rules:
+    - Clips whose entire range is covered only by 'negative' markers → excluded.
+    - Clips that overlap at least one 'favorite' marker → included (boosted first).
+    - Clips with no markers → included if include_untagged=True.
+
+    Args:
+        clips: list of clip dicts with keys: media_path, start_sec, end_sec.
+        markers: list of TimeMarker dicts with keys: kind, media_path, start_sec, end_sec.
+        include_untagged: whether to include clips that have no markers at all.
+
+    Returns:
+        Filtered and ordered list: favorite-marked clips first, then untagged.
+    """
+    from collections import defaultdict
+
+    # Group markers by media_path
+    markers_by_path: Dict[str, List[Dict]] = defaultdict(list)
+    for m in markers:
+        path = str(m.get("media_path") or "")
+        if path:
+            markers_by_path[path].append(m)
+
+    favorite: List[Dict] = []
+    untagged: List[Dict] = []
+
+    for clip in clips:
+        path = str(clip.get("media_path") or clip.get("source_path") or "")
+        clip_start = float(clip.get("start_sec") or clip.get("source_start_sec") or 0.0)
+        clip_end = float(clip.get("end_sec") or clip.get("source_end_sec") or clip_start)
+
+        relevant = [
+            m for m in markers_by_path.get(path, [])
+            if float(m.get("end_sec") or m.get("start_sec") or 0) > clip_start
+            and float(m.get("start_sec") or 0) < clip_end
+        ]
+
+        if not relevant:
+            if include_untagged:
+                untagged.append(clip)
+            continue
+
+        has_favorite = any(m.get("kind") == "favorite" for m in relevant)
+        all_negative = all(m.get("kind") == "negative" for m in relevant)
+
+        if all_negative:
+            continue  # skip N-only clips
+        if has_favorite:
+            favorite.append(clip)
+        else:
+            untagged.append(clip)
+
+    return favorite + untagged
+
+
+def score_clip_by_lab_markers(clip: Dict, markers: List[Dict]) -> float:
+    """
+    Return a [0, 1] assembly score for a clip based on lab markers.
+    favorite → 1.0, negative → 0.0, mixed/untagged → 0.5.
+    Uses marker.score as weight when available.
+    """
+    path = str(clip.get("media_path") or clip.get("source_path") or "")
+    clip_start = float(clip.get("start_sec") or clip.get("source_start_sec") or 0.0)
+    clip_end = float(clip.get("end_sec") or clip.get("source_end_sec") or clip_start)
+
+    relevant = [
+        m for m in markers
+        if str(m.get("media_path") or "") == path
+        and float(m.get("end_sec") or m.get("start_sec") or 0) > clip_start
+        and float(m.get("start_sec") or 0) < clip_end
+    ]
+    if not relevant:
+        return 0.5
+
+    total_weight = 0.0
+    weighted_score = 0.0
+    for m in relevant:
+        w = float(m.get("score") or 0.7)
+        s = 1.0 if m.get("kind") == "favorite" else (0.0 if m.get("kind") == "negative" else 0.5)
+        weighted_score += s * w
+        total_weight += w
+
+    return weighted_score / total_weight if total_weight > 0 else 0.5
