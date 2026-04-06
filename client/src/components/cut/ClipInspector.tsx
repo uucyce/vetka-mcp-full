@@ -218,7 +218,7 @@ export default function ClipInspector() {
         <div style={SECTION}>
           <div style={HEADER}>Effects</div>
           {Object.entries(clip.effects).map(([key, val]) => {
-            if (val === undefined || val === 1 || val === 0) return null;
+            if (val === undefined || val === 1 || val === 0 || val === false) return null;
             return (
               <div key={key} style={ROW}>
                 <span style={LABEL}>{key}</span>
@@ -237,7 +237,7 @@ export default function ClipInspector() {
         <div style={ROW}>
           <span style={LABEL}>Log Profile</span>
           <select
-            value={clip.color_correction?.logProfile || ''}
+            value={(clip as any).color_correction?.logProfile || ''}
             onChange={(e) => handleLogProfileChange(e.target.value)}
             style={{
               background: '#111',
@@ -258,11 +258,11 @@ export default function ClipInspector() {
           <span style={LABEL}>LUT</span>
           <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <span style={VALUE}>
-              {clip.color_correction?.lutName || clip.color_correction?.lutPath
-                ? (clip.color_correction?.lutName || clip.color_correction?.lutPath?.split('/').pop() || 'LUT')
+              {(clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath
+                ? ((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath?.split('/').pop() || 'LUT')
                 : 'None'}
             </span>
-            {(clip.color_correction?.lutName || clip.color_correction?.lutPath) && (
+            {((clip as any).color_correction?.lutName || (clip as any).color_correction?.lutPath) && (
               <button
                 onClick={handleLutClear}
                 style={{

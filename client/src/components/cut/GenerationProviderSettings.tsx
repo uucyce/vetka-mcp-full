@@ -12,11 +12,8 @@
  * @phase GENERATION_CONTROL
  * @task tb_1774432042_1
  */
-import { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useState, useCallback, type CSSProperties } from 'react';
 import { API_BASE } from '../../config/api.config';
-import { useGenerationControlStore } from '../../store/useGenerationControlStore';
-
-const LS_CONFIGS_KEY = 'cut_gen_provider_configs_v1';
 
 // ─── Provider metadata ───
 
@@ -56,6 +53,7 @@ interface BudgetConfig {
   dailyLimit: string;
   monthlyLimit: string;
   alertThreshold: string;
+  currentSpend: number;
 }
 
 const defaultConfig = (): ProviderConfig => ({
@@ -125,38 +123,15 @@ const BUDGET_ROW: CSSProperties = {
 // ─── Component ───
 
 export default function GenerationProviderSettings() {
-  const sessionSpendUsd = useGenerationControlStore((s) => s.sessionSpendUsd);
-
   const [configs, setConfigs] = useState<ProviderConfigs>(() => {
-    // Restore from localStorage (API keys/paths persist across sessions)
-    try {
-      const saved = localStorage.getItem(LS_CONFIGS_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<ProviderConfigs>;
-        const init: ProviderConfigs = {};
-        for (const p of PROVIDERS) init[p.id] = { ...defaultConfig(), ...parsed[p.id] };
-        return init;
-      }
-    } catch { /* ignore */ }
     const init: ProviderConfigs = {};
     for (const p of PROVIDERS) init[p.id] = defaultConfig();
     return init;
   });
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [budget, setBudget] = useState<BudgetConfig>({
-    dailyLimit: '10', monthlyLimit: '100', alertThreshold: '80',
+    dailyLimit: '10', monthlyLimit: '100', alertThreshold: '80', currentSpend: 0,
   });
-
-  // Persist configs to localStorage when they change (excluding transient testing state)
-  useEffect(() => {
-    try {
-      const toSave: Partial<ProviderConfigs> = {};
-      for (const [id, cfg] of Object.entries(configs)) {
-        toSave[id] = { ...cfg, testing: false, connected: null };
-      }
-      localStorage.setItem(LS_CONFIGS_KEY, JSON.stringify(toSave));
-    } catch { /* quota exceeded — silent */ }
-  }, [configs]);
 
   const toggleExpand = useCallback((id: string) => {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -315,9 +290,9 @@ export default function GenerationProviderSettings() {
             />
           </div>
           <div style={{ flex: 1 }}>
-            <div style={LABEL}>Session Spend</div>
+            <div style={LABEL}>Current Spend</div>
             <div style={{ fontSize: 14, fontFamily: 'monospace', color: '#888', padding: '4px 0' }}>
-              ${sessionSpendUsd.toFixed(2)}
+              ${budget.currentSpend.toFixed(2)}
             </div>
           </div>
         </div>

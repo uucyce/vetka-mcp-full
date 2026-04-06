@@ -162,7 +162,7 @@ function MessageBubbleComponent({ message, onReply, onOpenArtifact, onReaction, 
   const isVoiceMessage = message.type === 'voice';
   const audioMeta = message.metadata?.audio;
   const voiceMeta = message.metadata?.voice;
-  const streamMeta = (message.metadata as any)?.stream;
+  const streamMeta = message.metadata?.stream;
   const audioUrl = useMemo(() => {
     const direct = audioMeta?.url?.trim();
     if (direct) return direct;
