@@ -49,7 +49,7 @@ roles:
     role_title: "Media/Color Pipeline Architect"
     worktree: "cut-media"
     branch: "claude/cut-media"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — шаблонные фиксы, FFmpeg, imports
     tmux_color: "bg=colour3,fg=colour0"  # yellow, dark text
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
@@ -87,7 +87,7 @@ roles:
     role_title: "UX/Panel Architect"
     worktree: "cut-ux"
     branch: "claude/cut-ux"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — UI wiring, SVG, CSS, быстро и дёшево
     tmux_color: "bg=colour2,fg=colour0"  # green, dark text
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
@@ -115,7 +115,7 @@ roles:
     role_title: "QA Engineer / FCP7 Compliance"
     worktree: "cut-qa"
     branch: "worktree-cut-qa"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — QA по чеклисту, pytest
     tmux_color: "bg=colour6,fg=colour0"  # cyan, dark text
     owned_paths:
       - "e2e/*.spec.cjs"
@@ -142,7 +142,7 @@ roles:
     role_title: "QA Engineer 2 / Additional Capacity"
     worktree: "cut-qa-2"
     branch: "claude/cut-qa-2"
-    model_tier: "sonnet"  # MARKER_200.MODEL_TIER
+    model_tier: "haiku"  # MARKER_200.MODEL_TIER — contract tests, верификация
     tmux_color: "bg=colour5,fg=white"  # magenta
     owned_paths:
       - "e2e/*.spec.cjs"
@@ -205,6 +205,7 @@ roles:
     role_title: "Harness Engineer 2 / Infrastructure"
     worktree: "harness-eta"
     branch: "claude/harness-eta"
+    model_tier: "sonnet"  # MARKER_200.MODEL_TIER — harness/infra нужен reasoning
     tmux_color: "bg=colour208,fg=colour0"  # orange, dark text
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
@@ -422,6 +423,103 @@ roles:
       - "client/src/"
       - "src/"
     key_docs: []
+    roadmap: ""
+
+  # ══════════════════════════════════════════════════════════
+  # GEMMA FLEET — free-code + Ollama/Gemma4 (Phase 212+)
+  # Pipeline: Omicron(engine) / Pi(scout-auto) / Rho(sherpa-eyes) / Sigma(qa)
+  # Requires: LiteLLM :4000 + litellm_gemma_bridge.py :4001
+  # Spawn: scripts/spawn_synapse.sh Omicron gemma-engine free_code
+  # ══════════════════════════════════════════════════════════
+
+  # ── Omicron: Gemma Engine / Coder ────────────────────────
+  - callsign: "Omicron"
+    domain: "gemma"
+    pipeline_stage: "coder"
+    tool_type: "free_code"
+    role_title: "Gemma Engine — Code & Build (free tier)"
+    worktree: "gemma-engine"
+    branch: "claude/gemma-engine"
+    model_tier: "gemma4:e4b"  # MARKER_GEMMA_FLEET — e4b: лучший баланс скорость/качество
+    tmux_color: "bg=colour55,fg=white"  # violet — gemma engine
+    owned_paths:
+      - "scripts/"
+      - "src/utils/"
+      - "docs/210_sherpa_gemma4/"
+    blocked_paths:
+      - "client/src/"
+      - "src/mcp/"
+      - "data/templates/agent_registry.yaml"
+    key_docs:
+      - "docs/210_sherpa_gemma4/GEMMA_BRIDGE_SESSION4_UPDATE_2026-04-06.md"
+    roadmap: ""
+
+  # ── Pi: Gemma Scout / Auto-Recon ─────────────────────────
+  - callsign: "Pi"
+    domain: "gemma"
+    pipeline_stage: "scout"
+    tool_type: "free_code"
+    role_title: "Gemma Scout — Auto-Recon (e2b, fastest)"
+    worktree: "gemma-scout"
+    branch: "claude/gemma-scout"
+    model_tier: "gemma4:e2b"  # MARKER_GEMMA_FLEET — e2b: самый быстрый, авто-рекон задачи
+    tmux_color: "bg=colour56,fg=white"  # blue-violet — scout
+    owned_paths:
+      - "docs/"
+      - "scripts/sherpa.py"
+    blocked_paths:
+      - "client/src/"
+      - "src/mcp/"
+      - "src/services/"
+      - "data/templates/agent_registry.yaml"
+    key_docs:
+      - "docs/210_sherpa_gemma4/GEMMA_BRIDGE_SESSION4_UPDATE_2026-04-06.md"
+    roadmap: ""
+
+  # ── Rho: Gemma Sherpa-Eyes / Vision ──────────────────────
+  - callsign: "Rho"
+    domain: "gemma"
+    pipeline_stage: "sherpa_assistant"
+    tool_type: "free_code"
+    role_title: "Gemma Sherpa-Eyes — Vision & Web Assist (26b)"
+    worktree: "gemma-sherpa"
+    branch: "claude/gemma-sherpa"
+    model_tier: "gemma4:26b"  # MARKER_GEMMA_FLEET — 26b: vision, глубокий анализ, помощь Sherpa
+    tmux_color: "bg=colour57,fg=white"  # indigo — sherpa vision
+    owned_paths:
+      - "docs/210_sherpa_gemma4/"
+      - "scripts/sherpa.py"
+      - "scripts/sherpa_config.yaml"
+    blocked_paths:
+      - "client/src/"
+      - "src/mcp/"
+      - "src/services/"
+      - "data/templates/agent_registry.yaml"
+    key_docs:
+      - "docs/210_sherpa_gemma4/GEMMA_BRIDGE_SESSION4_UPDATE_2026-04-06.md"
+      - "docs/210_sherpa_gemma4/GEMMA4_RECON_SHERPA_tb_1775406942_68814_2.md"
+    roadmap: ""
+
+  # ── Sigma: Gemma QA / Verifier ────────────────────────────
+  - callsign: "Sigma"
+    domain: "gemma"
+    pipeline_stage: "verifier"
+    tool_type: "free_code"
+    role_title: "Gemma QA — Verification & Review (free tier)"
+    worktree: "gemma-qa"
+    branch: "claude/gemma-qa"
+    model_tier: "gemma4:e4b"  # MARKER_GEMMA_FLEET — e4b: качественный QA
+    tmux_color: "bg=colour61,fg=white"  # slate blue — qa
+    owned_paths:
+      - "tests/"
+      - "docs/"
+    blocked_paths:
+      - "client/src/"
+      - "src/mcp/"
+      - "src/services/"
+      - "data/templates/agent_registry.yaml"
+    key_docs:
+      - "docs/210_sherpa_gemma4/GEMMA_BRIDGE_SESSION4_UPDATE_2026-04-06.md"
     roadmap: ""
 
 # ── Shared Zones ────────────────────────────────────────────

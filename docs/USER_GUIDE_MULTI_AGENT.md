@@ -1,5 +1,5 @@
 # VETKA Multi-Agent — Инструкция для пользователя
-**Версия:** 5.0 | **Дата:** 2026-04-01 (Phase 196.6 — Haiku optimization wave)
+**Версия:** 6.0 | **Дата:** 2026-04-06 (Phase 203 — spawn_synapse.sh автовыбор модели)
 
 ---
 
@@ -34,9 +34,8 @@
 ## Быстрый старт: 3 команды
 
 ```bash
-# 1. Запустить агента в worktree (роль загрузится автоматически, hook уведомит о сигналах)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine
-claude --dangerously-skip-permissions --model sonnet
+# 1. Запустить Claude Code агента (модель читается автоматически из agent_registry.yaml)
+scripts/spawn_synapse.sh Alpha cut-engine claude_code
 
 # 2. Запустить Qwen-агента через opencode (WEATHER роли) — с ролью для сигналов
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-core
@@ -50,23 +49,25 @@ vetka_task_board action=active_agents
 
 ## Команды запуска
 
-### Claude Code — CUT домен (Opus / Sonnet / Haiku)
+### Claude Code — CUT домен (spawn_synapse.sh)
+
+`spawn_synapse.sh` читает `model_tier` из `data/templates/agent_registry.yaml` автоматически — модель указывать не нужно.
 
 ```bash
-# Alpha (Engine) — Sonnet (единственный Sonnet — сложные фиксы)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
+# Alpha (Engine) — Sonnet
+scripts/spawn_synapse.sh Alpha cut-engine claude_code
 
-# Beta (Media) — Haiku (imports, pipelines, шаблонная работа)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model haiku
+# Beta (Media) — Haiku
+scripts/spawn_synapse.sh Beta cut-media claude_code
 
-# Gamma (UX) — Haiku (wiring, SVG, CSS)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model haiku
+# Gamma (UX) — Haiku
+scripts/spawn_synapse.sh Gamma cut-ux claude_code
 
-# Delta (QA) — Haiku (pytest, code review по чеклисту)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model haiku
+# Delta (QA) — Haiku
+scripts/spawn_synapse.sh Delta cut-qa claude_code
 
-# Epsilon (QA2) — Haiku (contract tests, верификация)
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model haiku
+# Epsilon (QA2) — Haiku
+scripts/spawn_synapse.sh Epsilon cut-qa-2 claude_code
 
 # Lambda (QA3) — Qwen via Opencode
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencode -m opencode/qwen3.6-plus-free
@@ -75,16 +76,37 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-3 && opencod
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-4 && opencode -m opencode/qwen3.6-plus-free
 
 # Eta (Harness 2) — Sonnet
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
+scripts/spawn_synapse.sh Eta harness-eta claude_code
 
 # Zeta (Harness) — Opus
-cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+scripts/spawn_synapse.sh Zeta harness claude_code
 
 # Commander (Architect) — Opus
+scripts/spawn_synapse.sh Commander pedantic-bell claude_code
+```
+
+#### Fallback: ручной запуск (если spawn_synapse.sh недоступен)
+
+```bash
+# Alpha — Sonnet
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-engine && claude --dangerously-skip-permissions --model sonnet
+# Beta — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model haiku
+# Gamma — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-ux && claude --dangerously-skip-permissions --model haiku
+# Delta — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa && claude --dangerously-skip-permissions --model haiku
+# Epsilon — Haiku
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-qa-2 && claude --dangerously-skip-permissions --model haiku
+# Eta — Sonnet
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness-eta && claude --dangerously-skip-permissions --model sonnet
+# Zeta — Opus
+cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/harness && claude --dangerously-skip-permissions
+# Commander — Opus
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/pedantic-bell && claude --dangerously-skip-permissions
 ```
 
-> **Когда повышать Haiku до Sonnet:** Если агент не справляется с задачей (3+ попытки, ошибки reasoning), временно повысьте: `claude --dangerously-skip-permissions --model sonnet`. После задачи верните обратно на haiku.
+> **Когда повышать Haiku до Sonnet:** Если агент не справляется с задачей (3+ попытки, ошибки reasoning), временно повысьте через fallback-команду с `--model sonnet`. После задачи верните обратно.
 
 ### Opencode — Qwen3.6 Plus Free (WEATHER домен)
 
@@ -423,7 +445,8 @@ git diff main..agent/theta-weather      # что изменилось
 
 | Файл | Назначение |
 |---|---|
-| `data/templates/agent_registry.yaml` | Роли, домены, owned_paths, blocked_paths |
+| `data/templates/agent_registry.yaml` | Роли, домены, owned_paths, blocked_paths, model_tier |
+| `scripts/spawn_synapse.sh` | Универсальный лаунчер — читает model_tier из registry |
 | `.claude/worktrees/*/CLAUDE.md` | Per-worktree инструкции |
 | `data/experience_reports/*.json` | Experience reports от агентов |
 | `src/services/agent_registry.py` | Python loader для registry |
@@ -481,9 +504,9 @@ Merge:
 - Merge conflict resolution (сложные)
 - Новая фича с нуля (не fix/wiring)
 
-Решение: временно повысить модель, после задачи вернуть.
+Решение: временно повысить модель через fallback-запуск, после задачи вернуть.
 ```bash
-# Временно Beta на Sonnet для сложной задачи
+# Временно Beta на Sonnet для сложной задачи (fallback с явной моделью)
 cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/cut-media && claude --dangerously-skip-permissions --model sonnet
 ```
 
