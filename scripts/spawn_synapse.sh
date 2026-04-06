@@ -92,6 +92,32 @@ _apply_tmux_color() {
     fi
 }
 
+# ── MARKER_SPAWN_FIX_P0: Read model_tier from agent_registry.yaml ──
+_get_model_tier() {
+    local role="$1"
+    local tier=""
+    if [ -f "$REGISTRY_YAML" ]; then
+        tier=$(python3 -c "
+import yaml, sys
+try:
+    with open('$REGISTRY_YAML') as f:
+        reg = yaml.safe_load(f)
+    for r in reg.get('roles', []):
+        if r.get('callsign') == '$role':
+            print(r.get('model_tier', ''))
+            sys.exit(0)
+except Exception:
+    pass
+" 2>/dev/null)
+    fi
+    # PyYAML fallback: grep/awk (no deps)
+    if [ -z "$tier" ] && [ -f "$REGISTRY_YAML" ]; then
+        tier=$(grep -A10 "callsign: \"$role\"" "$REGISTRY_YAML" 2>/dev/null \
+            | grep 'model_tier:' | head -1 | awk -F'"' '{print $2}')
+    fi
+    echo "${tier:-sonnet}"  # fallback: sonnet (NOT opus)
+}
+
 # ── Validate ──────────────────────────────────────────────────
 if [ "$AGENT_TYPE" != "vibe" ] && [ ! -d "$WORKTREE_PATH" ]; then
     echo "$LOG_PREFIX ERROR: worktree not found: $WORKTREE_PATH" >&2
@@ -120,10 +146,14 @@ if [ "$AGENT_TYPE" = "opencode" ] || [ "$AGENT_TYPE" = "generic_cli" ]; then
     fi
 fi
 
+# ── Resolve model tier from registry ─────────────────────────
+MODEL_TIER=$(_get_model_tier "$ROLE")
+echo "$LOG_PREFIX Model tier for $ROLE: $MODEL_TIER"
+
 # ── Build spawn command per agent type ────────────────────────
 case "$AGENT_TYPE" in
     claude_code)
-        SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions"
+        SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions --model $MODEL_TIER"
         ;;
     opencode)
         # NOTE: opencode has no auto-approve flag. Agent stays within worktree
