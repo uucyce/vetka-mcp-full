@@ -52,24 +52,15 @@ fi
 # ── ALWAYS send macOS notification ────────────────────────
 _send_notification "SYNAPSE: Wake $ROLE" "$MESSAGE"
 
-# ── Check if agent is idle for tmux poke ──────────────────
-LAST_ACTIVITY=$(tmux display-message -p -t "$SESSION_NAME" '#{pane_activity}' 2>/dev/null || echo "0")
-NOW=$(date +%s)
-IDLE_SEC=$(( NOW - LAST_ACTIVITY ))
+# ── ALWAYS inject notification check into agent ───────────
+# Previous bug: idle threshold guard skipped tmux poke for "active" agents.
+# But agent at idle prompt (waiting for input) counts as "active" by tmux
+# pane_activity metric. Result: notifications never delivered.
+# Fix: ALWAYS inject. If agent is mid-generation, text queues in tmux
+# input buffer and executes when agent finishes.
 
-if [ "$IDLE_SEC" -lt "$WAKE_THRESHOLD" ]; then
-    # Agent is active — notification already sent above, skip tmux poke
-    # (typing into active conversation would corrupt the prompt)
-    echo "$LOG_PREFIX $ROLE is active (idle ${IDLE_SEC}s) — notification sent, tmux poke skipped"
-    exit 0
-fi
-
-# ── Idle agent: inject notification check (not session init!) ─
-# Agents do session_init but skip notifications — root cause of wake bug.
-# Send direct notification check so agent sees Commander orders immediately.
-
-# Exit tmux copy-mode if active (yellow 'jump to forward' bar blocks input).
-# If not in copy-mode, 'q' is harmless — goes to input buffer.
+# Exit tmux copy-mode if active (yellow bar blocks input).
+# If not in copy-mode, 'q' goes to input buffer — harmless, gets consumed.
 tmux send-keys -t "$SESSION_NAME" q
 sleep 0.1
 
@@ -77,4 +68,4 @@ WAKE_PROMPT="Check your notifications: vetka_task_board action=notifications rol
 tmux send-keys -t "$SESSION_NAME" "$WAKE_PROMPT"
 sleep 0.3  # TUI needs time to process typed text before Enter
 tmux send-keys -t "$SESSION_NAME" Enter
-echo "$LOG_PREFIX Woke $ROLE (idle ${IDLE_SEC}s) — notification check sent"
+echo "$LOG_PREFIX Woke $ROLE — notification check injected"
