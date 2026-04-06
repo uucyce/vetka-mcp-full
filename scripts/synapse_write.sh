@@ -45,20 +45,33 @@ json.dump({'role': '$ROLE', 'prompt': sys.stdin.read(), 'ts': $(date +%s)}, open
     exit 0
 fi
 
+# ── MARKER_212.SUBMIT_KEY: Per-agent-type submit key ──────
+# opencode Bubble Tea TUI: Enter submits in Zen mode (empirically verified)
+# claude_code: Enter submits
+# Future: read submit_key from agent_registry.yaml if per-agent override needed
+case "$AGENT_TYPE" in
+    opencode)
+        SUBMIT_KEY="Enter"
+        ;;
+    *)
+        SUBMIT_KEY="Enter"
+        ;;
+esac
+
 # ── Detect single-line vs multi-line ──────────────────────
 NEWLINE_COUNT=$(echo "$PROMPT" | wc -l | tr -d ' ')
 
 if [ "$NEWLINE_COUNT" -le 1 ]; then
     # Single-line: direct send-keys
-    tmux send-keys -t "$SESSION_NAME" "$PROMPT" Enter
-    echo "$LOG_PREFIX Sent to $ROLE: ${PROMPT:0:80}..."
+    tmux send-keys -t "$SESSION_NAME" "$PROMPT" "$SUBMIT_KEY"
+    echo "$LOG_PREFIX Sent to $ROLE ($AGENT_TYPE): ${PROMPT:0:80}..."
 else
-    # Multi-line: use tmux load-buffer + paste
+    # Multi-line: use tmux load-buffer + paste, then submit
     TMPFILE=$(mktemp /tmp/synapse_write_XXXXXX.txt)
     echo "$PROMPT" > "$TMPFILE"
     tmux load-buffer -b synapse_write_buf "$TMPFILE"
     tmux paste-buffer -b synapse_write_buf -t "$SESSION_NAME"
-    tmux send-keys -t "$SESSION_NAME" "" Enter
+    tmux send-keys -t "$SESSION_NAME" "" "$SUBMIT_KEY"
     rm -f "$TMPFILE"
-    echo "$LOG_PREFIX Pasted multi-line to $ROLE (${NEWLINE_COUNT} lines)"
+    echo "$LOG_PREFIX Pasted multi-line to $ROLE ($AGENT_TYPE, ${NEWLINE_COUNT} lines)"
 fi

@@ -16,12 +16,16 @@ WORKTREE="${2:?Usage: spawn_synapse.sh ROLE WORKTREE [AGENT_TYPE] [INIT_PROMPT]}
 AGENT_TYPE="${3:-claude_code}"
 INIT_PROMPT="${4:-vetka session init}"
 
-# ── MARKER_209.POLARIS: Model routing from registry ───────
-# If SYNAPSE_MODEL_ID is set, use it. Otherwise, look up from agent_registry.yaml.
+PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
+WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
+
+# ── MARKER_209.POLARIS: Model routing + color from registry ──
+# Read model_id and tmux_color from agent_registry.yaml
 MODEL_ID="${SYNAPSE_MODEL_ID:-}"
-if [ -z "$MODEL_ID" ]; then
-    MODEL_ID=$(python3 -c "
-import yaml, pathlib
+TMUX_COLOR=""
+_read_registry() {
+    python3 -c "
+import yaml, pathlib, json
 reg = pathlib.Path('$PROJECT_ROOT/data/templates/agent_registry.yaml')
 if not reg.exists():
     reg = pathlib.Path('${WORKTREE_PATH}/data/templates/agent_registry.yaml')
@@ -29,13 +33,15 @@ if reg.exists():
     data = yaml.safe_load(reg.read_text())
     for r in data.get('roles', []):
         if r.get('callsign') == '$ROLE':
-            print(r.get('model_id', ''))
+            print(json.dumps({'model_id': r.get('model_id', ''), 'tmux_color': r.get('tmux_color', '')}))
             break
-" 2>/dev/null || echo "")
+" 2>/dev/null || echo "{}"
+}
+if [ -z "$MODEL_ID" ] || [ -z "$TMUX_COLOR" ]; then
+    _REG_JSON=$(_read_registry)
+    [ -z "$MODEL_ID" ] && MODEL_ID=$(echo "$_REG_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('model_id',''))" 2>/dev/null || echo "")
+    [ -z "$TMUX_COLOR" ] && TMUX_COLOR=$(echo "$_REG_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin).get('tmux_color',''))" 2>/dev/null || echo "")
 fi
-
-PROJECT_ROOT="$HOME/Documents/VETKA_Project/vetka_live_03"
-WORKTREE_PATH="$PROJECT_ROOT/.claude/worktrees/$WORKTREE"
 SESSION_NAME="vetka-$ROLE"
 REGISTRY_FILE="$PROJECT_ROOT/data/synapse_sessions.json"
 LOG_PREFIX="[SYNAPSE]"
@@ -152,6 +158,18 @@ APPLESCRIPT
         exit 1
         ;;
 esac
+
+# ── MARKER_212.TMUX_COLOR: Apply role color to tmux status bar ──
+if [ -n "$TMUX_COLOR" ]; then
+    (
+        sleep 2  # Wait for session to initialize
+        if tmux has-session -t "$SESSION_NAME" 2>/dev/null; then
+            tmux set -t "$SESSION_NAME" status-style "$TMUX_COLOR" 2>/dev/null || true
+            tmux set -t "$SESSION_NAME" status-left " $ROLE " 2>/dev/null || true
+            echo "$LOG_PREFIX Applied tmux color to $SESSION_NAME: $TMUX_COLOR"
+        fi
+    ) &
+fi
 
 # ── Register session ────────────────────────────────────────
 # MARKER_207.SESSION_REGISTRY: Track spawned agents in synapse_sessions.json
