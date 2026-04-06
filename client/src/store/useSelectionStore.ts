@@ -5,9 +5,6 @@
  */
 import { create } from 'zustand';
 
-// CJS-style lazy require used to break circular dep with useCutEditorStore (Vite CJS interop)
-declare const require: (m: string) => Record<string, unknown>;
-
 // --- Types ---
 
 export type SelectionMode = 'normal' | 'range' | 'lasso';
@@ -50,9 +47,9 @@ export const useSelectionStore = create<SelectionState & SelectionActions>()((se
 
   selectAllClips: () => {
     // Cross-store: read lanes from useCutEditorStore
-    // Lazy import to avoid circular initialization (safe at call-time)
-    const mod = require('./useCutEditorStore') as { useCutEditorStore: { getState: () => { lanes: Array<{ clips: Array<{ clip_id: string }> }> } } };
-    const lanes = mod.useCutEditorStore.getState().lanes;
+    // Lazy import to avoid circular dependency
+    const { useCutEditorStore } = require('./useCutEditorStore');
+    const lanes = useCutEditorStore.getState().lanes;
     const allIds = new Set<string>();
     for (const lane of lanes) {
       for (const clip of (lane as { clips: Array<{ clip_id: string }> }).clips) {
