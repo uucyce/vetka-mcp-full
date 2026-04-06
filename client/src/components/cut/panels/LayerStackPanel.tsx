@@ -19,9 +19,11 @@
  * @owner Gamma
  */
 import { useState, useMemo, useEffect, type CSSProperties } from 'react';
-import { useCutEditorStore } from '../../../store/useCutEditorStore';
+import { useCutEditorStore, type LayerManifestMeta } from '../../../store/useCutEditorStore';
 import { useSelectionStore } from '../../../store/useSelectionStore';
 import { API_BASE } from '../../../config/api.config';
+
+// LayerManifestMeta is defined in useCutEditorStore (imported above)
 
 /**
  * Full manifest loaded via GET /cut/layers/manifest?path=...

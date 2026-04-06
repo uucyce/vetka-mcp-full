@@ -37,8 +37,6 @@ import SaveIndicator from './SaveIndicator';
 import DebugShellPanel from './DebugShellPanel';
 import TrimEditWindow from './TrimEditWindow';
 import { EditMarkerDialog } from './panels/EditMarkerDialog';
-import { InsertTracksDialog, DeleteTracksDialog } from './panels/InsertDeleteTracksDialog';
-import { FindDialog } from './panels/FindDialog';
 import { TimecodeEntryOverlay } from './panels/TimecodeEntryOverlay';
 import { PublishDialog } from '../publish/PublishDialog';
 
@@ -137,7 +135,7 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
   }, [selectedClipId]);
 
   // ─── MARKER_W5.3PT: Three-Point Editing (FCP7 Ch.36) — hook kept for external use/testing ───
-  useThreePointEdit();
+  const { insertEdit: threePointInsert, overwriteEdit: threePointOverwrite } = useThreePointEdit();
 
   // ─── MARKER_A2.6: Smooth zoom animation (150ms ease-out) ───
   const smoothZoomTo = useCallback((s: ReturnType<typeof useCutEditorStore.getState>, targetZoom: number, targetScroll: number) => {
@@ -1329,10 +1327,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
     publishDialog: () => {
       useCutEditorStore.getState().setShowPublishDialog(true);
     },
-    // MARKER_GAMMA-FIND: Find dialog (⌘F)
-    findDialog: () => {
-      useCutEditorStore.getState().setShowFindDialog(true);
-    },
 
     // MARKER_GAMMA-TRIM5-WIRE: New hotkey handlers for TRIM5/SEL6 actions
     rippleTrimToPlayhead: () => {
@@ -1612,11 +1606,6 @@ export default function CutEditorLayoutV2({ scriptText = '' }: CutEditorLayoutV2
       <TrimEditWindow />
       {/* MARKER_GAMMA-P1: Edit Marker dialog + Timecode entry */}
       <EditMarkerDialog />
-      {/* MARKER_GAMMA-TRACKS: Insert/Delete Tracks dialogs */}
-      <InsertTracksDialog />
-      <DeleteTracksDialog />
-      {/* MARKER_GAMMA-FIND: Find dialog (⌘F) */}
-      <FindDialog />
       <TimecodeEntryOverlay />
       {/* MARKER_GAMMA-P2: Cross-platform publish dialog */}
       <PublishDialog />

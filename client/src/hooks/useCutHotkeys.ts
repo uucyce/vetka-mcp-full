@@ -149,9 +149,7 @@ export type CutHotkeyAction =
   | 'toggleAVSelection'
   | 'linkUnlinkClips'
   // MARKER_SOURCE_ACQUIRE: Source Acquire panel focus
-  | 'focusSourceAcquire'
-  // MARKER_GAMMA-FIND: Find dialog
-  | 'findDialog';
+  | 'focusSourceAcquire';
 
 // ─── MARKER_FOCUS: Panel Focus Scoping ───────────────────────────────
 // Defines which panels each action is allowed in.
@@ -292,8 +290,6 @@ export const ACTION_SCOPE: Record<CutHotkeyAction, ActionScope> = {
   linkUnlinkClips:        'global',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:     'global',
-  // MARKER_GAMMA-FIND: Find dialog
-  findDialog:             'global',
 };
 
 // ─── Key notation ───────────────────────────────────────────────────
@@ -442,8 +438,6 @@ export const PREMIERE_PRESET: HotkeyMap = {
   linkUnlinkClips:   'Alt+l',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:'Cmd+8',
-  // MARKER_GAMMA-FIND: Find dialog
-  findDialog:        'Cmd+f',
 };
 
 export const FCP7_PRESET: HotkeyMap = {
@@ -575,8 +569,6 @@ export const FCP7_PRESET: HotkeyMap = {
   linkUnlinkClips:   'Cmd+l',
   // MARKER_SOURCE_ACQUIRE
   focusSourceAcquire:'Cmd+8',
-  // MARKER_GAMMA-FIND: Find dialog
-  findDialog:        'Cmd+f',
 };
 
 export const PRESETS: Record<Exclude<HotkeyPresetName, 'custom'>, HotkeyMap> = {

@@ -177,13 +177,4 @@ export const useDockviewStore = create<DockviewStoreState>((set, get) => ({
     set({ visibleMarkerKinds: current });
   },
   isMarkerKindVisible: (kind) => get().visibleMarkerKinds.has(kind),
-
-  // MARKER_A3.4: Per-lane waveform toggle (all visible by default)
-  waveformHiddenLanes: new Set<string>(),
-  toggleLaneWaveform: (laneId: string) => {
-    const current = new Set(get().waveformHiddenLanes);
-    if (current.has(laneId)) current.delete(laneId);
-    else current.add(laneId);
-    set({ waveformHiddenLanes: current });
-  },
 }));
