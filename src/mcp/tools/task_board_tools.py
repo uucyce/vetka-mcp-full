@@ -1572,6 +1572,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"success": False, "error": "task_id is required for merge_request"}
         strategy = arguments.get("strategy")  # None = use task default or "cherry-pick"
 
+        # MARKER_210.BRANCH_FIX: Update branch_name from MCP argument before merge
+        _mcp_branch = arguments.get("branch_name")
+        if _mcp_branch and task_id:
+            board.update_task(task_id, branch_name=_mcp_branch)
+
         try:
             import asyncio
 
