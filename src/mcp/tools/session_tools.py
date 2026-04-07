@@ -1560,6 +1560,15 @@ class SessionInitTool(BaseMCPTool):
             if not _role:
                 context["available_roles"] = _reg.list_callsigns()
 
+            # Proactive hint: suggest role generator for unregistered/ephemeral agents
+            if not _role or getattr(_role, 'ephemeral', False):
+                context["role_generator_hint"] = {
+                    "message": "No registered role found. Run add_role.sh to create a persistent agent identity:",
+                    "command": 'scripts/release/add_role.sh --callsign NAME --domain DOMAIN --worktree WORKTREE --tool-type TYPE --model-tier MODEL --role-title "TITLE"',
+                    "example": 'scripts/release/add_role.sh --callsign Codex --domain parallax --worktree codex-parallax --tool-type codex --model-tier gpt-4o --role-title "Parallax Engineer"',
+                    "docs": "Script auto-creates: registry entry, git branch+worktree, CLAUDE.md, AGENTS.md",
+                }
+
             if _role:
                 _role_ctx = {
                     "callsign": _role.callsign,
@@ -1766,6 +1775,12 @@ class SessionInitTool(BaseMCPTool):
             commits = context.get("recent_commits", [])
             if not commits:
                 next_steps.append("No recent commits found — check git status")
+
+            # Proactive: suggest add_role.sh for ephemeral/unregistered agents
+            if context.get("role_generator_hint"):
+                next_steps.insert(0,
+                    "⚠️ No registered role — run: scripts/release/add_role.sh --callsign NAME --domain DOMAIN --worktree WORKTREE"
+                )
 
             if next_steps:
                 context["next_steps"] = next_steps
