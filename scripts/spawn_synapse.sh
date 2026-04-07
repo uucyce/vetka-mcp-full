@@ -161,7 +161,9 @@ case "$AGENT_TYPE" in
         # Requires: LiteLLM on :4000 + litellm_gemma_bridge.py on :4001
         GEMMA_BRIDGE_URL="${GEMMA_BRIDGE_URL:-http://localhost:4001}"
         FREE_CODE_BIN="${FREE_CODE_BIN:-$HOME/Documents/VETKA_Project/free-code/cli-dev}"
-        SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --dangerously-skip-permissions --model $MODEL_TIER"
+        # --bare: skip OAuth/keychain, use ANTHROPIC_API_KEY from env strictly
+        # Without --bare, Free Code ignores ANTHROPIC_BASE_URL and uses its saved credentials
+        SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --bare --dangerously-skip-permissions --model $MODEL_TIER"
         ;;
     opencode)
         # NOTE: opencode has no auto-approve flag. Agent stays within worktree
