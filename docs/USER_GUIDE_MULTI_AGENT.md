@@ -27,6 +27,7 @@
 | **Mistral-1** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 1 — free tier, 10-15 tasks/day |
 | **Mistral-2** | Mistral Vibe | **Vibe CLI** | QA Agent 5 — free tier, 10-15 tasks/day |
 | **Mistral-3** | Mistral Vibe | **Vibe CLI** | WEATHER Agent 2 — free tier, 10-15 tasks/day |
+| **Codex** | GPT-4o | **Codex CLI** | Parallax & Multimedia Engineer — photo_parallax_playground |
 | **Omicron** | gemma4:e4b (free) | **free-code** | Gemma Engine — engine-class задачи на локальной модели |
 | **Pi** | gemma4:e2b (free) | **free-code** | Gemma Scout — автоматический recon, лёгкие задачи |
 | **Rho** | gemma4:26b (free) | **free-code** | Gemma Sherpa — vision, web browsing, поддержка Sherpa |
@@ -147,6 +148,30 @@ cd ~/Documents/VETKA_Project/vetka_live_03/.claude/worktrees/weather-mistral-2 &
 
 > **Mistral Vibe CLI:** Установить: `npm install -g @mistralai/vibe-cli` или `pip install mistral-vibe-cli`. Бесплатный лимит: ~10-15 задач/день на аккаунт.
 > **Первое сообщение:** `vetka_session_init role=Mistral-1` (или Mistral-2, Mistral-3)
+
+### Codex CLI — Parallax домен
+
+```bash
+# Codex (Parallax & Multimedia) — GPT-4o
+cd ~/Documents/VETKA_Project/vetka_live_03/photo_parallax_playground_codex
+codex
+# Первое сообщение: vetka session init role=Codex
+```
+
+> **Важно:** Codex должен открываться из `photo_parallax_playground_codex` (git worktree), а НЕ из `photo_parallax_playground` (подпапка main). В подпапке main ветка `codex/parallax` недоступна — git блокирует checkout ветки, занятой другим worktree.
+
+### Быстрое создание новой роли
+
+Если нужен новый агент, не создавайте вручную — используйте скрипт:
+
+```bash
+scripts/release/add_role.sh --callsign NAME --domain DOMAIN --worktree WORKTREE \
+  --tool-type TYPE --model-tier MODEL --role-title "TITLE"
+```
+
+Скрипт автоматически: добавит в registry, создаст branch+worktree, сгенерирует CLAUDE.md и AGENTS.md, обновит USER_GUIDE.
+
+Подробнее: `docs/200_taskboard_forever/GUIDE_ROLE_INIT_AND_CREATION.md`
 
 ### Gemma Fleet — free_code (Ollama + LiteLLM + Bridge)
 
