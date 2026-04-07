@@ -9,6 +9,10 @@
             "command": "bash scripts/check_agent_inbox.sh 2>/dev/null || true"
           }
         ]
+      },
+      {
+        "matcher": ".*",
+        "command": "bash scripts/check_agent_inbox.sh"
       }
     ],
     "PreToolUse": [
