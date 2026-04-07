@@ -1,72 +1,62 @@
 # RECON: Codex Agent Role Gap
 
 **Date:** 2026-04-07
-**Status:** confirmed gap
+**Status:** FIXED (all issues resolved)
 **Severity:** P1 — Codex cannot initialize properly, takes wrong worktree/role
 
 ## Problem
 
-Codex agent is NOT registered in `data/templates/agent_registry.yaml`.
-When Codex calls `session_init`, auto_provision creates an ephemeral role with random callsign (e.g. `codex_a7f2`) and no domain/worktree binding. This caused Codex to initialize as Zeta and take the wrong worktree.
+Codex agent was NOT registered in `data/templates/agent_registry.yaml`.
+When Codex called `session_init`, it initialized as Zeta and took the wrong worktree.
 
-## Evidence
+## Root Causes (5 layers)
 
-1. `agent_registry.yaml` — 19 callsigns defined, Codex absent
-2. `shared_zones` in registry lists `Codex` as owner of `photo_parallax_playground/src/App.tsx` — but no callsign to resolve
-3. `session_tools.py:_detect_origin()` — checks `CODEX_SESSION` env (never set) or `OPENAI_API_KEY` (too broad)
-4. `task_board.py:_MANUAL_AGENT_TYPES` — recognizes `"codex"` for execution_mode=manual
-5. Git branches `codex/*` exist (codex/parallax, codex/cut, etc.) — active but unbound to registry
-6. 100+ `CODEX_BRIEF_*.md` docs exist — task assignments, not role config
+### Layer 1: No registry entry
+Codex was used as a sprint agent (phases 136-181) but never formalized in `agent_registry.yaml`. Auto_provision created ephemeral roles with random callsigns.
 
-## Root Cause
+### Layer 2: AGENTS.md on main hardcoded to Zeta
+Snapshot merge from harness branch committed Zeta's `AGENTS.md` to repository root. Any agent opened from main or its subdirectories (including `photo_parallax_playground/`) inherited `role=Zeta` from this file.
 
-Codex was used as a sprint/task agent across phases 136-181 but never formalized as a persistent role in the registry. When auto_provision can't find a matching callsign, it falls back to ephemeral identity with no domain ownership.
+### Layer 3: Codex worktree AGENTS.md also stale
+`photo_parallax_playground_codex/AGENTS.md` was also hardcoded to Zeta (generated before Codex role existed).
 
-## Required Fix
+### Layer 4: No worktree name detection in session_init
+`session_tools.py` had `get_by_worktree()` method in `AgentRegistry` but **never called it**. Even with a correct registry entry, session_init couldn't match worktree directory name to callsign.
 
-### 1. Add Codex to `data/templates/agent_registry.yaml`
+### Layer 5: Codex opened in wrong directory
+Codex was opened in `photo_parallax_playground/` (subdirectory of main) instead of `photo_parallax_playground_codex` (the actual worktree). Attempting to switch to `codex/parallax` branch failed with git error: branch already used by another worktree.
 
-```yaml
-- callsign: "Codex"
-  domain: "parallax"
-  pipeline_stage: "coder"
-  tool_type: "codex"
-  role_title: "Parallax & Multimedia Engineer"
-  worktree: "codex-parallax"
-  branch: "codex/parallax"
-  model_tier: "gpt-4o"
-  owned_paths:
-    - "photo_parallax_playground/"
-    - "src/parallax/"
-    - "docs/180_photo-to-parallax/"
-  blocked_paths:
-    - "src/orchestration/"
-    - "src/mcp/"
-  key_docs:
-    - "docs/180_photo-to-parallax/PARALLAX_FUNCTIONAL_ROADMAP_LONG_PHASES_2026-04-07.md"
+### Layer 6: VETKA server caching
+After fixing code on disk, VETKA FastAPI server kept old Python modules in memory. Worktree detection only worked after server restart. Meanwhile, explicit `role=Codex` parameter in session_init was the reliable workaround.
+
+## Fixes Applied
+
+| Fix | Commit | What |
+|-----|--------|------|
+| Registry entry | `8d68e8cb7` | Added Codex callsign to `agent_registry.yaml` with correct worktree `photo_parallax_playground_codex` |
+| Origin detection | `8d68e8cb7` | Removed `OPENAI_API_KEY` fallback, added `_ORIGIN_CALLSIGN_MAP` codex->Codex |
+| generate_agents_md | `8d68e8cb7` | Added `TEMPLATE_CODEX` for tool_type="codex" |
+| Worktree detection | `38e2d1f41` | session_init now calls `get_by_worktree(Path(cwd).name)` before origin detection |
+| Role generator hint | `38e2d1f41` | Unregistered agents see `add_role.sh` command in next_steps |
+| Root AGENTS.md | `85e5b73dc` | Replaced Zeta-hardcoded AGENTS.md with generic template |
+| Codex AGENTS.md | manual copy | Regenerated via `generate_agents_md.py --role Codex` |
+| get_subtask_progress | `857bb8d71` | Added missing `@staticmethod` to TaskBoard (unrelated but blocking task_board action=get) |
+| Circular import | `8d68e8cb7` | Fixed cut_routes.py ↔ cut_routes_workers.py circular import that crashed server on restart |
+
+## Quick Fix for Users
+
+If an agent initializes with wrong role after all fixes:
+
+```bash
+# Explicit role= always works, bypasses all detection logic
+vetka session init role=Codex
 ```
 
-### 2. Fix origin detection in `src/mcp/tools/session_tools.py`
+## Lessons
 
-- Make `CODEX_SESSION` env var the primary signal
-- Remove `OPENAI_API_KEY` fallback (ambiguous)
-- Add `role="Codex"` auto-detection when origin=codex
-
-### 3. Regenerate AGENTS.md for Codex worktree
-
-- Update `src/tools/generate_agents_md.py` to handle `tool_type="codex"`
-- Generate per-worktree AGENTS.md with Codex-specific instructions
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `data/templates/agent_registry.yaml` | Add Codex callsign entry |
-| `src/mcp/tools/session_tools.py` | Fix origin detection, add Codex role binding |
-| `src/tools/generate_agents_md.py` | Handle tool_type="codex" for AGENTS.md generation |
-
-## Validation
-
-- `session_init` with origin=codex returns callsign="Codex", domain="parallax", worktree="codex-parallax"
-- Codex can claim tasks assigned to it
-- `validate_file_ownership()` enforces owned_paths for Codex
+1. **Snapshot merges are dangerous** — Zeta's AGENTS.md leaked to main root, affecting all agents
+2. **AGENTS.md and CLAUDE.md on main must be generic** — role-specific versions belong in worktrees only
+3. **Worktree detection should be first** — most reliable signal (directory name matches registry)
+4. **MCP server restart required** after code changes — Python modules cached in memory
+5. **`role=` parameter is the ultimate override** — when auto-detection fails, explicit role always works
+6. **Role generator script exists** — `scripts/release/add_role.sh` creates everything (registry, branch, worktree, CLAUDE.md, AGENTS.md) in one command
