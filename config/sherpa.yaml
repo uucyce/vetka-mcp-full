@@ -12,7 +12,7 @@ taskboard_url: "http://localhost:5001"
 
 # ── Local Model (for prompt summarization, NOT code generation) ───────
 ollama_url: "http://localhost:11434"
-ollama_model: "qwen3.5:latest"    # or qwen2.5:7b, deepseek-coder:6.7b
+ollama_model: "gemma4:e4b"    # MARKER_210.GEMMA: 8x faster than qwen3.5, same accuracy (Phase A benchmark)
 
 # ── Agent Identity ────────────────────────────────────────────────────
 agent_name: "sherpa"

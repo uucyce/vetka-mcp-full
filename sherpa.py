@@ -119,7 +119,7 @@ class ServiceConfig:
 class SherpaConfig:
     taskboard_url: str = "http://localhost:5000"
     ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "qwen3.5:latest"
+    ollama_model: str = "gemma4:e4b"  # MARKER_210.GEMMA: 8x faster than qwen3.5, same accuracy
     services: List[ServiceConfig] = field(default_factory=list)
     agent_name: str = "sherpa"
     agent_type: str = "mycelium"
