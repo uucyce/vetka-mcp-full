@@ -274,7 +274,7 @@ def _detect_origin() -> str:
         return "subagent"
 
     # Codex detection
-    if os.environ.get("CODEX_SESSION") or os.environ.get("OPENAI_API_KEY"):
+    if os.environ.get("CODEX_SESSION"):
         return "codex"
 
     # Opencode detection
@@ -1530,20 +1530,31 @@ class SessionInitTool(BaseMCPTool):
             if not _role:
                 _origin = _detect_origin()
                 _model_class = _detect_model_class()
-                try:
-                    _role, _provision_info = _auto_provision(
-                        registry=_reg,
-                        current_branch=_current_branch if '_current_branch' in dir() else "",
-                        cwd=_detect_cwd if '_detect_cwd' in dir() else os.getcwd(),
-                        origin=_origin,
-                        model_class=_model_class,
-                    )
-                    if _role:
+                # Resolve known origins to registered callsigns before ephemeral fallback
+                _ORIGIN_CALLSIGN_MAP = {
+                    "codex": "Codex",
+                }
+                if _origin in _ORIGIN_CALLSIGN_MAP:
+                    _resolved = _reg.get_by_callsign(_ORIGIN_CALLSIGN_MAP[_origin])
+                    if _resolved:
+                        _role = _resolved
                         _role_source = "auto_provision"
-                        context["auto_provision"] = _provision_info
-                except Exception as _ap_err:
-                    logger.warning("[SessionInit] Auto-provision failed: %s", _ap_err)
-                    context["available_roles"] = _reg.list_callsigns()
+                        context["auto_provision"] = {"origin": _origin, "provisioned": False, "resolved_callsign": _ORIGIN_CALLSIGN_MAP[_origin]}
+                if not _role:
+                    try:
+                        _role, _provision_info = _auto_provision(
+                            registry=_reg,
+                            current_branch=_current_branch if '_current_branch' in dir() else "",
+                            cwd=_detect_cwd if '_detect_cwd' in dir() else os.getcwd(),
+                            origin=_origin,
+                            model_class=_model_class,
+                        )
+                        if _role:
+                            _role_source = "auto_provision"
+                            context["auto_provision"] = _provision_info
+                    except Exception as _ap_err:
+                        logger.warning("[SessionInit] Auto-provision failed: %s", _ap_err)
+                        context["available_roles"] = _reg.list_callsigns()
 
             # Still no role after auto-provision attempt
             if not _role:

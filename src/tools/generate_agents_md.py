@@ -124,6 +124,41 @@ You are **{callsign}** — {role_title}.
 """
 
 
+TEMPLATE_CODEX = """\
+# {callsign} — {role_title}
+
+**Role:** {role_title} | **Domain:** {domain} | **Branch:** `{branch}`
+
+## Init (Codex CLI)
+
+```
+1. mcp__vetka__vetka_session_init role={callsign}
+   → returns: role_context (callsign={callsign}, domain={domain}, pipeline_stage={pipeline_stage})
+2. mcp__vetka__vetka_task_board action=notifications role={callsign}
+   → READ Commander orders BEFORE doing anything else
+3. mcp__vetka__vetka_task_board action=ack_notifications role={callsign}
+4. mcp__vetka__vetka_task_board action=list filter_status={filter_status}
+5. Claim → Work → action=complete task_id=<id> branch={branch}
+```
+
+**MANDATORY: Steps 2-3 (notifications) MUST NOT be skipped.**
+
+`action=complete` = auto-stage + commit + close. NEVER use vetka_git_commit manually.
+
+## YOUR ROLE
+You are **{callsign}** — {role_title}.
+{memory_section}
+{owned_paths_section}
+{blocked_paths_section}
+
+## RULES
+- Modify ONLY files in your allowed_paths
+- NEVER touch blocked_paths
+- NEVER commit to main
+- Use `mcp__vetka__vetka_task_board action=notify source_role={callsign} target_role=Commander message="..."` to signal Commander
+"""
+
+
 def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
     registry = AgentRegistry(_REGISTRY_PATH)
     role = registry.get_by_callsign(callsign)
@@ -157,7 +192,12 @@ def generate_agents_md(callsign: str, dry_run: bool = False) -> str:
         paths_str = "\n".join(f"- {p}" for p in blocked_paths[:8])
         blocked_section = f"## BLOCKED PATHS\n{paths_str}"
 
-    template = TEMPLATE_VIBE if tool_type == "vibe" else TEMPLATE
+    if tool_type == "vibe":
+        template = TEMPLATE_VIBE
+    elif tool_type == "codex":
+        template = TEMPLATE_CODEX
+    else:
+        template = TEMPLATE
     content = template.format(
         callsign=callsign,
         role_title=role_title,

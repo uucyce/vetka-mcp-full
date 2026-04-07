@@ -140,23 +140,8 @@ from src.api.routes.cut_routes_pulse import pulse_router  # noqa: E402
 
 router.include_router(pulse_router)
 
-# MARKER_B70: Workers sub-router extracted for modularity (14 endpoints, ~3100 lines)
-from src.api.routes.cut_routes_workers import (  # noqa: E402
-    worker_router,
-    _collect_project_jobs,
-    _worker_job_error,
-    _find_active_duplicate_job,
-    _count_active_background_jobs_for_sandbox,
-    _ACTIVE_JOB_STATES,
-    _SANDBOX_BACKGROUND_LIMIT,
-    _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
-    _build_sync_surface,         # used by /project-state runtime path
-    _build_music_cue_summary,    # used by /project-state runtime path
-    _build_rhythm_surface,       # used by /project-state runtime path
-    _infer_cut_asset_kind,       # MARKER_B74: moved to workers
-)
-
-router.include_router(worker_router)
+# MARKER_B70: Workers sub-router — import moved below Request models to break circular import
+# (see actual import after CutSceneDetectApplyRequest)
 
 
 # CutBootstrapRequest — moved to cut_routes_bootstrap.py (MARKER_B65)
@@ -418,6 +403,26 @@ class CutSceneDetectApplyRequest(BaseModel):
     max_duration_sec: float = Field(default=300.0, ge=10.0, le=3600.0, description="Max duration per file to analyse")
     lane_id: str = Field(default="scenes", description="Lane to create detected scene clips on")
     update_scene_graph: bool = Field(default=True, description="Also update the scene graph with detected scenes")
+
+
+# MARKER_B70: Workers sub-router extracted for modularity (14 endpoints, ~3100 lines)
+# Imported here (after all Request models) to avoid circular import with cut_routes_workers.py
+from src.api.routes.cut_routes_workers import (  # noqa: E402
+    worker_router,
+    _collect_project_jobs,
+    _worker_job_error,
+    _find_active_duplicate_job,
+    _count_active_background_jobs_for_sandbox,
+    _ACTIVE_JOB_STATES,
+    _SANDBOX_BACKGROUND_LIMIT,
+    _build_initial_scene_graph,  # MARKER_B74: moved to workers, re-imported for backward compat
+    _build_sync_surface,         # used by /project-state runtime path
+    _build_music_cue_summary,    # used by /project-state runtime path
+    _build_rhythm_surface,       # used by /project-state runtime path
+    _infer_cut_asset_kind,       # MARKER_B74: moved to workers
+)
+
+router.include_router(worker_router)
 
 
 def _cut_state_error(code: str, message: str, *, recoverable: bool = True) -> dict[str, Any]:

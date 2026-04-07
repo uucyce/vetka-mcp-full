@@ -428,7 +428,7 @@ roles:
   # ══════════════════════════════════════════════════════════
   # GEMMA FLEET — free-code + Ollama/Gemma4 (Phase 212+)
   # Pipeline: Omicron(engine) / Pi(scout-auto) / Rho(sherpa-eyes) / Sigma(qa)
-  # Requires: LiteLLM :4000 + litellm_gemma_bridge.py :4001
+  # Requires: LiteLLM :4000 (direct, no bridge). Bridge removed Phase 210.
   # Spawn: scripts/spawn_synapse.sh Omicron gemma-engine free_code
   # ══════════════════════════════════════════════════════════
 
@@ -520,6 +520,32 @@ roles:
       - "data/templates/agent_registry.yaml"
     key_docs:
       - "docs/210_sherpa_gemma4/GEMMA_BRIDGE_SESSION4_UPDATE_2026-04-06.md"
+    roadmap: ""
+
+  # ══════════════════════════════════════════════════════════
+  # CODEX — OpenAI Codex CLI agent (Phase 181+)
+  # Parallax & Multimedia Engineer, codex/parallax branch
+  # ══════════════════════════════════════════════════════════
+
+  # ── Codex: Parallax & Multimedia Engineer ────────────────
+  - callsign: "Codex"
+    domain: "parallax"
+    pipeline_stage: "coder"
+    tool_type: "codex"
+    role_title: "Parallax & Multimedia Engineer"
+    worktree: "photo_parallax_playground_codex"
+    worktree_alt: "photo_parallax_playground"
+    branch: "codex/parallax"
+    model_tier: "gpt-4o"
+    owned_paths:
+      - "photo_parallax_playground/"
+      - "src/parallax/"
+      - "docs/180_photo-to-parallax/"
+    blocked_paths:
+      - "src/orchestration/"
+      - "src/mcp/"
+    key_docs:
+      - "docs/180_photo-to-parallax/PARALLAX_FUNCTIONAL_ROADMAP_LONG_PHASES_2026-04-07.md"
     roadmap: ""
 
 # ── Shared Zones ────────────────────────────────────────────
