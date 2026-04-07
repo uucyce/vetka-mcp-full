@@ -1488,6 +1488,20 @@ class TaskBoard:
         return out
 
     @staticmethod
+    def get_subtask_progress(task: dict) -> Optional[dict]:
+        """Return subtask completion stats or None if task has no subtasks."""
+        subtasks = task.get("subtasks")
+        if not subtasks or not isinstance(subtasks, list):
+            return None
+        total = len(subtasks)
+        done = sum(1 for s in subtasks if s.get("done"))
+        return {
+            "done": done,
+            "total": total,
+            "percent": int(done * 100 / total) if total else 0,
+        }
+
+    @staticmethod
     def _normalize_phase_type(phase_type: Optional[str]) -> str:
         value = str(phase_type or "build").strip().lower()
         if value in VALID_PHASE_TYPES:
