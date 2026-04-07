@@ -156,15 +156,16 @@ case "$AGENT_TYPE" in
         SPAWN_CMD="cd '$WORKTREE_PATH' && claude --dangerously-skip-permissions --model $MODEL_TIER"
         ;;
     free_code)
-        # MARKER_GEMMA_FLEET: Gemma agents via free-code + litellm_gemma_bridge
+        # MARKER_GEMMA_FLEET: Gemma agents via free-code → LiteLLM (:4000) → Ollama (:11434) + Metal GPU
         # MODEL_TIER = ollama model name (gemma4:e4b, gemma4:e2b, gemma4:26b)
-        # Requires: LiteLLM on :4000 + litellm_gemma_bridge.py on :4001
-        GEMMA_BRIDGE_URL="${GEMMA_BRIDGE_URL:-http://localhost:4001}"
+        # Requires: LiteLLM on :4000 + Ollama on :11434
+        # Bridge (litellm_gemma_bridge.py :4001) removed — direct to LiteLLM (Phase 210 fix)
+        GEMMA_BRIDGE_URL="${GEMMA_BRIDGE_URL:-http://localhost:4000}"
         FREE_CODE_BIN="${FREE_CODE_BIN:-$HOME/Documents/VETKA_Project/free-code/cli-dev}"
         # --bare: skip OAuth/keychain, use ANTHROPIC_API_KEY from env strictly
         # Without --bare, Free Code ignores ANTHROPIC_BASE_URL and uses its saved credentials
         # --add-dir: re-inject CLAUDE.md (--bare disables auto-discovery)
-        # CLAUDE.md contains Gemma XML tool call protocol (MARKER_GEMMA_BRIDGE_3B)
+        # CLAUDE.md contains Gemma strict XML tool call protocol (MARKER_GEMMA_BRIDGE_3B)
         SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --bare --dangerously-skip-permissions --model $MODEL_TIER --add-dir '$WORKTREE_PATH'"
         ;;
     opencode)
