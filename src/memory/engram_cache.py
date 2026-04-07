@@ -388,6 +388,58 @@ def ingest_feedback_memories(memory_dir: Optional[Path] = None) -> int:
     return ingested
 
 
+def ingest_role_memories(callsign: str, memory_dir: Optional[Path] = None) -> int:
+    """Ingest role memory entries into ENGRAM L1 cache (like feedback bridge).
+
+    Key format: role_memory::{callsign}::task::{task_id}
+    Category: pattern (TTL=60 days)
+    """
+    if not callsign:
+        return 0
+
+    cache = get_engram_cache()
+    if memory_dir is None:
+        memory_dir = _detect_claude_memory_dir()
+
+    if memory_dir is None:
+        return 0
+
+    role_dir = memory_dir / "roles" / callsign
+    memory_file = role_dir / "MEMORY.md"
+
+    if not memory_file.exists():
+        return 0
+
+    count = 0
+    try:
+        from src.memory.role_memory_writer import load_recent
+        entries = load_recent(callsign, last_n=10)  # more for indexing
+
+        for entry in entries:
+            task_id = entry.get("task_id", "unknown")
+            key = f"role_memory::{callsign}::task::{task_id}"
+
+            if cache.get(key):
+                continue  # already ingested
+
+            raw = entry.get("raw", "")
+            if len(raw) < 20:
+                continue  # skip empty/trivial
+
+            cache.put(
+                key=key,
+                value=raw[:500],  # cap at 500 chars
+                category="pattern",
+                source_learning_id=f"role_memory:{callsign}:{task_id}",
+                match_count=1,
+            )
+            count += 1
+    except Exception as e:
+        logger.warning("[ENGRAM] Role memory ingestion failed for %s: %s", callsign, e)
+
+    return count
+
+
 def _detect_claude_memory_dir() -> Optional[Path]:
     """Auto-detect Claude Code memory directory for this project.
 
