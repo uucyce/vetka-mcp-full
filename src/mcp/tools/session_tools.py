@@ -1528,6 +1528,20 @@ class SessionInitTool(BaseMCPTool):
 
             # MARKER_200.AUTO_PROVISION: Auto-provision if no role found
             if not _role:
+                # Try worktree name → registry match first (most reliable signal)
+                try:
+                    _cwd = os.getcwd()
+                    _wt_name = Path(_cwd).name
+                    _wt_role = _reg.get_by_worktree(_wt_name)
+                    if _wt_role:
+                        _role = _wt_role
+                        _role_source = "worktree_detection"
+                        context["auto_provision"] = {"origin": "worktree", "provisioned": False, "resolved_callsign": _wt_role.callsign, "worktree": _wt_name}
+                        logger.info("[SessionInit] Resolved role %s from worktree name %s", _wt_role.callsign, _wt_name)
+                except Exception as _wt_err:
+                    logger.debug("[SessionInit] Worktree detection failed: %s", _wt_err)
+
+            if not _role:
                 _origin = _detect_origin()
                 _model_class = _detect_model_class()
                 # Resolve known origins to registered callsigns before ephemeral fallback
