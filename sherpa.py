@@ -1818,10 +1818,10 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
             if path_check["hallucinated"]:
                 log.warning(f"AI hallucinated {len(path_check['hallucinated'])} paths — quality score: {path_check['score']}")
                 # Record in feedback
-                feedback.record(task_id, svc.name, response_chars=len(response),
-                                time_seconds=0, success=True,
-                                extra={"hallucination_score": path_check["score"],
-                                       "hallucinated_paths": path_check["hallucinated"][:5]})
+                feedback.log_task(task_id, svc.name, response_chars=len(response),
+                                  time_seconds=0, success=True,
+                                  extra={"hallucination_score": path_check["score"],
+                                         "hallucinated_paths": path_check["hallucinated"][:5]})
 
             # 6. Optionally summarize with Ollama
             summary_hint = ""
