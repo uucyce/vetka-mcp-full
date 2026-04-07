@@ -2059,9 +2059,7 @@ class TaskBoard:
         # If markers found → store scout_context + transition to scout_recon.
         # Failure must NEVER block task creation.
         try:
-            _has_scope = bool(task_payload.get("allowed_paths")) or bool(
-                task_payload.get("description")
-            )
+            _has_scope = bool(task_payload.get("allowed_paths"))
             if _has_scope:
                 from src.services.scout import Scout
 
@@ -2454,6 +2452,7 @@ class TaskBoard:
             "merge_result",  # MARKER_184.5
             "failure_history",  # MARKER_183.5: Verifier failure records for retry learning
             "implementation_hints",  # MARKER_191.6: Algorithm/approach guidance
+            "scout_context",  # MARKER_203.SCOUT_HOOK: Scout code markers for Sherpa
         }
 
         # MARKER_200.OWNERSHIP_GUARD: Block reassignment of claimed/running tasks
