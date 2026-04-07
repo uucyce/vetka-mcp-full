@@ -163,7 +163,9 @@ case "$AGENT_TYPE" in
         FREE_CODE_BIN="${FREE_CODE_BIN:-$HOME/Documents/VETKA_Project/free-code/cli-dev}"
         # --bare: skip OAuth/keychain, use ANTHROPIC_API_KEY from env strictly
         # Without --bare, Free Code ignores ANTHROPIC_BASE_URL and uses its saved credentials
-        SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --bare --dangerously-skip-permissions --model $MODEL_TIER"
+        # --add-dir: re-inject CLAUDE.md (--bare disables auto-discovery)
+        # CLAUDE.md contains Gemma XML tool call protocol (MARKER_GEMMA_BRIDGE_3B)
+        SPAWN_CMD="cd '$WORKTREE_PATH' && ANTHROPIC_BASE_URL=$GEMMA_BRIDGE_URL ANTHROPIC_API_KEY=sk-ollama '$FREE_CODE_BIN' --bare --dangerously-skip-permissions --model $MODEL_TIER --add-dir '$WORKTREE_PATH'"
         ;;
     opencode)
         # NOTE: opencode has no auto-approve flag. Agent stays within worktree
