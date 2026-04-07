@@ -97,6 +97,211 @@ logging.basicConfig(
 log = logging.getLogger("sherpa")
 
 
+# ── Feedback Collector (MARKER_202.FEEDBACK) ──────────────────────────
+FEEDBACK_FILE = PROJECT_ROOT / "data" / "sherpa_feedback.jsonl"
+FEEDBACK_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+
+class FeedbackCollector:
+    """Auto-collect per-task feedback to JSONL. Scores services from history."""
+
+    def __init__(self):
+        self.session_start = datetime.now().isoformat()
+        self.session_entries: list = []
+        self._scores: dict = {}
+
+    def load_scores(self) -> dict:
+        entries = []
+        if FEEDBACK_FILE.exists():
+            try:
+                lines = FEEDBACK_FILE.read_text().strip().split("\n")
+                for line in lines[-50:]:
+                    if line.strip():
+                        entries.append(json.loads(line))
+            except (json.JSONDecodeError, OSError):
+                pass
+        svc_stats: dict = {}
+        for entry in entries:
+            if entry.get("type") == "session_summary":
+                continue
+            svc = entry.get("service", "")
+            if not svc:
+                continue
+            if svc not in svc_stats:
+                svc_stats[svc] = {"total": 0, "success": 0, "total_chars": 0}
+            svc_stats[svc]["total"] += 1
+            if entry.get("success"):
+                svc_stats[svc]["success"] += 1
+                svc_stats[svc]["total_chars"] += entry.get("response_chars", 0)
+        self._scores = {}
+        for svc, s in svc_stats.items():
+            if s["total"] > 0:
+                rel = s["success"] / s["total"]
+                avg_c = s["total_chars"] / max(s["success"], 1)
+                self._scores[svc] = round(0.7 * rel + 0.3 * min(avg_c / 3000, 1.0), 3)
+        return self._scores
+
+    def get_service_ranking(self) -> list:
+        return sorted(self._scores.items(), key=lambda x: x[1], reverse=True)
+
+    def log_task(self, task_id: str, service: str, response_chars: int,
+                 time_seconds: float, success: bool, error_type: str = "") -> None:
+        entry = {
+            "ts": datetime.now().isoformat(), "task_id": task_id, "service": service,
+            "response_chars": response_chars, "time_seconds": round(time_seconds, 1),
+            "success": success, "error_type": error_type,
+        }
+        self.session_entries.append(entry)
+        try:
+            with open(FEEDBACK_FILE, "a") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except OSError:
+            pass
+
+    def save_session_summary(self) -> None:
+        if not self.session_entries:
+            return
+        total = len(self.session_entries)
+        successes = sum(1 for e in self.session_entries if e.get("success"))
+        summary = {
+            "ts": datetime.now().isoformat(), "type": "session_summary",
+            "session_start": self.session_start, "tasks_total": total,
+            "tasks_success": successes, "tasks_failed": total - successes,
+            "services_used": list(set(e.get("service", "") for e in self.session_entries)),
+        }
+        try:
+            with open(FEEDBACK_FILE, "a") as f:
+                f.write(json.dumps(summary, ensure_ascii=False) + "\n")
+            log.info(f"Session summary: {successes}/{total} successful")
+        except OSError:
+            pass
+
+
+# ── Service Protocols (MARKER_202.PROTOCOLS) ──────────────────────────
+PROTOCOLS_DIR = PROJECT_ROOT / "data" / "sherpa_protocols"
+PROTOCOLS_DIR.mkdir(parents=True, exist_ok=True)
+CONSECUTIVE_FAILURES_DISABLE = 3
+
+
+class ServiceProtocol:
+    """Auto-generated per-service protocol from feedback. Self-healing."""
+
+    @staticmethod
+    def generate_all() -> dict:
+        if not FEEDBACK_FILE.exists():
+            return {}
+        entries: dict = {}
+        try:
+            for line in FEEDBACK_FILE.read_text().strip().split("\n"):
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                if entry.get("type") == "session_summary":
+                    continue
+                svc = entry.get("service", "")
+                if svc:
+                    entries.setdefault(svc, []).append(entry)
+        except (json.JSONDecodeError, OSError):
+            return {}
+        protocols = {}
+        for svc_name, svc_entries in entries.items():
+            if len(svc_entries) < 5:
+                continue
+            successes = [e for e in svc_entries if e.get("success")]
+            failures = [e for e in svc_entries if not e.get("success")]
+            total = len(svc_entries)
+            times = [e.get("time_seconds", 0) for e in successes if e.get("time_seconds")]
+            avg_time = round(sum(times) / len(times), 1) if times else 0
+            chars = [e.get("response_chars", 0) for e in successes]
+            avg_chars = round(sum(chars) / len(chars)) if chars else 0
+            error_types = {}
+            for e in failures:
+                et = e.get("error_type", "unknown")
+                error_types[et] = error_types.get(et, 0) + 1
+            recent = svc_entries[-CONSECUTIVE_FAILURES_DISABLE:]
+            consecutive_fails = sum(1 for e in reversed(recent) if not e.get("success"))
+            auto_disabled = consecutive_fails >= CONSECUTIVE_FAILURES_DISABLE
+            protocol = {
+                "service": svc_name, "generated_at": datetime.now().isoformat(),
+                "interactions": total, "reliability_score": round(len(successes) / total, 3),
+                "avg_response_time_s": avg_time, "avg_response_chars": avg_chars,
+                "auto_disabled": auto_disabled,
+                "disable_reason": f"{consecutive_fails} consecutive failures" if auto_disabled else None,
+                "common_errors": dict(sorted(error_types.items(), key=lambda x: x[1], reverse=True)),
+            }
+            try:
+                with open(PROTOCOLS_DIR / f"{svc_name}.yaml", "w") as f:
+                    yaml.dump(protocol, f, default_flow_style=False, allow_unicode=True)
+                protocols[svc_name] = protocol
+            except OSError:
+                pass
+        return protocols
+
+    @staticmethod
+    def is_service_disabled(service_name: str) -> bool:
+        proto_path = PROTOCOLS_DIR / f"{service_name}.yaml"
+        if not proto_path.exists():
+            return False
+        try:
+            with open(proto_path) as f:
+                return (yaml.safe_load(f) or {}).get("auto_disabled", False)
+        except (yaml.YAMLError, OSError):
+            return False
+
+
+# ── Sherpa Harness (MARKER_202.HARNESS) ──────────────────────────────
+class SherpaHarness:
+    """Qwen-powered guard/reflex for intelligent task processing."""
+
+    SKIP_PATTERNS = ["DEBRIEF-IDEA", "DEBRIEF-BUG", "[AUTO]", "ETA-IDEA", "COMMANDER-IDEA"]
+    MIN_DESC_LENGTH = 30
+
+    def __init__(self, ollama: 'OllamaClient', feedback: 'FeedbackCollector'):
+        self.ollama = ollama
+        self.feedback = feedback
+        self._guard_rejects = 0
+        self._reflex_skips = 0
+
+    def reflex_check(self, task: dict) -> tuple:
+        title = task.get("title", "")
+        tags = task.get("tags", [])
+        for pattern in self.SKIP_PATTERNS:
+            if pattern in title:
+                self._reflex_skips += 1
+                return True, f"reflex:title_pattern:{pattern}"
+        recon = task.get("recon_docs", [])
+        if recon and len(recon) > 0:
+            self._reflex_skips += 1
+            return True, "reflex:already_has_recon"
+        if "auto-decomposed" in tags:
+            self._reflex_skips += 1
+            return True, "reflex:auto-decomposed"
+        return False, ""
+
+    def guard_check(self, task: dict) -> tuple:
+        desc = task.get("description", "") or ""
+        if len(desc.strip()) < self.MIN_DESC_LENGTH:
+            self._guard_rejects += 1
+            return False, f"guard:desc_too_short ({len(desc.strip())} chars)"
+        return True, ""
+
+    _call_count: int = 0
+
+    def select_service(self, services: list, task: dict):
+        """Round-robin to avoid rate limits. Never >1 request in a row to same service."""
+        available = [s for s in services if not ServiceProtocol.is_service_disabled(s.name)]
+        if not available:
+            available = services
+        idx = self._call_count % len(available)
+        self._call_count += 1
+        selected = available[idx]
+        log.info(f"Service rotation: {selected.name} ({idx + 1}/{len(available)})")
+        return selected
+
+    def get_stats(self) -> dict:
+        return {"guard_rejects": self._guard_rejects, "reflex_skips": self._reflex_skips}
+
+
 # ── Config ─────────────────────────────────────────────────────────────
 @dataclass
 class ServiceConfig:
@@ -117,7 +322,7 @@ class ServiceConfig:
 
 @dataclass
 class SherpaConfig:
-    taskboard_url: str = "http://localhost:5000"
+    taskboard_url: str = "http://localhost:5001"
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "gemma4:e4b"  # MARKER_210.GEMMA: 8x faster than qwen3.5, same accuracy
     services: List[ServiceConfig] = field(default_factory=list)
@@ -167,7 +372,6 @@ class TaskBoardClient:
         MARKER_203.SCOUT_POLL: Poll scout_recon first (Scout-analyzed tasks),
         fall back to pending if none found (backwards compat).
         """
-        # Priority: scout_recon tasks have Scout context ready for enrichment
         for status in ("scout_recon", "pending"):
             resp = await self.http.get(
                 f"{self.base}/api/tasks",
@@ -211,45 +415,163 @@ class TaskBoardClient:
         )
         return resp.status_code == 200
 
+    async def set_sherpa_status(self, status: str, tasks_enriched: int = 0) -> bool:
+        """MARKER_202.SHERPA_SIGNAL: Update Sherpa status in TaskBoard."""
+        try:
+            resp = await self.http.patch(
+                f"{self.base}/api/debug/task-board/settings",
+                json={"sherpa_status": status, "sherpa_tasks_enriched": tasks_enriched},
+            )
+            if resp.status_code != 200:
+                log.debug(f"sherpa_status update returned {resp.status_code} (non-fatal)")
+            return resp.status_code == 200
+        except Exception as e:
+            log.debug(f"sherpa_status update failed (non-fatal): {e}")
+            return False
+
+    async def notify_commanders(self, message: str) -> None:
+        """MARKER_202.SHERPA_SIGNAL: Log signal for Commander."""
+        log.info(f"[SIGNAL] {message}")
+
     async def close(self):
         await self.http.aclose()
 
 
 # ── Codebase Search ────────────────────────────────────────────────────
-def search_codebase(query: str, allowed_paths: List[str] = None, limit: int = 10) -> List[Dict[str, str]]:
-    """Search codebase using ripgrep. Returns list of {path, line, content}."""
-    results = []
-    search_dirs = []
+def search_codebase(query: str, allowed_paths: List[str] = None, limit: int = 10,
+                    domain: str = "", architecture_docs: List[str] = None) -> List[Dict[str, str]]:
+    """Search codebase using ripgrep. Returns list of {path, keyword}.
 
+    Search strategy (priority order):
+    1. allowed_paths from task (most relevant — agent already scoped these)
+    2. Domain-based paths (fallback when allowed_paths empty)
+    3. Global src/ + client/src/ (last resort)
+    """
+    results = []
+    seen_paths: set = set()
+
+    # ── Phase 1: Resolve search directories ──
+    # Priority 1: allowed_paths from task (files OR directories)
+    task_dirs = []
     if allowed_paths:
         for p in allowed_paths:
             full = PROJECT_ROOT / p
-            if full.exists():
-                search_dirs.append(str(full))
-    if not search_dirs:
-        search_dirs = [
-            str(PROJECT_ROOT / "src"),
-            str(PROJECT_ROOT / "client" / "src"),
-        ]
+            if full.is_dir():
+                task_dirs.append(str(full))
+            elif full.is_file():
+                # Direct file — add it immediately, no need to grep
+                path_str = str(full)
+                if path_str not in seen_paths:
+                    results.append({"path": path_str, "keyword": "[allowed_path]"})
+                    seen_paths.add(path_str)
+            else:
+                # Path doesn't exist yet — try parent dir
+                parent = full.parent
+                if parent.is_dir() and str(parent) != str(PROJECT_ROOT):
+                    task_dirs.append(str(parent))
 
-    # Split query into keywords, search for each
-    keywords = query.split()[:3]  # Max 3 keywords
-    for kw in keywords:
-        if len(kw) < 3:
-            continue
-        for search_dir in search_dirs:
-            try:
-                proc = subprocess.run(
-                    ["rg", "-l", "-i", "--max-count", "3", kw, search_dir],
-                    capture_output=True, text=True, timeout=10,
-                )
-                for line in proc.stdout.strip().split("\n"):
-                    if line and line not in [r["path"] for r in results]:
-                        results.append({"path": line, "keyword": kw})
-                        if len(results) >= limit:
-                            return results
-            except (subprocess.TimeoutExpired, FileNotFoundError):
+    # Priority 2: domain → paths mapping
+    DOMAIN_PATHS = {
+        "engine":  ["client/src/store", "client/src/hooks", "client/src/components/cut", "src/orchestration"],
+        "media":   ["src/services", "src/media", "src/codecs"],
+        "ux":      ["client/src/components", "client/src/layouts"],
+        "qa":      ["tests", "e2e"],
+        "harness": ["src/mcp/tools", "src/apir", "scripts"],
+        "cut":     ["client/src/components/cut", "client/src/store", "src/services"],
+        "space":   ["sherpa.py", "config/sherpa.yaml", "src/services/browser_manager.py"],
+    }
+    domain_dirs = []
+    if domain and domain in DOMAIN_PATHS:
+        for p in DOMAIN_PATHS[domain]:
+            full = PROJECT_ROOT / p
+            if full.exists():
+                domain_dirs.append(str(full))
+
+    # Priority 3: global fallback
+    global_dirs = [
+        str(PROJECT_ROOT / "src"),
+        str(PROJECT_ROOT / "client" / "src"),
+    ]
+
+    # ── Phase 2: Seed from architecture_docs (extract mentioned file paths) ──
+    if architecture_docs:
+        for doc_path in architecture_docs[:3]:
+            resolved = _resolve_doc_path(doc_path) if callable(globals().get('_resolve_doc_path', None)) else None
+            if not resolved:
+                resolved = PROJECT_ROOT / doc_path
+            if resolved and resolved.exists() and resolved.stat().st_size < 100_000:
+                try:
+                    doc_text = resolved.read_text(errors="replace")
+                    # Extract file paths mentioned in docs (src/..., client/..., *.py, *.ts)
+                    import re
+                    mentioned = re.findall(r'(?:src|client|tests|scripts|config)/[\w/.-]+\.(?:py|ts|tsx|js|yaml)', doc_text)
+                    for m in mentioned[:5]:
+                        full_m = PROJECT_ROOT / m
+                        if full_m.is_file() and str(full_m) not in seen_paths:
+                            results.append({"path": str(full_m), "keyword": f"[arch_doc:{doc_path}]"})
+                            seen_paths.add(str(full_m))
+                except Exception:
+                    pass
+
+    # ── Phase 3: Extract meaningful keywords (not just first 3 words) ──
+    STOP_WORDS = {
+        "the", "a", "an", "is", "are", "for", "to", "in", "on", "of", "and", "or",
+        "not", "with", "this", "that", "from", "by", "at", "be", "has", "have",
+        "was", "were", "will", "would", "can", "could", "should", "it", "its",
+        "fix", "bug", "add", "update", "implement", "create", "remove", "change",
+        "new", "use", "using", "when", "after", "before", "into", "all", "any",
+        "task", "auto", "need", "needs", "make", "ensure", "check",
+    }
+    import re
+    raw_words = re.findall(r'[a-zA-Z_][a-zA-Z0-9_]{2,}', query)
+    keywords = []
+    for w in raw_words:
+        wl = w.lower()
+        if wl not in STOP_WORDS and wl not in keywords:
+            keywords.append(wl)
+        if len(keywords) >= 6:  # Top 6 meaningful keywords
+            break
+
+    if not keywords:
+        keywords = query.split()[:3]
+
+    # ── Phase 4: Search with priority cascade ──
+    search_tiers = []
+    if task_dirs:
+        search_tiers.append(("task_scope", task_dirs))
+    if domain_dirs:
+        search_tiers.append(("domain_scope", domain_dirs))
+    search_tiers.append(("global", global_dirs))
+
+    for tier_name, dirs in search_tiers:
+        for kw in keywords:
+            if len(kw) < 3:
                 continue
+            for search_dir in dirs:
+                try:
+                    proc = subprocess.run(
+                        ["rg", "-l", "-i", "--max-count", "3",
+                         "--glob", "!node_modules", "--glob", "!.git",
+                         "--glob", "!*.log", "--glob", "!*.jsonl",
+                         kw, search_dir],
+                        capture_output=True, text=True, timeout=10,
+                    )
+                    for line in proc.stdout.strip().split("\n"):
+                        if line and line not in seen_paths:
+                            results.append({"path": line, "keyword": f"{kw} [{tier_name}]"})
+                            seen_paths.add(line)
+                            if len(results) >= limit:
+                                log.info(f"Search: {len(results)} files from {tier_name} (keywords: {keywords[:3]})")
+                                return results
+                except (subprocess.TimeoutExpired, FileNotFoundError):
+                    continue
+
+        # If task_scope or domain_scope found enough files, stop — don't dilute with global
+        if tier_name in ("task_scope", "domain_scope") and len(results) >= limit // 2:
+            log.info(f"Search: {len(results)} files from {tier_name} — sufficient, skipping global")
+            return results
+
+    log.info(f"Search: {len(results)} files total (keywords: {keywords[:3]})")
     return results
 
 
@@ -343,15 +665,29 @@ class BrowserClient:
         log.info("Browser stopped")
 
     async def _get_page(self, service_name: str) -> Any:
-        """Get or create a persistent page for a service."""
+        """Get or reuse a SINGLE page. Closes previous context when switching services.
+        ONE TAB RULE: prevents CPU overload from multiple Chromium processes."""
+        svc = self.services.get(service_name)
+        if not svc:
+            raise ValueError(f"Unknown service: {service_name}")
+
+        # If same service — reuse existing page
         if service_name in self._pages:
             page = self._pages[service_name]
             if not page.is_closed():
                 return page
 
-        svc = self.services.get(service_name)
-        if not svc:
-            raise ValueError(f"Unknown service: {service_name}")
+        # Close ALL previous contexts first (one tab rule — CPU safety)
+        for old_name, old_ctx in list(self._contexts.items()):
+            if old_name != service_name:
+                try:
+                    await self._save_storage_state(old_name)
+                    await old_ctx.close()
+                    log.info(f"Closed previous tab: {old_name}")
+                except Exception:
+                    pass
+                self._contexts.pop(old_name, None)
+                self._pages.pop(old_name, None)
 
         profile_path = str(PROJECT_ROOT / svc.profile_dir)
         Path(profile_path).mkdir(parents=True, exist_ok=True)
@@ -360,7 +696,7 @@ class BrowserClient:
             storage_state=self._load_storage_state(profile_path),
             viewport={"width": 1440, "height": 900},
             user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            permissions=["clipboard-read", "clipboard-write"],  # No popup for clipboard
+            permissions=["clipboard-read", "clipboard-write"],
         )
         page = await ctx.new_page()
         self._contexts[service_name] = ctx
@@ -811,14 +1147,13 @@ class BrowserClient:
             return ""
 
         # Phase 2: Wait for generation to FINISH
-        # Poll: is_streaming? + text length stable?
+        # LIGHTWEIGHT: only measure DOM length, no Copy clicks, no scrolling
+        MIN_COMPLETE = 5000  # Responses under 5K chars = likely incomplete
         prev_len = 0
         stable_count = 0
         while time.time() - start < max_wait:
             streaming = await self._is_ai_streaming(page)
-            text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
-            curr_len = len(text)
-
+            curr_len = await self._measure_response_length(page, svc)
             elapsed = int(time.time() - start)
 
             if streaming:
@@ -826,7 +1161,6 @@ class BrowserClient:
                 if elapsed % 15 == 0:
                     log.info(f"AI still generating... ({curr_len} chars, {elapsed}s)")
             else:
-                # Text growing? Reset stability counter
                 if curr_len != prev_len:
                     stable_count = 0
                     if elapsed % 10 == 0 and curr_len > 0:
@@ -834,27 +1168,65 @@ class BrowserClient:
                 else:
                     stable_count += 1
 
-                # COMPLETE = Copy button visible + text stopped growing (3 checks = 9s)
+                # COMPLETE = stable + above minimum
                 copy_visible = await self._is_copy_button_visible(page)
-                if copy_visible and stable_count >= 3 and curr_len > 100:
-                    log.info(f"Response complete: Copy visible + text stable ({curr_len} chars, {elapsed}s)")
-                    return text
+                if copy_visible and stable_count >= 3 and curr_len >= MIN_COMPLETE:
+                    log.info(f"Response complete ({curr_len} chars, {elapsed}s). Extracting...")
+                    break
 
-                # Fallback: no copy button but text very stable (5 checks = 15s)
-                if stable_count >= 5 and curr_len > 500:
-                    log.info(f"Response stable without Copy button ({curr_len} chars, {elapsed}s)")
-                    return text
+                # Below minimum but stable — AI might be thinking, wait longer
+                if copy_visible and stable_count >= 3 and curr_len < MIN_COMPLETE:
+                    if stable_count <= 15:  # Wait up to 45s for AI to resume
+                        if stable_count % 3 == 0:
+                            log.info(f"Response short ({curr_len} chars < {MIN_COMPLETE}), waiting... ({stable_count * 3}s)")
+                    else:
+                        log.info(f"Response stuck at {curr_len} chars. Extracting...")
+                        break
+
+                # No copy button but very stable + above minimum
+                if stable_count >= 7 and curr_len >= MIN_COMPLETE:
+                    log.info(f"Response stable without Copy ({curr_len} chars, {elapsed}s). Extracting...")
+                    break
+
+                # Very long stable under minimum — give up
+                if stable_count >= 10 and curr_len > 500 and curr_len < MIN_COMPLETE:
+                    log.info(f"Response stuck at {curr_len} chars. Extracting what we have...")
+                    break
 
             prev_len = curr_len
             await page.wait_for_timeout(3000)
 
-        # Timeout — return whatever we have
+        # Phase 3: ONE full extraction
+        text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
+        if text and len(text) > 100:
+            elapsed = int(time.time() - start)
+            log.info(f"Extracted {len(text)} chars in {elapsed}s")
+            return text
+
+        # Timeout fallback
         text = await self._extract_response_text(page, prompt_text, pre_text, svc=svc)
         if text and len(text) > 100:
             log.warning(f"Timeout but got response ({len(text)} chars)")
             return text
         log.error("Timeout: no response received")
         return ""
+
+    async def _measure_response_length(self, page, svc: 'ServiceConfig' = None) -> int:
+        """Lightweight DOM length check — no clicks, no scrolling."""
+        selectors = [".ds-markdown", ".markdown-body", ".message-content",
+                     ".assistant-message", ".prose", "article"]
+        if svc and svc.response_selector:
+            selectors = svc.response_selector.split(", ") + selectors
+        for sel in selectors:
+            try:
+                el = page.locator(sel).last
+                if await el.is_visible(timeout=500):
+                    text = await el.inner_text(timeout=2000)
+                    if text and len(text) > 20:
+                        return len(text.strip())
+            except Exception:
+                continue
+        return 0
 
     async def _is_copy_button_visible(self, page) -> bool:
         """Check if a Copy button is visible — means response is COMPLETE."""
@@ -1180,15 +1552,26 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
     if snippets_text:
         prompt += f"\n## Relevant Code\n{snippets_text}\n"
 
-    prompt += """
+    # Build file inventory for anti-hallucination grounding
+    known_files = set()
+    for s in code_snippets:
+        rel = s["path"].replace(str(PROJECT_ROOT) + "/", "")
+        known_files.add(rel)
+
+    prompt += f"""
+## CRITICAL RULES
+- ONLY reference files from the "Relevant Code" section above or well-known framework paths
+- The files that ACTUALLY EXIST in this codebase are listed above — do NOT invent new file names
+- If you suggest creating a new file, explicitly mark it as [NEW FILE]
+{f'- Focus modifications on: {", ".join(allowed_paths)}' if allowed_paths else ''}
+
 ## Research needed:
-1. Files to Modify — specific paths
+1. Files to Modify — ONLY paths from the code above, or mark [NEW FILE] for new ones
 2. Approach — step-by-step plan
-3. Example Code — key changes
+3. Example Code — key changes with real function/class names from the code above
 4. Risks — edge cases
 5. Dependencies — affected modules
 """
-    return prompt.strip()
 
     # Trim if too long (browser inputs have limits)
     if len(prompt) > 12000:
@@ -1197,21 +1580,83 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
     return prompt.strip()
 
 
+# ── Hallucination Detector (PULSAR) ───────────────────────────────────
+def detect_hallucinated_paths(response: str, code_files: List[Dict]) -> Dict[str, Any]:
+    """Check if AI response references files that don't exist in codebase.
+
+    Returns {real: [...], hallucinated: [...], score: 0.0-1.0}
+    Score = real / (real + hallucinated). 1.0 = no hallucinations.
+    """
+    import re
+    # Extract file paths from AI response (src/..., client/..., *.py, *.ts, etc.)
+    path_pattern = r'(?:src|client|clients|tests|scripts|config|docs|e2e)/[\w/.-]+\.(?:py|ts|tsx|js|jsx|yaml|yml|json|md|css|scss)'
+    mentioned = set(re.findall(path_pattern, response))
+
+    # Also catch bare filenames like "file_scanner.py" (common hallucination)
+    bare_files = set(re.findall(r'\b[\w-]+\.(?:py|ts|tsx|js)\b', response))
+    # Filter out common false positives
+    bare_files -= {"package.json", "tsconfig.json", "index.ts", "index.js", "index.tsx",
+                   "vite.config.ts", "setup.py", "conftest.py", "pytest.ini"}
+
+    known_paths = {f["path"].replace(str(PROJECT_ROOT) + "/", "") for f in code_files}
+
+    real = []
+    hallucinated = []
+
+    for p in mentioned:
+        full = PROJECT_ROOT / p
+        if full.exists() or p in known_paths:
+            real.append(p)
+        else:
+            hallucinated.append(p)
+
+    # Check bare filenames against known code files
+    for bf in bare_files:
+        if bf in mentioned or any(bf in m for m in mentioned):
+            continue  # Already checked as full path
+        # Search if file exists anywhere in project
+        try:
+            proc = subprocess.run(
+                ["find", str(PROJECT_ROOT / "src"), str(PROJECT_ROOT / "client"),
+                 "-name", bf, "-type", "f"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if proc.stdout.strip():
+                real.append(bf)
+            else:
+                hallucinated.append(bf)
+        except Exception:
+            pass  # Don't crash on detection failure
+
+    total = len(real) + len(hallucinated)
+    score = len(real) / total if total > 0 else 1.0
+
+    if hallucinated:
+        log.warning(f"Hallucinated paths ({len(hallucinated)}): {hallucinated[:5]}")
+    log.info(f"Path verification: {len(real)} real, {len(hallucinated)} hallucinated, score={score:.2f}")
+
+    return {"real": real, "hallucinated": hallucinated, "score": round(score, 3), "total": total}
+
+
 # ── Recon Report ───────────────────────────────────────────────────────
 def save_recon_report(
     task_id: str, task_title: str, service_name: str,
     prompt: str, response: str, code_files: List[Dict],
+    hallucination_report: Dict = None,
 ) -> Path:
     """Save recon results to markdown file."""
     report_path = RECON_DIR / f"sherpa_{task_id}.md"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    h_score = hallucination_report.get("score", 1.0) if hallucination_report else 1.0
+    h_count = len(hallucination_report.get("hallucinated", [])) if hallucination_report else 0
 
     report = f"""# Sherpa Recon: {task_title}
 
 **Task ID:** `{task_id}`
 **Source:** {service_name}
 **Date:** {timestamp}
-**Agent:** Sherpa (Phase 202)
+**Agent:** Sherpa (Phase 202/PULSAR)
+**Path Accuracy:** {h_score:.0%} ({h_count} hallucinated paths)
 
 ---
 
@@ -1221,16 +1666,25 @@ def save_recon_report(
         rel = cf["path"].replace(str(PROJECT_ROOT) + "/", "")
         report += f"- `{rel}`\n"
 
+    # Add hallucination warning if detected
+    h_warning = ""
+    if hallucination_report and hallucination_report.get("hallucinated"):
+        h_paths = hallucination_report["hallucinated"]
+        h_warning = f"\n## ⚠ Hallucinated Paths (DO NOT USE)\n"
+        for hp in h_paths[:10]:
+            h_warning += f"- ~~`{hp}`~~ (does not exist)\n"
+        h_warning += "\n"
+
     report += f"""
 ---
-
+{h_warning}
 ## Research Response
 
 {response}
 
 ---
 
-*Generated by Sherpa — Scout & Harvest Engine for Recon, Prep & Augmentation*
+*Generated by Sherpa PULSAR — Scout & Harvest Engine for Recon, Prep & Augmentation*
 """
     if report_path.exists():
         # Append — multiple services may enrich the same task
@@ -1318,9 +1772,14 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
             log.info(f"{'[DRY RUN] ' if dry_run else ''}Processing: {task_id} — {task_title}")
 
-            # 2. Search codebase for relevant code files
+            # 2. Search codebase for relevant code files (PULSAR: domain + allowed_paths + arch_docs)
             search_query = f"{task.get('title', '')} {task.get('description', '')[:200]}"
-            code_files = search_codebase(search_query, task.get("allowed_paths", []))
+            code_files = search_codebase(
+                search_query,
+                allowed_paths=task.get("allowed_paths", []),
+                domain=task.get("domain", ""),
+                architecture_docs=task.get("architecture_docs", []),
+            )
             log.info(f"Found {len(code_files)} relevant code files")
 
             # 3. Build prompt with docs + code inline
@@ -1353,7 +1812,17 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                 await asyncio.sleep(30)
                 continue
 
-            # 5. Optionally summarize with Ollama
+            # 5. Hallucination check — verify AI didn't invent file paths
+            path_check = detect_hallucinated_paths(response, code_files)
+            if path_check["hallucinated"]:
+                log.warning(f"AI hallucinated {len(path_check['hallucinated'])} paths — quality score: {path_check['score']}")
+                # Record in feedback
+                feedback.record(task_id, svc.name, response_chars=len(response),
+                                time_seconds=0, success=True,
+                                extra={"hallucination_score": path_check["score"],
+                                       "hallucinated_paths": path_check["hallucinated"][:5]})
+
+            # 6. Optionally summarize with Ollama
             summary_hint = ""
             if await ollama.is_available() and len(response) > 500:
                 summary_hint = await ollama.chat(
@@ -1362,9 +1831,10 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
                     max_tokens=500,
                 )
 
-            # 6. Save recon report
+            # 7. Save recon report (with hallucination metadata)
             report_path = save_recon_report(
                 task_id, task_title, svc.name, prompt, response, code_files,
+                hallucination_report=path_check,
             )
             rel_report = str(report_path.relative_to(PROJECT_ROOT))
 
