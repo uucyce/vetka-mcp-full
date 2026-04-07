@@ -162,16 +162,25 @@ class TaskBoardClient:
         self.http = httpx.AsyncClient(timeout=30.0)
 
     async def get_pending_tasks(self, limit: int = 20) -> List[Dict]:
-        """Get pending tasks list."""
-        resp = await self.http.get(
-            f"{self.base}/api/tasks",
-            params={"status": "pending", "limit": limit},
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            tasks = data.get("tasks", []) if isinstance(data, dict) else data
-            return tasks if isinstance(tasks, list) else []
-        log.warning(f"list pending failed: {resp.status_code}")
+        """Get tasks for Sherpa enrichment.
+
+        MARKER_203.SCOUT_POLL: Poll scout_recon first (Scout-analyzed tasks),
+        fall back to pending if none found (backwards compat).
+        """
+        # Priority: scout_recon tasks have Scout context ready for enrichment
+        for status in ("scout_recon", "pending"):
+            resp = await self.http.get(
+                f"{self.base}/api/tasks",
+                params={"status": status, "limit": limit},
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                tasks = data.get("tasks", []) if isinstance(data, dict) else data
+                if isinstance(tasks, list) and tasks:
+                    log.info(f"[Sherpa] Found {len(tasks)} tasks with status={status}")
+                    return tasks
+            else:
+                log.warning(f"list {status} failed: {resp.status_code}")
         return []
 
     async def claim_task(self, task_id: str) -> Optional[Dict]:

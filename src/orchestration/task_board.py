@@ -111,6 +111,7 @@ VALID_STATUSES = {
     "verified",
     "needs_fix",
     "recon_done",  # MARKER_202.RECON_DONE: Sherpa pipeline — claimable by coding agents
+    "scout_recon",  # MARKER_203.SCOUT_RECON: Scout analyzed, awaiting Sherpa enrichment
 }
 VALID_PHASE_TYPES = {"build", "fix", "research", "test"}
 
@@ -1488,20 +1489,6 @@ class TaskBoard:
         return out
 
     @staticmethod
-    def get_subtask_progress(task: dict) -> Optional[dict]:
-        """Return subtask completion stats or None if task has no subtasks."""
-        subtasks = task.get("subtasks")
-        if not subtasks or not isinstance(subtasks, list):
-            return None
-        total = len(subtasks)
-        done = sum(1 for s in subtasks if s.get("done"))
-        return {
-            "done": done,
-            "total": total,
-            "percent": int(done * 100 / total) if total else 0,
-        }
-
-    @staticmethod
     def _normalize_phase_type(phase_type: Optional[str]) -> str:
         value = str(phase_type or "build").strip().lower()
         if value in VALID_PHASE_TYPES:
@@ -2052,6 +2039,53 @@ class TaskBoard:
         logger.info(
             f"[TaskBoard] Added task {task_id}: {title} (P{priority}, {phase_type})"
         )
+
+        # MARKER_203.SCOUT_HOOK: Auto-trigger Scout analysis on new tasks
+        # Scout is sync (<2s), never raises (returns [] on error).
+        # If markers found → store scout_context + transition to scout_recon.
+        # Failure must NEVER block task creation.
+        try:
+            _has_scope = bool(task_payload.get("allowed_paths")) or bool(
+                task_payload.get("description")
+            )
+            if _has_scope:
+                from src.services.scout import Scout
+
+                _scout_markers = Scout().analyze(task_payload)
+                if _scout_markers:
+                    _scout_ctx = [
+                        {
+                            "file": m.file,
+                            "start_line": m.start_line,
+                            "end_line": m.end_line,
+                            "symbol": m.symbol,
+                            "snippet": m.snippet,
+                            "relevance": m.relevance,
+                        }
+                        for m in _scout_markers
+                    ]
+                    _hints = (
+                        task_payload.get("implementation_hints", "")
+                        + "\n\n[Scout] Code locations:\n"
+                        + "\n".join(
+                            f"  - {m['file']}:{m['start_line']} ({m['symbol']})"
+                            for m in _scout_ctx
+                        )
+                    ).strip()
+                    self.update_task(
+                        task_id,
+                        status="scout_recon",
+                        scout_context=_scout_ctx,
+                        implementation_hints=_hints,
+                    )
+                    logger.info(
+                        "[TaskBoard] Scout found %d markers for %s → scout_recon",
+                        len(_scout_ctx),
+                        task_id,
+                    )
+        except Exception as exc:
+            logger.warning("[TaskBoard] Scout hook failed (non-fatal): %s", exc)
+
         return task_id
 
     # MARKER_155.2A: Auto-assign module from task content

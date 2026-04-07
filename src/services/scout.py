@@ -285,7 +285,7 @@ class Scout:
 
         try:
             cmd = [
-                _RG_BIN, "--no-heading", "-n", "-i",
+                _RG_BIN, "--no-heading", "--with-filename", "-n", "-i",
                 "--type", "py", "--type", "ts",
                 "--max-count", "50",  # Max matches per file
                 pattern,
