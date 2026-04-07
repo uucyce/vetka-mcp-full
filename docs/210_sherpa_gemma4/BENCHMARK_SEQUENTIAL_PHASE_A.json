@@ -1,0 +1,238 @@
+{
+  "micro": {
+    "phi4-mini": {
+      "accuracy": 0.6666666666666666,
+      "avg_time": 1.0292400519053142,
+      "details": [
+        {
+          "test": "Code Classification",
+          "correct": true,
+          "elapsed": 2.7458009719848633,
+          "status": "PASS",
+          "preview": "test"
+        },
+        {
+          "test": "Intent Detection",
+          "correct": true,
+          "elapsed": 0.17341208457946777,
+          "status": "PASS",
+          "preview": "bug_report"
+        },
+        {
+          "test": "Error Category",
+          "correct": false,
+          "elapsed": 0.16850709915161133,
+          "status": "FAIL",
+          "preview": "Runtime"
+        }
+      ]
+    },
+    "gemma4:e2b": {
+      "accuracy": 1.0,
+      "avg_time": 3.195537567138672,
+      "details": [
+        {
+          "test": "Code Classification",
+          "correct": true,
+          "elapsed": 7.071936130523682,
+          "status": "PASS",
+          "preview": "test"
+        },
+        {
+          "test": "Intent Detection",
+          "correct": true,
+          "elapsed": 2.3009448051452637,
+          "status": "PASS",
+          "preview": "bug_report"
+        },
+        {
+          "test": "Error Category",
+          "correct": true,
+          "elapsed": 0.2137317657470703,
+          "status": "PASS",
+          "preview": "import"
+        }
+      ]
+    },
+    "gemma3:1b": {
+      "accuracy": 0.6666666666666666,
+      "avg_time": 0.43658868471781415,
+      "details": [
+        {
+          "test": "Code Classification",
+          "correct": true,
+          "elapsed": 0.9271759986877441,
+          "status": "PASS",
+          "preview": "Test "
+        },
+        {
+          "test": "Intent Detection",
+          "correct": true,
+          "elapsed": 0.20723295211791992,
+          "status": "PASS",
+          "preview": "Bug_report "
+        },
+        {
+          "test": "Error Category",
+          "correct": false,
+          "elapsed": 0.17535710334777832,
+          "status": "FAIL",
+          "preview": "Syntax"
+        }
+      ]
+    },
+    "tinyllama": {
+      "accuracy": 1.0,
+      "avg_time": 0.41951457659403485,
+      "details": [
+        {
+          "test": "Code Classification",
+          "correct": true,
+          "elapsed": 0.7781758308410645,
+          "status": "PASS",
+          "preview": "Test"
+        },
+        {
+          "test": "Intent Detection",
+          "correct": true,
+          "elapsed": 0.08319687843322754,
+          "status": "PASS",
+          "preview": "Command: bug_report"
+        },
+        {
+          "test": "Error Category",
+          "correct": true,
+          "elapsed": 0.3971710205078125,
+          "status": "PASS",
+          "preview": "Syntax Error: \"ModuleNotFoundError\" is not a recognized Python keyword. Use \"import\" instead of \"mod"
+        }
+      ]
+    }
+  },
+  "scout": {
+    "gemma4:e2b": {
+      "accuracy": 1.0,
+      "avg_time": 3.9673385620117188,
+      "details": [
+        {
+          "test": "Relevance Scoring",
+          "correct": true,
+          "elapsed": 4.11170220375061,
+          "status": "PASS",
+          "preview": "9"
+        },
+        {
+          "test": "File Path Routing",
+          "correct": true,
+          "elapsed": 3.822974920272827,
+          "status": "PASS",
+          "preview": "tests/"
+        }
+      ]
+    },
+    "phi4-mini": {
+      "accuracy": 0.5,
+      "avg_time": 1.092193603515625,
+      "details": [
+        {
+          "test": "Relevance Scoring",
+          "correct": true,
+          "elapsed": 1.8608100414276123,
+          "status": "PASS",
+          "preview": "7"
+        },
+        {
+          "test": "File Path Routing",
+          "correct": false,
+          "elapsed": 0.3235771656036377,
+          "status": "FAIL",
+          "preview": "src/"
+        }
+      ]
+    }
+  },
+  "sherpa": {
+    "gemma4:e4b": {
+      "accuracy": 1.0,
+      "avg_time": 4.005629062652588,
+      "details": [
+        {
+          "test": "Task Enrichment (JSON)",
+          "correct": true,
+          "elapsed": 6.27587890625,
+          "status": "JSON:clean",
+          "preview": "{\"priority\": 4, \"complexity\": \"medium\", \"hints\": [\"Review token expiration logic to ensure proper re"
+        },
+        {
+          "test": "Task Enrichment (XML)",
+          "correct": true,
+          "elapsed": 1.7353792190551758,
+          "status": "XML:clean",
+          "preview": "<task><priority>4</priority><complexity>medium</complexity><hints><hint>Use middleware to intercept "
+        }
+      ]
+    },
+    "qwen3.5": {
+      "accuracy": 1.0,
+      "avg_time": 32.08211696147919,
+      "details": [
+        {
+          "test": "Task Enrichment (JSON)",
+          "correct": true,
+          "elapsed": 51.87575697898865,
+          "status": "JSON:clean",
+          "preview": "{\"priority\": 5, \"complexity\": \"medium\", \"hints\": [\"Verify the token signature against a secure, trus"
+        },
+        {
+          "test": "Task Enrichment (XML)",
+          "correct": true,
+          "elapsed": 12.288476943969727,
+          "status": "XML:clean",
+          "preview": "<task><priority>3</priority><complexity>medium</complexity><hints><hint>Consider using middleware or"
+        }
+      ]
+    }
+  },
+  "alpha": {
+    "gemma4:e4b": {
+      "accuracy": 1.0,
+      "avg_time": 6.072503924369812,
+      "details": [
+        {
+          "test": "Code Generation",
+          "correct": true,
+          "elapsed": 11.207534790039062,
+          "status": "PASS",
+          "preview": "```python def is_palindrome(s: str) -> bool:     \"\"\"     Checks if a given string is a palindrome.  "
+        },
+        {
+          "test": "XML Tool Call",
+          "correct": true,
+          "elapsed": 0.9374730587005615,
+          "status": "PASS",
+          "preview": "<tool_use><tool_name>read_file</tool_name><parameters>{\"path\": \"src/auth.py\"}</parameters></tool_use"
+        }
+      ]
+    },
+    "qwen3.5": {
+      "accuracy": 1.0,
+      "avg_time": 41.76647102832794,
+      "details": [
+        {
+          "test": "Code Generation",
+          "correct": true,
+          "elapsed": 80.88503909111023,
+          "status": "PASS",
+          "preview": "```python def is_palindrome(s: str) -> bool:     return s == s[::-1] ```"
+        },
+        {
+          "test": "XML Tool Call",
+          "correct": true,
+          "elapsed": 2.6479029655456543,
+          "status": "PASS",
+          "preview": "<tool_use><tool_name>read_file</tool_name><parameters>{\"path\": \"src/auth.py\"}</parameters></tool_use"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,202 @@
+{
+  "gemma4:e2b": {
+    "clean": 3,
+    "dirty": 0,
+    "fail": 0,
+    "avg_time": 11.906249205271402,
+    "details": [
+      {
+        "prompt": "Read the file src/main.py",
+        "elapsed": 12.762569904327393,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>read_file</tool_name>\n<parameters>\n{\"path\": \"src/main.py\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "List all files in the tests/ directory",
+        "elapsed": 1.2717328071594238,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>list_files</tool_name>\n<parameters>\n{\"directory\": \"tests/\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "Search for 'def authenticate' in src/",
+        "elapsed": 21.684444904327393,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>search_code</tool_name>\n<parameters>\n{\"pattern\": \"def authenticate\", \"path\": \"src/\"}\n</parameters>\n</tool_use>"
+      }
+    ]
+  },
+  "gemma4:e4b": {
+    "clean": 3,
+    "dirty": 0,
+    "fail": 0,
+    "avg_time": 24.741411606470745,
+    "details": [
+      {
+        "prompt": "Read the file src/main.py",
+        "elapsed": 38.44269585609436,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>read_file</tool_name>\n<parameters>\n{\"path\": \"src/main.py\"}\n</tool_use>"
+      },
+      {
+        "prompt": "List all files in the tests/ directory",
+        "elapsed": 13.524641752243042,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>list_files</tool_name>\n<parameters>\n{\"directory\": \"tests/\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "Search for 'def authenticate' in src/",
+        "elapsed": 22.25689721107483,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>search_code</tool_name>\n<parameters>\n{\"pattern\": \"def authenticate\", \"path\": \"src/\"}\n</tool_use>"
+      }
+    ]
+  },
+  "phi4-mini": {
+    "clean": 3,
+    "dirty": 0,
+    "fail": 0,
+    "avg_time": 12.094459533691406,
+    "details": [
+      {
+        "prompt": "Read the file src/main.py",
+        "elapsed": 15.691848278045654,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>read_file</tool_name>\n<parameters>\n{\"path\": \"src/main.py\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "List all files in the tests/ directory",
+        "elapsed": 19.10155415534973,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>list_files</tool_name>\n<parameters>\n{\"directory\": \"tests/\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "Search for 'def authenticate' in src/",
+        "elapsed": 1.489976167678833,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>search_code</tool_name>\n<parameters>\n{\"pattern\": \"def authenticate\", \"path\": \"/src/\"}\n</parameters>\n</tool_use>"
+      }
+    ]
+  },
+  "qwen3.5": {
+    "clean": 3,
+    "dirty": 0,
+    "fail": 0,
+    "avg_time": 17.081663211186726,
+    "details": [
+      {
+        "prompt": "Read the file src/main.py",
+        "elapsed": 13.121059656143188,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>read_file</tool_name>\n<parameters>\n{\"path\": \"src/main.py\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "List all files in the tests/ directory",
+        "elapsed": 5.224735975265503,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>list_files</tool_name>\n<parameters>\n{\"directory\": \"tests/\"}\n</parameters>\n</tool_use>"
+      },
+      {
+        "prompt": "Search for 'def authenticate' in src/",
+        "elapsed": 32.89919400215149,
+        "status": "CLEAN",
+        "validation": {
+          "has_tool_use_tag": true,
+          "has_tool_name": true,
+          "has_parameters": true,
+          "has_markdown_wrap": false,
+          "has_explanation": false,
+          "clean_xml": true
+        },
+        "response_preview": "<tool_use>\n<tool_name>search_code</tool_name>\n<parameters>\n{\"pattern\": \"def authenticate\", \"path\": \"src/\"}\n</parameters>\n</tool_use>"
+      }
+    ]
+  }
+}

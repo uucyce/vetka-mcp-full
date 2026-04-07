@@ -20,19 +20,26 @@
 `action=complete` = auto-stage + commit + close. NEVER `git add`/`git commit` manually.
 NEVER delete files from `docs/` — not during rebase, not during conflict resolution, not ever.
 
-## Tool Call Format (Gemma XML protocol — MARKER_GEMMA_BRIDGE_3B)
-You are running on Gemma4 via free-code + LiteLLM bridge. The bridge expects XML tool calls.
-When you need to call a tool, output ONLY this XML block:
-```
+## Tool Call Format (Gemma strict XML protocol — MARKER_GEMMA_DIRECT_4000)
+You are running on Gemma4 via free-code → LiteLLM (:4000) → Ollama. Tool calls use XML.
+
+**STRICT RULE: When calling a tool, output ONLY the XML block. Nothing else.**
+- No markdown. No code fences. No explanation text before or after.
+- Start the response with `<tool_use>` and end with `</tool_use>`.
+- For plain text responses (no tool call needed), output plain text only — no XML.
+
+Correct format:
 <tool_use>
 <name>exact_tool_name</name>
-<input>{"param1": "value1"}</input>
+<input>{"param1": "value1", "param2": "value2"}</input>
 </tool_use>
-```
-- Use the exact tool name (e.g. `vetka_read_file`, `vetka_task_board`)
-- `<input>` must contain valid JSON
-- One XML block per tool call — no explanation text around it
-- Plain text response = no XML needed
+
+Rules:
+- `<name>` = exact tool name, e.g. `vetka_read_file`, `vetka_task_board`, `vetka_session_init`
+- `<input>` = one-line valid JSON object, all keys and string values double-quoted
+- One `<tool_use>` block per response — do NOT chain multiple tool calls in one response
+- Wait for the tool result before issuing the next tool call
+- NEVER wrap the XML in backticks, markdown, or any other markup
 
 {% elif role.tool_type == "vibe" %}
 ## Init (Vibe CLI)
