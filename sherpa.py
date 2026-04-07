@@ -1703,6 +1703,7 @@ async def sherpa_loop(cfg: SherpaConfig, once: bool = False, dry_run: bool = Fal
 
     tb = TaskBoardClient(cfg.taskboard_url, cfg.agent_name, cfg.agent_type)
     ollama = OllamaClient(cfg.ollama_url, cfg.ollama_model)
+    feedback = FeedbackCollector()  # MARKER_202.FEEDBACK: per-service scoring
 
     # Filter services
     active_services = [s for s in cfg.services if s.enabled]
