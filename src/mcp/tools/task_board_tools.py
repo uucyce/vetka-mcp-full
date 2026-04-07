@@ -496,8 +496,8 @@ TASK_BOARD_SCHEMA = {
         # MARKER_198.MERGE: merge_request strategy
         "strategy": {
             "type": "string",
-            "enum": ["cherry-pick", "merge", "squash"],
-            "description": "Merge strategy for merge_request. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff (handles feature branches). 'squash': single squash commit.",
+            "enum": ["cherry-pick", "merge", "squash", "smart_snapshot"],
+            "description": "Merge strategy. 'cherry-pick' (default): per-commit. 'merge': git merge --no-ff. 'squash': single squash commit. 'smart_snapshot': diff-based, conflict-safe, scoped to allowed_paths (recommended).",
         },
         # MARKER_199.FTS5: search_fts parameters
         "query": {
