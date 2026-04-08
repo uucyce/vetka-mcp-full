@@ -7,4 +7,6 @@ src/elisya	vetka-elisya-runtime	main
 src/orchestration	vetka-orchestration-core	main
 client/src/components/chat	vetka-chat-ui	main
 client/src/components/mcc	mycelium	main
-src/reflex	reflex-tool-engine	main
+# src/reflex removed - reflex files are in src/services/reflex*.py, not a separate prefix
+vetka-agents-wrapper	vetka-agents	main
+vetka-mcp-full	vetka-mcp-full	main
