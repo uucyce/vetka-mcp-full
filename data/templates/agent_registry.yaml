@@ -19,6 +19,7 @@ roles:
     branch: "claude/cut-engine"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER
     tmux_color: "bg=colour1,fg=white"  # red
+    tmux_history_limit: 50000  # MARKER_TMUX_HIST: sonnet tier ~25MB
     owned_paths:
       - "client/src/store/useTimelineInstanceStore.ts"
       - "client/src/store/useCutEditorStore.ts"           # timeline fields ONLY
@@ -51,6 +52,7 @@ roles:
     branch: "claude/cut-media"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — шаблонные фиксы, FFmpeg, imports
     tmux_color: "bg=colour3,fg=colour0"  # yellow, dark text
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "client/src/components/cut/panels/VideoScopesPanel.tsx"
       - "client/src/components/cut/panels/ColorCorrectionPanel.tsx"
@@ -89,6 +91,7 @@ roles:
     branch: "claude/cut-ux"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — UI wiring, SVG, CSS, быстро и дёшево
     tmux_color: "bg=colour2,fg=colour0"  # green, dark text
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "client/src/components/cut/MenuBar.tsx"
       - "client/src/components/cut/DockviewLayout.tsx"
@@ -117,6 +120,7 @@ roles:
     branch: "worktree-cut-qa"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — QA по чеклисту, pytest
     tmux_color: "bg=colour6,fg=colour0"  # cyan, dark text
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -144,6 +148,7 @@ roles:
     branch: "claude/cut-qa-2"
     model_tier: "haiku"  # MARKER_200.MODEL_TIER — contract tests, верификация
     tmux_color: "bg=colour5,fg=white"  # magenta
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "e2e/*.spec.cjs"
       - "e2e/playwright.config.ts"
@@ -172,6 +177,7 @@ roles:
     branch: "claude/harness"
     model_tier: "opus"  # MARKER_200.MODEL_TIER — infra needs deep reasoning
     tmux_color: "bg=colour15,fg=colour0,bold"  # white/bold, dark text
+    tmux_history_limit: 100000  # MARKER_TMUX_HIST: opus/captain tier ~50MB
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -207,6 +213,7 @@ roles:
     branch: "claude/harness-eta"
     model_tier: "sonnet"  # MARKER_200.MODEL_TIER — harness/infra нужен reasoning
     tmux_color: "bg=colour208,fg=colour0"  # orange, dark text
+    tmux_history_limit: 50000  # MARKER_TMUX_HIST: sonnet tier ~25MB
     owned_paths:
       - "src/mcp/tools/task_board_tools.py"
       - "src/mcp/tools/session_tools.py"
@@ -242,6 +249,7 @@ roles:
     branch: "claude/pedantic-bell"
     model_tier: "opus"  # MARKER_200.MODEL_TIER — Commander needs full reasoning
     tmux_color: "bg=colour4,fg=white"  # blue
+    tmux_history_limit: 100000  # MARKER_TMUX_HIST: opus/captain tier ~50MB
     owned_paths:
       - "docs/"
       - "CLAUDE.md"
@@ -272,6 +280,7 @@ roles:
     branch: "agent/polaris-captain"
     model_tier: "qwen"  # Qwen 3.6+ Free via Opencode
     tmux_color: "bg=colour39,fg=colour0"  # bright cyan, dark text — captain
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "data/templates/agent_registry.yaml"
       - "data/templates/model_presets.json"
@@ -307,6 +316,7 @@ roles:
     branch: "claude/polaris-theta"
     model_tier: "qwen"
     tmux_color: "bg=colour33,fg=white"  # blue — theta
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "src/services/model_router.py"
       - "src/services/model_policy.py"
@@ -331,6 +341,7 @@ roles:
     branch: "claude/polaris-iota"
     model_tier: "qwen"
     tmux_color: "bg=colour27,fg=white"  # dark blue — iota
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "tests/benchmark/"
       - "docs/210_sherpa_gemma4/"
@@ -352,6 +363,7 @@ roles:
     branch: "claude/polaris-kappa"
     model_tier: "qwen"
     tmux_color: "bg=colour21,fg=white"  # navy — kappa
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "src/services/agent_registry.py"
       - "src/tools/generate_agents_md.py"
@@ -376,6 +388,7 @@ roles:
     branch: "claude/polaris-lambda"
     model_tier: "mistral"
     tmux_color: "bg=colour57,fg=white"  # purple — lambda
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "tests/"
       - "docs/"
@@ -396,6 +409,7 @@ roles:
     branch: "claude/polaris-mu"
     model_tier: "mistral"
     tmux_color: "bg=colour93,fg=white"  # bright purple — mu
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "tests/"
       - "docs/"
@@ -416,6 +430,7 @@ roles:
     branch: "claude/polaris-nu"
     model_tier: "mistral"
     tmux_color: "bg=colour129,fg=white"  # magenta-purple — nu
+    tmux_history_limit: 20000  # MARKER_TMUX_HIST: free/polaris tier ~10MB
     owned_paths:
       - "docs/"
       - "tests/benchmark/"
@@ -442,6 +457,7 @@ roles:
     branch: "claude/gemma-engine"
     model_tier: "gemma4:e4b"  # MARKER_GEMMA_FLEET — e4b: лучший баланс скорость/качество
     tmux_color: "bg=colour55,fg=white"  # violet — gemma engine
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "scripts/"
       - "src/utils/"
@@ -464,6 +480,7 @@ roles:
     branch: "claude/gemma-scout"
     model_tier: "gemma4:e2b"  # MARKER_GEMMA_FLEET — e2b: самый быстрый, авто-рекон задачи
     tmux_color: "bg=colour56,fg=white"  # blue-violet — scout
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "docs/"
       - "scripts/sherpa.py"
@@ -486,6 +503,7 @@ roles:
     branch: "claude/gemma-sherpa"
     model_tier: "gemma4:26b"  # MARKER_GEMMA_FLEET — 26b: vision, глубокий анализ, помощь Sherpa
     tmux_color: "bg=colour57,fg=white"  # indigo — sherpa vision
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "docs/210_sherpa_gemma4/"
       - "scripts/sherpa.py"
@@ -510,6 +528,7 @@ roles:
     branch: "claude/gemma-qa"
     model_tier: "gemma4:e4b"  # MARKER_GEMMA_FLEET — e4b: качественный QA
     tmux_color: "bg=colour61,fg=white"  # slate blue — qa
+    tmux_history_limit: 30000  # MARKER_TMUX_HIST: haiku tier ~15MB
     owned_paths:
       - "tests/"
       - "docs/"
