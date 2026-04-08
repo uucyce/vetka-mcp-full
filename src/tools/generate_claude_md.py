@@ -301,14 +301,32 @@ def _write_settings_json(worktree_dir: Path):
         hooks = existing.get("hooks", {})
         post_hooks = hooks.get("PostToolUse", [])
 
+        # MARKER_210.SANITIZE: Remove/convert broken hook entries missing hooks[] array
+        # Bug: old generator wrote {matcher, command} instead of {matcher, hooks:[{type,command}]}
+        sanitized = []
+        for h in post_hooks:
+            if isinstance(h.get("hooks"), list):
+                sanitized.append(h)
+            elif "command" in h:
+                # Convert broken format to valid format
+                sanitized.append({
+                    "matcher": h.get("matcher", ""),
+                    "hooks": [{"type": "command", "command": h["command"]}],
+                })
+        post_hooks = sanitized
+
         # Check if inbox hook already present (check inside hooks[] array)
         inbox_present = any(
             "check_agent_inbox" in inner.get("command", "")
             for h in post_hooks
             for inner in h.get("hooks", [])
         )
+        dirty = len(sanitized) != len(hooks.get("PostToolUse", []))
         if not inbox_present:
             post_hooks.append(_AGENT_SETTINGS["hooks"]["PostToolUse"][0])
+            dirty = True
+
+        if dirty:
             hooks["PostToolUse"] = post_hooks
             existing["hooks"] = hooks
 
@@ -317,7 +335,7 @@ def _write_settings_json(worktree_dir: Path):
                 json.dumps(existing, indent=2, ensure_ascii=False) + "\n",
                 encoding="utf-8",
             )
-            logger.info("[generate_claude_md] Wrote %s (inbox hook)", settings_path)
+            logger.info("[generate_claude_md] Wrote %s (inbox hook, sanitized)", settings_path)
     except Exception as e:
         logger.debug(f"[generate_claude_md] Settings.json write failed: {e}")
 
