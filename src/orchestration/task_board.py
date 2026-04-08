@@ -900,6 +900,10 @@ class TaskBoard:
         # Write to file inbox for hook-based real-time delivery
         self._write_inbox(target_role, source_role, message, notif_id)
 
+        # MARKER_NOTIFY_WAKE: Wake target agent on explicit action=notify.
+        # _synapse_wake has 30s debounce built-in — safe to call unconditionally.
+        self._synapse_wake(target_role, message=message[:100])
+
         logger.info(f"[Notify] {source_role} → {target_role}: {message[:80]}")
         return {
             "success": True,
