@@ -4728,6 +4728,7 @@ class TaskBoard:
         # For other non-verified statuses (done_worktree, pending, etc.): warn only (Commander may skip QA).
         # Commander escape hatch: pass force=True to override — logged as ERROR.
         _status = task.get("status", "")
+        _qa_skipped = False  # MARKER_201.QA_WARN: set True if QA was skipped (non-verified, non-needs_fix)
         if _status == "needs_fix":
             if not force:
                 return {
@@ -4770,6 +4771,7 @@ class TaskBoard:
                 reason=f"merge_request called without QA verification (status={_status}). "
                 "Commander override — proceeding.",
             )
+            _qa_skipped = True
             self._save_task(task)
             logger.warning(
                 "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
