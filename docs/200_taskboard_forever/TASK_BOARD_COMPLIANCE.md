@@ -21,18 +21,29 @@ The **task board guardrail** enforces that all commits are tied to a claimed tas
 
 ### Pre-commit Hook (Primary Guard)
 
-When you run `git commit`, the pre-commit hook:
+When you run `git commit`, the pre-commit hook performs multiple validation checks:
 
-1. **Detects your role** from the branch name
+1. **Blocks generated artifacts** (CLAUDE.md, .agent_lock)
+   - These are auto-generated and must never be committed
+
+2. **Detects semantic errors** in Python files
+   - ✅ Python AST syntax check — catches SyntaxError before merge
+   - ✅ Import validation — detects missing imports
+   - ⚠️ API compatibility check — for sherpa.py, validates FeedbackCollector API calls
+   - Prevents Wave 1 regression (API refactor mismatches)
+
+3. **Detects your role** from the branch name
    - Pattern: `claude/{role}-{domain}` or `agent/{role}-{domain}`
    - Example: `claude/wu-harness` → role is `Wu`
 
-2. **Queries task board** for claimed/running tasks
+4. **Queries task board** for claimed/running tasks
    - Looks for tasks where `assigned_to = Wu` and `status IN ('claimed', 'running')`
    - Must be claimed within the last 4 hours (or started within 8 hours)
 
-3. **Allows or blocks commit**
-   - ✅ Found claimed task → commit proceeds
+5. **Allows or blocks commit**
+   - ✅ All checks pass + claimed task found → commit proceeds
+   - ⚠️ Semantic warnings detected → warns but allows (unless blocking syntax error)
+   - ❌ Syntax errors found → commit rejected (must fix)
    - ❌ No claimed task → commit rejected with helpful message
 
 ### Worktree Behavior
