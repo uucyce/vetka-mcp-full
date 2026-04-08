@@ -92,6 +92,35 @@ _apply_tmux_color() {
     fi
 }
 
+# ── MARKER_TMUX_HIST: Read tmux_history_limit from agent_registry.yaml ──
+_get_history_limit() {
+    local role="$1"
+    local limit=""
+    if [ -f "$REGISTRY_YAML" ]; then
+        limit=$(python3 -c "
+import yaml, sys
+try:
+    with open('$REGISTRY_YAML') as f:
+        reg = yaml.safe_load(f)
+    for r in reg.get('roles', []):
+        if r.get('callsign') == '$role':
+            print(r.get('tmux_history_limit', ''))
+            sys.exit(0)
+except Exception:
+    pass
+" 2>/dev/null)
+    fi
+    echo "${limit:-10000}"  # fallback: 10000 lines
+}
+
+_apply_history_limit() {
+    local session="$1" role="$2"
+    local limit
+    limit=$(_get_history_limit "$role")
+    tmux set-option -t "$session" history-limit "$limit" 2>/dev/null || return 0
+    echo "$LOG_PREFIX History limit set: $role → $limit lines"
+}
+
 # ── MARKER_SPAWN_FIX_P0: Read model_tier from agent_registry.yaml ──
 _get_model_tier() {
     local role="$1"
@@ -271,6 +300,9 @@ echo "$LOG_PREFIX Window title set: $WINDOW_TITLE"
 # ── MARKER_209.UX: Apply role color to tmux status bar ───────
 _apply_tmux_color "$SESSION_NAME" "$ROLE"
 echo "$LOG_PREFIX Color applied: $ROLE → $(_get_role_color "$ROLE")"
+
+# ── MARKER_TMUX_HIST: Apply per-role history limit ────────────
+_apply_history_limit "$SESSION_NAME" "$ROLE"
 
 # ── Update session registry ──────────────────────────────────
 mkdir -p "$(dirname "$REGISTRY_FILE")"
