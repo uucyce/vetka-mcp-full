@@ -6384,3 +6384,50 @@ def reset_task_board() -> None:
         except Exception:
             pass
         _board_instance = None
+
+
+# MARKER_210.TASK_BOARD_GUARDRAIL: Pre-commit hook helper
+def check_claimed_task_for_hook(role: str, time_window_hours: int = 4) -> Optional[Dict[str, Any]]:
+    """Check if a role has a claimed/running task (for pre-commit hook compliance).
+
+    Used by pre-commit hook to verify agent has a claimed task before allowing commit.
+    Returns the first claimed task if found, None otherwise.
+
+    Args:
+        role: Agent role/callsign (e.g., 'Wu', 'Codex', 'Eta')
+        time_window_hours: Max age of claimed task (default 4h)
+
+    Returns:
+        Task dict if found, None otherwise.
+    """
+    try:
+        board = get_task_board()
+        tasks = board.db.execute(
+            """
+            SELECT id, title, status, assigned_at, started_at
+            FROM tasks
+            WHERE assigned_to = ?
+              AND status IN ('claimed', 'running')
+              AND (
+                (assigned_at IS NOT NULL AND datetime(assigned_at) > datetime('now', ? || ' hours'))
+                OR
+                (started_at IS NOT NULL AND datetime(started_at) > datetime('now', '-8 hours'))
+              )
+            LIMIT 1
+            """,
+            (role, f"-{time_window_hours}"),
+        ).fetchall()
+
+        if tasks:
+            row = tasks[0]
+            return {
+                "id": row[0],
+                "title": row[1],
+                "status": row[2],
+                "assigned_at": row[3],
+                "started_at": row[4],
+            }
+        return None
+    except Exception as e:
+        logger.warning(f"[check_claimed_task_for_hook] Query failed for role {role}: {e}")
+        return None
