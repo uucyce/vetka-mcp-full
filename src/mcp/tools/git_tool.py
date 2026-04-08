@@ -178,6 +178,7 @@ class GitCommitTool(BaseMCPTool):
         return None
 
     def execute(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        import os
         message = arguments["message"]
         files = arguments.get("files", [])
         dry_run = arguments.get("dry_run", True)
@@ -196,6 +197,42 @@ class GitCommitTool(BaseMCPTool):
                 },
                 "error": None
             }
+
+        # MARKER_210.MCP_GUARD: Block real commits without a claimed task.
+        # Secondary defense (primary = pre-commit hook). Checks VETKA_AGENT_ROLE env var.
+        # Bypass: set VETKA_COMMIT_GUARDRAIL_BYPASS=1 for emergency (e.g. Commander hotfix).
+        _guard_role = os.environ.get("VETKA_AGENT_ROLE", "").strip()
+        if _guard_role and not os.environ.get("VETKA_COMMIT_GUARDRAIL_BYPASS"):
+            try:
+                from src.orchestration.task_board import check_claimed_task_for_hook, get_task_board
+                _claimed = check_claimed_task_for_hook(_guard_role)
+                if not _claimed:
+                    # Fetch top-3 pending high-priority tasks as suggestions
+                    _suggestions = []
+                    try:
+                        _board = get_task_board()
+                        _pending = _board.list_tasks(filter_status="pending", limit=3)
+                        _suggestions = [
+                            f"  • {t['id']}: {t['title'][:60]}"
+                            for t in (_pending.get("tasks") or [])[:3]
+                        ]
+                    except Exception:
+                        pass
+                    _suggest_str = "\n".join(_suggestions) if _suggestions else "  (none found)"
+                    return {
+                        "success": False,
+                        "error": (
+                            f"Task Board Compliance: no claimed task for role '{_guard_role}'.\n"
+                            f"Claim a task first:\n"
+                            f"  vetka_task_board action=claim task_id=tb_XXXXX\n"
+                            f"Top pending tasks:\n{_suggest_str}\n"
+                            f"Emergency bypass: set VETKA_COMMIT_GUARDRAIL_BYPASS=1"
+                        ),
+                        "result": None,
+                        "guardrail": True,
+                    }
+            except ImportError:
+                logger.debug("[MCP_GUARD] task_board import failed — guard skipped")
 
         try:
             # Stage files
