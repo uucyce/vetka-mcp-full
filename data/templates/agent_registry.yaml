@@ -548,6 +548,28 @@ roles:
       - "docs/180_photo-to-parallax/PARALLAX_FUNCTIONAL_ROADMAP_LONG_PHASES_2026-04-07.md"
     roadmap: ""
 
+
+  # ── Wu: harness Domain (claude_code/haiku) ──────────────────
+  - callsign: "Wu"
+    domain: "harness"
+    pipeline_stage: "coder"
+    tool_type: "claude_code"
+    role_title: "Harness Guardian"
+    worktree: "musing-wu"
+    branch: "agent/wu-harness"
+    model_tier: "haiku"
+    file: "src/mcp/tools/"
+    owned_paths:
+      - "src/mcp/tools/"
+      - "src/orchestration/task_board.py"
+      - "src/services/agent_registry.py"
+    blocked_paths:
+      - "client/src/components/"
+      - "client/src/store/"
+      - "client/src/hooks/"
+      - "e2e/"
+    roadmap: ""
+
 # ── Shared Zones ────────────────────────────────────────────
 # Files where multiple agents have partial ownership.
 # Protocol: declare scope in task description before touching.

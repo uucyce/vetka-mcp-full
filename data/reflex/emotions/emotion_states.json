@@ -1442,10 +1442,10 @@
   },
   "mycelium_task_import": {
     "tool_id": "mycelium_task_import",
-    "curiosity": 0.6,
-    "trust": 0.5,
-    "caution": 0.0,
-    "mood_label": "neutral",
+    "curiosity": 0.9241418199787566,
+    "trust": 0.3,
+    "caution": 0.9,
+    "mood_label": "curious",
     "usage_count": 0,
     "success_count": 0,
     "failure_count": 0,
@@ -2234,7 +2234,7 @@
   },
   "vetka_task_import": {
     "tool_id": "vetka_task_import",
-    "curiosity": 0.9241418199787566,
+    "curiosity": 1.0,
     "trust": 0.3,
     "caution": 0.9,
     "mood_label": "curious",
@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 6.89001509906914e-89,
+    "curiosity": 9.324621449370603e-90,
     "trust": 0.9999999999999997,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 411,
-    "success_count": 411,
+    "usage_count": 415,
+    "success_count": 415,
     "failure_count": 0,
-    "last_updated": 1775667875.4737248
+    "last_updated": 1775670023.716502
   },
   "Read": {
     "tool_id": "Read",
@@ -2432,14 +2432,14 @@
   },
   "__debrief_bug__": {
     "tool_id": "__debrief_bug__",
-    "curiosity": 6.726055149644708e-41,
-    "trust": 1.4207176192946636e-36,
+    "curiosity": 2.474377409739597e-41,
+    "trust": 6.002531941519954e-37,
     "caution": 0.1,
     "mood_label": "neutral",
-    "usage_count": 190,
+    "usage_count": 192,
     "success_count": 0,
-    "failure_count": 190,
-    "last_updated": 1775667875.811043
+    "failure_count": 192,
+    "last_updated": 1775670024.100759
   },
   "session_init": {
     "tool_id": "session_init",

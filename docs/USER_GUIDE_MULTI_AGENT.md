@@ -1115,3 +1115,5 @@ rm data/sherpa.pid
 - Один таб браузера — при смене сервиса старый закрывается
 
 | **Burnell** | `magical-burnell` | engine | claude_code | opus | Captain Burnell / Sherpa Architect |
+
+| **Wu** | `musing-wu` | harness | claude_code | haiku | Harness Guardian |
