@@ -271,7 +271,12 @@ _AGENT_SETTINGS = {
         "PostToolUse": [
             {
                 "matcher": ".*",
-                "command": "bash scripts/check_agent_inbox.sh",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": "bash scripts/check_agent_inbox.sh 2>/dev/null || true",
+                    }
+                ],
             }
         ]
     }
@@ -296,10 +301,11 @@ def _write_settings_json(worktree_dir: Path):
         hooks = existing.get("hooks", {})
         post_hooks = hooks.get("PostToolUse", [])
 
-        # Check if inbox hook already present
+        # Check if inbox hook already present (check inside hooks[] array)
         inbox_present = any(
-            "check_agent_inbox" in h.get("command", "")
+            "check_agent_inbox" in inner.get("command", "")
             for h in post_hooks
+            for inner in h.get("hooks", [])
         )
         if not inbox_present:
             post_hooks.append(_AGENT_SETTINGS["hooks"]["PostToolUse"][0])
