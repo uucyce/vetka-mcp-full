@@ -121,6 +121,48 @@ After reading: `vetka_task_board action=ack_notifications role={{ role.callsign 
 Send to another agent: `vetka_task_board action=notify source_role={{ role.callsign }} target_role=<name> message="..."`
 
 **Wake mechanism** — `action=notify` is the ONLY correct way to wake any agent from any client (Desktop, tmux, opencode, Vibe). It writes to the notification inbox AND physically sends tmux send-keys to the target agent's session via `synapse_wake.sh`. Do NOT pass tasks via chat messages — they are invisible to the agent.
+
+## CRITICAL: Hotfix Discipline (MARKER_210.HOTFIX_DISCIPLINE)
+
+**EVEN P0 HOTFIXES MUST GO THROUGH TASK BOARD** — this is non-negotiable.
+
+When you detect a regression or critical bug:
+1. **Create a fix task** (don't commit directly to main):
+   ```
+   vetka_task_board action=add title="HOTFIX: <short description>" \
+     phase_type=fix priority=1 domain={{ role.domain }} \
+     description="P0 hotfix: <full diagnosis>"
+   ```
+
+2. **Claim the task immediately:**
+   ```
+   vetka_task_board action=claim task_id=tb_XXXXX
+   ```
+
+3. **Create/use a worktree** for the fix:
+   ```
+   # If not already in worktree, create one via EnterWorktree
+   ```
+
+4. **Commit goes through pre-commit hook**:
+   - Pre-commit validates no claimed task → blocks
+   - Pre-commit validates syntax/imports → may warn
+   - All commits must tie to claimed task
+
+5. **Complete the task normally:**
+   ```
+   vetka_task_board action=complete task_id=tb_XXXXX branch=agent/{{ role.callsign | lower }}-{{ role.domain }}
+   ```
+
+6. **Task goes through merge_request** (Commander/Zeta may bypass QA for P0, but it's logged)
+
+**Why this matters:** Direct-to-main hotfixes bypass validation gates and enable regression waves (Wave 3 regression was caused by this). The pre-commit hook and merge gates exist to catch exactly this.
+
+**Emergency bypass:** If absolutely critical (e.g., production data loss in progress):
+- Use `git commit --no-verify` with explicit commit message: `EMERGENCY: <reason> [task:tb_XXXXX]`
+- This is logged as error and audited
+- Update task debrief explaining why
+
 {%- if role.domain == "architect" %}
 You ARE the merge authority. You may `git merge` worktree branches into main.
 Use `vetka_task_board action=merge_request` for tracked merges.
