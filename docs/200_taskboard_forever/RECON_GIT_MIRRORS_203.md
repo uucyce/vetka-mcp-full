@@ -179,3 +179,58 @@ remote: Permission to X.git denied to github-actions[bot].
 - `docker-compose.yml` → `qdrant_data: external: true, name: qdrant_storage`
 
 *UPD написан Eta, 2026-04-05*
+
+---
+
+## UPD 2026-04-08 — vetka-mcp-full: Full MCP Server for External Agents
+
+### Проблема
+Внешний агент попытался запустить `vetka-mcp-core`:
+```
+ModuleNotFoundError: No module named 'src'
+```
+Причина: `vetka-mcp-core` содержит только `src/mcp/`, но имеет **148+ импортов** из других `src/*` модулей которые существуют только в приватной монорепе.
+
+### Решение: vetka-mcp-full
+Создать wrapper который собирает все нужные модули:
+
+```
+vetka-mcp-full/src/
+├── mcp/                    # ✅ vetka-mcp-core
+├── orchestration/          # ✅ vetka-orchestration-core
+├── memory/                # ✅ vetka-memory-stack
+├── search/                # ✅ vetka-search-retrieval
+├── bridge/               # ✅ vetka-bridge-core
+├── agents/               # ✅ vetka-agents
+├── services/              # ~30 критичных файлов
+├── initialization/         # stubs
+└── utils/                # stubs
+```
+
+### Текущий статус зеркал (2026-04-08)
+
+| Mirror Repo | Prefix | Status | Notes |
+|-------------|--------|--------|-------|
+| vetka-taskboard | taskboard/ | ✅ | |
+| vetka-mcp-core | src/mcp | ✅ | Updated 2026-04-08 |
+| vetka-agents | vetka-agents-wrapper | ✅ | New 2026-04-08 |
+| vetka-bridge-core | src/bridge | ✅ | |
+| vetka-memory-stack | src/memory | ✅ | |
+| vetka-search-retrieval | src/search | ✅ | |
+| vetka-orchestration-core | src/orchestration | ✅ | |
+| vetka-ingest-engine | src/scanners | ✅ | |
+| vetka-elisya-runtime | src/elisya | ✅ | |
+| vetka-chat-ui | client/src/components/chat | ✅ | |
+| mycelium | client/src/components/mcc | ✅ | |
+
+### Исправленные баги (2026-04-08)
+- `src/reflex` убран из map (не существует)
+- vetka-agents добавлен в map
+- vetka-agents-wrapper создан для subtree sync
+- Workflow permissions: `read` → `write`
+
+### Связанные таски
+- **tb_1775684721_37553_1**: Создание vetka-mcp-full wrapper
+- **RECON**: `docs/210_ph_mirror_guard/RECON_VETKA_MCP_FULL_210.md`
+
+*UPD написан Terminal_81ce, 2026-04-08*

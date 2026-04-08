@@ -12,7 +12,25 @@
       },
       {
         "matcher": ".*",
+<<<<<<< Updated upstream
         "command": "bash scripts/check_agent_inbox.sh"
+=======
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check_agent_inbox.sh 2>/dev/null || true"
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/check_agent_inbox.sh 2>/dev/null || true"
+          }
+        ]
+>>>>>>> Stashed changes
       }
     ],
     "PreToolUse": [
