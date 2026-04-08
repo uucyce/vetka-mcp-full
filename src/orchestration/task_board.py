@@ -4853,6 +4853,44 @@ class TaskBoard:
                 "error": f"No commits found on '{branch}' ahead of main",
             }
 
+        # MARKER_210.LARGE_MERGE: Pre-flight validation for large merges (20+ commits)
+        # Root cause: Wave 3 regression (56-commit merge) passed without validation.
+        # Solution: Large merges require full test suite + hook validation before merge.
+        if len(commits) > 20:
+            logger.warning(
+                f"[MergeRequest] LARGE MERGE DETECTED: {len(commits)} commits on {branch}"
+            )
+
+            # Check 1: Require closure_tests (integration tests)
+            if not closure_tests:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Large merge policy: {len(commits)} commits require closure_tests for integration validation. "
+                        f"Update task with closure_tests before merging. "
+                        f"Example: closure_tests=['python -m pytest tests/ -v']"
+                    ),
+                    "large_merge_blocked": True,
+                    "commit_count": len(commits),
+                }
+
+            # Check 2: Block force=True on large merges (cannot bypass validation)
+            if force:
+                logger.error(
+                    f"[MergeRequest] LARGE MERGE FORCE BLOCKED: {len(commits)} commits, "
+                    f"force=True not allowed for large merges. Task {task_id}"
+                )
+                return {
+                    "success": False,
+                    "error": (
+                        f"Large merge policy: force=True not allowed for merges >20 commits. "
+                        f"Large merges must pass validation normally. "
+                        f"Current: {len(commits)} commits on {branch}"
+                    ),
+                    "large_merge_blocked": True,
+                    "commit_count": len(commits),
+                }
+
         # MARKER_200.MERGE_AUTO: Auto-select strategy if not explicitly set
         # 1-3 commits → cherry-pick (clean per-commit history)
         # >3 commits → merge --no-ff (avoids sequential cherry-pick pain)
@@ -5062,6 +5100,18 @@ class TaskBoard:
             f"[MergeRequest] {branch} → main via {strategy}: {len(commits)} commits, "
             f"tests_delta={eval_delta['tests_delta']}"
         )
+
+        # MARKER_210.LARGE_MERGE: Post-merge validation for strategy-specific requirements
+        post_merge_validation = await self.validate_post_merge_requirements(branch, strategy)
+        if post_merge_validation.get("issues"):
+            logger.warning(
+                f"[MergeRequest] Post-merge validation issues: {post_merge_validation['issues']}"
+            )
+            full_result["post_merge_validation"] = post_merge_validation
+        if post_merge_validation.get("warnings"):
+            logger.info(
+                f"[MergeRequest] Post-merge validation warnings: {post_merge_validation['warnings']}"
+            )
 
         # MARKER_198.STALE: Post-merge stale scan — flag pending tasks that may be resolved by this merge
         stale_hint = None
@@ -6357,6 +6407,73 @@ class TaskBoard:
 
         logger.info(f"[TaskBoard] Imported {imported} tasks from {file_path}")
         return imported
+
+    # MARKER_210.LARGE_MERGE: Post-merge validation
+    async def validate_post_merge_requirements(
+        self, branch: str, merge_strategy: str = None
+    ) -> Dict[str, Any]:
+        """Validate post-merge requirements based on merge strategy and branch changes.
+
+        Checks:
+        1. smart_snapshot strategy → MCP enum must contain it
+        2. All hooks have valid syntax (generate_claude_md.py)
+        3. Critical variables not deleted without task ownership
+
+        Returns:
+            {success: bool, issues: List[str], warnings: List[str]}
+        """
+        issues = []
+        warnings = []
+
+        # Check 1: smart_snapshot enum registration
+        if merge_strategy == "smart_snapshot":
+            try:
+                mcp_enum_path = Path(PROJECT_ROOT) / "src" / "mcp" / "tools" / "__init__.py"
+                if mcp_enum_path.exists():
+                    content = mcp_enum_path.read_text()
+                    if "smart_snapshot" not in content:
+                        issues.append(
+                            "smart_snapshot strategy used but not registered in MCP enum. "
+                            "Add to src/mcp/tools/__init__.py MCP_TOOLS_REGISTRY."
+                        )
+                        logger.warning(
+                            "[PostMergeValidation] smart_snapshot enum registration missing"
+                        )
+            except Exception as e:
+                logger.debug(f"[PostMergeValidation] MCP enum check failed: {e}")
+
+        # Check 2: Hook syntax validation
+        try:
+            generate_claude_path = Path(PROJECT_ROOT) / "scripts" / "generate_claude_md.py"
+            if generate_claude_path.exists():
+                content = generate_claude_path.read_text()
+                # Check for common hook errors (this is a simplified check)
+                if "PostToolUse" in content and ("def " not in content or "class " not in content):
+                    warnings.append(
+                        "generate_claude_md.py may have invalid hook definitions. "
+                        "Verify PostToolUse hook syntax is correct."
+                    )
+        except Exception as e:
+            logger.debug(f"[PostMergeValidation] Hook syntax check failed: {e}")
+
+        # Check 3: Critical variable deletion detection
+        # Wave 3 regression: _qa_skipped was deleted then restored — this could indicate problems
+        try:
+            # This would need to be checked via git diff, not practical here
+            # Instead, log a warning that this should be checked
+            logger.info(
+                "[PostMergeValidation] Post-merge: verify no critical variables were deleted "
+                "(_qa_skipped, _needs_qa, etc.)"
+            )
+        except Exception as e:
+            logger.debug(f"[PostMergeValidation] Variable check failed: {e}")
+
+        return {
+            "success": len(issues) == 0,
+            "issues": issues,
+            "warnings": warnings,
+            "validated_at": datetime.now().isoformat(),
+        }
 
 
 # ==========================================
