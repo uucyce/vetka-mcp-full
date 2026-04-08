@@ -1571,6 +1571,7 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
         if not task_id:
             return {"success": False, "error": "task_id is required for merge_request"}
         strategy = arguments.get("strategy")  # None = use task default or "cherry-pick"
+        force = bool(arguments.get("force", False))  # MARKER_MERGE_GUARD.FORCE_OVERRIDE
 
         # MARKER_210.BRANCH_FIX: Update branch_name from MCP argument before merge
         _mcp_branch = arguments.get("branch_name")
@@ -1586,11 +1587,11 @@ def handle_task_board(arguments: Dict[str, Any]) -> Dict[str, Any]:
 
                 with concurrent.futures.ThreadPoolExecutor() as pool:
                     result = pool.submit(
-                        asyncio.run, board.merge_request(task_id, strategy=strategy)
+                        asyncio.run, board.merge_request(task_id, strategy=strategy, force=force)
                     ).result()
             else:
                 result = loop.run_until_complete(
-                    board.merge_request(task_id, strategy=strategy)
+                    board.merge_request(task_id, strategy=strategy, force=force)
                 )
             return result
         except Exception as e:

@@ -4684,7 +4684,7 @@ class TaskBoard:
 
     # ── MARKER_184.5: Worktree → Main merge via TaskBoard ────────────
 
-    async def merge_request(self, task_id: str, strategy: str = None) -> Dict[str, Any]:
+    async def merge_request(self, task_id: str, strategy: str = None, force: bool = False) -> Dict[str, Any]:
         """Request merge of worktree branch into main via verification flow.
 
         MARKER_184.5: Agents call this instead of manual cherry-pick.
@@ -4710,25 +4710,58 @@ class TaskBoard:
         if not task:
             return {"success": False, "error": f"Task {task_id} not found"}
 
-        # MARKER_201.QA_WARN: Warn (not block) if task was not verified by QA.
-        # Commander may legitimately skip QA — we log it and flag the result.
-        _qa_skipped = task.get("status") != "verified"
-        if _qa_skipped:
+        # MARKER_MERGE_GUARD.HARD_BLOCK: Block merge if task is in needs_fix status.
+        # needs_fix = QA explicitly rejected this task. Must be re-verified before merge.
+        # For other non-verified statuses (done_worktree, pending, etc.): warn only (Commander may skip QA).
+        # Commander escape hatch: pass force=True to override — logged as ERROR.
+        _status = task.get("status", "")
+        if _status == "needs_fix":
+            if not force:
+                return {
+                    "success": False,
+                    "error": (
+                        f"Task {task_id} is in needs_fix status — merge blocked. "
+                        "QA rejected this task. Fix the issues and re-verify before merging. "
+                        "Commander override: add force=True to bypass (will be logged as ERROR)."
+                    ),
+                    "task_status": _status,
+                    "hint": f"vetka_task_board action=verify task_id={task_id} verdict=pass",
+                }
+            else:
+                # force=True override — log as ERROR, record in history
+                self._append_history(
+                    task,
+                    event="force_merge_override",
+                    status=_status,
+                    agent_name="merge_request",
+                    agent_type="system",
+                    source="merge_request",
+                    reason=f"FORCE MERGE: task status=needs_fix, Commander override with force=True.",
+                )
+                self._save_task(task)
+                logger.error(
+                    "[MergeGuard] FORCE MERGE: Task %s status='needs_fix'. Commander override. "
+                    "QA rejection bypassed — regression risk.",
+                    task_id,
+                )
+        elif _status != "verified":
+            # MARKER_201.QA_WARN: Warn (not block) for other non-verified statuses.
+            # Commander may legitimately merge without QA for non-rejected tasks.
             self._append_history(
                 task,
                 event="qa_skipped_warning",
-                status=task.get("status", ""),
+                status=_status,
                 agent_name="merge_request",
                 agent_type="system",
                 source="merge_request",
-                reason=f"merge_request called without QA verification (status={task.get('status')}). "
+                reason=f"merge_request called without QA verification (status={_status}). "
                 "Commander override — proceeding.",
             )
             self._save_task(task)
             logger.warning(
                 "[MergeRequest] Task %s status='%s', not verified. QA gate skipped by Commander.",
                 task_id,
-                task.get("status"),
+                _status,
             )
 
         branch = task.get("branch_name")
