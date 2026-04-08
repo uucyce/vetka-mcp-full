@@ -3523,10 +3523,11 @@ class TaskBoard:
                 capture_output=True, timeout=3,
             )
             if has.returncode == 0:
-                # Session alive — inject session init to trigger hook + inbox read
+                # MARKER_WAKE_LITE.TASK_ID_SIGNAL: Send task-specific wake hint if provided,
+                # otherwise fall back to "vetka session init" (full context for fresh starts).
+                send_text = message if message else "vetka session init"
                 subprocess.run(
-                    ["tmux", "send-keys", "-t", session_name,
-                     "vetka session init", "Enter"],
+                    ["tmux", "send-keys", "-t", session_name, send_text, "Enter"],
                     capture_output=True, timeout=3,
                 )
                 ts_file.touch()
