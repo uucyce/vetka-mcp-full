@@ -3696,6 +3696,18 @@ class TaskBoard:
         if verdict == "pass":
             new_status = "verified"
         elif verdict == "fail":
+            # MARKER_QA_GUARD.NOTES_MIN: Require structured notes on fail — prevents
+            # uninformative "bad" / "broken" verdicts that leave owners without actionable info.
+            if len((notes or "").strip()) < 50:
+                return {
+                    "success": False,
+                    "error": (
+                        "verdict=fail requires notes ≥ 50 chars. "
+                        "Include: root_cause, failing_tests (or steps to reproduce). "
+                        f"Current notes: {len((notes or '').strip())} chars."
+                    ),
+                    "hint": "notes='root_cause: X. failing_tests: test_foo. steps_to_reproduce: Y'",
+                }
             new_status = "needs_fix"
         else:
             return {
