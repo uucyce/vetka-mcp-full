@@ -3583,24 +3583,39 @@ class TaskBoard:
         owner = task.get("assigned_to", "") or task.get("role", "")
 
         targets = []
+
+        # MARKER_WAKE_LITE.TASK_ID_SIGNAL: Actionable wake hint — agent calls action=get
+        # instead of session_init. Saves ~3200 tokens per wake. P0 fix for context budget.
+        _ACTION_MAP = {
+            self.NOTIF_TASK_VERIFIED: "merge_request",
+            self.NOTIF_TASK_NEEDS_FIX: "fix",
+            self.NOTIF_READY_TO_MERGE: "merge_request",
+            self.NOTIF_TASK_COMPLETED: "verify",
+        }
+        action = _ACTION_MAP.get(ntype, "check")
+        wake_hint = (
+            f"TASK-WAKE {task_id}: {action}. "
+            f"vetka_task_board action=get task_id={task_id}. SKIP session_init."
+        )
+
         if ntype == self.NOTIF_TASK_VERIFIED:
             # Notify owner + Commander
             if owner:
-                targets.append((owner, f"Task verified: {title}"))
-            targets.append(("Commander", f"Task verified, ready to merge: {title}"))
+                targets.append((owner, f"{wake_hint} Task verified: {title}"))
+            targets.append(("Commander", f"Task verified, ready to merge: {title} [{task_id}]"))
         elif ntype == self.NOTIF_TASK_NEEDS_FIX:
             # Notify owner
             if owner:
-                targets.append((owner, f"QA FAIL — fix needed: {title}. {extra_msg}"))
+                targets.append((owner, f"{wake_hint} QA FAIL: {title}. {extra_msg}"))
         elif ntype == self.NOTIF_READY_TO_MERGE:
-            targets.append(("Commander", f"Ready to merge: {title}"))
+            targets.append(("Commander", f"Ready to merge: {title} [{task_id}]"))
         elif ntype == self.NOTIF_TASK_COMPLETED:
             # Notify Commander about new completion
-            targets.append(("Commander", f"Task completed by {owner}: {title}"))
+            targets.append(("Commander", f"Task completed by {owner}: {title} [{task_id}]"))
             # MARKER_212.WAKE_CHAIN: Also notify verification_agent so QA auto-wakes
             verifier = task.get("verification_agent", "")
             if verifier and verifier != owner:
-                targets.append((verifier, f"Task ready for QA: {title}"))
+                targets.append((verifier, f"{wake_hint} Task ready for QA: {title}"))
         else:
             return  # Unknown type, skip
 
@@ -3642,7 +3657,7 @@ class TaskBoard:
         if ntype == self.NOTIF_TASK_NEEDS_FIX and owner:
             wake_roles.append(owner)
         for wake_target in wake_roles:
-            self._synapse_wake(wake_target, message=f"{ntype}: {title}")
+            self._synapse_wake(wake_target, message=wake_hint)
 
     # ==========================================
     # MARKER_195.20: QA VERIFICATION GATE
