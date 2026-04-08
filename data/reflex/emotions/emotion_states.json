@@ -2388,14 +2388,14 @@
   },
   "__general_debrief__": {
     "tool_id": "__general_debrief__",
-    "curiosity": 3.4303365279297016e-90,
+    "curiosity": 9.324621449370603e-90,
     "trust": 0.9999999999999997,
     "caution": 0.1,
     "mood_label": "confident",
-    "usage_count": 417,
-    "success_count": 417,
+    "usage_count": 415,
+    "success_count": 415,
     "failure_count": 0,
-    "last_updated": 1775685237.702283
+    "last_updated": 1775670023.716502
   },
   "Read": {
     "tool_id": "Read",
@@ -2439,7 +2439,7 @@
     "usage_count": 193,
     "success_count": 0,
     "failure_count": 193,
-    "last_updated": 1775685238.1483588
+    "last_updated": 1775686937.3131368
   },
   "session_init": {
     "tool_id": "session_init",
