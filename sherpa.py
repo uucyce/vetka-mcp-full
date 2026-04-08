@@ -1541,6 +1541,16 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
 ## Description
 {desc}
 """
+    # MARKER_203.SCOUT_CONTEXT: Separate Scout markers for emphasis
+    scout_ctx = task.get("scout_context")
+    if scout_ctx and isinstance(scout_ctx, list):
+        prompt += "\n## VERIFIED Code Locations (from Scout — these files and lines are REAL)\n"
+        for m in scout_ctx[:8]:
+            prompt += f"- `{m.get('file', '?')}:{m.get('start_line', '?')}` — `{m.get('symbol', '?')}` (relevance: {m.get('relevance', 0):.0%})\n"
+            snippet = m.get("snippet", "")
+            if snippet:
+                prompt += f"  ```\n  {snippet[:200]}\n  ```\n"
+        prompt += "\n"
     if hints:
         prompt += f"\n## Hints\n{hints}\n"
     if allowed_paths:
@@ -1560,9 +1570,10 @@ def build_recon_prompt(task: Dict, code_snippets: List[Dict[str, str]]) -> str:
 
     prompt += f"""
 ## CRITICAL RULES
-- ONLY reference files from the "Relevant Code" section above or well-known framework paths
-- The files that ACTUALLY EXIST in this codebase are listed above — do NOT invent new file names
+- ONLY reference files from "VERIFIED Code Locations" and "Relevant Code" sections above
+- These are the ONLY files that exist — do NOT invent or guess file paths
 - If you suggest creating a new file, explicitly mark it as [NEW FILE]
+- Any path not listed above is HALLUCINATED unless marked [NEW FILE]
 {f'- Focus modifications on: {", ".join(allowed_paths)}' if allowed_paths else ''}
 
 ## Research needed:
